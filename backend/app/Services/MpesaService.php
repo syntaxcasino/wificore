@@ -3,7 +3,6 @@
 namespace App\Services;
 
 use GuzzleHttp\Client;
-use GuzzleHttp\Exception\GuzzleException;
 use GuzzleHttp\Exception\RequestException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -23,7 +22,7 @@ class MpesaService
         ]);
 
         $this->config = [
-            'base_url' => config('mpesa.base_url', 'https://sandbox.safaricom.co.ke'),
+            'base_url' => config('mpesa.base_url', 'https://api.safaricom.co.ke'), // Production URL
             'consumer_key' => config('mpesa.consumer_key'),
             'consumer_secret' => config('mpesa.consumer_secret'),
             'business_shortcode' => config('mpesa.business_shortcode'),
@@ -31,8 +30,9 @@ class MpesaService
             'callback_url' => config('mpesa.callback_url'),
             'initiator_name' => config('mpesa.initiator_name'),
             'initiator_password' => config('mpesa.initiator_password'),
-            'account_reference' => config('mpesa.account_reference', 'COMPANY'),
-            'transaction_desc' => config('mpesa.transaction_desc', 'Payment'),
+            'account_reference' => config('mpesa.account_reference', 'WIFI'),
+            'transaction_desc' => config('mpesa.transaction_desc', 'WiFi Payment'),
+            'public_key_path' => config('mpesa.public_key_path', storage_path('mpesa/public_key.pem')),
         ];
 
         $this->validateConfig();
@@ -40,14 +40,7 @@ class MpesaService
 
     protected function validateConfig(): void
     {
-        $required = [
-            'consumer_key',
-            'consumer_secret',
-            'business_shortcode',
-            'passkey',
-            'callback_url'
-        ];
-
+        $required = ['consumer_key', 'consumer_secret', 'business_shortcode', 'passkey', 'callback_url'];
         foreach ($required as $key) {
             if (empty($this->config[$key])) {
                 throw new \RuntimeException("M-Pesa configuration missing: $key");
@@ -55,14 +48,11 @@ class MpesaService
         }
     }
 
-    /**
-     * Get cached access token or generate new one with retry logic
-     */
     public function getAccessToken(): ?string
     {
         return Cache::remember($this->cachePrefix . 'access_token', 3500, function () {
             $attempts = 3;
-            $retryDelay = 1000; // 1 second delay between retries
+            $retryDelay = 1000;
 
             for ($i = 0; $i < $attempts; $i++) {
                 try {
@@ -85,32 +75,26 @@ class MpesaService
                     }
 
                     if (!isset($data['access_token'])) {
-                        Log::error('M-Pesa Token Missing in Response', [
-                            'attempt' => $i + 1,
-                            'response' => $data
-                        ]);
+                        Log::error('M-Pesa Token Missing', ['response' => $data]);
                         return null;
                     }
 
+                    Log::info('M-Pesa Token Generated', ['attempt' => $i + 1]);
                     return $data['access_token'];
                 } catch (RequestException $e) {
                     Log::error('M-Pesa Token Request Exception', [
                         'attempt' => $i + 1,
                         'message' => $e->getMessage(),
-                        'code' => $e->getCode(),
                     ]);
                     sleep($retryDelay / 1000);
                 }
             }
 
-            Log::error('M-Pesa Token Request Failed After All Retries');
+            Log::error('M-Pesa Token Request Failed After Retries');
             return null;
         });
     }
 
-    /**
-     * Initiate STK Push payment request
-     */
     public function initiateSTKPush(
         string $phone,
         float $amount,
@@ -132,7 +116,7 @@ class MpesaService
             'Password' => $password,
             'Timestamp' => $timestamp,
             'TransactionType' => 'CustomerPayBillOnline',
-            'Amount' => (int) $amount, // M-Pesa expects integer amounts
+            'Amount' => (int) $amount,
             'PartyA' => $phone,
             'PartyB' => $this->config['business_shortcode'],
             'PhoneNumber' => $phone,
@@ -140,6 +124,8 @@ class MpesaService
             'AccountReference' => $reference ?? $this->config['account_reference'],
             'TransactionDesc' => $description ?? $this->config['transaction_desc'],
         ];
+
+        Log::info('Initiating STK Push', ['payload' => $payload]);
 
         try {
             $response = $this->client->post(
@@ -159,57 +145,9 @@ class MpesaService
         }
     }
 
-    /**
-     * Check transaction status
-     */
-    public function checkTransactionStatus(
-        string $transactionId,
-        string $identifierType = '1',
-        ?string $remarks = null,
-        ?string $occasion = null
-    ): array {
-        $token = $this->getAccessToken();
-        if (!$token) {
-            return $this->errorResponse('Failed to obtain access token', [], 401);
-        }
-
-        $payload = [
-            'Initiator' => $this->config['initiator_name'],
-            'SecurityCredential' => $this->generateSecurityCredential(),
-            'CommandID' => 'TransactionStatusQuery',
-            'TransactionID' => $transactionId,
-            'PartyA' => $this->config['business_shortcode'],
-            'IdentifierType' => $identifierType,
-            'ResultURL' => $this->config['callback_url'],
-            'QueueTimeOutURL' => $this->config['callback_url'],
-            'Remarks' => $remarks ?? 'Transaction status query',
-            'Occasion' => $occasion ?? 'Check transaction status',
-        ];
-
-        try {
-            $response = $this->client->post(
-                $this->config['base_url'] . '/mpesa/transactionstatus/v1/query',
-                [
-                    'headers' => [
-                        'Authorization' => 'Bearer ' . $token,
-                        'Content-Type' => 'application/json',
-                    ],
-                    'json' => $payload,
-                ]
-            );
-
-            return $this->handleApiResponse($response, 'Transaction Status');
-        } catch (RequestException $e) {
-            return $this->errorResponse('Transaction Status Query failed: ' . $e->getMessage(), [], $e->getCode());
-        }
-    }
-
-    /**
-     * Process M-Pesa callback
-     */
     public function processCallback(array $callbackData): array
     {
-        Log::info('M-Pesa Callback Received', $callbackData);
+        Log::info('Processing M-Pesa Callback', ['data' => $callbackData]);
 
         if (!isset($callbackData['Body']['stkCallback'])) {
             return $this->errorResponse('Invalid callback format');
@@ -249,8 +187,8 @@ class MpesaService
     {
         $phone = preg_replace('/[^0-9]/', '', $phone);
 
-        if (strlen($phone) === 9 && str_starts_with($phone, '0')) {
-            return '254' . substr($phone, 1);
+        if (strlen($phone) === 9 && str_starts_with($phone, '7')) {
+            return '254' . $phone;
         }
 
         if (strlen($phone) === 10 && str_starts_with($phone, '0')) {
@@ -270,7 +208,7 @@ class MpesaService
             throw new \RuntimeException('Initiator password not configured');
         }
 
-        $publicKeyPath = config('mpesa.public_key_path');
+        $publicKeyPath = $this->config['public_key_path'];
         if (!file_exists($publicKeyPath)) {
             throw new \RuntimeException('M-Pesa public key not found at: ' . $publicKeyPath);
         }
@@ -301,11 +239,9 @@ class MpesaService
         $status = $response->getStatusCode();
         $data = json_decode($response->getBody(), true) ?? [];
 
+        Log::info("M-Pesa $action Response", ['status' => $status, 'data' => $data]);
+
         if ($status !== 200) {
-            Log::error("M-Pesa $action Error", [
-                'status' => $status,
-                'response' => $data
-            ]);
             return $this->errorResponse(
                 $data['errorMessage'] ?? "$action request failed",
                 $data,

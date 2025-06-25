@@ -10,10 +10,29 @@ class UserSession extends Model
     /** @use HasFactory<\Database\Factories\UserSessionFactory> */
     use HasFactory;
 
-    protected $fillable = ['mac_address', 'voucher', 'package_id', 'start_time', 'end_time', 'upload', 'download'];
+    protected $fillable = [
+        'payment_id',
+        'voucher',
+        'mac_address',
+        'start_time',
+        'end_time',
+        'status',
+    ];
+
+    protected $casts = [
+        'start_time' => 'datetime',
+        'end_time' => 'datetime',
+        'created_at' => 'datetime',
+        'updated_at' => 'datetime',
+    ];
+
+    public function payment()
+    {
+        return $this->belongsTo(Payment::class);
+    }
 
     public function package()
     {
-        return $this->belongsTo(Package::class);
+        return $this->belongsTo(Package::class, 'package_id');
     }
 }

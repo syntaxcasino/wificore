@@ -1,42 +1,50 @@
-CREATE TABLE IF NOT EXISTS packages (
+CREATE TABLE packages (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     description TEXT,
-    price DECIMAL(10,2) NOT NULL,
+    price FLOAT NOT NULL,
     duration_hours INTEGER NOT NULL,
-    mikrotik_profile VARCHAR(255),
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-INSERT INTO packages (name, description, price, duration_hours, mikrotik_profile)
-SELECT 'Basic Plan', '1GB data for 1 hour', 1.00, 1, 'basic_profile'
-WHERE NOT EXISTS (SELECT 1 FROM packages WHERE name = 'Basic Plan');
-INSERT INTO packages (name, description, price, duration_hours, mikrotik_profile)
-SELECT 'Standard Plan', '3GB data for 24 hours', 150.00, 24, 'standard_profile'
-WHERE NOT EXISTS (SELECT 1 FROM packages WHERE name = 'Standard Plan');
-INSERT INTO packages (name, description, price, duration_hours, mikrotik_profile)
-SELECT 'Premium Plan', '10GB data for 72 hours', 400.00, 72, 'premium_profile'
-WHERE NOT EXISTS (SELECT 1 FROM packages WHERE name = 'Premium Plan');
-
-CREATE TABLE IF NOT EXISTS system_logs (
-    id SERIAL PRIMARY KEY,
-    action VARCHAR(255) NOT NULL,
-    details TEXT,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-
-
-CREATE TABLE IF NOT EXISTS payments (
-    id SERIAL PRIMARY KEY,
-    phone_number VARCHAR(20) NOT NULL,
-    amount DECIMAL(10,2) NOT NULL,
-    package_id INTEGER REFERENCES packages(id),
-    status VARCHAR(50) NOT NULL,
-    mac_address VARCHAR(17), -- Stores MAC address (e.g., D6:D2:52:1C:90:71)
-    transaction_id VARCHAR(100), -- Stores M-Pesa CheckoutRequestID
+    mikrotik_profile VARCHAR(255) NOT NULL,
+    speed_type VARCHAR(50) DEFAULT 'normal',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE payments (
+    id SERIAL PRIMARY KEY,
+    mac_address VARCHAR(17) NOT NULL,
+    phone_number VARCHAR(12) NOT NULL,
+    package_id INTEGER REFERENCES packages(id) ON DELETE CASCADE,
+    amount FLOAT NOT NULL,
+    transaction_id VARCHAR(255) UNIQUE NOT NULL,
+    status VARCHAR(20) DEFAULT 'pending',
+    callback_response JSON,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE system_logs (
+    id SERIAL PRIMARY KEY,
+    action VARCHAR(255) NOT NULL,
+    details JSON,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE user_sessions (
+    id SERIAL PRIMARY KEY,
+    payment_id INTEGER REFERENCES payments(id) ON DELETE CASCADE,
+    voucher VARCHAR(255) UNIQUE NOT NULL,
+    mac_address VARCHAR(17) NOT NULL,
+    start_time TIMESTAMP NOT NULL,
+    end_time TIMESTAMP NOT NULL,
+    status VARCHAR(20) DEFAULT 'active',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+INSERT INTO packages (name, description, price, duration_hours, mikrotik_profile, speed_type) VALUES
+('Normal 1 Hour', '3mbps for 1 hour', 10.00, 1, 'normal_3mbps', 'normal'),
+('Normal 12 Hours', '3mbps for 12 hours', 20.00, 12, 'normal_3mbps', 'normal'),
+('High 1 Hour', '10mbps for 1 hour', 15.00, 1, 'high_10mbps', 'high'),
+('High 12 Hours', '10mbps for 12 hours', 25.00, 12, 'high_10mbps', 'high');
