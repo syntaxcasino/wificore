@@ -1,0 +1,18 @@
+@import 'tailwindcss';
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    background-color: #f3f4f6; /* Tailwind bg-gray-100 */
+    color: #111827; /* Tailwind text-gray-900 */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  input,
+  button {
+    transition-property: all;
+    transition-duration: 200ms;
+  }
+}

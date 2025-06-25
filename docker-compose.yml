@@ -1,0 +1,70 @@
+version: '3.8'
+services:
+  nginx:
+    container_name: wifi-hotspot-nginx-1
+    build:
+      context: ./nginx
+    environment:
+      TZ: Africa/Nairobi
+    ports:
+      - "80:80"  # Or "8080:80" if port 80 is busy
+    depends_on:
+      - frontend
+      - backend
+    networks:
+      - wifi-network
+
+  frontend:
+    container_name: wifi-hotspot-frontend-1
+    build:
+      context: ./frontend
+    environment:
+      TZ: Africa/Nairobi
+    volumes:
+      - ./frontend:/app
+      - node_modules:/app/node_modules
+    networks:
+      - wifi-network
+
+  backend:
+    container_name: wifi-hotspot-backend-1
+    build:
+      context: ./backend
+    environment:
+      APP_ENV: production
+      DB_CONNECTION: pgsql
+      DB_HOST: hotspot-billing-postgres-1
+      DB_PORT: 5432
+      DB_DATABASE: wifi_hotspot
+      DB_USERNAME: admin
+      DB_PASSWORD: secret
+      TZ: Africa/Nairobi
+    depends_on:
+      - postgres
+    volumes:
+      - ./backend:/app
+    networks:
+      - wifi-network
+
+  postgres:
+    container_name: hotspot-billing-postgres-1
+    image: postgres:15
+    environment:
+      POSTGRES_DB: wifi_hotspot
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: secret
+      TZ: Africa/Nairobi
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql
+    networks:
+      - wifi-network
+
+volumes:
+  node_modules:
+  postgres_data:
+
+networks:
+  wifi-network:
+    name: wifi-network
+    driver: bridge
