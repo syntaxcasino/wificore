@@ -4,6 +4,7 @@ namespace App\Services;
 
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Config;
+use Illuminate\Support\Facades\Http;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
 use App\Models\SystemLog;
@@ -29,9 +30,6 @@ class MpesaService
             $accessToken = $this->getAccessToken();
             $timestamp = now()->format('YmdHis');
             $shortcode = $this->config['shortcode'];
-            $accessToken = $this->getAccessToken();
-            $timestamp = now()->format('YmdHis');
-            $shortcode = $this->config['shortcode'];
             $password = base64_encode($shortcode . $this->config['passkey'] . $timestamp);
             $phoneNumber = preg_replace('/^\+/', '', $phoneNumber);
 
@@ -54,11 +52,8 @@ class MpesaService
             $response = $this->client->post('mpesa/stkpush/v1/processrequest', [
                 'headers' => [
                     'Authorization' => 'Bearer ' . $accessToken,
-                    'Content-Type' => 'application/json'
-                    'Authorization' => 'Bearer ' . $accessToken,
-                    'Content-Type' => 'application/json'
+                    'Content-Type' => 'application/json',
                 ],
-                'json' => $payload
                 'json' => $payload
             ]);
 
@@ -80,7 +75,7 @@ class MpesaService
             ];
 
         } catch (\Exception | GuzzleException $e) {
-            $this->logError('STK Push Failed', $e, isset($payload) ? $payload : []);
+            $this->logError('STK Push Failed', $e, $payload ?? []);
             return [
                 'success' => false,
                 'message' => $e->getMessage(),
@@ -101,15 +96,9 @@ class MpesaService
             $resultMessage = $this->getResultCodeMessage($resultCode);
 
             $metaItems = $stkCallback['CallbackMetadata']['Item'] ?? [];
-            $meta = collect($metaItems)->mapWithKeys(fn ($item) => [$item['Name'] => $item['Value'] ?? null]);
-
-            $metaItems = $stkCallback['CallbackMetadata']['Item'] ?? [];
-            $meta = collect($metaItems)->mapWithKeys(fn ($item) => [$item['Name'] => $item['Value'] ?? null]);
+            $meta = collect($metaItems)->mapWithKeys(fn($item) => [$item['Name'] => $item['Value'] ?? null]);
 
             $data = [
-                'amount' => $meta['Amount'] ?? null,
-                'mpesa_receipt' => $meta['MpesaReceiptNumber'] ?? null,
-                'phone_number' => $meta['PhoneNumber'] ?? null,
                 'amount' => $meta['Amount'] ?? null,
                 'mpesa_receipt' => $meta['MpesaReceiptNumber'] ?? null,
                 'phone_number' => $meta['PhoneNumber'] ?? null,
@@ -130,22 +119,6 @@ class MpesaService
         }
     }
 
-    public function getResultCodeMessage(int $code): string
-    {
-        return match ($code) {
-            0 => 'The service request is processed successfully.',
-            1 => 'Insufficient funds on M-PESA or declined Fuliza.',
-            1001 => 'Another transaction is already in process.',
-            1019 => 'Transaction expired before completion.',
-            1025 => 'System error. Retry request.',
-            1032 => 'Request was cancelled by the user.',
-            1037 => 'Could not reach phone or no response from user.',
-            2001 => 'Invalid M-PESA initiator credentials.',
-            9999 => 'Unknown system error.',
-            default => 'An unknown ResultCode was returned.',
-        };
-    }
-
     public function getAccessToken(): string
     {
         try {
@@ -160,11 +133,53 @@ class MpesaService
             $data = json_decode($response->getBody()->getContents(), true);
             return $data['access_token'] ?? '';
 
-
         } catch (\Exception | GuzzleException $e) {
             $this->logError('Access Token Failed', $e);
             throw new \Exception('Failed to get access token: ' . $e->getMessage());
         }
+    }
+
+    public function queryTransactionStatus(string $checkoutRequestId): array
+    {
+        $accessToken = $this->getAccessToken();
+
+        $payload = [
+            'Initiator' => $this->config['initiator_name'],
+            'SecurityCredential' => $this->getSecurityCredential(),
+            'CommandID' => 'TransactionStatusQuery',
+            'TransactionID' => $checkoutRequestId,
+            'PartyA' => $this->config['shortcode'],
+            'IdentifierType' => '1',
+            'ResultURL' => $this->config['transaction_status_result_url'],
+            'QueueTimeOutURL' => $this->config['transaction_status_timeout_url'],
+            'Remarks' => 'Query STK Payment',
+            'Occasion' => 'CheckPayment',
+        ];
+
+        $response = Http::withToken($accessToken)
+            ->post('https://sandbox.safaricom.co.ke/mpesa/transactionstatus/v1/query', $payload);
+
+        return [
+            'success' => $response->successful(),
+            'data' => $response->json(),
+            'status' => $response->status(),
+        ];
+    }
+
+    public function getResultCodeMessage(int $code): string
+    {
+        return match ($code) {
+            0 => 'The service request is processed successfully.',
+            1 => 'Insufficient funds on M-PESA or declined Fuliza.',
+            1001 => 'Another transaction is already in process.',
+            1019 => 'Transaction expired before completion.',
+            1025 => 'System error. Retry request.',
+            1032 => 'Request was cancelled by the user.',
+            1037 => 'Could not reach phone or no response from user.',
+            2001 => 'Invalid M-PESA initiator credentials.',
+            9999 => 'Unknown system error.',
+            default => 'An unknown ResultCode was returned.',
+        };
     }
 
     protected function logRequest(string $action, array $data): void
@@ -213,31 +228,9 @@ class MpesaService
         return $data;
     }
 
-    public function queryTransactionStatus(string $checkoutRequestId): array
-{
-    $accessToken = $this->getAccessToken();
-
-    $payload = [
-        'Initiator' => config('mpesa.initiator_name'),
-        'SecurityCredential' => $this->getSecurityCredential(),
-        'CommandID' => 'TransactionStatusQuery',
-        'TransactionID' => $checkoutRequestId,
-        'PartyA' => config('mpesa.shortcode'),
-        'IdentifierType' => '1',
-        'ResultURL' => config('mpesa.transaction_status_result_url'), // can point to a dummy handler
-        'QueueTimeOutURL' => config('mpesa.transaction_status_timeout_url'),
-        'Remarks' => 'Query STK Payment',
-        'Occasion' => 'CheckPayment',
-    ];
-
-    $response = Http::withToken($accessToken)
-        ->post('https://sandbox.safaricom.co.ke/mpesa/transactionstatus/v1/query', $payload); // use live URL in production
-
-    return [
-        'success' => $response->successful(),
-        'data' => $response->json(),
-        'status' => $response->status()
-    ];
-}
-
+    protected function getSecurityCredential(): string
+    {
+        // Implement encryption if needed; placeholder for now
+        return $this->config['security_credential'];
+    }
 }
