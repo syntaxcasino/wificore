@@ -15,7 +15,7 @@ export default defineConfig({
     tailwindcss(),
   ],
     server: {
-       allowedHosts: ['3050-41-90-172-176.ngrok-free.app', 'localhost'],
+       allowedHosts: ['traidnethotspot.pagekite.me', 'localhost'],
     hmr: {
       host: 'localhost',
       port: 3000,

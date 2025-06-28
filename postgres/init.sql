@@ -13,7 +13,7 @@ CREATE TABLE packages (
 CREATE TABLE payments (
     id SERIAL PRIMARY KEY,
     mac_address VARCHAR(17) NOT NULL,
-    phone_number VARCHAR(12) NOT NULL,
+    phone_number VARCHAR(15) NOT NULL, -- Updated length
     package_id INTEGER REFERENCES packages(id) ON DELETE CASCADE,
     amount FLOAT NOT NULL,
     transaction_id VARCHAR(255) UNIQUE NOT NULL,
@@ -44,7 +44,7 @@ CREATE TABLE user_sessions (
 );
 
 INSERT INTO packages (name, description, price, duration_hours, mikrotik_profile, speed_type) VALUES
-('Normal 1 Hour', '3mbps for 1 hour', 10.00, 1, 'normal_3mbps', 'normal'),
+('Normal 1 Hour', '3mbps for 1 hour', 1.00, 1, 'normal_3mbps', 'normal'),
 ('Normal 12 Hours', '3mbps for 12 hours', 20.00, 12, 'normal_3mbps', 'normal'),
 ('High 1 Hour', '10mbps for 1 hour', 15.00, 1, 'high_10mbps', 'high'),
 ('High 12 Hours', '10mbps for 12 hours', 25.00, 12, 'high_10mbps', 'high');
