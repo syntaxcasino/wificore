@@ -1,6 +1,6 @@
 <template>
   <div class="min-h-screen bg-gray-100">
-    <!-- Header -->
+    <!-- Header with lazy-loaded navigation -->
     <header class="bg-blue-600 text-white shadow-md">
       <div class="container mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
         <h1 class="text-xl sm:text-2xl font-bold">WiFi Hotspot</h1>
@@ -27,46 +27,46 @@
           </svg>
         </button>
         <nav class="hidden sm:flex space-x-4" aria-label="Main navigation">
-          <router-link to="/" class="hover:underline">Home</router-link>
-          <router-link to="/logs" class="hover:underline">Logs</router-link>
+          <router-link
+            v-for="link in navLinks"
+            :key="link.path"
+            :to="link.path"
+            class="hover:underline transition-colors duration-200"
+            active-class="font-bold"
+          >
+            {{ link.name }}
+          </router-link>
         </nav>
       </div>
-      <!-- Mobile Menu -->
-      <nav v-if="menuOpen" class="sm:hidden bg-blue-700 px-4 py-2" aria-label="Mobile navigation">
-        <router-link to="/" class="block py-2 hover:underline" @click="toggleMenu"
-          >Home</router-link
-        >
-        <router-link to="/logs" class="block py-2 hover:underline" @click="toggleMenu"
-          >Logs</router-link
-        >
-      </nav>
+
+      <!-- Lazy-loaded mobile menu -->
+      <LazyMobileMenu v-if="menuOpen" :links="navLinks" @close="toggleMenu" />
     </header>
 
-    <!-- Main Content -->
+    <!-- Main Content with Suspense -->
     <main class="container mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
       <router-view />
     </main>
 
-    <!-- Footer -->
-    <footer class="bg-gray-800 text-white py-4">
-      <div class="container mx-auto px-4 sm:px-6 lg:px-8 text-center text-sm sm:text-base">
-        &copy; {{ new Date().getFullYear() }} WiFi Hotspot. All rights reserved.
-      </div>
-    </footer>
+    <!-- Lazy-loaded footer -->
+    <LazyAppFooter />
   </div>
 </template>
 
-<script>
-export default {
-  data() {
-    return {
-      menuOpen: false,
-    }
-  },
-  methods: {
-    toggleMenu() {
-      this.menuOpen = !this.menuOpen
-    },
-  },
+<script setup>
+import { ref, defineAsyncComponent } from 'vue'
+import LoadingSpinner from '@/components/ui/LoadingSpinner.vue'
+
+const LazyAppFooter = defineAsyncComponent(() => import('@/components/ui/AppFooter.vue'))
+const LazyMobileMenu = defineAsyncComponent(() => import('@/components/ui/MobileMenu.vue'))
+
+const menuOpen = ref(false)
+const navLinks = [
+  { path: '/', name: 'Home' },
+  { path: '/logs', name: 'Logs' },
+]
+
+const toggleMenu = () => {
+  menuOpen.value = !menuOpen.value
 }
 </script>

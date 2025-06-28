@@ -2,283 +2,196 @@
 
 namespace App\Services;
 
-use GuzzleHttp\Client;
-use GuzzleHttp\Exception\RequestException;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Config;
+use GuzzleHttp\Client;
+use GuzzleHttp\Exception\GuzzleException;
+use App\Models\SystemLog;
 
 class MpesaService
 {
-    protected Client $client;
-    protected array $config;
-    protected string $cachePrefix = 'mpesa_token_';
+    protected $client;
+    protected $config;
 
     public function __construct()
     {
+        $this->config = config('mpesa');
         $this->client = new Client([
-            'timeout' => 30,
-            'connect_timeout' => 10,
-            'http_errors' => false,
+            'base_uri' => $this->config['base_url'],
+            'timeout' => $this->config['timeout'] ?? 30,
+            'verify' => $this->config['verify_ssl'] ?? true,
         ]);
-
-        $this->config = [
-            'base_url' => config('mpesa.base_url', 'https://api.safaricom.co.ke'), // Production URL
-            'consumer_key' => config('mpesa.consumer_key'),
-            'consumer_secret' => config('mpesa.consumer_secret'),
-            'business_shortcode' => config('mpesa.business_shortcode'),
-            'passkey' => config('mpesa.passkey'),
-            'callback_url' => config('mpesa.callback_url'),
-            'initiator_name' => config('mpesa.initiator_name'),
-            'initiator_password' => config('mpesa.initiator_password'),
-            'account_reference' => config('mpesa.account_reference', 'WIFI'),
-            'transaction_desc' => config('mpesa.transaction_desc', 'WiFi Payment'),
-            'public_key_path' => config('mpesa.public_key_path', storage_path('mpesa/public_key.pem')),
-        ];
-
-        $this->validateConfig();
     }
 
-    protected function validateConfig(): void
+    public function initiateSTKPush(string $phoneNumber, float $amount): array
     {
-        $required = ['consumer_key', 'consumer_secret', 'business_shortcode', 'passkey', 'callback_url'];
-        foreach ($required as $key) {
-            if (empty($this->config[$key])) {
-                throw new \RuntimeException("M-Pesa configuration missing: $key");
-            }
-        }
-    }
-
-    public function getAccessToken(): ?string
-    {
-        return Cache::remember($this->cachePrefix . 'access_token', 3500, function () {
-            $attempts = 3;
-            $retryDelay = 1000;
-
-            for ($i = 0; $i < $attempts; $i++) {
-                try {
-                    $response = $this->client->get($this->config['base_url'] . '/oauth/v1/generate?grant_type=client_credentials', [
-                        'auth' => [$this->config['consumer_key'], $this->config['consumer_secret']],
-                        'headers' => ['Accept' => 'application/json'],
-                    ]);
-
-                    $statusCode = $response->getStatusCode();
-                    $data = json_decode($response->getBody(), true);
-
-                    if ($statusCode !== 200) {
-                        Log::error('M-Pesa Token Request Failed', [
-                            'attempt' => $i + 1,
-                            'status' => $statusCode,
-                            'response' => $data
-                        ]);
-                        sleep($retryDelay / 1000);
-                        continue;
-                    }
-
-                    if (!isset($data['access_token'])) {
-                        Log::error('M-Pesa Token Missing', ['response' => $data]);
-                        return null;
-                    }
-
-                    Log::info('M-Pesa Token Generated', ['attempt' => $i + 1]);
-                    return $data['access_token'];
-                } catch (RequestException $e) {
-                    Log::error('M-Pesa Token Request Exception', [
-                        'attempt' => $i + 1,
-                        'message' => $e->getMessage(),
-                    ]);
-                    sleep($retryDelay / 1000);
-                }
-            }
-
-            Log::error('M-Pesa Token Request Failed After Retries');
-            return null;
-        });
-    }
-
-    public function initiateSTKPush(
-        string $phone,
-        float $amount,
-        ?string $reference = null,
-        ?string $description = null,
-        ?string $callbackUrl = null
-    ): array {
-        $token = $this->getAccessToken();
-        if (!$token) {
-            return $this->errorResponse('Failed to obtain access token', [], 401);
-        }
-
-        $phone = $this->formatPhoneNumber($phone);
-        $timestamp = date('YmdHis');
-        $password = base64_encode($this->config['business_shortcode'] . $this->config['passkey'] . $timestamp);
-
-        $payload = [
-            'BusinessShortCode' => $this->config['business_shortcode'],
-            'Password' => $password,
-            'Timestamp' => $timestamp,
-            'TransactionType' => 'CustomerPayBillOnline',
-            'Amount' => (int) $amount,
-            'PartyA' => $phone,
-            'PartyB' => $this->config['business_shortcode'],
-            'PhoneNumber' => $phone,
-            'CallBackURL' => $callbackUrl ?? $this->config['callback_url'],
-            'AccountReference' => $reference ?? $this->config['account_reference'],
-            'TransactionDesc' => $description ?? $this->config['transaction_desc'],
-        ];
-
-        Log::info('Initiating STK Push', ['payload' => $payload]);
-
         try {
-            $response = $this->client->post(
-                $this->config['base_url'] . '/mpesa/stkpush/v1/processrequest',
-                [
-                    'headers' => [
-                        'Authorization' => 'Bearer ' . $token,
-                        'Content-Type' => 'application/json',
-                    ],
-                    'json' => $payload,
-                ]
-            );
+            $shortcode = $this->config['business_shortcode'];
+            $timestamp = date('YmdHis');
+            $password = base64_encode($shortcode . $this->config['passkey'] . $timestamp);
+            $phoneNumber = preg_replace('/^\+/', '', $phoneNumber);
 
-            return $this->handleApiResponse($response, 'STK Push');
-        } catch (RequestException $e) {
-            return $this->errorResponse('STK Push failed: ' . $e->getMessage(), [], $e->getCode());
+            $payload = [
+                'BusinessShortCode' => $shortcode,
+                'Password' => $password,
+                'Timestamp' => $timestamp,
+                'TransactionType' => $this->config['transaction_type'],
+                'Amount' => $amount,
+                'PartyA' => $phoneNumber,
+                'PartyB' => $shortcode,
+                'PhoneNumber' => $phoneNumber,
+                'CallBackURL' => $this->config['callback_url'],
+                'AccountReference' => $this->config['account_reference'],
+                'TransactionDesc' => $this->config['transaction_desc'],
+            ];
+
+            $this->logRequest('STK Push Initiation', $payload);
+
+            $response = $this->client->post('mpesa/stkpush/v1/processrequest', [
+                'headers' => [
+                    'Authorization' => 'Bearer ' . $this->getAccessToken(),
+                    'Content-Type' => 'application/json',
+                ],
+                'json' => $payload,
+            ]);
+
+            $responseData = json_decode($response->getBody()->getContents(), true);
+
+            $this->logResponse('STK Push Response', $responseData);
+
+            if (!isset($responseData['ResponseCode']) || $responseData['ResponseCode'] !== '0') {
+                throw new \Exception($responseData['errorMessage'] ?? 'STK Push failed');
+            }
+
+            return [
+                'success' => true,
+                'message' => 'STK Push initiated successfully',
+                'data' => [
+                    'CheckoutRequestID' => $responseData['CheckoutRequestID'],
+                    'MerchantRequestID' => $responseData['MerchantRequestID'],
+                ],
+            ];
+
+        } catch (\Exception | GuzzleException $e) {
+            $this->logError('STK Push Failed', $e, isset($payload) ? $payload : []);
+            return [
+                'success' => false,
+                'message' => $e->getMessage(),
+                'code' => method_exists($e, 'getCode') ? $e->getCode() : 500,
+            ];
         }
     }
 
     public function processCallback(array $callbackData): array
     {
-        Log::info('Processing M-Pesa Callback', ['data' => $callbackData]);
+        try {
+            $stkCallback = $callbackData['Body']['stkCallback'] ?? null;
+            if (!$stkCallback) {
+                throw new \Exception('Missing stkCallback data');
+            }
 
-        if (!isset($callbackData['Body']['stkCallback'])) {
-            return $this->errorResponse('Invalid callback format');
-        }
+            $resultCode = (int) $stkCallback['ResultCode'];
+            $resultMessage = $this->getResultCodeMessage($resultCode);
 
-        $callback = $callbackData['Body']['stkCallback'];
-        $resultCode = $callback['ResultCode'] ?? null;
-        $metadata = $this->parseCallbackMetadata($callback['CallbackMetadata'] ?? []);
+            $data = [
+                'amount' => $stkCallback['CallbackMetadata']['Item'][0]['Value'] ?? null,
+                'mpesa_receipt' => $stkCallback['CallbackMetadata']['Item'][1]['Value'] ?? null,
+                'phone_number' => $stkCallback['CallbackMetadata']['Item'][4]['Value'] ?? null,
+            ];
 
-        if ($resultCode === '0') {
             return [
-                'success' => true,
-                'message' => $callback['ResultDesc'] ?? 'Payment successful',
-                'data' => [
-                    'merchant_request_id' => $callback['MerchantRequestID'] ?? null,
-                    'checkout_request_id' => $callback['CheckoutRequestID'] ?? null,
-                    'result_code' => $resultCode,
-                    'amount' => $metadata['Amount'] ?? null,
-                    'mpesa_receipt' => $metadata['MpesaReceiptNumber'] ?? null,
-                    'transaction_date' => $metadata['TransactionDate'] ?? null,
-                    'phone_number' => $metadata['PhoneNumber'] ?? null,
-                ]
+                'success' => $resultCode === 0,
+                'message' => $resultMessage,
+                'data' => $data,
+            ];
+
+        } catch (\Exception $e) {
+            $this->logError('Callback Processing Failed', $e);
+            return [
+                'success' => false,
+                'message' => $e->getMessage(),
             ];
         }
-
-        return $this->errorResponse(
-            $callback['ResultDesc'] ?? 'Payment failed',
-            [
-                'result_code' => $resultCode,
-                'request_id' => $callback['MerchantRequestID'] ?? null,
-                'checkout_id' => $callback['CheckoutRequestID'] ?? null
-            ]
-        );
     }
 
-    protected function formatPhoneNumber(string $phone): string
+    public function getResultCodeMessage(int $code): string
     {
-        $phone = preg_replace('/[^0-9]/', '', $phone);
-
-        if (strlen($phone) === 9 && str_starts_with($phone, '7')) {
-            return '254' . $phone;
-        }
-
-        if (strlen($phone) === 10 && str_starts_with($phone, '0')) {
-            return '254' . substr($phone, 1);
-        }
-
-        if (!str_starts_with($phone, '254') || strlen($phone) !== 12) {
-            throw new \InvalidArgumentException('Invalid phone number format: ' . $phone);
-        }
-
-        return $phone;
+        return match ($code) {
+            0 => 'The service request is processed successfully.',
+            1 => 'Insufficient funds on M-PESA or declined Fuliza.',
+            1001 => 'Another transaction is already in process.',
+            1019 => 'Transaction expired before completion.',
+            1025 => 'System error. Retry request.',
+            1032 => 'Request was cancelled by the user.',
+            1037 => 'Could not reach phone or no response from user.',
+            2001 => 'Invalid M-PESA initiator credentials.',
+            9999 => 'Unknown system error.',
+            default => 'An unknown ResultCode was returned.',
+        };
     }
 
-    protected function generateSecurityCredential(): string
+    public function getAccessToken(): string
     {
-        if (empty($this->config['initiator_password'])) {
-            throw new \RuntimeException('Initiator password not configured');
-        }
+        try {
+            $response = $this->client->get('oauth/v1/generate', [
+                'query' => ['grant_type' => 'client_credentials'],
+                'auth' => [
+                    $this->config['consumer_key'],
+                    $this->config['consumer_secret'],
+                ],
+            ]);
 
-        $publicKeyPath = $this->config['public_key_path'];
-        if (!file_exists($publicKeyPath)) {
-            throw new \RuntimeException('M-Pesa public key not found at: ' . $publicKeyPath);
+            $data = json_decode($response->getBody()->getContents(), true);
+            return $data['access_token'] ?? '';
+        } catch (\Exception | GuzzleException $e) {
+            $this->logError('Access Token Failed', $e);
+            throw new \Exception('Failed to get access token: ' . $e->getMessage());
         }
-
-        $publicKey = file_get_contents($publicKeyPath);
-        if (!$publicKey) {
-            throw new \RuntimeException('Failed to read M-Pesa public key');
-        }
-
-        if (!openssl_public_encrypt($this->config['initiator_password'], $encrypted, $publicKey, OPENSSL_PKCS1_PADDING)) {
-            throw new \RuntimeException('Failed to encrypt initiator password');
-        }
-
-        return base64_encode($encrypted);
     }
 
-    protected function parseCallbackMetadata(array $metadata): array
+    protected function logRequest(string $action, array $data): void
     {
-        $result = [];
-        foreach ($metadata['Item'] ?? [] as $item) {
-            $result[$item['Name']] = $item['Value'] ?? null;
-        }
-        return $result;
+        $sanitizedData = $this->sanitizeLogData($data);
+        Log::info($action, $sanitizedData);
+        SystemLog::create(['action' => $action, 'details' => $sanitizedData]);
     }
 
-    protected function handleApiResponse($response, string $action): array
+    protected function logResponse(string $action, array $data): void
     {
-        $status = $response->getStatusCode();
-        $data = json_decode($response->getBody(), true) ?? [];
+        $sanitizedData = $this->sanitizeLogData($data);
+        Log::debug($action, $sanitizedData);
+        SystemLog::create(['action' => $action, 'details' => $sanitizedData]);
+    }
 
-        Log::info("M-Pesa $action Response", ['status' => $status, 'data' => $data]);
-
-        if ($status !== 200) {
-            return $this->errorResponse(
-                $data['errorMessage'] ?? "$action request failed",
-                $data,
-                $status
-            );
-        }
-
-        if (($data['ResponseCode'] ?? '1') !== '0') {
-            return $this->errorResponse(
-                $data['ResponseDescription'] ?? "$action failed",
-                $data
-            );
-        }
-
-        return [
-            'success' => true,
-            'message' => $data['ResponseDescription'] ?? "$action successful",
-            'data' => $data
+    protected function logError(string $action, \Throwable $e, ?array $context = []): void
+    {
+        $logData = [
+            'error' => $e->getMessage(),
+            'code' => $e->getCode(),
+            'file' => $e->getFile(),
+            'line' => $e->getLine(),
         ];
+
+        if (!empty($context)) {
+            $logData['context'] = $this->sanitizeLogData($context);
+        }
+
+        Log::error($action, $logData);
+        SystemLog::create(['action' => $action, 'details' => $logData]);
     }
 
-    protected function errorResponse(
-        string $message,
-        array $data = [],
-        int $httpCode = 400
-    ): array {
-        Log::error('M-Pesa Error', [
-            'message' => $message,
-            'data' => $data,
-            'http_code' => $httpCode
-        ]);
+    protected function sanitizeLogData(array $data): array
+    {
+        $sensitiveFields = ['password', 'access_token', 'auth', 'authorization'];
 
-        return [
-            'success' => false,
-            'message' => $message,
-            'data' => $data,
-            'http_code' => $httpCode
-        ];
+        foreach ($data as $key => $value) {
+            if (is_array($value)) {
+                $data[$key] = $this->sanitizeLogData($value);
+            } elseif (in_array(strtolower($key), $sensitiveFields)) {
+                $data[$key] = '*****';
+            }
+        }
+
+        return $data;
     }
 }

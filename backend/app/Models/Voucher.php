@@ -5,25 +5,24 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class UserSession extends Model
+class Voucher extends Model
 {
-    /** @use HasFactory<\Database\Factories\UserSessionFactory> */
     use HasFactory;
 
     protected $fillable = [
-        'payment_id',
-        'voucher',
+        'code',
         'mac_address',
-        'start_time',
-        'end_time',
+        'payment_id',
+        'package_id',
+        'duration_hours',
         'status',
+        'expires_at',
+        'mikrotik_response'
     ];
 
     protected $casts = [
-        'start_time' => 'datetime',
-        'end_time' => 'datetime',
-        'created_at' => 'datetime',
-        'updated_at' => 'datetime',
+        'expires_at' => 'datetime',
+        'mikrotik_response' => 'array'
     ];
 
     public function payment()
@@ -33,6 +32,6 @@ class UserSession extends Model
 
     public function package()
     {
-        return $this->belongsTo(Package::class, 'package_id');
+        return $this->belongsTo(Package::class);
     }
-}s
+}

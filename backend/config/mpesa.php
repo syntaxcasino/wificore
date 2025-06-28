@@ -16,34 +16,59 @@ return [
     | M-Pesa API Base URL
     |--------------------------------------------------------------------------
     */
-    'base_url' => env('MPESA_BASE_URL', 'https://sandbox.safaricom.co.ke'),
+    'base_url' => env('MPESA_ENV') === 'production' 
+        ? 'https://api.safaricom.co.ke' 
+        : 'https://sandbox.safaricom.co.ke',
 
     /*
     |--------------------------------------------------------------------------
-    | Consumer Key and Secret
+    | Authentication Credentials
+    |--------------------------------------------------------------------------
+    | Required for both sandbox and production
+    */
+    'consumer_key' => env('MPESA_CONSUMER_KEY', 'YourSandboxConsumerKey'),
+    'consumer_secret' => env('MPESA_CONSUMER_SECRET', 'YourSandboxConsumerSecret'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Business Details
+    |--------------------------------------------------------------------------
+    | Use 174379 for sandbox testing
+    */
+    'shortcode' => env('MPESA_BUSINESS_SHORTCODE', '174379'),
+    'business_shortcode' => env('MPESA_BUSINESS_SHORTCODE', '174379'),
+    'passkey' => env('MPESA_PASSKEY', 'YourSandboxPasskey'),
+    'security_credential' => env('MPESA_SECURITY_CREDENTIAL'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Transaction Configuration
     |--------------------------------------------------------------------------
     */
-    'consumer_key' => env('MPESA_CONSUMER_KEY'),
-    'consumer_secret' => env('MPESA_CONSUMER_SECRET'),
+    'account_reference' => env('MPESA_ACCOUNT_REFERENCE', 'COMPANY_NAME'),
+    'transaction_type' => env('MPESA_TRANSACTION_TYPE', 'CustomerPayBillOnline'),
+    'transaction_desc' => env('MPESA_TRANSACTION_DESC', 'Payment for services'),
 
     /*
     |--------------------------------------------------------------------------
-    | Business Shortcode and Passkey
+    | Callback URLs
     |--------------------------------------------------------------------------
     */
-    'business_shortcode' => env('MPESA_BUSINESS_SHORTCODE'),
-    'passkey' => env('MPESA_PASSKEY'),
+    'callback_url' => env('MPESA_CALLBACK_URL', env('APP_URL').'/api/mpesa/callback'),
+    'queue_timeout_url' => env('MPESA_QUEUE_TIMEOUT_URL', env('APP_URL').'/api/mpesa/timeout'),
 
     /*
     |--------------------------------------------------------------------------
-    | Callback URL
+    | API Performance Settings
     |--------------------------------------------------------------------------
     */
-    'callback_url' => env('MPESA_CALLBACK_URL'),
+    'timeout' => env('MPESA_TIMEOUT', 30), // seconds
+    'connect_timeout' => env('MPESA_CONNECT_TIMEOUT', 10),
+    'verify_ssl' => env('MPESA_VERIFY_SSL', true),
 
     /*
     |--------------------------------------------------------------------------
-    | Initiator Details
+    | Initiator Details (For B2B/B2C transactions)
     |--------------------------------------------------------------------------
     */
     'initiator_name' => env('MPESA_INITIATOR_NAME'),
@@ -51,22 +76,7 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Default Transaction References
-    |--------------------------------------------------------------------------
-    */
-    'account_reference' => env('MPESA_ACCOUNT_REFERENCE', 'COMPANY_NAME'),
-    'transaction_desc' => env('MPESA_TRANSACTION_DESC', 'Payment for services'),
-
-    /*
-    |--------------------------------------------------------------------------
-    | Queue Timeout URL (for async operations)
-    |--------------------------------------------------------------------------
-    */
-    'queue_timeout_url' => env('MPESA_QUEUE_TIMEOUT_URL'),
-
-    /*
-    |--------------------------------------------------------------------------
-    | Public Key Path for Security Credential
+    | Security Configuration
     |--------------------------------------------------------------------------
     */
     'public_key_path' => env('MPESA_PUBLIC_KEY_PATH', storage_path('app/mpesa_public_key.cer')),

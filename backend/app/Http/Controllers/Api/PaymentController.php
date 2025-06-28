@@ -3,16 +3,15 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
+use App\Models\Payment;
+use App\Models\Voucher;
+use App\Models\SystemLog;
 use App\Services\MpesaService;
 use App\Services\MikrotikService;
-use App\Models\Payment;
-use App\Models\UserSession;
-use App\Models\SystemLog;
-use App\Models\Package;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Broadcast;
-use App\Events\PaymentProcessed;
+use Illuminate\Support\Str;
 
 class PaymentController extends Controller
 {
@@ -28,195 +27,206 @@ class PaymentController extends Controller
     public function initiateSTK(Request $request)
     {
         try {
-            $data = $request->validate([
+            $validated = $request->validate([
+                'phone_number' => ['required', 'regex:/^\+254[0-9]{9}$/'],
                 'package_id' => 'required|exists:packages,id',
-                'phone_number' => 'required|string|regex:/^(\+?2547\d{8})$/',
-                'mac_address' => 'required|string|regex:/^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$/'
+                'mac_address' => ['required', 'regex:/^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$/'],
             ]);
 
-            $package = Package::find($data['package_id']);
-            if (!$package) {
-                Log::error('Package not found', ['package_id' => $data['package_id']]);
-                return response()->json(['error' => 'Package not found'], 404);
-            }
+            $package = \App\Models\Package::findOrFail($validated['package_id']);
+            $amount = $package->price;
 
-            $response = $this->mpesaService->initiateSTKPush(
-                $data['phone_number'],
-                $package->price,
-                'WIFI-' . time(),
-                'WiFi Package Purchase'
+            $stkResponse = $this->mpesaService->initiateSTKPush(
+                $validated['phone_number'],
+                $amount
             );
 
-            if (!$response['success']) {
-                Log::error('STK Push initiation failed', [
-                    'phone' => $data['phone_number'],
-                    'response' => $response
-                ]);
-                return response()->json([
-                    'success' => false,
-                    'message' => $response['message'] ?? 'Failed to initiate STK Push'
-                ], 400);
+            if (!($stkResponse['success'] ?? false)) {
+                throw new \Exception($stkResponse['message'] ?? 'M-Pesa STK Push failed');
+            }
+
+            $checkoutRequestId = $stkResponse['data']['CheckoutRequestID'] ?? null;
+            if (!$checkoutRequestId) {
+                throw new \Exception('Missing CheckoutRequestID from M-Pesa response');
             }
 
             $payment = Payment::create([
-                'phone_number' => $data['phone_number'],
-                'amount' => $package->price,
-                'package_id' => $data['package_id'],
+                'phone_number' => $validated['phone_number'],
+                'amount' => $amount,
+                'package_id' => $validated['package_id'],
                 'status' => 'pending',
-                'mac_address' => $data['mac_address'],
-                'transaction_id' => $response['data']['CheckoutRequestID'],
+                'mac_address' => $validated['mac_address'],
+                'transaction_id' => $checkoutRequestId,
             ]);
 
-            SystemLog::create([
-                'action' => 'Transaction created',
-                'details' => json_encode([
-                    'payment_id' => $payment->id,
-                    'mac_address' => $data['mac_address'],
-                    'phone_number' => $data['phone_number'],
-                    'amount' => $package->price,
-                    'mpesa_transaction_id' => $response['data']['CheckoutRequestID'],
-                ]),
-            ]);
-
-            Log::info('Payment initiation successful', [
-                'phone' => $data['phone_number'],
-                'transaction_id' => $response['data']['CheckoutRequestID']
-            ]);
+            $this->logToSystemAndFile('Transaction initiated', [
+                'transaction_id' => $checkoutRequestId,
+                'phone_number' => $validated['phone_number'],
+                'amount' => $amount,
+                'package_id' => $validated['package_id'],
+            ], 'info');
 
             return response()->json([
                 'success' => true,
                 'message' => 'Payment initiated successfully',
-                'transaction_id' => $response['data']['CheckoutRequestID'],
-            ], 200);
-
-        } catch (\Throwable $e) {
-            Log::error('Payment initiation failed', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'transaction_id' => $checkoutRequestId,
+                'ResultCode' => 0
             ]);
+
+        } catch (\Exception $e) {
+            $this->logToSystemAndFile('STK Push initiation failed', [
+                'error' => $e->getMessage(),
+                'request' => $request->all(),
+            ], 'error');
+
             return response()->json([
                 'success' => false,
-                'message' => 'Payment initiation failed.',
-                'error' => $e->getMessage()
+                'message' => 'Payment initiation failed',
+                'error' => $e->getMessage(),
+                'ResultCode' => 9999
             ], 500);
         }
     }
 
     public function callback(Request $request)
     {
-        Log::info('M-Pesa Callback Received', ['data' => $request->all()]);
-
         try {
             $callbackData = $request->all();
 
-            if (!isset($callbackData['Body']['stkCallback']['CheckoutRequestID'])) {
-                Log::error('Invalid callback data', ['data' => $callbackData]);
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Invalid callback data'
-                ], 400);
-            }
+            file_put_contents(
+                storage_path('logs/mpesa_raw_callback.log'),
+                now() . ' ~ ' . json_encode($callbackData, JSON_PRETTY_PRINT) . "\n---\n",
+                FILE_APPEND
+            );
+
+            $this->logToSystemAndFile('M-Pesa Callback Received', ['raw_callback_data' => $callbackData], 'info');
 
             $processed = $this->mpesaService->processCallback($callbackData);
-            $checkoutRequestId = $callbackData['Body']['stkCallback']['CheckoutRequestID'];
 
-            $payment = Payment::where('transaction_id', $checkoutRequestId)->first();
-            if (!$payment) {
-                Log::error('Payment not found', ['checkout_request_id' => $checkoutRequestId]);
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Payment not found'
-                ], 404);
-            }
+            $this->logToSystemAndFile('Callback Processing Result', ['processed_result' => $processed], 'info');
 
-            $resultCode = $callbackData['Body']['stkCallback']['ResultCode'] ?? 1;
-            $status = $resultCode == 0 ? 'completed' : 'failed';
-            $payment->update([
-                'status' => $status,
-                'callback_response' => json_encode($callbackData)
-            ]);
+            $checkoutRequestId = $callbackData['Body']['stkCallback']['CheckoutRequestID'] ?? null;
+            $resultCode = (int) ($callbackData['Body']['stkCallback']['ResultCode'] ?? -1);
+            $status = $resultCode === 0 ? 'completed' : 'failed';
 
-            SystemLog::create([
-                'action' => 'Payment ' . $status,
-                'details' => json_encode([
-                    'payment_id' => $payment->id,
-                    'checkout_request_id' => $checkoutRequestId,
-                    'status' => $status,
-                    'callback_data' => $callbackData
-                ]),
-            ]);
+            if ($checkoutRequestId) {
+                $payment = Payment::with('package')->where('transaction_id', $checkoutRequestId)->first();
 
-            if ($status === 'completed') {
-                $package = Package::find($payment->package_id);
-                $voucher = $this->generateVoucher();
+                if ($payment) {
+                    $payment->status = $status;
+                    $payment->callback_response = $callbackData;
+                    $payment->save();
 
-                $session = UserSession::create([
-                    'payment_id' => $payment->id,
-                    'voucher' => $voucher,
-                    'mac_address' => $payment->mac_address,
-                    'start_time' => now(),
-                    'end_time' => now()->addHours($package->duration_hours),
-                    'status' => 'active',
-                ]);
+                    if ($status === 'completed') {
+                        $this->processSuccessfulPayment($payment);
+                    }
 
-                try {
-                    $this->mikrotikService->createSession(
-                        $voucher,
-                        $payment->mac_address,
-                        $package->mikrotik_profile,
-                        $package->duration_hours
-                    );
-
-                    $this->mikrotikService->authenticateUser($voucher);
-
-                    SystemLog::create([
-                        'action' => 'Session created',
-                        'details' => json_encode([
-                            'session_id' => $session->id,
-                            'voucher' => $voucher,
-                            'mac_address' => $payment->mac_address,
-                            'profile' => $package->mikrotik_profile,
-                        ]),
-                    ]);
-
-                    // Broadcast event to frontend
-                    Broadcast::event(new PaymentProcessed($payment->id, $status, $voucher));
-
-                } catch (\Exception $e) {
-                    Log::error('Mikrotik session creation failed', [
-                        'payment_id' => $payment->id,
-                        'error' => $e->getMessage()
-                    ]);
-                    $session->update(['status' => 'failed']);
-                    $payment->update(['status' => 'failed']);
-                    Broadcast::event(new PaymentProcessed($payment->id, 'failed', null));
+                    $this->logToSystemAndFile("Payment $status", [
+                        'transaction_id' => $checkoutRequestId,
+                        'result_code' => $resultCode,
+                        'message' => $callbackData['Body']['stkCallback']['ResultDesc'] ?? '',
+                        'amount' => $processed['data']['amount'] ?? null,
+                        'mpesa_receipt' => $processed['data']['mpesa_receipt'] ?? null,
+                        'phone_number' => $processed['data']['phone_number'] ?? null,
+                        'status' => $status,
+                    ], $status === 'completed' ? 'info' : 'warning');
+                } else {
+                    $this->logToSystemAndFile('Payment Not Found', ['transaction_id' => $checkoutRequestId], 'warning');
                 }
-            } else {
-                // Broadcast failed payment to frontend
-                Broadcast::event(new PaymentProcessed($payment->id, $status, null));
             }
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Callback processed successfully'
-            ], 200);
+            return response()->json(['success' => true, 'message' => 'Callback processed successfully']);
 
-        } catch (\Throwable $e) {
-            Log::error('Callback processing failed', [
+        } catch (\Exception $e) {
+            $this->logToSystemAndFile('Callback Processing Error', [
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-                'data' => $request->all()
-            ]);
-            return response()->json([
-                'success' => false,
-                'message' => 'Callback processing failed',
-                'error' => $e->getMessage()
-            ], 500);
+                'trace' => $e->getTraceAsString()
+            ], 'error');
+
+            return response()->json(['success' => false, 'message' => 'Error processing callback'], 500);
         }
     }
 
-    private function generateVoucher()
+    protected function processSuccessfulPayment(Payment $payment)
     {
-        return strtoupper(substr(md5(uniqid(rand(), true)), 0, 8));
+        DB::transaction(function () use ($payment) {
+            try {
+                $voucherCode = $this->generateVoucherCode();
+                $durationHours = $payment->package->duration_hours;
+
+                $voucher = Voucher::create([
+                    'code' => $voucherCode,
+                    'mac_address' => $payment->mac_address,
+                    'payment_id' => $payment->id,
+                    'package_id' => $payment->package_id,
+                    'duration_hours' => $durationHours,
+                    'expires_at' => now()->addHours($durationHours),
+                ]);
+
+                $result = $this->mikrotikService->createSession(
+                    $voucherCode,
+                    $payment->mac_address,
+                    config('mikrotik.default_profile', 'default'),
+                    $durationHours
+                );
+
+                $voucher->update([
+                    'mikrotik_response' => $result,
+                    'status' => $result['success'] ? 'active' : 'failed'
+                ]);
+
+                if (!$result['success']) {
+                    throw new \Exception('Mikrotik session creation failed: ' . ($result['message'] ?? 'Unknown error'));
+                }
+
+                $this->logToSystemAndFile('Voucher created and Mikrotik session configured', [
+                    'voucher_id' => $voucher->id,
+                    'payment_id' => $payment->id,
+                    'mac_address' => $payment->mac_address,
+                    'duration_hours' => $durationHours,
+                    'voucher_code' => $voucherCode
+                ], 'info');
+
+            } catch (\Exception $e) {
+                $this->logToSystemAndFile('Payment processing failed', [
+                    'payment_id' => $payment->id,
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString()
+                ], 'error');
+                throw $e;
+            }
+        });
+    }
+
+    protected function generateVoucherCode(): string
+    {
+        $prefix = config('mikrotik.voucher_prefix', '');
+        $suffix = config('mikrotik.voucher_suffix', '');
+        $length = config('mikrotik.voucher_length', 8);
+
+        do {
+            $random = Str::upper(Str::random($length));
+            $code = $prefix . $random . $suffix;
+        } while (Voucher::where('code', $code)->exists());
+
+        return $code;
+    }
+
+    protected function logToSystemAndFile(string $action, array $details, string $logLevel = 'info'): void
+    {
+        $sanitizedDetails = $this->sanitizeLogData($details);
+        SystemLog::create(['action' => $action, 'details' => $sanitizedDetails]);
+        Log::$logLevel($action, $sanitizedDetails);
+    }
+
+    protected function sanitizeLogData(array $data): array
+    {
+        $sensitiveKeys = ['password', 'passkey', 'secret', 'auth', 'token'];
+        array_walk_recursive($data, function (&$value, $key) use ($sensitiveKeys) {
+            if (in_array(strtolower($key), $sensitiveKeys)) {
+                $value = '*****';
+            }
+        });
+        return $data;
     }
 }

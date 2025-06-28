@@ -24,6 +24,7 @@
         </tbody>
       </table>
       <p v-else>No logs available.</p>
+      <p v-if="error" class="error">{{ error }}</p>
       <div class="pagination">
         <button :disabled="!prevPageUrl" @click="fetchLogs(prevPageUrl)">Previous</button>
         <span>Page {{ currentPage }} of {{ lastPage }}</span>
@@ -33,7 +34,7 @@
 
     <!-- Sticky Footer -->
     <footer class="footer">
-      &copy; {{ new Date().getFullYear() }} System Logs Viewer. All rights reserved.
+      © {{ new Date().getFullYear() }} System Logs Viewer. All rights reserved.
     </footer>
   </div>
 </template>
@@ -49,6 +50,7 @@ export default {
       lastPage: 1,
       prevPageUrl: null,
       nextPageUrl: null,
+      error: null,
     }
   },
   mounted() {
@@ -57,20 +59,27 @@ export default {
   methods: {
     async fetchLogs(url = '/api/logs') {
       try {
+        this.error = null
         const response = await axios.get(url, {
           headers: {
             Accept: 'application/json',
-            Host: '98e8-41-90-172-176.ngrok-free.app',
           },
         })
+        console.log('Logs API Response:', response.data) // Debug logging
         const { data, current_page, last_page, prev_page_url, next_page_url } = response.data
-        this.logs = data
-        this.currentPage = current_page
-        this.lastPage = last_page
+        this.logs = data || []
+        this.currentPage = current_page || 1
+        this.lastPage = last_page || 1
         this.prevPageUrl = prev_page_url
         this.nextPageUrl = next_page_url
       } catch (error) {
         console.error('Failed to fetch logs:', error.response?.data || error.message)
+        this.error = error.response?.data?.message || 'Failed to load logs. Please try again.'
+        this.logs = []
+        this.currentPage = 1
+        this.lastPage = 1
+        this.prevPageUrl = null
+        this.nextPageUrl = null
       }
     },
     formatMessage(message) {
@@ -138,5 +147,12 @@ button {
 }
 button:disabled {
   opacity: 0.5;
+}
+
+/* Error Styling */
+.error {
+  color: #e3342f;
+  text-align: center;
+  margin-top: 1rem;
 }
 </style>
