@@ -29,6 +29,9 @@ class MpesaService
             $accessToken = $this->getAccessToken();
             $timestamp = now()->format('YmdHis');
             $shortcode = $this->config['shortcode'];
+            $accessToken = $this->getAccessToken();
+            $timestamp = now()->format('YmdHis');
+            $shortcode = $this->config['shortcode'];
             $password = base64_encode($shortcode . $this->config['passkey'] . $timestamp);
             $phoneNumber = preg_replace('/^\+/', '', $phoneNumber);
 
@@ -52,7 +55,10 @@ class MpesaService
                 'headers' => [
                     'Authorization' => 'Bearer ' . $accessToken,
                     'Content-Type' => 'application/json'
+                    'Authorization' => 'Bearer ' . $accessToken,
+                    'Content-Type' => 'application/json'
                 ],
+                'json' => $payload
                 'json' => $payload
             ]);
 
@@ -97,7 +103,13 @@ class MpesaService
             $metaItems = $stkCallback['CallbackMetadata']['Item'] ?? [];
             $meta = collect($metaItems)->mapWithKeys(fn ($item) => [$item['Name'] => $item['Value'] ?? null]);
 
+            $metaItems = $stkCallback['CallbackMetadata']['Item'] ?? [];
+            $meta = collect($metaItems)->mapWithKeys(fn ($item) => [$item['Name'] => $item['Value'] ?? null]);
+
             $data = [
+                'amount' => $meta['Amount'] ?? null,
+                'mpesa_receipt' => $meta['MpesaReceiptNumber'] ?? null,
+                'phone_number' => $meta['PhoneNumber'] ?? null,
                 'amount' => $meta['Amount'] ?? null,
                 'mpesa_receipt' => $meta['MpesaReceiptNumber'] ?? null,
                 'phone_number' => $meta['PhoneNumber'] ?? null,
@@ -147,6 +159,7 @@ class MpesaService
 
             $data = json_decode($response->getBody()->getContents(), true);
             return $data['access_token'] ?? '';
+
 
         } catch (\Exception | GuzzleException $e) {
             $this->logError('Access Token Failed', $e);
