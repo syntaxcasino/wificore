@@ -6,17 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Models\Payment;
 use App\Models\Voucher;
 use App\Models\SystemLog;
-use App\Models\Payment;
-use App\Models\Voucher;
-use App\Models\SystemLog;
 use App\Services\MpesaService;
 use App\Services\MikrotikService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Str;
 use Illuminate\Support\Str;
 
 class PaymentController extends Controller
@@ -35,19 +29,10 @@ class PaymentController extends Controller
         try {
             $validated = $request->validate([
                 'phone_number' => ['required', 'regex:/^\+254[0-9]{9}$/'],
-            $validated = $request->validate([
-                'phone_number' => ['required', 'regex:/^\+254[0-9]{9}$/'],
                 'package_id' => 'required|exists:packages,id',
-                'mac_address' => ['required', 'regex:/^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$/'],
                 'mac_address' => ['required', 'regex:/^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$/'],
             ]);
 
-            $package = \App\Models\Package::findOrFail($validated['package_id']);
-            $amount = $package->price;
-
-            $stkResponse = $this->mpesaService->initiateSTKPush(
-                $validated['phone_number'],
-                $amount
             $package = \App\Models\Package::findOrFail($validated['package_id']);
             $amount = $package->price;
 
@@ -63,25 +48,13 @@ class PaymentController extends Controller
             $checkoutRequestId = $stkResponse['data']['CheckoutRequestID'] ?? null;
             if (!$checkoutRequestId) {
                 throw new \Exception('Missing CheckoutRequestID from M-Pesa response');
-            if (!($stkResponse['success'] ?? false)) {
-                throw new \Exception($stkResponse['message'] ?? 'M-Pesa STK Push failed');
-            }
-
-            $checkoutRequestId = $stkResponse['data']['CheckoutRequestID'] ?? null;
-            if (!$checkoutRequestId) {
-                throw new \Exception('Missing CheckoutRequestID from M-Pesa response');
             }
 
             $payment = Payment::create([
                 'phone_number' => $validated['phone_number'],
                 'amount' => $amount,
                 'package_id' => $validated['package_id'],
-                'phone_number' => $validated['phone_number'],
-                'amount' => $amount,
-                'package_id' => $validated['package_id'],
                 'status' => 'pending',
-                'mac_address' => $validated['mac_address'],
-                'transaction_id' => $checkoutRequestId,
                 'mac_address' => $validated['mac_address'],
                 'transaction_id' => $checkoutRequestId,
             ]);
@@ -118,7 +91,6 @@ class PaymentController extends Controller
     public function callback(Request $request)
     {
         try {
-            // Raw callback logging
             $callbackData = $request->all();
 
             file_put_contents(
@@ -131,7 +103,7 @@ class PaymentController extends Controller
 
             $processed = $this->mpesaService->processCallback($callbackData);
 
-            $this->logToSystemAndFile('Callback Processing Result', ['processed_result' => $processed], 'info');
+            $this->logToSystemAndFile('Callback Processing Result', ['processed_result' => $processed, 'data' => $processed['data'] ?? []], 'info');
 
             $checkoutRequestId = $callbackData['Body']['stkCallback']['CheckoutRequestID'] ?? null;
             $resultCode = (int) ($callbackData['Body']['stkCallback']['ResultCode'] ?? -1);
@@ -141,9 +113,13 @@ class PaymentController extends Controller
                 $payment = Payment::with('package')->where('transaction_id', $checkoutRequestId)->first();
 
                 if ($payment) {
-                    $payment->status = $status;
-                    $payment->callback_response = $callbackData;
-                    $payment->save();
+                    $payment->update([
+                        'status' => $status,
+                        'callback_response' => $callbackData,
+                        'amount' => $processed['data']['amount'] ?? $payment->amount,
+                        'phone_number' => $processed['data']['phone_number'] ?? $payment->phone_number,
+                        'mpesa_receipt' => $processed['data']['mpesa_receipt'] ?? null,
+                    ]);
 
                     if ($status === 'completed') {
                         $this->processSuccessfulPayment($payment);
