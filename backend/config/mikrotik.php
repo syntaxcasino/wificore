@@ -8,7 +8,7 @@ return [
     | Mikrotik Router Configuration
     |--------------------------------------------------------------------------
     */
-    'host' => env('MIKROTIK_HOST', '192.168.100.22'),
+    'host' => env('MIKROTIK_HOST', '192.168.100.30'),
     'user' => env('MIKROTIK_USER', 'admin'),
     'pass' => env('MIKROTIK_PASSWORD', 'admin'),
     'pass' => env('MIKROTIK_PASSWORD', 'admin'),

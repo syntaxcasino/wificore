@@ -19,7 +19,7 @@ class LogController extends Controller
             $query->where('action', 'like', '%' . $request->search . '%')
                   ->orWhere('details', 'like', '%' . $request->search . '%');
         }
-        return $query->where('created_at', '>=', now()->subDays(30))->orderByDesc('created_at')->paginate(20);
+        return $query->where('created_at', '>=', now()->subDays(30))->orderByDesc('id')->paginate(100);
 
         } catch (\Exception $e) {
             \Log::error('Failed to fetch logs', ['error' => $e->getMessage()]);

@@ -3,10 +3,12 @@ services:
     container_name: wifi-hotspot-nginx-1
     build:
       context: ./nginx
+    image: kja2aro/traidnet-nginx:latest
     environment:
       TZ: Africa/Nairobi
     ports:
-      - "80:80"  # Or "8080:80" if port 80 is busy
+    - "80:80"
+    #- "80:8080"
     depends_on:
       - frontend
       - backend
@@ -17,11 +19,9 @@ services:
     container_name: wifi-hotspot-frontend-1
     build:
       context: ./frontend
+    image: kja2aro/traidnet-frontend:latest
     environment:
       TZ: Africa/Nairobi
-    volumes:
-      - ./frontend:/app
-      - node_modules:/app/node_modules
     networks:
       - wifi-network
 
@@ -29,6 +29,7 @@ services:
     container_name: wifi-hotspot-backend-1
     build:
       context: ./backend
+    image: kja2aro/traidnet-backend:latest
     environment:
       APP_ENV: production
       DB_CONNECTION: pgsql
@@ -47,7 +48,7 @@ services:
 
   postgres:
     container_name: hotspot-billing-postgres-1
-    image: postgres:15
+    image: postgres:16.10-trixie
     environment:
       POSTGRES_DB: wifi_hotspot
       POSTGRES_USER: admin
@@ -60,7 +61,6 @@ services:
       - wifi-network
 
 volumes:
-  node_modules:
   postgres_data:
 
 networks:

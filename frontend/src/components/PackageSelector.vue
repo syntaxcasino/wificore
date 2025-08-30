@@ -3,12 +3,6 @@
     <!-- Main Scrollable Content -->
     <div class="flex-1 overflow-y-auto">
       <div class="container mx-auto p-4 sm:p-6 lg:p-8">
-        <h1
-          class="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900 text-center mb-6 sm:mb-8 lg:mb-12"
-        >
-          Choose Your WiFi Package
-        </h1>
-
         <!-- Loading State -->
         <div v-if="loadingPackages" class="flex justify-center items-center py-12">
           <div

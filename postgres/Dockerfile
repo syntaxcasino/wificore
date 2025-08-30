@@ -1,4 +1,5 @@
-FROM postgres:15
+#FROM postgres:15
+FROM postgres:16.10-trixie
 RUN apt-get update && apt-get install -y \
     build-essential \
     postgresql-server-dev-15 \

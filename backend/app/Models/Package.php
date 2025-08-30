@@ -11,17 +11,24 @@ class Package extends Model
     use HasFactory;
 
     protected $fillable = [
+        'type',
         'name',
-        'description',
+        'duration',
+        'upload_speed',
+        'download_speed',
         'price',
-        'duration_hours',
-        'mikrotik_profile',
-        'speed_type',
+        'devices',
+        'enable_burst',
+        'enable_schedule',
+        'hide_from_client',
     ];
 
     protected $casts = [
         'price' => 'float',
-        'duration_hours' => 'integer',
+        'devices' => 'integer',
+        'enable_burst' => 'boolean',
+        'enable_schedule' => 'boolean',
+        'hide_from_client' => 'boolean',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];

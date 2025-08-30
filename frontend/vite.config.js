@@ -14,8 +14,13 @@ export default defineConfig({
     vueDevTools(),
     tailwindcss(),
   ],
+    build: {
+    outDir: 'dist',
+    external: [], // <-- this is default, but you can explicitly set it
+  },
+   base: '/', // important for Nginx SPA routing
     server: {
-       allowedHosts: ['traidnethotspot.pagekite.me', 'localhost'],
+       allowedHosts: ['thotspot.pagekite.me', 'localhost'],
     hmr: {
       host: 'localhost',
       port: 3000,

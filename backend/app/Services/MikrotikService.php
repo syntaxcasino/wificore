@@ -140,25 +140,51 @@ class MikrotikService
             ];
         }
     }
+protected function createHotspotUser(string $voucher, string $macAddress, string $profile, string $uptime): array
+{
+    $query = (new Query('/ip/hotspot/user/add'))
+        ->equal('name', $voucher)
+        ->equal('password', $voucher)
+        ->equal('mac-address', $macAddress)
+        ->equal('profile', $profile)
+        ->equal('limit-uptime', $uptime)
+        ->equal('comment', 'Created via API on ' . now()->toDateTimeString());
 
-    protected function createHotspotUser(string $voucher, string $macAddress, string $profile, string $uptime): array
-    {
-        $query = (new Query('/ip/hotspot/user/add'))
-            ->equal('name', $voucher)
-            ->equal('password', $voucher)
-            ->equal('mac-address', $macAddress)
-            ->equal('profile', $profile)
-            ->equal('limit-uptime', $uptime)
-            ->equal('comment', 'Created via API on ' . now()->toDateTimeString());
+    $response = $this->client->query($query)->read();
 
-        $response = $this->client->query($query)->read();
+    // Log raw response for debugging
+    Log::info('Mikrotik add user raw response', ['response' => $response]);
 
-        if (empty($response[0]['ret'])) {
-            throw new \Exception('Failed to create user: No response ID received');
-        }
-
-        return $response;
+    // Instead of strictly checking 'ret', check for error conditions
+    if (empty($response)) {
+        throw new \Exception('Mikrotik returned an empty response when creating user.');
     }
+
+    if (isset($response[0]['!trap'])) {
+        throw new \Exception('Mikrotik returned an error: ' . json_encode($response));
+    }
+
+    return $response;
+}
+
+    // protected function createHotspotUser(string $voucher, string $macAddress, string $profile, string $uptime): array
+    // {
+    //     $query = (new Query('/ip/hotspot/user/add'))
+    //         ->equal('name', $voucher)
+    //         ->equal('password', $voucher)
+    //         ->equal('mac-address', $macAddress)
+    //         ->equal('profile', $profile)
+    //         ->equal('limit-uptime', $uptime)
+    //         ->equal('comment', 'Created via API on ' . now()->toDateTimeString());
+
+    //     $response = $this->client->query($query)->read();
+
+    //     if (empty($response[0]['ret'])) {
+    //         throw new \Exception('Failed to create user: No response ID received');
+    //     }
+
+    //     return $response;
+    // }
 
     public function authenticateUser(string $voucher): array
     {
@@ -237,7 +263,42 @@ class MikrotikService
             ];
         }
     }
+/**
+ * Get all hotspot users from Mikrotik
+ * 
+ * @return array
+ */
+public function getAllHotspotUsers(): array
+{
+    try {
+        $this->connect();
 
+        $query = new Query('/ip/hotspot/user/print');
+        $users = $this->client->query($query)->read();
+
+        return [
+            'success' => true,
+            'data' => $users,
+            'count' => count($users)
+        ];
+
+    } catch (\Exception $e) {
+        $this->logToSystemAndFile(
+            'Failed to get all hotspot users',
+            [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ],
+            'error'
+        );
+
+        return [
+            'success' => false,
+            'message' => 'Failed to get all hotspot users',
+            'error' => $e->getMessage()
+        ];
+    }
+}
     protected function logToSystemAndFile(string $action, array $details, string $logLevel = 'info'): void
     {
         $sanitizedDetails = $this->sanitizeLogData($details);
