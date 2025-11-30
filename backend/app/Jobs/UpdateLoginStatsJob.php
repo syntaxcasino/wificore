@@ -18,13 +18,13 @@ class UpdateLoginStatsJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $userId;
+    public string $userId;
     public string $ipAddress;
 
     /**
      * Create a new job instance.
      */
-    public function __construct(int $userId, string $ipAddress)
+    public function __construct(string $userId, string $ipAddress)
     {
         $this->userId = $userId;
         $this->ipAddress = $ipAddress;

@@ -21,13 +21,13 @@ class UpdatePasswordJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $userId;
+    public string $userId;
     public string $newPassword;
 
     /**
      * Create a new job instance.
      */
-    public function __construct(int $userId, string $newPassword)
+    public function __construct(string $userId, string $newPassword)
     {
         $this->userId = $userId;
         $this->newPassword = $newPassword;
