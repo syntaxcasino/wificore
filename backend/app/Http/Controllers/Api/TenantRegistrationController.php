@@ -30,7 +30,6 @@ class TenantRegistrationController extends Controller
         $validator = Validator::make($request->all(), [
             // Tenant information
             'tenant_name' => 'required|string|max:255',
-            'tenant_slug' => 'required|string|max:255|unique:tenants,slug|regex:/^[a-z0-9-]+$/',
             'tenant_email' => 'required|email|max:255|unique:tenants,email',
             'tenant_phone' => 'nullable|string|max:50',
             'tenant_address' => 'nullable|string|max:500',
@@ -51,7 +50,6 @@ class TenantRegistrationController extends Controller
             // Terms acceptance
             'accept_terms' => 'required|accepted',
         ], [
-            'tenant_slug.regex' => 'Tenant slug must contain only lowercase letters, numbers, and hyphens',
             'admin_username.regex' => 'Username must contain only lowercase letters, numbers, and underscores',
             'admin_password.regex' => 'Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character',
         ]);
@@ -64,10 +62,20 @@ class TenantRegistrationController extends Controller
             ], 422);
         }
 
+        // Auto-generate slug from tenant name
+        $slug = Str::slug($request->tenant_name);
+        
+        // Ensure slug uniqueness
+        $counter = 1;
+        $originalSlug = $slug;
+        while (Tenant::where('slug', $slug)->exists()) {
+            $slug = $originalSlug . '-' . $counter++;
+        }
+
         // EVENT-BASED: Dispatch tenant creation job (async)
         $tenantData = [
             'name' => $request->tenant_name,
-            'slug' => $request->tenant_slug,
+            'slug' => $slug,
             'email' => $request->tenant_email,
             'phone' => $request->tenant_phone,
             'address' => $request->tenant_address,
@@ -84,7 +92,7 @@ class TenantRegistrationController extends Controller
             ->onQueue('tenant-management');
         
         \Log::info('Tenant registration job dispatched', [
-            'tenant_slug' => $request->tenant_slug,
+            'tenant_slug' => $slug,
             'admin_username' => $request->admin_username,
         ]);
 
@@ -92,7 +100,9 @@ class TenantRegistrationController extends Controller
             'success' => true,
             'message' => 'Tenant registration in progress. You will be able to login shortly.',
             'data' => [
-                'tenant_slug' => $request->tenant_slug,
+                'tenant_name' => $request->tenant_name,
+                'tenant_slug' => $slug,
+                'subdomain' => $slug . '.' . config('app.base_domain', 'yourdomain.com'),
                 'admin_username' => $request->admin_username,
                 'status' => 'processing',
             ],

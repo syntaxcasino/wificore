@@ -57,44 +57,11 @@
             class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all" 
             placeholder="Enter your company name"
           />
-        </div>
-
-        <!-- Company Identifier -->
-        <div>
-          <label class="block text-sm font-semibold text-gray-700 mb-2">
-            Company Identifier *
-            <span class="text-xs font-normal text-gray-500 ml-1">(lowercase letters, numbers, hyphens only)</span>
-          </label>
-          <div class="relative">
-            <input 
-              v-model="form.tenant_slug" 
-              type="text" 
-              required
-              pattern="[a-z0-9-]+"
-              @input="validateSlug"
-              class="w-full px-4 py-3 pr-12 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" 
-              placeholder="my-company"
-            />
-            <div v-if="slugAvailable !== null" class="absolute right-3 top-1/2 -translate-y-1/2">
-              <svg v-if="slugAvailable" class="w-6 h-6 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <svg v-else class="w-6 h-6 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
-          </div>
-          <p v-if="slugAvailable === true" class="text-xs text-green-600 mt-1.5 flex items-center">
+          <p v-if="generatedSlug" class="text-xs text-gray-600 mt-1.5 flex items-center">
             <svg class="w-3.5 h-3.5 mr-1" fill="currentColor" viewBox="0 0 20 20">
               <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
             </svg>
-            Available
-          </p>
-          <p v-if="slugAvailable === false" class="text-xs text-red-600 mt-1.5 flex items-center">
-            <svg class="w-3.5 h-3.5 mr-1" fill="currentColor" viewBox="0 0 20 20">
-              <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
-            </svg>
-            Already taken
+            Your subdomain will be: <strong class="ml-1">{{ generatedSlug }}.{{ baseDomain }}</strong>
           </p>
         </div>
 
@@ -333,7 +300,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
 
@@ -342,7 +309,6 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost/api'
 
 const form = ref({
   tenant_name: '',
-  tenant_slug: '',
   tenant_email: '',
   tenant_phone: '',
   tenant_address: '',
@@ -360,39 +326,40 @@ const error = ref('')
 const errors = ref({})
 const success = ref('')
 const showOptional = ref(false)
+const generatedSlug = ref('')
+const baseDomain = ref(import.meta.env.VITE_BASE_DOMAIN || 'yourdomain.com')
 
-const slugAvailable = ref(null)
 const usernameAvailable = ref(null)
 const emailAvailable = ref(null)
 
-let slugTimeout = null
 let usernameTimeout = null
 let emailTimeout = null
 
 const canSubmit = computed(() => {
   return form.value.accept_terms && 
-         slugAvailable.value !== false && 
+         form.value.tenant_name.length >= 3 &&
          usernameAvailable.value !== false && 
          emailAvailable.value !== false
 })
 
-const validateSlug = () => {
-  clearTimeout(slugTimeout)
-  slugAvailable.value = null
-  
-  if (form.value.tenant_slug.length < 3) return
-  
-  slugTimeout = setTimeout(async () => {
-    try {
-      const response = await axios.post(`${API_URL}/register/check-slug`, {
-        slug: form.value.tenant_slug
-      })
-      slugAvailable.value = response.data.available
-    } catch (err) {
-      console.error('Slug check error:', err)
-    }
-  }, 500)
+// Auto-generate slug from company name
+const generateSlug = (name) => {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '')
 }
+
+// Watch tenant name and generate slug
+watch(() => form.value.tenant_name, (newName) => {
+  if (newName) {
+    generatedSlug.value = generateSlug(newName)
+  } else {
+    generatedSlug.value = ''
+  }
+})
 
 const validateUsername = () => {
   clearTimeout(usernameTimeout)
