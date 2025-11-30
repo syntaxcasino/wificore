@@ -1,0 +1,247 @@
+services:
+  nginx:
+    container_name: traidnet-nginx
+    image: kja2aro/traidnet-nginx:${NGINX_TAG:-latest}
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    environment:
+      TZ: Africa/Nairobi
+    ports:
+      - "8080:80"
+    depends_on:
+      frontend:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    networks:
+      - traidnet-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  frontend:
+    container_name: traidnet-frontend
+    image: kja2aro/traidnet-frontend:${FRONTEND_TAG:-latest}
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    environment:
+      TZ: Africa/Nairobi
+    networks:
+      - traidnet-network
+    healthcheck:
+      # install curl in Dockerfile or switch to wget
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  backend:
+    container_name: traidnet-backend
+    image: kja2aro/traidnet-backend:${BACKEND_TAG:-latest}
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      APP_ENV: production
+      DB_CONNECTION: pgsql
+      DB_HOST: traidnet-postgres
+      DB_PORT: 5432
+      DB_DATABASE: wifi_hotspot
+      DB_USERNAME: admin
+      DB_PASSWORD: secret
+      QUEUE_CONNECTION: database
+      BROADCAST_DRIVER: pusher
+      PUSHER_APP_ID: app-id
+      PUSHER_APP_KEY: app-key
+      PUSHER_APP_SECRET: app-secret
+      PUSHER_HOST: traidnet-soketi
+      PUSHER_PORT: 6001
+      PUSHER_SCHEME: http
+      SANCTUM_STATEFUL_DOMAINS: localhost
+      SESSION_DOMAIN: localhost
+      RADIUS_SERVER_HOST: traidnet-freeradius
+      RADIUS_SERVER_PORT: 1812
+      RADIUS_SECRET: testing123
+      REDIS_HOST: traidnet-redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: null
+      CACHE_DRIVER: redis
+      SESSION_DRIVER: redis
+      TZ: Africa/Nairobi
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      soketi:
+        condition: service_started
+      freeradius:
+        condition: service_healthy
+    user: "33:33"
+    networks:
+      - traidnet-network
+    healthcheck:
+      test: ["CMD-SHELL", "php-fpm -t || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    volumes:
+      - laravel-storage:/var/www/html/storage
+      - laravel-logs:/var/www/html/storage/logs
+
+  postgres:
+    container_name: traidnet-postgres
+    image: postgres:16.10-trixie
+    environment:
+      POSTGRES_DB: wifi_hotspot
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: secret
+      TZ: Africa/Nairobi
+      POSTGRES_MAX_CONNECTIONS: 200
+      POSTGRES_SHARED_BUFFERS: 256MB
+      POSTGRES_EFFECTIVE_CACHE_SIZE: 1GB
+    command: >
+      postgres
+      -c max_connections=200
+      -c shared_buffers=256MB
+      -c effective_cache_size=1GB
+      -c maintenance_work_mem=64MB
+      -c checkpoint_completion_target=0.9
+      -c wal_buffers=16MB
+      -c default_statistics_target=100
+      -c random_page_cost=1.1
+      -c effective_io_concurrency=200
+      -c work_mem=4MB
+      -c min_wal_size=1GB
+      -c max_wal_size=4GB
+      -c max_worker_processes=4
+      -c max_parallel_workers_per_gather=2
+      -c max_parallel_workers=4
+      -c max_parallel_maintenance_workers=2
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - ./postgres/radius-schema.sql:/docker-entrypoint-initdb.d/02-radius-schema.sql:ro
+    networks:
+      traidnet-network:
+        aliases:
+          - postgres
+          - database
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "admin", "-d", "wifi_hotspot"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  redis:
+    container_name: traidnet-redis
+    image: redis:7-alpine
+    command: redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru --save 60 1000
+    restart: unless-stopped
+    environment:
+      TZ: Africa/Nairobi
+    networks:
+      - traidnet-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    volumes:
+      - redis_data:/data
+
+  soketi:
+    container_name: traidnet-soketi
+    image: kja2aro/traidnet-soketi:${SOKETI_TAG:-latest}
+    build:
+      context: ./soketi
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      SOKETI_DEBUG: 1
+      SOKETI_DEFAULT_APP_ID: app-id
+      SOKETI_DEFAULT_APP_KEY: app-key
+      SOKETI_DEFAULT_APP_SECRET: app-secret
+      SOKETI_DEFAULT_APP_ENABLE_CLIENT_MESSAGES: true
+      SOKETI_DEFAULT_APP_ENABLE_USER_AUTHENTICATION: true
+      SOKETI_DEFAULT_APP_USER_AUTHENTICATION_TIMEOUT: 30000
+      SOKETI_DEFAULT_APP_WEBHOOKS: '[{"url":"http://traidnet-nginx/api/broadcasting/auth","event_types":["channel_occupied","channel_vacated","member_added","member_removed"]}]'
+      SOKETI_DEFAULT_APP_MAX_BACKEND_EVENTS_PER_SEC: -1
+      SOKETI_DEFAULT_APP_MAX_CLIENT_EVENTS_PER_SEC: -1
+      SOKETI_DEFAULT_APP_MAX_READ_REQUESTS_PER_SEC: -1
+      SOKETI_HOST: 0.0.0.0
+      SOKETI_PORT: 6001
+      SOKETI_METRICS_SERVER_PORT: 9601
+      SOKETI_METRICS_ENABLED: true
+    ports:
+      - "6001:6001"
+      - "9601:9601"
+    networks:
+      - traidnet-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "-s", "-o", "/dev/null", "--max-time", "5", "--connect-timeout", "3", "--retry", "2", "--http1.1", "http://localhost:9601/"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  freeradius:
+    container_name: traidnet-freeradius
+    image: kja2aro/traidnet-freeradius:${FREERADIUS_TAG:-latest}
+    build:
+      context: ./freeradius
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      TZ: Africa/Nairobi
+    ports:
+      - "1812-1813:1812-1813/udp"
+    volumes:
+      - ./freeradius/clients.conf:/opt/etc/raddb/clients.conf:ro
+      - ./freeradius/sql:/opt/etc/raddb/mods-available/sql:ro
+    networks:
+      traidnet-network:
+        aliases:
+          - freeradius
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/opt/sbin/radiusd", "-C"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    entrypoint: /bin/sh
+    command: >
+      -c "
+      sleep 5 &&
+      chmod 640 /opt/etc/raddb/clients.conf /opt/etc/raddb/mods-available/sql &&
+      ln -sf /opt/etc/raddb/mods-available/sql /opt/etc/raddb/mods-enabled/sql &&
+      exec /opt/sbin/radiusd -X
+      "
+
+volumes:
+  postgres_data:
+    name: traidnet-postgres-data
+  redis_data:
+    name: traidnet-redis-data
+  laravel-storage:
+  laravel-logs:
+
+networks:
+  traidnet-network:
+    name: traidnet-network
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+          gateway: 172.20.255.254

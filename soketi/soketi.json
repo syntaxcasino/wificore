@@ -1,0 +1,33 @@
+{
+  "debug": true,
+  "port": 80,
+  "host": "0.0.0.0",
+  "wsPath": "",
+  "cors": {
+    "origin": ["http://localhost:3000", "http://localhost:80", "http://localhost"],
+    "methods": ["GET", "POST", "OPTIONS"],
+    "allowedHeaders": ["Content-Type", "Authorization", "X-Requested-With", "X-CSRF-TOKEN", "Accept"]
+  },
+  "appManager": {
+    "array": {
+      "apps": [
+        {
+          "id": "wifi-hotspot-app",
+          "key": "app-key",
+          "secret": "app-secret",
+          "enableClientMessages": true,
+          "enableUserAuthentication": true,
+          "maxBackendEventsPerSecond": 100,
+          "maxClientEventsPerSecond": 50,
+          "maxPresenceMembersPerChannel": 100,
+          "maxPresenceMemberSizeInKb": 2,
+          "maxChannelNameLength": 200,
+          "maxEventChannelsAtOnce": 10,
+          "maxEventNameLength": 100,
+          "maxEventPayloadInKb": 100,
+          "webhooks": []
+        }
+      ]
+    }
+  }
+}

@@ -6,7 +6,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 
 use App\Models\UserSession;
-use App\Services\MikrotikService;
+use App\Services\MikrotikSessionService;
 use App\Models\SystemLog;
 
 class DisconnectExpiredSessions implements ShouldQueue
@@ -18,7 +18,7 @@ class DisconnectExpiredSessions implements ShouldQueue
      */
     public function __construct()
     {
-        //
+        $this->onQueue('hotspot-sessions');
     }
 
     /**
@@ -28,7 +28,7 @@ class DisconnectExpiredSessions implements ShouldQueue
     {
        
         $expiredSessions = UserSession::where('end_time', '<', now())->get();
-        $mikrotik = new MikrotikService();
+        $mikrotik = new MikrotikSessionService();
 
         foreach ($expiredSessions as $session) {
             $mikrotik->disconnectUser($session->mac_address);

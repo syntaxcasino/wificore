@@ -1,0 +1,144 @@
+<?php
+
+namespace App\Jobs;
+
+use App\Models\Tenant;
+use App\Models\User;
+use App\Events\TenantCreated;
+use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
+
+/**
+ * Async job to create tenant with admin user
+ * Replaces synchronous tenant registration
+ */
+class CreateTenantJob implements ShouldQueue
+{
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+
+    public array $tenantData;
+    public array $adminData;
+    public string $plainPassword;
+
+    /**
+     * Create a new job instance.
+     */
+    public function __construct(array $tenantData, array $adminData, string $plainPassword)
+    {
+        $this->tenantData = $tenantData;
+        $this->adminData = $adminData;
+        $this->plainPassword = $plainPassword;
+        
+        $this->onQueue('tenant-management');
+    }
+
+    /**
+     * Execute the job.
+     */
+    public function handle(): void
+    {
+        DB::beginTransaction();
+        
+        try {
+            // Create tenant
+            $tenant = Tenant::create([
+                'name' => $this->tenantData['name'],
+                'slug' => $this->tenantData['slug'],
+                'subdomain' => $this->tenantData['slug'], // Use slug as subdomain
+                'schema_name' => 'tenant_' . $this->tenantData['slug'],
+                'email' => $this->tenantData['email'],
+                'phone' => $this->tenantData['phone'] ?? null,
+                'address' => $this->tenantData['address'] ?? null,
+                'is_active' => true,
+                'schema_created' => false,
+                'trial_ends_at' => now()->addDays(30),
+                'public_packages_enabled' => true,
+                'public_registration_enabled' => true,
+                'settings' => [
+                    'timezone' => 'Africa/Nairobi',
+                    'currency' => 'KES',
+                    'max_routers' => 5,
+                    'max_users' => 100,
+                    'features' => [
+                        'vpn' => true,
+                        'analytics' => true,
+                        'api_access' => false,
+                    ],
+                ],
+                'branding' => [
+                    'logo_url' => null,
+                    'primary_color' => '#3b82f6',
+                    'secondary_color' => '#10b981',
+                    'company_name' => $this->tenantData['name'],
+                    'tagline' => null,
+                    'support_email' => $this->tenantData['email'],
+                    'support_phone' => $this->tenantData['phone'] ?? null,
+                ],
+            ]);
+            
+            // Create admin user
+            $adminUser = User::create([
+                'tenant_id' => $tenant->id,
+                'name' => $this->adminData['name'],
+                'username' => $this->adminData['username'],
+                'email' => $this->adminData['email'],
+                'phone_number' => $this->adminData['phone'] ?? null,
+                'password' => Hash::make($this->plainPassword),
+                'role' => User::ROLE_ADMIN,
+                'is_active' => true,
+                'email_verified_at' => now(),
+                'account_number' => 'TNT-' . strtoupper(Str::random(8)),
+            ]);
+            
+            // Add to RADIUS
+            DB::table('radcheck')->insert([
+                'username' => $this->adminData['username'],
+                'attribute' => 'Cleartext-Password',
+                'op' => ':=',
+                'value' => $this->plainPassword,
+            ]);
+            
+            // Add schema mapping
+            DB::table('radius_user_schema_mapping')->insert([
+                'username' => $this->adminData['username'],
+                'schema_name' => $tenant->schema_name,
+                'tenant_id' => $tenant->id,
+                'user_role' => User::ROLE_ADMIN,
+                'is_active' => true,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+            
+            DB::commit();
+            
+            // Broadcast event
+            broadcast(new TenantCreated($tenant, $adminUser))->toOthers();
+            
+            Log::info('Tenant created successfully (async)', [
+                'tenant_id' => $tenant->id,
+                'tenant_slug' => $tenant->slug,
+                'admin_user_id' => $adminUser->id,
+                'job' => 'CreateTenantJob',
+            ]);
+            
+        } catch (\Exception $e) {
+            DB::rollBack();
+            
+            Log::error('Failed to create tenant (async)', [
+                'error' => $e->getMessage(),
+                'tenant_slug' => $this->tenantData['slug'],
+                'trace' => $e->getTraceAsString(),
+                'job' => 'CreateTenantJob',
+            ]);
+            
+            $this->release(60);
+        }
+    }
+}

@@ -1,11 +1,3 @@
-#FROM node:20-slim
-#  WORKDIR /app
-#  COPY package.json .
-#  RUN npm cache clean --force
-#  RUN npm install
-#  COPY . .
-#  CMD ["npm", "run", "dev"]
-
 # Stage 1: Build Vue app
 FROM node:20-slim AS builder
 
@@ -18,8 +10,9 @@ COPY . .
 RUN npm run build
 
 # Stage 2: Serve with Nginx
-FROM nginx:stable-alpine
-
+#FROM nginx:stable-alpine
+FROM nginx:1.29.1-alpine-slim
+RUN apk add --no-cache curl  # Install curl
 # Remove default config
 RUN rm /etc/nginx/conf.d/default.conf
 

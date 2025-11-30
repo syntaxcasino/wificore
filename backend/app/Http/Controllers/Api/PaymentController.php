@@ -6,22 +6,41 @@ use App\Http\Controllers\Controller;
 use App\Models\Payment;
 use App\Models\Voucher;
 use App\Models\SystemLog;
+use App\Models\HotspotUser;
+use App\Models\HotspotCredential;
+use App\Models\RadiusSession;
+use App\Models\Package;
 use App\Services\MpesaService;
-use App\Services\MikrotikService;
+use App\Services\MikrotikSessionService;
+use App\Services\UserProvisioningService;
+use App\Jobs\ProcessPaymentJob;
+use App\Jobs\ProvisionUserInMikroTikJob;
+use App\Jobs\SendCredentialsSMSJob;
+use App\Jobs\CreateHotspotUserJob;
+use App\Jobs\ReconnectSubscriptionJob;
+use App\Services\SubscriptionManager;
+use App\Events\PaymentCompleted;
+use App\Events\HotspotUserCreated;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 
 class PaymentController extends Controller
 {
     protected $mpesaService;
     protected $mikrotikService;
+    protected $provisioningService;
 
-    public function __construct(MpesaService $mpesaService, MikrotikService $mikrotikService)
-    {
+    public function __construct(
+        MpesaService $mpesaService, 
+        MikrotikSessionService $mikrotikService,
+        UserProvisioningService $provisioningService
+    ) {
         $this->mpesaService = $mpesaService;
         $this->mikrotikService = $mikrotikService;
+        $this->provisioningService = $provisioningService;
     }
 
     public function initiateSTK(Request $request)
@@ -31,10 +50,14 @@ class PaymentController extends Controller
                 'phone_number' => ['required', 'regex:/^\+254[0-9]{9}$/'],
                 'package_id' => 'required|exists:packages,id',
                 'mac_address' => ['required', 'regex:/^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$/'],
+                'router_id' => 'nullable|exists:routers,id',
             ]);
 
             $package = \App\Models\Package::findOrFail($validated['package_id']);
             $amount = $package->price;
+            
+            // Auto-detect router_id if not provided
+            $routerId = $validated['router_id'] ?? $this->detectRouterFromRequest($request);
 
             $stkResponse = $this->mpesaService->initiateSTKPush(
                 $validated['phone_number'],
@@ -54,6 +77,7 @@ class PaymentController extends Controller
                 'phone_number' => $validated['phone_number'],
                 'amount' => $amount,
                 'package_id' => $validated['package_id'],
+                'router_id' => $routerId,
                 'status' => 'pending',
                 'mac_address' => $validated['mac_address'],
                 'transaction_id' => $checkoutRequestId,
@@ -70,6 +94,11 @@ class PaymentController extends Controller
                 'success' => true,
                 'message' => 'Payment initiated successfully',
                 'transaction_id' => $checkoutRequestId,
+                'payment_id' => $payment->id,
+                'data' => [
+                    'CheckoutRequestID' => $checkoutRequestId,
+                    'payment_id' => $payment->id,
+                ],
                 'ResultCode' => 0
             ]);
 
@@ -122,7 +151,36 @@ class PaymentController extends Controller
                     ]);
 
                     if ($status === 'completed') {
-                        $this->processSuccessfulPayment($payment);
+                        // Broadcast payment completed event
+                        broadcast(new PaymentCompleted($payment))->toOthers();
+                        
+                        // EVENT-BASED: Dispatch hotspot user creation job (async)
+                        CreateHotspotUserJob::dispatch($payment, $payment->package)
+                            ->onQueue('hotspot-provisioning');
+                        
+                        $this->logToSystemAndFile('Hotspot User Creation Job Dispatched', [
+                            'payment_id' => $payment->id,
+                            'phone_number' => $payment->phone_number,
+                            'package_id' => $payment->package_id,
+                        ], 'info');
+                        
+                        // EVENT-BASED: Handle subscription reconnection if user was disconnected
+                        $subscription = $payment->subscription;
+                        if ($subscription && $subscription->isDisconnected()) {
+                            ReconnectSubscriptionJob::dispatch($payment, $subscription)
+                                ->onQueue('subscription-reconnection');
+                            
+                            $this->logToSystemAndFile('Subscription Reconnection Job Dispatched', [
+                                'payment_id' => $payment->id,
+                                'subscription_id' => $subscription->id,
+                                'user_id' => $subscription->user_id,
+                            ], 'info');
+                        }
+                        
+                        // Dispatch payment processing job for voucher creation (legacy)
+                        ProcessPaymentJob::dispatch($payment)
+                            ->onQueue('payments')
+                            ->delay(now()->addSeconds(2));
                     }
 
                     $this->logToSystemAndFile("Payment $status", [
@@ -232,5 +290,69 @@ class PaymentController extends Controller
             }
         });
         return $data;
+    }
+
+    /**
+     * Check payment status and get credentials for auto-login
+     */
+    public function checkStatus(Payment $payment)
+    {
+        try {
+            // Get credentials from cache if available
+            $credentials = Cache::get("payment_credentials_{$payment->id}");
+            
+            return response()->json([
+                'success' => true,
+                'payment' => [
+                    'id' => $payment->id,
+                    'status' => $payment->status,
+                    'amount' => $payment->amount,
+                    'phone_number' => $payment->phone_number,
+                    'created_at' => $payment->created_at,
+                ],
+                'credentials' => $credentials,
+                'auto_login' => $credentials !== null,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Payment status check error', [
+                'payment_id' => $payment->id,
+                'error' => $e->getMessage(),
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Error checking payment status',
+            ], 500);
+        }
+    }
+
+    /**
+     * DEPRECATED: Replaced by CreateHotspotUserJob (event-based)
+     * This method is no longer used - all provisioning is now async via jobs
+     * Kept for reference only - will be removed in future version
+     */
+    // public function createHotspotUserSync(Payment $payment, Package $package): array { ... }
+
+    /**
+     * Detect router from request headers and IP
+     */
+    private function detectRouterFromRequest(Request $request)
+    {
+        // Check for router IP in headers (MikroTik hotspot sends these)
+        $gatewayIp = $request->header('X-Gateway-IP') 
+                  ?? $request->header('X-Router-IP')
+                  ?? $request->ip();
+
+        if ($gatewayIp) {
+            $router = \App\Models\Router::withoutGlobalScope(\App\Models\Scopes\TenantScope::class)
+                ->where('ip_address', $gatewayIp)
+                ->first();
+            
+            if ($router) {
+                return $router->id;
+            }
+        }
+
+        return null;
     }
 }

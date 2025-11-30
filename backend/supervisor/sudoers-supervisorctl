@@ -1,0 +1,4 @@
+# Allow www-data to run supervisorctl without password
+# This is needed for queue workers to check supervisor status
+www-data ALL=(ALL) NOPASSWD: /usr/bin/supervisorctl status
+www-data ALL=(ALL) NOPASSWD: /usr/bin/supervisorctl status *

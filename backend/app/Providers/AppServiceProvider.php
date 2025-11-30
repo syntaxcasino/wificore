@@ -2,7 +2,13 @@
 
 namespace App\Providers;
 
+use App\Listeners\TrackCompletedJobs;
+use App\Models\PersonalAccessToken;
+use App\Services\RadiusService;
+use Illuminate\Queue\Events\JobProcessed;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
+use Laravel\Sanctum\Sanctum;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -11,7 +17,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->singleton(RadiusService::class, function ($app) {
+            return new RadiusService();
+        });
     }
 
     /**
@@ -19,6 +27,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        Sanctum::usePersonalAccessTokenModel(PersonalAccessToken::class);
+        
+        // Track completed jobs for statistics
+        Event::listen(JobProcessed::class, TrackCompletedJobs::class);
     }
 }

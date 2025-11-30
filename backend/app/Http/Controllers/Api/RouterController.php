@@ -132,6 +132,370 @@ class RouterController extends Controller
         }
     }
 
+    /**
+     * Get router status
+     * 
+     * @param Router $router
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function status(Router $router)
+    {
+        try {
+            // Return the current router status from database
+            return response()->json([
+                'success' => true,
+                'status' => $router->status ?? 'offline',
+                'router' => [
+                    'id' => $router->id,
+                    'name' => $router->name,
+                    'ip_address' => $router->ip_address,
+                    'status' => $router->status ?? 'offline',
+                    'last_checked' => $router->last_checked,
+                    'last_seen' => $router->last_seen,
+                ],
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to get router status', [
+                'router_id' => $router->id,
+                'error' => $e->getMessage(),
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'status' => 'offline',
+                'error' => 'Failed to get router status: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get detailed router information
+     * 
+     * @param Router $router
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function getRouterDetails(Router $router)
+    {
+        try {
+            $host = explode('/', $router->ip_address)[0];
+            
+            $client = new Client([
+                'host' => $host,
+                'user' => $router->username,
+                'pass' => Crypt::decrypt($router->password),
+                'port' => $router->port,
+                'timeout' => 5,
+            ]);
+
+            // Get system resources
+            $resourceQuery = new Query('/system/resource/print');
+            $resources = $client->query($resourceQuery)->read();
+            
+            // Get interfaces
+            $interfaceQuery = new Query('/interface/print');
+            $interfaces = $client->query($interfaceQuery)->read();
+            
+            // Get hotspot servers
+            $hotspotQuery = new Query('/ip/hotspot/print');
+            $hotspots = $client->query($hotspotQuery)->read();
+            
+            // Get RADIUS servers
+            $radiusQuery = new Query('/radius/print');
+            $radiusServers = $client->query($radiusQuery)->read();
+            
+            // Get active connections
+            $connectionQuery = new Query('/ip/hotspot/active/print');
+            $activeConnections = $client->query($connectionQuery)->read();
+
+            return response()->json([
+                'success' => true,
+                'router' => [
+                    'id' => $router->id,
+                    'name' => $router->name,
+                    'ip_address' => $router->ip_address,
+                    'status' => $router->status,
+                    'model' => $router->model,
+                    'os_version' => $router->os_version,
+                    'last_seen' => $router->last_seen,
+                ],
+                'resources' => $resources[0] ?? [],
+                'interfaces' => $interfaces,
+                'hotspots' => $hotspots,
+                'radius_servers' => $radiusServers,
+                'active_connections' => count($activeConnections),
+            ]);
+        } catch (\Exception $e) {
+            Log::warning('Could not connect to router for details', [
+                'router_id' => $router->id,
+                'router_name' => $router->name,
+                'ip_address' => $router->ip_address,
+                'error' => $e->getMessage(),
+            ]);
+            
+            // Return 200 with success: false for offline routers (not a server error)
+            return response()->json([
+                'success' => false,
+                'error' => 'Router is offline or unreachable',
+                'message' => 'Could not connect to router. It may be offline or network unreachable.',
+                'router' => [
+                    'id' => $router->id,
+                    'name' => $router->name,
+                    'ip_address' => $router->ip_address,
+                    'status' => 'offline',
+                ],
+            ], 200);
+        }
+    }
+
+    /**
+     * Get router interfaces
+     * 
+     * @param Router $router
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function getRouterInterfaces(Router $router)
+    {
+        try {
+            $host = explode('/', $router->ip_address)[0];
+            
+            $client = new Client([
+                'host' => $host,
+                'user' => $router->username,
+                'pass' => Crypt::decrypt($router->password),
+                'port' => $router->port,
+            ]);
+
+            $query = new Query('/interface/print');
+            $interfaces = $client->query($query)->read();
+            
+            $formattedInterfaces = array_map(function ($iface) {
+                return [
+                    'name' => $iface['name'] ?? 'Unknown',
+                    'type' => $iface['type'] ?? 'Unknown',
+                    'running' => ($iface['running'] ?? 'false') === 'true',
+                    'disabled' => ($iface['disabled'] ?? 'false') === 'true',
+                    'mtu' => $iface['mtu'] ?? 'N/A',
+                ];
+            }, $interfaces);
+
+            Log::info('Fetched router interfaces', [
+                'router_id' => $router->id,
+                'interface_count' => count($formattedInterfaces),
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'interfaces' => $formattedInterfaces,
+                'count' => count($formattedInterfaces),
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to fetch router interfaces', [
+                'router_id' => $router->id,
+                'error' => $e->getMessage(),
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'error' => 'Failed to fetch router interfaces: ' . $e->getMessage(),
+                'interfaces' => [],
+            ], 500);
+        }
+    }
+
+    /**
+     * Generate service configuration (Hotspot/PPPoE)
+     * 
+     * @param Request $request
+     * @param Router $router
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function generateServiceConfig(Request $request, Router $router)
+    {
+        try {
+            $validated = $request->validate([
+                'enable_hotspot' => 'boolean',
+                'enable_pppoe' => 'boolean',
+                'hotspot_interfaces' => 'array',
+                'hotspot_interfaces.*' => 'string',
+                'pppoe_interfaces' => 'array',
+                'pppoe_interfaces.*' => 'string',
+                'portal_title' => 'nullable|string',
+                'login_method' => 'nullable|string',
+                'pppoe_service_name' => 'nullable|string',
+                'pppoe_ip_pool' => 'nullable|string',
+            ]);
+
+            Log::info('Generating service configuration', [
+                'router_id' => $router->id,
+                'enable_hotspot' => $validated['enable_hotspot'] ?? false,
+                'enable_pppoe' => $validated['enable_pppoe'] ?? false,
+            ]);
+
+            // Use the ConfigurationService to generate the script
+            $configService = app(\App\Services\MikroTik\ConfigurationService::class);
+            $result = $configService->generateServiceConfig($router, $validated);
+
+            // Save the generated script to router_configs table
+            if (!empty($result['service_script'])) {
+                RouterConfig::updateOrCreate(
+                    [
+                        'router_id' => $router->id,
+                        'config_type' => 'service',
+                    ],
+                    [
+                        'config_content' => $result['service_script'],
+                    ]
+                );
+
+                Log::info('Service configuration saved', [
+                    'router_id' => $router->id,
+                    'script_length' => strlen($result['service_script']),
+                ]);
+            }
+
+            return response()->json([
+                'success' => true,
+                'service_script' => $result['service_script'] ?? '',
+                'message' => 'Service configuration generated successfully',
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Validation failed: ' . json_encode($e->errors()),
+            ], 422);
+        } catch (\Exception $e) {
+            Log::error('Failed to generate service configuration', [
+                'router_id' => $router->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'error' => 'Failed to generate configuration: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Deploy service configuration to router
+     * 
+     * @param Request $request
+     * @param Router $router
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function deployServiceConfig(Request $request, Router $router)
+    {
+        try {
+            $validated = $request->validate([
+                'service_type' => 'required|string|in:hotspot,pppoe',
+                'commands' => 'nullable|array',
+            ]);
+
+            Log::info('Deploying service configuration', [
+                'router_id' => $router->id,
+                'service_type' => $validated['service_type'],
+                'command_count' => count($validated['commands'] ?? []),
+            ]);
+
+            // Prepare provisioning data
+            $provisioningData = [
+                'service_type' => $validated['service_type'],
+                'enable_hotspot' => $validated['service_type'] === 'hotspot',
+                'enable_pppoe' => $validated['service_type'] === 'pppoe',
+            ];
+
+            // Update router status to deploying
+            $router->update([
+                'status' => 'deploying',
+            ]);
+
+            // Dispatch the provisioning job
+            \App\Jobs\RouterProvisioningJob::dispatch($router, $provisioningData);
+
+            Log::info('Provisioning job dispatched', [
+                'router_id' => $router->id,
+                'service_type' => $validated['service_type'],
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Deployment job dispatched successfully',
+                'router_id' => $router->id,
+                'status' => 'deploying',
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Validation failed: ' . json_encode($e->errors()),
+            ], 422);
+        } catch (\Exception $e) {
+            Log::error('Failed to deploy service configuration', [
+                'router_id' => $router->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'error' => 'Failed to deploy configuration: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Get router provisioning status
+     * 
+     * @param Router $router
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function getProvisioningStatus(Router $router)
+    {
+        try {
+            // Check router status
+            $status = $router->status;
+            
+            // Map router status to provisioning status
+            $provisioningStatus = match($status) {
+                'active', 'online' => 'completed',
+                'deploying', 'provisioning' => 'deploying',
+                'failed' => 'failed',
+                default => 'pending',
+            };
+
+            Log::info('Provisioning status checked', [
+                'router_id' => $router->id,
+                'router_status' => $status,
+                'provisioning_status' => $provisioningStatus,
+            ]);
+
+            $response = [
+                'success' => true,
+                'status' => $provisioningStatus,
+                'router_status' => $status,
+                'router_id' => $router->id,
+            ];
+
+            // Add error message if failed
+            if ($provisioningStatus === 'failed') {
+                $response['error'] = 'Router provisioning failed. Check logs for details.';
+            }
+
+            return response()->json($response);
+        } catch (\Exception $e) {
+            Log::error('Failed to get provisioning status', [
+                'router_id' => $router->id,
+                'error' => $e->getMessage(),
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'status' => 'unknown',
+                'error' => 'Failed to get provisioning status: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
     public function verifyConnectivity(Router $router)
     {
         Log::info('verifyConnectivity called for router:', [

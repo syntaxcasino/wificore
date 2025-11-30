@@ -4,12 +4,20 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use App\Traits\BelongsToTenant;
+use App\Models\Scopes\TenantScope;
 
 class Voucher extends Model
 {
-    use HasFactory;
+    use HasFactory, BelongsToTenant;
+
+    protected static function booted(): void
+    {
+        static::addGlobalScope(new TenantScope());
+    }
 
     protected $fillable = [
+        'tenant_id',
         'code',
         'mac_address',
         'payment_id',

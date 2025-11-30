@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket Test</title>
+    <script src="https://js.pusher.com/7.0/pusher.min.js"></script>
+    <script>
+        // Enable pusher logging - don't include this in production
+        Pusher.logToConsole = true;
+
+        const pusher = new Pusher('app-key', {
+            wsHost: 'localhost',
+            wsPort: 6001,
+            forceTLS: false,
+            enabledTransports: ['ws', 'wss'],
+            disableStats: true,
+            cluster: 'mt1'
+        });
+
+        const channel = pusher.subscribe('test-channel');
+        channel.bind('test-event', function(data) {
+            console.log('Received test event:', data);
+            document.getElementById('status').innerHTML += '<p>Event received: ' + JSON.stringify(data) + '</p>';
+        });
+
+        // Send a test event after 2 seconds
+        setTimeout(() => {
+            fetch('http://localhost/api/broadcasting/auth', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
+                },
+                body: JSON.stringify({
+                    socket_id: pusher.connection.socket_id,
+                    channel_name: 'test-channel'
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('Auth response:', data);
+                document.getElementById('status').innerHTML += '<p>Auth response: ' + JSON.stringify(data) + '</p>';
+            })
+            .catch(error => {
+                console.error('Auth error:', error);
+                document.getElementById('status').innerHTML += '<p>Auth error: ' + error.message + '</p>';
+            });
+        }, 2000);
+    </script>
+</head>
+<body>
+    <h1>WebSocket Test</h1>
+    <div id="status">
+        <p>Connecting to WebSocket server...</p>
+    </div>
+</body>
+</html>

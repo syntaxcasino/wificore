@@ -1,0 +1,462 @@
+<template>
+  <PageContainer>
+    <!-- Header -->
+    <PageHeader
+      title="Active Sessions"
+      subtitle="Monitor and manage active hotspot connections in real-time"
+      icon="Activity"
+      :breadcrumbs="breadcrumbs"
+    >
+      <template #actions>
+        <BaseButton @click="refreshSessions" variant="ghost" size="sm" :loading="refreshing">
+          <RefreshCw class="w-4 h-4 mr-1" :class="{ 'animate-spin': refreshing }" />
+          Refresh
+        </BaseButton>
+        <BaseButton @click="disconnectAll" variant="danger" :disabled="!filteredData.length">
+          <Power class="w-4 h-4 mr-1" />
+          Disconnect All
+        </BaseButton>
+      </template>
+    </PageHeader>
+
+    <!-- Search and Filters Bar -->
+    <div class="px-6 py-4 bg-white border-b border-slate-200">
+      <div class="flex items-center gap-3 flex-wrap">
+        <!-- Search Box -->
+        <div class="flex-1 min-w-[300px] max-w-md">
+          <BaseSearch v-model="searchQuery" placeholder="Search sessions by user, IP, MAC..." />
+        </div>
+        
+        <!-- Filters Group -->
+        <div class="flex items-center gap-2">
+          <BaseSelect v-model="filters.package" placeholder="All Packages" class="w-40">
+            <option value="">All Packages</option>
+            <option v-for="pkg in packages" :key="pkg.id" :value="pkg.id">{{ pkg.name }}</option>
+          </BaseSelect>
+          
+          <BaseSelect v-model="filters.duration" placeholder="Session Duration" class="w-44">
+            <option value="">All Durations</option>
+            <option value="short">< 5 minutes</option>
+            <option value="medium">5-30 minutes</option>
+            <option value="long">> 30 minutes</option>
+          </BaseSelect>
+          
+          <BaseButton v-if="hasActiveFilters" @click="clearFilters" variant="ghost" size="sm">
+            <X class="w-4 h-4 mr-1" />
+            Clear
+          </BaseButton>
+        </div>
+        
+        <!-- Stats Badges -->
+        <div class="ml-auto flex items-center gap-2">
+          <BaseBadge variant="success" dot pulse>{{ totalSessions }} Active</BaseBadge>
+          <BaseBadge variant="info">{{ formatBytes(totalBandwidth) }}/s</BaseBadge>
+          <BaseBadge variant="warning">{{ totalUsers }} Users</BaseBadge>
+        </div>
+      </div>
+    </div>
+
+    <!-- Content -->
+    <PageContent :padding="false">
+      <!-- Loading State -->
+      <div v-if="loading" class="p-6">
+        <BaseLoading type="table" :rows="5" />
+      </div>
+
+      <!-- Error State -->
+      <div v-else-if="error" class="p-6">
+        <BaseAlert variant="danger" :title="error" dismissible>
+          <div class="mt-2">
+            <BaseButton @click="refreshSessions" variant="danger" size="sm">
+              <RefreshCw class="w-4 h-4 mr-1" />
+              Retry
+            </BaseButton>
+          </div>
+        </BaseAlert>
+      </div>
+
+      <!-- Empty State -->
+      <div v-else-if="!filteredData.length">
+        <BaseEmpty
+          :title="searchQuery ? 'No sessions found' : 'No active sessions'"
+          :description="searchQuery ? 'No sessions match your search criteria.' : 'There are currently no active hotspot sessions.'"
+          icon="Activity"
+          :actionText="searchQuery ? 'Clear Search' : 'Refresh'"
+          actionIcon="RefreshCw"
+          @action="searchQuery ? (searchQuery = '') : refreshSessions()"
+        />
+      </div>
+
+      <!-- Data Table -->
+      <div v-else class="p-6">
+        <BaseCard :padding="false">
+          <div class="overflow-x-auto">
+            <table class="w-full">
+              <thead class="bg-slate-50 border-b border-slate-200">
+                <tr>
+                  <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">User</th>
+                  <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Connection</th>
+                  <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Package</th>
+                  <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Duration</th>
+                  <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Data Usage</th>
+                  <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Bandwidth</th>
+                  <th class="px-6 py-3 text-right text-xs font-semibold text-slate-700 uppercase tracking-wider">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="session in paginatedData"
+                  :key="session.id"
+                  class="border-b border-slate-100 hover:bg-blue-50/50 transition-colors"
+                >
+                  <td class="px-6 py-4">
+                    <div class="flex items-center gap-3">
+                      <div class="w-10 h-10 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-full flex items-center justify-center text-white text-sm font-semibold">
+                        {{ getUserInitials(session.user) }}
+                      </div>
+                      <div>
+                        <div class="text-sm font-medium text-slate-900">{{ session.user?.name || session.username }}</div>
+                        <div class="text-xs text-slate-500">{{ session.user?.phone || 'No phone' }}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td class="px-6 py-4">
+                    <div class="text-sm text-slate-900">{{ session.ip_address }}</div>
+                    <div class="text-xs text-slate-500 font-mono">{{ session.mac_address }}</div>
+                  </td>
+                  <td class="px-6 py-4">
+                    <div class="text-sm font-medium text-slate-900">{{ session.package?.name || 'N/A' }}</div>
+                    <div class="text-xs text-slate-500">{{ session.package?.speed || 'N/A' }}</div>
+                  </td>
+                  <td class="px-6 py-4">
+                    <div class="text-sm text-slate-900">{{ formatDuration(session.duration) }}</div>
+                    <div class="text-xs text-slate-500">Since {{ formatTime(session.start_time) }}</div>
+                  </td>
+                  <td class="px-6 py-4">
+                    <div class="text-sm text-slate-900">{{ formatBytes(session.bytes_in + session.bytes_out) }}</div>
+                    <div class="text-xs text-slate-500">
+                      <span class="text-green-600">↓ {{ formatBytes(session.bytes_in) }}</span>
+                      <span class="mx-1">•</span>
+                      <span class="text-blue-600">↑ {{ formatBytes(session.bytes_out) }}</span>
+                    </div>
+                  </td>
+                  <td class="px-6 py-4">
+                    <div class="flex items-center gap-2">
+                      <div class="flex-1">
+                        <div class="text-sm text-slate-900">{{ formatBytes(session.current_bandwidth) }}/s</div>
+                        <div class="w-full bg-slate-200 rounded-full h-1.5 mt-1">
+                          <div 
+                            class="bg-gradient-to-r from-blue-500 to-cyan-500 h-1.5 rounded-full transition-all duration-300"
+                            :style="{ width: getBandwidthPercentage(session) + '%' }"
+                          ></div>
+                        </div>
+                      </div>
+                    </div>
+                  </td>
+                  <td class="px-6 py-4">
+                    <div class="flex items-center justify-end gap-2">
+                      <BaseButton @click="viewSessionDetails(session)" variant="ghost" size="sm">
+                        <Eye class="w-4 h-4" />
+                      </BaseButton>
+                      <BaseButton @click="disconnectSession(session)" variant="danger" size="sm">
+                        <Power class="w-4 h-4" />
+                      </BaseButton>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </BaseCard>
+
+        <!-- Pagination -->
+        <div class="mt-4 flex items-center justify-between">
+          <div class="text-sm text-slate-600">
+            Showing {{ paginationStart }} to {{ paginationEnd }} of {{ filteredData.length }} sessions
+          </div>
+          <BasePagination
+            v-model="currentPage"
+            :total-pages="totalPages"
+            :total-items="filteredData.length"
+          />
+        </div>
+      </div>
+    </PageContent>
+
+    <!-- Session Details Overlay -->
+    <SessionDetailsOverlay
+      :show="showDetailsOverlay"
+      :session="selectedSession"
+      :icon="Activity"
+      @close="closeDetailsOverlay"
+      @disconnect="disconnectSession"
+    />
+  </PageContainer>
+</template>
+
+<script setup>
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { 
+  RefreshCw, Power, Eye, X, Activity
+} from 'lucide-vue-next'
+import PageContainer from '@/modules/common/components/layout/templates/PageContainer.vue'
+import PageHeader from '@/modules/common/components/layout/templates/PageHeader.vue'
+import PageContent from '@/modules/common/components/layout/templates/PageContent.vue'
+import BaseButton from '@/modules/common/components/base/BaseButton.vue'
+import BaseSearch from '@/modules/common/components/base/BaseSearch.vue'
+import BaseSelect from '@/modules/common/components/base/BaseSelect.vue'
+import BaseBadge from '@/modules/common/components/base/BaseBadge.vue'
+import BaseCard from '@/modules/common/components/base/BaseCard.vue'
+import BaseLoading from '@/modules/common/components/base/BaseLoading.vue'
+import BaseAlert from '@/modules/common/components/base/BaseAlert.vue'
+import BaseEmpty from '@/modules/common/components/base/BaseEmpty.vue'
+import BasePagination from '@/modules/common/components/base/BasePagination.vue'
+import SessionDetailsOverlay from '@/modules/tenant/components/sessions/SessionDetailsOverlay.vue'
+
+// Breadcrumbs
+const breadcrumbs = [
+  { label: 'Dashboard', to: '/dashboard' },
+  { label: 'Hotspot', to: '/dashboard/hotspot' },
+  { label: 'Active Sessions' }
+]
+
+// State
+const loading = ref(false)
+const refreshing = ref(false)
+const error = ref(null)
+const sessions = ref([])
+const searchQuery = ref('')
+const currentPage = ref(1)
+const itemsPerPage = ref(10)
+const showDetailsOverlay = ref(false)
+const selectedSession = ref(null)
+
+// Filters
+const filters = ref({
+  package: '',
+  duration: ''
+})
+
+const packages = ref([
+  { id: 1, name: '1 Hour - 5GB' },
+  { id: 2, name: '24 Hours - 20GB' },
+  { id: 3, name: '7 Days - 50GB' },
+  { id: 4, name: '30 Days - 100GB' }
+])
+
+// Mock data (replace with actual API call)
+const mockSessions = [
+  {
+    id: 1,
+    session_id: 'sess_1234567890',
+    username: 'user001',
+    user: { name: 'John Doe', phone: '+254712345678' },
+    ip_address: '10.0.0.101',
+    mac_address: '00:1A:2B:3C:4D:5E',
+    nas_ip: '192.168.1.1',
+    package: { name: '1 Hour - 5GB', speed: '10 Mbps' },
+    start_time: new Date(Date.now() - 1800000),
+    duration: 1800,
+    bytes_in: 524288000,
+    bytes_out: 104857600,
+    current_bandwidth: 2097152
+  },
+  {
+    id: 2,
+    session_id: 'sess_0987654321',
+    username: 'user002',
+    user: { name: 'Jane Smith', phone: '+254723456789' },
+    ip_address: '10.0.0.102',
+    mac_address: '00:1A:2B:3C:4D:5F',
+    nas_ip: '192.168.1.1',
+    package: { name: '24 Hours - 20GB', speed: '20 Mbps' },
+    start_time: new Date(Date.now() - 3600000),
+    duration: 3600,
+    bytes_in: 1073741824,
+    bytes_out: 209715200,
+    current_bandwidth: 4194304
+  }
+]
+
+// Computed
+const filteredData = computed(() => {
+  let result = sessions.value
+
+  // Search filter
+  if (searchQuery.value) {
+    const query = searchQuery.value.toLowerCase()
+    result = result.filter(session => 
+      session.username?.toLowerCase().includes(query) ||
+      session.user?.name?.toLowerCase().includes(query) ||
+      session.ip_address?.includes(query) ||
+      session.mac_address?.toLowerCase().includes(query)
+    )
+  }
+
+  // Package filter
+  if (filters.value.package) {
+    result = result.filter(session => session.package?.id === parseInt(filters.value.package))
+  }
+
+  // Duration filter
+  if (filters.value.duration) {
+    result = result.filter(session => {
+      const minutes = session.duration / 60
+      if (filters.value.duration === 'short') return minutes < 5
+      if (filters.value.duration === 'medium') return minutes >= 5 && minutes <= 30
+      if (filters.value.duration === 'long') return minutes > 30
+      return true
+    })
+  }
+
+  return result
+})
+
+const paginatedData = computed(() => {
+  const start = (currentPage.value - 1) * itemsPerPage.value
+  const end = start + itemsPerPage.value
+  return filteredData.value.slice(start, end)
+})
+
+const totalPages = computed(() => Math.ceil(filteredData.value.length / itemsPerPage.value))
+const paginationStart = computed(() => (currentPage.value - 1) * itemsPerPage.value + 1)
+const paginationEnd = computed(() => Math.min(currentPage.value * itemsPerPage.value, filteredData.value.length))
+
+const hasActiveFilters = computed(() => filters.value.package || filters.value.duration)
+
+const totalSessions = computed(() => sessions.value.length)
+const totalUsers = computed(() => new Set(sessions.value.map(s => s.username)).size)
+const totalBandwidth = computed(() => sessions.value.reduce((sum, s) => sum + (s.current_bandwidth || 0), 0))
+
+// Methods
+const fetchSessions = async () => {
+  loading.value = true
+  error.value = null
+  
+  try {
+    // TODO: Replace with actual API call
+    // const response = await fetch('/api/hotspot/sessions')
+    // sessions.value = await response.json()
+    
+    // Mock delay
+    await new Promise(resolve => setTimeout(resolve, 500))
+    sessions.value = mockSessions
+  } catch (err) {
+    error.value = 'Failed to load active sessions. Please try again.'
+    console.error('Error fetching sessions:', err)
+  } finally {
+    loading.value = false
+  }
+}
+
+const refreshSessions = async () => {
+  refreshing.value = true
+  error.value = null
+  
+  try {
+    // TODO: Replace with actual API call
+    await new Promise(resolve => setTimeout(resolve, 500))
+    sessions.value = mockSessions
+  } catch (err) {
+    error.value = 'Failed to load active sessions. Please try again.'
+    console.error('Error fetching sessions:', err)
+  } finally {
+    refreshing.value = false
+  }
+}
+
+const clearFilters = () => {
+  filters.value = {
+    package: '',
+    duration: ''
+  }
+}
+
+const getUserInitials = (user) => {
+  if (!user?.name) return '?'
+  return user.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
+}
+
+const formatBytes = (bytes) => {
+  if (!bytes) return '0 B'
+  const k = 1024
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i]
+}
+
+const formatDuration = (seconds) => {
+  if (!seconds) return '0s'
+  const hours = Math.floor(seconds / 3600)
+  const minutes = Math.floor((seconds % 3600) / 60)
+  const secs = seconds % 60
+  
+  if (hours > 0) return `${hours}h ${minutes}m`
+  if (minutes > 0) return `${minutes}m ${secs}s`
+  return `${secs}s`
+}
+
+const formatTime = (date) => {
+  if (!date) return 'N/A'
+  return new Date(date).toLocaleTimeString()
+}
+
+const formatDateTime = (date) => {
+  if (!date) return 'N/A'
+  return new Date(date).toLocaleString()
+}
+
+const getBandwidthPercentage = (session) => {
+  const maxBandwidth = 10485760 // 10 MB/s
+  return Math.min((session.current_bandwidth / maxBandwidth) * 100, 100)
+}
+
+const viewSessionDetails = (session) => {
+  selectedSession.value = { ...session, type: 'hotspot' }
+  showDetailsOverlay.value = true
+}
+
+const closeDetailsOverlay = () => {
+  showDetailsOverlay.value = false
+}
+
+const disconnectSession = async (session) => {
+  if (!confirm(`Disconnect ${session.user?.name || session.username}?`)) return
+  
+  try {
+    // TODO: Implement actual disconnect API call
+    console.log('Disconnecting session:', session.id)
+    await new Promise(resolve => setTimeout(resolve, 500))
+    
+    // Remove from list
+    sessions.value = sessions.value.filter(s => s.id !== session.id)
+    showDetailsOverlay.value = false
+  } catch (err) {
+    console.error('Error disconnecting session:', err)
+  }
+}
+
+const disconnectAll = async () => {
+  if (!confirm(`Disconnect all ${totalSessions.value} active sessions?`)) return
+  
+  try {
+    // TODO: Implement actual disconnect all API call
+    console.log('Disconnecting all sessions')
+    await new Promise(resolve => setTimeout(resolve, 500))
+    sessions.value = []
+  } catch (err) {
+    console.error('Error disconnecting all sessions:', err)
+  }
+}
+
+// Lifecycle
+onMounted(() => {
+  fetchSessions()
+  
+  // Set up real-time updates (every 5 seconds)
+  const interval = setInterval(refreshSessions, 5000)
+  
+  // Cleanup on unmount
+  onUnmounted(() => clearInterval(interval))
+})
+</script>

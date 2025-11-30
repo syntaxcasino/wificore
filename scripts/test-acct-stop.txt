@@ -1,0 +1,11 @@
+User-Name = "testuser"
+Acct-Status-Type = Stop
+Acct-Session-Id = "test-session-001"
+NAS-IP-Address = 192.168.1.1
+NAS-Port = 1
+Framed-IP-Address = 10.0.0.100
+Acct-Session-Time = 600
+Acct-Input-Octets = 5242880
+Acct-Output-Octets = 10485760
+Acct-Terminate-Cause = User-Request
+Acct-Delay-Time = 0

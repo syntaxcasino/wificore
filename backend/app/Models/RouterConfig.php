@@ -3,9 +3,12 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Traits\HasUuid;
 
 class RouterConfig extends Model
 {
+    use HasUuid;
+    
     protected $table = 'router_configs';
 
     protected $fillable = [
@@ -14,6 +17,10 @@ class RouterConfig extends Model
         'config_content',
         'created_at',
         'updated_at',
+    ];
+    
+    protected $casts = [
+        'id' => 'string',
     ];
 
     /**

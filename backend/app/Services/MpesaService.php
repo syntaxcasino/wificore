@@ -9,7 +9,7 @@ use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
 use App\Models\SystemLog;
 
-class MpesaService
+class MpesaService extends TenantAwareService
 {
     protected $client;
     protected $config;

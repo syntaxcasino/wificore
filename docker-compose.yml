@@ -1,69 +1,255 @@
 services:
-  nginx:
-    container_name: wifi-hotspot-nginx-1
+  traidnet-nginx:
+    container_name: traidnet-nginx
     build:
       context: ./nginx
-    image: kja2aro/traidnet-nginx:latest
     environment:
-      TZ: Africa/Nairobi
+      - TZ=Africa/Nairobi
     ports:
-    - "80:80"
-    #- "80:8080"
-    depends_on:
-      - frontend
-      - backend
+      - "80:80"
+      - "443:443" # Add SSL if needed
+ 
     networks:
-      - wifi-network
+      - traidnet-network
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
 
-  frontend:
-    container_name: wifi-hotspot-frontend-1
+  traidnet-frontend:
+    container_name: traidnet-frontend
     build:
       context: ./frontend
-    image: kja2aro/traidnet-frontend:latest
     environment:
-      TZ: Africa/Nairobi
+      - TZ=Africa/Nairobi
+      - VITE_PUSHER_APP_KEY=app-key
+      - VITE_PUSHER_HOST=localhost
+      - VITE_PUSHER_PORT=80
+      - VITE_PUSHER_SCHEME=ws
+      - VITE_PUSHER_PATH=/app
+      - VITE_PUSHER_APP_CLUSTER=mt1
+      - VITE_API_BASE_URL=http://localhost/api
     networks:
-      - wifi-network
+      - traidnet-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
-  backend:
-    container_name: wifi-hotspot-backend-1
+  traidnet-backend:
+    container_name: traidnet-backend
     build:
       context: ./backend
-    image: kja2aro/traidnet-backend:latest
+      dockerfile: Dockerfile
     environment:
-      APP_ENV: production
-      DB_CONNECTION: pgsql
-      DB_HOST: hotspot-billing-postgres-1
-      DB_PORT: 5432
-      DB_DATABASE: wifi_hotspot
-      DB_USERNAME: admin
-      DB_PASSWORD: secret
-      TZ: Africa/Nairobi
+      - DB_CONNECTION=pgsql
+      - DB_HOST=traidnet-postgres
+      - DB_PORT=5432
+      - DB_DATABASE=wifi_hotspot
+      - DB_USERNAME=admin
+      - DB_PASSWORD=secret
+      - QUEUE_CONNECTION=database
+      - BROADCAST_DRIVER=pusher
+      - PUSHER_APP_ID=app-id
+      - PUSHER_APP_KEY=app-key
+      - PUSHER_APP_SECRET=app-secret
+      - PUSHER_HOST=traidnet-soketi
+      - PUSHER_PORT=6001
+      - PUSHER_SCHEME=http
+      - TZ=Africa/Nairobi
+      - SANCTUM_STATEFUL_DOMAINS=localhost
+      - SESSION_DOMAIN=localhost
+      - RADIUS_SERVER_HOST=traidnet-freeradius
+      - RADIUS_SERVER_PORT=1812
+      - RADIUS_SECRET=testing123
+      - REDIS_HOST=traidnet-redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=null
+      - CACHE_DRIVER=redis
+      - SESSION_DRIVER=redis
+      # Automatic Database Setup
+      - AUTO_MIGRATE=true
+      - AUTO_SEED=true
+      - FRESH_INSTALL=false
+      - APP_ENV=development
     depends_on:
-      - postgres
-    volumes:
-      - ./backend:/app
+      traidnet-postgres:
+        condition: service_healthy
+      traidnet-redis:
+        condition: service_healthy
+      traidnet-soketi:
+        condition: service_started
     networks:
-      - wifi-network
+      - traidnet-network
+    healthcheck:
+      test: ["CMD-SHELL", "php-fpm -t || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    volumes:
+      - laravel-storage:/var/www/html/storage
+      - laravel-logs:/var/www/html/storage/logs
 
-  postgres:
-    container_name: hotspot-billing-postgres-1
+  traidnet-freeradius:
+    build: 
+      context: ./freeradius
+      dockerfile: Dockerfile  
+    container_name: traidnet-freeradius
+    restart: unless-stopped
+    environment:
+      - TZ=Africa/Nairobi
+    ports:
+      - "1812-1813:1812-1813/udp"
+    # Configs are now copied into container during build (no volume mounts)
+    # This fixes FreeRADIUS "globally writable" permission errors
+    networks:
+      traidnet-network:
+        aliases:
+          - freeradius
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+    depends_on:
+      traidnet-postgres:
+        condition: service_healthy
+      traidnet-backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/opt/sbin/radiusd", "-C"]  
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    entrypoint: /bin/sh
+    command: >
+      -c "
+      sleep 5 &&
+      ln -sf /opt/etc/raddb/mods-available/sql /opt/etc/raddb/mods-enabled/sql &&
+      exec /opt/sbin/radiusd -X
+      "
+
+  traidnet-soketi:
+    build: 
+      context: ./soketi
+      dockerfile: Dockerfile
+    container_name: traidnet-soketi
+    restart: unless-stopped
+    environment:
+      SOKETI_DEBUG: 1
+      SOKETI_DEFAULT_APP_ID: app-id
+      SOKETI_DEFAULT_APP_KEY: app-key
+      SOKETI_DEFAULT_APP_SECRET: app-secret
+      SOKETI_DEFAULT_APP_ENABLE_CLIENT_MESSAGES: true
+      SOKETI_DEFAULT_APP_ENABLE_USER_AUTHENTICATION: true
+      SOKETI_DEFAULT_APP_USER_AUTHENTICATION_TIMEOUT: 30000
+      SOKETI_DEFAULT_APP_WEBHOOKS: '[{"url":"http://traidnet-nginx/api/broadcasting/auth","event_types":["channel_occupied","channel_vacated","member_added","member_removed"]}]'
+      SOKETI_DEFAULT_APP_MAX_BACKEND_EVENTS_PER_SEC: -1
+      SOKETI_DEFAULT_APP_MAX_CLIENT_EVENTS_PER_SEC: -1
+      SOKETI_DEFAULT_APP_MAX_READ_REQUESTS_PER_SEC: -1
+      SOKETI_HOST: 0.0.0.0
+      SOKETI_PORT: 6001
+      SOKETI_METRICS_SERVER_PORT: 9601
+      SOKETI_METRICS_ENABLED: true
+    ports:
+      - "6001:6001"
+      - "9601:9601"
+    networks:
+      - traidnet-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "-s", "-o", "/dev/null", "--max-time", "5", "--connect-timeout", "3", "--retry", "2", "--http1.1", "http://localhost:9601/"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+  traidnet-redis:
+    container_name: traidnet-redis
+    image: redis:7-alpine
+    command: redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru --save 60 1000
+    restart: unless-stopped
+    environment:
+      - TZ=Africa/Nairobi
+    networks:
+      - traidnet-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    volumes:
+      - redis_data:/data
+
+  traidnet-postgres:
+    container_name: traidnet-postgres
     image: postgres:16.10-trixie
     environment:
-      POSTGRES_DB: wifi_hotspot
-      POSTGRES_USER: admin
-      POSTGRES_PASSWORD: secret
-      TZ: Africa/Nairobi
+      - POSTGRES_DB=wifi_hotspot
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=secret
+      - TZ=Africa/Nairobi
+      # Connection pooling and performance optimization
+      - POSTGRES_MAX_CONNECTIONS=200
+      - POSTGRES_SHARED_BUFFERS=256MB
+      - POSTGRES_EFFECTIVE_CACHE_SIZE=1GB
+      - POSTGRES_MAINTENANCE_WORK_MEM=64MB
+      - POSTGRES_CHECKPOINT_COMPLETION_TARGET=0.9
+      - POSTGRES_WAL_BUFFERS=16MB
+      - POSTGRES_DEFAULT_STATISTICS_TARGET=100
+      - POSTGRES_RANDOM_PAGE_COST=1.1
+      - POSTGRES_EFFECTIVE_IO_CONCURRENCY=200
+      - POSTGRES_WORK_MEM=4MB
+      - POSTGRES_MIN_WAL_SIZE=1GB
+      - POSTGRES_MAX_WAL_SIZE=4GB
+    command: >
+      postgres
+      -c max_connections=200
+      -c shared_buffers=256MB
+      -c effective_cache_size=1GB
+      -c maintenance_work_mem=64MB
+      -c checkpoint_completion_target=0.9
+      -c wal_buffers=16MB
+      -c default_statistics_target=100
+      -c random_page_cost=1.1
+      -c effective_io_concurrency=200
+      -c work_mem=4MB
+      -c min_wal_size=1GB
+      -c max_wal_size=4GB
+      -c max_worker_processes=4
+      -c max_parallel_workers_per_gather=2
+      -c max_parallel_workers=4
+      -c max_parallel_maintenance_workers=2
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      # init.sql removed - using Laravel migrations instead
       - ./postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql
+      #- ./postgres/radius-schema.sql:/docker-entrypoint-initdb.d/01-radius-schema.sql
     networks:
-      - wifi-network
+      traidnet-network:
+        aliases:
+          - postgres
+          - database
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "admin", "-d", "wifi_hotspot"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
 
 volumes:
   postgres_data:
+    name: traidnet-postgres-data
+  redis_data:
+    name: traidnet-redis-data
+  laravel-storage:
+  laravel-logs:
 
 networks:
-  wifi-network:
-    name: wifi-network
+  traidnet-network:
+    name: traidnet-network
     driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+          gateway: 172.20.255.254

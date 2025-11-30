@@ -1,0 +1,10 @@
+User-Name = "testuser"
+Acct-Status-Type = Interim-Update
+Acct-Session-Id = "test-session-001"
+NAS-IP-Address = 192.168.1.1
+NAS-Port = 1
+Framed-IP-Address = 10.0.0.100
+Acct-Session-Time = 300
+Acct-Input-Octets = 1048576
+Acct-Output-Octets = 2097152
+Acct-Delay-Time = 0

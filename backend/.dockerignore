@@ -1,0 +1,46 @@
+ # Ignore logs and temporary files
+*.log
+.DS_Store
+Thumbs.db
+
+# Ignore environment and configuration files
+
+
+.auth.json
+.phpactor.json
+.phpunit.result.cache
+
+# Ignore IDE and editor directories
+/.fleet
+/.idea
+/.nova
+/.phpunit.cache
+/.vscode
+/.zed
+
+# Ignore development and build artifacts
+node_modules
+public/build
+public/hot
+vendor
+Homestead.json
+Homestead.yaml
+
+# Ignore Git repository
+.git
+
+# Ignore storage subdirectories except app/public
+storage/logs/*
+storage/framework/*
+storage/cache/*
+
+# Explicitly include necessary directories
+!storage/app/public
+!public
+
+# Ignore symlink (will be recreated in container)
+public/storage
+
+# Ignore documentation
+docs/
+

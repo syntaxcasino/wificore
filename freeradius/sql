@@ -1,0 +1,78 @@
+sql {
+    driver = "rlm_sql_postgresql"
+    dialect = "postgresql"
+
+    server = "traidnet-postgres"
+    port = 5432
+    login = "admin"
+    password = "secret"
+    radius_db = "wifi_hotspot"
+
+    # Table configuration
+    acct_table1 = "radacct"
+    acct_table2 = "radacct"
+    postauth_table = "radpostauth"
+    authcheck_table = "radcheck"
+    groupcheck_table = "radgroupcheck"
+    authreply_table = "radreply"
+    groupreply_table = "radgroupreply"
+    usergroup_table = "radusergroup"
+
+    read_clients = yes
+    read_groups = yes
+    read_profiles = yes
+    delete_stale_sessions = yes
+
+    # Set to 'yes' to read radius clients from the database
+    read_clients = yes
+
+    # Table to store radius client details
+    client_table = "nas"
+
+    # Connection pool settings
+    pool {
+        start = 5
+        min = 5
+        max = 10
+        spare = 3
+        uses = 0
+        lifetime = 0
+        idle_timeout = 60
+        retry_delay = 1
+    }
+
+    # Set to 'yes' for no delay (for testing only!)
+    no_query_on_start = no
+    
+    # SQL user name attribute - what to use as the username in queries
+    sql_user_name = "%{User-Name}"
+    
+    # Group attribute for SQL queries
+    group_attribute = "SQL-Group"
+    
+    # Read database-specific queries
+    $INCLUDE ${modconfdir}/${.:name}/main/${dialect}/queries.conf
+    
+    # Accounting configuration
+    accounting {
+        reference = "%{tolower:type.%{Acct-Status-Type}.query}"
+        
+        type {
+            accounting-on {
+                query = "${....accounting_onoff_query}"
+            }
+            accounting-off {
+                query = "${....accounting_onoff_query}"
+            }
+            start {
+                query = "${....accounting_start_query}"
+            }
+            interim-update {
+                query = "${....accounting_update_query}"
+            }
+            stop {
+                query = "${....accounting_stop_query}"
+            }
+        }
+    }
+}

@@ -95,6 +95,35 @@ return [
             'prefix_indexes' => true,
             'search_path' => 'public',
             'sslmode' => 'prefer',
+            
+            // Connection pooling and performance optimization
+            'options' => [
+                // Enable persistent connections for connection pooling
+                PDO::ATTR_PERSISTENT => env('DB_PERSISTENT', true),
+                
+                // Set connection timeout
+                PDO::ATTR_TIMEOUT => env('DB_TIMEOUT', 5),
+                
+                // Enable prepared statement emulation for better performance
+                PDO::ATTR_EMULATE_PREPARES => false,
+                
+                // Set error mode to exceptions
+                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                
+                // Disable autocommit for better transaction performance
+                PDO::ATTR_AUTOCOMMIT => true,
+                
+                // Set default fetch mode
+                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_OBJ,
+            ],
+            
+            // Pool configuration
+            'pool' => [
+                'min_connections' => env('DB_POOL_MIN', 2),
+                'max_connections' => env('DB_POOL_MAX', 10),
+                'idle_timeout' => env('DB_POOL_IDLE_TIMEOUT', 60),
+                'wait_timeout' => env('DB_POOL_WAIT_TIMEOUT', 30),
+            ],
         ],
 
         'sqlsrv' => [

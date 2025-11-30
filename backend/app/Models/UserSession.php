@@ -11,17 +11,24 @@ class UserSession extends Model
     use HasFactory;
 
     protected $fillable = [
+        'tenant_id',
         'payment_id',
         'voucher',
         'mac_address',
         'start_time',
         'end_time',
         'status',
+        'data_used',
+        'data_upload',
+        'data_download',
     ];
 
     protected $casts = [
         'start_time' => 'datetime',
         'end_time' => 'datetime',
+        'data_used' => 'integer',
+        'data_upload' => 'integer',
+        'data_download' => 'integer',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];
