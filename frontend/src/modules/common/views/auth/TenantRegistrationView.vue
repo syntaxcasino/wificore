@@ -157,67 +157,43 @@
           </div>
         </div>
 
-        <!-- Optional Fields (Collapsible) -->
+        <!-- Optional Fields (Always Visible) -->
         <div class="border-t border-gray-200 pt-4">
-          <button 
-            type="button"
-            @click="showOptional = !showOptional"
-            class="text-sm text-green-600 hover:text-green-800 font-medium flex items-center transition-colors"
-          >
-            <svg 
-              class="w-4 h-4 mr-1.5 transition-transform duration-200" 
-              :class="{ 'rotate-90': showOptional }"
-              fill="none" 
-              stroke="currentColor" 
-              viewBox="0 0 24 24"
-            >
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-            </svg>
-            {{ showOptional ? 'Hide' : 'Add' }} optional information (company email, phone, address)
-          </button>
-
-          <transition
-            enter-active-class="transition-all duration-300 ease-out"
-            enter-from-class="opacity-0 max-h-0"
-            enter-to-class="opacity-100 max-h-96"
-            leave-active-class="transition-all duration-200 ease-in"
-            leave-from-class="opacity-100 max-h-96"
-            leave-to-class="opacity-0 max-h-0"
-          >
-            <div v-if="showOptional" class="mt-4 space-y-4 overflow-hidden">
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label class="block text-sm font-medium text-gray-700 mb-2">Company Email</label>
-                  <input 
-                    v-model="form.tenant_email" 
-                    type="email" 
-                    class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all" 
-                    placeholder="contact@company.com"
-                  />
-                </div>
-                
-                <div>
-                  <label class="block text-sm font-medium text-gray-700 mb-2">Phone Number</label>
-                  <input 
-                    v-model="form.tenant_phone" 
-                    type="tel" 
-                    class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all" 
-                    placeholder="+254712345678"
-                  />
-                </div>
+          <h3 class="text-sm font-semibold text-gray-700 mb-4">Additional Information (Optional)</h3>
+          
+          <div class="space-y-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Company Email</label>
+                <input 
+                  v-model="form.tenant_email" 
+                  type="email" 
+                  class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all" 
+                  placeholder="contact@company.com"
+                />
               </div>
               
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Company Address</label>
-                <textarea 
-                  v-model="form.tenant_address" 
-                  rows="2"
-                  class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all resize-none" 
-                  placeholder="Your company address"
-                ></textarea>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Phone Number</label>
+                <input 
+                  v-model="form.tenant_phone" 
+                  type="tel" 
+                  class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all" 
+                  placeholder="+254712345678"
+                />
               </div>
             </div>
-          </transition>
+            
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2">Company Address</label>
+              <textarea 
+                v-model="form.tenant_address" 
+                rows="2"
+                class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all resize-none" 
+                placeholder="Your company address"
+              ></textarea>
+            </div>
+          </div>
         </div>
 
         <!-- Terms & Conditions -->
@@ -325,7 +301,6 @@ const loading = ref(false)
 const error = ref('')
 const errors = ref({})
 const success = ref('')
-const showOptional = ref(false)
 const generatedSlug = ref('')
 const baseDomain = ref(import.meta.env.VITE_BASE_DOMAIN || 'yourdomain.com')
 
