@@ -50,19 +50,28 @@ class RadiusService extends TenantAwareService
     }
 
     /**
-     * Create new user in RADIUS
+     * Create new user in RADIUS (tenant-aware)
+     * 
+     * IMPORTANT: This method uses the current tenant context (search_path).
+     * Ensure tenant context is set before calling this method.
      */
     public function createUser(string $username, string $password): bool
     {
         try {
-            \Log::info("RADIUS: Creating user: {$username}");
+            \Log::info("RADIUS: Creating user in tenant schema: {$username}");
             
-            // Insert into radcheck table
+            // Get current search path for logging
+            $searchPath = \DB::selectOne("SHOW search_path")->search_path ?? 'unknown';
+            \Log::debug("RADIUS: Current search_path: {$searchPath}");
+            
+            // Insert into radcheck table (uses current search_path - tenant schema)
             \DB::table('radcheck')->insert([
                 'username' => $username,
                 'attribute' => 'Cleartext-Password',
                 'op' => ':=',
                 'value' => $password,
+                'created_at' => now(),
+                'updated_at' => now(),
             ]);
             
             // Add default admin attributes (optional)
@@ -72,10 +81,12 @@ class RadiusService extends TenantAwareService
                     'attribute' => 'Service-Type',
                     'op' => ':=',
                     'value' => 'Administrative-User',
+                    'created_at' => now(),
+                    'updated_at' => now(),
                 ],
             ]);
             
-            \Log::info("RADIUS: User created successfully: {$username}");
+            \Log::info("RADIUS: User created successfully in tenant schema: {$username}");
             
             return true;
             

@@ -15,7 +15,7 @@ return [
     |
     */
 
-    'paths' => ['api/*', 'sanctum/csrf-cookie', '192.168.100.24', '*.ngrok-free.app', 'broadcasting/auth'],
+    'paths' => ['api/*', 'sanctum/csrf-cookie', '192.168.100.24', '*.ngrok-free.app', 'broadcasting/auth', '*.localhost'],
 
     'allowed_methods' => ['*'],
 

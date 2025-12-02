@@ -161,12 +161,6 @@
           Already have an account? Sign In
         </button>
         <div v-else class="space-y-2">
-          <button 
-            @click="toggleMode" 
-            class="text-green-600 hover:text-green-800 font-medium transition-colors block mx-auto"
-          >
-            Don't have an account? Sign Up
-          </button>
           <p class="text-gray-600 text-sm">or</p>
           <router-link 
             to="/register" 

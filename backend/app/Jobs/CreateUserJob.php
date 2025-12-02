@@ -42,9 +42,12 @@ class CreateUserJob implements ShouldQueue
      */
     public function handle(): void
     {
+        $tenantContext = app(\App\Services\TenantContext::class);
+        
         DB::beginTransaction();
         
         try {
+            // Create user in public schema (users table is always in public)
             $user = User::create([
                 'tenant_id' => $this->tenantId,
                 'name' => $this->userData['name'],
@@ -58,29 +61,44 @@ class CreateUserJob implements ShouldQueue
                 'account_number' => $this->generateAccountNumber($this->userData['role']),
             ]);
             
-            // Add to RADIUS if not system admin
-            if ($user->role !== User::ROLE_SYSTEM_ADMIN) {
+            // Add to RADIUS based on role
+            if ($user->role === User::ROLE_SYSTEM_ADMIN) {
+                // System admins go to public schema RADIUS tables
                 DB::table('radcheck')->insert([
                     'username' => $user->username,
                     'attribute' => 'Cleartext-Password',
                     'op' => ':=',
                     'value' => $this->plainPassword,
+                    'created_at' => now(),
+                    'updated_at' => now(),
                 ]);
                 
-                // Add schema mapping for tenant users
-                if ($this->tenantId) {
-                    $tenant = \App\Models\Tenant::find($this->tenantId);
-                    if ($tenant) {
-                        DB::table('radius_user_schema_mapping')->insert([
+                Log::info('System admin RADIUS entry created in public schema', [
+                    'username' => $user->username,
+                ]);
+            } else if ($this->tenantId) {
+                // Tenant users go to tenant schema RADIUS tables
+                $tenant = \App\Models\Tenant::find($this->tenantId);
+                
+                if ($tenant && $tenant->schema_created) {
+                    // Set tenant context to create RADIUS entry in tenant schema
+                    $tenantContext->runInTenantContext($tenant, function() use ($user) {
+                        $searchPath = DB::selectOne("SHOW search_path")->search_path ?? 'unknown';
+                        
+                        DB::table('radcheck')->insert([
                             'username' => $user->username,
-                            'schema_name' => $tenant->schema_name,
-                            'tenant_id' => $this->tenantId,
-                            'user_role' => $user->role,
-                            'is_active' => true,
+                            'attribute' => 'Cleartext-Password',
+                            'op' => ':=',
+                            'value' => $this->plainPassword,
                             'created_at' => now(),
                             'updated_at' => now(),
                         ]);
-                    }
+                        
+                        Log::info('Tenant user RADIUS entry created in tenant schema', [
+                            'username' => $user->username,
+                            'schema' => $searchPath,
+                        ]);
+                    });
                 }
             }
             
