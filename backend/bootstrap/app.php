@@ -21,11 +21,13 @@ return Application::configure(basePath: dirname(__DIR__))
             'system.admin' => \App\Http\Middleware\CheckSystemAdmin::class,
             'throttle.custom' => \App\Http\Middleware\ThrottleRequests::class,
             'ddos.protection' => \App\Http\Middleware\DDoSProtection::class,
+            'subdomain.binding' => \App\Http\Middleware\EnforceSubdomainTenantBinding::class,
         ]);
         
-        // Apply DDoS protection globally to API routes
+        // Apply DDoS protection and subdomain binding globally to API routes
         $middleware->api(prepend: [
             \App\Http\Middleware\DDoSProtection::class,
+            \App\Http\Middleware\EnforceSubdomainTenantBinding::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

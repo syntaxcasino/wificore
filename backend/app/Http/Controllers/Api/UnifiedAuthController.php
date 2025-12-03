@@ -107,7 +107,7 @@ class UnifiedAuthController extends Controller
             ], 403);
         }
 
-        // For tenant users, check if tenant is active
+        // For tenant users, check if tenant is active AND validate subdomain
         if ($user->tenant_id) {
             $tenant = $user->tenant;
             
@@ -130,6 +130,65 @@ class UnifiedAuthController extends Controller
                     'success' => false,
                     'message' => "Your organization account has been suspended. Reason: {$tenant->suspension_reason}",
                 ], 403);
+            }
+
+            // SECURITY: Validate subdomain-tenant binding
+            $host = $request->getHost();
+            if (!$this->isLocalhost($host)) {
+                $subdomain = $this->extractSubdomain($host);
+                
+                if (!$this->validateSubdomainForTenant($subdomain, $tenant)) {
+                    \Log::warning('Login attempt with wrong subdomain', [
+                        'user_id' => $user->id,
+                        'username' => $user->username,
+                        'user_tenant_subdomain' => $tenant->subdomain,
+                        'requested_subdomain' => $subdomain,
+                        'host' => $host,
+                        'ip' => $request->ip(),
+                    ]);
+
+                    RateLimiter::hit($key, 60);
+
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Access denied. Please use your organization subdomain to login.',
+                        'code' => 'SUBDOMAIN_MISMATCH',
+                        'details' => [
+                            'your_subdomain' => $tenant->subdomain,
+                            'correct_url' => "https://{$tenant->subdomain}." . config('app.base_domain'),
+                        ],
+                    ], 403);
+                }
+            }
+        }
+
+        // System admins can login from any subdomain, but validate they're not using a tenant subdomain
+        if ($user->role === 'system_admin') {
+            $host = $request->getHost();
+            if (!$this->isLocalhost($host)) {
+                $subdomain = $this->extractSubdomain($host);
+                
+                // Check if subdomain belongs to a tenant
+                if ($subdomain) {
+                    $tenantExists = \App\Models\Tenant::where('subdomain', $subdomain)
+                        ->orWhere('custom_domain', $host)
+                        ->exists();
+                    
+                    if ($tenantExists) {
+                        \Log::warning('System admin attempting to login via tenant subdomain', [
+                            'user_id' => $user->id,
+                            'username' => $user->username,
+                            'subdomain' => $subdomain,
+                            'host' => $host,
+                        ]);
+
+                        return response()->json([
+                            'success' => false,
+                            'message' => 'System admins cannot login via tenant subdomains. Please use the main domain.',
+                            'code' => 'SYSTEM_ADMIN_SUBDOMAIN_FORBIDDEN',
+                        ], 403);
+                    }
+                }
             }
         }
 
@@ -373,5 +432,58 @@ class UnifiedAuthController extends Controller
             User::ROLE_HOTSPOT_USER => '/user/dashboard',
             default => '/dashboard',
         };
+    }
+
+    /**
+     * Check if host is localhost or IP address
+     */
+    private function isLocalhost(string $host): bool
+    {
+        return in_array($host, ['localhost', '127.0.0.1', '::1']) ||
+               filter_var($host, FILTER_VALIDATE_IP);
+    }
+
+    /**
+     * Extract subdomain from host
+     */
+    private function extractSubdomain(string $host): ?string
+    {
+        $parts = explode('.', $host);
+        
+        // Need at least 3 parts for subdomain (subdomain.domain.tld)
+        if (count($parts) < 3) {
+            return null;
+        }
+
+        // Return first part as subdomain
+        return $parts[0];
+    }
+
+    /**
+     * Validate that subdomain matches tenant
+     */
+    private function validateSubdomainForTenant(?string $subdomain, $tenant): bool
+    {
+        if (!$subdomain) {
+            return false;
+        }
+
+        // Check if subdomain matches tenant's subdomain
+        if ($tenant->subdomain === $subdomain) {
+            return true;
+        }
+
+        // Check if subdomain matches tenant's custom domain
+        if ($tenant->custom_domain && $tenant->custom_domain === $subdomain) {
+            return true;
+        }
+
+        // Check if full host matches custom domain (for custom domains without subdomain)
+        $fullHost = request()->getHost();
+        if ($tenant->custom_domain && $tenant->custom_domain === $fullHost) {
+            return true;
+        }
+
+        return false;
     }
 }
