@@ -1,4 +1,13 @@
 <template>
+  <!-- Loading Progress Overlay -->
+  <LoadingProgress
+    :show="loading"
+    :title="loadingState.title"
+    :message="loadingState.message"
+    :progress="loadingState.progress"
+    :statusMessage="loadingState.statusMessage"
+  />
+
   <div class="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 via-emerald-50 to-teal-50 py-6 px-4">
     <div class="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-5xl my-auto">
       <!-- Header -->
@@ -279,8 +288,11 @@
 import { ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
+import LoadingProgress from '@/components/LoadingProgress.vue'
+import { useNotificationStore } from '@/stores/notifications'
 
 const router = useRouter()
+const notificationStore = useNotificationStore()
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost/api'
 
 const form = ref({
@@ -303,6 +315,14 @@ const errors = ref({})
 const success = ref('')
 const generatedSlug = ref('')
 const baseDomain = ref(import.meta.env.VITE_BASE_DOMAIN || 'yourdomain.com')
+
+// Loading state with progress tracking
+const loadingState = ref({
+  title: '🔄 Creating your account...',
+  message: 'Please wait while we set up your workspace',
+  progress: 0,
+  statusMessage: ''
+})
 
 const usernameAvailable = ref(null)
 const emailAvailable = ref(null)
@@ -378,25 +398,82 @@ const handleSubmit = async () => {
   success.value = ''
   loading.value = true
   
+  // Reset loading state
+  loadingState.value = {
+    title: '🔄 Creating your account...',
+    message: 'Setting up your workspace...',
+    progress: 0,
+    statusMessage: 'Initializing...'
+  }
+  
   try {
+    // Simulate progress stages
+    const progressStages = [
+      { progress: 20, message: 'Validating information...' },
+      { progress: 40, message: 'Creating tenant workspace...' },
+      { progress: 60, message: 'Setting up database schema...' },
+      { progress: 80, message: 'Configuring RADIUS authentication...' },
+      { progress: 90, message: 'Finalizing setup...' }
+    ]
+    
+    // Start progress simulation
+    let currentStage = 0
+    const progressInterval = setInterval(() => {
+      if (currentStage < progressStages.length) {
+        loadingState.value.progress = progressStages[currentStage].progress
+        loadingState.value.statusMessage = progressStages[currentStage].message
+        currentStage++
+      }
+    }, 800)
+    
     const response = await axios.post(`${API_URL}/register/tenant`, form.value)
     
+    // Clear progress interval
+    clearInterval(progressInterval)
+    
     if (response.data.success) {
+      // Complete progress
+      loadingState.value.progress = 100
+      loadingState.value.title = '✅ Account Created Successfully!'
+      loadingState.value.message = 'Your workspace is ready'
+      loadingState.value.statusMessage = 'Redirecting to login...'
+      
       success.value = '✅ Registration successful! Please check your email to verify your account.'
       
-      // Redirect to login after 3 seconds
-      setTimeout(() => {
-        router.push({
-          name: 'login',
-          query: { registered: 'true', email: form.value.admin_email }
-        })
-      }, 3000)
+      // Show success toast
+      notificationStore.success(
+        'Registration Successful! 🎉',
+        `Welcome ${form.value.admin_name}! Your account has been created. Please check your email to verify.`,
+        8000
+      )
+      
+      // Wait a moment to show completion
+      await new Promise(resolve => setTimeout(resolve, 1500))
+      
+      // Redirect to login
+      router.push({
+        name: 'login',
+        query: { 
+          registered: 'true', 
+          email: form.value.admin_email,
+          subdomain: generatedSlug.value
+        }
+      })
     }
   } catch (err) {
     console.error('Registration error:', err)
-    error.value = err.response?.data?.message || 'Registration failed. Please try again.'
+    
+    const errorMessage = err.response?.data?.message || 'Registration failed. Please try again.'
+    error.value = errorMessage
     errors.value = err.response?.data?.errors || {}
-  } finally {
+    
+    // Show error toast
+    notificationStore.error(
+      'Registration Failed',
+      errorMessage,
+      7000
+    )
+    
     loading.value = false
   }
 }

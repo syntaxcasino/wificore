@@ -3,6 +3,9 @@
     <router-view class="flex-1 overflow-y-auto" />
     <PWAUpdatePrompt />
     
+    <!-- Notification Toast (Global) -->
+    <NotificationToast />
+    
     <!-- Event Monitor (Development Only) -->
     <EventMonitor v-if="isDevelopment && showEventMonitor" @close="showEventMonitor = false" />
     
@@ -23,6 +26,7 @@
 import { ref } from 'vue'
 import EventMonitor from '@/modules/common/components/debug/EventMonitor.vue'
 import PWAUpdatePrompt from '@/components/PWAUpdatePrompt.vue'
+import NotificationToast from '@/components/NotificationToast.vue'
 
 const isDevelopment = import.meta.env.DEV
 const showEventMonitor = ref(isDevelopment)
