@@ -124,3 +124,29 @@ Broadcast::channel('system.admin.security-alerts', function ($user) {
     // Only system admins can access this channel
     return $user->isSystemAdmin();
 });
+
+// =============================================================================
+// WebSocket Real-Time Notification Channels
+// =============================================================================
+
+// Public tenant channel - all users in the tenant can listen
+Broadcast::channel('tenant.{tenantId}', function ($user, $tenantId) {
+    // System admins can access all tenant channels
+    if ($user->role === 'system_admin') {
+        return true;
+    }
+    // Users can only access their own tenant's channel
+    return $user->tenant_id === $tenantId;
+});
+
+// Private user channel - only the user can listen
+Broadcast::channel('user.{userId}', function ($user, $userId) {
+    // User can only listen to their own private channel
+    return $user->id === $userId;
+});
+
+// System admin channel - only system admins
+Broadcast::channel('system.admin', function ($user) {
+    // Only system admins can access this channel
+    return $user->role === 'system_admin';
+});

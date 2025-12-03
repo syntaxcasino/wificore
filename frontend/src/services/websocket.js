@@ -38,10 +38,10 @@ class WebSocketService {
       disableStats: true,
       enabledTransports: ['ws', 'wss'],
       cluster: import.meta.env.VITE_PUSHER_APP_CLUSTER || 'mt1',
-      authEndpoint: '/broadcasting/auth',
+      authEndpoint: '/api/broadcasting/auth',
       auth: {
         headers: {
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
+          Authorization: `Bearer ${localStorage.getItem('authToken')}`,
           Accept: 'application/json',
         },
       },

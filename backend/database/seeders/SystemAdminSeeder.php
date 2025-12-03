@@ -28,7 +28,7 @@ class SystemAdminSeeder extends Seeder
         
         // Create default system admin (landlord/system administrator)
         $username = 'sysadmin';
-        $password = 'Admin@123'; // Change this in production!
+        $password = 'Admin@123!'; // Change this in production!
         
         DB::beginTransaction();
         
