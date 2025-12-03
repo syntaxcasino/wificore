@@ -73,45 +73,120 @@ export const useNotificationStore = defineStore('notifications', () => {
    */
   const fromWebSocketEvent = (eventName, data) => {
     const eventNotifications = {
+      // Tenant events
       'TenantCreated': {
         type: 'success',
         title: 'New Tenant Registered',
-        message: `${data.tenant?.name} has been registered successfully.`
+        message: `${data.tenant?.name} has been registered successfully.`,
+        duration: 6000
       },
+      'TenantUpdated': {
+        type: 'info',
+        title: 'Tenant Updated',
+        message: `${data.tenant?.name} information has been updated.`,
+        duration: 5000
+      },
+      'TenantApproved': {
+        type: 'success',
+        title: 'Tenant Approved',
+        message: `${data.tenant?.name} has been approved and activated.`,
+        duration: 6000
+      },
+      'TenantSuspended': {
+        type: 'warning',
+        title: 'Tenant Suspended',
+        message: `${data.tenant?.name} has been suspended.`,
+        duration: 7000
+      },
+      
+      // User events
       'UserCreated': {
         type: 'success',
         title: 'User Created',
-        message: `${data.user?.name} has been added to the system.`
+        message: `${data.user?.name} has been added to the system.`,
+        duration: 5000
       },
       'UserUpdated': {
         type: 'info',
         title: 'User Updated',
-        message: `${data.user?.name}'s information has been updated.`
+        message: `${data.user?.name}'s information has been updated.`,
+        duration: 5000
       },
       'UserDeleted': {
         type: 'warning',
         title: 'User Deleted',
-        message: `User ${data.username} has been removed.`
+        message: `User ${data.username || data.user?.name} has been removed.`,
+        duration: 6000
       },
+      
+      // Authentication events
       'PasswordChanged': {
         type: 'success',
         title: 'Password Changed',
-        message: 'Your password has been updated successfully.'
-      },
-      'PaymentCompleted': {
-        type: 'success',
-        title: 'Payment Received',
-        message: `Payment of ${data.amount} completed successfully.`
-      },
-      'HotspotUserCreated': {
-        type: 'success',
-        title: 'Hotspot User Created',
-        message: `User ${data.username} has been provisioned.`
+        message: 'Your password has been updated successfully.',
+        duration: 5000
       },
       'AccountSuspended': {
         type: 'error',
         title: 'Account Suspended',
-        message: data.reason || 'Your account has been suspended.'
+        message: data.reason || 'Your account has been suspended.',
+        duration: 8000
+      },
+      'AccountActivated': {
+        type: 'success',
+        title: 'Account Activated',
+        message: 'Your account has been activated.',
+        duration: 5000
+      },
+      
+      // Payment events
+      'PaymentCompleted': {
+        type: 'success',
+        title: 'Payment Received',
+        message: `Payment of ${data.amount || 'amount'} completed successfully.`,
+        duration: 6000
+      },
+      'PaymentFailed': {
+        type: 'error',
+        title: 'Payment Failed',
+        message: data.message || 'Payment processing failed.',
+        duration: 7000
+      },
+      
+      // Hotspot events
+      'HotspotUserCreated': {
+        type: 'success',
+        title: 'Hotspot User Created',
+        message: `User ${data.username} has been provisioned.`,
+        duration: 5000
+      },
+      'HotspotUserExpired': {
+        type: 'warning',
+        title: 'User Session Expired',
+        message: `User ${data.username} session has expired.`,
+        duration: 6000
+      },
+      
+      // System events
+      'SystemNotification': {
+        type: data.type || 'info',
+        title: data.title || 'System Notification',
+        message: data.message || 'You have a new notification.',
+        duration: data.duration || 5000
+      },
+      'SystemAlert': {
+        type: 'warning',
+        title: data.title || 'System Alert',
+        message: data.message || 'System alert received.',
+        duration: data.duration || 8000
+      },
+      
+      // Admin events
+      'TenantRegistered': {
+        type: 'info',
+        title: 'New Tenant Registration',
+        message: `${data.tenant?.name} has registered and is pending approval.`,
+        duration: 8000
       }
     }
 
@@ -122,8 +197,9 @@ export const useNotificationStore = defineStore('notifications', () => {
       // Generic notification for unknown events
       add({
         type: 'info',
-        title: eventName,
-        message: data.message || 'Event received'
+        title: eventName.replace(/([A-Z])/g, ' $1').trim(),
+        message: data.message || 'Event received',
+        duration: 5000
       })
     }
   }

@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import axios from 'axios'
+import { websocketService } from '@/services/websocket'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api'
 
@@ -49,6 +50,9 @@ export const useAuthStore = defineStore('auth', {
           // Set axios default header
           axios.defaults.headers.common['Authorization'] = `Bearer ${token}`
           
+          // Initialize WebSocket connection
+          this.initializeWebSocket()
+          
           return { success: true, user, dashboardRoute: dashboard_route }
         }
         
@@ -64,6 +68,9 @@ export const useAuthStore = defineStore('auth', {
     
     async logout() {
       try {
+        // Disconnect WebSocket before logout
+        this.disconnectWebSocket()
+        
         if (this.token) {
           await axios.post(`${API_URL}/logout`, {}, {
             headers: { Authorization: `Bearer ${this.token}` }
@@ -153,6 +160,52 @@ export const useAuthStore = defineStore('auth', {
         this.dashboardRoute = localStorage.getItem('dashboardRoute') || '/dashboard'
         
         axios.defaults.headers.common['Authorization'] = `Bearer ${token}`
+        
+        // Initialize WebSocket if user is authenticated
+        this.initializeWebSocket()
+      }
+    },
+    
+    initializeWebSocket() {
+      if (!this.user) {
+        console.warn('Cannot initialize WebSocket: No user authenticated')
+        return
+      }
+      
+      try {
+        console.log('🔌 Initializing WebSocket for user:', this.user.username)
+        
+        // Initialize WebSocket service
+        websocketService.initialize()
+        
+        // Subscribe to tenant channel if user has tenant
+        if (this.tenantId) {
+          websocketService.subscribeTenantChannel(this.tenantId)
+        }
+        
+        // Subscribe to user private channel
+        if (this.user.id) {
+          websocketService.subscribeUserChannel(this.user.id)
+        }
+        
+        // Subscribe to system admin channel if user is system admin
+        if (this.isSystemAdmin) {
+          websocketService.subscribeSystemAdminChannel()
+        }
+        
+        console.log('✅ WebSocket initialized successfully')
+      } catch (error) {
+        console.error('❌ Failed to initialize WebSocket:', error)
+      }
+    },
+    
+    disconnectWebSocket() {
+      try {
+        console.log('🔌 Disconnecting WebSocket')
+        websocketService.disconnect()
+        console.log('✅ WebSocket disconnected')
+      } catch (error) {
+        console.error('❌ Failed to disconnect WebSocket:', error)
       }
     },
   },

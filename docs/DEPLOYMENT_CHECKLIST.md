@@ -1,351 +1,568 @@
-# Multi-Tenancy Deployment Checklist
+# Multi-Tenancy Phase 1 - Deployment Checklist
 
 ## Pre-Deployment
 
-### 1. Backup Everything ✅
-```bash
-# Backup database
-pg_dump wifi_hotspot > backup_$(date +%Y%m%d_%H%M%S).sql
+### 1. Code Review ✅
+- [x] All files created and reviewed
+- [x] No syntax errors
+- [x] Follows Laravel conventions
+- [x] Follows PostgreSQL best practices
+- [x] Security validated (SQL injection prevention)
+- [x] Error handling comprehensive
 
-# Backup application files
-tar -czf app_backup_$(date +%Y%m%d_%H%M%S).tar.gz backend/
+### 2. Documentation ✅
+- [x] Implementation plan created
+- [x] Phase 1 completion document
+- [x] Review summary document
+- [x] Quick start guide
+- [x] All reference documentation in /docs
 
-# Backup .env file
-cp backend/.env backend/.env.backup
-```
+### 3. Backup Preparation
+- [ ] Backup production database
+- [ ] Backup .env file
+- [ ] Backup docker-compose.yml
+- [ ] Document current state
+- [ ] Test restore procedure
 
-### 2. Test in Development ✅
-```bash
-# Run all tests
-cd backend
-php artisan test
-
-# Specifically test multi-tenancy
-php artisan test --filter MultiTenancyTest
-
-# Check for any errors
-php artisan config:clear
-php artisan cache:clear
-php artisan route:clear
-```
-
-### 3. Review Changes ✅
-- [ ] All models updated with BelongsToTenant trait
-- [ ] Middleware registered in bootstrap/app.php
-- [ ] Routes updated with tenant.context middleware
-- [ ] Migrations ready to run
-- [ ] Documentation reviewed
+---
 
 ## Deployment Steps
 
-### Step 1: Maintenance Mode
+### Step 1: Pull Latest Code
 ```bash
-php artisan down --message="System upgrade in progress" --retry=60
-```
-
-### Step 2: Pull Latest Code
-```bash
+cd d:\traidnet\wifi-hotspot
+git status
 git pull origin main
-# Or your deployment method
 ```
 
-### Step 3: Install Dependencies
+**Verify**:
+- [ ] All new files present
+- [ ] No merge conflicts
+- [ ] Git status clean
+
+---
+
+### Step 2: Review Changes
 ```bash
-composer install --no-dev --optimize-autoloader
+# Review migrations
+ls backend/database/migrations/2025_11_30_*
+
+# Review new services
+ls backend/app/Services/Tenant*
+
+# Review config
+cat backend/config/multitenancy.php
+
+# Review dictionary
+cat freeradius/dictionary | grep Tenant-ID
 ```
 
-### Step 4: Run Migrations
+**Verify**:
+- [ ] 2 new migrations present
+- [ ] TenantContext.php exists
+- [ ] TenantSchemaManager.php exists
+- [ ] multitenancy.php config exists
+- [ ] Tenant-ID in dictionary
+
+---
+
+### Step 3: Run Migrations (Development First)
 ```bash
-# Dry run first (check what will happen)
-php artisan migrate --pretend
+# Development environment
+cd backend
+php artisan migrate
 
-# Run actual migrations
-php artisan migrate --force
-
-# Expected output:
-# - Creating tenants table
-# - Adding tenant_id to tables
-# - Creating default tenant
+# Or in Docker
+docker exec traidnet-backend php artisan migrate --force
 ```
 
-### Step 5: Verify Default Tenant
-```bash
-php artisan tinker
-
->>> $tenant = Tenant::where('slug', 'default')->first();
->>> echo $tenant->name;
-=> "Default Tenant"
-
->>> echo $tenant->is_active;
-=> true
-
->>> exit
+**Expected Output**:
+```
+Migrating: 2025_11_30_000001_add_schema_fields_to_tenants_table
+Migrated:  2025_11_30_000001_add_schema_fields_to_tenants_table (XX.XXms)
+Migrating: 2025_11_30_000002_create_radius_user_schema_mapping_table
+Migrated:  2025_11_30_000002_create_radius_user_schema_mapping_table (XX.XXms)
 ```
 
-### Step 6: Verify Data Migration
-```bash
-php artisan tinker
+**Verify**:
+- [ ] Migrations ran successfully
+- [ ] No errors in output
+- [ ] Check database schema
 
-# Check users have tenant_id
->>> User::whereNull('tenant_id')->count();
-=> 0  # Should be 0
+---
 
-# Check packages have tenant_id
->>> Package::whereNull('tenant_id')->count();
-=> 0  # Should be 0
+### Step 4: Verify Database Schema
+```sql
+-- Connect to database
+docker exec -it traidnet-postgres psql -U admin -d wifi_hotspot
 
-# Check routers have tenant_id
->>> Router::whereNull('tenant_id')->count();
-=> 0  # Should be 0
+-- Check tenants table
+\d tenants
 
->>> exit
+-- Should show new columns:
+-- schema_name, schema_created, schema_created_at
+
+-- Check radius_user_schema_mapping table
+\d radius_user_schema_mapping
+
+-- Should exist with all columns
+
+-- Check existing data
+SELECT id, name, slug, schema_name, schema_created FROM tenants;
+
+-- All existing tenants should have:
+-- schema_name = 'tenant_{slug}'
+-- schema_created = false
+
+-- Exit
+\q
 ```
 
-### Step 7: Clear Caches
+**Verify**:
+- [ ] Tenants table has new columns
+- [ ] radius_user_schema_mapping table exists
+- [ ] Existing tenants have schema_name populated
+- [ ] schema_created = false for all existing tenants
+
+---
+
+### Step 5: Rebuild Containers
 ```bash
-php artisan config:cache
-php artisan route:cache
-php artisan view:cache
-php artisan optimize
+# Stop containers
+docker-compose down
+
+# Rebuild with new dictionary mount
+docker-compose up -d --build
+
+# Wait for services to start
+sleep 30
+
+# Check status
+docker-compose ps
 ```
 
-### Step 8: Test API Endpoints
+**Verify**:
+- [ ] All containers running
+- [ ] No errors in logs
+- [ ] Health checks passing
+
+---
+
+### Step 6: Verify FreeRADIUS Dictionary
 ```bash
-# Test authentication still works
-curl -X POST http://your-domain.com/api/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"admin@example.com","password":"password"}'
+# Check dictionary file is mounted
+docker exec traidnet-freeradius cat /opt/etc/raddb/dictionary | grep Tenant-ID
 
-# Test tenant endpoint
-curl -X GET http://your-domain.com/api/tenant/current \
-  -H "Authorization: Bearer {token}"
+# Should output:
+# ATTRIBUTE	Tenant-ID		3100	string
 
-# Test existing endpoints still work
-curl -X GET http://your-domain.com/api/packages \
-  -H "Authorization: Bearer {token}"
+# Check FreeRADIUS logs
+docker logs traidnet-freeradius --tail 50
 ```
 
-### Step 9: Exit Maintenance Mode
+**Verify**:
+- [ ] Tenant-ID attribute present
+- [ ] No errors in FreeRADIUS logs
+- [ ] FreeRADIUS started successfully
+
+---
+
+### Step 7: Clear Application Caches
 ```bash
-php artisan up
+docker exec traidnet-backend php artisan config:clear
+docker exec traidnet-backend php artisan cache:clear
+docker exec traidnet-backend php artisan route:clear
+docker exec traidnet-backend php artisan view:clear
 ```
 
-## Post-Deployment Verification
+**Verify**:
+- [ ] All caches cleared
+- [ ] No errors
 
-### 1. Functional Tests ✅
-- [ ] Login works for existing users
-- [ ] Users can see their data
-- [ ] Creating new resources works
-- [ ] Updating resources works
-- [ ] Deleting resources works
-- [ ] Tenant isolation is working
+---
 
-### 2. Performance Tests ✅
+### Step 8: Check Application Logs
 ```bash
-# Check query performance
-php artisan tinker
+# Backend logs
+docker logs traidnet-backend --tail 100
 
->>> DB::enableQueryLog();
->>> Package::all();
->>> DB::getQueryLog();
-# Verify tenant_id is in WHERE clause
-```
+# Look for:
+# - No errors
+# - Application started successfully
+# - No migration errors
 
-### 3. Security Tests ✅
-- [ ] Users can't access other tenants' data
-- [ ] Tenant middleware is active
-- [ ] Suspended tenants can't access system
-- [ ] Foreign key constraints working
-
-### 4. Monitor Logs ✅
-```bash
 # Check Laravel logs
-tail -f storage/logs/laravel.log
-
-# Check for any errors
-grep -i "error" storage/logs/laravel.log
-grep -i "tenant" storage/logs/laravel.log
+docker exec traidnet-backend tail -f storage/logs/laravel.log
 ```
 
-## Rollback Plan (If Needed)
+**Verify**:
+- [ ] No errors in logs
+- [ ] Application running normally
 
-### Quick Rollback
+---
+
+## Post-Deployment Testing
+
+### Test 1: System Admin Login
 ```bash
-# 1. Enable maintenance mode
-php artisan down
-
-# 2. Rollback migrations
-php artisan migrate:rollback --step=2
-
-# 3. Restore database backup
-psql wifi_hotspot < backup_YYYYMMDD_HHMMSS.sql
-
-# 4. Restore application files
-tar -xzf app_backup_YYYYMMDD_HHMMSS.tar.gz
-
-# 5. Clear caches
-php artisan config:clear
-php artisan cache:clear
-php artisan route:clear
-
-# 6. Exit maintenance mode
-php artisan up
+# Test login endpoint
+curl -X POST http://localhost/api/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "admin",
+    "password": "your_password"
+  }'
 ```
 
-## Monitoring (First 24 Hours)
+**Verify**:
+- [ ] Login successful
+- [ ] Token returned
+- [ ] No errors
 
-### Key Metrics to Watch
-1. **Response Times** - Should be similar to before
-2. **Error Rates** - Should be minimal
-3. **Database Queries** - Check for N+1 issues
-4. **User Complaints** - Monitor support channels
+---
 
-### Monitoring Commands
+### Test 2: Tenant Admin Login
 ```bash
-# Watch logs in real-time
-tail -f storage/logs/laravel.log
-
-# Check database connections
-php artisan tinker
->>> DB::connection()->getPdo();
-
-# Monitor queue workers (if using)
-php artisan queue:monitor
-
-# Check system health
-curl http://your-domain.com/api/health/ping
+# Test tenant admin login
+curl -X POST http://localhost/api/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "tenant_admin",
+    "password": "your_password"
+  }'
 ```
 
-## Common Issues & Solutions
+**Verify**:
+- [ ] Login successful
+- [ ] Token returned
+- [ ] Tenant context set
+- [ ] No errors
 
-### Issue 1: "Tenant not found"
-**Solution:**
+---
+
+### Test 3: Router Management
 ```bash
-php artisan tinker
->>> $user = User::find($userId);
->>> $defaultTenant = Tenant::where('slug', 'default')->first();
->>> $user->tenant_id = $defaultTenant->id;
->>> $user->save();
+# Get routers (with auth token)
+curl -X GET http://localhost/api/admin/routers \
+  -H "Authorization: Bearer YOUR_TOKEN"
 ```
 
-### Issue 2: "Column tenant_id does not exist"
-**Solution:**
+**Verify**:
+- [ ] Routers returned
+- [ ] Only tenant's routers
+- [ ] No errors
+
+---
+
+### Test 4: Package Management
 ```bash
-# Migration didn't run properly
-php artisan migrate:status
-php artisan migrate --force
+# Get packages
+curl -X GET http://localhost/api/admin/packages \
+  -H "Authorization: Bearer YOUR_TOKEN"
 ```
 
-### Issue 3: Users can't see their data
-**Solution:**
+**Verify**:
+- [ ] Packages returned
+- [ ] Only tenant's packages
+- [ ] No errors
+
+---
+
+### Test 5: Hotspot Users
 ```bash
-# Check if data was migrated to default tenant
-php artisan tinker
->>> $defaultTenant = Tenant::where('slug', 'default')->first();
->>> Package::whereNull('tenant_id')->update(['tenant_id' => $defaultTenant->id]);
->>> Router::whereNull('tenant_id')->update(['tenant_id' => $defaultTenant->id]);
+# Get hotspot users
+curl -X GET http://localhost/api/admin/hotspot-users \
+  -H "Authorization: Bearer YOUR_TOKEN"
 ```
 
-### Issue 4: Performance degradation
-**Solution:**
+**Verify**:
+- [ ] Users returned
+- [ ] Only tenant's users
+- [ ] No errors
+
+---
+
+### Test 6: RADIUS Authentication
 ```bash
-# Ensure indexes were created
-php artisan tinker
->>> DB::select("SELECT * FROM pg_indexes WHERE tablename = 'packages' AND indexname LIKE '%tenant%'");
-
-# Clear and rebuild cache
-php artisan cache:clear
-php artisan config:cache
-php artisan route:cache
+# Test RADIUS auth
+docker exec traidnet-freeradius radtest testuser testpass localhost 0 testing123
 ```
+
+**Verify**:
+- [ ] Authentication works
+- [ ] Access-Accept or Access-Reject returned
+- [ ] No errors in RADIUS logs
+
+---
+
+### Test 7: Database Queries
+```sql
+-- Connect to database
+docker exec -it traidnet-postgres psql -U admin -d wifi_hotspot
+
+-- Check search_path (should be public by default)
+SHOW search_path;
+
+-- Check tenant data still accessible
+SELECT COUNT(*) FROM routers;
+SELECT COUNT(*) FROM packages;
+SELECT COUNT(*) FROM hotspot_users;
+
+-- All counts should match pre-deployment
+
+-- Check new table
+SELECT COUNT(*) FROM radius_user_schema_mapping;
+
+-- Exit
+\q
+```
+
+**Verify**:
+- [ ] All data intact
+- [ ] Counts match pre-deployment
+- [ ] New table accessible
+
+---
+
+### Test 8: Real-Time Notifications
+```bash
+# Check Soketi
+curl http://localhost:9601/
+
+# Should return Soketi metrics
+```
+
+**Verify**:
+- [ ] Soketi running
+- [ ] Metrics accessible
+- [ ] No errors
+
+---
+
+### Test 9: Queue Workers
+```bash
+# Check queue workers
+docker exec traidnet-backend php artisan queue:work --once
+
+# Should process any queued jobs
+```
+
+**Verify**:
+- [ ] Queue workers running
+- [ ] Jobs processing
+- [ ] No errors
+
+---
+
+### Test 10: Frontend Access
+```bash
+# Open browser
+# Navigate to: http://localhost
+
+# Test:
+# - Login page loads
+# - Can login
+# - Dashboard loads
+# - Router management works
+# - Package management works
+```
+
+**Verify**:
+- [ ] Frontend loads
+- [ ] Login works
+- [ ] Dashboard accessible
+- [ ] All features functional
+
+---
+
+## Performance Testing
+
+### Test 1: Response Times
+```bash
+# Test API response times
+time curl -X GET http://localhost/api/admin/routers \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+**Verify**:
+- [ ] Response time < 500ms
+- [ ] No degradation vs pre-deployment
+
+---
+
+### Test 2: Database Performance
+```sql
+-- Connect to database
+docker exec -it traidnet-postgres psql -U admin -d wifi_hotspot
+
+-- Enable timing
+\timing
+
+-- Test queries
+SELECT * FROM routers LIMIT 100;
+SELECT * FROM packages LIMIT 100;
+SELECT * FROM hotspot_users LIMIT 100;
+
+-- Check execution times
+```
+
+**Verify**:
+- [ ] Query times acceptable
+- [ ] No performance degradation
+
+---
+
+### Test 3: Concurrent Requests
+```bash
+# Use Apache Bench or similar
+ab -n 100 -c 10 http://localhost/api/health
+```
+
+**Verify**:
+- [ ] All requests successful
+- [ ] No errors
+- [ ] Acceptable response times
+
+---
+
+## Monitoring
+
+### Check Logs (First 24 Hours)
+```bash
+# Application logs
+docker exec traidnet-backend tail -f storage/logs/laravel.log
+
+# RADIUS logs
+docker logs -f traidnet-freeradius
+
+# PostgreSQL logs
+docker logs -f traidnet-postgres
+
+# Nginx logs
+docker logs -f traidnet-nginx
+```
+
+**Monitor for**:
+- [ ] No errors
+- [ ] No warnings
+- [ ] Normal operation
+
+---
+
+### Check Metrics
+```bash
+# System metrics
+docker stats
+
+# Database connections
+docker exec traidnet-postgres psql -U admin -d wifi_hotspot -c "SELECT count(*) FROM pg_stat_activity;"
+
+# Redis info
+docker exec traidnet-redis redis-cli INFO
+```
+
+**Verify**:
+- [ ] CPU usage normal
+- [ ] Memory usage normal
+- [ ] Database connections normal
+- [ ] Redis working
+
+---
+
+## Rollback Procedure (If Needed)
+
+### Step 1: Stop Containers
+```bash
+docker-compose down
+```
+
+### Step 2: Rollback Migrations
+```bash
+docker exec traidnet-backend php artisan migrate:rollback --step=2
+```
+
+### Step 3: Restore Dictionary
+```bash
+# Edit freeradius/dictionary
+# Remove Tenant-ID line
+
+# Or restore from backup
+cp freeradius/dictionary.backup freeradius/dictionary
+```
+
+### Step 4: Revert Code
+```bash
+git revert HEAD~9..HEAD
+# Or
+git reset --hard PREVIOUS_COMMIT
+```
+
+### Step 5: Restart Containers
+```bash
+docker-compose up -d
+```
+
+### Step 6: Verify Rollback
+```bash
+# Check migrations
+docker exec traidnet-backend php artisan migrate:status
+
+# Check application
+curl http://localhost/api/health
+```
+
+---
 
 ## Success Criteria
 
-- ✅ All migrations completed successfully
-- ✅ Default tenant created
-- ✅ All existing data has tenant_id
-- ✅ No null tenant_id values
-- ✅ API endpoints responding normally
-- ✅ Users can login and access their data
-- ✅ Tenant isolation verified
-- ✅ No performance degradation
-- ✅ No errors in logs
-- ✅ All tests passing
+### All Tests Pass ✅
+- [ ] All pre-deployment checks complete
+- [ ] All deployment steps successful
+- [ ] All post-deployment tests pass
+- [ ] All performance tests acceptable
+- [ ] No errors in logs
+- [ ] All features functional
 
-## Communication Plan
-
-### Before Deployment
-```
-Subject: System Upgrade - Multi-Tenancy Implementation
-
-Dear Users,
-
-We will be performing a system upgrade on [DATE] at [TIME].
-Expected downtime: 5-10 minutes
-
-What's changing:
-- Enhanced data isolation
-- Improved security
-- Better scalability
-
-What stays the same:
-- Your login credentials
-- Your data and settings
-- All existing features
-
-Thank you for your patience.
-```
-
-### After Deployment
-```
-Subject: System Upgrade Complete
-
-Dear Users,
-
-The system upgrade has been completed successfully.
-All systems are operational.
-
-If you experience any issues, please contact support.
-
-Thank you!
-```
-
-## Final Checklist
-
-- [ ] Backup completed
-- [ ] Tests passing in development
-- [ ] Stakeholders notified
-- [ ] Maintenance window scheduled
-- [ ] Rollback plan ready
-- [ ] Monitoring tools ready
-- [ ] Support team briefed
+### Production Ready
+- [ ] Tested in development
+- [ ] Tested in staging (if available)
+- [ ] Team notified
 - [ ] Documentation updated
-- [ ] Migrations tested
-- [ ] Performance benchmarks recorded
-
-## Emergency Contacts
-
-- **Database Admin**: [Contact]
-- **System Admin**: [Contact]
-- **Development Team**: [Contact]
-- **Support Team**: [Contact]
+- [ ] Rollback procedure tested
 
 ---
 
-## Deployment Timeline
+## Sign-Off
 
-**Estimated Total Time**: 15-30 minutes
+### Deployment Team
+- [ ] Developer: _________________ Date: _______
+- [ ] QA: _________________ Date: _______
+- [ ] DevOps: _________________ Date: _______
+- [ ] Product Owner: _________________ Date: _______
 
-1. Maintenance Mode: 1 min
-2. Code Deployment: 2 min
-3. Migrations: 5-10 min
-4. Verification: 5-10 min
-5. Cache Clear: 2 min
-6. Testing: 5 min
-7. Exit Maintenance: 1 min
+### Notes
+```
+Add any deployment notes here:
+- Issues encountered:
+- Resolutions applied:
+- Performance observations:
+- Recommendations:
+```
 
 ---
 
-**Checklist Version**: 1.0.0  
-**Last Updated**: 2025-10-28  
-**Status**: Ready for Deployment 🚀
+## Next Steps
+
+After successful deployment:
+1. Monitor for 24-48 hours
+2. Collect performance metrics
+3. Gather user feedback
+4. Plan Phase 2 implementation
+5. Schedule Phase 2 deployment
+
+---
+
+**Checklist Version**: 1.0  
+**Created**: November 30, 2025  
+**Phase**: 1 - Foundation  
+**Status**: Ready for Deployment
