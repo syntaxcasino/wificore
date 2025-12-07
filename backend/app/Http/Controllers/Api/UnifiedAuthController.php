@@ -509,12 +509,26 @@ class UnifiedAuthController extends Controller
     }
 
     /**
-     * Check if host is localhost or IP address
+     * Check if host is localhost, IP address, or development environment (ngrok)
      */
     private function isLocalhost(string $host): bool
     {
-        return in_array($host, ['localhost', '127.0.0.1', '::1']) ||
-               filter_var($host, FILTER_VALIDATE_IP);
+        // Check for localhost and IP addresses
+        if (in_array($host, ['localhost', '127.0.0.1', '::1']) || filter_var($host, FILTER_VALIDATE_IP)) {
+            return true;
+        }
+        
+        // Check for ngrok domains (development tunneling)
+        if (str_contains($host, 'ngrok') || str_contains($host, 'ngrok-free.dev')) {
+            return true;
+        }
+        
+        // Check if APP_ENV is local or development
+        if (in_array(config('app.env'), ['local', 'development'])) {
+            return true;
+        }
+        
+        return false;
     }
 
     /**
