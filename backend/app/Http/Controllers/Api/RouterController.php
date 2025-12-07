@@ -64,19 +64,36 @@ class RouterController extends Controller
             // Fire RouterCreated event
             event(new \App\Events\RouterCreated($router));
 
-            // ALWAYS dispatch VPN provisioning job
-            \App\Jobs\ProvisionVpnConfigurationJob::dispatch(
-                $router->tenant_id,
-                $router->id
-            )->onQueue('vpn-provisioning');
+            // Create VPN configuration SYNCHRONOUSLY so we can return the script immediately
+            $vpnService = app(\App\Services\VpnService::class);
+            $vpnConfig = $vpnService->createVpnConfiguration(
+                $router->tenant,
+                $router
+            );
 
-            Log::info('Router created with mandatory VPN:', [
+            // Update router with VPN IP
+            $router->update([
+                'vpn_ip' => $vpnConfig->client_ip,
+                'vpn_status' => 'pending',
+            ]);
+
+            // Generate VPN configuration script for MikroTik
+            $vpnScript = $this->generateVpnScript($vpnConfig, $router);
+
+            // Store VPN script in router configs
+            RouterConfig::create([
+                'router_id' => $router->id,
+                'config_type' => 'vpn',
+                'config_content' => $vpnScript,
+            ]);
+
+            Log::info('Router created with VPN configuration:', [
                 'router_id' => $router->id,
                 'name' => $router->name,
                 'ip_address' => $router->ip_address,
+                'vpn_ip' => $vpnConfig->client_ip,
                 'username' => $router->username,
                 'port' => $router->port,
-                'vpn_enabled' => true,
             ]);
 
             return response()->json([
@@ -85,13 +102,14 @@ class RouterController extends Controller
                 'ip_address' => $router->ip_address,
                 'config_token' => $router->config_token,
                 'connectivity_script' => $connectivityScript,
+                'vpn_script' => $vpnScript,
+                'vpn_ip' => $vpnConfig->client_ip,
                 'status' => $router->status,
                 'model' => $router->model,
                 'os_version' => $router->os_version,
                 'last_seen' => $router->last_seen,
                 'vpn_enabled' => true,
                 'vpn_status' => 'pending',
-                'vpn_ip' => null,
             ], 201);
         } catch (\Exception $e) {
             Log::error('Failed to create router: ' . $e->getMessage(), [
@@ -1147,5 +1165,60 @@ private function generateServiceScript(array $interfaceAssignments, array $inter
         }
 
         return $ipList;
+    }
+
+    /**
+     * Generate VPN configuration script for MikroTik router
+     */
+    private function generateVpnScript($vpnConfig, $router)
+    {
+        $serverPublicKey = config('vpn.wireguard.server_public_key');
+        $serverEndpoint = config('vpn.wireguard.server_endpoint');
+        $serverPort = config('vpn.wireguard.server_port', 51820);
+
+        $script = <<<SCRIPT
+# ============================================================================
+# VPN CONFIGURATION - WireGuard Tunnel
+# ============================================================================
+# Router: {$router->name}
+# VPN IP: {$vpnConfig->client_ip}
+# Generated: {now()->toDateTimeString()}
+# ============================================================================
+
+# Create WireGuard interface
+/interface wireguard
+add listen-port={$vpnConfig->listen_port} mtu=1420 name=wireguard-traidnet private-key="{$vpnConfig->private_key}"
+
+# Add WireGuard peer (server)
+/interface wireguard peers
+add allowed-address=0.0.0.0/0 endpoint={$serverEndpoint}:{$serverPort} interface=wireguard-traidnet persistent-keepalive=25s public-key="{$serverPublicKey}"
+
+# Assign VPN IP address to WireGuard interface
+/ip address
+add address={$vpnConfig->client_ip}/24 interface=wireguard-traidnet network={$vpnConfig->subnet}
+
+# Add firewall rules to allow WireGuard
+/ip firewall filter
+add action=accept chain=input comment="Allow WireGuard" dst-port={$vpnConfig->listen_port} protocol=udp place-before=0
+add action=accept chain=forward comment="Allow WireGuard traffic" in-interface=wireguard-traidnet place-before=0
+add action=accept chain=forward comment="Allow WireGuard traffic" out-interface=wireguard-traidnet place-before=0
+
+# Configure NAT for VPN traffic
+/ip firewall nat
+add action=masquerade chain=srcnat comment="VPN NAT" out-interface=wireguard-traidnet
+
+# Add route to management subnet via VPN
+/ip route
+add distance=1 dst-address=10.0.0.0/8 gateway=wireguard-traidnet comment="Management network via VPN"
+
+# ============================================================================
+# VPN CONFIGURATION COMPLETE
+# ============================================================================
+# Your router will now connect to the Traidnet VPN
+# Management IP: {$vpnConfig->client_ip}
+# ============================================================================
+SCRIPT;
+
+        return $script;
     }
 }
