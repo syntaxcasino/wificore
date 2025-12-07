@@ -198,33 +198,65 @@
                 </div>
 
                 <!-- Initial Configuration Script (Combined: Connectivity + VPN) -->
-                <div class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+                <div class="bg-gradient-to-br from-blue-50 to-indigo-50 p-4 rounded-xl border-2 border-blue-200 shadow-lg">
                   <div class="flex items-center justify-between mb-3">
                     <div class="flex items-center gap-2">
-                      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
-                      </svg>
-                      <h5 class="text-sm font-semibold text-gray-800">Initial Configuration Script</h5>
+                      <div class="p-2 bg-blue-600 rounded-lg">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                        </svg>
+                      </div>
+                      <div>
+                        <h5 class="text-sm font-bold text-gray-900">Complete Configuration Script</h5>
+                        <p class="text-xs text-gray-600">Connectivity + VPN (Ready to Apply)</p>
+                      </div>
                     </div>
                     <button
                       @click="copyToClipboard(combinedScript)"
-                      class="px-3 py-1.5 text-xs font-medium rounded-lg text-white bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 transition-all shadow-sm hover:shadow-md flex items-center gap-1.5"
+                      class="px-4 py-2 text-sm font-semibold rounded-lg text-white bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 transition-all shadow-md hover:shadow-lg flex items-center gap-2 transform hover:scale-105"
                     >
-                      <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
                       </svg>
-                      Copy Script
+                      Copy to Clipboard
                     </button>
                   </div>
-                  <div class="relative">
-                    <pre class="bg-gray-900 p-3 rounded-lg text-xs font-mono text-gray-100 overflow-x-auto max-h-64 overflow-y-auto border border-gray-700 scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800">{{ combinedScript }}</pre>
+                  
+                  <!-- Script Display with Better UX -->
+                  <div class="relative group">
+                    <div class="absolute top-2 right-2 z-10">
+                      <button
+                        @click="copyToClipboard(combinedScript)"
+                        class="px-2 py-1 text-xs font-medium rounded bg-blue-600 text-white hover:bg-blue-700 transition-colors opacity-0 group-hover:opacity-100"
+                      >
+                        📋 Copy
+                      </button>
+                    </div>
+                    <textarea
+                      readonly
+                      :value="combinedScript"
+                      class="w-full bg-gray-900 p-4 rounded-lg text-xs font-mono text-gray-100 border-2 border-gray-700 focus:border-blue-500 focus:outline-none resize-none select-all cursor-text"
+                      style="min-height: 300px; max-height: 400px;"
+                      @click="$event.target.select()"
+                    ></textarea>
                   </div>
-                  <p class="text-xs text-gray-500 mt-2 flex items-center gap-1">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    Copy and paste this complete script into your MikroTik router terminal (includes connectivity + VPN)
-                  </p>
+                  
+                  <div class="mt-3 bg-white rounded-lg p-3 border border-blue-200">
+                    <div class="flex items-start gap-2">
+                      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <div class="text-xs text-gray-700">
+                        <p class="font-semibold mb-1">How to apply:</p>
+                        <ol class="list-decimal list-inside space-y-1">
+                          <li>Click "Copy to Clipboard" button above</li>
+                          <li>Open your MikroTik router terminal (SSH or Winbox)</li>
+                          <li>Paste the entire script and press Enter</li>
+                          <li>Wait for the configuration to complete</li>
+                        </ol>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
