@@ -29,22 +29,41 @@ class LoginController extends Controller
             if ($radius->authenticate($request->username, $request->password)) {
                 \Log::info('RADIUS authentication successful', ['username' => $request->username]);
                 
-                // Find user by username (without tenant scope during login)
-                $user = User::withoutGlobalScope(\App\Models\Scopes\TenantScope::class)
+                // SCHEMA-BASED MULTI-TENANCY: Look up tenant schema from mapping table
+                $schemaMapping = \DB::table('radius_user_schema_mapping')
                     ->where('username', $request->username)
+                    ->where('is_active', true)
                     ->first();
                 
-                // If user doesn't exist, create from RADIUS (legacy behavior)
+                if (!$schemaMapping) {
+                    \Log::error('No schema mapping found for user', ['username' => $request->username]);
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'User account not properly configured. Please contact support.',
+                    ], 403);
+                }
+                
+                \Log::info('Schema mapping found', [
+                    'username' => $request->username,
+                    'schema' => $schemaMapping->schema_name,
+                    'tenant_id' => $schemaMapping->tenant_id
+                ]);
+                
+                // Find user by username and tenant_id (without tenant scope during login)
+                $user = User::withoutGlobalScope(\App\Models\Scopes\TenantScope::class)
+                    ->where('username', $request->username)
+                    ->where('tenant_id', $schemaMapping->tenant_id)
+                    ->first();
+                
                 if (!$user) {
-                    $user = User::withoutGlobalScope(\App\Models\Scopes\TenantScope::class)
-                        ->create([
-                            'name' => $request->username,
-                            'username' => $request->username,
-                            'email' => $request->username . '@radius.local',
-                            'password' => Hash::make($request->password),
-                            'role' => User::ROLE_ADMIN,
-                            'email_verified_at' => now(), // Auto-verify for RADIUS users
-                        ]);
+                    \Log::error('User not found in database', [
+                        'username' => $request->username,
+                        'tenant_id' => $schemaMapping->tenant_id
+                    ]);
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'User account not found. Please contact support.',
+                    ], 404);
                 }
 
                 // Check if user is active
@@ -77,6 +96,9 @@ class LoginController extends Controller
 
                 $token = $user->createToken('auth-token', $abilities)->plainTextToken;
 
+                // Get tenant information
+                $tenant = \App\Models\Tenant::find($user->tenant_id);
+                
                 return response()->json([
                     'success' => true,
                     'message' => 'Login successful',
@@ -89,7 +111,14 @@ class LoginController extends Controller
                         'role' => $user->role,
                         'account_balance' => $user->account_balance,
                         'phone_number' => $user->phone_number,
+                        'tenant_id' => $user->tenant_id,
                     ],
+                    'tenant' => $tenant ? [
+                        'id' => $tenant->id,
+                        'name' => $tenant->name,
+                        'slug' => $tenant->slug,
+                        'schema_name' => $tenant->schema_name,
+                    ] : null,
                 ]);
             }
             

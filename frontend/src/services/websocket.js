@@ -29,16 +29,17 @@ class WebSocketService {
 
     const defaultConfig = {
       broadcaster: 'pusher',
-      key: import.meta.env.VITE_PUSHER_APP_KEY || 'local-key',
-      wsHost: import.meta.env.VITE_PUSHER_HOST || 'localhost',
-      wsPort: import.meta.env.VITE_PUSHER_PORT || 6001,
-      wssPort: import.meta.env.VITE_PUSHER_PORT || 6001,
-      forceTLS: false,
-      encrypted: true,
+      key: import.meta.env.VITE_PUSHER_APP_KEY || 'app-key',
+      wsHost: import.meta.env.VITE_PUSHER_HOST || window.location.hostname,
+      wsPort: import.meta.env.VITE_PUSHER_PORT || 80,
+      wssPort: import.meta.env.VITE_PUSHER_PORT || 443,
+      wsPath: import.meta.env.VITE_PUSHER_PATH || '/app',
+      forceTLS: import.meta.env.VITE_PUSHER_SCHEME === 'wss',
+      encrypted: false,
       disableStats: true,
       enabledTransports: ['ws', 'wss'],
       cluster: import.meta.env.VITE_PUSHER_APP_CLUSTER || 'mt1',
-      authEndpoint: '/api/broadcasting/auth',
+      authEndpoint: import.meta.env.VITE_PUSHER_AUTH_ENDPOINT || '/api/broadcasting/auth',
       auth: {
         headers: {
           Authorization: `Bearer ${localStorage.getItem('authToken')}`,
