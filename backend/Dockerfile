@@ -1,79 +1,76 @@
 # -------------------------------------------------------------------
 # Stage 1: Build dependencies (Composer)
 # -------------------------------------------------------------------
-FROM php:8.4.13-fpm AS builder
-WORKDIR /var/www/html
+FROM composer:latest AS composer-builder
 
-# Install build dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    unzip \
-    libzip-dev \
-    git \
-    curl \
-    libpq-dev \
- && docker-php-ext-install sockets zip pdo pdo_pgsql \
- && rm -rf /var/lib/apt/lists/*
-
-# Install Composer
-COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+WORKDIR /app
 
 # Copy composer files first (for better layer caching)
 COPY composer.json composer.lock ./
 
-# Install dependencies (no dev dependencies)
-RUN composer install --optimize-autoloader --no-interaction --no-progress --no-scripts --no-dev
-
-# Copy application source
-COPY . .
-
-# Clean any cached bootstrap files that might have been copied
-RUN rm -f bootstrap/cache/*.php
-
-# Fix broadcast driver typo in .env for build
-RUN sed -i 's/BROADCAST_DRIVER=sketi/BROADCAST_DRIVER=pusher/g' .env || true
-
-# Run build steps - skip post-autoload-dump to avoid build-time errors
-# It will run automatically when container starts
-# RUN composer run-script post-autoload-dump
+# Install dependencies ignoring platform requirements for sockets
+# (sockets will be available in production stage)
+RUN composer install \
+    --optimize-autoloader \
+    --no-interaction \
+    --no-progress \
+    --no-scripts \
+    --no-dev \
+    --prefer-dist \
+    --ignore-platform-req=ext-sockets \
+    && composer clear-cache
 
 # -------------------------------------------------------------------
-# Stage 2: Production runtime
+# Stage 2: Production runtime (Alpine for minimal size)
 # -------------------------------------------------------------------
-FROM php:8.4.13-fpm AS production
+FROM php:8.3-fpm-alpine AS production
+
 WORKDIR /var/www/html
 
-# Install runtime dependencies including SSH2 for SFTP, Redis, and sudo
-RUN apt-get update && apt-get install -y --no-install-recommends \
-      libpq-dev \
-      libzip-dev \
-      libssh2-1-dev \
-      supervisor \
-      postgresql-client \
-      sudo \
- && docker-php-ext-install -j$(nproc) pdo_pgsql sockets zip opcache ftp \
- && pecl install ssh2-1.4.1 redis \
- && docker-php-ext-enable ssh2 redis \
- && apt-get purge -y --auto-remove \
- && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+# Install runtime dependencies in a single layer
+RUN apk add --no-cache \
+    bash \
+    postgresql-dev \
+    libzip-dev \
+    libssh2-dev \
+    supervisor \
+    postgresql-client \
+    sudo \
+    linux-headers \
+    && docker-php-ext-install -j$(nproc) \
+        pdo_pgsql \
+        sockets \
+        zip \
+        opcache \
+    && apk add --no-cache --virtual .build-deps \
+        $PHPIZE_DEPS \
+    && pecl install ssh2-1.4.1 redis \
+    && docker-php-ext-enable ssh2 redis \
+    && apk del .build-deps linux-headers \
+    && rm -rf /tmp/* /var/cache/apk/*
 
 # Copy custom PHP-FPM and OPcache configuration
 COPY --chown=root:root ./docker/php-fpm-custom.conf /usr/local/etc/php-fpm.d/zzz-custom.conf
 COPY --chown=root:root ./docker/php-opcache.ini /usr/local/etc/php/conf.d/opcache.ini
 
-# Copy vendor and application from builder
-COPY --from=builder /var/www/html /var/www/html
+# Copy vendor from composer builder
+COPY --from=composer-builder /app/vendor /var/www/html/vendor
+
+# Copy application source (excluding files in .dockerignore)
+COPY --chown=www-data:www-data . .
 
 # Create Laravel-required directories with correct permissions
 RUN mkdir -p \
-      storage/framework/cache \
-      storage/framework/sessions \
-      storage/framework/views \
-      storage/logs \
-      bootstrap/cache \
-      /var/log/supervisor \
-      /etc/supervisor/conf.d \
- && chown -R www-data:www-data storage bootstrap/cache \
- && chmod -R 775 storage bootstrap/cache
+    storage/framework/cache \
+    storage/framework/sessions \
+    storage/framework/views \
+    storage/logs \
+    bootstrap/cache \
+    /var/log/supervisor \
+    /etc/supervisor/conf.d \
+    && chown -R www-data:www-data storage bootstrap/cache \
+    && chmod -R 775 storage bootstrap/cache \
+    && rm -f bootstrap/cache/*.php
 
 # Copy Supervisor configs
 COPY --chown=root:root ./supervisor/supervisord.conf /etc/supervisor/supervisord.conf

@@ -1,1 +1,50 @@
+# Dependencies
 node_modules
+node_modules/
+
+# Build output (will be created during build)
+dist
+dev-dist
+
+# IDE and editor files
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Environment files
+.env
+.env.*
+
+# Test files
+e2e/
+playwright.config.js
+vitest.config.js
+
+# Documentation
+*.md
+README.md
+PWA_IMPLEMENTATION.md
+
+# Scripts
+*.ps1
+*.sh
+
+# Config files not needed in production
+.editorconfig
+.prettierrc.json
+eslint.config.js
+jsconfig.json
+
+# Vendor (if any)
+vendor/

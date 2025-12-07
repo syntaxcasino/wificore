@@ -44,20 +44,24 @@ class CreateTenantJob implements ShouldQueue
      */
     public function handle(): void
     {
-        DB::beginTransaction();
-        
         try {
-            // Create tenant
+            Log::info('CreateTenantJob started', [
+                'tenant_slug' => $this->tenantData['slug'],
+                'admin_username' => $this->adminData['username'],
+            ]);
+            
+            // Create tenant - Tenant model boot event will:
+            // 1. Generate secure schema name (ts_xxxxxxxxxxxx)
+            // 2. Create schema and run migrations
+            // 3. Set schema_created = true
             $tenant = Tenant::create([
                 'name' => $this->tenantData['name'],
                 'slug' => $this->tenantData['slug'],
-                'subdomain' => $this->tenantData['slug'], // Use slug as subdomain
-                'schema_name' => 'tenant_' . $this->tenantData['slug'],
+                'subdomain' => $this->tenantData['slug'],
                 'email' => $this->tenantData['email'],
                 'phone' => $this->tenantData['phone'] ?? null,
                 'address' => $this->tenantData['address'] ?? null,
                 'is_active' => true,
-                'schema_created' => false,
                 'trial_ends_at' => now()->addDays(30),
                 'public_packages_enabled' => true,
                 'public_registration_enabled' => true,
@@ -83,6 +87,15 @@ class CreateTenantJob implements ShouldQueue
                 ],
             ]);
             
+            Log::info('Tenant created with schema', [
+                'tenant_id' => $tenant->id,
+                'schema_name' => $tenant->schema_name,
+                'schema_created' => $tenant->schema_created,
+            ]);
+            
+            // Wait a moment for schema creation to complete
+            sleep(2);
+            
             // Create admin user
             $adminUser = User::create([
                 'tenant_id' => $tenant->id,
@@ -97,15 +110,48 @@ class CreateTenantJob implements ShouldQueue
                 'account_number' => 'TNT-' . strtoupper(Str::random(8)),
             ]);
             
-            // Add to RADIUS
+            Log::info('Admin user created, adding RADIUS credentials', [
+                'username' => $this->adminData['username'],
+                'tenant_schema' => $tenant->schema_name,
+            ]);
+            
+            // Add RADIUS credentials to TENANT schema
+            DB::statement("SET search_path TO {$tenant->schema_name}, public");
+            
+            // Add to tenant's radcheck table
             DB::table('radcheck')->insert([
                 'username' => $this->adminData['username'],
                 'attribute' => 'Cleartext-Password',
                 'op' => ':=',
                 'value' => $this->plainPassword,
+                'created_at' => now(),
+                'updated_at' => now(),
             ]);
             
-            // Add schema mapping
+            // Add to tenant's radreply table
+            DB::table('radreply')->insert([
+                [
+                    'username' => $this->adminData['username'],
+                    'attribute' => 'Service-Type',
+                    'op' => ':=',
+                    'value' => 'Administrative-User',
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ],
+                [
+                    'username' => $this->adminData['username'],
+                    'attribute' => 'Tenant-ID',
+                    'op' => ':=',
+                    'value' => $tenant->schema_name,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ],
+            ]);
+            
+            // Switch back to public schema
+            DB::statement("SET search_path TO public");
+            
+            // Add schema mapping in public schema
             DB::table('radius_user_schema_mapping')->insert([
                 'username' => $this->adminData['username'],
                 'schema_name' => $tenant->schema_name,
@@ -116,7 +162,10 @@ class CreateTenantJob implements ShouldQueue
                 'updated_at' => now(),
             ]);
             
-            DB::commit();
+            Log::info('RADIUS credentials added successfully', [
+                'username' => $this->adminData['username'],
+                'tenant_schema' => $tenant->schema_name,
+            ]);
             
             // Broadcast event
             broadcast(new TenantCreated($tenant, $adminUser))->toOthers();

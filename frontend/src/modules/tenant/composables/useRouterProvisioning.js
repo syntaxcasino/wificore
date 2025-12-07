@@ -16,6 +16,12 @@ export function useRouterProvisioning(props, emit) {
   const waitingForJobCompletion = ref(false)
   const provisioningLogs = ref([])
 
+  // VPN configuration - MANDATORY for all routers
+  const enableVpn = ref(true) // Always true
+  const vpnConfig = ref(null)
+  const vpnScript = ref('')
+  const vpnConnected = ref(false)
+
   // Service configuration
   const enableHotspot = ref(false)
   const enablePPPoE = ref(false)
@@ -105,8 +111,12 @@ export function useRouterProvisioning(props, emit) {
       if (response.data && response.data.id) {
         provisioningRouter.value = response.data
         initialConfig.value = response.data.connectivity_script || ''
-        provisioningProgress.value = 25
-        provisioningStatus.value = 'Router created successfully'
+        provisioningProgress.value = 15
+        provisioningStatus.value = 'Router created - VPN provisioning initiated'
+        
+        // VPN is MANDATORY - always poll for VPN configuration
+        addLog('info', 'VPN provisioning initiated (mandatory)...')
+        pollVpnConfiguration()
         
         // Stay on stage 1 to show the connectivity script
         // User must click "Continue" button to proceed
@@ -119,14 +129,116 @@ export function useRouterProvisioning(props, emit) {
     }
   }
 
-  const continueToMonitoring = async () => {
-    // Move to stage 2: Connectivity verification
-    currentStage.value = 2
-    provisioningProgress.value = 50
-    provisioningStatus.value = 'Verifying connectivity...'
+  const pollVpnConfiguration = () => {
+    const maxAttempts = 30 // 30 attempts = 1 minute
+    let attempts = 0
     
-    // Start probing the router
-    await probeRouterConnectivity()
+    const pollInterval = setInterval(async () => {
+      attempts++
+      
+      try {
+        // Get VPN configs for this router
+        const response = await axios.get('/vpn')
+        const configs = response.data.data || []
+        const routerVpnConfig = configs.find(c => c.router_id === provisioningRouter.value.id)
+        
+        if (routerVpnConfig) {
+          clearInterval(pollInterval)
+          vpnConfig.value = routerVpnConfig
+          
+          // Fetch the full VPN config with scripts
+          const detailResponse = await axios.get(`/vpn/${routerVpnConfig.id}`)
+          if (detailResponse.data.success) {
+            vpnScript.value = detailResponse.data.data.mikrotik_script
+            addLog('success', 'VPN configuration ready!')
+            provisioningRouter.value.vpn_ip = detailResponse.data.data.client_ip
+            provisioningRouter.value.vpn_status = detailResponse.data.data.status
+          }
+        } else if (attempts >= maxAttempts) {
+          clearInterval(pollInterval)
+          addLog('warning', 'VPN configuration timeout - check manually')
+        }
+      } catch (error) {
+        if (attempts >= maxAttempts) {
+          clearInterval(pollInterval)
+          addLog('error', 'Failed to fetch VPN configuration')
+        }
+      }
+    }, 2000) // Check every 2 seconds
+  }
+
+  const continueToMonitoring = async () => {
+    // Check if VPN is configured before proceeding
+    if (!vpnConfig.value || !vpnScript.value) {
+      provisioningStatus.value = 'Waiting for VPN configuration...'
+      addLog('warning', 'VPN configuration not ready yet. Please wait.')
+      return
+    }
+
+    // Move to stage 2: VPN connectivity verification
+    currentStage.value = 2
+    provisioningProgress.value = 40
+    provisioningStatus.value = 'Waiting for VPN connection...'
+    addLog('info', 'Verifying VPN connectivity...')
+    
+    // Start probing VPN connectivity
+    await probeVpnConnectivity()
+  }
+
+  const probeVpnConnectivity = async () => {
+    try {
+      connectionStatus.value = 'Connecting'
+      addLog('info', 'Waiting for VPN tunnel to establish...')
+      
+      // Poll the VPN status
+      const maxAttempts = 60 // 60 attempts = 2 minutes
+      let attempts = 0
+      
+      const pollInterval = setInterval(async () => {
+        attempts++
+        
+        try {
+          // Check VPN configuration status
+          const response = await axios.get(`/vpn/${vpnConfig.value.id}`)
+          
+          addLog('info', `VPN probe attempt ${attempts}/${maxAttempts}`)
+          
+          // Check if VPN is connected
+          if (response.data.data.is_connected || response.data.data.status === 'active') {
+            clearInterval(pollInterval)
+            connectionStatus.value = 'Connected'
+            vpnConnected.value = true
+            
+            addLog('success', `VPN connected! Router reachable at ${vpnConfig.value.client_ip}`)
+            
+            // Now verify router connectivity via VPN
+            provisioningStatus.value = 'VPN connected - Verifying router access...'
+            await probeRouterConnectivity()
+            
+          } else if (attempts >= maxAttempts) {
+            clearInterval(pollInterval)
+            connectionStatus.value = 'Failed'
+            addLog('error', 'VPN connection timeout - Please verify VPN script was applied')
+            provisioningStatus.value = 'VPN connection timeout - Check VPN configuration'
+          } else {
+            provisioningStatus.value = `Waiting for VPN connection... (${attempts}/${maxAttempts})`
+          }
+        } catch (error) {
+          if (attempts >= maxAttempts) {
+            clearInterval(pollInterval)
+            connectionStatus.value = 'Failed'
+            addLog('error', 'Failed to verify VPN connectivity')
+            provisioningStatus.value = 'VPN verification failed - Please check configuration'
+          }
+        }
+      }, 2000) // Check every 2 seconds
+      
+    } catch (error) {
+      console.error('Error probing VPN:', error)
+      connectionStatus.value = 'Failed'
+      addLog('error', 'Error during VPN connectivity probe')
+      provisioningStatus.value = 'Error verifying VPN connectivity'
+    }
   }
 
   const probeRouterConnectivity = async () => {
@@ -456,6 +568,10 @@ export function useRouterProvisioning(props, emit) {
     initialConfig.value = ''
     waitingForJobCompletion.value = false
     provisioningLogs.value = []
+    enableVpn.value = true // Always true
+    vpnConfig.value = null
+    vpnScript.value = ''
+    vpnConnected.value = false
     enableHotspot.value = false
     enablePPPoE.value = false
     serviceScript.value = ''
@@ -491,6 +607,10 @@ export function useRouterProvisioning(props, emit) {
     initialConfig,
     waitingForJobCompletion,
     provisioningLogs,
+    enableVpn,
+    vpnConfig,
+    vpnScript,
+    vpnConnected,
     enableHotspot,
     enablePPPoE,
     serviceScript,

@@ -29,6 +29,14 @@ use App\Http\Controllers\Api\PublicPackageController;
 use App\Http\Controllers\Api\PublicTenantController;
 use App\Http\Controllers\Api\EnvironmentHealthController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\Api\TodoController;
+// HR Module Controllers
+use App\Http\Controllers\Api\DepartmentController;
+use App\Http\Controllers\Api\PositionController;
+use App\Http\Controllers\Api\EmployeeController;
+// Finance Module Controllers
+use App\Http\Controllers\Api\ExpenseController;
+use App\Http\Controllers\Api\RevenueController;
 use App\Events\TestWebSocketEvent;
 
 /*
@@ -303,6 +311,88 @@ Route::middleware(['auth:sanctum', 'role:admin', 'user.active', 'tenant.context'
         ->name('api.dashboard.refresh');
     
     // -------------------------------------------------------------------------
+    // Todo Management
+    // -------------------------------------------------------------------------
+    Route::prefix('todos')->name('api.todos.')->group(function () {
+        Route::get('/', [TodoController::class, 'index'])->name('index');
+        Route::post('/', [TodoController::class, 'store'])->name('store');
+        Route::get('/statistics', [TodoController::class, 'statistics'])->name('statistics');
+        Route::get('/{id}', [TodoController::class, 'show'])->name('show');
+        Route::put('/{id}', [TodoController::class, 'update'])->name('update');
+        Route::delete('/{id}', [TodoController::class, 'destroy'])->name('destroy');
+        Route::post('/{id}/complete', [TodoController::class, 'markAsCompleted'])->name('complete');
+        Route::post('/{id}/assign', [TodoController::class, 'assign'])->name('assign');
+        Route::get('/{id}/activities', [TodoController::class, 'activities'])->name('activities');
+    });
+    
+    // -------------------------------------------------------------------------
+    // HR Module - Departments
+    // -------------------------------------------------------------------------
+    Route::prefix('departments')->name('api.departments.')->group(function () {
+        Route::get('/', [DepartmentController::class, 'index'])->name('index');
+        Route::post('/', [DepartmentController::class, 'store'])->name('store');
+        Route::get('/statistics', [DepartmentController::class, 'statistics'])->name('statistics');
+        Route::get('/{id}', [DepartmentController::class, 'show'])->name('show');
+        Route::put('/{id}', [DepartmentController::class, 'update'])->name('update');
+        Route::delete('/{id}', [DepartmentController::class, 'destroy'])->name('destroy');
+        Route::post('/{id}/approve', [DepartmentController::class, 'approve'])->name('approve');
+    });
+    
+    // -------------------------------------------------------------------------
+    // HR Module - Positions
+    // -------------------------------------------------------------------------
+    Route::prefix('positions')->name('api.positions.')->group(function () {
+        Route::get('/', [PositionController::class, 'index'])->name('index');
+        Route::post('/', [PositionController::class, 'store'])->name('store');
+        Route::get('/statistics', [PositionController::class, 'statistics'])->name('statistics');
+        Route::get('/{id}', [PositionController::class, 'show'])->name('show');
+        Route::put('/{id}', [PositionController::class, 'update'])->name('update');
+        Route::delete('/{id}', [PositionController::class, 'destroy'])->name('destroy');
+    });
+    
+    // -------------------------------------------------------------------------
+    // HR Module - Employees
+    // -------------------------------------------------------------------------
+    Route::prefix('employees')->name('api.employees.')->group(function () {
+        Route::get('/', [EmployeeController::class, 'index'])->name('index');
+        Route::post('/', [EmployeeController::class, 'store'])->name('store');
+        Route::get('/statistics', [EmployeeController::class, 'statistics'])->name('statistics');
+        Route::get('/{id}', [EmployeeController::class, 'show'])->name('show');
+        Route::put('/{id}', [EmployeeController::class, 'update'])->name('update');
+        Route::delete('/{id}', [EmployeeController::class, 'destroy'])->name('destroy');
+        Route::post('/{id}/terminate', [EmployeeController::class, 'terminate'])->name('terminate');
+    });
+    
+    // -------------------------------------------------------------------------
+    // Finance Module - Expenses
+    // -------------------------------------------------------------------------
+    Route::prefix('expenses')->name('api.expenses.')->group(function () {
+        Route::get('/', [ExpenseController::class, 'index'])->name('index');
+        Route::post('/', [ExpenseController::class, 'store'])->name('store');
+        Route::get('/statistics', [ExpenseController::class, 'statistics'])->name('statistics');
+        Route::get('/{id}', [ExpenseController::class, 'show'])->name('show');
+        Route::put('/{id}', [ExpenseController::class, 'update'])->name('update');
+        Route::delete('/{id}', [ExpenseController::class, 'destroy'])->name('destroy');
+        Route::post('/{id}/approve', [ExpenseController::class, 'approve'])->name('approve');
+        Route::post('/{id}/reject', [ExpenseController::class, 'reject'])->name('reject');
+        Route::post('/{id}/mark-as-paid', [ExpenseController::class, 'markAsPaid'])->name('mark-as-paid');
+    });
+    
+    // -------------------------------------------------------------------------
+    // Finance Module - Revenues
+    // -------------------------------------------------------------------------
+    Route::prefix('revenues')->name('api.revenues.')->group(function () {
+        Route::get('/', [RevenueController::class, 'index'])->name('index');
+        Route::post('/', [RevenueController::class, 'store'])->name('store');
+        Route::get('/statistics', [RevenueController::class, 'statistics'])->name('statistics');
+        Route::get('/{id}', [RevenueController::class, 'show'])->name('show');
+        Route::put('/{id}', [RevenueController::class, 'update'])->name('update');
+        Route::delete('/{id}', [RevenueController::class, 'destroy'])->name('destroy');
+        Route::post('/{id}/confirm', [RevenueController::class, 'confirm'])->name('confirm');
+        Route::post('/{id}/cancel', [RevenueController::class, 'cancel'])->name('cancel');
+    });
+    
+    // -------------------------------------------------------------------------
     // Health Check - Admin Only
     // -------------------------------------------------------------------------
     Route::prefix('health')->name('api.health.')->group(function () {
@@ -426,24 +516,53 @@ Route::middleware(['auth:sanctum', 'role:admin', 'user.active', 'tenant.context'
         Route::get('/{router}/services/{service}', [RouterServiceController::class, 'show'])->name('services.show');
         Route::put('/{router}/services/{service}', [RouterServiceController::class, 'update'])->name('services.update');
         Route::delete('/{router}/services/{service}', [RouterServiceController::class, 'destroy'])->name('services.destroy');
+    });
+    
+    // -------------------------------------------------------------------------
+    // VPN Configuration Management (WireGuard/IPsec)
+    // -------------------------------------------------------------------------
+    Route::prefix('vpn')->name('api.vpn.')->group(function () {
+        // List all VPN configurations for tenant
+        Route::get('/', [\App\Http\Controllers\Api\VpnConfigurationController::class, 'index'])->name('index');
         
+        // Create new VPN configuration
+        Route::post('/', [\App\Http\Controllers\Api\VpnConfigurationController::class, 'store'])->name('store');
+        
+        // Get specific VPN configuration
+        Route::get('/{id}', [\App\Http\Controllers\Api\VpnConfigurationController::class, 'show'])->name('show');
+        
+        // Download configuration scripts
+        Route::get('/{id}/download/mikrotik', [\App\Http\Controllers\Api\VpnConfigurationController::class, 'downloadMikrotikScript'])->name('download.mikrotik');
+        Route::get('/{id}/download/linux', [\App\Http\Controllers\Api\VpnConfigurationController::class, 'downloadLinuxConfig'])->name('download.linux');
+        
+        // Delete VPN configuration
+        Route::delete('/{id}', [\App\Http\Controllers\Api\VpnConfigurationController::class, 'destroy'])->name('destroy');
+        
+        // Get tenant subnet information
+        Route::get('/subnet/info', [\App\Http\Controllers\Api\VpnConfigurationController::class, 'getSubnetInfo'])->name('subnet.info');
+    });
+    
+    // -------------------------------------------------------------------------
+    // Router Service Management (continued from routers group)
+    // -------------------------------------------------------------------------
+    Route::prefix('routers/{router}')->name('api.routers.')->group(function () {
         // Service Actions
-        Route::post('/{router}/services/{service}/start', [RouterServiceController::class, 'start'])->name('services.start');
-        Route::post('/{router}/services/{service}/stop', [RouterServiceController::class, 'stop'])->name('services.stop');
-        Route::post('/{router}/services/{service}/restart', [RouterServiceController::class, 'restart'])->name('services.restart');
-        Route::post('/{router}/services/sync', [RouterServiceController::class, 'sync'])->name('services.sync');
+        Route::post('/services/{service}/start', [RouterServiceController::class, 'start'])->name('services.start');
+        Route::post('/services/{service}/stop', [RouterServiceController::class, 'stop'])->name('services.stop');
+        Route::post('/services/{service}/restart', [RouterServiceController::class, 'restart'])->name('services.restart');
+        Route::post('/services/sync', [RouterServiceController::class, 'sync'])->name('services.sync');
         
         // Interface Management
-        Route::get('/{router}/interfaces/available', [RouterServiceController::class, 'interfaces'])->name('interfaces.available');
+        Route::get('/interfaces/available', [RouterServiceController::class, 'interfaces'])->name('interfaces.available');
 
         // =========================================================================
         // NEW: ACCESS POINT MANAGEMENT ROUTES
         // =========================================================================
         
         // Access Point Management
-        Route::get('/{router}/access-points', [AccessPointController::class, 'index'])->name('access-points.index');
-        Route::post('/{router}/access-points', [AccessPointController::class, 'store'])->name('access-points.store');
-        Route::post('/{router}/access-points/discover', [AccessPointController::class, 'discover'])->name('access-points.discover');
+        Route::get('/access-points', [AccessPointController::class, 'index'])->name('access-points.index');
+        Route::post('/access-points', [AccessPointController::class, 'store'])->name('access-points.store');
+        Route::post('/access-points/discover', [AccessPointController::class, 'discover'])->name('access-points.discover');
     });
 
     // -------------------------------------------------------------------------

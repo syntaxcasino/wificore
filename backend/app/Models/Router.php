@@ -24,6 +24,10 @@ class Router extends Model
         'tenant_id',
         'name',
         'ip_address',
+        'vpn_ip',
+        'vpn_status',
+        'vpn_enabled',
+        'vpn_last_handshake',
         'model',
         'os_version',
         'last_seen',
@@ -48,6 +52,8 @@ class Router extends Model
     protected $casts = [
         'id' => 'string',
         'last_seen' => 'datetime',
+        'vpn_last_handshake' => 'datetime',
+        'vpn_enabled' => 'boolean',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
         'deleted_at' => 'datetime',
@@ -107,9 +113,9 @@ class Router extends Model
     /**
      * Get VPN configuration for this router
      */
-    public function vpnConfig()
+    public function vpnConfiguration()
     {
-        return $this->hasOne(RouterVpnConfig::class);
+        return $this->hasOne(VpnConfiguration::class, 'router_id', 'id');
     }
 
     /**
@@ -117,7 +123,7 @@ class Router extends Model
      */
     public function hasVpn(): bool
     {
-        return $this->vpnConfig !== null;
+        return $this->vpnConfiguration !== null || $this->vpn_enabled;
     }
 
     /**
@@ -125,15 +131,19 @@ class Router extends Model
      */
     public function isVpnConnected(): bool
     {
-        return $this->vpnConfig?->isConnected() ?? false;
+        if ($this->vpn_status === 'active' && $this->vpn_last_handshake) {
+            // Consider connected if handshake within last 3 minutes
+            return $this->vpn_last_handshake->diffInMinutes(now()) < 3;
+        }
+        return false;
     }
 
     /**
-     * Get VPN IP address
+     * Get effective IP address (VPN if available, otherwise regular IP)
      */
-    public function getVpnIpAttribute(): ?string
+    public function getEffectiveIpAttribute(): string
     {
-        return $this->vpnConfig?->vpn_ip_address;
+        return $this->vpn_ip ?? $this->ip_address;
     }
 
     // ========================================

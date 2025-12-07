@@ -202,4 +202,45 @@ class Tenant extends Model
         $this->branding = $branding;
         return $this->save();
     }
+
+    /**
+     * Boot method to handle model events
+     */
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::creating(function ($tenant) {
+            if (empty($tenant->id)) {
+                $tenant->id = \Illuminate\Support\Str::uuid();
+            }
+
+            // Generate secure schema name if not set
+            if (empty($tenant->schema_name)) {
+                $tenant->schema_name = \App\Services\TenantMigrationManager::generateSecureSchemaName($tenant->slug);
+            }
+        });
+
+        static::created(function ($tenant) {
+            // Auto-create tenant schema and run migrations
+            $migrationManager = app(\App\Services\TenantMigrationManager::class);
+
+            if ($migrationManager->setupTenantSchema($tenant)) {
+                $shouldAutoSeed = config('multitenancy.auto_seed_schema', false);
+
+                if ($shouldAutoSeed) {
+                    $seedWithTestData = config('multitenancy.seed_with_test_data')
+                        ?? app()->environment(['local', 'development', 'testing']);
+
+                    $migrationManager->seedTenantSchema($tenant, (bool) $seedWithTestData);
+                }
+            }
+        });
+
+        static::deleting(function ($tenant) {
+            // Clean up tenant schema when tenant is deleted
+            $migrationManager = app(\App\Services\TenantMigrationManager::class);
+            $migrationManager->dropTenantSchema($tenant);
+        });
+    }
 }

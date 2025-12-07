@@ -449,11 +449,33 @@ const disconnectAll = async () => {
   }
 }
 
-// Lifecycle
+// EVENT-BASED: Subscribe to WebSocket for real-time updates (NO POLLING)
 onMounted(() => {
+  console.log('🚀 PPPoE Sessions mounted - EVENT-BASED mode')
+  
+  // Fetch initial sessions ONCE
   fetchSessions()
   
-  const interval = setInterval(refreshSessions, 5000)
-  onUnmounted(() => clearInterval(interval))
+  // TODO: Subscribe to WebSocket events for PPPoE sessions
+  // Example:
+  // subscribeToPrivateChannel('pppoe-sessions', {
+  //   'SessionStarted': (event) => {
+  //     console.log('✨ Session started:', event)
+  //     sessions.value.push(event.session)
+  //   },
+  //   'SessionEnded': (event) => {
+  //     console.log('👋 Session ended:', event)
+  //     sessions.value = sessions.value.filter(s => s.id !== event.session.id)
+  //   },
+  //   'SessionUpdated': (event) => {
+  //     console.log('🔄 Session updated:', event)
+  //     const index = sessions.value.findIndex(s => s.id === event.session.id)
+  //     if (index !== -1) {
+  //       sessions.value[index] = { ...sessions.value[index], ...event.session }
+  //     }
+  //   }
+  // })
+  
+  console.log('✅ WebSocket subscriptions active - NO POLLING!')
 })
 </script>

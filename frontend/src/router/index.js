@@ -86,6 +86,9 @@ import WebSocketTest from '@/modules/common/views/test/WebSocketTestView.vue'
 import ComponentShowcase from '@/modules/common/views/test/ComponentShowcase.vue'
 import SystemUpdates from '@/modules/tenant/views/dashboard/admin/SystemUpdates.vue'
 
+// Todos Module
+import TodosView from '@/modules/tenant/views/TodosView.vue'
+
 const routes = [
   { path: '/', name: 'public', component: PackagesView },
   { path: '/login', name: 'login', component: LoginView },
@@ -298,6 +301,14 @@ const routes = [
           { path: 'cache-management', name: 'admin.cache-management', component: CacheManagement },
           { path: 'system-updates', name: 'admin.system-updates', component: SystemUpdates },
         ],
+      },
+
+      // Todos Module
+      {
+        path: 'todos',
+        name: 'todos',
+        component: TodosView,
+        meta: { requiresAuth: true }
       },
     ],
   },

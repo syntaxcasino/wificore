@@ -3,12 +3,19 @@ services:
     container_name: traidnet-nginx
     build:
       context: ./nginx
+    restart: unless-stopped
     environment:
       - TZ=Africa/Nairobi
     ports:
       - "80:80"
       - "443:443" # Add SSL if needed
- 
+    depends_on:
+      traidnet-frontend:
+        condition: service_healthy
+      traidnet-backend:
+        condition: service_healthy
+      traidnet-soketi:
+        condition: service_healthy
     networks:
       - traidnet-network
     healthcheck:
@@ -16,20 +23,27 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
+      start_period: 10s
 
   traidnet-frontend:
     container_name: traidnet-frontend
     build:
       context: ./frontend
+    restart: unless-stopped
     environment:
       - TZ=Africa/Nairobi
       - VITE_PUSHER_APP_KEY=app-key
       - VITE_PUSHER_HOST=localhost
-      - VITE_PUSHER_PORT=80
-      - VITE_PUSHER_SCHEME=ws
+      - VITE_PUSHER_PORT=443
+      - VITE_PUSHER_SCHEME=wss
       - VITE_PUSHER_PATH=/app
       - VITE_PUSHER_APP_CLUSTER=mt1
-      - VITE_API_BASE_URL=http://localhost/api
+      - VITE_API_BASE_URL=https://localhost/api
+    depends_on:
+      traidnet-backend:
+        condition: service_healthy
+      traidnet-soketi:
+        condition: service_healthy
     networks:
       - traidnet-network
     healthcheck:
@@ -44,6 +58,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    restart: unless-stopped
     environment:
       - DB_CONNECTION=pgsql
       - DB_HOST=traidnet-postgres
@@ -60,8 +75,11 @@ services:
       - PUSHER_PORT=6001
       - PUSHER_SCHEME=http
       - TZ=Africa/Nairobi
-      - SANCTUM_STATEFUL_DOMAINS=localhost
-      - SESSION_DOMAIN=localhost
+      - APP_URL=https://localhost
+      - SANCTUM_STATEFUL_DOMAINS=localhost,127.0.0.1,localhost
+      - SESSION_DOMAIN=null
+      - SESSION_SAME_SITE=none
+      - SESSION_SECURE_COOKIE=false
       - RADIUS_SERVER_HOST=traidnet-freeradius
       - RADIUS_SERVER_PORT=1812
       - RADIUS_SECRET=testing123
@@ -75,6 +93,17 @@ services:
       - AUTO_SEED=true
       - FRESH_INSTALL=false
       - APP_ENV=development
+      # Multitenancy Configuration
+      - MULTITENANCY_MODE=schema
+      - AUTO_CREATE_TENANT_SCHEMA=true
+      - AUTO_MIGRATE_TENANT_SCHEMA=true
+      # VPN Configuration (Host-Based WireGuard for 100K+ tenants)
+      - VPN_MODE=host
+      - VPN_INTERFACE=wg0
+      - VPN_SERVER_IP=10.0.0.1
+      - VPN_SERVER_PORT=51820
+      - VPN_SERVER_ENDPOINT=vpn.example.com:51820
+      - VPN_SUBNET_BASE=10.0.0.0/8
     depends_on:
       traidnet-postgres:
         condition: service_healthy
@@ -91,8 +120,9 @@ services:
       retries: 5
       start_period: 30s
     volumes:
-      - laravel-storage:/var/www/html/storage
-      - laravel-logs:/var/www/html/storage/logs
+      - laravel-storage:/var/www/html/storage:rw
+      - laravel-logs:/var/www/html/storage/logs:rw
+    user: root  # Run as root initially to set permissions, then switch to www-data in entrypoint
 
   traidnet-freeradius:
     build: 
@@ -104,8 +134,7 @@ services:
       - TZ=Africa/Nairobi
     ports:
       - "1812-1813:1812-1813/udp"
-    # Configs are now copied into container during build (no volume mounts)
-    # This fixes FreeRADIUS "globally writable" permission errors
+    # No volumes - all configs copied during build for better performance
     networks:
       traidnet-network:
         aliases:
@@ -128,6 +157,7 @@ services:
     command: >
       -c "
       sleep 5 &&
+      chmod 640 /opt/etc/raddb/clients.conf /opt/etc/raddb/mods-available/sql &&
       ln -sf /opt/etc/raddb/mods-available/sql /opt/etc/raddb/mods-enabled/sql &&
       exec /opt/sbin/radiusd -X
       "
@@ -165,11 +195,14 @@ services:
       timeout: 10s
       retries: 5
       start_period: 30s
+
   traidnet-redis:
     container_name: traidnet-redis
     image: redis:7-alpine
     command: redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru --save 60 1000
     restart: unless-stopped
+    ports:
+      - "6379:6379"
     environment:
       - TZ=Africa/Nairobi
     networks:
@@ -179,18 +212,21 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
+      start_period: 10s
     volumes:
       - redis_data:/data
 
   traidnet-postgres:
     container_name: traidnet-postgres
-    image: postgres:16.10-trixie
+    build:
+      context: ./postgres
+      dockerfile: Dockerfile
+    restart: unless-stopped
     environment:
       - POSTGRES_DB=wifi_hotspot
       - POSTGRES_USER=admin
       - POSTGRES_PASSWORD=secret
       - TZ=Africa/Nairobi
-      # Connection pooling and performance optimization
       - POSTGRES_MAX_CONNECTIONS=200
       - POSTGRES_SHARED_BUFFERS=256MB
       - POSTGRES_EFFECTIVE_CACHE_SIZE=1GB
@@ -205,6 +241,7 @@ services:
       - POSTGRES_MAX_WAL_SIZE=4GB
     command: >
       postgres
+      -c shared_preload_libraries=pg_stat_statements
       -c max_connections=200
       -c shared_buffers=256MB
       -c effective_cache_size=1GB
@@ -221,11 +258,12 @@ services:
       -c max_parallel_workers_per_gather=2
       -c max_parallel_workers=4
       -c max_parallel_maintenance_workers=2
+      -c pg_stat_statements.max=10000
+      -c pg_stat_statements.track=all
+      -c max_locks_per_transaction=256
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      # init.sql removed - using Laravel migrations instead
-      - ./postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql
-      #- ./postgres/radius-schema.sql:/docker-entrypoint-initdb.d/01-radius-schema.sql
+      # Note: init.sql is baked into the image, not mounted
     networks:
       traidnet-network:
         aliases:
@@ -236,6 +274,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
+      start_period: 20s
 
 volumes:
   postgres_data:

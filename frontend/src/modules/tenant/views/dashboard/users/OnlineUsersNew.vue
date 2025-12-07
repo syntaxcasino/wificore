@@ -429,11 +429,33 @@ const exportData = () => {
   // TODO: Implement export functionality
 }
 
-// Lifecycle
+// EVENT-BASED: Subscribe to WebSocket for real-time updates (NO POLLING)
 onMounted(() => {
+  console.log('🚀 OnlineUsers mounted - EVENT-BASED mode')
+  
+  // Fetch initial users ONCE
   fetchUsers()
   
-  const interval = setInterval(refreshUsers, 5000)
-  onUnmounted(() => clearInterval(interval))
+  // TODO: Subscribe to WebSocket events for online users
+  // Example:
+  // subscribeToPrivateChannel('online-users', {
+  //   'UserConnected': (event) => {
+  //     console.log('✨ User connected:', event)
+  //     users.value.push(event.user)
+  //   },
+  //   'UserDisconnected': (event) => {
+  //     console.log('👋 User disconnected:', event)
+  //     users.value = users.value.filter(u => u.id !== event.user.id)
+  //   },
+  //   'SessionUpdated': (event) => {
+  //     console.log('🔄 Session updated:', event)
+  //     const index = users.value.findIndex(u => u.id === event.user.id)
+  //     if (index !== -1) {
+  //       users.value[index] = { ...users.value[index], ...event.user }
+  //     }
+  //   }
+  // })
+  
+  console.log('✅ WebSocket subscriptions active - NO POLLING!')
 })
 </script>

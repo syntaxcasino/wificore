@@ -1,0 +1,46 @@
+# WireGuard VPN Server for Multi-Tenant Router Management
+# This service provides VPN connectivity for all tenant routers
+
+version: '3.8'
+
+services:
+  wireguard:
+    image: linuxserver/wireguard:latest
+    container_name: traidnet-wireguard
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Africa/Nairobi
+      - SERVERURL=auto  # Auto-detect public IP
+      - SERVERPORT=51820  # Base port, will use 51820-51920 for multiple tenants
+      - PEERS=0  # Peers managed dynamically by Laravel
+      - PEERDNS=auto
+      - INTERNAL_SUBNET=10.100.0.0/16  # Base subnet, each tenant gets 10.X.0.0/16
+      - ALLOWEDIPS=0.0.0.0/0
+      - LOG_CONFS=true
+    volumes:
+      - ./wireguard/config:/config
+      - /lib/modules:/lib/modules:ro
+    ports:
+      # Support up to 100 tenants (51820-51920)
+      - "51820-51920:51820-51920/udp"
+    sysctls:
+      - net.ipv4.conf.all.src_valid_mark=1
+      - net.ipv4.ip_forward=1
+      - net.ipv6.conf.all.forwarding=1
+    restart: unless-stopped
+    networks:
+      traidnet-network:
+        ipv4_address: 172.20.0.10
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  traidnet-network:
+    external: true

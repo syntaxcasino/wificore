@@ -1,11 +1,9 @@
- # Ignore logs and temporary files
+# Ignore logs and temporary files
 *.log
 .DS_Store
 Thumbs.db
 
 # Ignore environment and configuration files
-
-
 .auth.json
 .phpactor.json
 .phpunit.result.cache
@@ -20,6 +18,7 @@ Thumbs.db
 
 # Ignore development and build artifacts
 node_modules
+node_modules/
 public/build
 public/hot
 vendor
@@ -28,6 +27,8 @@ Homestead.yaml
 
 # Ignore Git repository
 .git
+.gitignore
+.gitattributes
 
 # Ignore storage subdirectories except app/public
 storage/logs/*
@@ -43,4 +44,37 @@ public/storage
 
 # Ignore documentation
 docs/
+*.md
+README.md
+
+# Ignore test files
+tests/
+phpunit.xml
+.phpunit.cache
+
+# Ignore deployment scripts
+deploy.sh
+deploy.ps1
+*.ps1
+*.sh
+
+# Ignore test/debug scripts
+test*.php
+check*.php
+comprehensive-check.php
+fix*.php
+run-*.php
+update-*.php
+update-*.ps1
+
+# Ignore package files (npm not needed in production)
+package.json
+package-lock.json
+vite.config.js
+
+# Ignore certificates (should be mounted or in secrets)
+cert/
+
+# Ignore scripts directory
+scripts/
 

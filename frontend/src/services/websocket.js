@@ -148,6 +148,116 @@ class WebSocketService {
         )
       })
 
+    // Todo events
+    channel
+      .listen('.todo.created', (event) => {
+        console.log('✅ TodoCreated event:', event)
+        this.notificationStore.success(
+          'New Todo Created',
+          `Todo "${event.todo?.title}" has been created.`,
+          5000
+        )
+        window.dispatchEvent(new CustomEvent('todo-created', { detail: event }))
+      })
+      .listen('.todo.updated', (event) => {
+        console.log('📝 TodoUpdated event:', event)
+        this.notificationStore.info(
+          'Todo Updated',
+          `Todo "${event.todo?.title}" has been updated.`,
+          4000
+        )
+        window.dispatchEvent(new CustomEvent('todo-updated', { detail: event }))
+      })
+      .listen('.todo.deleted', (event) => {
+        console.log('🗑️ TodoDeleted event:', event)
+        this.notificationStore.info('Todo Deleted', 'A todo has been deleted.', 4000)
+        window.dispatchEvent(new CustomEvent('todo-deleted', { detail: event }))
+      })
+      .listen('.todo.activity.created', (event) => {
+        console.log('📋 TodoActivityCreated event:', event)
+        window.dispatchEvent(new CustomEvent('todo-activity-created', { detail: event }))
+      })
+
+    // HR Module - Department events
+    channel
+      .listen('.department.created', (event) => {
+        console.log('🏢 DepartmentCreated event:', event)
+        this.notificationStore.success('Department Created', `Department "${event.department?.name}" has been created.`, 5000)
+        window.dispatchEvent(new CustomEvent('department-created', { detail: event }))
+      })
+      .listen('.department.updated', (event) => {
+        console.log('🏢 DepartmentUpdated event:', event)
+        window.dispatchEvent(new CustomEvent('department-updated', { detail: event }))
+      })
+      .listen('.department.deleted', (event) => {
+        console.log('🏢 DepartmentDeleted event:', event)
+        window.dispatchEvent(new CustomEvent('department-deleted', { detail: event }))
+      })
+
+    // HR Module - Position events
+    channel
+      .listen('.position.created', (event) => {
+        console.log('💼 PositionCreated event:', event)
+        this.notificationStore.success('Position Created', `Position "${event.position?.title}" has been created.`, 5000)
+        window.dispatchEvent(new CustomEvent('position-created', { detail: event }))
+      })
+      .listen('.position.updated', (event) => {
+        console.log('💼 PositionUpdated event:', event)
+        window.dispatchEvent(new CustomEvent('position-updated', { detail: event }))
+      })
+      .listen('.position.deleted', (event) => {
+        console.log('💼 PositionDeleted event:', event)
+        window.dispatchEvent(new CustomEvent('position-deleted', { detail: event }))
+      })
+
+    // HR Module - Employee events
+    channel
+      .listen('.employee.created', (event) => {
+        console.log('👤 EmployeeCreated event:', event)
+        this.notificationStore.success('Employee Created', `Employee has been added.`, 5000)
+        window.dispatchEvent(new CustomEvent('employee-created', { detail: event }))
+      })
+      .listen('.employee.updated', (event) => {
+        console.log('👤 EmployeeUpdated event:', event)
+        window.dispatchEvent(new CustomEvent('employee-updated', { detail: event }))
+      })
+      .listen('.employee.deleted', (event) => {
+        console.log('👤 EmployeeDeleted event:', event)
+        window.dispatchEvent(new CustomEvent('employee-deleted', { detail: event }))
+      })
+
+    // Finance Module - Expense events
+    channel
+      .listen('.expense.created', (event) => {
+        console.log('💰 ExpenseCreated event:', event)
+        this.notificationStore.success('Expense Created', `Expense ${event.expense?.expense_number} has been created.`, 5000)
+        window.dispatchEvent(new CustomEvent('expense-created', { detail: event }))
+      })
+      .listen('.expense.updated', (event) => {
+        console.log('💰 ExpenseUpdated event:', event)
+        window.dispatchEvent(new CustomEvent('expense-updated', { detail: event }))
+      })
+      .listen('.expense.deleted', (event) => {
+        console.log('💰 ExpenseDeleted event:', event)
+        window.dispatchEvent(new CustomEvent('expense-deleted', { detail: event }))
+      })
+
+    // Finance Module - Revenue events
+    channel
+      .listen('.revenue.created', (event) => {
+        console.log('💵 RevenueCreated event:', event)
+        this.notificationStore.success('Revenue Created', `Revenue ${event.revenue?.revenue_number} has been created.`, 5000)
+        window.dispatchEvent(new CustomEvent('revenue-created', { detail: event }))
+      })
+      .listen('.revenue.updated', (event) => {
+        console.log('💵 RevenueUpdated event:', event)
+        window.dispatchEvent(new CustomEvent('revenue-updated', { detail: event }))
+      })
+      .listen('.revenue.deleted', (event) => {
+        console.log('💵 RevenueDeleted event:', event)
+        window.dispatchEvent(new CustomEvent('revenue-deleted', { detail: event }))
+      })
+
     this.channels.set(channelName, channel)
     return channel
   }
@@ -197,6 +307,24 @@ class WebSocketService {
           'Your profile information has been updated.',
           5000
         )
+      })
+
+    // Todo events (user-specific)
+    channel
+      .listen('.todo.created', (event) => {
+        console.log('✅ TodoCreated (user) event:', event)
+        // Dispatch custom event for composable to handle
+        window.dispatchEvent(new CustomEvent('todo-created', { detail: event }))
+      })
+      .listen('.todo.updated', (event) => {
+        console.log('📝 TodoUpdated (user) event:', event)
+        // Dispatch custom event for composable to handle
+        window.dispatchEvent(new CustomEvent('todo-updated', { detail: event }))
+      })
+      .listen('.todo.deleted', (event) => {
+        console.log('🗑️ TodoDeleted (user) event:', event)
+        // Dispatch custom event for composable to handle
+        window.dispatchEvent(new CustomEvent('todo-deleted', { detail: event }))
       })
 
     this.channels.set(channelName, channel)

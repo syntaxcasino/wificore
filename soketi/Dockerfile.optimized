@@ -1,0 +1,20 @@
+# Build from minimal Node Alpine image
+FROM node:20-alpine
+
+# Install only curl for healthchecks (minimal size)
+RUN apk add --no-cache curl
+
+# Install soketi globally
+RUN npm install -g @soketi/soketi && npm cache clean --force
+
+# Suppress AWS SDK maintenance mode message
+ENV AWS_SDK_JS_SUPPRESS_MAINTENANCE_MODE_MESSAGE=1
+
+# Run as non-root user for security
+USER node
+
+# Expose ports
+EXPOSE 6001 9601
+
+# Start soketi
+CMD ["soketi", "start"]

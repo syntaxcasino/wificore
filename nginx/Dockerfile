@@ -1,5 +1,5 @@
-#FROM nginx:stable-alpine
-FROM nginx:1.29.1-alpine-slim
+# Use latest nginx alpine-slim for minimal size
+FROM nginx:alpine-slim
 RUN rm /etc/nginx/conf.d/default.conf
 RUN rm -rf /usr/share/nginx/html/*
 RUN ln -sf /dev/stdout /var/log/nginx/access.log \

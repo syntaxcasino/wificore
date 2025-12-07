@@ -66,8 +66,31 @@ class UnifiedAuthController extends Controller
             ], 422);
         }
 
-        // Find user by username or email
-        $user = User::where('username', $request->username)
+        // Extract subdomain for tenant identification
+        $host = $request->getHost();
+        $subdomain = null;
+        $tenant = null;
+        
+        if (!$this->isLocalhost($host)) {
+            $subdomain = $this->extractSubdomain($host);
+            
+            if ($subdomain && !$this->isReservedSubdomain($subdomain)) {
+                // Find tenant by subdomain
+                $tenant = \App\Models\Tenant::where('subdomain', $subdomain)
+                    ->orWhere('custom_domain', $host)
+                    ->first();
+                    
+                \Log::info('Tenant identified from subdomain', [
+                    'subdomain' => $subdomain,
+                    'tenant_id' => $tenant?->id,
+                    'tenant_schema' => $tenant?->schema_name
+                ]);
+            }
+        }
+        
+        // Find user by username or email (without tenant scope for now)
+        $user = User::withoutGlobalScope(\App\Models\Scopes\TenantScope::class)
+            ->where('username', $request->username)
             ->orWhere('email', $request->username)
             ->first();
 
@@ -193,13 +216,20 @@ class UnifiedAuthController extends Controller
         }
 
         // AAA: Authenticate ALL users via FreeRADIUS
+        // PostgreSQL functions automatically determine correct tenant schema
         \Log::info('Authenticating user via RADIUS (AAA)', [
             'username' => $user->username,
-            'role' => $user->role
+            'role' => $user->role,
+            'tenant_id' => $user->tenant_id
         ]);
         
         try {
-            $authenticated = $this->radiusService->authenticate($user->username, $request->password);
+            // RADIUS service uses PostgreSQL functions for automatic schema lookup
+            // No need to pass schema - high performance without connection state changes
+            $authenticated = $this->radiusService->authenticate(
+                $user->username, 
+                $request->password
+            );
             
             if ($authenticated) {
                 \Log::info('RADIUS authentication successful (AAA)', [
@@ -485,5 +515,19 @@ class UnifiedAuthController extends Controller
         }
 
         return false;
+    }
+    
+    /**
+     * Check if subdomain is reserved
+     */
+    private function isReservedSubdomain(string $subdomain): bool
+    {
+        $reserved = [
+            'www', 'api', 'admin', 'app', 'mail', 'ftp', 'smtp',
+            'pop', 'imap', 'webmail', 'cpanel', 'whm', 'ns1', 'ns2',
+            'system', 'test', 'dev', 'staging', 'demo',
+        ];
+        
+        return in_array(strtolower($subdomain), $reserved);
     }
 }

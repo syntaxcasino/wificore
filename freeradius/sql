@@ -8,7 +8,11 @@ sql {
     password = "secret"
     radius_db = "wifi_hotspot"
 
-    # Table configuration
+    # IMPORTANT: Schema-based multi-tenancy support
+    # FreeRADIUS will use radius_user_schema_mapping to determine tenant schema
+    # Then switch to that schema before querying RADIUS tables
+    
+    # Table configuration (will be prefixed with schema at runtime)
     acct_table1 = "radacct"
     acct_table2 = "radacct"
     postauth_table = "radpostauth"

@@ -41,6 +41,7 @@ class RouterController extends Controller
             $port = 8728;
             $configToken = Str::uuid();
 
+            // VPN is now MANDATORY for all routers
             $router = Router::create([
                 'name' => $request->name,
                 'ip_address' => $ipAddress,
@@ -49,6 +50,8 @@ class RouterController extends Controller
                 'port' => $port,
                 'config_token' => $configToken,
                 'status' => 'pending',
+                'vpn_enabled' => true, // Always enabled
+                'vpn_status' => 'pending',
             ]);
 
             $connectivityScript = $this->generateConnectivityScript($router);
@@ -58,12 +61,22 @@ class RouterController extends Controller
                 'config_content' => $connectivityScript,
             ]);
 
-            Log::info('Router created successfully:', [
+            // Fire RouterCreated event
+            event(new \App\Events\RouterCreated($router));
+
+            // ALWAYS dispatch VPN provisioning job
+            \App\Jobs\ProvisionVpnConfigurationJob::dispatch(
+                $router->tenant_id,
+                $router->id
+            )->onQueue('vpn-provisioning');
+
+            Log::info('Router created with mandatory VPN:', [
                 'router_id' => $router->id,
                 'name' => $router->name,
                 'ip_address' => $router->ip_address,
                 'username' => $router->username,
                 'port' => $router->port,
+                'vpn_enabled' => true,
             ]);
 
             return response()->json([
@@ -76,6 +89,9 @@ class RouterController extends Controller
                 'model' => $router->model,
                 'os_version' => $router->os_version,
                 'last_seen' => $router->last_seen,
+                'vpn_enabled' => true,
+                'vpn_status' => 'pending',
+                'vpn_ip' => null,
             ], 201);
         } catch (\Exception $e) {
             Log::error('Failed to create router: ' . $e->getMessage(), [

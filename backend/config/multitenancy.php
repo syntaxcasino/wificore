@@ -3,15 +3,18 @@
 return [
     /*
     |--------------------------------------------------------------------------
-    | Multi-Tenancy Mode
+    | Multitenancy Mode
     |--------------------------------------------------------------------------
     |
-    | Supported modes: 'schema', 'hybrid'
-    | - schema: Full schema-based isolation (recommended for production)
-    | - hybrid: Supports both schema-based and tenant_id filtering (migration mode)
+    | Defines the multitenancy strategy (SINGLE MODE ONLY):
+    | - 'schema': Each tenant gets their own PostgreSQL schema (DEFAULT)
+    | - 'shared': All tenants share tables with tenant_id (legacy mode)
+    |
+    | NOTE: System operates in SINGLE MODE only. No hybrid support.
+    | Default is 'schema' mode for better isolation and performance.
     |
     */
-    'mode' => env('MULTITENANCY_MODE', 'hybrid'),
+    'mode' => env('MULTITENANCY_MODE', 'schema'),
     
     /*
     |--------------------------------------------------------------------------
@@ -115,33 +118,33 @@ return [
     
     /*
     |--------------------------------------------------------------------------
-    | Auto-Create Schema
+    | Auto Create Schema
     |--------------------------------------------------------------------------
     |
     | Automatically create tenant schema when a new tenant is registered
     |
     */
-    'auto_create_schema' => env('MULTITENANCY_AUTO_CREATE_SCHEMA', true),
+    'auto_create_schema' => env('AUTO_CREATE_TENANT_SCHEMA', true),
     
     /*
     |--------------------------------------------------------------------------
-    | Auto-Migrate Schema
+    | Auto Migrate Schema
     |--------------------------------------------------------------------------
     |
-    | Automatically run tenant migrations when a schema is created
+    | Automatically run migrations when a tenant schema is created
     |
     */
-    'auto_migrate_schema' => env('MULTITENANCY_AUTO_MIGRATE_SCHEMA', true),
+    'auto_migrate_schema' => env('AUTO_MIGRATE_TENANT_SCHEMA', true),
     
     /*
     |--------------------------------------------------------------------------
-    | Auto-Seed Schema
+    | Auto Seed Schema
     |--------------------------------------------------------------------------
     |
-    | Automatically seed tenant data when a schema is created
+    | Automatically seed default data when a tenant schema is created
     |
     */
-    'auto_seed_schema' => env('MULTITENANCY_AUTO_SEED_SCHEMA', false),
+    'auto_seed_schema' => env('AUTO_SEED_TENANT_SCHEMA', false),
     
     /*
     |--------------------------------------------------------------------------
@@ -174,17 +177,15 @@ return [
     
     /*
     |--------------------------------------------------------------------------
-    | Backup Configuration
+    | Schema Backup
     |--------------------------------------------------------------------------
     |
-    | Backup settings for tenant schemas
+    | Enable automatic schema backups
     |
     */
-    'backup' => [
-        'enabled' => env('MULTITENANCY_BACKUP_ENABLED', true),
-        'path' => storage_path('backups/tenants'),
-        'retention_days' => env('TENANT_BACKUP_RETENTION_DAYS', 30),
-    ],
+    'backup_enabled' => env('TENANT_BACKUP_ENABLED', true),
+    'backup_path' => storage_path('app/tenant-backups'),
+    'backup_retention_days' => env('TENANT_BACKUP_RETENTION_DAYS', 30),
     
     /*
     |--------------------------------------------------------------------------

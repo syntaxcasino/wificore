@@ -449,33 +449,38 @@ const {
   userGrowth,
 } = useDashboard()
 
-let pollingInterval = null
-
-// Subscribe to private channels when component mounts
+// EVENT-BASED: Subscribe to WebSocket channels (NO POLLING)
 onMounted(() => {
-  console.log('Dashboard mounted - fetching initial stats')
+  console.log('🚀 Dashboard mounted - EVENT-BASED mode')
   
-  // Fetch initial dashboard stats
+  // Fetch initial dashboard stats ONCE
   fetchDashboardStats()
   
-  // Set up polling as fallback (every 5 seconds) for near real-time updates
-  pollingInterval = setInterval(fetchDashboardStats, 5000)
-
-  // Subscribe to dashboard stats updates
+  // ✅ EVENT-BASED: Subscribe to dashboard stats updates via WebSocket
+  // Backend broadcasts DashboardStatsUpdated event when stats change
   subscribeToPrivateChannel('dashboard-stats', {
+    'DashboardStatsUpdated': (event) => {
+      console.log('📊 Dashboard stats updated via WebSocket:', event)
+      if (event.stats) {
+        updateStatsFromEvent(event.stats)
+      }
+    },
     'stats.updated': (event) => {
-      console.log('Dashboard stats updated via WebSocket:', event)
+      console.log('📊 Stats updated (legacy event):', event)
       if (event.stats) {
         updateStatsFromEvent(event.stats)
       }
     },
   })
 
-  // Subscribe to router status updates
+  // ✅ EVENT-BASED: Subscribe to router status updates
   subscribeToPrivateChannel('router-status', {
     'RouterStatusUpdated': (event) => {
-      console.log('Router status update received:', event)
-      fetchDashboardStats()
+      console.log('🔌 Router status update received:', event)
+      // Update stats reactively from event data instead of refetching
+      if (event.stats) {
+        updateStatsFromEvent(event.stats)
+      }
       
       recentActivities.value.unshift({
         timestamp: new Date().toLocaleTimeString(),
@@ -487,17 +492,21 @@ onMounted(() => {
     },
   })
 
-  // Subscribe to routers channel
+  // ✅ EVENT-BASED: Subscribe to routers channel
   subscribeToPrivateChannel('routers', {
     'RouterCreated': (event) => {
-      console.log('New router created:', event)
+      console.log('✨ New router created:', event)
       recentActivities.value.unshift({
         timestamp: new Date().toLocaleTimeString(),
         message: `New router added: ${event.router?.name || 'Unknown'}`,
       })
+      // Trigger stats refresh via event
+      if (event.stats) {
+        updateStatsFromEvent(event.stats)
+      }
     },
     'RouterUpdated': (event) => {
-      console.log('Router updated:', event)
+      console.log('🔄 Router updated:', event)
       recentActivities.value.unshift({
         timestamp: new Date().toLocaleTimeString(),
         message: `Router updated: ${event.router?.name || 'Unknown'}`,
@@ -505,37 +514,37 @@ onMounted(() => {
     },
   })
 
-  // Subscribe to presence channel
+  // ✅ EVENT-BASED: Subscribe to presence channel for online users
   subscribeToPresenceChannel('online', {
     here: (users) => {
-      console.log('Users currently online:', users)
+      console.log('👥 Users currently online:', users)
       onlineUsers.value = users
     },
     joining: (user) => {
-      console.log('User joined:', user)
+      console.log('👋 User joined:', user)
       onlineUsers.value.push(user)
     },
     leaving: (user) => {
-      console.log('User left:', user)
+      console.log('👋 User left:', user)
       onlineUsers.value = onlineUsers.value.filter(u => u.id !== user.id)
     },
   })
 
-  // Subscribe to user-specific private channel
+  // ✅ EVENT-BASED: Subscribe to user-specific private channel
   if (user.value?.id) {
     subscribeToPrivateChannel(`App.Models.User.${user.value.id}`, {
       'Notification': (event) => {
-        console.log('Personal notification:', event)
+        console.log('🔔 Personal notification:', event)
       },
     })
   }
+  
+  console.log('✅ All WebSocket subscriptions active - NO POLLING!')
 })
 
-// Cleanup on unmount
+// Cleanup on unmount (WebSocket cleanup handled by composable)
 onUnmounted(() => {
-  if (pollingInterval) {
-    clearInterval(pollingInterval)
-  }
+  console.log('🧹 Dashboard unmounted - WebSocket cleanup automatic')
 })
 </script>
 

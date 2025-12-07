@@ -29,11 +29,19 @@ class RadiusService extends TenantAwareService
         $this->radius->setNasIpAddress('127.0.0.1');
     }
 
+    /**
+     * Authenticate user via RADIUS
+     * 
+     * NOTE: Schema lookup is handled automatically by PostgreSQL functions.
+     * No need to set search_path - functions determine correct schema from username.
+     * This provides high performance without connection state changes.
+     */
     public function authenticate(string $username, string $password): bool
     {
         try {
             \Log::info("RADIUS: Attempting authentication for user: {$username}");
             
+            // PostgreSQL functions automatically determine correct tenant schema
             $result = $this->radius->accessRequest($username, $password);
             
             if ($result === true) {
@@ -54,10 +62,19 @@ class RadiusService extends TenantAwareService
      * 
      * IMPORTANT: This method uses the current tenant context (search_path).
      * Ensure tenant context is set before calling this method.
+     * 
+     * @param string $username
+     * @param string $password
+     * @param string|null $tenantSchemaName Optional tenant schema (if not set, uses current context)
      */
-    public function createUser(string $username, string $password): bool
+    public function createUser(string $username, string $password, ?string $tenantSchemaName = null): bool
     {
         try {
+            // Set tenant schema if provided
+            if ($tenantSchemaName) {
+                $this->setTenantSchemaContext($tenantSchemaName);
+            }
+            
             \Log::info("RADIUS: Creating user in tenant schema: {$username}");
             
             // Get current search path for logging
@@ -93,6 +110,11 @@ class RadiusService extends TenantAwareService
         } catch (\Exception $e) {
             \Log::error("RADIUS: Failed to create user {$username}: " . $e->getMessage());
             return false;
+        } finally {
+            // Reset to public schema if we changed it
+            if ($tenantSchemaName) {
+                \DB::statement("SET search_path TO public");
+            }
         }
     }
 
