@@ -36,7 +36,7 @@
         <div class="pt-6 pb-2">
           <div class="px-3 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
             <div class="w-1 h-4 bg-gradient-to-b from-blue-500 to-purple-500 rounded-full"></div>
-            Customers & Users
+            Customers
           </div>
 
           <!-- Hotspot Users -->
@@ -155,64 +155,6 @@
               </div>
             </div>
           </div>
-
-          <!-- Admin Users -->
-          <div>
-            <button
-              @click="toggleMenu('users')"
-              class="w-full flex items-center justify-between py-2.5 px-3 rounded-lg hover:bg-gray-800 transition-all duration-200"
-              :class="isActiveUsers ? 'bg-gray-800 text-white' : ''"
-            >
-              <span class="flex items-center gap-3">
-                <UserCircle class="w-5 h-5 flex-shrink-0" />
-                <span class="text-sm font-medium">Admin Users</span>
-              </span>
-              <ChevronDown
-                class="w-4 h-4 transition-transform duration-200"
-                :class="activeMenu === 'users' ? 'rotate-180' : ''"
-              />
-            </button>
-            <div
-              v-show="activeMenu === 'users'"
-              class="overflow-hidden transition-all duration-200 ease-out"
-              :class="activeMenu === 'users' ? 'max-h-96 opacity-100 mt-1' : 'max-h-0 opacity-0'"
-            >
-              <div class="ml-9 space-y-1">
-                <router-link
-                  to="/dashboard/users/all"
-                  class="block py-2.5 px-3 rounded-md hover:bg-gray-800/40 hover:text-white text-sm transition-all duration-150 group"
-                  :class="route.path === '/dashboard/users/all' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-cyan-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
-                  @click="isMobile && $emit('close-sidebar')"
-                >
-                  All Admins
-                </router-link>
-                <router-link
-                  to="/dashboard/users/create"
-                  class="block py-2.5 px-3 rounded-md hover:bg-gray-800/40 hover:text-white text-sm transition-all duration-150 group"
-                  :class="route.path === '/dashboard/users/create' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-cyan-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
-                  @click="isMobile && $emit('close-sidebar')"
-                >
-                  Create Admin
-                </router-link>
-                <router-link
-                  to="/dashboard/users/roles"
-                  class="block py-2.5 px-3 rounded-md hover:bg-gray-800/40 hover:text-white text-sm transition-all duration-150 group"
-                  :class="route.path === '/dashboard/users/roles' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-cyan-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
-                  @click="isMobile && $emit('close-sidebar')"
-                >
-                  Roles & Permissions
-                </router-link>
-                <router-link
-                  to="/dashboard/users/online"
-                  class="block py-2.5 px-3 rounded-md hover:bg-gray-800/40 hover:text-white text-sm transition-all duration-150 group"
-                  :class="route.path === '/dashboard/users/online' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-cyan-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
-                  @click="isMobile && $emit('close-sidebar')"
-                >
-                  Online Users
-                </router-link>
-              </div>
-            </div>
-          </div>
         </div>
 
         <!-- Section: Products & Services -->
@@ -315,11 +257,11 @@
           </div>
         </div>
 
-        <!-- Section: Billing & Payments -->
+        <!-- Section: Finance & Billing -->
         <div class="pt-6 pb-2">
           <div class="px-3 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
             <div class="w-1 h-4 bg-gradient-to-b from-amber-500 to-orange-500 rounded-full"></div>
-            Billing & Payments
+            Finance & Billing
           </div>
 
           <!-- Billing -->
@@ -383,6 +325,22 @@
                   @click="isMobile && $emit('close-sidebar')"
                 >
                   Payment Methods
+                </router-link>
+                <router-link
+                  to="/dashboard/finance/expenses"
+                  class="block py-2.5 px-3 rounded-md hover:bg-gray-800/40 hover:text-white text-sm transition-all duration-150 group"
+                  :class="route.path === '/dashboard/finance/expenses' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-cyan-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
+                  @click="isMobile && $emit('close-sidebar')"
+                >
+                  Expenses
+                </router-link>
+                <router-link
+                  to="/dashboard/finance/revenues"
+                  class="block py-2.5 px-3 rounded-md hover:bg-gray-800/40 hover:text-white text-sm transition-all duration-150 group"
+                  :class="route.path === '/dashboard/finance/revenues' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-cyan-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
+                  @click="isMobile && $emit('close-sidebar')"
+                >
+                  Revenues
                 </router-link>
               </div>
             </div>
@@ -571,27 +529,97 @@
           </div>
         </div>
 
-        <!-- Section: Organization -->
+        <!-- Section: Team Management -->
         <div class="pt-6 pb-2">
           <div class="px-3 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
             <div class="w-1 h-4 bg-gradient-to-b from-cyan-500 to-sky-500 rounded-full"></div>
-            Organization
+            Team Management
           </div>
 
-          <!-- HR -->
+          <!-- Admin Users -->
           <div>
             <button
-              @click="toggleMenu('hr')"
-              class="w-full flex items-center justify-between py-2.5 px-3 rounded-lg hover:bg-gray-800 transition-all duration-200"
-              :class="isActiveHR ? 'bg-gray-800 text-white' : ''"
+              @click="toggleMenu('users')"
+              class="w-full flex items-center justify-between py-3 px-3.5 rounded-lg hover:bg-gray-800/60 transition-all duration-200 group"
+              :class="isActiveUsers ? 'bg-gray-800/80 text-white' : 'text-gray-300'"
             >
               <span class="flex items-center gap-3">
-                <Briefcase class="w-5 h-5 flex-shrink-0" />
-                <span class="text-sm font-medium">HR Management</span>
+                <UserCircle class="w-5 h-5 flex-shrink-0 group-hover:scale-110 transition-transform duration-200" :class="isActiveUsers ? 'text-cyan-400' : ''" />
+                <span class="text-sm font-semibold">Admin Users</span>
               </span>
               <ChevronDown
                 class="w-4 h-4 transition-transform duration-200"
-                :class="activeMenu === 'hr' ? 'rotate-180' : ''"
+                :class="activeMenu === 'users' ? 'rotate-180 text-cyan-400' : ''"
+              />
+            </button>
+            <div
+              v-show="activeMenu === 'users'"
+              class="overflow-hidden transition-all duration-200 ease-out"
+              :class="activeMenu === 'users' ? 'max-h-96 opacity-100 mt-1' : 'max-h-0 opacity-0'"
+            >
+              <div class="ml-8 space-y-0.5 mt-1 border-l-2 border-gray-800/50 pl-3">
+                <router-link
+                  to="/dashboard/users/all"
+                  class="block py-2.5 px-3 rounded-md hover:bg-gray-800/40 hover:text-white text-sm transition-all duration-150 group"
+                  :class="route.path === '/dashboard/users/all' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-cyan-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
+                  @click="isMobile && $emit('close-sidebar')"
+                >
+                  <span class="flex items-center gap-2">
+                    <span class="w-1.5 h-1.5 rounded-full bg-gray-600 group-hover:bg-cyan-400 transition-colors" :class="route.path === '/dashboard/users/all' ? 'bg-cyan-400' : ''"></span>
+                    All Admins
+                  </span>
+                </router-link>
+                <router-link
+                  to="/dashboard/users/create"
+                  class="block py-2.5 px-3 rounded-md hover:bg-gray-800/40 hover:text-white text-sm transition-all duration-150 group"
+                  :class="route.path === '/dashboard/users/create' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-cyan-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
+                  @click="isMobile && $emit('close-sidebar')"
+                >
+                  <span class="flex items-center gap-2">
+                    <span class="w-1.5 h-1.5 rounded-full bg-gray-600 group-hover:bg-cyan-400 transition-colors" :class="route.path === '/dashboard/users/create' ? 'bg-cyan-400' : ''"></span>
+                    Create Admin
+                  </span>
+                </router-link>
+                <router-link
+                  to="/dashboard/users/roles"
+                  class="block py-2.5 px-3 rounded-md hover:bg-gray-800/40 hover:text-white text-sm transition-all duration-150 group"
+                  :class="route.path === '/dashboard/users/roles' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-cyan-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
+                  @click="isMobile && $emit('close-sidebar')"
+                >
+                  <span class="flex items-center gap-2">
+                    <span class="w-1.5 h-1.5 rounded-full bg-gray-600 group-hover:bg-cyan-400 transition-colors" :class="route.path === '/dashboard/users/roles' ? 'bg-cyan-400' : ''"></span>
+                    Roles & Permissions
+                  </span>
+                </router-link>
+                <router-link
+                  to="/dashboard/users/online"
+                  class="block py-2.5 px-3 rounded-md hover:bg-gray-800/40 hover:text-white text-sm transition-all duration-150 group"
+                  :class="route.path === '/dashboard/users/online' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-cyan-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
+                  @click="isMobile && $emit('close-sidebar')"
+                >
+                  <span class="flex items-center gap-2">
+                    <span class="w-1.5 h-1.5 rounded-full bg-gray-600 group-hover:bg-cyan-400 transition-colors" :class="route.path === '/dashboard/users/online' ? 'bg-cyan-400' : ''"></span>
+                    Online Users
+                  </span>
+                </router-link>
+              </div>
+            </div>
+          </div>
+
+          <!-- HR Management -->
+          <div>
+            <button
+              @click="toggleMenu('hr')"
+              class="w-full flex items-center justify-between py-3 px-3.5 rounded-lg hover:bg-gray-800/60 transition-all duration-200 group"
+              :class="isActiveHR ? 'bg-gray-800/80 text-white' : 'text-gray-300'"
+            >
+              <span class="flex items-center gap-3">
+                <Briefcase class="w-5 h-5 flex-shrink-0 group-hover:scale-110 transition-transform duration-200" :class="isActiveHR ? 'text-cyan-400' : ''" />
+                <span class="text-sm font-semibold">HR Management</span>
+              </span>
+              <ChevronDown
+                class="w-4 h-4 transition-transform duration-200"
+                :class="activeMenu === 'hr' ? 'rotate-180 text-cyan-400' : ''"
               />
             </button>
             <div
@@ -599,14 +627,17 @@
               class="overflow-hidden transition-all duration-200 ease-out"
               :class="activeMenu === 'hr' ? 'max-h-96 opacity-100 mt-1' : 'max-h-0 opacity-0'"
             >
-              <div class="ml-9 space-y-1">
+              <div class="ml-8 space-y-0.5 mt-1 border-l-2 border-gray-800/50 pl-3">
                 <router-link
                   to="/dashboard/hr/departments"
                   class="block py-2.5 px-3 rounded-md hover:bg-gray-800/40 hover:text-white text-sm transition-all duration-150 group"
                   :class="route.path === '/dashboard/hr/departments' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-cyan-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
                   @click="isMobile && $emit('close-sidebar')"
                 >
-                  Departments
+                  <span class="flex items-center gap-2">
+                    <span class="w-1.5 h-1.5 rounded-full bg-gray-600 group-hover:bg-cyan-400 transition-colors" :class="route.path === '/dashboard/hr/departments' ? 'bg-cyan-400' : ''"></span>
+                    Departments
+                  </span>
                 </router-link>
                 <router-link
                   to="/dashboard/hr/positions"
@@ -614,7 +645,10 @@
                   :class="route.path === '/dashboard/hr/positions' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-cyan-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
                   @click="isMobile && $emit('close-sidebar')"
                 >
-                  Positions
+                  <span class="flex items-center gap-2">
+                    <span class="w-1.5 h-1.5 rounded-full bg-gray-600 group-hover:bg-cyan-400 transition-colors" :class="route.path === '/dashboard/hr/positions' ? 'bg-cyan-400' : ''"></span>
+                    Positions
+                  </span>
                 </router-link>
                 <router-link
                   to="/dashboard/hr/employees"
@@ -622,49 +656,10 @@
                   :class="route.path === '/dashboard/hr/employees' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-cyan-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
                   @click="isMobile && $emit('close-sidebar')"
                 >
-                  Employees
-                </router-link>
-              </div>
-            </div>
-          </div>
-
-          <!-- Finance -->
-          <div>
-            <button
-              @click="toggleMenu('finance')"
-              class="w-full flex items-center justify-between py-2.5 px-3 rounded-lg hover:bg-gray-800 transition-all duration-200"
-              :class="isActiveFinance ? 'bg-gray-800 text-white' : ''"
-            >
-              <span class="flex items-center gap-3">
-                <DollarSign class="w-5 h-5 flex-shrink-0" />
-                <span class="text-sm font-medium">Finance</span>
-              </span>
-              <ChevronDown
-                class="w-4 h-4 transition-transform duration-200"
-                :class="activeMenu === 'finance' ? 'rotate-180' : ''"
-              />
-            </button>
-            <div
-              v-show="activeMenu === 'finance'"
-              class="overflow-hidden transition-all duration-200 ease-out"
-              :class="activeMenu === 'finance' ? 'max-h-96 opacity-100 mt-1' : 'max-h-0 opacity-0'"
-            >
-              <div class="ml-9 space-y-1">
-                <router-link
-                  to="/dashboard/finance/expenses"
-                  class="block py-2.5 px-3 rounded-md hover:bg-gray-800/40 hover:text-white text-sm transition-all duration-150 group"
-                  :class="route.path === '/dashboard/finance/expenses' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-cyan-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
-                  @click="isMobile && $emit('close-sidebar')"
-                >
-                  Expenses
-                </router-link>
-                <router-link
-                  to="/dashboard/finance/revenues"
-                  class="block py-2.5 px-3 rounded-md hover:bg-gray-800/40 hover:text-white text-sm transition-all duration-150 group"
-                  :class="route.path === '/dashboard/finance/revenues' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-cyan-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
-                  @click="isMobile && $emit('close-sidebar')"
-                >
-                  Revenues
+                  <span class="flex items-center gap-2">
+                    <span class="w-1.5 h-1.5 rounded-full bg-gray-600 group-hover:bg-cyan-400 transition-colors" :class="route.path === '/dashboard/hr/employees' ? 'bg-cyan-400' : ''"></span>
+                    Employees
+                  </span>
                 </router-link>
               </div>
             </div>
