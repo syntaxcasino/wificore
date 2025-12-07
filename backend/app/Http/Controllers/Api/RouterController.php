@@ -1172,34 +1172,42 @@ private function generateServiceScript(array $interfaceAssignments, array $inter
      */
     private function generateVpnScript($vpnConfig, $router)
     {
-        $serverPublicKey = config('vpn.wireguard.server_public_key');
-        $serverEndpoint = config('vpn.wireguard.server_endpoint');
-        $serverPort = config('vpn.wireguard.server_port', 51820);
+        // Use properties from VpnConfiguration model
+        $clientPrivateKey = $vpnConfig->client_private_key ?? '';
+        $serverPublicKey = $vpnConfig->server_public_key ?? '';
+        $serverEndpoint = $vpnConfig->server_endpoint ?? config('vpn.server_endpoint', 'vpn.example.com:51820');
+        $listenPort = $vpnConfig->listen_port ?? 51820;
+        $clientIp = $vpnConfig->client_ip ?? '';
+        $subnetCidr = $vpnConfig->subnet_cidr ?? '10.100.0.0/16';
+
+        // Extract network from CIDR
+        $networkParts = explode('/', $subnetCidr);
+        $network = $networkParts[0] ?? '10.100.0.0';
 
         $script = <<<SCRIPT
 # ============================================================================
 # VPN CONFIGURATION - WireGuard Tunnel
 # ============================================================================
 # Router: {$router->name}
-# VPN IP: {$vpnConfig->client_ip}
+# VPN IP: {$clientIp}
 # Generated: {now()->toDateTimeString()}
 # ============================================================================
 
 # Create WireGuard interface
 /interface wireguard
-add listen-port={$vpnConfig->listen_port} mtu=1420 name=wireguard-traidnet private-key="{$vpnConfig->private_key}"
+add listen-port={$listenPort} mtu=1420 name=wireguard-traidnet private-key="{$clientPrivateKey}"
 
 # Add WireGuard peer (server)
 /interface wireguard peers
-add allowed-address=0.0.0.0/0 endpoint={$serverEndpoint}:{$serverPort} interface=wireguard-traidnet persistent-keepalive=25s public-key="{$serverPublicKey}"
+add allowed-address=0.0.0.0/0 endpoint={$serverEndpoint} interface=wireguard-traidnet persistent-keepalive=25s public-key="{$serverPublicKey}"
 
 # Assign VPN IP address to WireGuard interface
 /ip address
-add address={$vpnConfig->client_ip}/24 interface=wireguard-traidnet network={$vpnConfig->subnet}
+add address={$clientIp}/16 interface=wireguard-traidnet network={$network}
 
 # Add firewall rules to allow WireGuard
 /ip firewall filter
-add action=accept chain=input comment="Allow WireGuard" dst-port={$vpnConfig->listen_port} protocol=udp place-before=0
+add action=accept chain=input comment="Allow WireGuard" dst-port={$listenPort} protocol=udp place-before=0
 add action=accept chain=forward comment="Allow WireGuard traffic" in-interface=wireguard-traidnet place-before=0
 add action=accept chain=forward comment="Allow WireGuard traffic" out-interface=wireguard-traidnet place-before=0
 
@@ -1215,7 +1223,7 @@ add distance=1 dst-address=10.0.0.0/8 gateway=wireguard-traidnet comment="Manage
 # VPN CONFIGURATION COMPLETE
 # ============================================================================
 # Your router will now connect to the Traidnet VPN
-# Management IP: {$vpnConfig->client_ip}
+# Management IP: {$clientIp}
 # ============================================================================
 SCRIPT;
 
