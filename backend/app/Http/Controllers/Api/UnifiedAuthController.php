@@ -215,6 +215,49 @@ class UnifiedAuthController extends Controller
             }
         }
 
+        // SCHEMA-BASED MULTI-TENANCY: Validate schema mapping for tenant users
+        if ($user->tenant_id) {
+            $schemaMapping = DB::table('radius_user_schema_mapping')
+                ->where('username', $user->username)
+                ->where('tenant_id', $user->tenant_id)
+                ->where('is_active', true)
+                ->first();
+            
+            if (!$schemaMapping) {
+                \Log::error('No schema mapping found for tenant user', [
+                    'username' => $user->username,
+                    'tenant_id' => $user->tenant_id
+                ]);
+                
+                return response()->json([
+                    'success' => false,
+                    'message' => 'User account not properly configured. Please contact support.',
+                    'code' => 'SCHEMA_MAPPING_MISSING'
+                ], 403);
+            }
+            
+            // Validate schema name matches tenant
+            if ($schemaMapping->schema_name !== $user->tenant->schema_name) {
+                \Log::error('Schema mapping mismatch', [
+                    'username' => $user->username,
+                    'expected_schema' => $user->tenant->schema_name,
+                    'mapped_schema' => $schemaMapping->schema_name
+                ]);
+                
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Account configuration error. Please contact support.',
+                    'code' => 'SCHEMA_MISMATCH'
+                ], 403);
+            }
+            
+            \Log::info('Schema mapping validated', [
+                'username' => $user->username,
+                'schema' => $schemaMapping->schema_name,
+                'tenant_id' => $user->tenant_id
+            ]);
+        }
+        
         // AAA: Authenticate ALL users via FreeRADIUS
         // PostgreSQL functions automatically determine correct tenant schema
         \Log::info('Authenticating user via RADIUS (AAA)', [
@@ -308,6 +351,7 @@ class UnifiedAuthController extends Controller
                         'id' => $user->tenant->id,
                         'name' => $user->tenant->name,
                         'slug' => $user->tenant->slug,
+                        'schema_name' => $user->tenant->schema_name,
                     ] : null,
                 ],
                 'token' => $token,
