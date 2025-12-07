@@ -772,6 +772,109 @@
             </div>
           </div>
         </div>
+        <!-- Todos -->
+        <router-link
+          to="/todos"
+          class="w-full flex items-center gap-3 py-2.5 px-3 rounded-lg hover:bg-gray-800 transition-all duration-200"
+          :class="route.path === '/todos' ? 'bg-gray-800 text-white' : ''"
+          @click="isMobile && $emit('close-sidebar')"
+        >
+          <CheckSquare class="w-5 h-5 flex-shrink-0" />
+          <span class="text-sm font-medium">Todos</span>
+        </router-link>
+
+        <!-- HR -->
+        <div>
+          <button
+            @click="toggleMenu('hr')"
+            class="w-full flex items-center justify-between py-2.5 px-3 rounded-lg hover:bg-gray-800 transition-all duration-200"
+            :class="isActiveHR ? 'bg-gray-800 text-white' : ''"
+          >
+            <span class="flex items-center gap-3">
+              <Users class="w-5 h-5 flex-shrink-0" />
+              <span class="text-sm font-medium">HR</span>
+            </span>
+            <ChevronDown
+              class="w-4 h-4 transition-transform duration-200"
+              :class="activeMenu === 'hr' ? 'rotate-180' : ''"
+            />
+          </button>
+          <div
+            v-show="activeMenu === 'hr'"
+            class="overflow-hidden transition-all duration-200 ease-out"
+            :class="activeMenu === 'hr' ? 'max-h-96 opacity-100 mt-1' : 'max-h-0 opacity-0'"
+          >
+            <div class="ml-9 space-y-1">
+              <router-link
+                to="/hr/departments"
+                class="block py-2 px-3 rounded-lg hover:bg-gray-800 text-sm transition-colors duration-150"
+                :class="route.path === '/hr/departments' ? 'bg-gray-800 text-white font-medium' : ''"
+                @click="isMobile && $emit('close-sidebar')"
+              >
+                Departments
+              </router-link>
+              <router-link
+                to="/hr/positions"
+                class="block py-2 px-3 rounded-lg hover:bg-gray-800 text-sm transition-colors duration-150"
+                :class="route.path === '/hr/positions' ? 'bg-gray-800 text-white font-medium' : ''"
+                @click="isMobile && $emit('close-sidebar')"
+              >
+                Positions
+              </router-link>
+              <router-link
+                to="/hr/employees"
+                class="block py-2 px-3 rounded-lg hover:bg-gray-800 text-sm transition-colors duration-150"
+                :class="route.path === '/hr/employees' ? 'bg-gray-800 text-white font-medium' : ''"
+                @click="isMobile && $emit('close-sidebar')"
+              >
+                Employees
+              </router-link>
+            </div>
+          </div>
+        </div>
+
+        <!-- Finance -->
+        <div>
+          <button
+            @click="toggleMenu('finance')"
+            class="w-full flex items-center justify-between py-2.5 px-3 rounded-lg hover:bg-gray-800 transition-all duration-200"
+            :class="isActiveFinance ? 'bg-gray-800 text-white' : ''"
+          >
+            <span class="flex items-center gap-3">
+              <DollarSign class="w-5 h-5 flex-shrink-0" />
+              <span class="text-sm font-medium">Finance</span>
+            </span>
+            <ChevronDown
+              class="w-4 h-4 transition-transform duration-200"
+              :class="activeMenu === 'finance' ? 'rotate-180' : ''"
+            />
+          </button>
+          <div
+            v-show="activeMenu === 'finance'"
+            class="overflow-hidden transition-all duration-200 ease-out"
+            :class="activeMenu === 'finance' ? 'max-h-96 opacity-100 mt-1' : 'max-h-0 opacity-0'"
+          >
+            <div class="ml-9 space-y-1">
+              <router-link
+                to="/finance/expenses"
+                class="block py-2 px-3 rounded-lg hover:bg-gray-800 text-sm transition-colors duration-150"
+                :class="route.path === '/finance/expenses' ? 'bg-gray-800 text-white font-medium' : ''"
+                @click="isMobile && $emit('close-sidebar')"
+              >
+                Expenses
+              </router-link>
+              <router-link
+                to="/finance/revenues"
+                class="block py-2 px-3 rounded-lg hover:bg-gray-800 text-sm transition-colors duration-150"
+                :class="route.path === '/finance/revenues' ? 'bg-gray-800 text-white font-medium' : ''"
+                @click="isMobile && $emit('close-sidebar')"
+              >
+                Revenues
+              </router-link>
+            </div>
+          </div>
+        </div>
+
         <!-- Settings -->
         <div>
           <button
@@ -983,6 +1086,8 @@ import {
   Settings,
   Wrench,
   ChevronDown,
+  CheckSquare,
+  DollarSign,
 } from 'lucide-vue-next'
 
 // Props to control sidebar visibility
@@ -1052,6 +1157,10 @@ watch(
       activeMenu.value = 'settings'
     } else if (path.startsWith('/dashboard/admin')) {
       activeMenu.value = 'adminTools'
+    } else if (path.startsWith('/hr')) {
+      activeMenu.value = 'hr'
+    } else if (path.startsWith('/finance')) {
+      activeMenu.value = 'finance'
     }
   },
   { immediate: true },
@@ -1075,6 +1184,8 @@ const isActiveSupport = computed(() => route.path.startsWith('/dashboard/support
 const isActiveReports = computed(() => route.path.startsWith('/dashboard/reports'))
 const isActiveSettings = computed(() => route.path.startsWith('/dashboard/settings'))
 const isActiveAdminTools = computed(() => route.path.startsWith('/dashboard/admin'))
+const isActiveHR = computed(() => route.path.startsWith('/hr'))
+const isActiveFinance = computed(() => route.path.startsWith('/finance'))
 
 // Check if we're on system admin routes
 const isOnSystemAdminRoute = computed(() => route.path.startsWith('/system'))
