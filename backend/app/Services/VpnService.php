@@ -140,8 +140,8 @@ class VpnService
             $serverEndpoint = config('vpn.server_endpoint');
             
             // 5. Create VPN configuration for this router
+            // Note: No tenant_id needed - table is in tenant schema, isolation is implicit
             $vpnConfig = VpnConfiguration::create([
-                'tenant_id' => $tenant->id,
                 'tenant_vpn_tunnel_id' => $tunnel->id,
                 'router_id' => $router->id,
                 'client_private_key' => $clientKeys['private_key'],
@@ -151,7 +151,7 @@ class VpnService
                 'server_public_key' => $tunnel->server_public_key,
                 'subnet_cidr' => $tunnel->subnet_cidr,
                 'server_endpoint' => $serverEndpoint,
-                'server_port' => $tunnel->listen_port,
+                'listen_port' => $tunnel->listen_port,
                 'status' => 'pending',
             ]);
             

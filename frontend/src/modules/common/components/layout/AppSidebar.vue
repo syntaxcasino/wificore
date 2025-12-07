@@ -416,21 +416,14 @@
                 >
                   MikroTik List
                 </router-link>
-                <router-link
-                  to="/dashboard/routers/add"
-                  class="block py-2.5 px-3 rounded-md hover:bg-gray-800/40 hover:text-white text-sm transition-all duration-150 group"
-                  :class="route.path === '/dashboard/routers/add' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-cyan-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
-                  @click="isMobile && $emit('close-sidebar')"
-                >
-                  Add Router
-                </router-link>
+
                 <router-link
                   to="/dashboard/routers/api-status"
                   class="block py-2.5 px-3 rounded-md hover:bg-gray-800/40 hover:text-white text-sm transition-all duration-150 group"
                   :class="route.path === '/dashboard/routers/api-status' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-cyan-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
                   @click="isMobile && $emit('close-sidebar')"
                 >
-                  API Status
+                  Access points
                 </router-link>
                 <router-link
                   to="/dashboard/routers/backup"
