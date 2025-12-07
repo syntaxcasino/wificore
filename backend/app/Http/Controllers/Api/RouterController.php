@@ -1183,6 +1183,7 @@ private function generateServiceScript(array $interfaceAssignments, array $inter
         // Extract network from CIDR
         $networkParts = explode('/', $subnetCidr);
         $network = $networkParts[0] ?? '10.100.0.0';
+        $timestamp = now()->toDateTimeString();
 
         $script = <<<SCRIPT
 # ============================================================================
@@ -1190,7 +1191,7 @@ private function generateServiceScript(array $interfaceAssignments, array $inter
 # ============================================================================
 # Router: {$router->name}
 # VPN IP: {$clientIp}
-# Generated: {now()->toDateTimeString()}
+# Generated: {$timestamp}
 # ============================================================================
 
 # Create WireGuard interface
