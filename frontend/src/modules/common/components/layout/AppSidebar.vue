@@ -326,13 +326,42 @@
                 >
                   Payment Methods
                 </router-link>
+              </div>
+            </div>
+          </div>
+
+          <!-- Finance -->
+          <div>
+            <button
+              @click="toggleMenu('finance')"
+              class="w-full flex items-center justify-between py-3 px-3.5 rounded-lg hover:bg-gray-800/60 transition-all duration-200 group"
+              :class="isActiveFinance ? 'bg-gray-800/80 text-white' : 'text-gray-300'"
+            >
+              <span class="flex items-center gap-3">
+                <DollarSign class="w-5 h-5 flex-shrink-0 group-hover:scale-110 transition-transform duration-200" :class="isActiveFinance ? 'text-cyan-400' : ''" />
+                <span class="text-sm font-semibold">Finance</span>
+              </span>
+              <ChevronDown
+                class="w-4 h-4 transition-transform duration-200"
+                :class="activeMenu === 'finance' ? 'rotate-180 text-cyan-400' : ''"
+              />
+            </button>
+            <div
+              v-show="activeMenu === 'finance'"
+              class="overflow-hidden transition-all duration-200 ease-out"
+              :class="activeMenu === 'finance' ? 'max-h-96 opacity-100 mt-1' : 'max-h-0 opacity-0'"
+            >
+              <div class="ml-8 space-y-0.5 mt-1 border-l-2 border-gray-800/50 pl-3">
                 <router-link
                   to="/dashboard/finance/expenses"
                   class="block py-2.5 px-3 rounded-md hover:bg-gray-800/40 hover:text-white text-sm transition-all duration-150 group"
                   :class="route.path === '/dashboard/finance/expenses' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-cyan-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
                   @click="isMobile && $emit('close-sidebar')"
                 >
-                  Expenses
+                  <span class="flex items-center gap-2">
+                    <span class="w-1.5 h-1.5 rounded-full bg-gray-600 group-hover:bg-cyan-400 transition-colors" :class="route.path === '/dashboard/finance/expenses' ? 'bg-cyan-400' : ''"></span>
+                    Expenses
+                  </span>
                 </router-link>
                 <router-link
                   to="/dashboard/finance/revenues"
@@ -340,7 +369,10 @@
                   :class="route.path === '/dashboard/finance/revenues' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-cyan-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
                   @click="isMobile && $emit('close-sidebar')"
                 >
-                  Revenues
+                  <span class="flex items-center gap-2">
+                    <span class="w-1.5 h-1.5 rounded-full bg-gray-600 group-hover:bg-cyan-400 transition-colors" :class="route.path === '/dashboard/finance/revenues' ? 'bg-cyan-400' : ''"></span>
+                    Revenues
+                  </span>
                 </router-link>
               </div>
             </div>
