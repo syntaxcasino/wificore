@@ -160,7 +160,7 @@ class VpnService
             
             // 7. Generate configuration scripts
             $vpnConfig->mikrotik_script = $this->generateMikrotikScript($vpnConfig);
-            $vpnConfig->linux_config = $this->generateLinuxConfig($vpnConfig);
+            $vpnConfig->linux_script = $this->generateLinuxScript($vpnConfig);
             $vpnConfig->save();
             
             Log::info('VPN configuration created for router', [
