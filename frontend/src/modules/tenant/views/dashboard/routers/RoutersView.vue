@@ -1,7 +1,7 @@
 <template>
   <div class="flex flex-col h-full bg-gradient-to-br from-slate-50 via-gray-50 to-blue-50/30 rounded-lg shadow-lg">
     <!-- Header -->
-    <div class="flex-shrink-0 bg-white border-b border-slate-200 shadow-sm relative z-10">
+    <div class="flex-shrink-0 bg-white border-b border-slate-200 shadow-sm relative z-0">
       <!-- Top Bar -->
       <div class="px-6 py-5">
         <div class="flex items-center justify-between gap-6">
