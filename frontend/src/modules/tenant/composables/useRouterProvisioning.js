@@ -94,6 +94,14 @@ export function useRouterProvisioning(props, emit) {
 
   const deploymentStatus = computed(() => provisioningStatus.value)
 
+  // Combined script: Connectivity + VPN (both scripts in one)
+  const combinedScript = computed(() => {
+    if (!initialConfig.value) return ''
+    if (!vpnScript.value) return initialConfig.value
+    
+    return `${initialConfig.value}\n\n# ============================================\n# VPN CONFIGURATION (MANDATORY)\n# ============================================\n\n${vpnScript.value}`
+  })
+
   // Methods
   const createRouterWithConfig = async () => {
     if (!routerName.value) {
@@ -107,18 +115,26 @@ export function useRouterProvisioning(props, emit) {
         name: routerName.value,
       })
 
-      // Backend returns the router object directly
+      // Backend returns the router object directly with BOTH scripts
       if (response.data && response.data.id) {
         provisioningRouter.value = response.data
         initialConfig.value = response.data.connectivity_script || ''
-        provisioningProgress.value = 15
-        provisioningStatus.value = 'Router created - VPN provisioning initiated'
         
-        // VPN is MANDATORY - always poll for VPN configuration
-        addLog('info', 'VPN provisioning initiated (mandatory)...')
-        pollVpnConfiguration()
+        // Backend now returns VPN script immediately!
+        if (response.data.vpn_script) {
+          vpnScript.value = response.data.vpn_script
+          addLog('success', 'VPN configuration ready!')
+          provisioningProgress.value = 30
+          provisioningStatus.value = 'Router created with VPN configuration'
+        } else {
+          // Fallback: poll if not included (shouldn't happen)
+          addLog('info', 'VPN provisioning initiated...')
+          pollVpnConfiguration()
+          provisioningProgress.value = 15
+          provisioningStatus.value = 'Router created - VPN provisioning initiated'
+        }
         
-        // Stay on stage 1 to show the connectivity script
+        // Stay on stage 1 to show the combined script
         // User must click "Continue" button to proceed
       }
     } catch (error) {
@@ -629,6 +645,7 @@ export function useRouterProvisioning(props, emit) {
     deploymentStatus,
     connectionStatusClass,
     connectionStatusTextClass,
+    combinedScript,
     
     // Methods
     createRouterWithConfig,

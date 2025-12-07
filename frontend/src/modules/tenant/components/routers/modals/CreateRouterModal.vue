@@ -197,7 +197,7 @@
                   </div>
                 </div>
 
-                <!-- Initial Configuration Script -->
+                <!-- Initial Configuration Script (Combined: Connectivity + VPN) -->
                 <div class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
                   <div class="flex items-center justify-between mb-3">
                     <div class="flex items-center gap-2">
@@ -207,7 +207,7 @@
                       <h5 class="text-sm font-semibold text-gray-800">Initial Configuration Script</h5>
                     </div>
                     <button
-                      @click="copyToClipboard(initialConfig)"
+                      @click="copyToClipboard(combinedScript)"
                       class="px-3 py-1.5 text-xs font-medium rounded-lg text-white bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 transition-all shadow-sm hover:shadow-md flex items-center gap-1.5"
                     >
                       <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -217,13 +217,13 @@
                     </button>
                   </div>
                   <div class="relative">
-                    <pre class="bg-gray-900 p-3 rounded-lg text-xs font-mono text-gray-100 overflow-x-auto max-h-32 overflow-y-auto border border-gray-700 scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800">{{ initialConfig }}</pre>
+                    <pre class="bg-gray-900 p-3 rounded-lg text-xs font-mono text-gray-100 overflow-x-auto max-h-64 overflow-y-auto border border-gray-700 scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800">{{ combinedScript }}</pre>
                   </div>
                   <p class="text-xs text-gray-500 mt-2 flex items-center gap-1">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
-                    Copy and paste this script into your MikroTik router terminal
+                    Copy and paste this complete script into your MikroTik router terminal (includes connectivity + VPN)
                   </p>
                 </div>
               </div>
