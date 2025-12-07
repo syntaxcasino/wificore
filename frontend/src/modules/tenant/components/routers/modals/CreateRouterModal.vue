@@ -234,11 +234,18 @@
                     </div>
                     <textarea
                       readonly
-                      :value="combinedScript"
-                      class="w-full bg-gray-900 p-4 rounded-lg text-xs font-mono text-gray-100 border-2 border-gray-700 focus:border-blue-500 focus:outline-none resize-none select-all cursor-text"
-                      style="min-height: 300px; max-height: 400px;"
+                      v-model="combinedScript"
+                      class="w-full bg-gray-900 p-4 rounded-lg text-xs font-mono text-gray-100 border-2 border-gray-700 focus:border-blue-500 focus:outline-none resize-none cursor-text"
+                      rows="20"
                       @click="$event.target.select()"
                     ></textarea>
+                  </div>
+                  
+                  <!-- Debug info (remove after testing) -->
+                  <div v-if="!combinedScript" class="mt-2 p-2 bg-red-100 border border-red-300 rounded text-xs">
+                    <p class="font-bold text-red-800">Debug: Script is empty!</p>
+                    <p class="text-red-700">initialConfig: {{ initialConfig ? 'exists' : 'missing' }}</p>
+                    <p class="text-red-700">vpnScript: {{ vpnScript ? 'exists' : 'missing' }}</p>
                   </div>
                   
                   <div class="mt-3 bg-white rounded-lg p-3 border border-blue-200">
