@@ -13,7 +13,7 @@ return new class extends Migration
     {
         Schema::create('vpn_configurations', function (Blueprint $table) {
             $table->id();
-            $table->uuid('tenant_id');
+            $table->uuid('tenant_id')->nullable(); // Nullable - table is in tenant schema
             $table->uuid('router_id')->nullable();
             
             // VPN Type (wireguard, ipsec, etc.)
@@ -56,13 +56,13 @@ return new class extends Migration
             $table->softDeletes();
             
             // Foreign keys
-            $table->foreign('tenant_id')->references('id')->on('tenants')->onDelete('cascade');
+            // Note: tenant_id foreign key removed - table is in tenant schema
             $table->foreign('router_id')->references('id')->on('routers')->onDelete('cascade');
             
             // Indexes
-            $table->index(['tenant_id', 'status']);
             $table->index('router_id');
-            $table->unique(['tenant_id', 'client_ip']);
+            $table->index('status');
+            $table->unique('client_ip'); // Unique per tenant (schema provides isolation)
         });
     }
 
