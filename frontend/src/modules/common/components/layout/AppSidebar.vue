@@ -60,30 +60,39 @@
               class="overflow-hidden transition-all duration-200 ease-out"
               :class="activeMenu === 'hotspot' ? 'max-h-96 opacity-100 mt-1' : 'max-h-0 opacity-0'"
             >
-              <div class="ml-9 space-y-1">
+              <div class="ml-8 space-y-0.5 mt-1 border-l-2 border-gray-800/50 pl-3">
                 <router-link
                   to="/dashboard/hotspot/users"
-                  class="block py-2 px-3 rounded-lg hover:bg-gray-800 text-sm transition-colors duration-150"
-                  :class="route.path === '/dashboard/hotspot/users' ? 'bg-gray-800 text-white font-medium' : ''"
+                  class="block py-2.5 px-3 rounded-md hover:bg-gray-800/40 hover:text-white text-sm transition-all duration-150 group"
+                  :class="route.path === '/dashboard/hotspot/users' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-blue-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
                   @click="isMobile && $emit('close-sidebar')"
                 >
-                  All Users
+                  <span class="flex items-center gap-2">
+                    <span class="w-1.5 h-1.5 rounded-full bg-gray-600 group-hover:bg-blue-400 transition-colors" :class="route.path === '/dashboard/hotspot/users' ? 'bg-blue-400' : ''"></span>
+                    All Users
+                  </span>
                 </router-link>
                 <router-link
                   to="/dashboard/hotspot/sessions"
-                  class="block py-2 px-3 rounded-lg hover:bg-gray-800 text-sm transition-colors duration-150"
-                  :class="route.path === '/dashboard/hotspot/sessions' ? 'bg-gray-800 text-white font-medium' : ''"
+                  class="block py-2.5 px-3 rounded-md hover:bg-gray-800/40 hover:text-white text-sm transition-all duration-150 group"
+                  :class="route.path === '/dashboard/hotspot/sessions' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-blue-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
                   @click="isMobile && $emit('close-sidebar')"
                 >
-                  Active Sessions
+                  <span class="flex items-center gap-2">
+                    <span class="w-1.5 h-1.5 rounded-full bg-gray-600 group-hover:bg-blue-400 transition-colors" :class="route.path === '/dashboard/hotspot/sessions' ? 'bg-blue-400' : ''"></span>
+                    Active Sessions
+                  </span>
                 </router-link>
                 <router-link
                   to="/dashboard/hotspot/profiles"
-                  class="block py-2 px-3 rounded-lg hover:bg-gray-800 text-sm transition-colors duration-150"
-                  :class="route.path === '/dashboard/hotspot/profiles' ? 'bg-gray-800 text-white font-medium' : ''"
+                  class="block py-2.5 px-3 rounded-md hover:bg-gray-800/40 hover:text-white text-sm transition-all duration-150 group"
+                  :class="route.path === '/dashboard/hotspot/profiles' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-blue-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
                   @click="isMobile && $emit('close-sidebar')"
                 >
-                  User Groups
+                  <span class="flex items-center gap-2">
+                    <span class="w-1.5 h-1.5 rounded-full bg-gray-600 group-hover:bg-blue-400 transition-colors" :class="route.path === '/dashboard/hotspot/profiles' ? 'bg-blue-400' : ''"></span>
+                    User Groups
+                  </span>
                 </router-link>
               </div>
             </div>
@@ -93,16 +102,16 @@
           <div>
             <button
               @click="toggleMenu('pppoe')"
-              class="w-full flex items-center justify-between py-2.5 px-3 rounded-lg hover:bg-gray-800 transition-all duration-200"
-              :class="isActivePPPoE ? 'bg-gray-800 text-white' : ''"
+              class="w-full flex items-center justify-between py-3 px-3.5 rounded-lg hover:bg-gray-800/60 transition-all duration-200 group"
+              :class="isActivePPPoE ? 'bg-gray-800/80 text-white' : 'text-gray-300'"
             >
               <span class="flex items-center gap-3">
-                <Cable class="w-5 h-5 flex-shrink-0" />
-                <span class="text-sm font-medium">PPPoE Users</span>
+                <Cable class="w-5 h-5 flex-shrink-0 group-hover:scale-110 transition-transform duration-200" :class="isActivePPPoE ? 'text-purple-400' : ''" />
+                <span class="text-sm font-semibold">PPPoE Users</span>
               </span>
               <ChevronDown
                 class="w-4 h-4 transition-transform duration-200"
-                :class="activeMenu === 'pppoe' ? 'rotate-180' : ''"
+                :class="activeMenu === 'pppoe' ? 'rotate-180 text-purple-400' : ''"
               />
             </button>
             <div
@@ -110,35 +119,35 @@
               class="overflow-hidden transition-all duration-200 ease-out"
               :class="activeMenu === 'pppoe' ? 'max-h-96 opacity-100 mt-1' : 'max-h-0 opacity-0'"
             >
-              <div class="ml-9 space-y-1">
+              <div class="ml-8 space-y-0.5 mt-1 border-l-2 border-gray-800/50 pl-3">
                 <router-link
                   to="/dashboard/pppoe/users"
-                  class="block py-2 px-3 rounded-lg hover:bg-gray-800 text-sm transition-colors duration-150"
-                  :class="route.path === '/dashboard/pppoe/users' ? 'bg-gray-800 text-white font-medium' : ''"
+                  class="block py-2.5 px-3 rounded-md hover:bg-gray-800/40 hover:text-white text-sm transition-all duration-150 group"
+                  :class="route.path === '/dashboard/pppoe/users' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-purple-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
                   @click="isMobile && $emit('close-sidebar')"
                 >
                   All Users
                 </router-link>
                 <router-link
                   to="/dashboard/pppoe/sessions"
-                  class="block py-2 px-3 rounded-lg hover:bg-gray-800 text-sm transition-colors duration-150"
-                  :class="route.path === '/dashboard/pppoe/sessions' ? 'bg-gray-800 text-white font-medium' : ''"
+                  class="block py-2.5 px-3 rounded-md hover:bg-gray-800/40 hover:text-white text-sm transition-all duration-150 group"
+                  :class="route.path === '/dashboard/pppoe/sessions' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-purple-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
                   @click="isMobile && $emit('close-sidebar')"
                 >
                   Active Sessions
                 </router-link>
                 <router-link
                   to="/dashboard/pppoe/add-user"
-                  class="block py-2 px-3 rounded-lg hover:bg-gray-800 text-sm transition-colors duration-150"
-                  :class="route.path === '/dashboard/pppoe/add-user' ? 'bg-gray-800 text-white font-medium' : ''"
+                  class="block py-2.5 px-3 rounded-md hover:bg-gray-800/40 hover:text-white text-sm transition-all duration-150 group"
+                  :class="route.path === '/dashboard/pppoe/add-user' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-purple-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
                   @click="isMobile && $emit('close-sidebar')"
                 >
                   Add User
                 </router-link>
                 <router-link
                   to="/dashboard/pppoe/radius-profiles"
-                  class="block py-2 px-3 rounded-lg hover:bg-gray-800 text-sm transition-colors duration-150"
-                  :class="route.path === '/dashboard/pppoe/radius-profiles' ? 'bg-gray-800 text-white font-medium' : ''"
+                  class="block py-2.5 px-3 rounded-md hover:bg-gray-800/40 hover:text-white text-sm transition-all duration-150 group"
+                  :class="route.path === '/dashboard/pppoe/radius-profiles' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-purple-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
                   @click="isMobile && $emit('close-sidebar')"
                 >
                   RADIUS Profiles
@@ -171,32 +180,32 @@
               <div class="ml-9 space-y-1">
                 <router-link
                   to="/dashboard/users/all"
-                  class="block py-2 px-3 rounded-lg hover:bg-gray-800 text-sm transition-colors duration-150"
-                  :class="route.path === '/dashboard/users/all' ? 'bg-gray-800 text-white font-medium' : ''"
+                  class="block py-2.5 px-3 rounded-md hover:bg-gray-800/40 hover:text-white text-sm transition-all duration-150 group"
+                  :class="route.path === '/dashboard/users/all' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-cyan-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
                   @click="isMobile && $emit('close-sidebar')"
                 >
                   All Admins
                 </router-link>
                 <router-link
                   to="/dashboard/users/create"
-                  class="block py-2 px-3 rounded-lg hover:bg-gray-800 text-sm transition-colors duration-150"
-                  :class="route.path === '/dashboard/users/create' ? 'bg-gray-800 text-white font-medium' : ''"
+                  class="block py-2.5 px-3 rounded-md hover:bg-gray-800/40 hover:text-white text-sm transition-all duration-150 group"
+                  :class="route.path === '/dashboard/users/create' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-cyan-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
                   @click="isMobile && $emit('close-sidebar')"
                 >
                   Create Admin
                 </router-link>
                 <router-link
                   to="/dashboard/users/roles"
-                  class="block py-2 px-3 rounded-lg hover:bg-gray-800 text-sm transition-colors duration-150"
-                  :class="route.path === '/dashboard/users/roles' ? 'bg-gray-800 text-white font-medium' : ''"
+                  class="block py-2.5 px-3 rounded-md hover:bg-gray-800/40 hover:text-white text-sm transition-all duration-150 group"
+                  :class="route.path === '/dashboard/users/roles' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-cyan-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
                   @click="isMobile && $emit('close-sidebar')"
                 >
                   Roles & Permissions
                 </router-link>
                 <router-link
                   to="/dashboard/users/online"
-                  class="block py-2 px-3 rounded-lg hover:bg-gray-800 text-sm transition-colors duration-150"
-                  :class="route.path === '/dashboard/users/online' ? 'bg-gray-800 text-white font-medium' : ''"
+                  class="block py-2.5 px-3 rounded-md hover:bg-gray-800/40 hover:text-white text-sm transition-all duration-150 group"
+                  :class="route.path === '/dashboard/users/online' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-cyan-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
                   @click="isMobile && $emit('close-sidebar')"
                 >
                   Online Users
@@ -207,8 +216,9 @@
         </div>
 
         <!-- Section: Products & Services -->
-        <div class="pt-4">
-          <div class="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+        <div class="pt-6 pb-2">
+          <div class="px-3 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+            <div class="w-1 h-4 bg-gradient-to-b from-emerald-500 to-teal-500 rounded-full"></div>
             Products & Services
           </div>
 
@@ -236,16 +246,16 @@
               <div class="ml-9 space-y-1">
                 <router-link
                   to="/dashboard/packages/all"
-                  class="block py-2 px-3 rounded-lg hover:bg-gray-800 text-sm transition-colors duration-150"
-                  :class="route.path === '/dashboard/packages/all' ? 'bg-gray-800 text-white font-medium' : ''"
+                  class="block py-2.5 px-3 rounded-md hover:bg-gray-800/40 hover:text-white text-sm transition-all duration-150 group"
+                  :class="route.path === '/dashboard/packages/all' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-cyan-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
                   @click="isMobile && $emit('close-sidebar')"
                 >
                   All Packages
                 </router-link>
                 <router-link
                   to="/dashboard/packages/groups"
-                  class="block py-2 px-3 rounded-lg hover:bg-gray-800 text-sm transition-colors duration-150"
-                  :class="route.path === '/dashboard/packages/groups' ? 'bg-gray-800 text-white font-medium' : ''"
+                  class="block py-2.5 px-3 rounded-md hover:bg-gray-800/40 hover:text-white text-sm transition-all duration-150 group"
+                  :class="route.path === '/dashboard/packages/groups' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-cyan-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
                   @click="isMobile && $emit('close-sidebar')"
                 >
                   Package Groups
@@ -278,24 +288,24 @@
               <div class="ml-9 space-y-1">
                 <router-link
                   to="/dashboard/hotspot/vouchers/generate"
-                  class="block py-2 px-3 rounded-lg hover:bg-gray-800 text-sm transition-colors duration-150"
-                  :class="route.path === '/dashboard/hotspot/vouchers/generate' ? 'bg-gray-800 text-white font-medium' : ''"
+                  class="block py-2.5 px-3 rounded-md hover:bg-gray-800/40 hover:text-white text-sm transition-all duration-150 group"
+                  :class="route.path === '/dashboard/hotspot/vouchers/generate' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-cyan-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
                   @click="isMobile && $emit('close-sidebar')"
                 >
                   Generate Vouchers
                 </router-link>
                 <router-link
                   to="/dashboard/hotspot/vouchers/bulk"
-                  class="block py-2 px-3 rounded-lg hover:bg-gray-800 text-sm transition-colors duration-150"
-                  :class="route.path === '/dashboard/hotspot/vouchers/bulk' ? 'bg-gray-800 text-white font-medium' : ''"
+                  class="block py-2.5 px-3 rounded-md hover:bg-gray-800/40 hover:text-white text-sm transition-all duration-150 group"
+                  :class="route.path === '/dashboard/hotspot/vouchers/bulk' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-cyan-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
                   @click="isMobile && $emit('close-sidebar')"
                 >
                   Bulk Upload
                 </router-link>
                 <router-link
                   to="/dashboard/hotspot/voucher-templates"
-                  class="block py-2 px-3 rounded-lg hover:bg-gray-800 text-sm transition-colors duration-150"
-                  :class="route.path === '/dashboard/hotspot/voucher-templates' ? 'bg-gray-800 text-white font-medium' : ''"
+                  class="block py-2.5 px-3 rounded-md hover:bg-gray-800/40 hover:text-white text-sm transition-all duration-150 group"
+                  :class="route.path === '/dashboard/hotspot/voucher-templates' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-cyan-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
                   @click="isMobile && $emit('close-sidebar')"
                 >
                   Voucher Templates
@@ -306,8 +316,9 @@
         </div>
 
         <!-- Section: Billing & Payments -->
-        <div class="pt-4">
-          <div class="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+        <div class="pt-6 pb-2">
+          <div class="px-3 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+            <div class="w-1 h-4 bg-gradient-to-b from-amber-500 to-orange-500 rounded-full"></div>
             Billing & Payments
           </div>
 
@@ -335,40 +346,40 @@
               <div class="ml-9 space-y-1">
                 <router-link
                   to="/dashboard/billing/invoices"
-                  class="block py-2 px-3 rounded-lg hover:bg-gray-800 text-sm transition-colors duration-150"
-                  :class="route.path === '/dashboard/billing/invoices' ? 'bg-gray-800 text-white font-medium' : ''"
+                  class="block py-2.5 px-3 rounded-md hover:bg-gray-800/40 hover:text-white text-sm transition-all duration-150 group"
+                  :class="route.path === '/dashboard/billing/invoices' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-cyan-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
                   @click="isMobile && $emit('close-sidebar')"
                 >
                   Invoices
                 </router-link>
                 <router-link
                   to="/dashboard/billing/payments"
-                  class="block py-2 px-3 rounded-lg hover:bg-gray-800 text-sm transition-colors duration-150"
-                  :class="route.path === '/dashboard/billing/payments' ? 'bg-gray-800 text-white font-medium' : ''"
+                  class="block py-2.5 px-3 rounded-md hover:bg-gray-800/40 hover:text-white text-sm transition-all duration-150 group"
+                  :class="route.path === '/dashboard/billing/payments' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-cyan-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
                   @click="isMobile && $emit('close-sidebar')"
                 >
                   Payments
                 </router-link>
                 <router-link
                   to="/dashboard/billing/mpesa"
-                  class="block py-2 px-3 rounded-lg hover:bg-gray-800 text-sm transition-colors duration-150"
-                  :class="route.path === '/dashboard/billing/mpesa' ? 'bg-gray-800 text-white font-medium' : ''"
+                  class="block py-2.5 px-3 rounded-md hover:bg-gray-800/40 hover:text-white text-sm transition-all duration-150 group"
+                  :class="route.path === '/dashboard/billing/mpesa' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-cyan-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
                   @click="isMobile && $emit('close-sidebar')"
                 >
                   M-Pesa Transactions
                 </router-link>
                 <router-link
                   to="/dashboard/billing/wallet"
-                  class="block py-2 px-3 rounded-lg hover:bg-gray-800 text-sm transition-colors duration-150"
-                  :class="route.path === '/dashboard/billing/wallet' ? 'bg-gray-800 text-white font-medium' : ''"
+                  class="block py-2.5 px-3 rounded-md hover:bg-gray-800/40 hover:text-white text-sm transition-all duration-150 group"
+                  :class="route.path === '/dashboard/billing/wallet' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-cyan-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
                   @click="isMobile && $emit('close-sidebar')"
                 >
                   Wallet / Balance
                 </router-link>
                 <router-link
                   to="/dashboard/billing/payment-methods"
-                  class="block py-2 px-3 rounded-lg hover:bg-gray-800 text-sm transition-colors duration-150"
-                  :class="route.path === '/dashboard/billing/payment-methods' ? 'bg-gray-800 text-white font-medium' : ''"
+                  class="block py-2.5 px-3 rounded-md hover:bg-gray-800/40 hover:text-white text-sm transition-all duration-150 group"
+                  :class="route.path === '/dashboard/billing/payment-methods' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-cyan-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
                   @click="isMobile && $emit('close-sidebar')"
                 >
                   Payment Methods
@@ -379,8 +390,9 @@
         </div>
 
         <!-- Section: Network & Infrastructure -->
-        <div class="pt-4" v-if="!isOnSystemAdminRoute">
-          <div class="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+        <div class="pt-6 pb-2" v-if="!isOnSystemAdminRoute">
+          <div class="px-3 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+            <div class="w-1 h-4 bg-gradient-to-b from-indigo-500 to-violet-500 rounded-full"></div>
             Network & Infrastructure
           </div>
 
@@ -408,32 +420,32 @@
               <div class="ml-9 space-y-1">
                 <router-link
                   to="/dashboard/routers/mikrotik"
-                  class="block py-2 px-3 rounded-lg hover:bg-gray-800 text-sm transition-colors duration-150"
-                  :class="route.path === '/dashboard/routers/mikrotik' ? 'bg-gray-800 text-white font-medium' : ''"
+                  class="block py-2.5 px-3 rounded-md hover:bg-gray-800/40 hover:text-white text-sm transition-all duration-150 group"
+                  :class="route.path === '/dashboard/routers/mikrotik' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-cyan-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
                   @click="isMobile && $emit('close-sidebar')"
                 >
                   MikroTik List
                 </router-link>
                 <router-link
                   to="/dashboard/routers/add"
-                  class="block py-2 px-3 rounded-lg hover:bg-gray-800 text-sm transition-colors duration-150"
-                  :class="route.path === '/dashboard/routers/add' ? 'bg-gray-800 text-white font-medium' : ''"
+                  class="block py-2.5 px-3 rounded-md hover:bg-gray-800/40 hover:text-white text-sm transition-all duration-150 group"
+                  :class="route.path === '/dashboard/routers/add' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-cyan-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
                   @click="isMobile && $emit('close-sidebar')"
                 >
                   Add Router
                 </router-link>
                 <router-link
                   to="/dashboard/routers/api-status"
-                  class="block py-2 px-3 rounded-lg hover:bg-gray-800 text-sm transition-colors duration-150"
-                  :class="route.path === '/dashboard/routers/api-status' ? 'bg-gray-800 text-white font-medium' : ''"
+                  class="block py-2.5 px-3 rounded-md hover:bg-gray-800/40 hover:text-white text-sm transition-all duration-150 group"
+                  :class="route.path === '/dashboard/routers/api-status' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-cyan-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
                   @click="isMobile && $emit('close-sidebar')"
                 >
                   API Status
                 </router-link>
                 <router-link
                   to="/dashboard/routers/backup"
-                  class="block py-2 px-3 rounded-lg hover:bg-gray-800 text-sm transition-colors duration-150"
-                  :class="route.path === '/dashboard/routers/backup' ? 'bg-gray-800 text-white font-medium' : ''"
+                  class="block py-2.5 px-3 rounded-md hover:bg-gray-800/40 hover:text-white text-sm transition-all duration-150 group"
+                  :class="route.path === '/dashboard/routers/backup' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-cyan-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
                   @click="isMobile && $emit('close-sidebar')"
                 >
                   Backup Configs
@@ -466,32 +478,32 @@
               <div class="ml-9 space-y-1">
                 <router-link
                   to="/dashboard/monitoring/connections"
-                  class="block py-2 px-3 rounded-lg hover:bg-gray-800 text-sm transition-colors duration-150"
-                  :class="route.path === '/dashboard/monitoring/connections' ? 'bg-gray-800 text-white font-medium' : ''"
+                  class="block py-2.5 px-3 rounded-md hover:bg-gray-800/40 hover:text-white text-sm transition-all duration-150 group"
+                  :class="route.path === '/dashboard/monitoring/connections' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-cyan-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
                   @click="isMobile && $emit('close-sidebar')"
                 >
                   Live Connections
                 </router-link>
                 <router-link
                   to="/dashboard/monitoring/traffic-graphs"
-                  class="block py-2 px-3 rounded-lg hover:bg-gray-800 text-sm transition-colors duration-150"
-                  :class="route.path === '/dashboard/monitoring/traffic-graphs' ? 'bg-gray-800 text-white font-medium' : ''"
+                  class="block py-2.5 px-3 rounded-md hover:bg-gray-800/40 hover:text-white text-sm transition-all duration-150 group"
+                  :class="route.path === '/dashboard/monitoring/traffic-graphs' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-cyan-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
                   @click="isMobile && $emit('close-sidebar')"
                 >
                   Traffic Graphs
                 </router-link>
                 <router-link
                   to="/dashboard/monitoring/latency-tests"
-                  class="block py-2 px-3 rounded-lg hover:bg-gray-800 text-sm transition-colors duration-150"
-                  :class="route.path === '/dashboard/monitoring/latency-tests' ? 'bg-gray-800 text-white font-medium' : ''"
+                  class="block py-2.5 px-3 rounded-md hover:bg-gray-800/40 hover:text-white text-sm transition-all duration-150 group"
+                  :class="route.path === '/dashboard/monitoring/latency-tests' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-cyan-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
                   @click="isMobile && $emit('close-sidebar')"
                 >
                   Latency Tests
                 </router-link>
                 <router-link
                   to="/dashboard/monitoring/session-logs"
-                  class="block py-2 px-3 rounded-lg hover:bg-gray-800 text-sm transition-colors duration-150"
-                  :class="route.path === '/dashboard/monitoring/session-logs' ? 'bg-gray-800 text-white font-medium' : ''"
+                  class="block py-2.5 px-3 rounded-md hover:bg-gray-800/40 hover:text-white text-sm transition-all duration-150 group"
+                  :class="route.path === '/dashboard/monitoring/session-logs' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-cyan-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
                   @click="isMobile && $emit('close-sidebar')"
                 >
                   Session Logs
@@ -502,8 +514,9 @@
         </div>
 
         <!-- Section: Analytics & Reports -->
-        <div class="pt-4">
-          <div class="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+        <div class="pt-6 pb-2">
+          <div class="px-3 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+            <div class="w-1 h-4 bg-gradient-to-b from-pink-500 to-rose-500 rounded-full"></div>
             Analytics & Reports
           </div>
 
@@ -531,24 +544,24 @@
               <div class="ml-9 space-y-1">
                 <router-link
                   to="/dashboard/reports/revenue"
-                  class="block py-2 px-3 rounded-lg hover:bg-gray-800 text-sm transition-colors duration-150"
-                  :class="route.path === '/dashboard/reports/revenue' ? 'bg-gray-800 text-white font-medium' : ''"
+                  class="block py-2.5 px-3 rounded-md hover:bg-gray-800/40 hover:text-white text-sm transition-all duration-150 group"
+                  :class="route.path === '/dashboard/reports/revenue' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-cyan-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
                   @click="isMobile && $emit('close-sidebar')"
                 >
                   Revenue Reports
                 </router-link>
                 <router-link
                   to="/dashboard/reports/users"
-                  class="block py-2 px-3 rounded-lg hover:bg-gray-800 text-sm transition-colors duration-150"
-                  :class="route.path === '/dashboard/reports/users' ? 'bg-gray-800 text-white font-medium' : ''"
+                  class="block py-2.5 px-3 rounded-md hover:bg-gray-800/40 hover:text-white text-sm transition-all duration-150 group"
+                  :class="route.path === '/dashboard/reports/users' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-cyan-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
                   @click="isMobile && $emit('close-sidebar')"
                 >
                   User Analytics
                 </router-link>
                 <router-link
                   to="/dashboard/reports/bandwidth-usage-summary"
-                  class="block py-2 px-3 rounded-lg hover:bg-gray-800 text-sm transition-colors duration-150"
-                  :class="route.path === '/dashboard/reports/bandwidth-usage-summary' ? 'bg-gray-800 text-white font-medium' : ''"
+                  class="block py-2.5 px-3 rounded-md hover:bg-gray-800/40 hover:text-white text-sm transition-all duration-150 group"
+                  :class="route.path === '/dashboard/reports/bandwidth-usage-summary' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-cyan-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
                   @click="isMobile && $emit('close-sidebar')"
                 >
                   Bandwidth Usage
@@ -559,8 +572,9 @@
         </div>
 
         <!-- Section: Organization -->
-        <div class="pt-4">
-          <div class="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+        <div class="pt-6 pb-2">
+          <div class="px-3 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+            <div class="w-1 h-4 bg-gradient-to-b from-cyan-500 to-sky-500 rounded-full"></div>
             Organization
           </div>
 
@@ -588,24 +602,24 @@
               <div class="ml-9 space-y-1">
                 <router-link
                   to="/dashboard/hr/departments"
-                  class="block py-2 px-3 rounded-lg hover:bg-gray-800 text-sm transition-colors duration-150"
-                  :class="route.path === '/dashboard/hr/departments' ? 'bg-gray-800 text-white font-medium' : ''"
+                  class="block py-2.5 px-3 rounded-md hover:bg-gray-800/40 hover:text-white text-sm transition-all duration-150 group"
+                  :class="route.path === '/dashboard/hr/departments' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-cyan-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
                   @click="isMobile && $emit('close-sidebar')"
                 >
                   Departments
                 </router-link>
                 <router-link
                   to="/dashboard/hr/positions"
-                  class="block py-2 px-3 rounded-lg hover:bg-gray-800 text-sm transition-colors duration-150"
-                  :class="route.path === '/dashboard/hr/positions' ? 'bg-gray-800 text-white font-medium' : ''"
+                  class="block py-2.5 px-3 rounded-md hover:bg-gray-800/40 hover:text-white text-sm transition-all duration-150 group"
+                  :class="route.path === '/dashboard/hr/positions' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-cyan-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
                   @click="isMobile && $emit('close-sidebar')"
                 >
                   Positions
                 </router-link>
                 <router-link
                   to="/dashboard/hr/employees"
-                  class="block py-2 px-3 rounded-lg hover:bg-gray-800 text-sm transition-colors duration-150"
-                  :class="route.path === '/dashboard/hr/employees' ? 'bg-gray-800 text-white font-medium' : ''"
+                  class="block py-2.5 px-3 rounded-md hover:bg-gray-800/40 hover:text-white text-sm transition-all duration-150 group"
+                  :class="route.path === '/dashboard/hr/employees' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-cyan-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
                   @click="isMobile && $emit('close-sidebar')"
                 >
                   Employees
@@ -638,16 +652,16 @@
               <div class="ml-9 space-y-1">
                 <router-link
                   to="/dashboard/finance/expenses"
-                  class="block py-2 px-3 rounded-lg hover:bg-gray-800 text-sm transition-colors duration-150"
-                  :class="route.path === '/dashboard/finance/expenses' ? 'bg-gray-800 text-white font-medium' : ''"
+                  class="block py-2.5 px-3 rounded-md hover:bg-gray-800/40 hover:text-white text-sm transition-all duration-150 group"
+                  :class="route.path === '/dashboard/finance/expenses' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-cyan-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
                   @click="isMobile && $emit('close-sidebar')"
                 >
                   Expenses
                 </router-link>
                 <router-link
                   to="/dashboard/finance/revenues"
-                  class="block py-2 px-3 rounded-lg hover:bg-gray-800 text-sm transition-colors duration-150"
-                  :class="route.path === '/dashboard/finance/revenues' ? 'bg-gray-800 text-white font-medium' : ''"
+                  class="block py-2.5 px-3 rounded-md hover:bg-gray-800/40 hover:text-white text-sm transition-all duration-150 group"
+                  :class="route.path === '/dashboard/finance/revenues' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-cyan-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
                   @click="isMobile && $emit('close-sidebar')"
                 >
                   Revenues
@@ -658,8 +672,9 @@
         </div>
 
         <!-- Section: Branding & Customization -->
-        <div class="pt-4">
-          <div class="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+        <div class="pt-6 pb-2">
+          <div class="px-3 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+            <div class="w-1 h-4 bg-gradient-to-b from-fuchsia-500 to-pink-500 rounded-full"></div>
             Branding & Customization
           </div>
 
@@ -676,8 +691,9 @@
         </div>
 
         <!-- Section: Support & Help -->
-        <div class="pt-4">
-          <div class="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+        <div class="pt-6 pb-2">
+          <div class="px-3 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+            <div class="w-1 h-4 bg-gradient-to-b from-red-500 to-orange-500 rounded-full"></div>
             Support & Help
           </div>
 
@@ -705,24 +721,24 @@
               <div class="ml-9 space-y-1">
                 <router-link
                   to="/dashboard/support/create-ticket"
-                  class="block py-2 px-3 rounded-lg hover:bg-gray-800 text-sm transition-colors duration-150"
-                  :class="route.path === '/dashboard/support/create-ticket' ? 'bg-gray-800 text-white font-medium' : ''"
+                  class="block py-2.5 px-3 rounded-md hover:bg-gray-800/40 hover:text-white text-sm transition-all duration-150 group"
+                  :class="route.path === '/dashboard/support/create-ticket' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-cyan-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
                   @click="isMobile && $emit('close-sidebar')"
                 >
                   Create Ticket
                 </router-link>
                 <router-link
                   to="/dashboard/support/all-tickets"
-                  class="block py-2 px-3 rounded-lg hover:bg-gray-800 text-sm transition-colors duration-150"
-                  :class="route.path === '/dashboard/support/all-tickets' ? 'bg-gray-800 text-white font-medium' : ''"
+                  class="block py-2.5 px-3 rounded-md hover:bg-gray-800/40 hover:text-white text-sm transition-all duration-150 group"
+                  :class="route.path === '/dashboard/support/all-tickets' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-cyan-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
                   @click="isMobile && $emit('close-sidebar')"
                 >
                   All Tickets
                 </router-link>
                 <router-link
                   to="/dashboard/support/categories"
-                  class="block py-2 px-3 rounded-lg hover:bg-gray-800 text-sm transition-colors duration-150"
-                  :class="route.path === '/dashboard/support/categories' ? 'bg-gray-800 text-white font-medium' : ''"
+                  class="block py-2.5 px-3 rounded-md hover:bg-gray-800/40 hover:text-white text-sm transition-all duration-150 group"
+                  :class="route.path === '/dashboard/support/categories' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-cyan-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
                   @click="isMobile && $emit('close-sidebar')"
                 >
                   Categories
@@ -733,8 +749,9 @@
         </div>
 
         <!-- Section: Settings -->
-        <div class="pt-4">
-          <div class="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+        <div class="pt-6 pb-2">
+          <div class="px-3 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+            <div class="w-1 h-4 bg-gradient-to-b from-slate-500 to-gray-500 rounded-full"></div>
             Settings
           </div>
 
@@ -762,32 +779,32 @@
               <div class="ml-9 space-y-1">
                 <router-link
                   to="/dashboard/settings/organization"
-                  class="block py-2 px-3 rounded-lg hover:bg-gray-800 text-sm transition-colors duration-150"
-                  :class="route.path === '/dashboard/settings/organization' ? 'bg-gray-800 text-white font-medium' : ''"
+                  class="block py-2.5 px-3 rounded-md hover:bg-gray-800/40 hover:text-white text-sm transition-all duration-150 group"
+                  :class="route.path === '/dashboard/settings/organization' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-cyan-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
                   @click="isMobile && $emit('close-sidebar')"
                 >
                   Organization Profile
                 </router-link>
                 <router-link
                   to="/dashboard/settings/profile"
-                  class="block py-2 px-3 rounded-lg hover:bg-gray-800 text-sm transition-colors duration-150"
-                  :class="route.path === '/dashboard/settings/profile' ? 'bg-gray-800 text-white font-medium' : ''"
+                  class="block py-2.5 px-3 rounded-md hover:bg-gray-800/40 hover:text-white text-sm transition-all duration-150 group"
+                  :class="route.path === '/dashboard/settings/profile' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-cyan-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
                   @click="isMobile && $emit('close-sidebar')"
                 >
                   My Account
                 </router-link>
                 <router-link
                   to="/dashboard/settings/security"
-                  class="block py-2 px-3 rounded-lg hover:bg-gray-800 text-sm transition-colors duration-150"
-                  :class="route.path === '/dashboard/settings/security' ? 'bg-gray-800 text-white font-medium' : ''"
+                  class="block py-2.5 px-3 rounded-md hover:bg-gray-800/40 hover:text-white text-sm transition-all duration-150 group"
+                  :class="route.path === '/dashboard/settings/security' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-cyan-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
                   @click="isMobile && $emit('close-sidebar')"
                 >
                   Security
                 </router-link>
                 <router-link
                   to="/dashboard/settings/notifications"
-                  class="block py-2 px-3 rounded-lg hover:bg-gray-800 text-sm transition-colors duration-150"
-                  :class="route.path === '/dashboard/settings/notifications' ? 'bg-gray-800 text-white font-medium' : ''"
+                  class="block py-2.5 px-3 rounded-md hover:bg-gray-800/40 hover:text-white text-sm transition-all duration-150 group"
+                  :class="route.path === '/dashboard/settings/notifications' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-cyan-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
                   @click="isMobile && $emit('close-sidebar')"
                 >
                   Notifications
@@ -798,8 +815,9 @@
         </div>
 
         <!-- Admin Tools (System Admin Only) -->
-        <div v-if="isSystemAdmin" class="pt-4">
-          <div class="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+        <div v-if="isSystemAdmin" class="pt-6 pb-2">
+          <div class="px-3 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+            <div class="w-1 h-4 bg-gradient-to-b from-red-600 to-rose-600 rounded-full"></div>
             System Administration
           </div>
 
@@ -826,24 +844,24 @@
               <div class="ml-9 space-y-1">
                 <router-link
                   to="/dashboard/admin/system-health"
-                  class="block py-2 px-3 rounded-lg hover:bg-gray-800 text-sm transition-colors duration-150"
-                  :class="route.path === '/dashboard/admin/system-health' ? 'bg-gray-800 text-white font-medium' : ''"
+                  class="block py-2.5 px-3 rounded-md hover:bg-gray-800/40 hover:text-white text-sm transition-all duration-150 group"
+                  :class="route.path === '/dashboard/admin/system-health' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-cyan-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
                   @click="isMobile && $emit('close-sidebar')"
                 >
                   System Health
                 </router-link>
                 <router-link
                   to="/dashboard/admin/database-backup"
-                  class="block py-2 px-3 rounded-lg hover:bg-gray-800 text-sm transition-colors duration-150"
-                  :class="route.path === '/dashboard/admin/database-backup' ? 'bg-gray-800 text-white font-medium' : ''"
+                  class="block py-2.5 px-3 rounded-md hover:bg-gray-800/40 hover:text-white text-sm transition-all duration-150 group"
+                  :class="route.path === '/dashboard/admin/database-backup' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-cyan-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
                   @click="isMobile && $emit('close-sidebar')"
                 >
                   Database Backup
                 </router-link>
                 <router-link
                   to="/dashboard/admin/system-updates"
-                  class="block py-2 px-3 rounded-lg hover:bg-gray-800 text-sm transition-colors duration-150"
-                  :class="route.path === '/dashboard/admin/system-updates' ? 'bg-gray-800 text-white font-medium' : ''"
+                  class="block py-2.5 px-3 rounded-md hover:bg-gray-800/40 hover:text-white text-sm transition-all duration-150 group"
+                  :class="route.path === '/dashboard/admin/system-updates' ? 'bg-gray-800/60 text-white font-semibold border-l-2 border-cyan-400 -ml-[14px] pl-[14px]' : 'text-gray-400'"
                   @click="isMobile && $emit('close-sidebar')"
                 >
                   System Updates
@@ -855,9 +873,9 @@
       </nav>
     </div>
     <!-- Sidebar Footer -->
-    <div class="p-4 text-xs text-gray-500 border-t border-gray-800">
-      <div>© {{ new Date().getFullYear() }} TraidNet Solutions</div>
-      <div class="mt-0.5">All rights reserved</div>
+    <div class="p-4 text-xs text-gray-600 border-t border-gray-800/50 bg-gray-950/50">
+      <div class="font-semibold">© {{ new Date().getFullYear() }} TraidNet Solutions</div>
+      <div class="mt-0.5 text-gray-700">All rights reserved</div>
     </div>
   </aside>
 </template>
