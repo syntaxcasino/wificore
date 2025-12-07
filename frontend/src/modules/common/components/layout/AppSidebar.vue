@@ -774,9 +774,9 @@
         </div>
         <!-- Todos -->
         <router-link
-          to="/todos"
+          to="/dashboard/todos"
           class="w-full flex items-center gap-3 py-2.5 px-3 rounded-lg hover:bg-gray-800 transition-all duration-200"
-          :class="route.path === '/todos' ? 'bg-gray-800 text-white' : ''"
+          :class="route.path === '/dashboard/todos' ? 'bg-gray-800 text-white' : ''"
           @click="isMobile && $emit('close-sidebar')"
         >
           <CheckSquare class="w-5 h-5 flex-shrink-0" />
@@ -806,25 +806,25 @@
           >
             <div class="ml-9 space-y-1">
               <router-link
-                to="/hr/departments"
+                to="/dashboard/hr/departments"
                 class="block py-2 px-3 rounded-lg hover:bg-gray-800 text-sm transition-colors duration-150"
-                :class="route.path === '/hr/departments' ? 'bg-gray-800 text-white font-medium' : ''"
+                :class="route.path === '/dashboard/hr/departments' ? 'bg-gray-800 text-white font-medium' : ''"
                 @click="isMobile && $emit('close-sidebar')"
               >
                 Departments
               </router-link>
               <router-link
-                to="/hr/positions"
+                to="/dashboard/hr/positions"
                 class="block py-2 px-3 rounded-lg hover:bg-gray-800 text-sm transition-colors duration-150"
-                :class="route.path === '/hr/positions' ? 'bg-gray-800 text-white font-medium' : ''"
+                :class="route.path === '/dashboard/hr/positions' ? 'bg-gray-800 text-white font-medium' : ''"
                 @click="isMobile && $emit('close-sidebar')"
               >
                 Positions
               </router-link>
               <router-link
-                to="/hr/employees"
+                to="/dashboard/hr/employees"
                 class="block py-2 px-3 rounded-lg hover:bg-gray-800 text-sm transition-colors duration-150"
-                :class="route.path === '/hr/employees' ? 'bg-gray-800 text-white font-medium' : ''"
+                :class="route.path === '/dashboard/hr/employees' ? 'bg-gray-800 text-white font-medium' : ''"
                 @click="isMobile && $emit('close-sidebar')"
               >
                 Employees
@@ -856,17 +856,17 @@
           >
             <div class="ml-9 space-y-1">
               <router-link
-                to="/finance/expenses"
+                to="/dashboard/finance/expenses"
                 class="block py-2 px-3 rounded-lg hover:bg-gray-800 text-sm transition-colors duration-150"
-                :class="route.path === '/finance/expenses' ? 'bg-gray-800 text-white font-medium' : ''"
+                :class="route.path === '/dashboard/finance/expenses' ? 'bg-gray-800 text-white font-medium' : ''"
                 @click="isMobile && $emit('close-sidebar')"
               >
                 Expenses
               </router-link>
               <router-link
-                to="/finance/revenues"
+                to="/dashboard/finance/revenues"
                 class="block py-2 px-3 rounded-lg hover:bg-gray-800 text-sm transition-colors duration-150"
-                :class="route.path === '/finance/revenues' ? 'bg-gray-800 text-white font-medium' : ''"
+                :class="route.path === '/dashboard/finance/revenues' ? 'bg-gray-800 text-white font-medium' : ''"
                 @click="isMobile && $emit('close-sidebar')"
               >
                 Revenues
@@ -1157,9 +1157,9 @@ watch(
       activeMenu.value = 'settings'
     } else if (path.startsWith('/dashboard/admin')) {
       activeMenu.value = 'adminTools'
-    } else if (path.startsWith('/hr')) {
+    } else if (path.startsWith('/dashboard/hr')) {
       activeMenu.value = 'hr'
-    } else if (path.startsWith('/finance')) {
+    } else if (path.startsWith('/dashboard/finance')) {
       activeMenu.value = 'finance'
     }
   },
@@ -1184,8 +1184,8 @@ const isActiveSupport = computed(() => route.path.startsWith('/dashboard/support
 const isActiveReports = computed(() => route.path.startsWith('/dashboard/reports'))
 const isActiveSettings = computed(() => route.path.startsWith('/dashboard/settings'))
 const isActiveAdminTools = computed(() => route.path.startsWith('/dashboard/admin'))
-const isActiveHR = computed(() => route.path.startsWith('/hr'))
-const isActiveFinance = computed(() => route.path.startsWith('/finance'))
+const isActiveHR = computed(() => route.path.startsWith('/dashboard/hr'))
+const isActiveFinance = computed(() => route.path.startsWith('/dashboard/finance'))
 
 // Check if we're on system admin routes
 const isOnSystemAdminRoute = computed(() => route.path.startsWith('/system'))
