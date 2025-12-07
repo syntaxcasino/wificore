@@ -1,6 +1,6 @@
 <template>
   <aside
-    class="fixed top-16 left-0 w-64 h-[calc(100vh-4rem)] bg-gray-900 text-gray-200 flex flex-col justify-between border-r border-gray-800 transition-all duration-300 ease-in-out z-40"
+    class="fixed top-16 left-0 w-64 h-[calc(100vh-4rem)] bg-gradient-to-b from-gray-900 via-gray-900 to-gray-950 text-gray-100 flex flex-col justify-between border-r border-gray-800/50 shadow-2xl transition-all duration-300 ease-in-out z-40"
     :class="{
       hidden: !isSidebarOpen,
       block: isSidebarOpen,
@@ -9,32 +9,33 @@
     <div
       class="overflow-y-auto scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-transparent hover:scrollbar-thumb-gray-600"
     >
-      <nav class="p-4 space-y-1">
+      <nav class="p-4 space-y-0.5">
         <!-- Dashboard -->
         <router-link
           :to="dashboardRoute"
-          class="w-full flex items-center gap-3 py-2.5 px-3 rounded-lg hover:bg-gray-800 transition-all duration-200"
-          :class="isDashboardActive ? 'bg-gray-800 text-white' : ''"
+          class="w-full flex items-center gap-3 py-3 px-3.5 rounded-lg hover:bg-gradient-to-r hover:from-blue-600/20 hover:to-blue-500/10 hover:border-l-2 hover:border-blue-500 transition-all duration-200 group"
+          :class="isDashboardActive ? 'bg-gradient-to-r from-blue-600/30 to-blue-500/20 border-l-2 border-blue-500 text-white shadow-lg shadow-blue-500/10' : 'text-gray-300'"
           @click="isMobile && $emit('close-sidebar')"
         >
-          <LayoutDashboard class="w-5 h-5 flex-shrink-0" />
-          <span class="text-sm font-medium">Dashboard</span>
+          <LayoutDashboard class="w-5 h-5 flex-shrink-0 group-hover:scale-110 transition-transform duration-200" :class="isDashboardActive ? 'text-blue-400' : ''" />
+          <span class="text-sm font-semibold">Dashboard</span>
         </router-link>
 
         <!-- Todos -->
         <router-link
           to="/dashboard/todos"
-          class="w-full flex items-center gap-3 py-2.5 px-3 rounded-lg hover:bg-gray-800 transition-all duration-200"
-          :class="route.path === '/dashboard/todos' ? 'bg-gray-800 text-white' : ''"
+          class="w-full flex items-center gap-3 py-3 px-3.5 rounded-lg hover:bg-gradient-to-r hover:from-green-600/20 hover:to-green-500/10 hover:border-l-2 hover:border-green-500 transition-all duration-200 group"
+          :class="route.path === '/dashboard/todos' ? 'bg-gradient-to-r from-green-600/30 to-green-500/20 border-l-2 border-green-500 text-white shadow-lg shadow-green-500/10' : 'text-gray-300'"
           @click="isMobile && $emit('close-sidebar')"
         >
-          <CheckSquare class="w-5 h-5 flex-shrink-0" />
-          <span class="text-sm font-medium">Todos</span>
+          <CheckSquare class="w-5 h-5 flex-shrink-0 group-hover:scale-110 transition-transform duration-200" :class="route.path === '/dashboard/todos' ? 'text-green-400' : ''" />
+          <span class="text-sm font-semibold">Todos</span>
         </router-link>
 
         <!-- Section: Customers & Users -->
-        <div class="pt-4">
-          <div class="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+        <div class="pt-6 pb-2">
+          <div class="px-3 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+            <div class="w-1 h-4 bg-gradient-to-b from-blue-500 to-purple-500 rounded-full"></div>
             Customers & Users
           </div>
 
@@ -42,16 +43,16 @@
           <div>
             <button
               @click="toggleMenu('hotspot')"
-              class="w-full flex items-center justify-between py-2.5 px-3 rounded-lg hover:bg-gray-800 transition-all duration-200"
-              :class="isActiveHotspot ? 'bg-gray-800 text-white' : ''"
+              class="w-full flex items-center justify-between py-3 px-3.5 rounded-lg hover:bg-gray-800/60 transition-all duration-200 group"
+              :class="isActiveHotspot ? 'bg-gray-800/80 text-white' : 'text-gray-300'"
             >
               <span class="flex items-center gap-3">
-                <Radio class="w-5 h-5 flex-shrink-0" />
-                <span class="text-sm font-medium">Hotspot Users</span>
+                <Radio class="w-5 h-5 flex-shrink-0 group-hover:scale-110 transition-transform duration-200" :class="isActiveHotspot ? 'text-blue-400' : ''" />
+                <span class="text-sm font-semibold">Hotspot Users</span>
               </span>
               <ChevronDown
                 class="w-4 h-4 transition-transform duration-200"
-                :class="activeMenu === 'hotspot' ? 'rotate-180' : ''"
+                :class="activeMenu === 'hotspot' ? 'rotate-180 text-blue-400' : ''"
               />
             </button>
             <div
