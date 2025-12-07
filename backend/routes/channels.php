@@ -21,33 +21,55 @@ Broadcast::channel('App.Models.User.{id}', function ($user, $id) {
 
 // Tenant-specific router updates channel
 Broadcast::channel('tenant.{tenantId}.router-updates', function ($user, $tenantId) {
-    // System admins can access all
-    if ($user->isSystemAdmin()) {
-        return true;
-    }
-    // Users can only access their tenant's router updates
+    // SECURITY: System admins should NOT access tenant channels (data isolation)
+    // Only users belonging to this specific tenant can access
     return $user->tenant_id === $tenantId;
 });
 
-// Private router status channel - requires authentication
+// Private router status channel - requires authentication and tenant isolation
 Broadcast::channel('router-status', function ($user) {
-    // User must be authenticated via Sanctum
-    return $user !== null;
+    // SECURITY: This channel should be tenant-specific, not global
+    // Deprecated: Use tenant.{tenantId}.router-status instead
+    return false; // Disabled for security
 });
 
-// Private routers channel - requires authentication
+// Private routers channel - requires authentication and tenant isolation
 Broadcast::channel('routers', function ($user) {
-    // User must be authenticated via Sanctum
-    return $user !== null;
+    // SECURITY: This channel should be tenant-specific, not global
+    // Deprecated: Use tenant.{tenantId}.routers instead
+    return false; // Disabled for security
 });
 
-// Private presence channel for online users
+// Private presence channel for online users (DEPRECATED - use tenant-specific)
 Broadcast::channel('online', function ($user) {
-    if ($user) {
+    // SECURITY: This global channel is deprecated for security
+    // Use tenant.{tenantId}.online or system.online instead
+    return false; // Disabled for security
+});
+
+// Tenant-specific online presence channel
+Broadcast::channel('tenant.{tenantId}.online', function ($user, $tenantId) {
+    // SECURITY: Only users in this tenant can see who's online in their tenant
+    if ($user->tenant_id === $tenantId) {
         return [
             'id' => $user->id,
             'name' => $user->name,
             'email' => $user->email,
+            'role' => $user->role,
+        ];
+    }
+    return false;
+});
+
+// System admin online presence channel
+Broadcast::channel('system.online', function ($user) {
+    // SECURITY: Only system admins can see who's online at system level
+    if ($user->role === 'system_admin' && $user->tenant_id === null) {
+        return [
+            'id' => $user->id,
+            'name' => $user->name,
+            'email' => $user->email,
+            'role' => $user->role,
         ];
     }
     return false;
@@ -55,11 +77,8 @@ Broadcast::channel('online', function ($user) {
 
 // Tenant-specific admin notifications channel
 Broadcast::channel('tenant.{tenantId}.admin-notifications', function ($user, $tenantId) {
-    // System admins can access all tenants
-    if ($user->isSystemAdmin()) {
-        return ['id' => $user->id, 'name' => $user->name, 'role' => $user->role];
-    }
-    // Tenant admins can only access their own tenant
+    // SECURITY: System admins should NOT access tenant channels (data isolation)
+    // Only tenant admins belonging to this specific tenant can access
     return $user->isAdmin() && $user->tenant_id === $tenantId;
 });
 
@@ -71,51 +90,36 @@ Broadcast::channel('router-provisioning.{routerId}', function ($user, $routerId)
 
 // Tenant-specific dashboard stats channel
 Broadcast::channel('tenant.{tenantId}.dashboard-stats', function ($user, $tenantId) {
-    // System admins can access all
-    if ($user->isSystemAdmin()) {
-        return true;
-    }
-    // Users can only access their tenant's stats
+    // SECURITY: System admins should NOT access tenant channels (data isolation)
+    // Only users belonging to this specific tenant can access
     return $user->tenant_id === $tenantId;
 });
 
 // Tenant-specific payments channel
 Broadcast::channel('tenant.{tenantId}.payments', function ($user, $tenantId) {
-    // System admins can access all
-    if ($user->isSystemAdmin()) {
-        return true;
-    }
-    // Admins can only access their tenant's payments
+    // SECURITY: System admins should NOT access tenant channels (data isolation)
+    // Only tenant admins belonging to this specific tenant can access
     return $user->isAdmin() && $user->tenant_id === $tenantId;
 });
 
 // Tenant-specific hotspot users channel
 Broadcast::channel('tenant.{tenantId}.hotspot-users', function ($user, $tenantId) {
-    // System admins can access all
-    if ($user->isSystemAdmin()) {
-        return true;
-    }
-    // Admins can only access their tenant's hotspot users
+    // SECURITY: System admins should NOT access tenant channels (data isolation)
+    // Only tenant admins belonging to this specific tenant can access
     return $user->isAdmin() && $user->tenant_id === $tenantId;
 });
 
 // Tenant-specific packages channel
 Broadcast::channel('tenant.{tenantId}.packages', function ($user, $tenantId) {
-    // System admins can access all
-    if ($user->isSystemAdmin()) {
-        return true;
-    }
-    // Users can only access their tenant's packages
+    // SECURITY: System admins should NOT access tenant channels (data isolation)
+    // Only users belonging to this specific tenant can access
     return $user->tenant_id === $tenantId;
 });
 
 // Tenant-specific security alerts channel (suspension/unsuspension notifications)
 Broadcast::channel('tenant.{tenantId}.security-alerts', function ($user, $tenantId) {
-    // System admins can access all
-    if ($user->isSystemAdmin()) {
-        return true;
-    }
-    // Tenant admins can only access their tenant's security alerts
+    // SECURITY: System admins should NOT access tenant channels (data isolation)
+    // Only tenant admins belonging to this specific tenant can access
     return $user->isAdmin() && $user->tenant_id === $tenantId;
 });
 
@@ -131,11 +135,8 @@ Broadcast::channel('system.admin.security-alerts', function ($user) {
 
 // Public tenant channel - all users in the tenant can listen
 Broadcast::channel('tenant.{tenantId}', function ($user, $tenantId) {
-    // System admins can access all tenant channels
-    if ($user->role === 'system_admin') {
-        return true;
-    }
-    // Users can only access their own tenant's channel
+    // SECURITY: System admins should NOT access tenant channels (data isolation)
+    // Only users belonging to this specific tenant can access
     return $user->tenant_id === $tenantId;
 });
 
@@ -147,6 +148,30 @@ Broadcast::channel('user.{userId}', function ($user, $userId) {
 
 // System admin channel - only system admins
 Broadcast::channel('system.admin', function ($user) {
-    // Only system admins can access this channel
-    return $user->role === 'system_admin';
+    // SECURITY: Only system admins (tenant_id = NULL) can access
+    return $user->role === 'system_admin' && $user->tenant_id === null;
+});
+
+// System admin dashboard stats channel
+Broadcast::channel('system.dashboard-stats', function ($user) {
+    // SECURITY: Only system admins can access system-level stats
+    return $user->role === 'system_admin' && $user->tenant_id === null;
+});
+
+// System admin tenants channel (tenant management)
+Broadcast::channel('system.tenants', function ($user) {
+    // SECURITY: Only system admins can access tenant management events
+    return $user->role === 'system_admin' && $user->tenant_id === null;
+});
+
+// System admin metrics channel (system-wide metrics)
+Broadcast::channel('system.metrics', function ($user) {
+    // SECURITY: Only system admins can access system metrics
+    return $user->role === 'system_admin' && $user->tenant_id === null;
+});
+
+// System admin queue stats channel
+Broadcast::channel('system.queue-stats', function ($user) {
+    // SECURITY: Only system admins can access queue statistics
+    return $user->role === 'system_admin' && $user->tenant_id === null;
 });

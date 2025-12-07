@@ -15,7 +15,7 @@ return [
     |
     */
 
-    'paths' => ['api/*', 'sanctum/csrf-cookie', '192.168.100.24', '*.ngrok-free.app', 'broadcasting/auth', '*.localhost'],
+    'paths' => ['api/*', 'sanctum/csrf-cookie', '192.168.100.24', '*.ngrok-free.app', '*.localhost'],
 
     'allowed_methods' => ['*'],
 
@@ -29,6 +29,6 @@ return [
 
     'max_age' => 0,
 
-    'supports_credentials' => false,
+    'supports_credentials' => true,
 
 ];        
