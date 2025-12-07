@@ -89,6 +89,15 @@ import SystemUpdates from '@/modules/tenant/views/dashboard/admin/SystemUpdates.
 // Todos Module
 import TodosView from '@/modules/tenant/views/TodosView.vue'
 
+// HR Module
+import DepartmentsView from '@/modules/tenant/views/DepartmentsView.vue'
+import PositionsView from '@/modules/tenant/views/PositionsView.vue'
+import EmployeesView from '@/modules/tenant/views/EmployeesView.vue'
+
+// Finance Module
+import ExpensesView from '@/modules/tenant/views/ExpensesView.vue'
+import RevenuesView from '@/modules/tenant/views/RevenuesView.vue'
+
 const routes = [
   { path: '/', name: 'public', component: PackagesView },
   { path: '/login', name: 'login', component: LoginView },
@@ -308,6 +317,46 @@ const routes = [
         path: 'todos',
         name: 'todos',
         component: TodosView,
+        meta: { requiresAuth: true }
+      },
+
+      // HR Module - Departments
+      {
+        path: 'hr/departments',
+        name: 'hr.departments',
+        component: DepartmentsView,
+        meta: { requiresAuth: true }
+      },
+
+      // HR Module - Positions
+      {
+        path: 'hr/positions',
+        name: 'hr.positions',
+        component: PositionsView,
+        meta: { requiresAuth: true }
+      },
+
+      // HR Module - Employees
+      {
+        path: 'hr/employees',
+        name: 'hr.employees',
+        component: EmployeesView,
+        meta: { requiresAuth: true }
+      },
+
+      // Finance Module - Expenses
+      {
+        path: 'finance/expenses',
+        name: 'finance.expenses',
+        component: ExpensesView,
+        meta: { requiresAuth: true }
+      },
+
+      // Finance Module - Revenues
+      {
+        path: 'finance/revenues',
+        name: 'finance.revenues',
+        component: RevenuesView,
         meta: { requiresAuth: true }
       },
     ],
