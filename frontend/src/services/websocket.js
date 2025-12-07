@@ -27,15 +27,20 @@ class WebSocketService {
 
     this.notificationStore = useNotificationStore()
 
+    // Detect if we're on HTTPS (ngrok, production) or HTTP (localhost)
+    const isSecure = window.location.protocol === 'https:'
+    const wsHost = import.meta.env.VITE_PUSHER_HOST || window.location.hostname
+    const wsPort = isSecure ? (import.meta.env.VITE_PUSHER_WSS_PORT || 443) : (import.meta.env.VITE_PUSHER_PORT || 80)
+    
     const defaultConfig = {
       broadcaster: 'pusher',
       key: import.meta.env.VITE_PUSHER_APP_KEY || 'app-key',
-      wsHost: import.meta.env.VITE_PUSHER_HOST || window.location.hostname,
-      wsPort: import.meta.env.VITE_PUSHER_PORT || 80,
-      wssPort: import.meta.env.VITE_PUSHER_PORT || 443,
+      wsHost: wsHost,
+      wsPort: wsPort,
+      wssPort: wsPort,
       wsPath: import.meta.env.VITE_PUSHER_PATH || '/app',
-      forceTLS: import.meta.env.VITE_PUSHER_SCHEME === 'wss',
-      encrypted: false,
+      forceTLS: isSecure, // Use wss:// if on HTTPS, ws:// if on HTTP
+      encrypted: isSecure,
       disableStats: true,
       enabledTransports: ['ws', 'wss'],
       cluster: import.meta.env.VITE_PUSHER_APP_CLUSTER || 'mt1',
@@ -51,8 +56,10 @@ class WebSocketService {
     this.echo = new Echo({ ...defaultConfig, ...config })
 
     console.log('✅ WebSocket initialized', {
+      protocol: isSecure ? 'wss://' : 'ws://',
       host: defaultConfig.wsHost,
       port: defaultConfig.wsPort,
+      path: defaultConfig.wsPath,
     })
 
     return this.echo
