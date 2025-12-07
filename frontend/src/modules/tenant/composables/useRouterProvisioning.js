@@ -116,23 +116,33 @@ export function useRouterProvisioning(props, emit) {
       })
 
       // Backend returns the router object directly with BOTH scripts
+      console.log('🔍 API Response:', response.data)
+      
       if (response.data && response.data.id) {
         provisioningRouter.value = response.data
         initialConfig.value = response.data.connectivity_script || ''
         
+        console.log('📝 initialConfig set:', initialConfig.value ? 'YES' : 'NO')
+        console.log('📝 initialConfig length:', initialConfig.value?.length || 0)
+        
         // Backend now returns VPN script immediately!
         if (response.data.vpn_script) {
           vpnScript.value = response.data.vpn_script
+          console.log('🔐 vpnScript set:', vpnScript.value ? 'YES' : 'NO')
+          console.log('🔐 vpnScript length:', vpnScript.value?.length || 0)
           addLog('success', 'VPN configuration ready!')
           provisioningProgress.value = 30
           provisioningStatus.value = 'Router created with VPN configuration'
         } else {
+          console.warn('⚠️ NO vpn_script in response!')
           // Fallback: poll if not included (shouldn't happen)
           addLog('info', 'VPN provisioning initiated...')
           pollVpnConfiguration()
           provisioningProgress.value = 15
           provisioningStatus.value = 'Router created - VPN provisioning initiated'
         }
+        
+        console.log('✅ Combined script will be:', combinedScript.value ? 'READY' : 'EMPTY')
         
         // Stay on stage 1 to show the combined script
         // User must click "Continue" button to proceed
