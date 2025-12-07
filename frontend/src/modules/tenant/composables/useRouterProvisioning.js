@@ -1,5 +1,5 @@
 import { ref, reactive, computed, watch, onMounted, onUnmounted } from 'vue'
-import axios from 'axios'
+import axios from '@/services/api/axios'
 
 export function useRouterProvisioning(props, emit) {
   // Reactive data
