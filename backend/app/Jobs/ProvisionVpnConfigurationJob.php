@@ -26,8 +26,8 @@ class ProvisionVpnConfigurationJob implements ShouldQueue
      * Create a new job instance.
      */
     public function __construct(
-        public int $tenantId,
-        public ?int $routerId = null,
+        public string $tenantId,
+        public ?string $routerId = null,
         public array $options = []
     ) {
         $this->onQueue('vpn-provisioning');
