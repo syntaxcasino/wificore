@@ -1,17 +1,25 @@
-# Documentation
+# Documentation (exclude non-application docs)
+*.md
+!README.md
+!docs/README.md
+docs/*.md
 !docs/
 
 # Environment files
-!.env
-!.env.*
+.env
+.env.*
 !.env.example
 
 # Logs
+*.log
+*.log.*
+logs/
 *.logSSS
 
 # OS files
 .DS_Store
 Thumbs.db
+desktop.ini
 
 # IDE
 .vscode/
@@ -19,8 +27,42 @@ Thumbs.db
 *.swp
 *.swo
 *~
+*.sublime-*
 
 # Temporary files
 *.tmp
 *.bak
 *.backup
+*_backup_*
+*_old
+* copy.sql
+* copy 2.sql
+*_copy.sql
+
+# Database backups and non-application SQL files
+postgres/backup_*.sql
+postgres/*copy*.sql
+postgres/check_*.sql
+postgres/init_uuid.sql
+postgres/init-tenant-aware-fix.sql
+
+# Build artifacts
+dist/
+build/
+*.cache
+
+# Node modules
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Docker volumes (data only)
+postgres_data/
+redis_data/
+
+# Scripts (non-application)
+scripts/*copy*.yml
+scripts/*.ps1
+!scripts/deploy.sh
+!scripts/setup.sh
