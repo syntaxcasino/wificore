@@ -1,7 +1,0 @@
-User-Name = "testuser"
-Acct-Status-Type = Start
-Acct-Session-Id = "test-session-001"
-NAS-IP-Address = 192.168.1.1
-NAS-Port = 1
-Framed-IP-Address = 10.0.0.100
-Acct-Delay-Time = 0

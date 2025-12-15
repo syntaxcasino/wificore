@@ -168,6 +168,19 @@ scripts/*_backup.*
 !scripts/setup.sh
 !build-and-push.sh
 
+# Test scripts and directories
+scripts/test*.sh
+scripts/test*.ps1
+scripts/test*.txt
+scripts/test*.html
+scripts/test*.js
+scripts/test-*/
+scripts/*-test.*
+scripts/websocket-test.*
+tests/
+test/
+__tests__/
+
 # ============================================================================
 # TESTING AND COVERAGE
 # ============================================================================
