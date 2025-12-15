@@ -86,8 +86,10 @@ onUnmounted(() => {
 .content-area {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 20px;
   padding-top: 80px; /* Add top padding to prevent content from being hidden under topbar */
+  position: relative;
 }
 
 /* Responsive adjustments */

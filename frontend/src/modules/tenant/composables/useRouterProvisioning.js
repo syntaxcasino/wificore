@@ -541,9 +541,36 @@ export function useRouterProvisioning(props, emit) {
 
   const copyToClipboard = async (text) => {
     try {
-      await navigator.clipboard.writeText(text)
-      addLog('success', 'Script copied to clipboard')
-      return true
+      const payload = typeof text === 'string' ? text : (text ?? '').toString()
+      if (!payload || payload.trim().length === 0) {
+        addLog('warning', 'Nothing to copy yet. Script not ready.')
+        return false
+      }
+
+      // Primary: modern async clipboard API
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(payload)
+        addLog('success', 'Script copied to clipboard')
+        return true
+      }
+
+      // Fallback: hidden textarea and execCommand
+      const el = document.createElement('textarea')
+      el.value = payload
+      el.setAttribute('readonly', '')
+      el.style.position = 'absolute'
+      el.style.left = '-9999px'
+      document.body.appendChild(el)
+      el.select()
+      const ok = document.execCommand('copy')
+      document.body.removeChild(el)
+      if (ok) {
+        addLog('success', 'Script copied to clipboard')
+        return true
+      }
+
+      addLog('error', 'Copy operation failed')
+      return false
     } catch (error) {
       console.error('Failed to copy:', error)
       addLog('error', 'Failed to copy script')

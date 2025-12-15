@@ -6,7 +6,7 @@ import LoginView from '@/modules/common/views/auth/LoginView.vue'
 import VerifyEmailView from '@/modules/common/views/auth/VerifyEmailView.vue'
 import DashboardLayout from '@/modules/common/components/layout/DashboardLayout.vue'
 
-import Dashboard from '@/modules/tenant/views/Dashboard.vue'
+import Dashboard from '@/modules/tenant/views/DashboardClean.vue'
 
 import UsersLayout from '@/modules/tenant/views/dashboard/users/UsersLayout.vue'
 import UserList from '@/modules/tenant/views/dashboard/users/UserList.vue'

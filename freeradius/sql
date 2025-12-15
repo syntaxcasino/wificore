@@ -6,7 +6,7 @@ sql {
     port = 5432
     login = "admin"
     password = "secret"
-    radius_db = "wifi_hotspot"
+    radius_db = "wms_770_ts"
 
     # IMPORTANT: Schema-based multi-tenancy support
     # FreeRADIUS will use radius_user_schema_mapping to determine tenant schema

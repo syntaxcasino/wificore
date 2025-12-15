@@ -7,14 +7,11 @@ services:
     environment:
       - TZ=Africa/Nairobi
     ports:
-      - "80:80"
-      - "443:443" # Add SSL if needed
+      - "8070:80"
     depends_on:
       traidnet-frontend:
         condition: service_healthy
       traidnet-backend:
-        condition: service_healthy
-      traidnet-soketi:
         condition: service_healthy
     networks:
       - traidnet-network
@@ -34,7 +31,7 @@ services:
       - TZ=Africa/Nairobi
       - VITE_PUSHER_APP_KEY=app-key
       - VITE_PUSHER_HOST=localhost
-      - VITE_PUSHER_PORT=443
+      - VITE_PUSHER_PORT=6071
       - VITE_PUSHER_SCHEME=wss
       - VITE_PUSHER_PATH=/app
       - VITE_PUSHER_APP_CLUSTER=mt1
@@ -63,7 +60,7 @@ services:
       - DB_CONNECTION=pgsql
       - DB_HOST=traidnet-postgres
       - DB_PORT=5432
-      - DB_DATABASE=wifi_hotspot
+      - DB_DATABASE=wms_770_ts
       - DB_USERNAME=admin
       - DB_PASSWORD=secret
       - QUEUE_CONNECTION=database
@@ -72,7 +69,7 @@ services:
       - PUSHER_APP_KEY=app-key
       - PUSHER_APP_SECRET=app-secret
       - PUSHER_HOST=traidnet-soketi
-      - PUSHER_PORT=6001
+      - PUSHER_PORT=6071
       - PUSHER_SCHEME=http
       - TZ=Africa/Nairobi
       - APP_URL=https://localhost
@@ -81,7 +78,7 @@ services:
       - SESSION_SAME_SITE=none
       - SESSION_SECURE_COOKIE=false
       - RADIUS_SERVER_HOST=traidnet-freeradius
-      - RADIUS_SERVER_PORT=1812
+      - RADIUS_SERVER_PORT=1872
       - RADIUS_SECRET=testing123
       - REDIS_HOST=traidnet-redis
       - REDIS_PORT=6379
@@ -133,7 +130,7 @@ services:
     environment:
       - TZ=Africa/Nairobi
     ports:
-      - "1812-1813:1812-1813/udp"
+      - "1872-1873:1812-1813/udp"
     # No volumes - all configs copied during build for better performance
     networks:
       traidnet-network:
@@ -181,16 +178,16 @@ services:
       SOKETI_DEFAULT_APP_MAX_CLIENT_EVENTS_PER_SEC: -1
       SOKETI_DEFAULT_APP_MAX_READ_REQUESTS_PER_SEC: -1
       SOKETI_HOST: 0.0.0.0
-      SOKETI_PORT: 6001
-      SOKETI_METRICS_SERVER_PORT: 9601
+      SOKETI_PORT: 6071
+      SOKETI_METRICS_SERVER_PORT: 9670
       SOKETI_METRICS_ENABLED: true
     ports:
-      - "6001:6001"
-      - "9601:9601"
+      - "6071:6071"
+      - "9670:9670"
     networks:
       - traidnet-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "-s", "-o", "/dev/null", "--max-time", "5", "--connect-timeout", "3", "--retry", "2", "--http1.1", "http://localhost:9601/"]
+      test: ["CMD", "curl", "-f", "-s", "-o", "/dev/null", "--max-time", "5", "--connect-timeout", "3", "--retry", "2", "--http1.1", "http://localhost:9670/"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -199,7 +196,7 @@ services:
   traidnet-redis:
     container_name: traidnet-redis
     image: redis:7-alpine
-    command: redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru --save 60 1000
+    command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru --save 300 10 --appendonly no
     restart: unless-stopped
     ports:
       - "6379:6379"
@@ -222,42 +219,44 @@ services:
       context: ./postgres
       dockerfile: Dockerfile
     restart: unless-stopped
+    ports:
+      - "5472:5432"
     environment:
-      - POSTGRES_DB=wifi_hotspot
+      - POSTGRES_DB=wms_770_ts
       - POSTGRES_USER=admin
       - POSTGRES_PASSWORD=secret
       - TZ=Africa/Nairobi
-      - POSTGRES_MAX_CONNECTIONS=200
-      - POSTGRES_SHARED_BUFFERS=256MB
-      - POSTGRES_EFFECTIVE_CACHE_SIZE=1GB
-      - POSTGRES_MAINTENANCE_WORK_MEM=64MB
+      - POSTGRES_MAX_CONNECTIONS=50
+      - POSTGRES_SHARED_BUFFERS=128MB
+      - POSTGRES_EFFECTIVE_CACHE_SIZE=512MB
+      - POSTGRES_MAINTENANCE_WORK_MEM=32MB
       - POSTGRES_CHECKPOINT_COMPLETION_TARGET=0.9
       - POSTGRES_WAL_BUFFERS=16MB
       - POSTGRES_DEFAULT_STATISTICS_TARGET=100
       - POSTGRES_RANDOM_PAGE_COST=1.1
       - POSTGRES_EFFECTIVE_IO_CONCURRENCY=200
-      - POSTGRES_WORK_MEM=4MB
-      - POSTGRES_MIN_WAL_SIZE=1GB
-      - POSTGRES_MAX_WAL_SIZE=4GB
+      - POSTGRES_WORK_MEM=2MB
+      - POSTGRES_MIN_WAL_SIZE=512MB
+      - POSTGRES_MAX_WAL_SIZE=2GB
     command: >
       postgres
       -c shared_preload_libraries=pg_stat_statements
-      -c max_connections=200
-      -c shared_buffers=256MB
-      -c effective_cache_size=1GB
-      -c maintenance_work_mem=64MB
+      -c max_connections=50
+      -c shared_buffers=128MB
+      -c effective_cache_size=512MB
+      -c maintenance_work_mem=32MB
       -c checkpoint_completion_target=0.9
       -c wal_buffers=16MB
       -c default_statistics_target=100
       -c random_page_cost=1.1
       -c effective_io_concurrency=200
-      -c work_mem=4MB
-      -c min_wal_size=1GB
-      -c max_wal_size=4GB
-      -c max_worker_processes=4
-      -c max_parallel_workers_per_gather=2
-      -c max_parallel_workers=4
-      -c max_parallel_maintenance_workers=2
+      -c work_mem=2MB
+      -c min_wal_size=512MB
+      -c max_wal_size=2GB
+      -c max_worker_processes=2
+      -c max_parallel_workers_per_gather=1
+      -c max_parallel_workers=2
+      -c max_parallel_maintenance_workers=1
       -c pg_stat_statements.max=10000
       -c pg_stat_statements.track=all
       -c max_locks_per_transaction=256
@@ -270,7 +269,7 @@ services:
           - postgres
           - database
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "admin", "-d", "wifi_hotspot"]
+      test: ["CMD", "pg_isready", "-U", "admin", "-d", "wms_770_ts"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -290,5 +289,5 @@ networks:
     driver: bridge
     ipam:
       config:
-        - subnet: 172.20.0.0/16
-          gateway: 172.20.255.254
+        - subnet: 172.70.0.0/16
+          gateway: 172.70.255.254

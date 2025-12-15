@@ -420,9 +420,9 @@ import { onMounted, onUnmounted } from 'vue'
 import { useBroadcasting } from '@/modules/common/composables/websocket/useBroadcasting'
 import { useAuth } from '@/modules/common/composables/auth/useAuth'
 import { useDashboard } from '@/modules/tenant/composables/data/useDashboard'
-import PaymentWidget from '@/modules/tenant/components/dashboard/PaymentWidget.vue'
-import ExpensesWidget from '@/modules/tenant/components/dashboard/ExpensesWidget.vue'
-import BusinessAnalyticsWidget from '@/modules/tenant/components/dashboard/BusinessAnalyticsWidget.vue'
+import PaymentWidget from '@/modules/tenant/components/dashboard/PaymentWidgetClean.vue'
+import ExpensesWidget from '@/modules/tenant/components/dashboard/ExpensesWidgetClean.vue'
+import BusinessAnalyticsWidget from '@/modules/tenant/components/dashboard/BusinessAnalyticsWidgetClean.vue'
 
 const { user } = useAuth()
 const { isConnected, subscribeToPrivateChannel, subscribeToPresenceChannel } = useBroadcasting()

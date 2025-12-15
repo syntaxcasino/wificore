@@ -234,7 +234,7 @@
                     </div>
                     <textarea
                       readonly
-                      v-model="combinedScript"
+                      :value="combinedScript"
                       class="w-full bg-gray-900 p-4 rounded-lg text-xs font-mono text-gray-100 border-2 border-gray-700 focus:border-blue-500 focus:outline-none resize-none cursor-text"
                       rows="20"
                       @click="$event.target.select()"
@@ -673,6 +673,8 @@ const {
   deploymentStatus,
   connectionStatusClass,
   connectionStatusTextClass,
+  combinedScript,
+  vpnScript,
   
   // Methods
   createRouterWithConfig,
