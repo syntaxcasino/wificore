@@ -1,33 +1,89 @@
-# Documentation (exclude non-application docs)
+# ============================================================================
+# NON-APPLICATION DOCUMENTS AND FILES
+# ============================================================================
+
+# Documentation (exclude non-application docs, keep only essential)
 *.md
 !README.md
-!docs/README.md
-docs/*.md
+!CHANGELOG.md
+!CONTRIBUTING.md
+!LICENSE.md
 !docs/
+docs/*.md
+!docs/SYSTEM_ARCHITECTURE.md
+!docs/API.md
+!docs/DEPLOYMENT.md
+
+# Text files and notes
+*.txt
+!requirements.txt
+!package.txt
+notes/
+TODO.txt
+NOTES.txt
+
+# Office documents
+*.doc
+*.docx
+*.xls
+*.xlsx
+*.ppt
+*.pptx
+*.pdf
+!docs/*.pdf
+
+# Images (non-application)
+screenshots/
+*.png
+*.jpg
+*.jpeg
+*.gif
+!frontend/public/**/*.png
+!frontend/public/**/*.jpg
+!frontend/public/**/*.jpeg
+!frontend/public/**/*.gif
+!frontend/src/assets/**/*.png
+!frontend/src/assets/**/*.jpg
+!frontend/src/assets/**/*.svg
+
+# ============================================================================
+# ENVIRONMENT AND CONFIGURATION
+# ============================================================================
 
 # Environment files
 .env
 .env.*
 !.env.example
+!.env.production.example
+
+# ============================================================================
+# LOGS AND TEMPORARY FILES
+# ============================================================================
 
 # Logs
 *.log
 *.log.*
 logs/
 *.logSSS
+backend/storage/logs/*.log
+frontend/logs/
 
 # OS files
 .DS_Store
 Thumbs.db
 desktop.ini
+*.DS_Store
 
-# IDE
+# IDE and Editor files
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 *.sublime-*
+.project
+.classpath
+.settings/
 
 # Temporary files
 *.tmp
@@ -35,9 +91,18 @@ desktop.ini
 *.backup
 *_backup_*
 *_old
+*_OLD
 * copy.sql
 * copy 2.sql
 *_copy.sql
+*_copy_*
+*-copy.*
+temp/
+tmp/
+
+# ============================================================================
+# DATABASE AND BACKUPS
+# ============================================================================
 
 # Database backups and non-application SQL files
 postgres/backup_*.sql
@@ -45,24 +110,105 @@ postgres/*copy*.sql
 postgres/check_*.sql
 postgres/init_uuid.sql
 postgres/init-tenant-aware-fix.sql
+postgres/*_backup.sql
+postgres/test_*.sql
+*.dump
+*.sql.gz
+
+# ============================================================================
+# BUILD ARTIFACTS AND DEPENDENCIES
+# ============================================================================
 
 # Build artifacts
 dist/
 build/
 *.cache
+.cache/
+.parcel-cache/
 
-# Node modules
+# Node modules and package manager files
 node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+.pnpm-debug.log*
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
 
-# Docker volumes (data only)
+# Composer (PHP)
+backend/vendor/
+composer.lock
+
+# ============================================================================
+# DOCKER AND DEPLOYMENT
+# ============================================================================
+
+# Docker volumes (data only - never commit data)
 postgres_data/
 redis_data/
+*-postgres-data/
+*-redis-data/
+laravel-storage/
+laravel-logs/
+
+# Docker build cache
+.dockerignore.local
+
+# ============================================================================
+# SCRIPTS AND UTILITIES
+# ============================================================================
 
 # Scripts (non-application)
 scripts/*copy*.yml
 scripts/*.ps1
+scripts/*_test.*
+scripts/*_backup.*
 !scripts/deploy.sh
 !scripts/setup.sh
+!build-and-push.sh
+
+# ============================================================================
+# TESTING AND COVERAGE
+# ============================================================================
+
+# Test coverage
+coverage/
+.nyc_output/
+*.coverage
+htmlcov/
+
+# ============================================================================
+# SECURITY AND SECRETS
+# ============================================================================
+
+# SSH keys and certificates
+*.pem
+*.key
+*.crt
+*.cer
+*.p12
+*.pfx
+id_rsa*
+id_dsa*
+id_ecdsa*
+id_ed25519*
+
+# API keys and secrets
+secrets/
+.secrets
+credentials.json
+service-account.json
+
+# ============================================================================
+# MISC
+# ============================================================================
+
+# Archives
+*.zip
+*.tar
+*.tar.gz
+*.rar
+*.7z
+!releases/*.zip
+!releases/*.tar.gz
