@@ -161,11 +161,30 @@ laravel-logs/
 
 # Scripts (non-application)
 scripts/*copy*.yml
+scripts/*copy*
 scripts/*.ps1
 scripts/*_test.*
 scripts/*_backup.*
+scripts/temp*
+scripts/error.html
+scripts/*.php
+scripts/*.sql
+scripts/diagnose-*
+scripts/fix-*
+scripts/check-*
+scripts/bypass-*
+scripts/create-*
+scripts/delete-*
+scripts/list-*
+scripts/update-*
+scripts/mark-*
+scripts/move-*
+scripts/add-*
+scripts/setup-*
+scripts/build*.sh
+scripts/build*.ps1
+scripts/local-*
 !scripts/deploy.sh
-!scripts/setup.sh
 !build-and-push.sh
 
 # Test scripts and directories
