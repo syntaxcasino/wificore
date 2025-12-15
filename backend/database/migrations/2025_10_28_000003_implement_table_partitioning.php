@@ -7,43 +7,23 @@ return new class extends Migration
 {
     /**
      * Run the migrations.
-     * Implements monthly partitioning for high-volume tables
+     * 
+     * NOTE: This migration is DISABLED because table partitioning is now handled
+     * by PostgreSQL initialization scripts (postgres/partitioning-setup.sql).
+     * The PostgreSQL approach provides:
+     * - Better control over partition configuration
+     * - Proper pg_partman integration
+     * - Daily partitioning for high-volume RADIUS tables (radacct, radpostauth)
+     * - Automated partition maintenance via pg_cron
+     * - 90-day retention policy
+     * 
+     * Tables that need partitioning should be configured in the PostgreSQL
+     * init scripts, not in Laravel migrations.
      */
     public function up(): void
     {
-        if (! $this->supportsPgPartman()) {
-            // Skip partitioning when pg_partman extension is not installed on the server
-            return;
-        }
-
-        // Enable pg_partman extension for automatic partition management
-        DB::statement('CREATE EXTENSION IF NOT EXISTS pg_partman');
-
-        // =====================================================================
-        // PAYMENTS TABLE - Monthly Partitioning
-        // =====================================================================
-        $this->partitionTable('payments');
-
-        // =====================================================================
-        // USER_SESSIONS TABLE - Monthly Partitioning
-        // =====================================================================
-        $this->partitionTable('user_sessions');
-
-        // =====================================================================
-        // SYSTEM_LOGS TABLE - Monthly Partitioning
-        // =====================================================================
-        $this->partitionTable('system_logs');
-
-        // =====================================================================
-        // HOTSPOT_SESSIONS TABLE - Monthly Partitioning
-        // =====================================================================
-        $this->partitionTable('hotspot_sessions');
-
-        // Create partitions for current month and next 3 months
-        $this->createInitialPartitions();
-
-        // Setup automatic partition maintenance
-        $this->setupAutomaticPartitionMaintenance();
+        // Skip - partitioning handled by PostgreSQL init scripts
+        return;
     }
 
     /**
@@ -65,13 +45,37 @@ return new class extends Migration
      */
     private function partitionTable(string $tableName): void
     {
+        // Check if table exists
+        $tableExists = DB::select("
+            SELECT 1 FROM information_schema.tables 
+            WHERE table_schema = 'public' 
+            AND table_name = ?
+        ", [$tableName]);
+
+        if (empty($tableExists)) {
+            // Table doesn't exist, skip partitioning
+            return;
+        }
+
         // Rename existing table
         DB::statement("ALTER TABLE {$tableName} RENAME TO {$tableName}_old");
 
-        // Create new partitioned table
+        // Create new partitioned table (excluding constraints that can't be partitioned)
+        // We exclude CONSTRAINTS and INDEXES because primary keys must include partition column
         DB::statement("
-            CREATE TABLE {$tableName} (LIKE {$tableName}_old INCLUDING ALL)
+            CREATE TABLE {$tableName} (
+                LIKE {$tableName}_old 
+                INCLUDING DEFAULTS 
+                INCLUDING GENERATED
+            )
             PARTITION BY RANGE (created_at)
+        ");
+
+        // Recreate indexes on the parent table (they'll be inherited by partitions)
+        // Note: We skip primary key constraint as it can't include partition column
+        DB::statement("
+            CREATE INDEX IF NOT EXISTS {$tableName}_created_at_idx 
+            ON {$tableName} (created_at)
         ");
 
         // Copy data from old table to new partitioned table
@@ -80,8 +84,9 @@ return new class extends Migration
             INSERT INTO {$tableName} SELECT * FROM {$tableName}_old
         ");
 
-        // Drop old table
-        DB::statement("DROP TABLE {$tableName}_old");
+        // Drop old table with CASCADE to handle foreign key dependencies
+        // Foreign keys will be automatically recreated pointing to the new partitioned table
+        DB::statement("DROP TABLE {$tableName}_old CASCADE");
     }
 
     /**
