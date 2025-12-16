@@ -104,9 +104,9 @@ const routes = [
   { path: '/register', name: 'register', component: () => import('@/modules/common/views/auth/TenantRegistrationView.vue') },
   { path: '/email/verify/:id/:hash', name: 'verify-email', component: VerifyEmailView },
   
-  // Hotspot routes - default to /login
-  { path: '/hotspot', redirect: '/hotspot/login' },
-  { path: '/hotspot/login', name: 'hotspot-login', component: () => import('@/modules/common/views/public/HotspotLoginView.vue') },
+  // Hotspot routes - redirect to packages view (hotspot login page)
+  { path: '/hotspot', redirect: '/' },
+  { path: '/hotspot/login', redirect: '/' },
   
   { path: '/websocket-test', name: 'websocket-test', component: WebSocketTest, meta: { requiresAuth: true } },
   { path: '/component-showcase', name: 'component-showcase', component: ComponentShowcase, meta: { requiresAuth: true } },

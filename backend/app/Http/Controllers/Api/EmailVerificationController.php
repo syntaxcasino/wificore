@@ -4,14 +4,10 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Tenant;
-use App\Models\User;
 use App\Jobs\CreateTenantJob;
-use App\Notifications\TenantCredentialsEmail;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\URL;
 
 class EmailVerificationController extends Controller
 {
@@ -53,8 +49,19 @@ class EmailVerificationController extends Controller
             $password = $tenant->settings['pending_password'] ?? null;
 
             if (!$username || !$password) {
+                DB::rollBack();
                 throw new \Exception('Pending credentials not found');
             }
+
+            // Update tenant settings
+            $tenant->update([
+                'settings' => array_merge($tenant->settings, [
+                    'credentials_sent' => false,
+                    'verification_completed_at' => now()->toIso8601String(),
+                ])
+            ]);
+
+            DB::commit();
 
             // Now create the tenant schema and admin user asynchronously
             $tenantData = [
@@ -72,19 +79,9 @@ class EmailVerificationController extends Controller
                 'phone' => $tenant->phone,
             ];
 
-            // Dispatch job to create schema and user
+            // EVENT-BASED: Dispatch job to create schema, user, allocate IP, and send credentials
             CreateTenantJob::dispatch($tenantData, $adminData, $password)
                 ->onQueue('tenant-management');
-
-            // Store credentials for sending after job completes
-            $tenant->update([
-                'settings' => array_merge($tenant->settings, [
-                    'credentials_sent' => false,
-                    'verification_completed_at' => now()->toIso8601String(),
-                ])
-            ]);
-
-            DB::commit();
 
             Log::info('Email verified - tenant creation job dispatched', [
                 'tenant_id' => $tenant->id,

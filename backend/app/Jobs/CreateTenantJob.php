@@ -5,7 +5,8 @@ namespace App\Jobs;
 use App\Models\Tenant;
 use App\Models\User;
 use App\Events\TenantCreated;
-use App\Notifications\TenantCredentialsEmail;
+use App\Jobs\AllocateTenantIpBlockJob;
+use App\Jobs\SendTenantCredentialsEmailJob;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -94,15 +95,6 @@ class CreateTenantJob implements ShouldQueue
                 'schema_created' => $tenant->schema_created,
             ]);
             
-            // Allocate unique IP block to tenant
-            $ipBlockService = app(\App\Services\IpBlockAllocationService::class);
-            $ipBlock = $ipBlockService->allocateTenantIpBlock($tenant);
-            
-            Log::info('IP block allocated to tenant', [
-                'tenant_id' => $tenant->id,
-                'ip_block' => $ipBlock,
-            ]);
-            
             // Wait a moment for schema creation to complete
             sleep(2);
             
@@ -180,25 +172,18 @@ class CreateTenantJob implements ShouldQueue
             // Broadcast event
             broadcast(new TenantCreated($tenant, $adminUser))->toOthers();
             
-            // Send credentials email
-            $tenant->notify(new TenantCredentialsEmail(
-                $tenant->name,
-                $tenant->slug,
+            // EVENT-BASED: Dispatch job to allocate IP block (async)
+            AllocateTenantIpBlockJob::dispatch($tenant->id)
+                ->onQueue('tenant-management');
+            
+            // EVENT-BASED: Dispatch job to send credentials email (async)
+            SendTenantCredentialsEmailJob::dispatch(
+                $tenant->id,
                 $this->adminData['username'],
-                $this->plainPassword,
-                $tenant->slug
-            ));
+                $this->plainPassword
+            )->onQueue('emails');
             
-            // Mark credentials as sent
-            $tenant->update([
-                'is_active' => true,
-                'settings' => array_merge($tenant->settings, [
-                    'credentials_sent' => true,
-                    'credentials_sent_at' => now()->toIso8601String(),
-                ])
-            ]);
-            
-            Log::info('Tenant created successfully - credentials email sent', [
+            Log::info('Tenant created successfully - IP allocation and credentials email jobs dispatched', [
                 'tenant_id' => $tenant->id,
                 'tenant_slug' => $tenant->slug,
                 'admin_user_id' => $adminUser->id,

@@ -6,8 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Tenant;
 use App\Models\User;
 use App\Jobs\CreateTenantJob;
-use App\Notifications\TenantEmailVerification;
-use App\Notifications\TenantCredentialsEmail;
+use App\Jobs\SendTenantVerificationEmailJob;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -127,10 +126,14 @@ class TenantRegistrationController extends Controller
             
             DB::commit();
             
-            // Send verification email
-            $tenant->notify(new TenantEmailVerification($slug, $request->company_name));
+            // Dispatch job to send verification email (async)
+            SendTenantVerificationEmailJob::dispatch(
+                $tenant->id,
+                $slug,
+                $request->company_name
+            )->onQueue('emails');
             
-            Log::info('Tenant registration initiated - email verification sent', [
+            Log::info('Tenant registration initiated - verification email job dispatched', [
                 'tenant_id' => $tenant->id,
                 'tenant_slug' => $slug,
                 'email' => $request->company_email,
