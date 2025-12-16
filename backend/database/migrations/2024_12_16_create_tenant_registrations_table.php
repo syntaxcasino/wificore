@@ -26,9 +26,10 @@ return new class extends Migration
             $table->boolean('credentials_sent')->default(false);
             $table->timestamp('credentials_sent_at')->nullable();
             $table->uuid('tenant_id')->nullable();
-            $table->foreignId('user_id')->nullable()->constrained('users')->onDelete('cascade');
+            $table->uuid('user_id')->nullable();
             
             $table->foreign('tenant_id')->references('id')->on('tenants')->onDelete('cascade');
+            $table->foreign('user_id')->references('id')->on('users')->onDelete('cascade');
             $table->string('status')->default('pending'); // pending, email_sent, verified, completed, failed
             $table->text('error_message')->nullable();
             $table->timestamps();
