@@ -2,7 +2,7 @@ sql {
     driver = "rlm_sql_postgresql"
     dialect = "postgresql"
 
-    server = "traidnet-postgres"
+    server = "wificore-postgres"
     port = 5432
     login = "admin"
     password = "secret"
