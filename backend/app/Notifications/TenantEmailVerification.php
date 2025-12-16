@@ -14,11 +14,15 @@ class TenantEmailVerification extends Notification implements ShouldQueue
 
     public string $tenantSlug;
     public string $tenantName;
+    public string $username;
+    public string $password;
 
-    public function __construct(string $tenantSlug, string $tenantName)
+    public function __construct(string $tenantSlug, string $tenantName, string $username, string $password)
     {
         $this->tenantSlug = $tenantSlug;
         $this->tenantName = $tenantName;
+        $this->username = $username;
+        $this->password = $password;
     }
 
     public function via($notifiable): array
@@ -37,6 +41,8 @@ class TenantEmailVerification extends Notification implements ShouldQueue
             ->line('Please verify your email address by clicking the button below:')
             ->action('Verify Email Address', $verificationUrl)
             ->line('This verification link will expire in 60 minutes.')
+            ->line('')
+            ->line('**Important:** After verifying your email, your login credentials will be sent to you in a separate email.')
             ->line('If you did not create an account, no further action is required.')
             ->salutation('Best regards, The WifiCore Team');
     }

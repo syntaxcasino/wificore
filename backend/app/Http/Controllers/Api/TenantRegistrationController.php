@@ -26,34 +26,16 @@ class TenantRegistrationController extends Controller
      */
     public function register(Request $request)
     {
-        // Validate registration data
+        // Validate registration data - only company details
         $validator = Validator::make($request->all(), [
-            // Tenant information
-            'tenant_name' => 'required|string|max:255',
-            'tenant_slug' => 'required|string|max:255|unique:tenants,slug|regex:/^[a-z0-9-]+$/',
-            'tenant_email' => 'required|email|max:255|unique:tenants,email',
-            'tenant_phone' => 'nullable|string|max:50',
-            'tenant_address' => 'nullable|string|max:500',
-            
-            // Admin user information
-            'admin_name' => 'required|string|max:255',
-            'admin_username' => 'required|string|max:255|unique:users,username|regex:/^[a-z0-9_]+$/',
-            'admin_email' => 'required|email|max:255|unique:users,email',
-            'admin_phone' => 'nullable|string|max:20',
-            'admin_password' => [
-                'required',
-                'string',
-                'min:8',
-                'confirmed',
-                'regex:/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/',
-            ],
+            // Company information
+            'company_name' => 'required|string|max:255',
+            'company_email' => 'required|email|max:255|unique:tenants,email',
+            'company_phone' => 'required|string|max:50',
+            'company_address' => 'required|string|max:500',
             
             // Terms acceptance
             'accept_terms' => 'required|accepted',
-        ], [
-            'tenant_slug.regex' => 'Tenant slug must contain only lowercase letters, numbers, and hyphens',
-            'admin_username.regex' => 'Username must contain only lowercase letters, numbers, and underscores',
-            'admin_password.regex' => 'Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character',
         ]);
 
         if ($validator->fails()) {
@@ -64,39 +46,86 @@ class TenantRegistrationController extends Controller
             ], 422);
         }
 
-        // EVENT-BASED: Dispatch tenant creation job (async)
-        $tenantData = [
-            'name' => $request->tenant_name,
-            'slug' => $request->tenant_slug,
-            'email' => $request->tenant_email,
-            'phone' => $request->tenant_phone,
-            'address' => $request->tenant_address,
-        ];
+        // Auto-generate slug from company name
+        $slug = Str::slug($request->company_name);
         
-        $adminData = [
-            'name' => $request->admin_name,
-            'username' => $request->admin_username,
-            'email' => $request->admin_email,
-            'phone' => $request->admin_phone,
-        ];
+        // Ensure slug uniqueness
+        $counter = 1;
+        $originalSlug = $slug;
+        while (Tenant::where('slug', $slug)->exists()) {
+            $slug = $originalSlug . '-' . $counter++;
+        }
         
-        CreateTenantJob::dispatch($tenantData, $adminData, $request->admin_password)
-            ->onQueue('tenant-management');
+        // Generate username from slug (remove hyphens)
+        $username = str_replace('-', '', $slug);
         
-        \Log::info('Tenant registration job dispatched', [
-            'tenant_slug' => $request->tenant_slug,
-            'admin_username' => $request->admin_username,
-        ]);
+        // Ensure username uniqueness
+        $usernameCounter = 1;
+        $originalUsername = $username;
+        while (User::where('username', $username)->exists()) {
+            $username = $originalUsername . $usernameCounter++;
+        }
+        
+        // Generate secure random password
+        $password = $this->generateSecurePassword();
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Tenant registration in progress. You will be able to login shortly.',
-            'data' => [
-                'tenant_slug' => $request->tenant_slug,
-                'admin_username' => $request->admin_username,
-                'status' => 'processing',
-            ],
-        ], 202); // 202 Accepted
+        // Create tenant record immediately (for email verification)
+        try {
+            DB::beginTransaction();
+            
+            $tenant = Tenant::create([
+                'name' => $request->company_name,
+                'slug' => $slug,
+                'subdomain' => $slug,
+                'email' => $request->company_email,
+                'phone' => $request->company_phone,
+                'address' => $request->company_address,
+                'is_active' => false, // Inactive until email verified
+                'trial_ends_at' => now()->addDays(30),
+                'public_packages_enabled' => true,
+                'public_registration_enabled' => true,
+                'settings' => [
+                    'timezone' => 'Africa/Nairobi',
+                    'currency' => 'KES',
+                    'max_routers' => 5,
+                    'pending_username' => $username,
+                    'pending_password' => $password,
+                ],
+            ]);
+            
+            DB::commit();
+            
+            // Send verification email with tenant ID, username, and password
+            \App\Jobs\SendTenantVerificationEmailJob::dispatch($tenant, $username, $password)
+                ->onQueue('emails');
+            
+            \Log::info('Tenant registration initiated', [
+                'tenant_id' => $tenant->id,
+                'tenant_slug' => $slug,
+                'username' => $username,
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Registration submitted. Please check your email to verify your account.',
+                'data' => [
+                    'tenant_id' => $tenant->id,
+                    'tenant_slug' => $slug,
+                    'status' => 'pending_verification',
+                ],
+            ], 200);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            \Log::error('Tenant registration failed', [
+                'error' => $e->getMessage(),
+                'company_name' => $request->company_name,
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Registration failed. Please try again.',
+            ], 500);
+        }
     }
 
     /**
@@ -199,5 +228,51 @@ class TenantRegistrationController extends Controller
             'available' => !$exists,
             'message' => $exists ? 'Email is already registered' : 'Email is available',
         ]);
+    }
+
+    /**
+     * Get verification status for a tenant
+     */
+    public function getVerificationStatus($tenantId)
+    {
+        $tenant = Tenant::find($tenantId);
+        
+        if (!$tenant) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Tenant not found',
+            ], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'email_verified' => $tenant->email_verified_at !== null,
+            'credentials_sent' => $tenant->schema !== null, // Schema created means credentials were sent
+            'is_active' => $tenant->is_active,
+        ]);
+    }
+
+    /**
+     * Generate a secure random password
+     */
+    private function generateSecurePassword($length = 12)
+    {
+        $uppercase = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+        $lowercase = 'abcdefghijklmnopqrstuvwxyz';
+        $numbers = '0123456789';
+        $special = '@$!%*?&';
+        
+        $password = '';
+        $password .= $uppercase[random_int(0, strlen($uppercase) - 1)];
+        $password .= $lowercase[random_int(0, strlen($lowercase) - 1)];
+        $password .= $numbers[random_int(0, strlen($numbers) - 1)];
+        $password .= $special[random_int(0, strlen($special) - 1)];
+        
+        $allChars = $uppercase . $lowercase . $numbers . $special;
+        for ($i = 4; $i < $length; $i++) {
+            $password .= $allChars[random_int(0, strlen($allChars) - 1)];
+        }
+        
+        return str_shuffle($password);
     }
 }

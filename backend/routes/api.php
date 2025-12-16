@@ -147,6 +147,10 @@ Route::get('/email/verify/{id}/{hash}', [\App\Http\Controllers\Api\EmailVerifica
 Route::get('/register/status/{tenantId}', [\App\Http\Controllers\Api\EmailVerificationController::class, 'checkStatus'])
     ->name('api.register.status');
 
+// Get verification status for tenant
+Route::get('/register/verification-status/{tenantId}', [\App\Http\Controllers\Api\TenantRegistrationController::class, 'getVerificationStatus'])
+    ->name('api.register.verification-status');
+
 // Resend Verification Email
 Route::post('/email/resend', [LoginController::class, 'resendVerification'])
     ->name('verification.resend');
