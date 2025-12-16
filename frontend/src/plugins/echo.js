@@ -22,7 +22,7 @@ const createEchoConfig = () => {
     broadcaster: 'pusher',
     key: env.VITE_PUSHER_APP_KEY || 'app-key',
     wsHost: env.VITE_PUSHER_HOST || window.location.hostname,
-    wsPort: env.VITE_PUSHER_PORT || 80,
+    wsPort: env.VITE_PUSHER_PORT || window.location.port || 8070,
     wssPort: 443,
     forceTLS: false, // Disable forceTLS for development
     encrypted: false, // Disable encryption for development

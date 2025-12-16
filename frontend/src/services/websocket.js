@@ -30,7 +30,7 @@ class WebSocketService {
     // Detect if we're on HTTPS (ngrok, production) or HTTP (localhost)
     const isSecure = window.location.protocol === 'https:'
     const wsHost = import.meta.env.VITE_PUSHER_HOST || window.location.hostname
-    const wsPort = isSecure ? (import.meta.env.VITE_PUSHER_WSS_PORT || 443) : (import.meta.env.VITE_PUSHER_PORT || 80)
+    const wsPort = isSecure ? (import.meta.env.VITE_PUSHER_WSS_PORT || 443) : (import.meta.env.VITE_PUSHER_PORT || window.location.port || 8070)
     
     const defaultConfig = {
       broadcaster: 'pusher',
