@@ -6,11 +6,11 @@ FROM node:22-alpine AS builder
 WORKDIR /app
 
 # Build arguments for environment variables
-ARG VITE_API_URL=http://localhost/api
-ARG VITE_API_BASE_URL=http://localhost/api
+ARG VITE_API_URL=/api
+ARG VITE_API_BASE_URL=/api
 ARG VITE_PUSHER_APP_KEY=app-key
 ARG VITE_PUSHER_HOST=localhost
-ARG VITE_PUSHER_PORT=80
+ARG VITE_PUSHER_PORT=8070
 ARG VITE_PUSHER_SCHEME=ws
 ARG VITE_PUSHER_APP_CLUSTER=mt1
 ARG VITE_PUSHER_AUTH_ENDPOINT=/api/broadcasting/auth
