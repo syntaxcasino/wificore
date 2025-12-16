@@ -127,29 +127,16 @@ Route::post('/login', [UnifiedAuthController::class, 'login'])
 Route::prefix('register')->group(function () {
     Route::post('/tenant', [TenantRegistrationController::class, 'register'])
         ->name('api.register.tenant');
-    Route::post('/check-slug', [TenantRegistrationController::class, 'checkSlug'])
-        ->name('api.register.check-slug');
-    Route::post('/check-username', [TenantRegistrationController::class, 'checkUsername'])
-        ->name('api.register.check-username');
-    Route::post('/check-email', [TenantRegistrationController::class, 'checkEmail'])
-        ->name('api.register.check-email');
+    Route::get('/verify/{token}', [TenantRegistrationController::class, 'verifyEmail'])
+        ->name('api.register.verify');
+    Route::get('/status/{token}', [TenantRegistrationController::class, 'getStatus'])
+        ->name('api.register.status');
 });
 
 // Legacy hotspot user registration (kept for backward compatibility)
 Route::post('/register', [LoginController::class, 'register'])
     ->name('api.register.legacy');
 
-// Email Verification - Tenant Registration
-Route::get('/email/verify/{id}/{hash}', [\App\Http\Controllers\Api\EmailVerificationController::class, 'verify'])
-    ->name('verification.verify');
-
-// Check registration status
-Route::get('/register/status/{tenantId}', [\App\Http\Controllers\Api\EmailVerificationController::class, 'checkStatus'])
-    ->name('api.register.status');
-
-// Get verification status for tenant
-Route::get('/register/verification-status/{tenantId}', [\App\Http\Controllers\Api\TenantRegistrationController::class, 'getVerificationStatus'])
-    ->name('api.register.verification-status');
 
 // Resend Verification Email
 Route::post('/email/resend', [LoginController::class, 'resendVerification'])
