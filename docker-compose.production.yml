@@ -87,7 +87,7 @@ services:
       - SESSION_SAME_SITE=${SESSION_SAME_SITE:-lax}
       - SESSION_SECURE_COOKIE=${SESSION_SECURE_COOKIE:-true}
       - RADIUS_SERVER_HOST=wificore-freeradius
-      - RADIUS_SERVER_PORT=${RADIUS_SERVER_PORT:-1872}
+      - RADIUS_SERVER_PORT=1812
       - RADIUS_SECRET=${RADIUS_SECRET}
       - REDIS_HOST=wificore-redis
       - REDIS_PORT=6379
@@ -140,8 +140,8 @@ services:
     environment:
       - TZ=${TZ:-Africa/Nairobi}
     ports:
-      - "${RADIUS_AUTH_PORT:-1872}:1812/udp"
-      - "${RADIUS_ACCT_PORT:-1873}:1813/udp"
+      - "${RADIUS_AUTH_PORT:-1812}:1812/udp"
+      - "${RADIUS_ACCT_PORT:-1813}:1813/udp"
     networks:
       wificore-network:
         aliases:
@@ -194,9 +194,6 @@ services:
       SOKETI_PORT: 6071
       SOKETI_METRICS_SERVER_PORT: 9670
       SOKETI_METRICS_ENABLED: ${SOKETI_METRICS_ENABLED:-true}
-    ports:
-      - "${SOKETI_PORT:-6071}:6071"
-      - "${SOKETI_METRICS_PORT:-9670}:9670"
     networks:
       - wificore-network
     healthcheck:
@@ -216,8 +213,6 @@ services:
     container_name: wificore-redis
     command: redis-server --requirepass ${REDIS_PASSWORD} --maxmemory ${REDIS_MAXMEMORY:-512mb} --maxmemory-policy allkeys-lru --save 60 1000 --appendonly yes
     restart: always
-    ports:
-      - "${REDIS_PORT:-6379}:6379"
     environment:
       - TZ=${TZ:-Africa/Nairobi}
     networks:
@@ -240,8 +235,6 @@ services:
     image: kja2aro/wificore:wificore-postgres
     container_name: wificore-postgres
     restart: always
-    ports:
-      - "${POSTGRES_PORT:-5472}:5432"
     environment:
       - POSTGRES_DB=${DB_DATABASE}
       - POSTGRES_USER=${DB_USERNAME}
