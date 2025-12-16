@@ -77,7 +77,7 @@ class HotspotService extends BaseMikroTikService
         }
         
         $radiusSecret= $options['radius_secret'] ?? env('RADIUS_SECRET', 'testing123');
-        $portalURL   = $options['portal_url'] ?? 'https://hotspot.traidnet.co.ke/login';
+        $portalURL   = $options['portal_url'] ?? 'https://wificore.traidsolutions.com/hotspot/login';
         $rateLimit   = $options['rate_limit'] ?? '10M/10M';
         $profile     = "hs-profile-$routerId";
         $server      = "hs-server-$routerId";

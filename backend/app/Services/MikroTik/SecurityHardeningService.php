@@ -97,7 +97,8 @@ class SecurityHardeningService extends TenantAwareService
 
             // Add walled garden hosts
             $hosts = [
-                'hotspot.traidnet.co.ke' => 'Captive Portal',
+                'wificore.traidsolutions.com' => 'Captive Portal',
+                '*.traidsolutions.com' => 'Captive Portal Subdomains',
                 '*.googleapis.com' => 'Google APIs',
                 '*.gstatic.com' => 'Google Static',
                 '*.cloudflare.com' => 'Cloudflare CDN',

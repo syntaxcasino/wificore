@@ -90,9 +90,9 @@ class ConfigurationService extends TenantAwareService
             'session_timeout' => $data['session_timeout'] ?? '4h',
             'idle_timeout' => $data['idle_timeout'] ?? '15m',
             'profile_name' => $data['hotspot_profile_name'] ?? "hs-profile-{$router->id}",
-            'radius_ip' => env('RADIUS_SERVER_HOST', 'traidnet-freeradius'),
+            'radius_ip' => env('RADIUS_SERVER_HOST', 'wificore-freeradius'),
             'radius_secret' => env('RADIUS_SECRET', 'testing123'),
-            'portal_url' => $data['portal_url'] ?? 'https://hotspot.traidnet.co.ke/login',
+            'portal_url' => $data['portal_url'] ?? 'https://wificore.traidsolutions.com/hotspot/login',
         ];
         
         Log::info('Generating hotspot configuration', [
