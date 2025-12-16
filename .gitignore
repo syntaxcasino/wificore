@@ -4,15 +4,7 @@
 
 # Documentation (exclude non-application docs, keep only essential)
 *.md
-!README.md
-!CHANGELOG.md
-!CONTRIBUTING.md
-!LICENSE.md
-!docs/
-docs/*.md
-!docs/SYSTEM_ARCHITECTURE.md
-!docs/API.md
-!docs/DEPLOYMENT.md
+docs/
 
 # Text files and notes
 *.txt
@@ -30,7 +22,6 @@ NOTES.txt
 *.ppt
 *.pptx
 *.pdf
-!docs/*.pdf
 
 # Images (non-application)
 screenshots/

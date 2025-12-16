@@ -6,18 +6,18 @@ FROM composer:latest AS composer-builder
 WORKDIR /app
 
 # Copy composer files first (for better layer caching)
-COPY composer.json composer.lock ./
+COPY composer.json ./
 
 # Install dependencies ignoring platform requirements for sockets
 # (sockets will be available in production stage)
-RUN composer install \
+RUN composer update \
     --optimize-autoloader \
     --no-interaction \
     --no-progress \
     --no-scripts \
     --no-dev \
     --prefer-dist \
-    --ignore-platform-req=ext-sockets \
+    --ignore-platform-reqs \
     && composer clear-cache
 
 # -------------------------------------------------------------------
