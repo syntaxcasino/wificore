@@ -2,8 +2,6 @@ import { defineStore } from 'pinia'
 import axios from 'axios'
 import { websocketService } from '@/services/websocket'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api'
-
 export const useAuthStore = defineStore('auth', {
   state: () => ({
     user: null,
@@ -24,7 +22,7 @@ export const useAuthStore = defineStore('auth', {
   actions: {
     async login(credentials) {
       try {
-        const response = await axios.post(`${API_URL}/login`, {
+        const response = await axios.post('/login', {
           username: credentials.username || credentials.email,
           password: credentials.password,
           remember: credentials.remember || false,
@@ -72,7 +70,7 @@ export const useAuthStore = defineStore('auth', {
         this.disconnectWebSocket()
         
         if (this.token) {
-          await axios.post(`${API_URL}/logout`, {}, {
+          await axios.post('/logout', {}, {
             headers: { Authorization: `Bearer ${this.token}` }
           })
         }
@@ -111,7 +109,7 @@ export const useAuthStore = defineStore('auth', {
     
     async fetchUser() {
       try {
-        const response = await axios.get(`${API_URL}/me`, {
+        const response = await axios.get('/me', {
           headers: { Authorization: `Bearer ${this.token}` }
         })
         
@@ -130,7 +128,7 @@ export const useAuthStore = defineStore('auth', {
     
     async changePassword(currentPassword, newPassword, newPasswordConfirmation) {
       try {
-        const response = await axios.post(`${API_URL}/change-password`, {
+        const response = await axios.post('/change-password', {
           current_password: currentPassword,
           new_password: newPassword,
           new_password_confirmation: newPasswordConfirmation,
