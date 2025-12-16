@@ -139,9 +139,13 @@ Route::prefix('register')->group(function () {
 Route::post('/register', [LoginController::class, 'register'])
     ->name('api.register.legacy');
 
-// Email Verification
-Route::get('/email/verify/{id}/{hash}', [LoginController::class, 'verifyEmail'])
+// Email Verification - Tenant Registration
+Route::get('/email/verify/{id}/{hash}', [\App\Http\Controllers\Api\EmailVerificationController::class, 'verify'])
     ->name('verification.verify');
+
+// Check registration status
+Route::get('/register/status/{tenantId}', [\App\Http\Controllers\Api\EmailVerificationController::class, 'checkStatus'])
+    ->name('api.register.status');
 
 // Resend Verification Email
 Route::post('/email/resend', [LoginController::class, 'resendVerification'])

@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Models\Tenant;
 use App\Models\User;
 use App\Events\TenantCreated;
+use App\Notifications\TenantCredentialsEmail;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -170,7 +171,25 @@ class CreateTenantJob implements ShouldQueue
             // Broadcast event
             broadcast(new TenantCreated($tenant, $adminUser))->toOthers();
             
-            Log::info('Tenant created successfully (async)', [
+            // Send credentials email
+            $tenant->notify(new TenantCredentialsEmail(
+                $tenant->name,
+                $tenant->slug,
+                $this->adminData['username'],
+                $this->plainPassword,
+                $tenant->slug
+            ));
+            
+            // Mark credentials as sent
+            $tenant->update([
+                'is_active' => true,
+                'settings' => array_merge($tenant->settings, [
+                    'credentials_sent' => true,
+                    'credentials_sent_at' => now()->toIso8601String(),
+                ])
+            ]);
+            
+            Log::info('Tenant created successfully - credentials email sent', [
                 'tenant_id' => $tenant->id,
                 'tenant_slug' => $tenant->slug,
                 'admin_user_id' => $adminUser->id,

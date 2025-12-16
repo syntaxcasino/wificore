@@ -5,11 +5,12 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Notifications\Notifiable;
 use App\Traits\HasUuid;
 
 class Tenant extends Model
 {
-    use HasFactory, HasUuid, SoftDeletes;
+    use HasFactory, HasUuid, SoftDeletes, Notifiable;
 
     protected $fillable = [
         'name',
@@ -18,6 +19,7 @@ class Tenant extends Model
         'custom_domain',
         'schema_name',
         'email',
+        'email_verified_at',
         'phone',
         'address',
         'settings',
@@ -42,6 +44,7 @@ class Tenant extends Model
         'schema_created' => 'boolean',
         'public_packages_enabled' => 'boolean',
         'public_registration_enabled' => 'boolean',
+        'email_verified_at' => 'datetime',
         'trial_ends_at' => 'datetime',
         'suspended_at' => 'datetime',
         'schema_created_at' => 'datetime',
@@ -49,6 +52,14 @@ class Tenant extends Model
         'updated_at' => 'datetime',
         'deleted_at' => 'datetime',
     ];
+    
+    /**
+     * Get the email address for verification
+     */
+    public function getEmailForVerification(): string
+    {
+        return $this->email;
+    }
 
     /**
      * Get users belonging to this tenant

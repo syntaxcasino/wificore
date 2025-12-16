@@ -97,8 +97,8 @@ class SecurityHardeningService extends TenantAwareService
 
             // Add walled garden hosts
             $hosts = [
-                'wificore.traidsolutions.com' => 'Captive Portal',
-                '*.traidsolutions.com' => 'Captive Portal Subdomains',
+                '*.wificore.traidsolutions.com' => 'Captive Portal - All Tenant Subdomains',
+                'wificore.traidsolutions.com' => 'Captive Portal - Main Domain',
                 '*.googleapis.com' => 'Google APIs',
                 '*.gstatic.com' => 'Google Static',
                 '*.cloudflare.com' => 'Cloudflare CDN',
