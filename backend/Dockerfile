@@ -27,27 +27,34 @@ FROM php:8.3-fpm-alpine AS production
 
 WORKDIR /var/www/html
 
-# Install runtime dependencies in a single layer
-RUN apk add --no-cache \
-    bash \
-    postgresql-dev \
-    libzip-dev \
-    libssh2-dev \
-    supervisor \
-    postgresql-client \
-    sudo \
-    linux-headers \
-    && docker-php-ext-install -j$(nproc) \
+# Update package index and install runtime dependencies
+RUN set -eux; \
+    # Update Alpine repositories to latest
+    apk update --no-cache || (sleep 5 && apk update --no-cache) || (sleep 10 && apk update --no-cache); \
+    # Install runtime dependencies
+    apk add --no-cache \
+        bash \
+        postgresql-dev \
+        libzip-dev \
+        libssh2-dev \
+        supervisor \
+        postgresql-client \
+        sudo \
+        linux-headers; \
+    # Install PHP extensions
+    docker-php-ext-install -j$(nproc) \
         pdo_pgsql \
         sockets \
         zip \
-        opcache \
-    && apk add --no-cache --virtual .build-deps \
-        $PHPIZE_DEPS \
-    && pecl install ssh2-1.4.1 redis \
-    && docker-php-ext-enable ssh2 redis \
-    && apk del .build-deps linux-headers \
-    && rm -rf /tmp/* /var/cache/apk/*
+        opcache; \
+    # Install PECL extensions
+    apk add --no-cache --virtual .build-deps \
+        $PHPIZE_DEPS; \
+    pecl install ssh2-1.4.1 redis; \
+    docker-php-ext-enable ssh2 redis; \
+    # Cleanup
+    apk del .build-deps linux-headers; \
+    rm -rf /tmp/* /var/cache/apk/*
 
 # Copy custom PHP-FPM and OPcache configuration
 COPY --chown=root:root ./docker/php-fpm-custom.conf /usr/local/etc/php-fpm.d/zzz-custom.conf
