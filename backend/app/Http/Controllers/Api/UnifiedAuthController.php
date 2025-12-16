@@ -130,7 +130,8 @@ class UnifiedAuthController extends Controller
             ], 403);
         }
 
-        // For tenant users, check if tenant is active AND validate subdomain
+        // For tenant users, check if tenant is active
+        // Allow login without subdomain, but will redirect to subdomain after auth
         if ($user->tenant_id) {
             $tenant = $user->tenant;
             
@@ -155,32 +156,24 @@ class UnifiedAuthController extends Controller
                 ], 403);
             }
 
-            // SECURITY: Validate subdomain-tenant binding
+            // Check if user is logging in from correct subdomain
             $host = $request->getHost();
+            $needsRedirect = false;
+            
             if (!$this->isLocalhost($host)) {
                 $subdomain = $this->extractSubdomain($host);
                 
                 if (!$this->validateSubdomainForTenant($subdomain, $tenant)) {
-                    \Log::warning('Login attempt with wrong subdomain', [
+                    // Not on correct subdomain, but allow login and signal redirect needed
+                    $needsRedirect = true;
+                    
+                    \Log::info('Tenant login from non-subdomain, will redirect after auth', [
                         'user_id' => $user->id,
                         'username' => $user->username,
                         'user_tenant_subdomain' => $tenant->subdomain,
                         'requested_subdomain' => $subdomain,
                         'host' => $host,
-                        'ip' => $request->ip(),
                     ]);
-
-                    RateLimiter::hit($key, 60);
-
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Access denied. Please use your organization subdomain to login.',
-                        'code' => 'SUBDOMAIN_MISMATCH',
-                        'details' => [
-                            'your_subdomain' => $tenant->subdomain,
-                            'correct_url' => "https://{$tenant->subdomain}." . config('app.base_domain'),
-                        ],
-                    ], 403);
                 }
             }
         }
@@ -336,6 +329,14 @@ class UnifiedAuthController extends Controller
             'ip' => $request->ip(),
         ]);
 
+        // Determine if redirect to subdomain is needed
+        $redirectSubdomain = null;
+        if ($user->role === User::ROLE_ADMIN && $user->tenant_id) {
+            // Tenant admin should be redirected to their subdomain
+            $redirectSubdomain = $user->tenant->slug . '.wificore.traidsolutions.com';
+        }
+        // System admin: no redirect (stays on main domain)
+
         return response()->json([
             'success' => true,
             'message' => 'Login successful',
@@ -357,6 +358,7 @@ class UnifiedAuthController extends Controller
                 'token' => $token,
                 'dashboard_route' => $dashboardRoute,
                 'abilities' => $abilities,
+                'redirect_subdomain' => $redirectSubdomain,
             ],
         ]);
     }

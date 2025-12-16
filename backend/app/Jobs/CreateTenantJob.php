@@ -94,6 +94,15 @@ class CreateTenantJob implements ShouldQueue
                 'schema_created' => $tenant->schema_created,
             ]);
             
+            // Allocate unique IP block to tenant
+            $ipBlockService = app(\App\Services\IpBlockAllocationService::class);
+            $ipBlock = $ipBlockService->allocateTenantIpBlock($tenant);
+            
+            Log::info('IP block allocated to tenant', [
+                'tenant_id' => $tenant->id,
+                'ip_block' => $ipBlock,
+            ]);
+            
             // Wait a moment for schema creation to complete
             sleep(2);
             
