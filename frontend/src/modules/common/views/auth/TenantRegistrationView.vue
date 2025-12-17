@@ -338,7 +338,7 @@ const form = ref({
 
 const loading = ref(false)
 const generatedSlug = ref('')
-const baseDomain = ref(import.meta.env.VITE_BASE_DOMAIN || 'yourdomain.com')
+const baseDomain = ref(import.meta.env.VITE_BASE_DOMAIN || 'wificore.traidsolutions.com')
 
 // Step tracking
 const currentStep = ref(1)

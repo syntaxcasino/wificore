@@ -48,13 +48,16 @@ class TenantRegistrationController extends Controller
             ], 422);
         }
 
-        // Use tenant_email or generate a placeholder
-        $email = $request->tenant_email ?: $slug . '@temp.wificore.local';
-
         try {
+            // Generate unique token first
+            $token = TenantRegistration::generateToken();
+            
+            // Use tenant_email or generate a unique placeholder using token
+            $email = $request->tenant_email ?: $slug . '-' . substr($token, 0, 8) . '@temp.wificore.local';
+
             // Create registration record
             $registration = TenantRegistration::create([
-                'token' => TenantRegistration::generateToken(),
+                'token' => $token,
                 'tenant_name' => $request->tenant_name,
                 'tenant_slug' => $slug,
                 'tenant_email' => $email,
