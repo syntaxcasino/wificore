@@ -47,6 +47,10 @@ screenshots/
 !.env.example
 !.env.production.example
 
+# Production configuration files (contain sensitive data)
+docker-compose.production.yml
+.env.production
+
 # ============================================================================
 # LOGS AND TEMPORARY FILES
 # ============================================================================
