@@ -21,7 +21,7 @@ const updateSW = registerSW({
   },
 })
 // Configure axios
-axios.defaults.baseURL = import.meta.env.VITE_API_BASE_URL || '/api'
+axios.defaults.baseURL = import.meta.env.VITE_API_BASE_URL
 
 // List of public endpoints that don't require authentication
 // Format: 'method:endpoint' or just 'endpoint' for all methods

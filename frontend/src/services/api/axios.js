@@ -4,7 +4,7 @@ import router from '@/router'
 
 // Create axios instance with base configuration
 const instance = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || '/api',
+  baseURL: import.meta.env.VITE_API_BASE_URL,
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
