@@ -181,11 +181,12 @@ class TenantRegistrationController extends Controller
      */
     private function generateSlug($name)
     {
-        return strtolower(preg_replace(
-            ['/[^a-z0-9\s-]/', '/\s+/', '/-+/', '/^-+|-+$/'],
-            ['', '-', '-', ''],
-            $name
-        ));
+        $slug = strtolower($name);
+        $slug = preg_replace('/[^a-z0-9\s-]/', '', $slug);
+        $slug = preg_replace('/\s+/', '-', $slug);
+        $slug = preg_replace('/-+/', '-', $slug);
+        $slug = trim($slug, '-');
+        return $slug;
     }
 
 }

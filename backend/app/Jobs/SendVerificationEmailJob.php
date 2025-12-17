@@ -41,7 +41,7 @@ class SendVerificationEmailJob implements ShouldQueue
                 'verificationUrl' => $verificationUrl,
             ], function ($message) {
                 $message->to($this->registration->tenant_email)
-                    ->subject('Verify Your WifiCore Account');
+                    ->subject('Verify Your TraidLink (WifiCore) Account');
             });
 
             $this->registration->update([
