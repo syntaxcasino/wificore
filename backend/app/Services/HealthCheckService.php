@@ -474,7 +474,7 @@ class HealthCheckService
             $workersRunning = false;
             $workerCount = 0;
             try {
-                $supervisorStatus = shell_exec('supervisorctl status 2>/dev/null | grep -E "laravel-queue" | grep "RUNNING"');
+                $supervisorStatus = shell_exec('supervisorctl -c /etc/supervisor/supervisord.conf status 2>/dev/null | grep -E "laravel-queue" | grep "RUNNING"');
                 if (!empty($supervisorStatus)) {
                     $workersRunning = true;
                     $workerCount = substr_count($supervisorStatus, 'RUNNING');

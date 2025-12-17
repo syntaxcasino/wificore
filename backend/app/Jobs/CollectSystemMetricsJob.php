@@ -119,13 +119,13 @@ class CollectSystemMetricsJob implements ShouldQueue
             $return_var = 0;
             
             // Try with sudo first (configured in /etc/sudoers.d/supervisorctl)
-            $command = 'sudo /usr/bin/supervisorctl status 2>&1';
+            $command = 'sudo /usr/bin/supervisorctl -c /etc/supervisor/supervisord.conf status 2>&1';
             exec($command, $output, $return_var);
             
             // Fallback: Try without sudo (in case we're running as root)
             if ($return_var !== 0 || empty($output)) {
                 $output = [];
-                $command = '/usr/bin/supervisorctl status 2>&1';
+                $command = '/usr/bin/supervisorctl -c /etc/supervisor/supervisord.conf status 2>&1';
                 exec($command, $output, $return_var);
             }
             

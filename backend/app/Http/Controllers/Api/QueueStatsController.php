@@ -247,7 +247,7 @@ class QueueStatsController extends Controller
     {
         try {
             // Check if supervisor is managing workers (matches both singular and plural)
-            $supervisorStatus = shell_exec('supervisorctl status 2>/dev/null | grep -E "laravel-queue" | grep "RUNNING"');
+            $supervisorStatus = shell_exec('supervisorctl -c /etc/supervisor/supervisord.conf status 2>/dev/null | grep -E "laravel-queue" | grep "RUNNING"');
             if (!empty($supervisorStatus)) {
                 return true;
             }

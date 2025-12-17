@@ -305,28 +305,28 @@ class SystemMetricsController extends Controller
             $output = [];
             $return_var = 0;
             
-            // Method 1: Direct supervisorctl (works if running in container)
-            $command = 'supervisorctl status 2>&1';
+            // Method 1: Direct supervisorctl with correct config path
+            $command = 'supervisorctl -c /etc/supervisor/supervisord.conf status 2>&1';
             exec($command, $output, $return_var);
             
             // Method 2: If direct command fails, try with full path
             if ($return_var !== 0 || empty($output)) {
                 $output = [];
-                $command = '/usr/bin/supervisorctl status 2>&1';
+                $command = '/usr/bin/supervisorctl -c /etc/supervisor/supervisord.conf status 2>&1';
                 exec($command, $output, $return_var);
             }
             
             // Method 3: Try via docker exec if we're on the host
             if ($return_var !== 0 || empty($output)) {
                 $output = [];
-                $command = 'docker exec traidnet-backend supervisorctl status 2>&1';
+                $command = 'docker exec traidnet-backend supervisorctl -c /etc/supervisor/supervisord.conf status 2>&1';
                 exec($command, $output, $return_var);
             }
             
             if (empty($output)) {
                 \Log::warning('supervisorctl command returned no output', [
                     'return_code' => $return_var,
-                    'tried_commands' => ['supervisorctl', '/usr/bin/supervisorctl', 'docker exec']
+                    'tried_commands' => ['supervisorctl -c /etc/supervisor/supervisord.conf', '/usr/bin/supervisorctl -c /etc/supervisor/supervisord.conf', 'docker exec']
                 ]);
                 return [];
             }

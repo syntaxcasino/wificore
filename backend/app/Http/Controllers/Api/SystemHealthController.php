@@ -134,7 +134,7 @@ class SystemHealthController extends Controller
     {
         try {
             // Count supervisor processes running queue workers
-            $command = "supervisorctl status 2>/dev/null | grep 'laravel-queue' | grep 'RUNNING' | wc -l";
+            $command = "supervisorctl -c /etc/supervisor/supervisord.conf status 2>/dev/null | grep 'laravel-queue' | grep 'RUNNING' | wc -l";
             $output = shell_exec($command);
             $count = (int) trim($output);
             

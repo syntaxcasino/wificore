@@ -153,7 +153,7 @@ class RotateLogs implements ShouldQueue
         try {
             // Run the command in the background to avoid blocking
             // The & at the end makes it non-blocking
-            $command = '/usr/bin/supervisorctl signal USR2 laravel-queues:* > /dev/null 2>&1 &';
+            $command = '/usr/bin/supervisorctl -c /etc/supervisor/supervisord.conf signal USR2 laravel-queues:* > /dev/null 2>&1 &';
             
             Log::debug('Signaling supervisor in background', ['command' => $command]);
             
