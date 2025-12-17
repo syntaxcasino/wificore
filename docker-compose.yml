@@ -57,34 +57,32 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
-      - DB_CONNECTION=pgsql
-      - DB_HOST=wificore-postgres
-      - DB_PORT=5432
-      - DB_DATABASE=wms_770_ts
-      - DB_USERNAME=admin
-      - DB_PASSWORD=secret
+      - DB_CONNECTION=${DB_CONNECTION:-pgsql}
+      - DB_HOST=${DB_HOST:-wificore-postgres}
+      - DB_PORT=${DB_PORT:-5432}
+      - DB_DATABASE=${DB_DATABASE:-wms_770_ts}
+      - DB_USERNAME=${DB_USERNAME:-admin}
+      - DB_PASSWORD=${DB_PASSWORD}
       - QUEUE_CONNECTION=database
       - BROADCAST_DRIVER=pusher
-      - PUSHER_APP_ID=app-id
-      - PUSHER_APP_KEY=app-key
-      - PUSHER_APP_SECRET=app-secret
-      - PUSHER_HOST=wificore-soketi
-      - PUSHER_PORT=6071
+      - PUSHER_APP_ID=${PUSHER_APP_ID:-app-id}
+      - PUSHER_APP_KEY=${PUSHER_APP_KEY:-app-key}
+      - PUSHER_APP_SECRET=${PUSHER_APP_SECRET:-app-secret}
+      - PUSHER_HOST=${PUSHER_HOST:-wificore-soketi}
+      - PUSHER_PORT=${PUSHER_PORT:-6071}
       - PUSHER_SCHEME=http
       - TZ=Africa/Nairobi
-      - APP_URL=https://wificore.traidsolutions.com
-      - FRONTEND_URL=https://wificore.traidsolutions.com
-      - SANCTUM_STATEFUL_DOMAINS=wificore.traidsolutions.com,*.traidsolutions.com
-      - SESSION_DOMAIN=.traidsolutions.com
+      - APP_URL=${APP_URL}
+      - FRONTEND_URL=${FRONTEND_URL}
+      - SANCTUM_STATEFUL_DOMAINS=${SANCTUM_STATEFUL_DOMAINS}
+      - SESSION_DOMAIN=${SESSION_DOMAIN}
       - SESSION_SAME_SITE=lax
       - SESSION_SECURE_COOKIE=true
-      - REDIS_HOST=wificore-redis
-      - REDIS_PORT=6379
-      - RADIUS_SERVER_HOST=wificore-freeradius
-      - RADIUS_SERVER_PORT=1812
-      - RADIUS_SECRET=testing123
-      - REDIS_HOST=wificore-redis
-      - REDIS_PORT=6379
+      - REDIS_HOST=${REDIS_HOST:-wificore-redis}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - RADIUS_SERVER_HOST=${RADIUS_SERVER_HOST:-wificore-freeradius}
+      - RADIUS_SERVER_PORT=${RADIUS_SERVER_PORT:-1812}
+      - RADIUS_SECRET=${RADIUS_SECRET}
       - REDIS_PASSWORD=null
       - CACHE_DRIVER=redis
       - SESSION_DRIVER=redis
@@ -168,9 +166,9 @@ services:
     restart: unless-stopped
     environment:
       SOKETI_DEBUG: 1
-      SOKETI_DEFAULT_APP_ID: app-id
-      SOKETI_DEFAULT_APP_KEY: app-key
-      SOKETI_DEFAULT_APP_SECRET: app-secret
+      SOKETI_DEFAULT_APP_ID: ${PUSHER_APP_ID:-app-id}
+      SOKETI_DEFAULT_APP_KEY: ${PUSHER_APP_KEY:-app-key}
+      SOKETI_DEFAULT_APP_SECRET: ${PUSHER_APP_SECRET:-app-secret}
       SOKETI_DEFAULT_APP_ENABLE_CLIENT_MESSAGES: true
       SOKETI_DEFAULT_APP_ENABLE_USER_AUTHENTICATION: true
       SOKETI_DEFAULT_APP_USER_AUTHENTICATION_TIMEOUT: 30000
@@ -216,9 +214,9 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
-      - POSTGRES_DB=wms_770_ts
-      - POSTGRES_USER=admin
-      - POSTGRES_PASSWORD=secret
+      - POSTGRES_DB=${DB_DATABASE:-wms_770_ts}
+      - POSTGRES_USER=${DB_USERNAME:-admin}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
       - TZ=Africa/Nairobi
       - POSTGRES_MAX_CONNECTIONS=200
       - POSTGRES_SHARED_BUFFERS=256MB
