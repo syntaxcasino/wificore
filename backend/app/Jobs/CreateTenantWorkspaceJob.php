@@ -77,8 +77,49 @@ class CreateTenantWorkspaceJob implements ShouldQueue
                 'status' => 'active',
             ]);
 
-            // CRITICAL: Create schema mapping for multi-tenant authentication
-            // This is required for RADIUS authentication to work
+            // CRITICAL: Create RADIUS credentials in tenant schema
+            Log::info('Adding RADIUS credentials for admin user', [
+                'username' => $username,
+                'tenant_schema' => $tenant->schema_name,
+            ]);
+
+            // Switch to tenant schema to add RADIUS credentials
+            DB::statement("SET search_path TO {$tenant->schema_name}, public");
+
+            // Add to tenant's radcheck table
+            DB::table('radcheck')->insert([
+                'username' => $username,
+                'attribute' => 'Cleartext-Password',
+                'op' => ':=',
+                'value' => $password,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            // Add to tenant's radreply table
+            DB::table('radreply')->insert([
+                [
+                    'username' => $username,
+                    'attribute' => 'Service-Type',
+                    'op' => ':=',
+                    'value' => 'Administrative-User',
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ],
+                [
+                    'username' => $username,
+                    'attribute' => 'Tenant-ID',
+                    'op' => ':=',
+                    'value' => $tenant->schema_name,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ],
+            ]);
+
+            // Switch back to public schema
+            DB::statement("SET search_path TO public");
+
+            // Create schema mapping for multi-tenant authentication
             DB::table('radius_user_schema_mapping')->insert([
                 'username' => $username,
                 'schema_name' => $tenant->schema_name,
@@ -88,7 +129,7 @@ class CreateTenantWorkspaceJob implements ShouldQueue
                 'updated_at' => now(),
             ]);
 
-            Log::info('Schema mapping created for admin user', [
+            Log::info('RADIUS credentials and schema mapping created for admin user', [
                 'username' => $username,
                 'schema_name' => $tenant->schema_name,
                 'tenant_id' => $tenant->id

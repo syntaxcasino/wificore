@@ -94,7 +94,9 @@ class TenantRegistrationController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Registration failed. Please try again later.',
+                'message' => 'Registration failed due to a system error. Please try again or contact support if the issue persists.',
+                'error_code' => 'REGISTRATION_ERROR',
+                'details' => config('app.debug') ? $e->getMessage() : null
             ], 500);
         }
     }
