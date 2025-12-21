@@ -6,6 +6,8 @@ use App\Models\Tenant;
 use App\Models\User;
 use App\Models\TenantRegistration;
 use App\Events\TenantEmailVerified;
+use App\Events\TenantWorkspaceCreating;
+use App\Events\TenantWorkspaceCreated;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -39,6 +41,14 @@ class CreateTenantWorkspaceJob implements ShouldQueue
     {
         try {
             DB::beginTransaction();
+
+            Log::info('Creating tenant workspace', [
+                'registration_id' => $this->registration->id,
+                'tenant_slug' => $this->registration->tenant_slug,
+            ]);
+
+            // Broadcast workspace creation started
+            event(new TenantWorkspaceCreating($this->registration));
 
             // Generate credentials
             $username = TenantRegistration::generateUsername($this->registration->tenant_slug);

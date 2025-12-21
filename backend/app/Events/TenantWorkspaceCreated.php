@@ -9,7 +9,7 @@ use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
-class TenantRegistrationCompleted implements ShouldBroadcast
+class TenantWorkspaceCreated implements ShouldBroadcast
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
@@ -36,7 +36,7 @@ class TenantRegistrationCompleted implements ShouldBroadcast
      */
     public function broadcastAs(): string
     {
-        return 'registration.completed';
+        return 'workspace.created';
     }
 
     /**
@@ -45,13 +45,13 @@ class TenantRegistrationCompleted implements ShouldBroadcast
     public function broadcastWith(): array
     {
         return [
-            'status' => 'completed',
-            'message' => 'Registration completed successfully!',
+            'status' => 'workspace_created',
+            'message' => 'Workspace created successfully!',
             'registration' => [
                 'token' => $this->registration->token,
+                'tenant_id' => $this->registration->tenant_id,
                 'tenant_slug' => $this->registration->tenant_slug,
-                'tenant_email' => $this->registration->tenant_email,
-                'status' => 'completed',
+                'email_verified' => $this->registration->email_verified,
             ],
         ];
     }

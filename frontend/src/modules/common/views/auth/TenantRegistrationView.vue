@@ -338,10 +338,11 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import axios from 'axios'
 import { useNotificationStore } from '@/stores/notifications'
+import Echo from '@/plugins/echo'
 
 const router = useRouter()
 const route = useRoute()
@@ -369,7 +370,7 @@ const stepStatus = ref({
 
 const statusMessage = ref(null)
 const registrationToken = ref(null)
-let pollInterval = null
+let echoChannel = null
 
 // Resend email functionality
 const resendingEmail = ref(false)
@@ -399,15 +400,20 @@ watch(() => form.value.tenant_name, (newName) => {
   }
 })
 
-// Poll for registration status
-const pollRegistrationStatus = async () => {
-  if (!registrationToken.value) return
+// Subscribe to WebSocket events for real-time updates
+const subscribeToRegistrationEvents = (token) => {
+  if (!token) return
   
-  try {
-    const response = await axios.get(`/register/status/${registrationToken.value}`)
-    const data = response.data
+  console.log('Subscribing to registration events:', `tenant-registration.${token}`)
+  
+  // Subscribe to the registration channel
+  echoChannel = Echo.channel(`tenant-registration.${token}`)
+  
+  // Email verified event
+  echoChannel.listen('.email.verified', (data) => {
+    console.log('Email verified event received:', data)
     
-    if (data.email_verified && currentStep.value === 2) {
+    if (currentStep.value === 2) {
       currentStep.value = 3
       stepStatus.value.step2 = 'done'
       stepStatus.value.step3 = 'processing'
@@ -416,17 +422,48 @@ const pollRegistrationStatus = async () => {
         title: 'Email Verified!',
         message: 'Your email has been verified. Setting up your account...'
       }
+      
+      notificationStore.success(
+        'Email Verified! ✓',
+        'Your workspace is being created...',
+        5000
+      )
     }
+  })
+  
+  // Workspace creating event
+  echoChannel.listen('.workspace.creating', (data) => {
+    console.log('Workspace creating event received:', data)
     
-    if (data.credentials_sent && currentStep.value === 3) {
+    statusMessage.value = {
+      type: 'info',
+      title: 'Creating Workspace',
+      message: 'Setting up your workspace and configuring your account...'
+    }
+  })
+  
+  // Workspace created event
+  echoChannel.listen('.workspace.created', (data) => {
+    console.log('Workspace created event received:', data)
+    
+    statusMessage.value = {
+      type: 'success',
+      title: 'Workspace Created!',
+      message: 'Your workspace is ready. Sending your login credentials...'
+    }
+  })
+  
+  // Credentials sent event
+  echoChannel.listen('.credentials.sent', (data) => {
+    console.log('Credentials sent event received:', data)
+    
+    if (currentStep.value === 3) {
       stepStatus.value.step3 = 'done'
       statusMessage.value = {
         type: 'success',
         title: 'Registration Complete!',
         message: `Your credentials have been sent to <strong>${form.value.tenant_email}</strong>. You can now login with your username and password.`
       }
-      
-      clearInterval(pollInterval)
       
       notificationStore.success(
         'Registration Complete! 🎉',
@@ -438,9 +475,23 @@ const pollRegistrationStatus = async () => {
         router.push({ name: 'login' })
       }, 3000)
     }
-  } catch (err) {
-    console.error('Status poll error:', err)
-  }
+  })
+  
+  // Registration completed event
+  echoChannel.listen('.registration.completed', (data) => {
+    console.log('Registration completed event received:', data)
+  })
+  
+  // Error handling
+  echoChannel.error((error) => {
+    console.error('WebSocket channel error:', error)
+    
+    statusMessage.value = {
+      type: 'error',
+      title: 'Connection Error',
+      message: 'Lost connection to server. Please refresh the page.'
+    }
+  })
 }
 
 const handleSubmit = async () => {
@@ -474,8 +525,8 @@ const handleSubmit = async () => {
         6000
       )
       
-      // Start polling for status
-      pollInterval = setInterval(pollRegistrationStatus, 3000)
+      // Subscribe to WebSocket events for real-time updates
+      subscribeToRegistrationEvents(response.data.token)
     }
   } catch (err) {
     console.error('Registration error:', err)
@@ -582,8 +633,8 @@ onMounted(() => {
       8000
     )
     
-    // Start polling for workspace creation status
-    pollInterval = setInterval(pollRegistrationStatus, 3000)
+    // Subscribe to WebSocket events for workspace creation updates
+    subscribeToRegistrationEvents(route.query.token)
     
     // Clean up URL
     router.replace({ name: 'register' })
@@ -591,10 +642,10 @@ onMounted(() => {
 })
 
 // Cleanup on unmount
-import { onUnmounted } from 'vue'
 onUnmounted(() => {
-  if (pollInterval) {
-    clearInterval(pollInterval)
+  if (echoChannel) {
+    Echo.leave(`tenant-registration.${registrationToken.value}`)
+    echoChannel = null
   }
   if (cooldownInterval) {
     clearInterval(cooldownInterval)

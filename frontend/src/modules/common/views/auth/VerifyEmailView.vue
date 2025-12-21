@@ -43,13 +43,21 @@
           </svg>
         </div>
         <h2 class="text-2xl font-bold text-red-600">Verification Failed</h2>
-        <p class="text-gray-600">{{ errorMessage }}</p>
-        <button 
-          @click="goToLogin"
-          class="mt-4 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          Go to Login
-        </button>
+        <p class="text-gray-600 px-4">{{ errorMessage }}</p>
+        <div class="flex gap-3 justify-center mt-6">
+          <button 
+            @click="goToRegister"
+            class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+          >
+            Register Again
+          </button>
+          <button 
+            @click="goToLogin"
+            class="px-6 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors font-medium"
+          >
+            Go to Login
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -97,7 +105,16 @@ onMounted(async () => {
       }
     } catch (err) {
       error.value = true
-      errorMessage.value = err.response?.data?.message || 'An error occurred during verification'
+      
+      // Handle specific error cases
+      if (err.response?.status === 404) {
+        errorMessage.value = 'This verification link is invalid or has already been used. Please register again or contact support if you need assistance.'
+      } else if (err.response?.status === 422) {
+        errorMessage.value = 'This verification link has expired. Please register again to receive a new verification email.'
+      } else {
+        errorMessage.value = err.response?.data?.message || 'An error occurred during verification. Please try again or contact support.'
+      }
+      
       console.error('Verification error:', err)
     } finally {
       verifying.value = false
@@ -143,5 +160,9 @@ onMounted(async () => {
 
 const goToLogin = () => {
   router.push('/login')
+}
+
+const goToRegister = () => {
+  router.push({ name: 'register' })
 }
 </script>
