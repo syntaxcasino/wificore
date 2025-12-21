@@ -67,6 +67,23 @@ class CreateTenantWorkspaceJob implements ShouldQueue
                 'status' => 'active',
             ]);
 
+            // CRITICAL: Create schema mapping for multi-tenant authentication
+            // This is required for RADIUS authentication to work
+            DB::table('radius_user_schema_mapping')->insert([
+                'username' => $username,
+                'schema_name' => $tenant->schema_name,
+                'tenant_id' => $tenant->id,
+                'is_active' => true,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            Log::info('Schema mapping created for admin user', [
+                'username' => $username,
+                'schema_name' => $tenant->schema_name,
+                'tenant_id' => $tenant->id
+            ]);
+
             // Update registration with generated credentials
             $this->registration->update([
                 'tenant_id' => $tenant->id,

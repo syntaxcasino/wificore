@@ -562,7 +562,14 @@ const resendVerificationEmail = async () => {
 
 // Check for verified query parameter on mount
 onMounted(() => {
-  if (route.query.verified === 'true') {
+  if (route.query.verified === 'true' && route.query.token) {
+    // Email was just verified, progress to step 3
+    registrationToken.value = route.query.token
+    currentStep.value = 3
+    stepStatus.value.step1 = 'done'
+    stepStatus.value.step2 = 'done'
+    stepStatus.value.step3 = 'processing'
+    
     statusMessage.value = {
       type: 'success',
       title: 'Email Verified!',
@@ -574,6 +581,12 @@ onMounted(() => {
       'Your workspace is being created. You will receive your login credentials via email shortly.',
       8000
     )
+    
+    // Start polling for workspace creation status
+    pollInterval = setInterval(pollRegistrationStatus, 3000)
+    
+    // Clean up URL
+    router.replace({ name: 'register' })
   }
 })
 

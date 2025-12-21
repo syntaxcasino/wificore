@@ -99,6 +99,22 @@ class CreateUserJob implements ShouldQueue
                             'schema' => $searchPath,
                         ]);
                     });
+                    
+                    // CRITICAL: Create schema mapping for multi-tenant authentication
+                    DB::table('radius_user_schema_mapping')->insert([
+                        'username' => $user->username,
+                        'schema_name' => $tenant->schema_name,
+                        'tenant_id' => $tenant->id,
+                        'is_active' => true,
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ]);
+                    
+                    Log::info('Schema mapping created for tenant user', [
+                        'username' => $user->username,
+                        'schema_name' => $tenant->schema_name,
+                        'tenant_id' => $tenant->id
+                    ]);
                 }
             }
             
