@@ -131,6 +131,8 @@ Route::prefix('register')->group(function () {
         ->name('api.register.verify');
     Route::get('/status/{token}', [TenantRegistrationController::class, 'getStatus'])
         ->name('api.register.status');
+    Route::post('/resend', [TenantRegistrationController::class, 'resendVerification'])
+        ->name('api.register.resend');
 });
 
 // Legacy hotspot user registration (kept for backward compatibility)

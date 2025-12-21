@@ -59,39 +59,71 @@ const error = ref(false)
 const errorMessage = ref('')
 
 onMounted(async () => {
-  const { id, hash } = route.params
+  // Check if this is a tenant registration verification (token-based)
+  const token = route.params.token || route.query.token
   
-  try {
-    const response = await axios.get(`/email/verify/${id}/${hash}`)
-    
-    if (response.data.success) {
-      verified.value = true
+  if (token) {
+    // Tenant registration verification
+    try {
+      const response = await axios.get(`/register/verify/${token}`)
       
-      // If token is provided, store it and auto-login
-      if (response.data.token) {
-        localStorage.setItem('authToken', response.data.token)
-        localStorage.setItem('user', JSON.stringify(response.data.user))
+      if (response.data.success) {
+        verified.value = true
         
-        // Redirect to dashboard after 2 seconds
+        // Show success message
         setTimeout(() => {
-          router.push('/dashboard')
+          router.push({
+            name: 'TenantRegistration',
+            query: { verified: 'true', message: 'Email verified! Your workspace is being created.' }
+          })
         }, 2000)
       } else {
-        // Redirect to login after 2 seconds
-        setTimeout(() => {
-          router.push('/login')
-        }, 2000)
+        error.value = true
+        errorMessage.value = response.data.message || 'Verification failed'
       }
-    } else {
+    } catch (err) {
       error.value = true
-      errorMessage.value = response.data.message || 'Verification failed'
+      errorMessage.value = err.response?.data?.message || 'An error occurred during verification'
+      console.error('Verification error:', err)
+    } finally {
+      verifying.value = false
     }
-  } catch (err) {
-    error.value = true
-    errorMessage.value = err.response?.data?.message || 'An error occurred during verification'
-    console.error('Verification error:', err)
-  } finally {
-    verifying.value = false
+  } else {
+    // Legacy email verification (id/hash based)
+    const { id, hash } = route.params
+    
+    try {
+      const response = await axios.get(`/email/verify/${id}/${hash}`)
+      
+      if (response.data.success) {
+        verified.value = true
+        
+        // If token is provided, store it and auto-login
+        if (response.data.token) {
+          localStorage.setItem('authToken', response.data.token)
+          localStorage.setItem('user', JSON.stringify(response.data.user))
+          
+          // Redirect to dashboard after 2 seconds
+          setTimeout(() => {
+            router.push('/dashboard')
+          }, 2000)
+        } else {
+          // Redirect to login after 2 seconds
+          setTimeout(() => {
+            router.push('/login')
+          }, 2000)
+        }
+      } else {
+        error.value = true
+        errorMessage.value = response.data.message || 'Verification failed'
+      }
+    } catch (err) {
+      error.value = true
+      errorMessage.value = err.response?.data?.message || 'An error occurred during verification'
+      console.error('Verification error:', err)
+    } finally {
+      verifying.value = false
+    }
   }
 })
 

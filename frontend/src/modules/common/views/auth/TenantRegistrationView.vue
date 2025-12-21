@@ -278,7 +278,25 @@
             </div>
             <h3 class="text-lg font-semibold text-gray-900 mb-2">Check Your Email</h3>
             <p class="text-sm text-gray-600 mb-4">We've sent a verification link to <strong>{{ form.tenant_email }}</strong></p>
-            <p class="text-xs text-gray-500">Please click the link in the email to verify your account and continue.</p>
+            <p class="text-xs text-gray-500 mb-6">Please click the link in the email to verify your account and continue.</p>
+            
+            <!-- Resend Button -->
+            <div class="mt-6 pt-6 border-t border-gray-200">
+              <p class="text-xs text-gray-500 mb-3">Didn't receive the email?</p>
+              <button 
+                @click="resendVerificationEmail"
+                :disabled="resendCooldown > 0 || resendingEmail"
+                class="px-6 py-2 bg-white border-2 border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed font-semibold transition-all text-sm flex items-center justify-center mx-auto"
+              >
+                <svg v-if="resendingEmail" class="animate-spin -ml-1 mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span v-if="resendCooldown > 0">Resend in {{ resendCooldown }}s</span>
+                <span v-else-if="resendingEmail">Sending...</span>
+                <span v-else>Resend Verification Email</span>
+              </button>
+            </div>
           </div>
 
           <!-- Processing Credentials -->
@@ -320,12 +338,13 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, watch, onMounted } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import axios from 'axios'
 import { useNotificationStore } from '@/stores/notifications'
 
 const router = useRouter()
+const route = useRoute()
 const notificationStore = useNotificationStore()
 
 const form = ref({
@@ -351,6 +370,11 @@ const stepStatus = ref({
 const statusMessage = ref(null)
 const registrationToken = ref(null)
 let pollInterval = null
+
+// Resend email functionality
+const resendingEmail = ref(false)
+const resendCooldown = ref(0)
+let cooldownInterval = null
 
 const canSubmit = computed(() => {
   return form.value.accept_terms && form.value.tenant_name.length >= 3
@@ -484,11 +508,83 @@ const handleSubmit = async () => {
   }
 }
 
+// Resend verification email
+const resendVerificationEmail = async () => {
+  if (resendCooldown.value > 0 || resendingEmail.value || !registrationToken.value) return
+  
+  resendingEmail.value = true
+  
+  try {
+    const response = await axios.post('/register/resend', {
+      token: registrationToken.value
+    })
+    
+    if (response.data.success) {
+      statusMessage.value = {
+        type: 'success',
+        title: 'Email Resent!',
+        message: 'We\'ve sent another verification email. Please check your inbox.'
+      }
+      
+      notificationStore.success(
+        'Verification Email Resent',
+        'Please check your inbox for the new verification email.',
+        5000
+      )
+      
+      // Start cooldown timer (60 seconds)
+      resendCooldown.value = 60
+      cooldownInterval = setInterval(() => {
+        resendCooldown.value--
+        if (resendCooldown.value <= 0) {
+          clearInterval(cooldownInterval)
+        }
+      }, 1000)
+    }
+  } catch (err) {
+    console.error('Resend email error:', err)
+    
+    statusMessage.value = {
+      type: 'error',
+      title: 'Failed to Resend',
+      message: err.response?.data?.message || 'Failed to resend verification email. Please try again.'
+    }
+    
+    notificationStore.error(
+      'Resend Failed',
+      err.response?.data?.message || 'Failed to resend verification email.',
+      5000
+    )
+  } finally {
+    resendingEmail.value = false
+  }
+}
+
+// Check for verified query parameter on mount
+onMounted(() => {
+  if (route.query.verified === 'true') {
+    statusMessage.value = {
+      type: 'success',
+      title: 'Email Verified!',
+      message: route.query.message || 'Your email has been verified successfully. Your workspace is being created.'
+    }
+    
+    notificationStore.success(
+      'Email Verified! ✓',
+      'Your workspace is being created. You will receive your login credentials via email shortly.',
+      8000
+    )
+  }
+})
+
 // Cleanup on unmount
 import { onUnmounted } from 'vue'
 onUnmounted(() => {
   if (pollInterval) {
     clearInterval(pollInterval)
+  }
+  if (cooldownInterval) {
+    clearInterval(cooldownInterval)
   }
 })
 </script>

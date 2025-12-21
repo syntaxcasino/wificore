@@ -41,14 +41,14 @@ class SendVerificationEmailJob implements ShouldQueue
             
             // Use Mail facade with explicit mailer for better control
             Mail::mailer(config('mail.default'))->send(
-                'emails.tenant-verification',
+                'emails.verification-professional',
                 [
                     'registration' => $this->registration,
                     'verificationUrl' => $verificationUrl,
                 ],
                 function ($message) {
                     $message->to($this->registration->tenant_email)
-                        ->subject('Verify Your TraidLink (WifiCore) Account')
+                        ->subject('Verify Your Email - WifiCore Registration')
                         ->priority(1); // High priority
                 }
             );

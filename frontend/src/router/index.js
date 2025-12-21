@@ -101,8 +101,9 @@ import RevenuesView from '@/modules/tenant/views/RevenuesView.vue'
 const routes = [
   { path: '/', name: 'public', component: PackagesView },
   { path: '/login', name: 'login', component: LoginView },
-  { path: '/register', name: 'register', component: () => import('@/modules/common/views/auth/TenantRegistrationView.vue') },
+  { path: '/register', name: 'register', component: () => import('@/modules/common/views/auth/TenantRegistrationView.vue'), alias: '/register/tenant' },
   { path: '/email/verify/:id/:hash', name: 'verify-email', component: VerifyEmailView },
+  { path: '/register/verify/:token', name: 'verify-registration', component: VerifyEmailView },
   
   // Hotspot routes - redirect to packages view (hotspot login page)
   { path: '/hotspot', redirect: '/' },

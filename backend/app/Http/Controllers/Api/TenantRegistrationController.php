@@ -132,14 +132,15 @@ class TenantRegistrationController extends Controller
             CreateTenantWorkspaceJob::dispatch($registration)
                 ->onQueue('tenant-management');
 
-            // Redirect to success page or return JSON
-            if ($registration->tenant_email) {
-                return redirect(env('FRONTEND_URL', 'http://localhost') . '/register/verified?success=true');
-            }
-
+            // Return JSON response with redirect information
             return response()->json([
                 'success' => true,
                 'message' => 'Email verified successfully. Your workspace is being created.',
+                'data' => [
+                    'tenant_slug' => $registration->tenant_slug,
+                    'status' => 'verified',
+                    'next_step' => 'workspace_creation'
+                ]
             ]);
 
         } catch (\Exception $e) {
@@ -177,6 +178,63 @@ class TenantRegistrationController extends Controller
             'tenant_slug' => $registration->tenant_slug,
             'error_message' => $registration->error_message,
         ]);
+    }
+
+    /**
+     * Resend verification email
+     */
+    public function resendVerification(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'token' => 'required|string',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        $registration = TenantRegistration::where('token', $request->token)
+            ->where('email_verified', false)
+            ->first();
+
+        if (!$registration) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Registration not found or already verified.',
+            ], 404);
+        }
+
+        try {
+            // Dispatch verification email job
+            SendVerificationEmailJob::dispatch($registration)
+                ->onQueue('emails');
+
+            Log::info('Verification email resent', [
+                'registration_id' => $registration->id,
+                'tenant_slug' => $registration->tenant_slug,
+                'tenant_email' => $registration->tenant_email,
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Verification email has been resent. Please check your inbox.',
+            ], 200);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to resend verification email', [
+                'registration_id' => $registration->id,
+                'error' => $e->getMessage()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to resend verification email. Please try again.',
+            ], 500);
+        }
     }
 
     /**
