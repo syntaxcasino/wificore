@@ -9,9 +9,20 @@ mkdir -p /var/www/html/storage/framework/{cache,sessions,views} /var/www/html/st
 
 # Create log files as www-data user to prevent root ownership
 su -s /bin/bash www-data -c "touch /var/www/html/storage/logs/laravel.log"
-su -s /bin/bash www-data -c "touch /var/www/html/storage/logs/tenant-management-queue.log"
-su -s /bin/bash www-data -c "touch /var/www/html/storage/logs/emails-queue.log"
-su -s /bin/bash www-data -c "touch /var/www/html/storage/logs/default-queue.log"
+
+# Supervisor (running as root) creates stdout/stderr log files as root by default.
+# Pre-create ALL configured supervisor log files as www-data so workers can write.
+if [ -f /etc/supervisor/conf.d/laravel-queue.conf ]; then
+  while IFS= read -r logfile; do
+    if [ -n "$logfile" ]; then
+      su -s /bin/bash www-data -c "touch $logfile" || true
+    fi
+  done < <(
+    grep -E '^(stdout_logfile|stderr_logfile)=' /etc/supervisor/conf.d/laravel-queue.conf \
+      | cut -d'=' -f2 \
+      | sort -u
+  )
+fi
 
 # Set proper ownership and permissions
 chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache

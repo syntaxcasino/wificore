@@ -37,7 +37,7 @@ class SendVerificationEmailJob implements ShouldQueue
         $startTime = microtime(true);
         
         try {
-            $verificationUrl = url("/api/register/verify/{$this->registration->token}");
+            $verificationUrl = url("/register/verify/{$this->registration->token}");
             
             // Use Mail facade with explicit mailer for better control
             Mail::mailer(config('mail.default'))->send(
