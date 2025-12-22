@@ -372,6 +372,8 @@ const statusMessage = ref(null)
 const registrationToken = ref(null)
 let echoChannel = null
 
+const REG_TOKEN_STORAGE_KEY = 'tenantRegistrationToken'
+
 // Resend email functionality
 const resendingEmail = ref(false)
 const resendCooldown = ref(0)
@@ -509,6 +511,7 @@ const handleSubmit = async () => {
     
     if (response.data.success) {
       registrationToken.value = response.data.token
+      sessionStorage.setItem(REG_TOKEN_STORAGE_KEY, response.data.token)
       currentStep.value = 2
       stepStatus.value.step1 = 'done'
       stepStatus.value.step2 = 'processing'
@@ -613,9 +616,25 @@ const resendVerificationEmail = async () => {
 
 // Check for verified query parameter on mount
 onMounted(() => {
+  // Restore registration token after refresh / tab close-open so we can keep listening to events
+  if (!registrationToken.value) {
+    const storedToken = sessionStorage.getItem(REG_TOKEN_STORAGE_KEY)
+    if (storedToken) {
+      registrationToken.value = storedToken
+      // If the user was already at step 2 previously, resume listening
+      if (currentStep.value === 1) {
+        currentStep.value = 2
+        stepStatus.value.step1 = 'done'
+        stepStatus.value.step2 = 'processing'
+      }
+      subscribeToRegistrationEvents(storedToken)
+    }
+  }
+
   if (route.query.verified === 'true' && route.query.token) {
     // Email was just verified, progress to step 3
     registrationToken.value = route.query.token
+    sessionStorage.setItem(REG_TOKEN_STORAGE_KEY, route.query.token)
     currentStep.value = 3
     stepStatus.value.step1 = 'done'
     stepStatus.value.step2 = 'done'
