@@ -25,6 +25,7 @@ class CreateTenantWorkspaceJob implements ShouldQueue
     public $registration;
     public $tries = 3;
     public $timeout = 300;
+    public $backoff = [5, 15, 30];
 
     /**
      * Create a new job instance.
@@ -39,6 +40,12 @@ class CreateTenantWorkspaceJob implements ShouldQueue
      */
     public function handle(): void
     {
+        Log::info('CreateTenantWorkspaceJob started', [
+            'registration_id' => $this->registration->id,
+            'tenant_slug' => $this->registration->tenant_slug,
+            'attempt' => $this->attempts()
+        ]);
+
         try {
             DB::beginTransaction();
 
@@ -186,5 +193,25 @@ class CreateTenantWorkspaceJob implements ShouldQueue
 
             throw $e;
         }
+    }
+
+    /**
+     * Handle a job failure.
+     */
+    public function failed(\Throwable $exception): void
+    {
+        Log::error('CreateTenantWorkspaceJob failed permanently', [
+            'registration_id' => $this->registration->id,
+            'tenant_slug' => $this->registration->tenant_slug,
+            'error' => $exception->getMessage(),
+            'trace' => $exception->getTraceAsString(),
+            'attempts' => $this->attempts()
+        ]);
+
+        // Update registration status
+        $this->registration->update([
+            'status' => 'failed',
+            'error_message' => 'Workspace creation failed: ' . $exception->getMessage()
+        ]);
     }
 }

@@ -133,35 +133,15 @@ class TenantRegistrationController extends Controller
             // Broadcast email verified event immediately
             event(new \App\Events\TenantEmailVerified($registration));
 
-            // Run workspace creation synchronously for immediate feedback
-            // This ensures the user gets immediate results and we can catch errors
-            try {
-                $job = new CreateTenantWorkspaceJob($registration);
-                $job->handle();
-                
-                Log::info('Workspace created successfully', [
-                    'registration_id' => $registration->id,
-                    'tenant_id' => $registration->tenant_id
-                ]);
-            } catch (\Exception $jobError) {
-                Log::error('Workspace creation failed', [
-                    'registration_id' => $registration->id,
-                    'error' => $jobError->getMessage(),
-                    'trace' => $jobError->getTraceAsString()
-                ]);
-                
-                // Still return success for verification, but note workspace creation failed
-                return response()->json([
-                    'success' => true,
-                    'message' => 'Email verified, but workspace creation encountered an error. Our team has been notified.',
-                    'data' => [
-                        'tenant_slug' => $registration->tenant_slug,
-                        'status' => 'verified',
-                        'next_step' => 'workspace_creation',
-                        'error' => config('app.debug') ? $jobError->getMessage() : null
-                    ]
-                ], 200);
-            }
+            // Dispatch workspace creation job to queue
+            CreateTenantWorkspaceJob::dispatch($registration)
+                ->onQueue('tenant-management');
+            
+            Log::info('Workspace creation job dispatched', [
+                'registration_id' => $registration->id,
+                'tenant_slug' => $registration->tenant_slug,
+                'queue' => 'tenant-management'
+            ]);
 
             // Return JSON response with redirect information
             return response()->json([

@@ -6,9 +6,15 @@ echo ""
 
 # Ensure storage and cache directories exist
 mkdir -p /var/www/html/storage/framework/{cache,sessions,views} /var/www/html/storage/logs
+
+# Create log file if it doesn't exist
+touch /var/www/html/storage/logs/laravel.log
+
+# Set proper ownership and permissions
 chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache
 chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache
 chmod -R 775 /var/www/html/storage/logs
+chmod 664 /var/www/html/storage/logs/laravel.log
 
 # Run Laravel optimizations (after .env is present)
 if [ -f /var/www/html/.env ]; then
