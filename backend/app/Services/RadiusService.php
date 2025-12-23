@@ -14,7 +14,7 @@ class RadiusService extends TenantAwareService
         
         // Add server configuration
         $this->radius->setServer(
-            env('RADIUS_SERVER_HOST', 'traidnet-freeradius')
+            env('RADIUS_SERVER_HOST', 'wificore-freeradius')
         );
         
         $this->radius->setSecret(
