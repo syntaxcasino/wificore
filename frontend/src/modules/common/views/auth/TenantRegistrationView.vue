@@ -379,6 +379,10 @@ const resendingEmail = ref(false)
 const resendCooldown = ref(0)
 let cooldownInterval = null
 
+// Polling for status updates (fallback if WebSocket fails)
+let statusPollingInterval = null
+const pollingActive = ref(false)
+
 const canSubmit = computed(() => {
   return form.value.accept_terms && form.value.tenant_name.length >= 3
 })
@@ -458,25 +462,7 @@ const subscribeToRegistrationEvents = (token) => {
   // Credentials sent event
   echoChannel.listen('.credentials.sent', (data) => {
     console.log('Credentials sent event received:', data)
-    
-    if (currentStep.value === 3) {
-      stepStatus.value.step3 = 'done'
-      statusMessage.value = {
-        type: 'success',
-        title: 'Registration Complete!',
-        message: `Your credentials have been sent to <strong>${form.value.tenant_email}</strong>. You can now login with your username and password.`
-      }
-      
-      notificationStore.success(
-        'Registration Complete! 🎉',
-        'Your account is ready. Check your email for login credentials.',
-        8000
-      )
-      
-      setTimeout(() => {
-        router.push({ name: 'login' })
-      }, 3000)
-    }
+    handleCredentialsSent()
   })
   
   // Registration completed event
@@ -563,6 +549,83 @@ const handleSubmit = async () => {
 }
 
 // Resend verification email
+// Handle credentials sent - common function for WebSocket and polling
+const handleCredentialsSent = () => {
+  if (currentStep.value === 3) {
+    stepStatus.value.step3 = 'done'
+    statusMessage.value = {
+      type: 'success',
+      title: 'Registration Complete!',
+      message: `Your credentials have been sent to <strong>${form.value.tenant_email}</strong>. You can now login with your username and password.`
+    }
+    
+    notificationStore.success(
+      'Registration Complete! 🎉',
+      'Your account is ready. Check your email for login credentials.',
+      8000
+    )
+    
+    // Stop polling if active
+    stopStatusPolling()
+    
+    // Redirect to login after 3 seconds
+    setTimeout(() => {
+      sessionStorage.removeItem(REG_TOKEN_STORAGE_KEY)
+      router.push({ name: 'login' })
+    }, 3000)
+  }
+}
+
+// Start polling for registration status (fallback if WebSocket fails)
+const startStatusPolling = () => {
+  if (pollingActive.value || !registrationToken.value) return
+  
+  console.log('Starting status polling for registration token:', registrationToken.value)
+  pollingActive.value = true
+  
+  // Poll every 3 seconds
+  statusPollingInterval = setInterval(async () => {
+    try {
+      const response = await axios.get(`/register/status/${registrationToken.value}`)
+      
+      if (response.data.success) {
+        const status = response.data.status
+        const credentialsSent = response.data.credentials_sent
+        
+        console.log('Registration status:', status, 'Credentials sent:', credentialsSent)
+        
+        // Check if credentials have been sent
+        if (credentialsSent && currentStep.value === 3) {
+          handleCredentialsSent()
+        }
+        
+        // Check for errors
+        if (status === 'failed') {
+          stopStatusPolling()
+          statusMessage.value = {
+            type: 'error',
+            title: 'Registration Failed',
+            message: response.data.error_message || 'An error occurred during registration. Please try again or contact support.'
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Status polling error:', err)
+      // Don't stop polling on error, just log it
+    }
+  }, 3000)
+}
+
+// Stop status polling
+const stopStatusPolling = () => {
+  if (statusPollingInterval) {
+    clearInterval(statusPollingInterval)
+    statusPollingInterval = null
+    pollingActive.value = false
+    console.log('Status polling stopped')
+  }
+}
+
 const resendVerificationEmail = async () => {
   if (resendCooldown.value > 0 || resendingEmail.value || !registrationToken.value) return
   
@@ -655,6 +718,9 @@ onMounted(() => {
     // Subscribe to WebSocket events for workspace creation updates
     subscribeToRegistrationEvents(route.query.token)
     
+    // Start polling as fallback
+    startStatusPolling()
+    
     // Clean up URL
     router.replace({ name: 'register' })
   }
@@ -669,6 +735,7 @@ onUnmounted(() => {
   if (cooldownInterval) {
     clearInterval(cooldownInterval)
   }
+  stopStatusPolling()
 })
 </script>
 

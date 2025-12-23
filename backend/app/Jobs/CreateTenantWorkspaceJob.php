@@ -65,11 +65,11 @@ class CreateTenantWorkspaceJob implements ShouldQueue
             $tenant = Tenant::create([
                 'name' => $this->registration->tenant_name,
                 'slug' => $this->registration->tenant_slug,
+                'subdomain' => $this->registration->tenant_slug,
                 'email' => $this->registration->tenant_email,
                 'phone' => $this->registration->tenant_phone,
                 'address' => $this->registration->tenant_address,
-                'status' => 'active',
-                'subscription_status' => 'trial',
+                'is_active' => true,
                 'trial_ends_at' => now()->addDays(30),
             ]);
 
@@ -81,7 +81,7 @@ class CreateTenantWorkspaceJob implements ShouldQueue
                 'email' => $this->registration->tenant_email,
                 'password' => Hash::make($password),
                 'role' => 'admin',
-                'status' => 'active',
+                'is_active' => true,
             ]);
 
             // CRITICAL: Create RADIUS credentials in tenant schema
