@@ -27,7 +27,13 @@ class Tenant extends Model
         'is_active',
         'is_suspended',
         'suspended_at',
+        'subscription_status',
+        'subscription_plan',
+        'subscription_started_at',
+        'subscription_ends_at',
         'trial_ends_at',
+        'last_payment_at',
+        'next_payment_due',
         'suspension_reason',
         'schema_created',
         'schema_created_at',
@@ -45,7 +51,11 @@ class Tenant extends Model
         'public_packages_enabled' => 'boolean',
         'public_registration_enabled' => 'boolean',
         'email_verified_at' => 'datetime',
+        'subscription_started_at' => 'datetime',
+        'subscription_ends_at' => 'datetime',
         'trial_ends_at' => 'datetime',
+        'last_payment_at' => 'datetime',
+        'next_payment_due' => 'datetime',
         'suspended_at' => 'datetime',
         'schema_created_at' => 'datetime',
         'created_at' => 'datetime',
@@ -114,7 +124,76 @@ class Tenant extends Model
      */
     public function isOnTrial(): bool
     {
-        return $this->trial_ends_at && $this->trial_ends_at > now();
+        return $this->subscription_status === 'trial' && $this->trial_ends_at && $this->trial_ends_at > now();
+    }
+
+    /**
+     * Check if trial has expired
+     */
+    public function isTrialExpired(): bool
+    {
+        return $this->subscription_status === 'trial' && $this->trial_ends_at && $this->trial_ends_at <= now();
+    }
+
+    /**
+     * Check if subscription is active (paid)
+     */
+    public function hasActiveSubscription(): bool
+    {
+        return in_array($this->subscription_status, ['active', 'paid']) && 
+               (!$this->subscription_ends_at || $this->subscription_ends_at > now());
+    }
+
+    /**
+     * Check if subscription has expired
+     */
+    public function isSubscriptionExpired(): bool
+    {
+        return $this->subscription_status === 'expired' || 
+               ($this->subscription_ends_at && $this->subscription_ends_at <= now());
+    }
+
+    /**
+     * Check if payment is overdue
+     */
+    public function isPaymentOverdue(): bool
+    {
+        return $this->next_payment_due && $this->next_payment_due < now();
+    }
+
+    /**
+     * Activate subscription (after payment)
+     */
+    public function activateSubscription(string $plan = 'monthly'): bool
+    {
+        $this->subscription_status = 'active';
+        $this->subscription_plan = $plan;
+        $this->subscription_started_at = now();
+        $this->subscription_ends_at = now()->addMonth();
+        $this->last_payment_at = now();
+        $this->next_payment_due = now()->addMonth();
+        return $this->save();
+    }
+
+    /**
+     * Renew subscription (monthly payment)
+     */
+    public function renewSubscription(): bool
+    {
+        $this->subscription_ends_at = now()->addMonth();
+        $this->last_payment_at = now();
+        $this->next_payment_due = now()->addMonth();
+        $this->subscription_status = 'active';
+        return $this->save();
+    }
+
+    /**
+     * Expire subscription
+     */
+    public function expireSubscription(): bool
+    {
+        $this->subscription_status = 'expired';
+        return $this->save();
     }
 
     /**

@@ -61,7 +61,7 @@ class CreateTenantWorkspaceJob implements ShouldQueue
             $username = TenantRegistration::generateUsername($this->registration->tenant_slug);
             $password = TenantRegistration::generatePassword();
 
-            // Create tenant
+            // Create tenant with trial subscription
             $tenant = Tenant::create([
                 'name' => $this->registration->tenant_name,
                 'slug' => $this->registration->tenant_slug,
@@ -70,6 +70,9 @@ class CreateTenantWorkspaceJob implements ShouldQueue
                 'phone' => $this->registration->tenant_phone,
                 'address' => $this->registration->tenant_address,
                 'is_active' => true,
+                'subscription_status' => 'trial',
+                'subscription_plan' => 'monthly',
+                'subscription_started_at' => now(),
                 'trial_ends_at' => now()->addDays(30),
             ]);
 
