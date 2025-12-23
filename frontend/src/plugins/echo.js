@@ -39,7 +39,7 @@ const createEchoConfig = () => {
     path: env.VITE_PUSHER_PATH || '/app',
     
     // Authentication - Use API route for Sanctum-based auth
-    authEndpoint: env.VITE_PUSHER_AUTH_ENDPOINT || '/api/broadcasting/auth',
+    authEndpoint: env.VITE_PUSHER_AUTH_ENDPOINT || '/broadcasting/auth',
     auth: {
       headers: {
         'X-Requested-With': 'XMLHttpRequest',
@@ -66,7 +66,7 @@ const createEchoConfig = () => {
           }
           
           // Use API endpoint for Sanctum-based authentication
-          const authEndpoint = env.VITE_PUSHER_AUTH_ENDPOINT || '/api/broadcasting/auth';
+          const authEndpoint = env.VITE_PUSHER_AUTH_ENDPOINT || '/broadcasting/auth';
           
           fetch(authEndpoint, {
             method: 'POST',

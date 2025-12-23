@@ -229,7 +229,7 @@ const loadTenantPackages = async () => {
     }
     
     // Fetch tenant and packages
-    const response = await axios.get(`/api/public/tenant/${subdomain}/packages`)
+    const response = await axios.get(`/public/tenant/${subdomain}/packages`)
     
     if (response.data.success) {
       tenant.value = response.data.data.tenant

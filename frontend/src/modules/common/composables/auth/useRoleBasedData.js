@@ -44,9 +44,9 @@ export function useRoleBasedData() {
    */
   const getApiEndpoint = (resource) => {
     if (isSystemAdmin.value) {
-      return `/api/system/${resource}`
+      return `/system/${resource}`
     } else {
-      return `/api/tenant/${resource}`
+      return `/tenant/${resource}`
     }
   }
   
