@@ -155,7 +155,7 @@ class LoginController extends Controller
             'name' => 'required|string|max:255',
             'username' => 'required|string|max:255|unique:users,username',
             'email' => 'required|email|max:255|unique:users,email',
-            'password' => 'required|string|min:8|confirmed',
+            'password' => ['required', 'string', 'min:8', 'confirmed', new \App\Rules\StrongPassword()],
             'phone_number' => 'required|string|max:20|unique:users,phone_number',
         ]);
 

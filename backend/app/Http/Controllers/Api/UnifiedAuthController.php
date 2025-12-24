@@ -425,7 +425,7 @@ class UnifiedAuthController extends Controller
                 'min:8',
                 'confirmed',
                 'different:current_password',
-                'regex:/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/',
+                new \App\Rules\StrongPassword(),
             ],
         ]);
 
