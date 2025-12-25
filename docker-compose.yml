@@ -83,7 +83,7 @@ services:
       - RADIUS_SERVER_HOST=${RADIUS_SERVER_HOST:-wificore-freeradius}
       - RADIUS_SERVER_PORT=${RADIUS_SERVER_PORT:-1812}
       - RADIUS_SECRET=${RADIUS_SECRET}
-      - REDIS_PASSWORD=null
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
       - CACHE_DRIVER=redis
       - SESSION_DRIVER=redis
       # Mail Configuration
@@ -199,16 +199,20 @@ services:
       start_period: 30s
 
   wificore-redis:
+    build:
+      context: ./docker/redis
+      dockerfile: Dockerfile
     container_name: wificore-redis
-    image: redis:7-alpine
-    command: redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru --save 60 1000
+    image: kja2aro/wificore:wificore-redis
     restart: unless-stopped
     environment:
       - TZ=Africa/Nairobi
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - REDIS_MAXMEMORY=${REDIS_MAXMEMORY:-512mb}
     networks:
       - wificore-network
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "/usr/local/bin/redis-healthcheck.sh"]
       interval: 10s
       timeout: 5s
       retries: 3
