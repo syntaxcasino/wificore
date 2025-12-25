@@ -85,18 +85,8 @@ onMounted(async () => {
       
       if (response.data.success) {
         verified.value = true
-        
-        // Show success message and redirect with token
-        setTimeout(() => {
-          router.push({
-            name: 'register',
-            query: { 
-              verified: 'true', 
-              token: token,
-              message: 'Email verified! Your workspace is being created.' 
-            }
-          })
-        }, 2000)
+        // No redirect - user stays on this page
+        // The registration page will receive WebSocket events
       } else {
         error.value = true
         errorMessage.value = response.data.message || 'Verification failed'

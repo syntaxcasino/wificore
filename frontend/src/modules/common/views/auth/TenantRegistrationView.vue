@@ -694,35 +694,9 @@ onMounted(() => {
     }
   }
 
-  if (route.query.verified === 'true' && route.query.token) {
-    // Email was just verified, progress to step 3
-    registrationToken.value = route.query.token
-    sessionStorage.setItem(REG_TOKEN_STORAGE_KEY, route.query.token)
-    currentStep.value = 3
-    stepStatus.value.step1 = 'done'
-    stepStatus.value.step2 = 'done'
-    stepStatus.value.step3 = 'processing'
-    
-    statusMessage.value = {
-      type: 'success',
-      title: 'Email Verified!',
-      message: route.query.message || 'Your email has been verified successfully. Your workspace is being created.'
-    }
-    
-    notificationStore.success(
-      'Email Verified! ✓',
-      'Your workspace is being created. You will receive your login credentials via email shortly.',
-      8000
-    )
-    
-    // Subscribe to WebSocket events for workspace creation updates
-    subscribeToRegistrationEvents(route.query.token)
-    
-    // Start polling as fallback
+  // Start polling as fallback if we have a token
+  if (registrationToken.value && currentStep.value >= 2) {
     startStatusPolling()
-    
-    // Clean up URL
-    router.replace({ name: 'register' })
   }
 })
 
