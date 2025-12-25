@@ -29,8 +29,8 @@ docker login
 # BUILD
 # ==========================
 echo "🏗 Building images..."
-docker compose build --parallel
-#docker buildx bake --no-cache --progress plain
+#docker compose build --parallel
+docker buildx bake --no-cache --progress plain
 # ==========================
 # TAG
 # ==========================
@@ -42,6 +42,7 @@ docker tag wificore-wificore-nginx:latest      $DOCKERHUB_USERNAME/$REPO_NAME:${
 docker tag wificore-wificore-freeradius:latest $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-freeradius-$GIT_SHA
 docker tag wificore-wificore-soketi:latest     $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-soketi-$GIT_SHA
 docker tag wificore-wificore-postgres:latest   $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-postgres-$GIT_SHA
+docker tag wificore-wificore-redis:latest      $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-redis-$GIT_SHA
 
 
 # Optional "latest-style" tags
@@ -51,6 +52,7 @@ docker tag $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-nginx-$GIT_SHA      $DOC
 docker tag $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-freeradius-$GIT_SHA $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-freeradius
 docker tag $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-soketi-$GIT_SHA     $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-soketi
 docker tag $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-postgres-$GIT_SHA   $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-postgres
+docker tag $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-redis-$GIT_SHA      $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-redis
 
 # ==========================
 # PUSH
@@ -63,6 +65,7 @@ docker push $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-nginx-$GIT_SHA
 docker push $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-postgres-$GIT_SHA
 docker push $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-freeradius-$GIT_SHA
 docker push $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-soketi-$GIT_SHA
+docker push $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-redis-$GIT_SHA
 
 docker push $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-backend
 docker push $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-frontend
@@ -70,5 +73,6 @@ docker push $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-nginx
 docker push $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-postgres
 docker push $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-freeradius
 docker push $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-soketi
+docker push $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-redis
 
 echo "✅ All images pushed successfully"
