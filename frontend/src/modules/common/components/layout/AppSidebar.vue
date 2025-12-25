@@ -38,10 +38,10 @@
         <!-- Divider -->
         <div class="h-px bg-gray-800/50 my-2"></div>
 
-        <!-- USERS SECTION -->
-        <div class="px-2 py-1 text-[9px] font-bold text-gray-500 uppercase tracking-wider">Users</div>
+        <!-- CUSTOMERS SECTION -->
+        <div class="px-2 py-1 text-[9px] font-bold text-gray-500 uppercase tracking-wider">Customers</div>
         
-        <!-- Hotspot Users -->
+        <!-- Hotspot -->
         <div>
           <button
             @click="toggleMenu('hotspot')"
@@ -52,7 +52,10 @@
               <Radio class="w-4 h-4 flex-shrink-0" />
               <span class="text-sm">Hotspot</span>
             </span>
-            <ChevronDown class="w-3 h-3 transition-transform" :class="activeMenu === 'hotspot' ? 'rotate-180' : ''" />
+            <div class="flex items-center gap-2">
+              <span v-if="hotspotUsersCount > 0" class="px-1.5 py-0.5 text-[9px] font-bold rounded-full bg-blue-500 text-white min-w-[16px] text-center">{{ hotspotUsersCount }}</span>
+              <ChevronDown class="w-3 h-3 transition-transform" :class="activeMenu === 'hotspot' ? 'rotate-180' : ''" />
+            </div>
           </button>
           <div v-show="activeMenu === 'hotspot'" class="ml-6 mt-1 space-y-0.5">
             <router-link
@@ -73,18 +76,10 @@
               <span>Active Sessions</span>
               <span v-if="hotspotSessionsCount > 0" class="px-1.5 py-0.5 text-[9px] font-bold rounded-full bg-green-500 text-white min-w-[16px] text-center">{{ hotspotSessionsCount }}</span>
             </router-link>
-            <router-link
-              to="/dashboard/hotspot/profiles"
-              class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
-              :class="route.path === '/dashboard/hotspot/profiles' ? 'text-white font-medium' : 'text-gray-500'"
-              @click="isMobile && $emit('close-sidebar')"
-            >
-              User Groups
-            </router-link>
           </div>
         </div>
 
-        <!-- PPPoE Users -->
+        <!-- PPPoE -->
         <div>
           <button
             @click="toggleMenu('pppoe')"
@@ -95,7 +90,10 @@
               <Cable class="w-4 h-4 flex-shrink-0" />
               <span class="text-sm">PPPoE</span>
             </span>
-            <ChevronDown class="w-3 h-3 transition-transform" :class="activeMenu === 'pppoe' ? 'rotate-180' : ''" />
+            <div class="flex items-center gap-2">
+              <span v-if="pppoeUsersCount > 0" class="px-1.5 py-0.5 text-[9px] font-bold rounded-full bg-purple-500 text-white min-w-[16px] text-center">{{ pppoeUsersCount }}</span>
+              <ChevronDown class="w-3 h-3 transition-transform" :class="activeMenu === 'pppoe' ? 'rotate-180' : ''" />
+            </div>
           </button>
           <div v-show="activeMenu === 'pppoe'" class="ml-6 mt-1 space-y-0.5">
             <router-link
@@ -116,54 +114,30 @@
               <span>Active Sessions</span>
               <span v-if="pppoeSessionsCount > 0" class="px-1.5 py-0.5 text-[9px] font-bold rounded-full bg-green-500 text-white min-w-[16px] text-center">{{ pppoeSessionsCount }}</span>
             </router-link>
-            <router-link
-              to="/dashboard/pppoe/add-user"
-              class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
-              :class="route.path === '/dashboard/pppoe/add-user' ? 'text-white font-medium' : 'text-gray-500'"
-              @click="isMobile && $emit('close-sidebar')"
-            >
-              Add User
-            </router-link>
-            <router-link
-              to="/dashboard/pppoe/radius-profiles"
-              class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
-              :class="route.path === '/dashboard/pppoe/radius-profiles' ? 'text-white font-medium' : 'text-gray-500'"
-              @click="isMobile && $emit('close-sidebar')"
-            >
-              RADIUS Profiles
-            </router-link>
           </div>
         </div>
 
-        <!-- Admin Users -->
+        <!-- System User Management -->
         <div>
           <button
-            @click="toggleMenu('users')"
+            @click="toggleMenu('system-users')"
             class="w-full flex items-center justify-between py-2 px-3 rounded-md hover:bg-gray-800/60 transition-all duration-150"
             :class="route.path.includes('/users/') ? 'bg-gray-800/80 text-white font-medium' : 'text-gray-400'"
           >
             <span class="flex items-center gap-2.5">
               <UserCircle class="w-4 h-4 flex-shrink-0" />
-              <span class="text-sm">Admin Users</span>
+              <span class="text-sm">Sys User Management</span>
             </span>
-            <ChevronDown class="w-3 h-3 transition-transform" :class="activeMenu === 'users' ? 'rotate-180' : ''" />
+            <ChevronDown class="w-3 h-3 transition-transform" :class="activeMenu === 'system-users' ? 'rotate-180' : ''" />
           </button>
-          <div v-show="activeMenu === 'users'" class="ml-6 mt-1 space-y-0.5">
+          <div v-show="activeMenu === 'system-users'" class="ml-6 mt-1 space-y-0.5">
             <router-link
               to="/dashboard/users/all"
               class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
               :class="route.path === '/dashboard/users/all' ? 'text-white font-medium' : 'text-gray-500'"
               @click="isMobile && $emit('close-sidebar')"
             >
-              All Admins
-            </router-link>
-            <router-link
-              to="/dashboard/users/create"
-              class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
-              :class="route.path === '/dashboard/users/create' ? 'text-white font-medium' : 'text-gray-500'"
-              @click="isMobile && $emit('close-sidebar')"
-            >
-              Create Admin
+              All Users
             </router-link>
             <router-link
               to="/dashboard/users/roles"
@@ -259,30 +233,46 @@
         <!-- Divider -->
         <div class="h-px bg-gray-800/50 my-2"></div>
 
-        <!-- BILLING SECTION -->
-        <div class="px-2 py-1 text-[9px] font-bold text-gray-500 uppercase tracking-wider">Billing</div>
+        <!-- BILLING & SUBSCRIPTION SECTION -->
+        <div class="px-2 py-1 text-[9px] font-bold text-gray-500 uppercase tracking-wider">Billing & Subscription</div>
         
-        <!-- Billing -->
+        <!-- Billing & Subscription -->
         <div>
           <button
             @click="toggleMenu('billing')"
             class="w-full flex items-center justify-between py-2 px-3 rounded-md hover:bg-gray-800/60 transition-all duration-150"
-            :class="route.path.includes('/billing') ? 'bg-gray-800/80 text-white font-medium' : 'text-gray-400'"
+            :class="route.path.includes('/billing') || route.path.includes('/finance') ? 'bg-gray-800/80 text-white font-medium' : 'text-gray-400'"
           >
             <span class="flex items-center gap-2.5">
               <Wallet class="w-4 h-4 flex-shrink-0" />
-              <span class="text-sm">Billing</span>
+              <span class="text-sm">Billing & Subscription</span>
             </span>
             <ChevronDown class="w-3 h-3 transition-transform" :class="activeMenu === 'billing' ? 'rotate-180' : ''" />
           </button>
           <div v-show="activeMenu === 'billing'" class="ml-6 mt-1 space-y-0.5">
+            <router-link
+              to="/dashboard/finance/revenues"
+              class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
+              :class="route.path === '/dashboard/finance/revenues' ? 'text-white font-medium' : 'text-gray-500'"
+              @click="isMobile && $emit('close-sidebar')"
+            >
+              Revenues (PPPoE & Hotspot)
+            </router-link>
+            <router-link
+              to="/dashboard/finance/expenses"
+              class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
+              :class="route.path === '/dashboard/finance/expenses' ? 'text-white font-medium' : 'text-gray-500'"
+              @click="isMobile && $emit('close-sidebar')"
+            >
+              Expenses (incl. Sys Subscription)
+            </router-link>
             <router-link
               to="/dashboard/billing/invoices"
               class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
               :class="route.path === '/dashboard/billing/invoices' ? 'text-white font-medium' : 'text-gray-500'"
               @click="isMobile && $emit('close-sidebar')"
             >
-              Invoices
+              PPPoE Invoice
             </router-link>
             <router-link
               to="/dashboard/billing/payments"
@@ -290,56 +280,7 @@
               :class="route.path === '/dashboard/billing/payments' ? 'text-white font-medium' : 'text-gray-500'"
               @click="isMobile && $emit('close-sidebar')"
             >
-              Payments
-            </router-link>
-            <router-link
-              to="/dashboard/billing/mpesa"
-              class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
-              :class="route.path === '/dashboard/billing/mpesa' ? 'text-white font-medium' : 'text-gray-500'"
-              @click="isMobile && $emit('close-sidebar')"
-            >
-              M-Pesa
-            </router-link>
-            <router-link
-              to="/dashboard/billing/wallet"
-              class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
-              :class="route.path === '/dashboard/billing/wallet' ? 'text-white font-medium' : 'text-gray-500'"
-              @click="isMobile && $emit('close-sidebar')"
-            >
-              Wallet
-            </router-link>
-          </div>
-        </div>
-
-        <!-- Finance -->
-        <div>
-          <button
-            @click="toggleMenu('finance')"
-            class="w-full flex items-center justify-between py-2 px-3 rounded-md hover:bg-gray-800/60 transition-all duration-150"
-            :class="route.path.includes('/finance') ? 'bg-gray-800/80 text-white font-medium' : 'text-gray-400'"
-          >
-            <span class="flex items-center gap-2.5">
-              <DollarSign class="w-4 h-4 flex-shrink-0" />
-              <span class="text-sm">Finance</span>
-            </span>
-            <ChevronDown class="w-3 h-3 transition-transform" :class="activeMenu === 'finance' ? 'rotate-180' : ''" />
-          </button>
-          <div v-show="activeMenu === 'finance'" class="ml-6 mt-1 space-y-0.5">
-            <router-link
-              to="/dashboard/finance/expenses"
-              class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
-              :class="route.path === '/dashboard/finance/expenses' ? 'text-white font-medium' : 'text-gray-500'"
-              @click="isMobile && $emit('close-sidebar')"
-            >
-              Expenses
-            </router-link>
-            <router-link
-              to="/dashboard/finance/revenues"
-              class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
-              :class="route.path === '/dashboard/finance/revenues' ? 'text-white font-medium' : 'text-gray-500'"
-              @click="isMobile && $emit('close-sidebar')"
-            >
-              Revenues
+              Hotspot & PPPoE Payments
             </router-link>
           </div>
         </div>
@@ -350,27 +291,27 @@
         <!-- NETWORK SECTION -->
         <div class="px-2 py-1 text-[9px] font-bold text-gray-500 uppercase tracking-wider" v-if="!isOnSystemAdminRoute">Network</div>
         
-        <!-- Routers -->
+        <!-- Network -->
         <div v-if="!isOnSystemAdminRoute">
           <button
-            @click="toggleMenu('routers')"
+            @click="toggleMenu('network')"
             class="w-full flex items-center justify-between py-2 px-3 rounded-md hover:bg-gray-800/60 transition-all duration-150"
-            :class="route.path.includes('/routers') ? 'bg-gray-800/80 text-white font-medium' : 'text-gray-400'"
+            :class="route.path.includes('/routers') || route.path.includes('/monitoring') ? 'bg-gray-800/80 text-white font-medium' : 'text-gray-400'"
           >
             <span class="flex items-center gap-2.5">
               <Router class="w-4 h-4 flex-shrink-0" />
-              <span class="text-sm">Routers</span>
+              <span class="text-sm">Network</span>
             </span>
-            <ChevronDown class="w-3 h-3 transition-transform" :class="activeMenu === 'routers' ? 'rotate-180' : ''" />
+            <ChevronDown class="w-3 h-3 transition-transform" :class="activeMenu === 'network' ? 'rotate-180' : ''" />
           </button>
-          <div v-show="activeMenu === 'routers'" class="ml-6 mt-1 space-y-0.5">
+          <div v-show="activeMenu === 'network'" class="ml-6 mt-1 space-y-0.5">
             <router-link
               to="/dashboard/routers/mikrotik"
               class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
               :class="route.path === '/dashboard/routers/mikrotik' ? 'text-white font-medium' : 'text-gray-500'"
               @click="isMobile && $emit('close-sidebar')"
             >
-              MikroTik List
+              Router List
             </router-link>
             <router-link
               to="/dashboard/routers/api-status"
@@ -380,31 +321,6 @@
             >
               Access Points
             </router-link>
-            <router-link
-              to="/dashboard/routers/backup"
-              class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
-              :class="route.path === '/dashboard/routers/backup' ? 'text-white font-medium' : 'text-gray-500'"
-              @click="isMobile && $emit('close-sidebar')"
-            >
-              Backup Configs
-            </router-link>
-          </div>
-        </div>
-
-        <!-- Monitoring -->
-        <div v-if="!isOnSystemAdminRoute">
-          <button
-            @click="toggleMenu('monitoring')"
-            class="w-full flex items-center justify-between py-2 px-3 rounded-md hover:bg-gray-800/60 transition-all duration-150"
-            :class="route.path.includes('/monitoring') ? 'bg-gray-800/80 text-white font-medium' : 'text-gray-400'"
-          >
-            <span class="flex items-center gap-2.5">
-              <LineChart class="w-4 h-4 flex-shrink-0" />
-              <span class="text-sm">Monitoring</span>
-            </span>
-            <ChevronDown class="w-3 h-3 transition-transform" :class="activeMenu === 'monitoring' ? 'rotate-180' : ''" />
-          </button>
-          <div v-show="activeMenu === 'monitoring'" class="ml-6 mt-1 space-y-0.5">
             <router-link
               to="/dashboard/monitoring/connections"
               class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
@@ -419,15 +335,7 @@
               :class="route.path === '/dashboard/monitoring/traffic-graphs' ? 'text-white font-medium' : 'text-gray-500'"
               @click="isMobile && $emit('close-sidebar')"
             >
-              Traffic Graphs
-            </router-link>
-            <router-link
-              to="/dashboard/monitoring/session-logs"
-              class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
-              :class="route.path === '/dashboard/monitoring/session-logs' ? 'text-white font-medium' : 'text-gray-500'"
-              @click="isMobile && $emit('close-sidebar')"
-            >
-              Session Logs
+              Traffic Monitoring
             </router-link>
           </div>
         </div>
@@ -589,28 +497,44 @@
           </button>
           <div v-show="activeMenu === 'settings'" class="ml-6 mt-1 space-y-0.5">
             <router-link
-              to="/dashboard/settings/organization"
+              to="/dashboard/settings/general"
               class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
-              :class="route.path === '/dashboard/settings/organization' ? 'text-white font-medium' : 'text-gray-500'"
+              :class="route.path === '/dashboard/settings/general' ? 'text-white font-medium' : 'text-gray-500'"
               @click="isMobile && $emit('close-sidebar')"
             >
               Organization
             </router-link>
             <router-link
-              to="/dashboard/settings/profile"
+              to="/dashboard/admin/system-updates"
               class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
-              :class="route.path === '/dashboard/settings/profile' ? 'text-white font-medium' : 'text-gray-500'"
+              :class="route.path === '/dashboard/admin/system-updates' ? 'text-white font-medium' : 'text-gray-500'"
               @click="isMobile && $emit('close-sidebar')"
             >
-              My Account
+              Device Upgrades
             </router-link>
             <router-link
-              to="/dashboard/settings/security"
+              to="/dashboard/settings/email-sms"
               class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
-              :class="route.path === '/dashboard/settings/security' ? 'text-white font-medium' : 'text-gray-500'"
+              :class="route.path === '/dashboard/settings/email-sms' ? 'text-white font-medium' : 'text-gray-500'"
               @click="isMobile && $emit('close-sidebar')"
             >
-              Security
+              Communication Channels
+            </router-link>
+            <router-link
+              to="/dashboard/settings/mpesa-api"
+              class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
+              :class="route.path === '/dashboard/settings/mpesa-api' ? 'text-white font-medium' : 'text-gray-500'"
+              @click="isMobile && $emit('close-sidebar')"
+            >
+              Payment Integration
+            </router-link>
+            <router-link
+              to="/dashboard/settings/timezone-locale"
+              class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
+              :class="route.path === '/dashboard/settings/timezone-locale' ? 'text-white font-medium' : 'text-gray-500'"
+              @click="isMobile && $emit('close-sidebar')"
+            >
+              Timezone
             </router-link>
           </div>
         </div>
