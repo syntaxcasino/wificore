@@ -99,15 +99,17 @@ import ExpensesView from '@/modules/tenant/views/ExpensesView.vue'
 import RevenuesView from '@/modules/tenant/views/RevenuesView.vue'
 
 const routes = [
-  { path: '/', name: 'public', component: PackagesView },
+  // Public admin/tenant login (default homepage)
+  { path: '/', name: 'home', redirect: '/login' },
   { path: '/login', name: 'login', component: LoginView },
   { path: '/register', name: 'register', component: () => import('@/modules/common/views/auth/TenantRegistrationView.vue'), alias: '/register/tenant' },
   { path: '/email/verify/:id/:hash', name: 'verify-email', component: VerifyEmailView },
   { path: '/register/verify/:token', name: 'verify-registration', component: VerifyEmailView },
   
-  // Hotspot routes - redirect to packages view (hotspot login page)
-  { path: '/hotspot', redirect: '/' },
-  { path: '/hotspot/login', redirect: '/' },
+  // Captive Portal - Only accessible for hotspot users
+  { path: '/portal', name: 'captive-portal', component: PackagesView },
+  { path: '/hotspot', redirect: '/portal' },
+  { path: '/hotspot/login', redirect: '/portal' },
   
   { path: '/websocket-test', name: 'websocket-test', component: WebSocketTest, meta: { requiresAuth: true } },
   { path: '/component-showcase', name: 'component-showcase', component: ComponentShowcase, meta: { requiresAuth: true } },
