@@ -26,7 +26,7 @@
         }
         
         .email-header {
-            background: linear-gradient(135deg, #2563eb 0%, #3b82f6 50%, #06b6d4 100%);
+            background: linear-gradient(135deg, #10b981 0%, #059669 50%, #047857 100%);
             padding: 40px 30px;
             text-align: center;
         }
@@ -83,36 +83,46 @@
         
         .cta-button {
             display: inline-block;
-            padding: 16px 40px;
-            background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
+            padding: 18px 48px;
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
             color: #ffffff !important;
             text-decoration: none;
-            border-radius: 8px;
-            font-weight: 600;
-            font-size: 16px;
-            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+            border-radius: 12px;
+            font-weight: 700;
+            font-size: 17px;
+            box-shadow: 0 8px 20px rgba(16, 185, 129, 0.35);
             transition: all 0.3s ease;
+            letter-spacing: 0.3px;
         }
         
         .cta-button:hover {
-            background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%);
-            box-shadow: 0 6px 16px rgba(37, 99, 235, 0.4);
+            background: linear-gradient(135deg, #059669 0%, #047857 100%);
+            box-shadow: 0 10px 25px rgba(16, 185, 129, 0.45);
             transform: translateY(-2px);
         }
         
         .info-box {
-            background-color: #eff6ff;
-            border-left: 4px solid #3b82f6;
-            padding: 20px;
-            margin: 25px 0;
-            border-radius: 6px;
+            background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+            border-left: 5px solid #10b981;
+            padding: 24px;
+            margin: 30px 0;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(16, 185, 129, 0.1);
         }
         
         .info-box-title {
-            font-size: 16px;
-            font-weight: 600;
-            color: #1e40af;
-            margin-bottom: 12px;
+            font-size: 17px;
+            font-weight: 700;
+            color: #047857;
+            margin-bottom: 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .info-box-title:before {
+            content: "✨";
+            font-size: 20px;
         }
         
         .info-list {
@@ -123,10 +133,11 @@
         
         .info-list li {
             font-size: 14px;
-            color: #1e40af;
-            margin-bottom: 8px;
-            padding-left: 24px;
+            color: #065f46;
+            margin-bottom: 10px;
+            padding-left: 28px;
             position: relative;
+            line-height: 1.6;
         }
         
         .info-list li:before {
@@ -134,14 +145,25 @@
             position: absolute;
             left: 0;
             font-weight: 700;
-            color: #3b82f6;
+            color: #10b981;
+            font-size: 16px;
+            background: #d1fae5;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            line-height: 1;
         }
         
         .company-details {
-            background-color: #f9fafb;
-            padding: 20px;
-            border-radius: 8px;
-            margin: 25px 0;
+            background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%);
+            padding: 24px;
+            border-radius: 12px;
+            margin: 30px 0;
+            border: 1px solid #e5e7eb;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
         }
         
         .company-details-title {
@@ -205,9 +227,9 @@
         }
         
         .footer-logo {
-            font-size: 18px;
+            font-size: 20px;
             font-weight: 700;
-            color: #2563eb;
+            color: #10b981;
             margin-bottom: 8px;
         }
         
@@ -222,10 +244,11 @@
         }
         
         .footer-link {
-            color: #2563eb;
+            color: #10b981;
             text-decoration: none;
             font-size: 13px;
             margin: 0 10px;
+            font-weight: 500;
         }
         
         .footer-link:hover {
@@ -280,10 +303,14 @@
         
         <!-- Body -->
         <div class="email-body">
-            <p class="greeting">Hello {{ $registration->tenant_name }},</p>
+            <p class="greeting">Hello {{ $registration->tenant_name }}! 👋</p>
             
             <p class="content-text">
-                Thank you for choosing WifiCore! We're excited to have you on board. To complete your registration and activate your account, please verify your email address.
+                Thank you for choosing <strong>WifiCore</strong>! We're excited to have you on board. To complete your registration and activate your account, please verify your email address by clicking the button below.
+            </p>
+            
+            <p class="content-text" style="font-size: 14px; color: #6b7280;">
+                📅 Registration Date: <strong>{{ now()->setTimezone($registration->timezone ?? 'Africa/Nairobi')->format('F j, Y \a\t g:i A T') }}</strong>
             </p>
             
             <!-- CTA Button -->
@@ -297,11 +324,11 @@
             <div class="info-box">
                 <div class="info-box-title">What happens next?</div>
                 <ul class="info-list">
-                    <li>Click the verification button above</li>
-                    <li>We'll create your dedicated tenant workspace</li>
-                    <li>Your database schema will be provisioned</li>
-                    <li>Login credentials will be sent to your email</li>
-                    <li>You can start managing your hotspot immediately</li>
+                    <li>Click the verification button above to confirm your email</li>
+                    <li>We'll create your dedicated tenant workspace automatically</li>
+                    <li>Your database schema will be provisioned instantly</li>
+                    <li>Login credentials will be sent to this email address</li>
+                    <li>You can start managing your WiFi hotspot immediately!</li>
                 </ul>
             </div>
             
@@ -339,7 +366,7 @@
             <!-- Security Notice -->
             <div class="security-notice">
                 <p class="security-notice-text">
-                    <strong>Security Notice:</strong> This verification link will expire in 24 hours. If you didn't create this account, you can safely ignore this email.
+                    <strong>🔒 Security Notice:</strong> This verification link will expire in 24 hours for your security. If you didn't create this account, you can safely ignore this email and no account will be created.
                 </p>
             </div>
             
