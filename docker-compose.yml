@@ -192,7 +192,7 @@ services:
     networks:
       - wificore-network
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9670/metrics"]
+      test: ["CMD", "sh", "-c", "wget --quiet --tries=1 --spider http://localhost:9670/metrics || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 3
