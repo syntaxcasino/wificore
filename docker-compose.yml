@@ -199,20 +199,16 @@ services:
       start_period: 30s
 
   wificore-redis:
-    build:
-      context: ./docker/redis
-      dockerfile: Dockerfile
     container_name: wificore-redis
-    image: kja2aro/wificore:wificore-redis
+    image: redis:alpine
+    command: redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru --save 60 1000
     restart: unless-stopped
     environment:
       - TZ=Africa/Nairobi
-      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
-      - REDIS_MAXMEMORY=${REDIS_MAXMEMORY:-512mb}
     networks:
       - wificore-network
     healthcheck:
-      test: ["CMD", "/usr/local/bin/redis-healthcheck.sh"]
+      test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 3
