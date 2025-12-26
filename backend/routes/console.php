@@ -20,17 +20,7 @@ use App\Jobs\ProcessScheduledPackages;
 // Security Jobs
 use App\Jobs\UnsuspendExpiredAccountsJob;
 
-// =============================================================================
-// PARTITION MAINTENANCE - Automated partition management without pg_cron
-// =============================================================================
 
-// Run partition maintenance daily at 2 AM (creates new partitions, drops old ones)
-Schedule::command('partitions:maintain')
-    ->dailyAt('02:00')
-    ->name('partition-maintenance')
-    ->withoutOverlapping()
-    ->onOneServer()
-    ->runInBackground();
 
 Schedule::job(new CheckRoutersJob)->everyMinute();
 
