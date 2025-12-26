@@ -192,11 +192,11 @@ services:
     networks:
       - wificore-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "-s", "-o", "/dev/null", "--max-time", "5", "--connect-timeout", "3", "--retry", "2", "--http1.1", "http://localhost:9670/"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 30s
+      test: ["CMD", "curl", "-f", "http://localhost:6071/"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 45s
 
   wificore-redis:
     build:
