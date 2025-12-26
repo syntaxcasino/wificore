@@ -590,9 +590,28 @@ const startStatusPolling = () => {
       
       if (response.data.success) {
         const status = response.data.status
+        const emailVerified = response.data.email_verified
         const credentialsSent = response.data.credentials_sent
         
-        console.log('Registration status:', status, 'Credentials sent:', credentialsSent)
+        console.log('Registration status:', status, 'Email verified:', emailVerified, 'Credentials sent:', credentialsSent)
+        
+        // Check if email has been verified and move to step 3
+        if (emailVerified && currentStep.value === 2) {
+          currentStep.value = 3
+          stepStatus.value.step2 = 'done'
+          stepStatus.value.step3 = 'processing'
+          statusMessage.value = {
+            type: 'success',
+            title: 'Email Verified!',
+            message: 'Your email has been verified. Setting up your workspace...'
+          }
+          
+          notificationStore.success(
+            'Email Verified! ✓',
+            'Your workspace is being created...',
+            5000
+          )
+        }
         
         // Check if credentials have been sent
         if (credentialsSent && currentStep.value === 3) {

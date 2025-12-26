@@ -85,8 +85,11 @@ onMounted(async () => {
       
       if (response.data.success) {
         verified.value = true
-        // No redirect - user stays on this page
-        // The registration page will receive WebSocket events
+        
+        // Redirect back to registration page after 2 seconds
+        setTimeout(() => {
+          window.location.href = '/register'
+        }, 2000)
       } else {
         error.value = true
         errorMessage.value = response.data.message || 'Verification failed'

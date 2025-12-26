@@ -315,8 +315,8 @@
             
             <!-- CTA Button -->
             <div class="cta-container">
-                <a href="{{ $verificationUrl }}" class="cta-button">
-                    Verify Email Address
+                <a href="{{ $verificationUrl }}" class="cta-button" style="display: inline-block; padding: 18px 48px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: #ffffff; text-decoration: none; border-radius: 12px; font-weight: 700; font-size: 17px;">
+                    ✓ Verify Email Address
                 </a>
             </div>
             
@@ -343,7 +343,7 @@
                 <div class="detail-item">
                     <span class="detail-icon">🔗</span>
                     <span class="detail-label">Subdomain:</span>
-                    <span>{{ $registration->tenant_slug }}.wificore.traidsolutions.com</span>
+                    <span>{{ $registration->tenant_slug }}.{{ config('app.tenant_domain', 'wificore.traidsolutions.com') }}</span>
                 </div>
                 @if($registration->tenant_email)
                 <div class="detail-item">

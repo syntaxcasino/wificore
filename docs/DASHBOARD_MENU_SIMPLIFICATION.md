@@ -93,7 +93,7 @@ The dashboard menu has been reorganized to reduce complexity and improve navigat
 │
 🌐 Network
 ├─ Router List
-├─ Access Points
+├─ Access Pointsn b
 ├─ Live Connections
 └─ Traffic Monitoring
 │
