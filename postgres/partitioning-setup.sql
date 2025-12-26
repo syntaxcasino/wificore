@@ -42,13 +42,13 @@ BEGIN
         p_start_partition := CURRENT_DATE::TEXT
     );
     
-    -- Set retention policy (DETACH old partitions, don't drop them)
-    -- This keeps data indefinitely while maintaining performance
+    -- Set retention policy (DETACH old partitions, keep in SAME tenant schema)
+    -- This keeps data indefinitely while maintaining tenant isolation
     UPDATE partman.part_config 
     SET retention = v_retention_interval,
         retention_keep_table = TRUE,        -- Keep detached partitions (don't drop)
         retention_keep_index = TRUE,        -- Keep indexes on detached partitions
-        retention_schema = 'archive',       -- Move old partitions to archive schema
+        retention_schema = NULL,            -- Keep in SAME schema (tenant isolation)
         infinite_time_partitions = TRUE
     WHERE parent_table = v_parent_table;
     
@@ -195,43 +195,60 @@ GRANT SELECT ON partition_info TO admin;
 -- =====================================================================
 -- View: Archived Partitions (for monitoring detached partitions)
 -- =====================================================================
+-- Shows detached partitions that remain in tenant schemas
 CREATE OR REPLACE VIEW archived_partitions AS
 SELECT 
-    schemaname,
+    schemaname as tenant_schema,
     tablename,
     pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) as size,
-    (SELECT count(*) FROM information_schema.tables t 
-     WHERE t.table_schema = schemaname 
-     AND t.table_name LIKE tablename || '%') as partition_count
+    CASE 
+        WHEN tablename LIKE '%_p20%' THEN 
+            regexp_replace(tablename, '_p\d{4}_\d{2}_\d{2}.*$', '')
+        ELSE tablename
+    END as parent_table
 FROM pg_tables
-WHERE schemaname = 'archive'
+WHERE schemaname LIKE 'ts_%'
+  AND tablename ~ '_p\d{4}_\d{2}_\d{2}'  -- Matches partition naming pattern
+  AND NOT EXISTS (
+      -- Exclude partitions that are still attached to parent
+      SELECT 1 FROM pg_inherits i
+      JOIN pg_class c ON i.inhrelid = c.oid
+      WHERE c.relname = pg_tables.tablename
+      AND c.relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = pg_tables.schemaname)
+  )
 ORDER BY schemaname, tablename;
 
 GRANT SELECT ON archived_partitions TO admin;
 
+COMMENT ON VIEW archived_partitions IS 'Shows detached (archived) partitions within tenant schemas - ensures tenant isolation';
+
 -- =====================================================================
--- Function: Get total storage usage by schema
+-- Function: Get total storage usage by tenant schema
 -- =====================================================================
 CREATE OR REPLACE FUNCTION get_storage_usage()
 RETURNS TABLE(
     schema_name TEXT,
     total_size TEXT,
-    table_count BIGINT
+    active_tables BIGINT,
+    archived_partitions BIGINT
 ) AS $$
 BEGIN
     RETURN QUERY
     SELECT 
         schemaname::TEXT,
         pg_size_pretty(SUM(pg_total_relation_size(schemaname||'.'||tablename))::BIGINT) as total_size,
-        COUNT(*)::BIGINT as table_count
+        COUNT(*) FILTER (WHERE NOT tablename ~ '_p\d{4}_\d{2}_\d{2}')::BIGINT as active_tables,
+        COUNT(*) FILTER (WHERE tablename ~ '_p\d{4}_\d{2}_\d{2}')::BIGINT as archived_partitions
     FROM pg_tables
-    WHERE schemaname IN ('public', 'archive') OR schemaname LIKE 'ts_%'
+    WHERE schemaname IN ('public') OR schemaname LIKE 'ts_%'
     GROUP BY schemaname
     ORDER BY SUM(pg_total_relation_size(schemaname||'.'||tablename)) DESC;
 END;
 $$ LANGUAGE plpgsql;
 
 GRANT EXECUTE ON FUNCTION get_storage_usage() TO admin;
+
+COMMENT ON FUNCTION get_storage_usage() IS 'Shows storage usage per tenant schema including active and archived partition counts';
 
 -- =====================================================================
 -- Initial setup message
@@ -244,17 +261,18 @@ BEGIN
     RAISE NOTICE 'High-volume tables are now partitioned by day';
     RAISE NOTICE 'Automatic maintenance scheduled for 2 AM daily';
     RAISE NOTICE 'Retention: 90 days (older partitions DETACHED, not dropped)';
-    RAISE NOTICE 'Archive Schema: Old partitions moved to "archive" schema';
+    RAISE NOTICE 'Tenant Isolation: Archived partitions stay in SAME tenant schema';
     RAISE NOTICE 'Data Retention: INDEFINITE (all data preserved)';
+    RAISE NOTICE 'Security: Complete tenant isolation - no data leaks';
     RAISE NOTICE 'Pre-create: 7 days ahead';
     RAISE NOTICE '========================================';
     RAISE NOTICE 'To manually run maintenance:';
     RAISE NOTICE '  SELECT run_partition_maintenance();';
     RAISE NOTICE 'To view active partition info:';
     RAISE NOTICE '  SELECT * FROM partition_info;';
-    RAISE NOTICE 'To view archived partitions:';
+    RAISE NOTICE 'To view archived partitions (per tenant):';
     RAISE NOTICE '  SELECT * FROM archived_partitions;';
-    RAISE NOTICE 'To view storage usage:';
+    RAISE NOTICE 'To view storage usage (per tenant):';
     RAISE NOTICE '  SELECT * FROM get_storage_usage();';
     RAISE NOTICE '========================================';
 END $$;
