@@ -29,9 +29,11 @@ WORKDIR /var/www/html
 
 # Update package index and install runtime dependencies
 RUN set -eux; \
-    # Update Alpine repositories to latest
-    apk update --no-cache || (sleep 5 && apk update --no-cache) || (sleep 10 && apk update --no-cache); \
-    # Install runtime dependencies
+    # Clean APK cache first to avoid corrupted packages
+    rm -rf /var/cache/apk/* /tmp/*; \
+    # Update Alpine repositories with retries
+    apk update || (sleep 5 && apk update) || (sleep 10 && apk update); \
+    # Install runtime dependencies with retry on failure
     apk add --no-cache \
         bash \
         postgresql-dev \
@@ -39,7 +41,15 @@ RUN set -eux; \
         supervisor \
         postgresql-client \
         sudo \
-        linux-headers; \
+        linux-headers \
+    || (rm -rf /var/cache/apk/* && apk update && apk add --no-cache \
+        bash \
+        postgresql-dev \
+        libzip-dev \
+        supervisor \
+        postgresql-client \
+        sudo \
+        linux-headers); \
     # Install PHP extensions
     docker-php-ext-install -j$(nproc) \
         pdo_pgsql \
