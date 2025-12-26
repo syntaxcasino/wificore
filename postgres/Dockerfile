@@ -1,21 +1,26 @@
 # ============================================================================
-# PostgreSQL 17 Alpine with Multi-Tenant Support
+# PostgreSQL 17 with Multi-Tenant Support & Table Partitioning
 # ============================================================================
 # Bakes all configurations into the image (no volume mounts needed)
-# Uses Alpine for minimal image size
+# Includes pg_partman and pg_cron extensions (requires Debian base)
+# Uses bookworm-slim for smaller footprint than standard Debian
 # ============================================================================
 
-FROM postgres:17-alpine
+FROM postgres:17-bookworm
 
 # Set timezone
 ENV TZ=Africa/Nairobi
 
-# Install required packages
-RUN apk add --no-cache \
+# Install pg_partman and pg_cron extensions
+# Note: These extensions are not available in Alpine, requiring Debian base
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    postgresql-17-partman \
+    postgresql-17-cron \
     tzdata \
-    && cp /usr/share/zoneinfo/Africa/Nairobi /etc/localtime \
+    && ln -sf /usr/share/zoneinfo/Africa/Nairobi /etc/localtime \
     && echo "Africa/Nairobi" > /etc/timezone \
-    && rm -rf /var/cache/apk/*
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 # Copy initialization scripts into container
 # These will run automatically on first database creation (in alphabetical order)
