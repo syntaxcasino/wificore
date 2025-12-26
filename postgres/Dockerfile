@@ -25,6 +25,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # These will run automatically on first database creation (in alphabetical order)
 COPY init.sql /docker-entrypoint-initdb.d/01-init.sql
 COPY partitioning-setup.sql /docker-entrypoint-initdb.d/02-partitioning-setup.sql
+COPY partition-lifecycle-management.sql /docker-entrypoint-initdb.d/03-partition-lifecycle-management.sql
 
 # Set proper permissions
 RUN chmod 644 /docker-entrypoint-initdb.d/*.sql
