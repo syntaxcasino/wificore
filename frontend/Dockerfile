@@ -1,7 +1,7 @@
 # -------------------------------------------------------------------
 # Stage 1: Build Vue app with minimal Node Alpine
 # -------------------------------------------------------------------
-FROM node:22-alpine AS builder
+FROM node:23-alpine AS builder
 
 WORKDIR /app
 

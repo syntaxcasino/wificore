@@ -1,4 +1,4 @@
-FROM redis:7-alpine
+FROM redis:alpine
 
 # Copy custom entrypoint and healthcheck scripts
 COPY redis-entrypoint.sh /usr/local/bin/

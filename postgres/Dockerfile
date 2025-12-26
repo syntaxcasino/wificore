@@ -1,20 +1,21 @@
 # ============================================================================
-# PostgreSQL 16 with Multi-Tenant Support & Table Partitioning
+# PostgreSQL 17 Alpine with Multi-Tenant Support
 # ============================================================================
 # Bakes all configurations into the image (no volume mounts needed)
-# Includes pg_partman for automated partition management
+# Uses Alpine for minimal image size
 # ============================================================================
 
-FROM postgres:16.10-trixie
+FROM postgres:17-alpine
 
 # Set timezone
 ENV TZ=Africa/Nairobi
 
-# Install pg_partman and pg_cron extensions
-RUN apt-get update && apt-get install -y \
-    postgresql-16-partman \
-    postgresql-16-cron \
-    && rm -rf /var/lib/apt/lists/*
+# Install required packages
+RUN apk add --no-cache \
+    tzdata \
+    && cp /usr/share/zoneinfo/Africa/Nairobi /etc/localtime \
+    && echo "Africa/Nairobi" > /etc/timezone \
+    && rm -rf /var/cache/apk/*
 
 # Copy initialization scripts into container
 # These will run automatically on first database creation (in alphabetical order)

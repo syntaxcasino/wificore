@@ -23,7 +23,7 @@ RUN composer update \
 # -------------------------------------------------------------------
 # Stage 2: Production runtime (Alpine for minimal size)
 # -------------------------------------------------------------------
-FROM php:8.3-fpm-alpine AS production
+FROM php:8.4-fpm-alpine AS production
 
 WORKDIR /var/www/html
 
