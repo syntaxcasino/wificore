@@ -1,26 +1,28 @@
 # ============================================================================
-# PostgreSQL 17 with Multi-Tenant Support & Table Partitioning
+# PostgreSQL 17 Alpine with Multi-Tenant Support & Table Partitioning
 # ============================================================================
 # Bakes all configurations into the image (no volume mounts needed)
-# Includes pg_partman and pg_cron extensions (requires Debian base)
-# Uses bookworm-slim for smaller footprint than standard Debian
+# Includes pg_partman extension from Alpine packages
+# Note: pg_cron requires clang/LLVM (~200MB overhead) - partitions managed manually
 # ============================================================================
 
-FROM postgres:17-bookworm
+FROM postgres:17-alpine
 
 # Set timezone
 ENV TZ=Africa/Nairobi
 
-# Install pg_partman and pg_cron extensions
-# Note: These extensions are not available in Alpine, requiring Debian base
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    postgresql-17-partman \
-    postgresql-17-cron \
+# Install pg_partman from Alpine packages (much smaller than Debian)
+RUN apk add --no-cache \
+    postgresql-pg_partman \
+    postgresql-contrib \
     tzdata \
-    && ln -sf /usr/share/zoneinfo/Africa/Nairobi /etc/localtime \
+    && cp /usr/share/zoneinfo/Africa/Nairobi /etc/localtime \
     && echo "Africa/Nairobi" > /etc/timezone \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+    && rm -rf /var/cache/apk/*
+
+# Create symlinks for pg_partman extension files (Alpine installs to postgresql17)
+RUN ln -s /usr/share/postgresql17/extension/pg_partman* /usr/local/share/postgresql/extension/ \
+    && ln -s /usr/lib/postgresql17/pg_partman_bgw.so /usr/local/lib/postgresql/pg_partman_bgw.so
 
 # Copy initialization scripts into container
 # These will run automatically on first database creation (in alphabetical order)

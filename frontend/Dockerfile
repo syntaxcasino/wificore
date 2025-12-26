@@ -1,7 +1,7 @@
 # -------------------------------------------------------------------
-# Stage 1: Build Vue app with minimal Node Alpine
+# Stage 1: Build Vue app with Node 20 LTS Alpine
 # -------------------------------------------------------------------
-FROM node:23-alpine AS builder
+FROM node:20-alpine AS builder
 
 WORKDIR /app
 
@@ -38,12 +38,13 @@ COPY . .
 
 # Build the application
 RUN npm run build \
+    && rm -rf node_modules \
     && npm cache clean --force
 
 # -------------------------------------------------------------------
-# Stage 2: Serve with minimal Nginx Alpine
+# Stage 2: Serve with Nginx Alpine
 # -------------------------------------------------------------------
-FROM nginx:1.29.1-alpine-slim
+FROM nginx:alpine AS production
 
 # Install only curl for healthchecks
 RUN apk add --no-cache curl \

@@ -29,6 +29,7 @@ docker login
 # BUILD
 # ==========================
 echo "🏗 Building images..."
+#docker compose build --no-cache --parallel
 docker compose build --parallel
 #docker buildx bake --no-cache --progress plain
 # ==========================
