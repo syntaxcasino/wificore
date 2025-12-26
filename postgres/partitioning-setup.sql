@@ -9,6 +9,15 @@
 CREATE EXTENSION IF NOT EXISTS pg_partman;
 
 -- =====================================================================
+-- Create archive schema for detached partitions (indefinite retention)
+-- =====================================================================
+-- Old partitions are moved here instead of being dropped
+-- This maintains performance on active tables while preserving all data
+CREATE SCHEMA IF NOT EXISTS archive;
+GRANT ALL ON SCHEMA archive TO admin;
+COMMENT ON SCHEMA archive IS 'Archive schema for detached partitions - data retained indefinitely';
+
+-- =====================================================================
 -- Function: Create partitioned table and setup automatic partitioning
 -- =====================================================================
 CREATE OR REPLACE FUNCTION setup_daily_partitioning(
@@ -33,11 +42,13 @@ BEGIN
         p_start_partition := CURRENT_DATE::TEXT
     );
     
-    -- Set retention policy (keep 90 days)
+    -- Set retention policy (DETACH old partitions, don't drop them)
+    -- This keeps data indefinitely while maintaining performance
     UPDATE partman.part_config 
     SET retention = v_retention_interval,
-        retention_keep_table = FALSE,
-        retention_keep_index = FALSE,
+        retention_keep_table = TRUE,        -- Keep detached partitions (don't drop)
+        retention_keep_index = TRUE,        -- Keep indexes on detached partitions
+        retention_schema = 'archive',       -- Move old partitions to archive schema
         infinite_time_partitions = TRUE
     WHERE parent_table = v_parent_table;
     
@@ -182,6 +193,47 @@ GRANT EXECUTE ON FUNCTION run_partition_maintenance() TO admin;
 GRANT SELECT ON partition_info TO admin;
 
 -- =====================================================================
+-- View: Archived Partitions (for monitoring detached partitions)
+-- =====================================================================
+CREATE OR REPLACE VIEW archived_partitions AS
+SELECT 
+    schemaname,
+    tablename,
+    pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) as size,
+    (SELECT count(*) FROM information_schema.tables t 
+     WHERE t.table_schema = schemaname 
+     AND t.table_name LIKE tablename || '%') as partition_count
+FROM pg_tables
+WHERE schemaname = 'archive'
+ORDER BY schemaname, tablename;
+
+GRANT SELECT ON archived_partitions TO admin;
+
+-- =====================================================================
+-- Function: Get total storage usage by schema
+-- =====================================================================
+CREATE OR REPLACE FUNCTION get_storage_usage()
+RETURNS TABLE(
+    schema_name TEXT,
+    total_size TEXT,
+    table_count BIGINT
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        schemaname::TEXT,
+        pg_size_pretty(SUM(pg_total_relation_size(schemaname||'.'||tablename))::BIGINT) as total_size,
+        COUNT(*)::BIGINT as table_count
+    FROM pg_tables
+    WHERE schemaname IN ('public', 'archive') OR schemaname LIKE 'ts_%'
+    GROUP BY schemaname
+    ORDER BY SUM(pg_total_relation_size(schemaname||'.'||tablename)) DESC;
+END;
+$$ LANGUAGE plpgsql;
+
+GRANT EXECUTE ON FUNCTION get_storage_usage() TO admin;
+
+-- =====================================================================
 -- Initial setup message
 -- =====================================================================
 DO $$
@@ -191,12 +243,18 @@ BEGIN
     RAISE NOTICE '========================================';
     RAISE NOTICE 'High-volume tables are now partitioned by day';
     RAISE NOTICE 'Automatic maintenance scheduled for 2 AM daily';
-    RAISE NOTICE 'Retention: 90 days (older partitions auto-dropped)';
+    RAISE NOTICE 'Retention: 90 days (older partitions DETACHED, not dropped)';
+    RAISE NOTICE 'Archive Schema: Old partitions moved to "archive" schema';
+    RAISE NOTICE 'Data Retention: INDEFINITE (all data preserved)';
     RAISE NOTICE 'Pre-create: 7 days ahead';
     RAISE NOTICE '========================================';
     RAISE NOTICE 'To manually run maintenance:';
     RAISE NOTICE '  SELECT run_partition_maintenance();';
-    RAISE NOTICE 'To view partition info:';
+    RAISE NOTICE 'To view active partition info:';
     RAISE NOTICE '  SELECT * FROM partition_info;';
+    RAISE NOTICE 'To view archived partitions:';
+    RAISE NOTICE '  SELECT * FROM archived_partitions;';
+    RAISE NOTICE 'To view storage usage:';
+    RAISE NOTICE '  SELECT * FROM get_storage_usage();';
     RAISE NOTICE '========================================';
 END $$;
