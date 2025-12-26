@@ -36,7 +36,6 @@ RUN set -eux; \
         bash \
         postgresql-dev \
         libzip-dev \
-        libssh2-dev \
         supervisor \
         postgresql-client \
         sudo \
@@ -50,8 +49,8 @@ RUN set -eux; \
     # Install PECL extensions
     apk add --no-cache --virtual .build-deps \
         $PHPIZE_DEPS; \
-    pecl install ssh2-1.4.1 redis; \
-    docker-php-ext-enable ssh2 redis; \
+    pecl install redis; \
+    docker-php-ext-enable redis; \
     # Cleanup
     apk del .build-deps linux-headers; \
     rm -rf /tmp/* /var/cache/apk/*
