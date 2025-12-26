@@ -24,9 +24,10 @@ RUN apk add --no-cache --virtual .build-deps \
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
 # Copy composer files first (for better layer caching)
-COPY composer.json composer.lock ./
+COPY composer.json ./
 
 # Install dependencies (no dev dependencies)
+# Note: composer.lock will be generated if it doesn't exist
 RUN composer install --optimize-autoloader --no-interaction --no-progress --no-scripts --no-dev \
  && composer clear-cache
 
