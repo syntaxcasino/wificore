@@ -343,53 +343,36 @@
         <!-- ORGANIZATION SECTION -->
         <div class="px-2 py-1 text-[9px] font-bold text-gray-500 uppercase tracking-wider">Organization</div>
         
-        <!-- Staff Management -->
+        <!-- Team Management (Consolidated Staff & HR) -->
         <div>
           <button
-            @click="toggleMenu('staff')"
+            @click="toggleMenu('team')"
             class="w-full flex items-center justify-between py-2 px-3 rounded-md hover:bg-gray-800/60 transition-all duration-150"
-            :class="route.path.includes('/users/') ? 'bg-gray-800/80 text-white font-medium' : 'text-gray-400'"
+            :class="route.path.includes('/users/') || route.path.includes('/hr/') ? 'bg-gray-800/80 text-white font-medium' : 'text-gray-400'"
           >
             <span class="flex items-center gap-2.5">
               <UserCircle class="w-4 h-4 flex-shrink-0" />
-              <span class="text-sm">Staff Management</span>
+              <span class="text-sm">Team Management</span>
             </span>
-            <ChevronDown class="w-3 h-3 transition-transform" :class="activeMenu === 'staff' ? 'rotate-180' : ''" />
+            <ChevronDown class="w-3 h-3 transition-transform" :class="activeMenu === 'team' ? 'rotate-180' : ''" />
           </button>
-          <div v-show="activeMenu === 'staff'" class="ml-6 mt-1 space-y-0.5">
+          <div v-show="activeMenu === 'team'" class="ml-6 mt-1 space-y-0.5">
             <router-link
               to="/dashboard/users/all"
               class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
               :class="route.path === '/dashboard/users/all' ? 'text-white font-medium' : 'text-gray-500'"
               @click="isMobile && $emit('close-sidebar')"
             >
-              All Users
+              All Staff
             </router-link>
             <router-link
-              to="/dashboard/users/roles"
+              to="/dashboard/hr/employees"
               class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
-              :class="route.path === '/dashboard/users/roles' ? 'text-white font-medium' : 'text-gray-500'"
+              :class="route.path === '/dashboard/hr/employees' ? 'text-white font-medium' : 'text-gray-500'"
               @click="isMobile && $emit('close-sidebar')"
             >
-              Roles & Permissions
+              Employees
             </router-link>
-          </div>
-        </div>
-
-        <!-- HR Management -->
-        <div>
-          <button
-            @click="toggleMenu('hr')"
-            class="w-full flex items-center justify-between py-2 px-3 rounded-md hover:bg-gray-800/60 transition-all duration-150"
-            :class="route.path.includes('/hr') ? 'bg-gray-800/80 text-white font-medium' : 'text-gray-400'"
-          >
-            <span class="flex items-center gap-2.5">
-              <Briefcase class="w-4 h-4 flex-shrink-0" />
-              <span class="text-sm">HR</span>
-            </span>
-            <ChevronDown class="w-3 h-3 transition-transform" :class="activeMenu === 'hr' ? 'rotate-180' : ''" />
-          </button>
-          <div v-show="activeMenu === 'hr'" class="ml-6 mt-1 space-y-0.5">
             <router-link
               to="/dashboard/hr/departments"
               class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
@@ -407,12 +390,12 @@
               Positions
             </router-link>
             <router-link
-              to="/dashboard/hr/employees"
+              to="/dashboard/users/roles"
               class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
-              :class="route.path === '/dashboard/hr/employees' ? 'text-white font-medium' : 'text-gray-500'"
+              :class="route.path === '/dashboard/users/roles' ? 'text-white font-medium' : 'text-gray-500'"
               @click="isMobile && $emit('close-sidebar')"
             >
-              Employees
+              Roles & Permissions
             </router-link>
           </div>
         </div>
