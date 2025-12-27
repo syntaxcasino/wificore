@@ -192,11 +192,11 @@ services:
     networks:
       - wificore-network
     healthcheck:
-      test: ["CMD", "sh", "-c", "wget --quiet --tries=1 --spider http://localhost:9670/metrics || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
+      test: ["CMD", "sh", "-c", "wget --quiet --tries=1 --timeout=5 -O /dev/null http://localhost:9670/usage"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
 
   wificore-redis:
     container_name: wificore-redis
