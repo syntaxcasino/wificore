@@ -64,7 +64,7 @@
               :class="route.path === '/dashboard/hotspot/users' ? 'text-white font-medium' : 'text-gray-500'"
               @click="isMobile && $emit('close-sidebar')"
             >
-              <span>All Users</span>
+              <span>Users</span>
               <span v-if="hotspotUsersCount > 0" class="px-1.5 py-0.5 text-[9px] font-bold rounded-full bg-blue-500 text-white min-w-[16px] text-center">{{ hotspotUsersCount }}</span>
             </router-link>
             <router-link
@@ -75,6 +75,30 @@
             >
               <span>Active Sessions</span>
               <span v-if="hotspotSessionsCount > 0" class="px-1.5 py-0.5 text-[9px] font-bold rounded-full bg-green-500 text-white min-w-[16px] text-center">{{ hotspotSessionsCount }}</span>
+            </router-link>
+            <router-link
+              to="/dashboard/hotspot/vouchers/generate"
+              class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
+              :class="route.path === '/dashboard/hotspot/vouchers/generate' ? 'text-white font-medium' : 'text-gray-500'"
+              @click="isMobile && $emit('close-sidebar')"
+            >
+              Generate Vouchers
+            </router-link>
+            <router-link
+              to="/dashboard/hotspot/vouchers/bulk"
+              class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
+              :class="route.path === '/dashboard/hotspot/vouchers/bulk' ? 'text-white font-medium' : 'text-gray-500'"
+              @click="isMobile && $emit('close-sidebar')"
+            >
+              Bulk Vouchers
+            </router-link>
+            <router-link
+              to="/dashboard/hotspot/voucher-templates"
+              class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
+              :class="route.path === '/dashboard/hotspot/voucher-templates' ? 'text-white font-medium' : 'text-gray-500'"
+              @click="isMobile && $emit('close-sidebar')"
+            >
+              Voucher Templates
             </router-link>
           </div>
         </div>
@@ -102,7 +126,7 @@
               :class="route.path === '/dashboard/pppoe/users' ? 'text-white font-medium' : 'text-gray-500'"
               @click="isMobile && $emit('close-sidebar')"
             >
-              <span>All Users</span>
+              <span>Users</span>
               <span v-if="pppoeUsersCount > 0" class="px-1.5 py-0.5 text-[9px] font-bold rounded-full bg-purple-500 text-white min-w-[16px] text-center">{{ pppoeUsersCount }}</span>
             </router-link>
             <router-link
@@ -117,44 +141,11 @@
           </div>
         </div>
 
-        <!-- System User Management -->
-        <div>
-          <button
-            @click="toggleMenu('system-users')"
-            class="w-full flex items-center justify-between py-2 px-3 rounded-md hover:bg-gray-800/60 transition-all duration-150"
-            :class="route.path.includes('/users/') ? 'bg-gray-800/80 text-white font-medium' : 'text-gray-400'"
-          >
-            <span class="flex items-center gap-2.5">
-              <UserCircle class="w-4 h-4 flex-shrink-0" />
-              <span class="text-sm">Sys User Management</span>
-            </span>
-            <ChevronDown class="w-3 h-3 transition-transform" :class="activeMenu === 'system-users' ? 'rotate-180' : ''" />
-          </button>
-          <div v-show="activeMenu === 'system-users'" class="ml-6 mt-1 space-y-0.5">
-            <router-link
-              to="/dashboard/users/all"
-              class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
-              :class="route.path === '/dashboard/users/all' ? 'text-white font-medium' : 'text-gray-500'"
-              @click="isMobile && $emit('close-sidebar')"
-            >
-              All Users
-            </router-link>
-            <router-link
-              to="/dashboard/users/roles"
-              class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
-              :class="route.path === '/dashboard/users/roles' ? 'text-white font-medium' : 'text-gray-500'"
-              @click="isMobile && $emit('close-sidebar')"
-            >
-              Roles & Permissions
-            </router-link>
-          </div>
-        </div>
-
         <!-- Divider -->
         <div class="h-px bg-gray-800/50 my-2"></div>
 
-        <!-- PRODUCTS SECTION -->
-        <div class="px-2 py-1 text-[9px] font-bold text-gray-500 uppercase tracking-wider">Products</div>
+        <!-- SERVICES SECTION -->
+        <div class="px-2 py-1 text-[9px] font-bold text-gray-500 uppercase tracking-wider">Services</div>
         
         <!-- Packages -->
         <div v-if="!isOnSystemAdminRoute">
@@ -189,54 +180,13 @@
           </div>
         </div>
 
-        <!-- Vouchers -->
-        <div>
-          <button
-            @click="toggleMenu('vouchers')"
-            class="w-full flex items-center justify-between py-2 px-3 rounded-md hover:bg-gray-800/60 transition-all duration-150"
-            :class="route.path.includes('/vouchers') ? 'bg-gray-800/80 text-white font-medium' : 'text-gray-400'"
-          >
-            <span class="flex items-center gap-2.5">
-              <Ticket class="w-4 h-4 flex-shrink-0" />
-              <span class="text-sm">Vouchers</span>
-            </span>
-            <ChevronDown class="w-3 h-3 transition-transform" :class="activeMenu === 'vouchers' ? 'rotate-180' : ''" />
-          </button>
-          <div v-show="activeMenu === 'vouchers'" class="ml-6 mt-1 space-y-0.5">
-            <router-link
-              to="/dashboard/hotspot/vouchers/generate"
-              class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
-              :class="route.path === '/dashboard/hotspot/vouchers/generate' ? 'text-white font-medium' : 'text-gray-500'"
-              @click="isMobile && $emit('close-sidebar')"
-            >
-              Generate Vouchers
-            </router-link>
-            <router-link
-              to="/dashboard/hotspot/vouchers/bulk"
-              class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
-              :class="route.path === '/dashboard/hotspot/vouchers/bulk' ? 'text-white font-medium' : 'text-gray-500'"
-              @click="isMobile && $emit('close-sidebar')"
-            >
-              Bulk Upload
-            </router-link>
-            <router-link
-              to="/dashboard/hotspot/voucher-templates"
-              class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
-              :class="route.path === '/dashboard/hotspot/voucher-templates' ? 'text-white font-medium' : 'text-gray-500'"
-              @click="isMobile && $emit('close-sidebar')"
-            >
-              Templates
-            </router-link>
-          </div>
-        </div>
-
         <!-- Divider -->
         <div class="h-px bg-gray-800/50 my-2"></div>
 
-        <!-- BILLING & SUBSCRIPTION SECTION -->
-        <div class="px-2 py-1 text-[9px] font-bold text-gray-500 uppercase tracking-wider">Billing & Subscription</div>
+        <!-- BILLING SECTION -->
+        <div class="px-2 py-1 text-[9px] font-bold text-gray-500 uppercase tracking-wider">Billing & Finance</div>
         
-        <!-- Billing & Subscription -->
+        <!-- Billing -->
         <div>
           <button
             @click="toggleMenu('billing')"
@@ -245,34 +195,18 @@
           >
             <span class="flex items-center gap-2.5">
               <Wallet class="w-4 h-4 flex-shrink-0" />
-              <span class="text-sm">Billing & Subscription</span>
+              <span class="text-sm">Billing</span>
             </span>
             <ChevronDown class="w-3 h-3 transition-transform" :class="activeMenu === 'billing' ? 'rotate-180' : ''" />
           </button>
           <div v-show="activeMenu === 'billing'" class="ml-6 mt-1 space-y-0.5">
-            <router-link
-              to="/dashboard/finance/revenues"
-              class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
-              :class="route.path === '/dashboard/finance/revenues' ? 'text-white font-medium' : 'text-gray-500'"
-              @click="isMobile && $emit('close-sidebar')"
-            >
-              Revenues (PPPoE & Hotspot)
-            </router-link>
-            <router-link
-              to="/dashboard/finance/expenses"
-              class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
-              :class="route.path === '/dashboard/finance/expenses' ? 'text-white font-medium' : 'text-gray-500'"
-              @click="isMobile && $emit('close-sidebar')"
-            >
-              Expenses (incl. Sys Subscription)
-            </router-link>
             <router-link
               to="/dashboard/billing/invoices"
               class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
               :class="route.path === '/dashboard/billing/invoices' ? 'text-white font-medium' : 'text-gray-500'"
               @click="isMobile && $emit('close-sidebar')"
             >
-              PPPoE Invoice
+              Invoices
             </router-link>
             <router-link
               to="/dashboard/billing/payments"
@@ -280,7 +214,23 @@
               :class="route.path === '/dashboard/billing/payments' ? 'text-white font-medium' : 'text-gray-500'"
               @click="isMobile && $emit('close-sidebar')"
             >
-              Hotspot & PPPoE Payments
+              Payments
+            </router-link>
+            <router-link
+              to="/dashboard/finance/revenues"
+              class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
+              :class="route.path === '/dashboard/finance/revenues' ? 'text-white font-medium' : 'text-gray-500'"
+              @click="isMobile && $emit('close-sidebar')"
+            >
+              Revenues
+            </router-link>
+            <router-link
+              to="/dashboard/finance/expenses"
+              class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
+              :class="route.path === '/dashboard/finance/expenses' ? 'text-white font-medium' : 'text-gray-500'"
+              @click="isMobile && $emit('close-sidebar')"
+            >
+              Expenses
             </router-link>
           </div>
         </div>
@@ -311,7 +261,7 @@
               :class="route.path === '/dashboard/routers/mikrotik' ? 'text-white font-medium' : 'text-gray-500'"
               @click="isMobile && $emit('close-sidebar')"
             >
-              Router List
+              Routers
             </router-link>
             <router-link
               to="/dashboard/routers/api-status"
@@ -344,7 +294,7 @@
         <div class="h-px bg-gray-800/50 my-2"></div>
 
         <!-- REPORTS SECTION -->
-        <div class="px-2 py-1 text-[9px] font-bold text-gray-500 uppercase tracking-wider">Reports</div>
+        <div class="px-2 py-1 text-[9px] font-bold text-gray-500 uppercase tracking-wider">Reports & Analytics</div>
         
         <!-- Reports -->
         <div>
@@ -355,31 +305,31 @@
           >
             <span class="flex items-center gap-2.5">
               <TrendingUp class="w-4 h-4 flex-shrink-0" />
-              <span class="text-sm">Analytics</span>
+              <span class="text-sm">Reports</span>
             </span>
             <ChevronDown class="w-3 h-3 transition-transform" :class="activeMenu === 'reports' ? 'rotate-180' : ''" />
           </button>
           <div v-show="activeMenu === 'reports'" class="ml-6 mt-1 space-y-0.5">
             <router-link
-              to="/dashboard/reports/revenue"
+              to="/dashboard/reports/payments"
               class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
-              :class="route.path === '/dashboard/reports/revenue' ? 'text-white font-medium' : 'text-gray-500'"
+              :class="route.path === '/dashboard/reports/payments' ? 'text-white font-medium' : 'text-gray-500'"
               @click="isMobile && $emit('close-sidebar')"
             >
-              Revenue Reports
+              Payment Reports
             </router-link>
             <router-link
-              to="/dashboard/reports/users"
+              to="/dashboard/reports/session-history"
               class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
-              :class="route.path === '/dashboard/reports/users' ? 'text-white font-medium' : 'text-gray-500'"
+              :class="route.path === '/dashboard/reports/session-history' ? 'text-white font-medium' : 'text-gray-500'"
               @click="isMobile && $emit('close-sidebar')"
             >
-              User Analytics
+              Session History
             </router-link>
             <router-link
-              to="/dashboard/reports/bandwidth-usage-summary"
+              to="/dashboard/reports/bandwidth-usage"
               class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
-              :class="route.path === '/dashboard/reports/bandwidth-usage-summary' ? 'text-white font-medium' : 'text-gray-500'"
+              :class="route.path === '/dashboard/reports/bandwidth-usage' ? 'text-white font-medium' : 'text-gray-500'"
               @click="isMobile && $emit('close-sidebar')"
             >
               Bandwidth Usage
@@ -393,6 +343,39 @@
         <!-- ORGANIZATION SECTION -->
         <div class="px-2 py-1 text-[9px] font-bold text-gray-500 uppercase tracking-wider">Organization</div>
         
+        <!-- Staff Management -->
+        <div>
+          <button
+            @click="toggleMenu('staff')"
+            class="w-full flex items-center justify-between py-2 px-3 rounded-md hover:bg-gray-800/60 transition-all duration-150"
+            :class="route.path.includes('/users/') ? 'bg-gray-800/80 text-white font-medium' : 'text-gray-400'"
+          >
+            <span class="flex items-center gap-2.5">
+              <UserCircle class="w-4 h-4 flex-shrink-0" />
+              <span class="text-sm">Staff Management</span>
+            </span>
+            <ChevronDown class="w-3 h-3 transition-transform" :class="activeMenu === 'staff' ? 'rotate-180' : ''" />
+          </button>
+          <div v-show="activeMenu === 'staff'" class="ml-6 mt-1 space-y-0.5">
+            <router-link
+              to="/dashboard/users/all"
+              class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
+              :class="route.path === '/dashboard/users/all' ? 'text-white font-medium' : 'text-gray-500'"
+              @click="isMobile && $emit('close-sidebar')"
+            >
+              All Users
+            </router-link>
+            <router-link
+              to="/dashboard/users/roles"
+              class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
+              :class="route.path === '/dashboard/users/roles' ? 'text-white font-medium' : 'text-gray-500'"
+              @click="isMobile && $emit('close-sidebar')"
+            >
+              Roles & Permissions
+            </router-link>
+          </div>
+        </div>
+
         <!-- HR Management -->
         <div>
           <button
@@ -449,6 +432,8 @@
         <div class="h-px bg-gray-800/50 my-2"></div>
 
         <!-- SUPPORT & SETTINGS -->
+        <div class="px-2 py-1 text-[9px] font-bold text-gray-500 uppercase tracking-wider">Support & Settings</div>
+        
         <!-- Support -->
         <div>
           <button
@@ -487,7 +472,7 @@
           <button
             @click="toggleMenu('settings')"
             class="w-full flex items-center justify-between py-2 px-3 rounded-md hover:bg-gray-800/60 transition-all duration-150"
-            :class="route.path.includes('/settings') ? 'bg-gray-800/80 text-white font-medium' : 'text-gray-400'"
+            :class="route.path.includes('/settings') || route.path.includes('/admin/system-updates') ? 'bg-gray-800/80 text-white font-medium' : 'text-gray-400'"
           >
             <span class="flex items-center gap-2.5">
               <Settings class="w-4 h-4 flex-shrink-0" />
@@ -510,7 +495,7 @@
               :class="route.path === '/dashboard/admin/system-updates' ? 'text-white font-medium' : 'text-gray-500'"
               @click="isMobile && $emit('close-sidebar')"
             >
-              Device Upgrades
+              System Updates
             </router-link>
             <router-link
               to="/dashboard/settings/email-sms"
@@ -518,7 +503,7 @@
               :class="route.path === '/dashboard/settings/email-sms' ? 'text-white font-medium' : 'text-gray-500'"
               @click="isMobile && $emit('close-sidebar')"
             >
-              Communication Channels
+              Email & SMS
             </router-link>
             <router-link
               to="/dashboard/settings/mpesa-api"
@@ -526,7 +511,7 @@
               :class="route.path === '/dashboard/settings/mpesa-api' ? 'text-white font-medium' : 'text-gray-500'"
               @click="isMobile && $emit('close-sidebar')"
             >
-              Payment Integration
+              Payment Gateway
             </router-link>
             <router-link
               to="/dashboard/settings/timezone-locale"
@@ -534,7 +519,7 @@
               :class="route.path === '/dashboard/settings/timezone-locale' ? 'text-white font-medium' : 'text-gray-500'"
               @click="isMobile && $emit('close-sidebar')"
             >
-              Timezone
+              Timezone & Locale
             </router-link>
           </div>
         </div>
@@ -548,7 +533,7 @@
             <button
               @click="toggleMenu('admin')"
               class="w-full flex items-center justify-between py-2 px-3 rounded-md hover:bg-gray-800/60 transition-all duration-150"
-              :class="route.path.includes('/admin') ? 'bg-gray-800/80 text-white font-medium' : 'text-gray-400'"
+              :class="route.path.includes('/admin') && !route.path.includes('/admin/system-updates') ? 'bg-gray-800/80 text-white font-medium' : 'text-gray-400'"
             >
               <span class="flex items-center gap-2.5">
                 <Shield class="w-4 h-4 flex-shrink-0" />
@@ -558,20 +543,20 @@
             </button>
             <div v-show="activeMenu === 'admin'" class="ml-6 mt-1 space-y-0.5">
               <router-link
-                to="/dashboard/admin/system-health"
+                to="/dashboard/admin/activity-logs"
                 class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
-                :class="route.path === '/dashboard/admin/system-health' ? 'text-white font-medium' : 'text-gray-500'"
+                :class="route.path === '/dashboard/admin/activity-logs' ? 'text-white font-medium' : 'text-gray-500'"
                 @click="isMobile && $emit('close-sidebar')"
               >
-                System Health
+                Activity Logs
               </router-link>
               <router-link
-                to="/dashboard/admin/database-backup"
+                to="/dashboard/admin/backup-restore"
                 class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
-                :class="route.path === '/dashboard/admin/database-backup' ? 'text-white font-medium' : 'text-gray-500'"
+                :class="route.path === '/dashboard/admin/backup-restore' ? 'text-white font-medium' : 'text-gray-500'"
                 @click="isMobile && $emit('close-sidebar')"
               >
-                Database Backup
+                Backup & Restore
               </router-link>
             </div>
           </div>
@@ -649,8 +634,6 @@ const toggleMenu = (menu) => {
 // Fetch badge counts
 const fetchBadgeCounts = async () => {
   try {
-    // You can implement API calls here to fetch real counts
-    // For now, using placeholder values
     todosCount.value = authStore.user?.pending_todos || 0
     hotspotUsersCount.value = authStore.stats?.hotspot_users || 0
     hotspotSessionsCount.value = authStore.stats?.hotspot_sessions || 0

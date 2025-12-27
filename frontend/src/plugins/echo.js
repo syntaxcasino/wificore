@@ -102,7 +102,7 @@ const createEchoConfig = () => {
     secure: config.forceTLS,
     authEndpoint: config.authEndpoint,
     key: config.key,
-    fullUrl: `${isProduction ? 'wss' : 'ws'}://${config.wsHost}:${config.wsPort}${config.path}`
+    fullUrl: `${isProduction ? 'wss' : 'ws'}://${config.wsHost}:${config.wsPort}${config.wsPath}`
   });
   
   // Enable Pusher debug logging in development

@@ -1,10 +1,9 @@
 {
   "debug": true,
-  "port": 80,
+  "port": 6071,
   "host": "0.0.0.0",
-  "wsPath": "",
   "cors": {
-    "origin": ["http://localhost:3000", "http://localhost:80", "http://localhost"],
+    "origin": ["*"],
     "methods": ["GET", "POST", "OPTIONS"],
     "allowedHeaders": ["Content-Type", "Authorization", "X-Requested-With", "X-CSRF-TOKEN", "Accept"]
   },
