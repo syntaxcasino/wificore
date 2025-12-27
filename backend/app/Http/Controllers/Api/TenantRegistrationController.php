@@ -106,15 +106,28 @@ class TenantRegistrationController extends Controller
      */
     public function verifyEmail($token)
     {
-        $registration = TenantRegistration::where('token', $token)
-            ->where('email_verified', false)
-            ->first();
+        // First, try to find the registration regardless of verification status
+        $registration = TenantRegistration::where('token', $token)->first();
 
         if (!$registration) {
             return response()->json([
                 'success' => false,
                 'message' => 'Invalid or expired verification token.',
             ], 404);
+        }
+
+        // Check if already verified
+        if ($registration->email_verified) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Email already verified. Please check your email for login credentials.',
+                'data' => [
+                    'tenant_slug' => $registration->tenant_slug,
+                    'status' => 'already_verified',
+                    'credentials_sent' => $registration->credentials_sent,
+                    'next_step' => 'check_email'
+                ]
+            ]);
         }
 
         try {
