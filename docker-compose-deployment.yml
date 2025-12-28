@@ -141,10 +141,11 @@ services:
   redis:
     container_name: traidnet-redis
     image: redis:7-alpine
-    command: redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru --save 60 1000
+    command: sh -c 'if [ -n "$$REDIS_PASSWORD" ]; then redis-server --requirepass "$$REDIS_PASSWORD" --maxmemory 512mb --maxmemory-policy allkeys-lru --save 60 1000; else redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru --save 60 1000; fi'
     restart: unless-stopped
     environment:
       TZ: Africa/Nairobi
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
     networks:
       - traidnet-network
     healthcheck:
