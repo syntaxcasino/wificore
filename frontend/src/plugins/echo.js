@@ -36,7 +36,7 @@ const createEchoConfig = () => {
     cluster: env.VITE_PUSHER_APP_CLUSTER || 'mt1',
     
     // Path configuration
-    path: env.VITE_PUSHER_PATH || '/app',
+    path: env.VITE_PUSHER_PATH || '/',
     
     // Authentication - Use broadcasting auth endpoint (nginx routes to backend)
     authEndpoint: env.VITE_PUSHER_AUTH_ENDPOINT || '/api/broadcasting/auth',

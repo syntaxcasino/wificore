@@ -30,6 +30,7 @@ services:
       dockerfile: Dockerfile
     environment:
       TZ: Africa/Nairobi
+      VITE_PUSHER_PATH: /
     networks:
       - traidnet-network
     healthcheck:

@@ -16,14 +16,14 @@ use App\Models\User;
 
 // Private user channel - only the user can listen to their own channel
 Broadcast::channel('App.Models.User.{id}', function ($user, $id) {
-    return (int) $user->id === (int) $id;
+    return (string) $user->id === (string) $id;
 });
 
 // Tenant-specific router updates channel
 Broadcast::channel('tenant.{tenantId}.router-updates', function ($user, $tenantId) {
     // SECURITY: System admins should NOT access tenant channels (data isolation)
     // Only users belonging to this specific tenant can access
-    return $user->tenant_id === $tenantId;
+    return (string) $user->tenant_id === (string) $tenantId;
 });
 
 // Private router status channel - requires authentication and tenant isolation
@@ -50,7 +50,7 @@ Broadcast::channel('online', function ($user) {
 // Tenant-specific online presence channel
 Broadcast::channel('tenant.{tenantId}.online', function ($user, $tenantId) {
     // SECURITY: Only users in this tenant can see who's online in their tenant
-    if ($user->tenant_id === $tenantId) {
+    if ((string) $user->tenant_id === (string) $tenantId) {
         return [
             'id' => $user->id,
             'name' => $user->name,
@@ -79,7 +79,7 @@ Broadcast::channel('system.online', function ($user) {
 Broadcast::channel('tenant.{tenantId}.admin-notifications', function ($user, $tenantId) {
     // SECURITY: System admins should NOT access tenant channels (data isolation)
     // Only tenant admins belonging to this specific tenant can access
-    return $user->isAdmin() && $user->tenant_id === $tenantId;
+    return $user->isAdmin() && (string) $user->tenant_id === (string) $tenantId;
 });
 
 // Router provisioning progress channel - only admins can listen
@@ -92,35 +92,35 @@ Broadcast::channel('router-provisioning.{routerId}', function ($user, $routerId)
 Broadcast::channel('tenant.{tenantId}.dashboard-stats', function ($user, $tenantId) {
     // SECURITY: System admins should NOT access tenant channels (data isolation)
     // Only users belonging to this specific tenant can access
-    return $user->tenant_id === $tenantId;
+    return (string) $user->tenant_id === (string) $tenantId;
 });
 
 // Tenant-specific payments channel
 Broadcast::channel('tenant.{tenantId}.payments', function ($user, $tenantId) {
     // SECURITY: System admins should NOT access tenant channels (data isolation)
     // Only tenant admins belonging to this specific tenant can access
-    return $user->isAdmin() && $user->tenant_id === $tenantId;
+    return $user->isAdmin() && (string) $user->tenant_id === (string) $tenantId;
 });
 
 // Tenant-specific hotspot users channel
 Broadcast::channel('tenant.{tenantId}.hotspot-users', function ($user, $tenantId) {
     // SECURITY: System admins should NOT access tenant channels (data isolation)
     // Only tenant admins belonging to this specific tenant can access
-    return $user->isAdmin() && $user->tenant_id === $tenantId;
+    return $user->isAdmin() && (string) $user->tenant_id === (string) $tenantId;
 });
 
 // Tenant-specific packages channel
 Broadcast::channel('tenant.{tenantId}.packages', function ($user, $tenantId) {
     // SECURITY: System admins should NOT access tenant channels (data isolation)
     // Only users belonging to this specific tenant can access
-    return $user->tenant_id === $tenantId;
+    return (string) $user->tenant_id === (string) $tenantId;
 });
 
 // Tenant-specific security alerts channel (suspension/unsuspension notifications)
 Broadcast::channel('tenant.{tenantId}.security-alerts', function ($user, $tenantId) {
     // SECURITY: System admins should NOT access tenant channels (data isolation)
     // Only tenant admins belonging to this specific tenant can access
-    return $user->isAdmin() && $user->tenant_id === $tenantId;
+    return $user->isAdmin() && (string) $user->tenant_id === (string) $tenantId;
 });
 
 // System admin security alerts channel (all platform security events)
@@ -137,13 +137,13 @@ Broadcast::channel('system.admin.security-alerts', function ($user) {
 Broadcast::channel('tenant.{tenantId}', function ($user, $tenantId) {
     // SECURITY: System admins should NOT access tenant channels (data isolation)
     // Only users belonging to this specific tenant can access
-    return $user->tenant_id === $tenantId;
+    return (string) $user->tenant_id === (string) $tenantId;
 });
 
 // Private user channel - only the user can listen
 Broadcast::channel('user.{userId}', function ($user, $userId) {
     // User can only listen to their own private channel
-    return $user->id === $userId;
+    return (string) $user->id === (string) $userId;
 });
 
 // System admin channel - only system admins
