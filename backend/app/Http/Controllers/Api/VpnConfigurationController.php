@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Jobs\ProvisionVpnConfigurationJob;
 use App\Models\Router;
 use App\Models\VpnConfiguration;
-use App\Models\VpnSubnetAllocation;
 use App\Services\VpnService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -32,8 +31,9 @@ class VpnConfigurationController extends Controller
             ], 403);
         }
 
+        // Table is in tenant schema, so it's implicitly scoped to the tenant.
+        // No 'tenant_id' column exists in the schema-based table.
         $configs = VpnConfiguration::with(['router'])
-            ->where('tenant_id', $tenantId)
             ->orderBy('created_at', 'desc')
             ->get()
             ->map(function ($config) {
@@ -65,10 +65,8 @@ class VpnConfigurationController extends Controller
      */
     public function show(Request $request, int $id)
     {
-        $tenantId = $request->user()->tenant_id;
-
+        // Table is in tenant schema, so it's implicitly scoped.
         $config = VpnConfiguration::with(['router'])
-            ->where('tenant_id', $tenantId)
             ->findOrFail($id);
 
         return response()->json([
@@ -181,10 +179,8 @@ class VpnConfigurationController extends Controller
      */
     public function downloadMikrotikScript(Request $request, int $id)
     {
-        $tenantId = $request->user()->tenant_id;
-
-        $config = VpnConfiguration::where('tenant_id', $tenantId)
-            ->findOrFail($id);
+        // Table is in tenant schema, so it's implicitly scoped.
+        $config = VpnConfiguration::findOrFail($id);
 
         $filename = "mikrotik-vpn-{$config->id}.rsc";
 
@@ -198,10 +194,8 @@ class VpnConfigurationController extends Controller
      */
     public function downloadLinuxConfig(Request $request, int $id)
     {
-        $tenantId = $request->user()->tenant_id;
-
-        $config = VpnConfiguration::where('tenant_id', $tenantId)
-            ->findOrFail($id);
+        // Table is in tenant schema, so it's implicitly scoped.
+        $config = VpnConfiguration::findOrFail($id);
 
         $filename = "{$config->interface_name}.conf";
 
@@ -215,10 +209,8 @@ class VpnConfigurationController extends Controller
      */
     public function destroy(Request $request, int $id)
     {
-        $tenantId = $request->user()->tenant_id;
-
-        $config = VpnConfiguration::where('tenant_id', $tenantId)
-            ->findOrFail($id);
+        // Table is in tenant schema, so it's implicitly scoped.
+        $config = VpnConfiguration::findOrFail($id);
 
         // Update router if associated
         if ($config->router) {
@@ -250,9 +242,10 @@ class VpnConfigurationController extends Controller
             ], 403);
         }
 
-        $subnet = VpnSubnetAllocation::where('tenant_id', $tenantId)->first();
+        // Use TenantVpnTunnel as the source of truth for the subnet
+        $tunnel = \App\Models\TenantVpnTunnel::where('tenant_id', $tenantId)->first();
 
-        if (!$subnet) {
+        if (!$tunnel) {
             return response()->json([
                 'success' => true,
                 'data' => null,
@@ -260,18 +253,25 @@ class VpnConfigurationController extends Controller
             ]);
         }
 
+        // Calculate usage dynamically
+        $totalIps = 65534; // /16 subnet
+        // We can count configurations in the current tenant schema linked to this tunnel
+        $allocatedIps = VpnConfiguration::where('tenant_vpn_tunnel_id', $tunnel->id)->count();
+        $availableIps = $totalIps - $allocatedIps;
+        $usagePercentage = $totalIps > 0 ? round(($allocatedIps / $totalIps) * 100, 2) : 0;
+
         return response()->json([
             'success' => true,
             'data' => [
-                'subnet_cidr' => $subnet->subnet_cidr,
-                'gateway_ip' => $subnet->gateway_ip,
-                'range_start' => $subnet->range_start,
-                'range_end' => $subnet->range_end,
-                'total_ips' => $subnet->total_ips,
-                'allocated_ips' => $subnet->allocated_ips,
-                'available_ips' => $subnet->available_ips,
-                'usage_percentage' => $subnet->getUsagePercentage(),
-                'status' => $subnet->status,
+                'subnet_cidr' => $tunnel->subnet_cidr,
+                'gateway_ip' => $tunnel->server_ip,
+                'range_start' => str_replace('.0.0/16', '.0.2', $tunnel->subnet_cidr), // approximate
+                'range_end' => str_replace('.0.0/16', '.255.254', $tunnel->subnet_cidr), // approximate
+                'total_ips' => $totalIps,
+                'allocated_ips' => $allocatedIps,
+                'available_ips' => $availableIps,
+                'usage_percentage' => $usagePercentage,
+                'status' => $tunnel->status,
             ],
         ]);
     }

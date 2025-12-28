@@ -3,7 +3,6 @@
 namespace App\Services;
 
 use App\Models\VpnConfiguration;
-use App\Models\VpnSubnetAllocation;
 use App\Models\Tenant;
 use App\Models\Router;
 use App\Models\TenantVpnTunnel;

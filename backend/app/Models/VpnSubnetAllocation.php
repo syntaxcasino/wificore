@@ -10,7 +10,6 @@ class VpnSubnetAllocation extends Model
     use HasFactory;
 
     protected $fillable = [
-        'tenant_id',
         'subnet_cidr',
         'subnet_octet_2',
         'gateway_ip',

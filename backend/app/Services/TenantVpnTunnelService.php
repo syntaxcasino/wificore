@@ -89,8 +89,9 @@ class TenantVpnTunnelService
      */
     protected function allocateSubnetIndex(): int
     {
-        // Get all existing subnet indices
-        $existingIndices = TenantVpnTunnel::all()
+        // Get all existing subnet indices across ALL tenants (bypass tenant scope)
+        $existingIndices = TenantVpnTunnel::withoutGlobalScope(TenantScope::class)
+            ->get()
             ->map(function ($tunnel) {
                 // Extract X from 10.X.0.0/16
                 $parts = explode('.', explode('/', $tunnel->subnet_cidr)[0]);
@@ -113,8 +114,10 @@ class TenantVpnTunnelService
      */
     protected function allocateInterface(): string
     {
-        // Get all existing interfaces
-        $existingInterfaces = TenantVpnTunnel::pluck('interface_name')->toArray();
+        // Get all existing interfaces across ALL tenants (bypass tenant scope)
+        $existingInterfaces = TenantVpnTunnel::withoutGlobalScope(TenantScope::class)
+            ->pluck('interface_name')
+            ->toArray();
 
         // Find next available interface
         for ($i = 0; $i <= 99; $i++) {
@@ -132,8 +135,10 @@ class TenantVpnTunnelService
      */
     protected function allocatePort(): int
     {
-        // Get all existing ports
-        $existingPorts = TenantVpnTunnel::pluck('listen_port')->toArray();
+        // Get all existing ports across ALL tenants (bypass tenant scope)
+        $existingPorts = TenantVpnTunnel::withoutGlobalScope(TenantScope::class)
+            ->pluck('listen_port')
+            ->toArray();
 
         // Find next available port (start from 51820)
         for ($port = 51820; $port <= 51920; $port++) {
@@ -240,17 +245,20 @@ class TenantVpnTunnelService
         $radiusHost = config('services.radius.host', env('RADIUS_SERVER_HOST', 'wificore-freeradius'));
 
         // PostUp:
-        // 1. Forward traffic from WG interface
-        // 2. MASQUERADE outgoing traffic on eth0
-        // 3. DNAT RADIUS Auth (1812) to FreeRADIUS container
-        // 4. DNAT RADIUS Acct (1813) to FreeRADIUS container
+        // 1. Forward traffic from WG to eth0 (Internet/Services)
+        // 2. Forward traffic from WG to WG (Intra-tenant Router-to-Router)
+        // 3. MASQUERADE outgoing traffic on eth0
+        // 4. DNAT RADIUS Auth (1812) to FreeRADIUS container
+        // 5. DNAT RADIUS Acct (1813) to FreeRADIUS container
         
-        $postUp = "iptables -A FORWARD -i {$tunnel->interface_name} -j ACCEPT; " .
+        $postUp = "iptables -A FORWARD -i {$tunnel->interface_name} -o eth0 -j ACCEPT; " .
+                  "iptables -A FORWARD -i {$tunnel->interface_name} -o {$tunnel->interface_name} -j ACCEPT; " .
                   "iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE; " .
                   "iptables -t nat -A PREROUTING -i {$tunnel->interface_name} -p udp --dport 1812 -j DNAT --to-destination {$radiusHost}:1812; " .
                   "iptables -t nat -A PREROUTING -i {$tunnel->interface_name} -p udp --dport 1813 -j DNAT --to-destination {$radiusHost}:1813";
 
-        $postDown = "iptables -D FORWARD -i {$tunnel->interface_name} -j ACCEPT; " .
+        $postDown = "iptables -D FORWARD -i {$tunnel->interface_name} -o eth0 -j ACCEPT; " .
+                    "iptables -D FORWARD -i {$tunnel->interface_name} -o {$tunnel->interface_name} -j ACCEPT; " .
                     "iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE; " .
                     "iptables -t nat -D PREROUTING -i {$tunnel->interface_name} -p udp --dport 1812 -j DNAT --to-destination {$radiusHost}:1812; " .
                     "iptables -t nat -D PREROUTING -i {$tunnel->interface_name} -p udp --dport 1813 -j DNAT --to-destination {$radiusHost}:1813";
