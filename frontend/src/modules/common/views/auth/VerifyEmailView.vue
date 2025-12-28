@@ -126,14 +126,14 @@ onMounted(async () => {
           localStorage.setItem('user', JSON.stringify(response.data.user))
           
           // Redirect to dashboard after 2 seconds
-          setTimeout(() => {
+          /* setTimeout(() => {
             router.push('/dashboard')
-          }, 2000)
+          }, 2000) */
         } else {
           // Redirect to login after 2 seconds
-          setTimeout(() => {
+          /* setTimeout(() => {
             router.push('/login')
-          }, 2000)
+          }, 2000) */
         }
       } else {
         error.value = true
