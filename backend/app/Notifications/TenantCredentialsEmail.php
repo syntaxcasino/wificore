@@ -42,20 +42,16 @@ class TenantCredentialsEmail extends Notification implements ShouldQueue
 
         return (new MailMessage)
             ->subject('Your WifiCore Account Credentials')
-            ->greeting("Welcome to WifiCore, {$this->tenantName}!")
-            ->line('Your account has been successfully created and verified.')
-            ->line('Here are your login credentials:')
-            ->line("**Username:** {$this->username}")
-            ->line("**Password:** {$this->password}")
-            ->line("**Login URL:** {$loginUrl}")
-            ->line('')
-            ->line('**Important Security Notes:**')
-            ->line('• Please change your password after your first login')
-            ->line('• Keep your credentials secure and do not share them')
-            ->line('• Your subdomain is: ' . $this->subdomain . '.wificore.traidsolutions.com')
-            ->line('')
-            ->action('Login to Your Dashboard', $loginUrl)
-            ->line('If you have any questions, please contact our support team.')
-            ->salutation('Best regards, The WifiCore Team');
+            ->view('emails.tenant-credentials', [
+                'registration' => $notifiable,
+                'tenant' => (object)[
+                    'name' => $this->tenantName, 
+                    'slug' => $this->tenantSlug
+                ],
+                'username' => $this->username,
+                'password' => $this->password,
+                'loginUrl' => $loginUrl,
+                'subdomain' => $this->subdomain
+            ]);
     }
 }

@@ -36,15 +36,11 @@ class TenantEmailVerification extends Notification implements ShouldQueue
 
         return (new MailMessage)
             ->subject('Verify Your Email - WifiCore Registration')
-            ->greeting('Welcome to WifiCore!')
-            ->line("Thank you for registering **{$this->tenantName}** with WifiCore.")
-            ->line('Please verify your email address by clicking the button below:')
-            ->action('Verify Email Address', $verificationUrl)
-            ->line('This verification link will expire in 60 minutes.')
-            ->line('')
-            ->line('**Important:** After verifying your email, your login credentials will be sent to you in a separate email.')
-            ->line('If you did not create an account, no further action is required.')
-            ->salutation('Best regards, The WifiCore Team');
+            ->view('emails.tenant-verification', [
+                'registration' => $notifiable,
+                'verificationUrl' => $verificationUrl,
+                'tenantName' => $this->tenantName,
+            ]);
     }
 
     protected function verificationUrl($notifiable): string

@@ -38,8 +38,8 @@ const createEchoConfig = () => {
     // Path configuration
     path: env.VITE_PUSHER_PATH || '/app',
     
-    // Authentication - Use API route for Sanctum-based auth
-    authEndpoint: env.VITE_PUSHER_AUTH_ENDPOINT || '/broadcasting/auth',
+    // Authentication - Use broadcasting auth endpoint (nginx routes to backend)
+    authEndpoint: env.VITE_PUSHER_AUTH_ENDPOINT || '/api/broadcasting/auth',
     auth: {
       headers: {
         'X-Requested-With': 'XMLHttpRequest',
@@ -66,7 +66,7 @@ const createEchoConfig = () => {
           }
           
           // Use API endpoint for Sanctum-based authentication
-          const authEndpoint = env.VITE_PUSHER_AUTH_ENDPOINT || '/broadcasting/auth';
+          const authEndpoint = env.VITE_PUSHER_AUTH_ENDPOINT || '/api/broadcasting/auth';
           
           fetch(authEndpoint, {
             method: 'POST',
@@ -102,7 +102,8 @@ const createEchoConfig = () => {
     secure: config.forceTLS,
     authEndpoint: config.authEndpoint,
     key: config.key,
-    fullUrl: `${isProduction ? 'wss' : 'ws'}://${config.wsHost}:${config.wsPort}${config.wsPath}`
+    path: config.path,
+    fullUrl: `${isProduction ? 'wss' : 'ws'}://${config.wsHost}:${config.wsPort}${config.path}`
   });
   
   // Enable Pusher debug logging in development

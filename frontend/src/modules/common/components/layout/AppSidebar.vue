@@ -38,9 +38,6 @@
         <!-- Divider -->
         <div class="h-px bg-gray-800/50 my-2"></div>
 
-        <!-- CUSTOMERS SECTION -->
-        <div class="px-2 py-1 text-[9px] font-bold text-gray-500 uppercase tracking-wider">Customers</div>
-        
         <!-- Hotspot -->
         <div>
           <button
@@ -144,9 +141,6 @@
         <!-- Divider -->
         <div class="h-px bg-gray-800/50 my-2"></div>
 
-        <!-- SERVICES SECTION -->
-        <div class="px-2 py-1 text-[9px] font-bold text-gray-500 uppercase tracking-wider">Services</div>
-        
         <!-- Packages -->
         <div v-if="!isOnSystemAdminRoute">
           <button
@@ -183,9 +177,6 @@
         <!-- Divider -->
         <div class="h-px bg-gray-800/50 my-2"></div>
 
-        <!-- BILLING SECTION -->
-        <div class="px-2 py-1 text-[9px] font-bold text-gray-500 uppercase tracking-wider">Billing & Finance</div>
-        
         <!-- Billing -->
         <div>
           <button
@@ -238,9 +229,6 @@
         <!-- Divider -->
         <div class="h-px bg-gray-800/50 my-2" v-if="!isOnSystemAdminRoute"></div>
 
-        <!-- NETWORK SECTION -->
-        <div class="px-2 py-1 text-[9px] font-bold text-gray-500 uppercase tracking-wider" v-if="!isOnSystemAdminRoute">Network</div>
-        
         <!-- Network -->
         <div v-if="!isOnSystemAdminRoute">
           <button
@@ -293,9 +281,6 @@
         <!-- Divider -->
         <div class="h-px bg-gray-800/50 my-2"></div>
 
-        <!-- REPORTS SECTION -->
-        <div class="px-2 py-1 text-[9px] font-bold text-gray-500 uppercase tracking-wider">Reports & Analytics</div>
-        
         <!-- Reports -->
         <div>
           <button
@@ -340,9 +325,6 @@
         <!-- Divider -->
         <div class="h-px bg-gray-800/50 my-2"></div>
 
-        <!-- ORGANIZATION SECTION -->
-        <div class="px-2 py-1 text-[9px] font-bold text-gray-500 uppercase tracking-wider">Organization</div>
-        
         <!-- Team Management (Consolidated Staff & HR) -->
         <div>
           <button
@@ -414,9 +396,6 @@
         <!-- Divider -->
         <div class="h-px bg-gray-800/50 my-2"></div>
 
-        <!-- SUPPORT & SETTINGS -->
-        <div class="px-2 py-1 text-[9px] font-bold text-gray-500 uppercase tracking-wider">Support & Settings</div>
-        
         <!-- Support -->
         <div>
           <button
