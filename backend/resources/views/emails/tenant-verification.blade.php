@@ -67,12 +67,12 @@
             background-color: #FFFFFF;
         }
         .email-body_inner {
-            width: 570px;
+            width: 100%;
             margin: 0 auto;
             padding: 0;
         }
         .email-footer {
-            width: 570px;
+            width: 100%;
             margin: 0 auto;
             padding: 57px;
             text-align: center;
@@ -236,7 +236,7 @@
                     <!-- Email Body -->
                     <tr>
                         <td class="email-body" width="100%" cellpadding="0" cellspacing="0">
-                            <table class="email-body_inner" align="center" width="570" cellpadding="0" cellspacing="0" role="presentation">
+                            <table class="email-body_inner" align="center" width="100%" cellpadding="0" cellspacing="0" role="presentation">
                                 <!-- Body content -->
                                 <tr>
                                     <td class="content-cell">
@@ -304,7 +304,7 @@
                     <!-- Email Footer -->
                     <tr>
                         <td>
-                            <table class="email-footer" align="center" width="570" cellpadding="0" cellspacing="0" role="presentation">
+                            <table class="email-footer" align="center" width="100%" cellpadding="0" cellspacing="0" role="presentation">
                                 <tr>
                                     <td class="content-cell" align="center">
                                         <p class="sub align-center">
