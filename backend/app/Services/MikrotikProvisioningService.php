@@ -75,7 +75,9 @@ class MikrotikProvisioningService extends TenantAwareService
 
         try {
             $decryptedPassword = Crypt::decrypt($router->password);
-            $host = explode('/', $router->ip_address)[0];
+            // Use VPN IP if available
+            $ip = $router->vpn_ip ?? $router->ip_address;
+            $host = explode('/', $ip)[0];
 
             $client = new Client([
                 'host' => $host,
@@ -303,7 +305,10 @@ class MikrotikProvisioningService extends TenantAwareService
             throw new \Exception('Failed to decrypt password: ' . $e->getMessage(), 500);
         }
 
-        $host = explode('/', $router->ip_address)[0];
+        // Use VPN IP if available
+        $ip = $router->vpn_ip ?? $router->ip_address;
+        $host = explode('/', $ip)[0];
+        
         $client = new Client([
             'host' => $host,
             'user' => $router->username,
@@ -428,7 +433,9 @@ class MikrotikProvisioningService extends TenantAwareService
             ];
         }
 
-        $host = explode('/', $router->ip_address)[0];
+        // Use VPN IP if available
+        $ip = $router->vpn_ip ?? $router->ip_address;
+        $host = explode('/', $ip)[0];
 
         try {
             $client = new Client([

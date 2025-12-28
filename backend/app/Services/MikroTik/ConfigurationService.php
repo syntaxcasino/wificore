@@ -79,6 +79,9 @@ class ConfigurationService extends TenantAwareService
         if (empty($data['hotspot_interfaces'])) {
             throw new \Exception('Hotspot interfaces are required when hotspot is enabled');
         }
+
+        // Determine RADIUS server IP: Use VPN gateway IP if available, otherwise fallback to env
+        $radiusIp = $router->vpnConfiguration?->server_ip ?? env('RADIUS_SERVER_HOST', 'wificore-freeradius');
         
         $options = [
             'bridge_name' => $data['hotspot_bridge_name'] ?? "br-hotspot-{$router->id}",
@@ -90,7 +93,7 @@ class ConfigurationService extends TenantAwareService
             'session_timeout' => $data['session_timeout'] ?? '4h',
             'idle_timeout' => $data['idle_timeout'] ?? '15m',
             'profile_name' => $data['hotspot_profile_name'] ?? "hs-profile-{$router->id}",
-            'radius_ip' => env('RADIUS_SERVER_HOST', 'wificore-freeradius'),
+            'radius_ip' => $radiusIp,
             'radius_secret' => env('RADIUS_SECRET', 'testing123'),
             'portal_url' => $data['portal_url'] ?? 'https://wificore.traidsolutions.com/hotspot/login',
         ];
@@ -99,6 +102,7 @@ class ConfigurationService extends TenantAwareService
             'router_id' => $router->id,
             'interfaces' => $data['hotspot_interfaces'],
             'options' => $options,
+            'using_vpn_radius' => $router->vpnConfiguration?->server_ip ? true : false,
         ]);
         
         return $this->hotspotService->generateConfig(

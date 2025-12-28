@@ -237,14 +237,31 @@ class TenantVpnTunnelService
     protected function generateServerConfig(TenantVpnTunnel $tunnel): string
     {
         $privateKey = decrypt($tunnel->server_private_key);
+        $radiusHost = config('services.radius.host', env('RADIUS_SERVER_HOST', 'wificore-freeradius'));
+
+        // PostUp:
+        // 1. Forward traffic from WG interface
+        // 2. MASQUERADE outgoing traffic on eth0
+        // 3. DNAT RADIUS Auth (1812) to FreeRADIUS container
+        // 4. DNAT RADIUS Acct (1813) to FreeRADIUS container
+        
+        $postUp = "iptables -A FORWARD -i {$tunnel->interface_name} -j ACCEPT; " .
+                  "iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE; " .
+                  "iptables -t nat -A PREROUTING -i {$tunnel->interface_name} -p udp --dport 1812 -j DNAT --to-destination {$radiusHost}:1812; " .
+                  "iptables -t nat -A PREROUTING -i {$tunnel->interface_name} -p udp --dport 1813 -j DNAT --to-destination {$radiusHost}:1813";
+
+        $postDown = "iptables -D FORWARD -i {$tunnel->interface_name} -j ACCEPT; " .
+                    "iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE; " .
+                    "iptables -t nat -D PREROUTING -i {$tunnel->interface_name} -p udp --dport 1812 -j DNAT --to-destination {$radiusHost}:1812; " .
+                    "iptables -t nat -D PREROUTING -i {$tunnel->interface_name} -p udp --dport 1813 -j DNAT --to-destination {$radiusHost}:1813";
 
         return <<<EOT
 [Interface]
 Address = {$tunnel->server_ip}/16
 ListenPort = {$tunnel->listen_port}
 PrivateKey = {$privateKey}
-PostUp = iptables -A FORWARD -i {$tunnel->interface_name} -j ACCEPT; iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
-PostDown = iptables -D FORWARD -i {$tunnel->interface_name} -j ACCEPT; iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE
+PostUp = {$postUp}
+PostDown = {$postDown}
 
 # Peers will be added dynamically via 'wg set' command
 EOT;

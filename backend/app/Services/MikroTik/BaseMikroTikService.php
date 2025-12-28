@@ -138,12 +138,12 @@ abstract class BaseMikroTikService extends TenantAwareService
     /**
      * Configure RADIUS server
      */
-    protected function configureRADIUS(string $service = 'hotspot,ppp'): array
+    protected function configureRADIUS(string $radiusIp, string $radiusSecret, string $service = 'hotspot,ppp'): array
     {
         return [
             '# RADIUS Configuration',
-            ':local radiusServer "172.20.0.6"',
-            ':local radiusSecret "testing123"',
+            ":local radiusServer \"$radiusIp\"",
+            ":local radiusSecret \"$radiusSecret\"",
             '',
             '# Check for environment variable override',
             ':if ([:len [/system/script/environment get RADIUS_SERVER]] > 0) do={',

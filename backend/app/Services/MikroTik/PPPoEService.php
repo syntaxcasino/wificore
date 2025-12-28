@@ -80,7 +80,9 @@ class PPPoEService extends BaseMikroTikService
         
         // RADIUS configuration
         if ($useRadius) {
-            $script = array_merge($script, $this->configureRADIUS('ppp'));
+            $radiusIp = $options['radius_ip'] ?? '172.20.0.6';
+            $radiusSecret = $options['radius_secret'] ?? 'testing123';
+            $script = array_merge($script, $this->configureRADIUS($radiusIp, $radiusSecret, 'ppp'));
         }
         
         // Firewall and NAT

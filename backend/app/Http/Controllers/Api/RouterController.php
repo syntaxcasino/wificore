@@ -65,60 +65,60 @@ class RouterController extends Controller
             event(new \App\Events\RouterCreated($router));
 
             // Create VPN configuration SYNCHRONOUSLY so we can return the script immediately
-            $vpnService = app(\App\Services\VpnService::class);
-            $vpnConfig = $vpnService->createVpnConfiguration(
-                $router->tenant,
-                $router
-            );
+        $vpnService = app(\App\Services\VpnService::class);
+        $vpnConfig = $vpnService->createVpnConfiguration(
+            $router->tenant,
+            $router
+        );
 
-            // Update router with VPN IP
-            $router->update([
-                'vpn_ip' => $vpnConfig->client_ip,
-                'vpn_status' => 'pending',
-            ]);
+        // Update router with VPN IP
+        $router->update([
+            'vpn_ip' => $vpnConfig->client_ip,
+            'vpn_status' => 'pending',
+        ]);
 
-            // Generate VPN configuration script for MikroTik
-            $vpnScript = $this->generateVpnScript($vpnConfig, $router);
+        // Use the authoritative script from VpnService
+        $vpnScript = $vpnConfig->mikrotik_script;
 
-            // Store VPN script in router configs
-            RouterConfig::create([
-                'router_id' => $router->id,
-                'config_type' => 'vpn',
-                'config_content' => $vpnScript,
-            ]);
+        // Store VPN script in router configs
+        RouterConfig::create([
+            'router_id' => $router->id,
+            'config_type' => 'vpn',
+            'config_content' => $vpnScript,
+        ]);
 
-            Log::info('Router created with VPN configuration:', [
-                'router_id' => $router->id,
-                'name' => $router->name,
-                'ip_address' => $router->ip_address,
-                'vpn_ip' => $vpnConfig->client_ip,
-                'username' => $router->username,
-                'port' => $router->port,
-            ]);
+        Log::info('Router created with VPN configuration:', [
+            'router_id' => $router->id,
+            'name' => $router->name,
+            'ip_address' => $router->ip_address,
+            'vpn_ip' => $vpnConfig->client_ip,
+            'username' => $router->username,
+            'port' => $router->port,
+        ]);
 
-            return response()->json([
-                'id' => $router->id,
-                'name' => $router->name,
-                'ip_address' => $router->ip_address,
-                'config_token' => $router->config_token,
-                'connectivity_script' => $connectivityScript,
-                'vpn_script' => $vpnScript,
-                'vpn_ip' => $vpnConfig->client_ip,
-                'status' => $router->status,
-                'model' => $router->model,
-                'os_version' => $router->os_version,
-                'last_seen' => $router->last_seen,
-                'vpn_enabled' => true,
-                'vpn_status' => 'pending',
-            ], 201);
-        } catch (\Exception $e) {
-            Log::error('Failed to create router: ' . $e->getMessage(), [
-                'name' => $request->name,
-                'trace' => $e->getTraceAsString(),
-            ]);
-            return response()->json(['error' => 'Failed to create router: ' . $e->getMessage()], 500);
-        }
+        return response()->json([
+            'id' => $router->id,
+            'name' => $router->name,
+            'ip_address' => $router->ip_address,
+            'config_token' => $router->config_token,
+            'connectivity_script' => $connectivityScript,
+            'vpn_script' => $vpnScript,
+            'vpn_ip' => $vpnConfig->client_ip,
+            'status' => $router->status,
+            'model' => $router->model,
+            'os_version' => $router->os_version,
+            'last_seen' => $router->last_seen,
+            'vpn_enabled' => true,
+            'vpn_status' => 'pending',
+        ], 201);
+    } catch (\Exception $e) {
+        Log::error('Failed to create router: ' . $e->getMessage(), [
+            'name' => $request->name,
+            'trace' => $e->getTraceAsString(),
+        ]);
+        return response()->json(['error' => 'Failed to create router: ' . $e->getMessage()], 500);
     }
+}
 
     public function update(Request $request, Router $router)
     {
@@ -211,7 +211,15 @@ class RouterController extends Controller
     public function getRouterDetails(Router $router)
     {
         try {
-            $host = explode('/', $router->ip_address)[0];
+            // Use VPN IP if available, otherwise fall back to direct IP
+            $ip = $router->vpn_ip ?? $router->ip_address;
+            $host = explode('/', $ip)[0];
+            
+            Log::info('Connecting to router for details', [
+                'router_id' => $router->id,
+                'host' => $host,
+                'using_vpn' => !empty($router->vpn_ip)
+            ]);
             
             $client = new Client([
                 'host' => $host,
@@ -290,7 +298,9 @@ class RouterController extends Controller
     public function getRouterInterfaces(Router $router)
     {
         try {
-            $host = explode('/', $router->ip_address)[0];
+            // Use VPN IP if available, otherwise fall back to direct IP
+            $ip = $router->vpn_ip ?? $router->ip_address;
+            $host = explode('/', $ip)[0];
             
             $client = new Client([
                 'host' => $host,
@@ -1165,69 +1175,5 @@ private function generateServiceScript(array $interfaceAssignments, array $inter
         }
 
         return $ipList;
-    }
-
-    /**
-     * Generate VPN configuration script for MikroTik router
-     */
-    private function generateVpnScript($vpnConfig, $router)
-    {
-        // Use properties from VpnConfiguration model
-        $clientPrivateKey = $vpnConfig->client_private_key ?? '';
-        $serverPublicKey = $vpnConfig->server_public_key ?? '';
-        $serverEndpoint = $vpnConfig->server_endpoint ?? config('vpn.server_endpoint', 'vpn.example.com:51820');
-        $listenPort = $vpnConfig->listen_port ?? 51820;
-        $clientIp = $vpnConfig->client_ip ?? '';
-        $subnetCidr = $vpnConfig->subnet_cidr ?? '10.100.0.0/16';
-
-        // Extract network from CIDR
-        $networkParts = explode('/', $subnetCidr);
-        $network = $networkParts[0] ?? '10.100.0.0';
-        $timestamp = now()->toDateTimeString();
-
-        $script = <<<SCRIPT
-# ============================================================================
-# VPN CONFIGURATION - WireGuard Tunnel
-# ============================================================================
-# Router: {$router->name}
-# VPN IP: {$clientIp}
-# Generated: {$timestamp}
-# ============================================================================
-
-# Create WireGuard interface
-/interface wireguard
-add listen-port={$listenPort} mtu=1420 name=wireguard-traidnet private-key="{$clientPrivateKey}"
-
-# Add WireGuard peer (server)
-/interface wireguard peers
-add allowed-address=0.0.0.0/0 endpoint={$serverEndpoint} interface=wireguard-traidnet persistent-keepalive=25s public-key="{$serverPublicKey}"
-
-# Assign VPN IP address to WireGuard interface
-/ip address
-add address={$clientIp}/16 interface=wireguard-traidnet network={$network}
-
-# Add firewall rules to allow WireGuard
-/ip firewall filter
-add action=accept chain=input comment="Allow WireGuard" dst-port={$listenPort} protocol=udp place-before=0
-add action=accept chain=forward comment="Allow WireGuard traffic" in-interface=wireguard-traidnet place-before=0
-add action=accept chain=forward comment="Allow WireGuard traffic" out-interface=wireguard-traidnet place-before=0
-
-# Configure NAT for VPN traffic
-/ip firewall nat
-add action=masquerade chain=srcnat comment="VPN NAT" out-interface=wireguard-traidnet
-
-# Add route to management subnet via VPN
-/ip route
-add distance=1 dst-address=10.0.0.0/8 gateway=wireguard-traidnet comment="Management network via VPN"
-
-# ============================================================================
-# VPN CONFIGURATION COMPLETE
-# ============================================================================
-# Your router will now connect to the Traidnet VPN
-# Management IP: {$clientIp}
-# ============================================================================
-SCRIPT;
-
-        return $script;
     }
 }
