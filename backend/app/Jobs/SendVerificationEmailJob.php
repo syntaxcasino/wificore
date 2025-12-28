@@ -41,7 +41,7 @@ class SendVerificationEmailJob implements ShouldQueue
             
             // Use Mail facade with explicit mailer for better control
             Mail::mailer(config('mail.default'))->send(
-                'emails.verification-professional',
+                'emails.tenant-verification',
                 [
                     'registration' => $this->registration,
                     'verificationUrl' => $verificationUrl,

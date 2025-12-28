@@ -34,12 +34,18 @@ class TenantEmailVerification extends Notification implements ShouldQueue
     {
         $verificationUrl = $this->verificationUrl($notifiable);
 
+        // Map data to match what the view expects (TenantRegistration structure)
+        $registrationData = (object)[
+            'tenant_name' => $this->tenantName,
+            'tenant_slug' => $this->tenantSlug,
+            'tenant_email' => $notifiable->email,
+        ];
+
         return (new MailMessage)
             ->subject('Verify Your Email - WifiCore Registration')
             ->view('emails.tenant-verification', [
-                'registration' => $notifiable,
+                'registration' => $registrationData,
                 'verificationUrl' => $verificationUrl,
-                'tenantName' => $this->tenantName,
             ]);
     }
 
