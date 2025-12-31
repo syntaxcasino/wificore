@@ -35,6 +35,20 @@ class TenantVpnTunnelService
      */
     protected function createTenantTunnel(string $tenantId): TenantVpnTunnel
     {
+        $mode = config('vpn.mode', 'dedicated');
+
+        if ($mode === 'host') {
+            return $this->createHostTunnel($tenantId);
+        }
+
+        return $this->createDedicatedTunnel($tenantId);
+    }
+
+    /**
+     * Create dedicated VPN tunnel (original logic)
+     */
+    protected function createDedicatedTunnel(string $tenantId): TenantVpnTunnel
+    {
         // 1. Allocate subnet (10.X.0.0/16)
         $subnetIndex = $this->allocateSubnetIndex();
         $subnet = "10.{$subnetIndex}.0.0/16";
@@ -74,7 +88,7 @@ class TenantVpnTunnelService
             throw $e;
         }
 
-        Log::info('VPN tunnel created successfully', [
+        Log::info('VPN tunnel created successfully (Dedicated)', [
             'tenant_id' => $tenantId,
             'interface' => $interfaceName,
             'subnet' => $subnet,
@@ -82,6 +96,109 @@ class TenantVpnTunnelService
         ]);
 
         return $tunnel;
+    }
+
+    /**
+     * Create host (shared) VPN tunnel
+     */
+    protected function createHostTunnel(string $tenantId): TenantVpnTunnel
+    {
+        // 1. Allocate subnet (10.X.0.0/16)
+        $subnetIndex = $this->allocateSubnetIndex();
+        $subnet = "10.{$subnetIndex}.0.0/16";
+        
+        // Host mode uses fixed server IP and Interface
+        $serverIp = config('vpn.server_ip', '10.8.0.1');
+        $interfaceName = config('vpn.interface_name', 'wg0');
+        $listenPort = config('vpn.listen_port', 51830);
+        
+        // Get configured keys
+        $privateKey = config('vpn.server_private_key');
+        $publicKey = config('vpn.server_public_key');
+
+        if (empty($privateKey) || empty($publicKey)) {
+             // Fallback for dev/testing if not set, but log warning
+             Log::warning('VPN keys not configured for Host mode, generating temporary keys. This will cause issues if container restarts.');
+             $keys = $this->generateKeys();
+             $privateKey = $keys['private'];
+             $publicKey = $keys['public'];
+        }
+
+        // 2. Create tunnel record
+        // Note: multiple tenants will share interface_name, server_ip, keys, port
+        // But have unique subnet_cidr
+        $tunnel = TenantVpnTunnel::create([
+            'tenant_id' => $tenantId,
+            'interface_name' => $interfaceName,
+            'server_private_key' => $privateKey,
+            'server_public_key' => $publicKey,
+            'server_ip' => $serverIp,
+            'subnet_cidr' => $subnet,
+            'listen_port' => $listenPort,
+            'status' => 'active',
+        ]);
+
+        // 3. Ensure WireGuard interface is up (Idempotent)
+        try {
+            $this->ensureHostInterfaceUp($tunnel);
+        } catch (\Exception $e) {
+            Log::error('Failed to ensure Host WireGuard interface', [
+                'tenant_id' => $tenantId,
+                'interface' => $interfaceName,
+                'error' => $e->getMessage(),
+            ]);
+            $tunnel->update(['status' => 'error']);
+            throw $e;
+        }
+
+        Log::info('VPN tunnel created successfully (Host)', [
+            'tenant_id' => $tenantId,
+            'interface' => $interfaceName,
+            'subnet' => $subnet,
+        ]);
+
+        return $tunnel;
+    }
+
+    /**
+     * Read keys from existing WireGuard config file
+     */
+    protected function readKeysFromConfig(string $interface): ?array
+    {
+        $configPath = "/etc/wireguard/{$interface}.conf";
+        
+        if (!file_exists($configPath)) {
+            return null;
+        }
+
+        $content = file_get_contents($configPath);
+        $privateKey = null;
+        $publicKey = null;
+
+        // Parse PrivateKey
+        if (preg_match('/PrivateKey\s*=\s*(.*)/', $content, $matches)) {
+            $privateKey = trim($matches[1]);
+        }
+
+        // We can't derive Public Key from Private Key easily in PHP without libsodium or shell
+        // But if we have the private key, we can generate the public key
+        if ($privateKey && $this->isWireGuardInstalled()) {
+            try {
+                // Ensure we don't log the private key in error messages
+                $publicKey = trim(shell_exec("echo '{$privateKey}' | wg pubkey"));
+            } catch (\Exception $e) {
+                Log::error('Failed to derive public key from config: ' . $e->getMessage());
+            }
+        }
+
+        if ($privateKey && $publicKey) {
+            return [
+                'private' => $privateKey,
+                'public' => $publicKey,
+            ];
+        }
+
+        return null;
     }
 
     /**
@@ -220,9 +337,6 @@ class TenantVpnTunnelService
             // Start interface
             shell_exec("wg-quick up {$tunnel->interface_name} 2>&1");
 
-            // Enable on boot
-            shell_exec("systemctl enable wg-quick@{$tunnel->interface_name} 2>&1");
-
             Log::info('WireGuard interface created', [
                 'interface' => $tunnel->interface_name,
                 'config_path' => $configPath,
@@ -254,18 +368,20 @@ class TenantVpnTunnelService
         $postUp = "iptables -A FORWARD -i {$tunnel->interface_name} -o eth0 -j ACCEPT; " .
                   "iptables -A FORWARD -i {$tunnel->interface_name} -o {$tunnel->interface_name} -j ACCEPT; " .
                   "iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE; " .
+                  "ip route add 10.0.0.0/8 dev {$tunnel->interface_name}; " .
                   "iptables -t nat -A PREROUTING -i {$tunnel->interface_name} -p udp --dport 1812 -j DNAT --to-destination {$radiusHost}:1812; " .
                   "iptables -t nat -A PREROUTING -i {$tunnel->interface_name} -p udp --dport 1813 -j DNAT --to-destination {$radiusHost}:1813";
 
         $postDown = "iptables -D FORWARD -i {$tunnel->interface_name} -o eth0 -j ACCEPT; " .
                     "iptables -D FORWARD -i {$tunnel->interface_name} -o {$tunnel->interface_name} -j ACCEPT; " .
                     "iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE; " .
+                    "ip route del 10.0.0.0/8 dev {$tunnel->interface_name}; " .
                     "iptables -t nat -D PREROUTING -i {$tunnel->interface_name} -p udp --dport 1812 -j DNAT --to-destination {$radiusHost}:1812; " .
                     "iptables -t nat -D PREROUTING -i {$tunnel->interface_name} -p udp --dport 1813 -j DNAT --to-destination {$radiusHost}:1813";
 
         return <<<EOT
 [Interface]
-Address = {$tunnel->server_ip}/16
+Address = {$tunnel->server_ip}/24
 ListenPort = {$tunnel->listen_port}
 PrivateKey = {$privateKey}
 PostUp = {$postUp}

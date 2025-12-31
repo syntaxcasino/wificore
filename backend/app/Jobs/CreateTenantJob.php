@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Events\TenantCreated;
 use App\Jobs\AllocateTenantIpBlockJob;
 use App\Jobs\SendTenantCredentialsEmailJob;
+use App\Services\TenantVpnTunnelService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -44,13 +45,15 @@ class CreateTenantJob implements ShouldQueue
     /**
      * Execute the job.
      */
-    public function handle(): void
+    public function handle(TenantVpnTunnelService $vpnService): void
     {
         try {
             Log::info('CreateTenantJob started', [
                 'tenant_slug' => $this->tenantData['slug'],
                 'admin_username' => $this->adminData['username'],
             ]);
+
+            DB::beginTransaction();
             
             // Create tenant - Tenant model boot event will:
             // 1. Generate secure schema name (ts_xxxxxxxxxxxx)
@@ -97,7 +100,17 @@ class CreateTenantJob implements ShouldQueue
             
             // Wait a moment for schema creation to complete
             sleep(2);
-            
+
+            // Initialize VPN Tunnel for the tenant - STRICT: Fail job if VPN creation fails
+            $tunnel = $vpnService->getOrCreateTenantTunnel($tenant->id);
+            Log::info('Tenant VPN tunnel initialized', [
+                'tenant_id' => $tenant->id,
+                'interface' => $tunnel->interface_name,
+                'subnet' => $tunnel->subnet_cidr,
+            ]);
+
+            DB::commit();
+
             // Create admin user
             $adminUser = User::create([
                 'tenant_id' => $tenant->id,
@@ -168,6 +181,8 @@ class CreateTenantJob implements ShouldQueue
                 'username' => $this->adminData['username'],
                 'tenant_schema' => $tenant->schema_name,
             ]);
+
+            DB::commit();
             
             // Broadcast event
             broadcast(new TenantCreated($tenant, $adminUser))->toOthers();

@@ -11,6 +11,13 @@ use Illuminate\Support\Facades\DB;
 
 class AccessPointManager extends TenantAwareService
 {
+    protected GenieACSService $genieAcsService;
+
+    public function __construct(GenieACSService $genieAcsService)
+    {
+        $this->genieAcsService = $genieAcsService;
+    }
+
     /**
      * Discover access points on network (placeholder)
      * 
@@ -42,11 +49,13 @@ class AccessPointManager extends TenantAwareService
         try {
             $ap = AccessPoint::create([
                 'router_id' => $router->id,
+                'tenant_id' => $router->tenant_id,
                 'name' => $data['name'],
                 'vendor' => $data['vendor'],
                 'model' => $data['model'] ?? null,
                 'ip_address' => $data['ip_address'],
                 'mac_address' => $data['mac_address'] ?? null,
+                'serial_number' => $data['serial_number'] ?? null,
                 'management_protocol' => $data['management_protocol'] ?? 'snmp',
                 'credentials' => $data['credentials'] ?? null,
                 'location' => $data['location'] ?? null,
@@ -59,6 +68,28 @@ class AccessPointManager extends TenantAwareService
                 'router_id' => $router->id,
                 'vendor' => $ap->vendor,
             ]);
+
+            // Zero-Touch Onboarding: Provision in GenieACS if serial number or MAC is present
+            $deviceId = $data['serial_number'] ?? $data['mac_address'] ?? null;
+            if ($deviceId) {
+                // Ensure we have the correct identifier format for GenieACS if possible, 
+                // or just pass what we have and let the service handle/log it.
+                // We pass the router's tenant_id for isolation.
+                $provisioned = $this->genieAcsService->provisionDevice($deviceId, $router->tenant_id);
+                
+                if ($provisioned) {
+                    Log::info("Access point provisioned in GenieACS", [
+                        'ap_id' => $ap->id,
+                        'device_id' => $deviceId,
+                        'tenant_id' => $router->tenant_id
+                    ]);
+                } else {
+                    Log::warning("Failed to provision access point in GenieACS", [
+                        'ap_id' => $ap->id,
+                        'device_id' => $deviceId
+                    ]);
+                }
+            }
             
             return $ap;
         } catch (\Exception $e) {

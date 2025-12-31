@@ -70,7 +70,7 @@ echo -e "${GREEN}Public key: $(cat client-public.key) - Share this with your ser
 read -p "Enter tunnel name (e.g., myvpn): " TUNNEL_NAME
 read -p "Enter your assigned VPN IP (e.g., 10.0.0.2/32): " CLIENT_IP
 read -p "Enter server public key: " SERVER_PUBKEY
-read -p "Enter server endpoint (e.g., vpn.example.com:51820): " SERVER_ENDPOINT
+read -p "Enter server endpoint (e.g., vpn.example.com:51830): " SERVER_ENDPOINT
 read -p "Route all traffic? (y/n, default y): " ALL_TRAFFIC
 
 if [[ "$ALL_TRAFFIC" != "n" ]]; then

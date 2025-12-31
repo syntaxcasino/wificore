@@ -15,7 +15,7 @@ services:
       - PGID=1000
       - TZ=Africa/Nairobi
       - SERVERURL=auto  # Auto-detect public IP
-      - SERVERPORT=51820  # Base port, will use 51820-51920 for multiple tenants
+      - SERVERPORT=51830  # Base port, will use 51830-51930 for multiple tenants
       - PEERS=0  # Peers managed dynamically by Laravel
       - PEERDNS=auto
       - INTERNAL_SUBNET=10.100.0.0/16  # Base subnet, each tenant gets 10.X.0.0/16
@@ -25,8 +25,8 @@ services:
       - ./wireguard/config:/config
       - /lib/modules:/lib/modules:ro
     ports:
-      # Support up to 100 tenants (51820-51920)
-      - "51820-51920:51820-51920/udp"
+      # Support up to 100 tenants (51830-51930)
+      - "51830-51930:51830-51930/udp"
     sysctls:
       - net.ipv4.conf.all.src_valid_mark=1
       - net.ipv4.ip_forward=1

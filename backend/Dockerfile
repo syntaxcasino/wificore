@@ -60,6 +60,9 @@ RUN apk add --no-cache --virtual .build-deps \
       supervisor \
       sudo \
       bash \
+      wireguard-tools \
+      iptables \
+      iproute2 \
  && docker-php-ext-install -j$(nproc) pdo_pgsql sockets zip opcache \
  && pecl install redis \
  && docker-php-ext-enable redis \

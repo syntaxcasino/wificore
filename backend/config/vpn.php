@@ -12,13 +12,21 @@ return [
     |
     */
 
-    'server_endpoint' => env('VPN_SERVER_ENDPOINT', 'vpn.example.com:51820'),
+    'server_endpoint' => env('VPN_SERVER_ENDPOINT', 'vpn.example.com:51830'),
     
     'server_public_ip' => env('VPN_SERVER_PUBLIC_IP', null),
+
+    'server_ip' => env('VPN_SERVER_IP', '10.8.0.1'),
     
-    'listen_port' => env('VPN_LISTEN_PORT', 51820),
+    'listen_port' => env('VPN_LISTEN_PORT', 51830),
     
     'interface_name' => env('VPN_INTERFACE_NAME', 'wg0'),
+
+    'server_private_key' => env('VPN_SERVER_PRIVATE_KEY'),
+
+    'server_public_key' => env('VPN_SERVER_PUBLIC_KEY'),
+
+    'mode' => env('VPN_MODE', 'dedicated'), // 'dedicated' (per tenant) or 'host' (shared)
     
     /*
     |--------------------------------------------------------------------------

@@ -25,6 +25,7 @@ class AccessPoint extends Model
         'model',
         'ip_address',
         'mac_address',
+        'serial_number',
         'management_protocol',
         'credentials',
         'location',

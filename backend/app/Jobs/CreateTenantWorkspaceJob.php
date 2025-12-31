@@ -8,6 +8,9 @@ use App\Models\TenantRegistration;
 use App\Events\TenantEmailVerified;
 use App\Events\TenantWorkspaceCreating;
 use App\Events\TenantWorkspaceCreated;
+use App\Jobs\AllocateTenantIpBlockJob;
+use App\Jobs\SendCredentialsEmailJob;
+use App\Services\TenantVpnTunnelService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -165,6 +168,17 @@ class CreateTenantWorkspaceJob implements ShouldQueue
                     'error' => $e->getMessage()
                 ]);
             }
+
+            // Wait a moment for schema creation to complete (boot method handles this)
+            sleep(2);
+
+            // Initialize VPN Tunnel for the tenant - STRICT: Fail job if VPN creation fails
+            $tunnel = $vpnService->getOrCreateTenantTunnel($tenant->id);
+            Log::info('Tenant VPN tunnel initialized', [
+                'tenant_id' => $tenant->id,
+                'interface' => $tunnel->interface_name,
+                'subnet' => $tunnel->subnet_cidr,
+            ]);
 
             DB::commit();
 

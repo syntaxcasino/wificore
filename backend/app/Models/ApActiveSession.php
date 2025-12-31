@@ -5,10 +5,11 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use App\Traits\HasUuid;
+use App\Traits\BelongsToTenant;
 
 class ApActiveSession extends Model
 {
-    use HasFactory, HasUuid;
+    use HasFactory, HasUuid, BelongsToTenant;
 
     protected $fillable = [
         'access_point_id',

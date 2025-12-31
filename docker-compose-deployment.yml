@@ -73,6 +73,24 @@ services:
       CACHE_DRIVER: redis
       SESSION_DRIVER: redis
       TZ: Africa/Nairobi
+      # Multitenancy Configuration
+      MULTITENANCY_MODE: schema
+      AUTO_CREATE_TENANT_SCHEMA: true
+      AUTO_MIGRATE_TENANT_SCHEMA: true
+      # VPN Configuration
+      VPN_MODE: host
+      VPN_INTERFACE: wg0
+      VPN_SERVER_IP: 10.8.0.1
+      VPN_SERVER_PORT: 51830
+      VPN_SERVER_ENDPOINT: ${VPN_SERVER_ENDPOINT}
+      VPN_SUBNET_BASE: 10.0.0.0/8
+    cap_add:
+      - NET_ADMIN
+    sysctls:
+      - net.ipv4.ip_forward=1
+      - net.ipv4.conf.all.src_valid_mark=1
+    # ports:
+    #   - "51830:51830/udp" # Removed to avoid conflict with Host WireGuard
     depends_on:
       postgres:
         condition: service_healthy
@@ -94,6 +112,8 @@ services:
     volumes:
       - laravel-storage:/var/www/html/storage
       - laravel-logs:/var/www/html/storage/logs
+      - /etc/wireguard:/etc/wireguard
+
 
   postgres:
     container_name: traidnet-postgres
@@ -138,6 +158,91 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
+
+  mongo:
+    container_name: traidnet-mongo
+    image: mongo:5.0
+    restart: unless-stopped
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_USERNAME:-admin}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_PASSWORD:-password}
+    networks:
+      - traidnet-network
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongo localhost:27017/test --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  genieacs-cwmp:
+    container_name: traidnet-genieacs-cwmp
+    image: drumsergio/genieacs:1.2.13
+    restart: unless-stopped
+    command: /opt/genieacs/dist/bin/genieacs-cwmp
+    environment:
+      - GENIEACS_MONGODB_CONNECTION_URL=mongodb://${MONGO_USERNAME:-admin}:${MONGO_PASSWORD:-password}@traidnet-mongo:27017/genieacs?authSource=admin
+      - GENIEACS_CWMP_PORT=7547
+      - GENIEACS_UI_JWT_SECRET=${GENIEACS_UI_JWT_SECRET:-secret}
+    depends_on:
+      mongo:
+        condition: service_healthy
+    networks:
+      - traidnet-network
+    ports:
+      - "7547:7547"
+
+  genieacs-nbi:
+    container_name: traidnet-genieacs-nbi
+    image: drumsergio/genieacs:1.2.13
+    restart: unless-stopped
+    command: /opt/genieacs/dist/bin/genieacs-nbi
+    environment:
+      - GENIEACS_MONGODB_CONNECTION_URL=mongodb://${MONGO_USERNAME:-admin}:${MONGO_PASSWORD:-password}@traidnet-mongo:27017/genieacs?authSource=admin
+      - GENIEACS_NBI_PORT=7557
+      - GENIEACS_UI_JWT_SECRET=${GENIEACS_UI_JWT_SECRET:-secret}
+    depends_on:
+      mongo:
+        condition: service_healthy
+    networks:
+      - traidnet-network
+    ports:
+      - "7557:7557"
+
+  genieacs-fs:
+    container_name: traidnet-genieacs-fs
+    image: drumsergio/genieacs:1.2.13
+    restart: unless-stopped
+    command: /opt/genieacs/dist/bin/genieacs-fs
+    environment:
+      - GENIEACS_MONGODB_CONNECTION_URL=mongodb://${MONGO_USERNAME:-admin}:${MONGO_PASSWORD:-password}@traidnet-mongo:27017/genieacs?authSource=admin
+      - GENIEACS_FS_PORT=7567
+      - GENIEACS_UI_JWT_SECRET=${GENIEACS_UI_JWT_SECRET:-secret}
+    depends_on:
+      mongo:
+        condition: service_healthy
+    networks:
+      - traidnet-network
+    ports:
+      - "7567:7567"
+
+  genieacs-ui:
+    container_name: traidnet-genieacs-ui
+    image: drumsergio/genieacs:1.2.13
+    restart: unless-stopped
+    command: /opt/genieacs/dist/bin/genieacs-ui
+    environment:
+      - GENIEACS_MONGODB_CONNECTION_URL=mongodb://${MONGO_USERNAME:-admin}:${MONGO_PASSWORD:-password}@traidnet-mongo:27017/genieacs?authSource=admin
+      - GENIEACS_UI_PORT=3000
+      - GENIEACS_UI_JWT_SECRET=${GENIEACS_UI_JWT_SECRET:-secret}
+    depends_on:
+      mongo:
+        condition: service_healthy
+    networks:
+      - traidnet-network
+    ports:
+      - "3000:3000"
 
   redis:
     container_name: traidnet-redis
@@ -236,6 +341,10 @@ volumes:
     name: traidnet-postgres-data
   redis_data:
     name: traidnet-redis-data
+  mongo_data:
+    name: traidnet-mongo-data
+  wireguard_config:
+    name: traidnet-wireguard-config
   laravel-storage:
   laravel-logs:
 

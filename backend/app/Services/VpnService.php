@@ -208,8 +208,8 @@ add interface={$interfaceName} \\
 
 # Step 4: Add route through VPN (optional - for management traffic only)
 # Uncomment if you want all management traffic through VPN
-# /ip/route
-# add dst-address=10.0.0.0/8 gateway={$interfaceName}
+/ip/route
+add dst-address=10.0.0.0/8 gateway={$interfaceName}
 
 # Step 5: Add firewall rule to allow VPN traffic
 /ip/firewall/filter
@@ -321,7 +321,7 @@ SCRIPT;
     private function getEndpointPort(string $endpoint): int
     {
         $parts = explode(':', $endpoint);
-        return isset($parts[1]) ? (int)$parts[1] : 51820;
+        return isset($parts[1]) ? (int)$parts[1] : 51830;
     }
 
     private function formatDnsServers(?array $servers): string

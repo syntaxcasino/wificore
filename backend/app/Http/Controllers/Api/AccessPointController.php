@@ -52,6 +52,7 @@ class AccessPointController extends Controller
                 'model' => 'nullable|string|max:100',
                 'ip_address' => 'required|ip',
                 'mac_address' => 'nullable|string|max:17',
+                'serial_number' => 'nullable|string|max:100',
                 'management_protocol' => 'nullable|string|in:snmp,ssh,api,telnet,http',
                 'credentials' => 'nullable|array',
                 'location' => 'nullable|string|max:255',
