@@ -49,7 +49,7 @@ class AccessPointManager extends TenantAwareService
         try {
             $ap = AccessPoint::create([
                 'router_id' => $router->id,
-                'tenant_id' => $router->tenant_id,
+                // tenant_id removed - schema isolation provides tenancy
                 'name' => $data['name'],
                 'vendor' => $data['vendor'],
                 'model' => $data['model'] ?? null,
@@ -72,20 +72,15 @@ class AccessPointManager extends TenantAwareService
             // Zero-Touch Onboarding: Provision in GenieACS if serial number or MAC is present
             $deviceId = $data['serial_number'] ?? $data['mac_address'] ?? null;
             if ($deviceId) {
-                // Ensure we have the correct identifier format for GenieACS if possible, 
-                // or just pass what we have and let the service handle/log it.
-                // We pass the router's tenant_id for isolation.
-                
                 // Tag with AP ID for granular tracking
                 $extraTags = ["ap_id:{$ap->id}"];
                 
-                $provisioned = $this->genieAcsService->provisionDevice($deviceId, $router->tenant_id, $extraTags);
+                $provisioned = $this->genieAcsService->provisionDevice($deviceId, $ap->id, $extraTags);
                 
                 if ($provisioned) {
                     Log::info("Access point provisioned in GenieACS", [
                         'ap_id' => $ap->id,
-                        'device_id' => $deviceId,
-                        'tenant_id' => $router->tenant_id
+                        'device_id' => $deviceId
                     ]);
                 } else {
                     Log::warning("Failed to provision access point in GenieACS", [
