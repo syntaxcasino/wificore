@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Models\Tenant;
 use App\Services\SubscriptionManager;
 use App\Traits\TenantAwareJob;
 use Illuminate\Bus\Queueable;
@@ -32,6 +33,19 @@ class CheckExpiredSubscriptionsJob implements ShouldQueue
      */
     public function handle(SubscriptionManager $subscriptionManager): void
     {
+        // If no tenant ID is set, this is the main scheduler job.
+        // We need to dispatch a job for each active tenant.
+        if (!$this->tenantId) {
+            $tenants = Tenant::where('is_active', true)->get();
+            
+            foreach ($tenants as $tenant) {
+                self::dispatch($tenant->id);
+            }
+            
+            Log::info("Dispatched check expired subscriptions jobs for " . $tenants->count() . " tenants");
+            return;
+        }
+
         $this->executeInTenantContext(function() use ($subscriptionManager) {
             Log::info('CheckExpiredSubscriptionsJob: Starting', [
                 'tenant_id' => $this->tenantId,

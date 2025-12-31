@@ -20,6 +20,40 @@ class AccessPointController extends Controller
     }
 
     /**
+     * Get all access points for the current tenant
+     */
+    public function list(Request $request): JsonResponse
+    {
+        try {
+            $query = AccessPoint::with(['router', 'activeSessions']);
+            
+            // Search functionality
+            if ($request->has('search')) {
+                $search = $request->search;
+                $query->where(function($q) use ($search) {
+                    $q->where('name', 'like', "%{$search}%")
+                      ->orWhere('ip_address', 'like', "%{$search}%")
+                      ->orWhere('mac_address', 'like', "%{$search}%")
+                      ->orWhere('serial_number', 'like', "%{$search}%");
+                });
+            }
+            
+            $accessPoints = $query->get();
+
+            return response()->json([
+                'success' => true,
+                'data' => $accessPoints,
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to get access points',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
      * Get all access points for a router
      */
     public function index(Router $router): JsonResponse

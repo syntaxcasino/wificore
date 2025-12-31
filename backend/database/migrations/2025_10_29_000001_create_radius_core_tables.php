@@ -37,6 +37,44 @@ return new class extends Migration
             });
         }
 
+        if (!Schema::hasTable('radusergroup')) {
+            Schema::create('radusergroup', function (Blueprint $table) {
+                $table->increments('id');
+                $table->string('username', 64)->default('');
+                $table->string('groupname', 64)->default('');
+                $table->integer('priority')->default(1);
+                $table->timestamp('created_at')->useCurrent();
+                
+                $table->index(['username', 'priority']);
+            });
+        }
+
+        if (!Schema::hasTable('radgroupcheck')) {
+            Schema::create('radgroupcheck', function (Blueprint $table) {
+                $table->increments('id');
+                $table->string('groupname', 64)->default('');
+                $table->string('attribute', 64)->default('');
+                $table->char('op', 2)->default('==');
+                $table->string('value', 253)->default('');
+                $table->timestamp('created_at')->useCurrent();
+                
+                $table->index(['groupname', 'attribute']);
+            });
+        }
+
+        if (!Schema::hasTable('radgroupreply')) {
+            Schema::create('radgroupreply', function (Blueprint $table) {
+                $table->increments('id');
+                $table->string('groupname', 64)->default('');
+                $table->string('attribute', 64)->default('');
+                $table->char('op', 2)->default('=');
+                $table->string('value', 253)->default('');
+                $table->timestamp('created_at')->useCurrent();
+                
+                $table->index(['groupname', 'attribute']);
+            });
+        }
+
         if (!Schema::hasTable('radacct')) {
             Schema::create('radacct', function (Blueprint $table) {
                 $table->bigIncrements('radacctid');

@@ -586,6 +586,9 @@ Route::middleware(['auth:sanctum', 'role:admin', 'user.active', 'tenant.context'
     // NEW: STANDALONE ACCESS POINT ROUTES
     // =========================================================================
     Route::prefix('access-points')->name('api.access-points.')->group(function () {
+        // List all access points for tenant
+        Route::get('/', [AccessPointController::class, 'list'])->name('list');
+        
         // Get specific access point
         Route::get('/{accessPoint}', [AccessPointController::class, 'show'])->name('show');
         Route::put('/{accessPoint}', [AccessPointController::class, 'update'])->name('update');

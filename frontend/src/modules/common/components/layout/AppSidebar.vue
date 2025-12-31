@@ -252,9 +252,9 @@
               Routers
             </router-link>
             <router-link
-              to="/dashboard/routers/api-status"
+              to="/dashboard/routers/access-points"
               class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
-              :class="route.path === '/dashboard/routers/api-status' ? 'text-white font-medium' : 'text-gray-500'"
+              :class="route.path === '/dashboard/routers/access-points' ? 'text-white font-medium' : 'text-gray-500'"
               @click="isMobile && $emit('close-sidebar')"
             >
               Access Points

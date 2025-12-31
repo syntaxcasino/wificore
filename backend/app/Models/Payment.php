@@ -11,15 +11,10 @@ use App\Models\Scopes\TenantScope;
 class Payment extends Model
 {
     /** @use HasFactory<\Database\Factories\PaymentFactory> */
-    use HasFactory, HasUuid, BelongsToTenant;
-
-    protected static function booted(): void
-    {
-        static::addGlobalScope(new TenantScope());
-    }
+    use HasFactory, HasUuid;
 
     protected $fillable = [
-        'tenant_id',
+        // tenant_id removed for schema isolation
         'user_id',
         'mac_address',
         'phone_number',
@@ -30,6 +25,7 @@ class Payment extends Model
         'status',
         'payment_method',
         'callback_response',
+        'mpesa_receipt',
     ];
 
     protected $casts = [
@@ -45,6 +41,7 @@ class Payment extends Model
      */
     public function user()
     {
+        // Users are in public schema
         return $this->belongsTo(User::class);
     }
 
@@ -53,6 +50,7 @@ class Payment extends Model
      */
     public function package()
     {
+        // Packages are in public schema
         return $this->belongsTo(Package::class);
     }
 
@@ -61,6 +59,7 @@ class Payment extends Model
      */
     public function router()
     {
+        // Routers are in tenant schema
         return $this->belongsTo(Router::class);
     }
 

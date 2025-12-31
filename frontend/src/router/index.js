@@ -221,6 +221,7 @@ const routes = [
         children: [
           //{ path: '', redirect: 'mikrotik' },
           { path: 'mikrotik', name: 'routers.mikrotik', component: MikrotikList },
+          { path: 'access-points', name: 'routers.access-points', component: () => import('@/modules/tenant/views/dashboard/routers/AccessPointsView.vue') },
           { path: 'add', name: 'routers.add', component: AddRouter },
           { path: 'api-status', name: 'routers.api-status', component: ApiConnectionStatus },
           { path: 'backup', name: 'routers.backup', component: BackupConfigurations },

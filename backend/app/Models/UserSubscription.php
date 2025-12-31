@@ -33,6 +33,7 @@ class UserSubscription extends Model
     ];
 
     protected $casts = [
+        'id' => 'string',
         'start_time' => 'datetime',
         'end_time' => 'datetime',
         'data_used_mb' => 'integer',
@@ -46,6 +47,19 @@ class UserSubscription extends Model
         'last_reminder_sent_at' => 'datetime',
         'reminder_count' => 'integer',
     ];
+
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected static function boot()
+    {
+        parent::boot();
+        static::creating(function ($model) {
+            if (empty($model->{$model->getKeyName()})) {
+                $model->{$model->getKeyName()} = (string) \Illuminate\Support\Str::uuid();
+            }
+        });
+    }
 
     /**
      * Get the user that owns the subscription

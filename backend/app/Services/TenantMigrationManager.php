@@ -21,9 +21,11 @@ class TenantMigrationManager
             
             // Get all tenant migration files
             $migrationFiles = $this->getTenantMigrationFiles();
+            Log::info("Found " . count($migrationFiles) . " migration files", ['files' => array_map('basename', $migrationFiles)]);
             
             // Get already executed migrations for this tenant
             $executedMigrations = $this->getExecutedMigrations($tenant);
+            Log::info("Found " . count($executedMigrations) . " executed migrations", ['executed' => $executedMigrations]);
             
             $batch = $this->getNextBatchNumber($tenant);
             
@@ -32,8 +34,11 @@ class TenantMigrationManager
                 
                 // Skip if already executed
                 if (in_array($migrationName, $executedMigrations)) {
+                    Log::info("Skipping executed migration: {$migrationName}");
                     continue;
                 }
+                
+                Log::info("Running migration: {$migrationName}");
                 
                 // Run the migration
                 $this->executeMigration($migrationFile, $tenant, $batch);
@@ -83,6 +88,12 @@ class TenantMigrationManager
                 ]);
             }
             
+            Log::info("Creating schema for tenant", [
+                'tenant_id' => $tenant->id,
+                'schema_name' => $tenant->schema_name,
+                'tenant_name' => $tenant->name
+            ]);
+            
             // Create the schema
             DB::statement("CREATE SCHEMA IF NOT EXISTS {$tenant->schema_name}");
             
@@ -96,6 +107,11 @@ class TenantMigrationManager
             DB::statement("ALTER DEFAULT PRIVILEGES IN SCHEMA {$tenant->schema_name} GRANT ALL ON TABLES TO {$dbUser}");
             DB::statement("ALTER DEFAULT PRIVILEGES IN SCHEMA {$tenant->schema_name} GRANT ALL ON SEQUENCES TO {$dbUser}");
             
+            Log::info("Schema created and permissions granted, running migrations", [
+                'tenant_id' => $tenant->id,
+                'schema_name' => $tenant->schema_name
+            ]);
+            
             // Run migrations
             $success = $this->runMigrationsForTenant($tenant);
             
@@ -106,13 +122,28 @@ class TenantMigrationManager
                     'schema_created_at' => now()
                 ]);
                 
-                Log::info("Successfully set up schema for tenant: {$tenant->name}");
+                Log::info("Successfully set up schema for tenant: {$tenant->name}", [
+                    'tenant_id' => $tenant->id,
+                    'schema_name' => $tenant->schema_name
+                ]);
+            } else {
+                Log::error("Migration execution failed for tenant", [
+                    'tenant_id' => $tenant->id,
+                    'schema_name' => $tenant->schema_name,
+                    'tenant_name' => $tenant->name
+                ]);
             }
             
             return $success;
             
         } catch (\Exception $e) {
-            Log::error("Failed to setup tenant schema for {$tenant->name}: " . $e->getMessage());
+            Log::error("Failed to setup tenant schema", [
+                'tenant_id' => $tenant->id,
+                'tenant_name' => $tenant->name,
+                'schema_name' => $tenant->schema_name ?? 'not_set',
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
             return false;
         }
     }

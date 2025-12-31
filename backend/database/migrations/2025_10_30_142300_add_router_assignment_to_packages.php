@@ -18,41 +18,7 @@ return new class extends Migration
             $table->index('is_global');
         });
 
-        // Create package_router pivot table for specific router assignments
-        Schema::create('package_router', function (Blueprint $table) {
-            $table->uuid('id')->primary();
-            $table->uuid('package_id');
-            $table->uuid('router_id');
-            $table->uuid('tenant_id'); // For faster queries and data integrity
-            $table->timestamps();
-
-            // Foreign keys
-            $table->foreign('package_id')
-                ->references('id')
-                ->on('packages')
-                ->onDelete('cascade');
-            
-            $table->foreign('router_id')
-                ->references('id')
-                ->on('routers')
-                ->onDelete('cascade');
-            
-            $table->foreign('tenant_id')
-                ->references('id')
-                ->on('tenants')
-                ->onDelete('cascade');
-
-            // Indexes
-            $table->index('package_id');
-            $table->index('router_id');
-            $table->index('tenant_id');
-            
-            // Unique constraint - a package can only be assigned once to a router
-            $table->unique(['package_id', 'router_id']);
-        });
-
-        // Note: router_id column already exists in payments table from previous migration
-        // No need to add it again
+        // package_router table creation removed - now in tenant schema
     }
 
     /**
@@ -60,11 +26,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        // Note: Don't drop router_id from payments table as it was added by a previous migration
-        
-        // Drop package_router pivot table
-        Schema::dropIfExists('package_router');
-
         // Drop is_global column from packages
         Schema::table('packages', function (Blueprint $table) {
             $table->dropColumn('is_global');

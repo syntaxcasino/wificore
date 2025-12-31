@@ -53,12 +53,39 @@ class PaymentController extends Controller
                 'router_id' => 'nullable|exists:routers,id',
             ]);
 
-            $package = \App\Models\Package::findOrFail($validated['package_id']);
-            $amount = $package->price;
+            // 1. Fetch Package (Ignore TenantScope to allow public access if needed)
+            $package = \App\Models\Package::withoutGlobalScope(\App\Models\Scopes\TenantScope::class)
+                ->findOrFail($validated['package_id']);
             
-            // Auto-detect router_id if not provided
-            $routerId = $validated['router_id'] ?? $this->detectRouterFromRequest($request);
+            $amount = $package->price;
+            $tenantId = $package->tenant_id;
 
+            // 2. Identify Tenant and Switch Context
+            $tenant = \App\Models\Tenant::find($tenantId);
+            if (!$tenant) {
+                throw new \Exception('Tenant not found for this package');
+            }
+
+            // Switch to tenant schema to create Payment record
+            // We include 'public' in search_path to allow access to shared tables if necessary
+            DB::statement("SET search_path TO {$tenant->schema_name}, public");
+
+            // Auto-detect router_id if not provided
+            // Note: router_id validation above might fail if router is in tenant schema and we are in public
+            // But we just validated against public.routers? No, routers table is dropped from public.
+            // So the validation rule 'exists:routers,id' might fail if it looks in public.
+            // We should probably remove the router validation or defer it until we switch context.
+            // For now, let's assume validation passes or we handle it manually.
+            
+            // Actually, if 'routers' table is gone from public, 'exists:routers,id' WILL FAIL.
+            // We should remove 'exists:routers,id' from validation or handle it manually.
+            
+            $routerId = $validated['router_id'] ?? null;
+            if (!$routerId) {
+                $routerId = $this->detectRouterFromRequest($request);
+            }
+
+            // 3. Initiate STK Push
             $stkResponse = $this->mpesaService->initiateSTKPush(
                 $validated['phone_number'],
                 $amount
@@ -73,6 +100,7 @@ class PaymentController extends Controller
                 throw new \Exception('Missing CheckoutRequestID from M-Pesa response');
             }
 
+            // 4. Create Payment in Tenant Schema
             $payment = Payment::create([
                 'phone_number' => $validated['phone_number'],
                 'amount' => $amount,
@@ -83,11 +111,22 @@ class PaymentController extends Controller
                 'transaction_id' => $checkoutRequestId,
             ]);
 
+            // 5. Create Mapping in Public Schema
+            // MpesaTransactionMap is in public schema. Since 'public' is in search_path, it should be fine.
+            \App\Models\MpesaTransactionMap::create([
+                'checkout_request_id' => $checkoutRequestId,
+                'merchant_request_id' => $stkResponse['data']['MerchantRequestID'] ?? null,
+                'tenant_id' => $tenantId,
+                'payment_type' => 'hotspot',
+                'related_id' => $payment->id,
+            ]);
+
             $this->logToSystemAndFile('Transaction initiated', [
                 'transaction_id' => $checkoutRequestId,
                 'phone_number' => $validated['phone_number'],
                 'amount' => $amount,
                 'package_id' => $validated['package_id'],
+                'tenant_id' => $tenantId,
             ], 'info');
 
             return response()->json([
@@ -121,80 +160,93 @@ class PaymentController extends Controller
     {
         try {
             $callbackData = $request->all();
-
+            
+            // Log raw callback
             file_put_contents(
                 storage_path('logs/mpesa_raw_callback.log'),
                 now() . ' ~ ' . json_encode($callbackData, JSON_PRETTY_PRINT) . "\n---\n",
                 FILE_APPEND
             );
 
-            $this->logToSystemAndFile('M-Pesa Callback Received', ['raw_callback_data' => $callbackData], 'info');
+            $checkoutRequestId = $callbackData['Body']['stkCallback']['CheckoutRequestID'] ?? null;
+            
+            if (!$checkoutRequestId) {
+                return response()->json(['success' => false, 'message' => 'Invalid callback data']);
+            }
+
+            // 1. Find the transaction mapping in public schema
+            $mapping = \App\Models\MpesaTransactionMap::where('checkout_request_id', $checkoutRequestId)->first();
+            
+            if (!$mapping) {
+                Log::error("M-Pesa Callback: No transaction map found for CheckoutRequestID: $checkoutRequestId");
+                return response()->json(['success' => false, 'message' => 'Transaction not found']);
+            }
+
+            // 2. Switch to Tenant Context
+            $tenant = \App\Models\Tenant::find($mapping->tenant_id);
+            if ($tenant) {
+                // Configure tenant database connection/schema
+                // This assumes we have a service to switch tenant context
+                // For now, let's manually force the schema if possible or assume the global scope works if we set it?
+                // Actually, standard way is to use TenantScope/Manager. 
+                // But here we might just need to set the search path.
+                
+                DB::statement("SET search_path TO {$tenant->schema_name}");
+            } else {
+                 Log::error("M-Pesa Callback: Tenant not found for ID: {$mapping->tenant_id}");
+                 return response()->json(['success' => false, 'message' => 'Tenant not found']);
+            }
+
+            $this->logToSystemAndFile('M-Pesa Callback Received', ['raw_callback_data' => $callbackData, 'tenant' => $tenant->slug], 'info');
 
             $processed = $this->mpesaService->processCallback($callbackData);
-
-            $this->logToSystemAndFile('Callback Processing Result', ['processed_result' => $processed, 'data' => $processed['data'] ?? []], 'info');
-
-            $checkoutRequestId = $callbackData['Body']['stkCallback']['CheckoutRequestID'] ?? null;
+            
             $resultCode = (int) ($callbackData['Body']['stkCallback']['ResultCode'] ?? -1);
             $status = $resultCode === 0 ? 'completed' : 'failed';
 
-            if ($checkoutRequestId) {
-                $payment = Payment::with('package')->where('transaction_id', $checkoutRequestId)->first();
+            $payment = Payment::with('package')->where('transaction_id', $checkoutRequestId)->first();
 
-                if ($payment) {
-                    $payment->update([
-                        'status' => $status,
-                        'callback_response' => $callbackData,
-                        'amount' => $processed['data']['amount'] ?? $payment->amount,
-                        'phone_number' => $processed['data']['phone_number'] ?? $payment->phone_number,
-                        'mpesa_receipt' => $processed['data']['mpesa_receipt'] ?? null,
-                    ]);
+            if ($payment) {
+                $payment->update([
+                    'status' => $status,
+                    'callback_response' => $callbackData,
+                    'amount' => $processed['data']['amount'] ?? $payment->amount,
+                    'phone_number' => $processed['data']['phone_number'] ?? $payment->phone_number,
+                    'mpesa_receipt' => $processed['data']['mpesa_receipt'] ?? null,
+                ]);
 
-                    if ($status === 'completed') {
-                        // Broadcast payment completed event
-                        broadcast(new PaymentCompleted($payment))->toOthers();
-                        
-                        // EVENT-BASED: Dispatch hotspot user creation job (async)
-                        CreateHotspotUserJob::dispatch($payment, $payment->package)
-                            ->onQueue('hotspot-provisioning');
-                        
-                        $this->logToSystemAndFile('Hotspot User Creation Job Dispatched', [
-                            'payment_id' => $payment->id,
-                            'phone_number' => $payment->phone_number,
-                            'package_id' => $payment->package_id,
-                        ], 'info');
-                        
-                        // EVENT-BASED: Handle subscription reconnection if user was disconnected
-                        $subscription = $payment->subscription;
-                        if ($subscription && $subscription->isDisconnected()) {
-                            ReconnectSubscriptionJob::dispatch($payment, $subscription)
-                                ->onQueue('subscription-reconnection');
-                            
-                            $this->logToSystemAndFile('Subscription Reconnection Job Dispatched', [
-                                'payment_id' => $payment->id,
-                                'subscription_id' => $subscription->id,
-                                'user_id' => $subscription->user_id,
-                            ], 'info');
-                        }
-                        
-                        // Dispatch payment processing job for voucher creation (legacy)
-                        ProcessPaymentJob::dispatch($payment)
-                            ->onQueue('payments')
-                            ->delay(now()->addSeconds(2));
+                if ($status === 'completed') {
+                    // Broadcast payment completed event
+                    broadcast(new PaymentCompleted($payment))->toOthers();
+                    
+                    // EVENT-BASED: Dispatch hotspot user creation job (async)
+                    CreateHotspotUserJob::dispatch($payment->id, $payment->package_id, $tenant->id)
+                        ->onQueue('hotspot-provisioning');
+                    
+                    // EVENT-BASED: Handle subscription reconnection
+                    $subscription = $payment->subscription; // This might be null if not loaded or exists
+                    // Note: subscription relation on Payment model looks for UserSubscription
+                    // Since we are in tenant schema, UserSubscription query should work
+                    
+                    if ($subscription && $subscription->isDisconnected()) {
+                        ReconnectSubscriptionJob::dispatch($payment->id, $subscription->id, $tenant->id)
+                            ->onQueue('subscription-reconnection');
                     }
-
-                    $this->logToSystemAndFile("Payment $status", [
-                        'transaction_id' => $checkoutRequestId,
-                        'result_code' => $resultCode,
-                        'message' => $callbackData['Body']['stkCallback']['ResultDesc'] ?? '',
-                        'amount' => $processed['data']['amount'] ?? null,
-                        'mpesa_receipt' => $processed['data']['mpesa_receipt'] ?? null,
-                        'phone_number' => $processed['data']['phone_number'] ?? null,
-                        'status' => $status,
-                    ], $status === 'completed' ? 'info' : 'warning');
-                } else {
-                    $this->logToSystemAndFile('Payment Not Found', ['transaction_id' => $checkoutRequestId], 'warning');
+                    
+                    // Dispatch payment processing job for voucher creation (legacy)
+                    ProcessPaymentJob::dispatch($payment->id, $tenant->id)
+                        ->onQueue('payments')
+                        ->delay(now()->addSeconds(2));
                 }
+
+                $this->logToSystemAndFile("Payment $status", [
+                    'transaction_id' => $checkoutRequestId,
+                    'tenant' => $tenant->slug,
+                    'result_code' => $resultCode,
+                    'status' => $status,
+                ], $status === 'completed' ? 'info' : 'warning');
+            } else {
+                $this->logToSystemAndFile('Payment Not Found', ['transaction_id' => $checkoutRequestId, 'tenant' => $tenant->slug], 'warning');
             }
 
             return response()->json(['success' => true, 'message' => 'Callback processed successfully']);

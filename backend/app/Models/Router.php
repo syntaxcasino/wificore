@@ -10,18 +10,15 @@ use App\Models\Scopes\TenantScope;
 
 class Router extends Model
 {
-    use HasFactory, HasUuid, BelongsToTenant;
+    use HasFactory, HasUuid;
 
-    /**
-     * The "booted" method of the model.
-     */
     protected static function booted(): void
     {
-        static::addGlobalScope(new TenantScope());
+        // No global scope needed for tenant-specific tables
     }
 
     protected $fillable = [
-        'tenant_id',
+        // tenant_id removed for schema isolation
         'name',
         'ip_address',
         'vpn_ip',

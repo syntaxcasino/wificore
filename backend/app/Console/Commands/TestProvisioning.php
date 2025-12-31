@@ -37,7 +37,7 @@ class TestProvisioning extends Command
             return 1;
         }
         
-        RouterProvisioningJob::dispatch($router, [
+        RouterProvisioningJob::dispatch($router->id, $router->tenant_id, [
             "service_type" => "hotspot",
             "hotspot_interfaces" => ["ether2"]
         ]);

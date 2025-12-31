@@ -85,7 +85,7 @@ class SubscriptionManager extends TenantAwareService
     {
         try {
             // Queue the disconnection job
-            dispatch(new DisconnectUserJob($subscription, $reason))
+            dispatch(new DisconnectUserJob($subscription->id, $this->getTenantId(), $reason))
                 ->onQueue('service-control');
             
             // Update subscription status
@@ -95,6 +95,7 @@ class SubscriptionManager extends TenantAwareService
                 'subscription_id' => $subscription->id,
                 'user_id' => $subscription->user_id,
                 'reason' => $reason,
+                'tenant_id' => $this->getTenantId(),
             ]);
         } catch (\Exception $e) {
             Log::error("Failed to disconnect user", [
@@ -114,7 +115,7 @@ class SubscriptionManager extends TenantAwareService
     {
         try {
             // Queue the reconnection job
-            dispatch(new ReconnectUserJob($subscription))
+            dispatch(new ReconnectUserJob($subscription->id, $this->getTenantId()))
                 ->onQueue('service-control');
             
             // Update subscription status
@@ -123,6 +124,7 @@ class SubscriptionManager extends TenantAwareService
             Log::info("User reconnection queued", [
                 'subscription_id' => $subscription->id,
                 'user_id' => $subscription->user_id,
+                'tenant_id' => $this->getTenantId(),
             ]);
         } catch (\Exception $e) {
             Log::error("Failed to reconnect user", [

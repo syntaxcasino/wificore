@@ -75,7 +75,11 @@ class AccessPointManager extends TenantAwareService
                 // Ensure we have the correct identifier format for GenieACS if possible, 
                 // or just pass what we have and let the service handle/log it.
                 // We pass the router's tenant_id for isolation.
-                $provisioned = $this->genieAcsService->provisionDevice($deviceId, $router->tenant_id);
+                
+                // Tag with AP ID for granular tracking
+                $extraTags = ["ap_id:{$ap->id}"];
+                
+                $provisioned = $this->genieAcsService->provisionDevice($deviceId, $router->tenant_id, $extraTags);
                 
                 if ($provisioned) {
                     Log::info("Access point provisioned in GenieACS", [

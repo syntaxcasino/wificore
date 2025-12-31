@@ -10,15 +10,10 @@ use App\Models\Scopes\TenantScope;
 
 class AccessPoint extends Model
 {
-    use HasFactory, HasUuid, BelongsToTenant;
-
-    protected static function booted(): void
-    {
-        static::addGlobalScope(new TenantScope());
-    }
+    use HasFactory, HasUuid;
 
     protected $fillable = [
-        'tenant_id',
+        // tenant_id removed
         'router_id',
         'name',
         'vendor',

@@ -41,7 +41,7 @@ class CreateTenantWorkspaceJob implements ShouldQueue
     /**
      * Execute the job.
      */
-    public function handle(): void
+    public function handle(TenantVpnTunnelService $vpnService, \App\Services\TenantMigrationManager $migrationManager): void
     {
         Log::info('CreateTenantWorkspaceJob started', [
             'registration_id' => $this->registration->id,
@@ -89,6 +89,13 @@ class CreateTenantWorkspaceJob implements ShouldQueue
                 'role' => 'admin',
                 'is_active' => true,
             ]);
+
+            // CRITICAL: Setup Tenant Schema immediately after creating tenant record
+            // This creates the schema and runs migrations so tables exist for subsequent steps
+            Log::info('Setting up tenant schema and running migrations', ['tenant_id' => $tenant->id]);
+            if (!$migrationManager->setupTenantSchema($tenant)) {
+                throw new \Exception("Failed to setup tenant schema for {$tenant->slug}");
+            }
 
             // CRITICAL: Create RADIUS credentials in tenant schema
             Log::info('Adding RADIUS credentials for admin user', [
@@ -157,22 +164,8 @@ class CreateTenantWorkspaceJob implements ShouldQueue
                 'status' => 'verified'
             ]);
 
-            // Create tenant schema
-            try {
-                Artisan::call('tenants:migrate', [
-                    '--tenant' => $tenant->id
-                ]);
-            } catch (\Exception $e) {
-                Log::warning('Tenant migration failed, will retry', [
-                    'tenant_id' => $tenant->id,
-                    'error' => $e->getMessage()
-                ]);
-            }
-
-            // Wait a moment for schema creation to complete (boot method handles this)
-            sleep(2);
-
             // Initialize VPN Tunnel for the tenant - STRICT: Fail job if VPN creation fails
+            // We use a fresh instance or the injected service
             $tunnel = $vpnService->getOrCreateTenantTunnel($tenant->id);
             Log::info('Tenant VPN tunnel initialized', [
                 'tenant_id' => $tenant->id,

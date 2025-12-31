@@ -86,8 +86,8 @@ return new class extends Migration
                         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         deleted_at TIMESTAMP NULL,
                         
-                        -- Foreign key to routers table (in same tenant schema)
-                        FOREIGN KEY (router_id) REFERENCES {$schemaName}.routers(id) ON DELETE CASCADE,
+                        // Foreign key to routers table (in public schema)
+                        FOREIGN KEY (router_id) REFERENCES public.routers(id) ON DELETE CASCADE,
                         -- Foreign key to tenant_vpn_tunnels (in public schema)
                         FOREIGN KEY (tenant_vpn_tunnel_id) REFERENCES public.tenant_vpn_tunnels(id) ON DELETE CASCADE
                     )
@@ -153,87 +153,91 @@ return new class extends Migration
     protected function migrateVpnDataToTenantSchema(string $tenantId, string $schemaName): void
     {
         // Migrate vpn_configurations
-        $vpnConfigs = DB::table('vpn_configurations')
-            ->where('tenant_id', $tenantId)
-            ->get();
-        
-        foreach ($vpnConfigs as $config) {
-            DB::statement("
-                INSERT INTO {$schemaName}.vpn_configurations (
-                    id, router_id, tenant_vpn_tunnel_id, vpn_type,
-                    server_public_key, server_private_key, client_public_key, client_private_key, preshared_key,
-                    server_ip, client_ip, subnet_cidr, listen_port,
-                    server_endpoint, server_public_ip,
-                    status, last_handshake_at, rx_bytes, tx_bytes,
-                    mikrotik_script, linux_script,
-                    interface_name, keepalive_interval, allowed_ips, dns_servers,
-                    created_at, updated_at, deleted_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT (id) DO NOTHING
-            ", [
-                $config->id,
-                $config->router_id,
-                $config->tenant_vpn_tunnel_id,
-                $config->vpn_type ?? 'wireguard',
-                $config->server_public_key,
-                $config->server_private_key,
-                $config->client_public_key,
-                $config->client_private_key,
-                $config->preshared_key,
-                $config->server_ip,
-                $config->client_ip,
-                $config->subnet_cidr,
-                $config->listen_port ?? 51820,
-                $config->server_endpoint,
-                $config->server_public_ip,
-                $config->status ?? 'pending',
-                $config->last_handshake_at,
-                $config->rx_bytes ?? 0,
-                $config->tx_bytes ?? 0,
-                $config->mikrotik_script,
-                $config->linux_script,
-                $config->interface_name ?? 'wg0',
-                $config->keepalive_interval ?? 25,
-                $config->allowed_ips,
-                $config->dns_servers,
-                $config->created_at ?? now(),
-                $config->updated_at ?? now(),
-                $config->deleted_at
-            ]);
+        if (Schema::hasTable('vpn_configurations')) {
+            $vpnConfigs = DB::table('vpn_configurations')
+                ->where('tenant_id', $tenantId)
+                ->get();
+            
+            foreach ($vpnConfigs as $config) {
+                DB::statement("
+                    INSERT INTO {$schemaName}.vpn_configurations (
+                        id, router_id, tenant_vpn_tunnel_id, vpn_type,
+                        server_public_key, server_private_key, client_public_key, client_private_key, preshared_key,
+                        server_ip, client_ip, subnet_cidr, listen_port,
+                        server_endpoint, server_public_ip,
+                        status, last_handshake_at, rx_bytes, tx_bytes,
+                        mikrotik_script, linux_script,
+                        interface_name, keepalive_interval, allowed_ips, dns_servers,
+                        created_at, updated_at, deleted_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT (id) DO NOTHING
+                ", [
+                    $config->id,
+                    $config->router_id,
+                    $config->tenant_vpn_tunnel_id,
+                    $config->vpn_type ?? 'wireguard',
+                    $config->server_public_key,
+                    $config->server_private_key,
+                    $config->client_public_key,
+                    $config->client_private_key,
+                    $config->preshared_key,
+                    $config->server_ip,
+                    $config->client_ip,
+                    $config->subnet_cidr,
+                    $config->listen_port ?? 51820,
+                    $config->server_endpoint,
+                    $config->server_public_ip,
+                    $config->status ?? 'pending',
+                    $config->last_handshake_at,
+                    $config->rx_bytes ?? 0,
+                    $config->tx_bytes ?? 0,
+                    $config->mikrotik_script,
+                    $config->linux_script,
+                    $config->interface_name ?? 'wg0',
+                    $config->keepalive_interval ?? 25,
+                    $config->allowed_ips,
+                    $config->dns_servers,
+                    $config->created_at ?? now(),
+                    $config->updated_at ?? now(),
+                    $config->deleted_at
+                ]);
+            }
+            
+            \Log::info("Migrated " . count($vpnConfigs) . " VPN configurations to schema {$schemaName}");
         }
-        
-        \Log::info("Migrated " . count($vpnConfigs) . " VPN configurations to schema {$schemaName}");
         
         // Migrate vpn_subnet_allocations
-        $subnetAllocs = DB::table('vpn_subnet_allocations')
-            ->where('tenant_id', $tenantId)
-            ->get();
-        
-        foreach ($subnetAllocs as $alloc) {
-            DB::statement("
-                INSERT INTO {$schemaName}.vpn_subnet_allocations (
-                    id, subnet_cidr, subnet_octet_2, gateway_ip, range_start, range_end,
-                    total_ips, allocated_ips, available_ips, status,
-                    created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT (id) DO NOTHING
-            ", [
-                $alloc->id,
-                $alloc->subnet_cidr,
-                $alloc->subnet_octet_2,
-                $alloc->gateway_ip,
-                $alloc->range_start,
-                $alloc->range_end,
-                $alloc->total_ips ?? 65534,
-                $alloc->allocated_ips ?? 0,
-                $alloc->available_ips ?? 65534,
-                $alloc->status ?? 'active',
-                $alloc->created_at ?? now(),
-                $alloc->updated_at ?? now()
-            ]);
+        if (Schema::hasTable('vpn_subnet_allocations')) {
+            $subnetAllocs = DB::table('vpn_subnet_allocations')
+                ->where('tenant_id', $tenantId)
+                ->get();
+            
+            foreach ($subnetAllocs as $alloc) {
+                DB::statement("
+                    INSERT INTO {$schemaName}.vpn_subnet_allocations (
+                        id, subnet_cidr, subnet_octet_2, gateway_ip, range_start, range_end,
+                        total_ips, allocated_ips, available_ips, status,
+                        created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT (id) DO NOTHING
+                ", [
+                    $alloc->id,
+                    $alloc->subnet_cidr,
+                    $alloc->subnet_octet_2,
+                    $alloc->gateway_ip,
+                    $alloc->range_start,
+                    $alloc->range_end,
+                    $alloc->total_ips ?? 65534,
+                    $alloc->allocated_ips ?? 0,
+                    $alloc->available_ips ?? 65534,
+                    $alloc->status ?? 'active',
+                    $alloc->created_at ?? now(),
+                    $alloc->updated_at ?? now()
+                ]);
+            }
+            
+            \Log::info("Migrated " . count($subnetAllocs) . " VPN subnet allocations to schema {$schemaName}");
         }
-        
-        \Log::info("Migrated " . count($subnetAllocs) . " VPN subnet allocations to schema {$schemaName}");
     }
 
     /**
@@ -242,12 +246,16 @@ return new class extends Migration
     protected function cleanupPublicSchemaVpnTables(): void
     {
         // Delete all vpn_configurations from public schema (all are tenant-specific)
-        $deletedConfigs = DB::table('vpn_configurations')->delete();
-        \Log::info("Deleted {$deletedConfigs} VPN configurations from public schema");
+        if (Schema::hasTable('vpn_configurations')) {
+            $deletedConfigs = DB::table('vpn_configurations')->delete();
+            \Log::info("Deleted {$deletedConfigs} VPN configurations from public schema");
+        }
         
         // Delete all vpn_subnet_allocations from public schema (all are tenant-specific)
-        $deletedAllocs = DB::table('vpn_subnet_allocations')->delete();
-        \Log::info("Deleted {$deletedAllocs} VPN subnet allocations from public schema");
+        if (Schema::hasTable('vpn_subnet_allocations')) {
+            $deletedAllocs = DB::table('vpn_subnet_allocations')->delete();
+            \Log::info("Deleted {$deletedAllocs} VPN subnet allocations from public schema");
+        }
         
         // NOTE: tenant_vpn_tunnels stays in public schema as it's used for system-level coordination
         \Log::info("Kept tenant_vpn_tunnels in public schema (system-level coordination)");

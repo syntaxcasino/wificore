@@ -2,7 +2,9 @@
 
 namespace App\Jobs;
 
+use App\Models\Tenant;
 use App\Services\WireGuardService;
+use App\Traits\TenantAwareJob;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -13,6 +15,7 @@ use Illuminate\Support\Facades\Log;
 class UpdateVpnStatusJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    use TenantAwareJob;
 
     public $tries = 3;
     public $timeout = 60;
@@ -20,8 +23,9 @@ class UpdateVpnStatusJob implements ShouldQueue
     /**
      * Create a new job instance.
      */
-    public function __construct()
+    public function __construct($tenantId = null)
     {
+        $this->tenantId = $tenantId;
         $this->onQueue('router-checks');
     }
 
@@ -30,20 +34,36 @@ class UpdateVpnStatusJob implements ShouldQueue
      */
     public function handle(WireGuardService $wireGuardService): void
     {
-        Log::info('Updating VPN connection statuses...');
-        
-        try {
-            $wireGuardService->updateAllPeerStatuses();
+        // If no tenant ID is set, this is the main scheduler job.
+        // We need to dispatch a job for each active tenant.
+        if (!$this->tenantId) {
+            $tenants = Tenant::where('is_active', true)->get();
             
-            Log::info('VPN statuses updated successfully');
+            foreach ($tenants as $tenant) {
+                self::dispatch($tenant->id);
+            }
             
-        } catch (\Exception $e) {
-            Log::error('Failed to update VPN statuses', [
-                'error' => $e->getMessage(),
-            ]);
-            
-            throw $e;
+            Log::info("Dispatched VPN status update jobs for " . $tenants->count() . " tenants");
+            return;
         }
+
+        $this->executeInTenantContext(function() use ($wireGuardService) {
+            Log::info('Updating VPN connection statuses...', ['tenant_id' => $this->tenantId]);
+            
+            try {
+                $wireGuardService->updateAllPeerStatuses();
+                
+                Log::info('VPN statuses updated successfully', ['tenant_id' => $this->tenantId]);
+                
+            } catch (\Exception $e) {
+                Log::error('Failed to update VPN statuses', [
+                    'tenant_id' => $this->tenantId,
+                    'error' => $e->getMessage(),
+                ]);
+                
+                throw $e;
+            }
+        });
     }
 
     /**
@@ -52,6 +72,7 @@ class UpdateVpnStatusJob implements ShouldQueue
     public function failed(\Throwable $exception): void
     {
         Log::error('UpdateVpnStatusJob failed', [
+            'tenant_id' => $this->tenantId,
             'error' => $exception->getMessage(),
         ]);
     }

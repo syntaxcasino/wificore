@@ -25,16 +25,10 @@ use App\Jobs\UnsuspendExpiredAccountsJob;
 Schedule::job(new CheckRoutersJob)->everyMinute();
 
 // Fetch live router data every 30 seconds for real-time updates
-Schedule::call(function () {
-    $routers = Router::whereIn('status', ['online', 'active'])->pluck('id')->toArray();
-    if (!empty($routers)) {
-        // Dispatch in chunks for better performance
-        $chunks = array_chunk($routers, 10);
-        foreach ($chunks as $chunk) {
-            FetchRouterLiveData::dispatch($chunk)->onQueue('router-data');
-        }
-    }
-})->everyThirtySeconds()->name('fetch-router-live-data')->withoutOverlapping();
+Schedule::job(new \App\Jobs\ScheduleRouterPollingJob)
+    ->everyThirtySeconds()
+    ->name('fetch-router-live-data')
+    ->withoutOverlapping();
 
 // Update dashboard statistics every 5 seconds for near real-time data (per-tenant)
 Schedule::call(function () {

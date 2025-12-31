@@ -6,20 +6,12 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use App\Traits\HasUuid;
-use App\Traits\BelongsToTenant;
-use App\Models\Scopes\TenantScope;
 
 class HotspotUser extends Model
 {
-    use HasFactory, SoftDeletes, HasUuid, BelongsToTenant;
-
-    protected static function booted(): void
-    {
-        static::addGlobalScope(new TenantScope());
-    }
+    use HasFactory, HasUuid, SoftDeletes;
 
     protected $fillable = [
-        'tenant_id',
         'username',
         'password',
         'phone_number',
@@ -38,7 +30,6 @@ class HotspotUser extends Model
     ];
 
     protected $casts = [
-        'id' => 'string',
         'has_active_subscription' => 'boolean',
         'subscription_starts_at' => 'datetime',
         'subscription_expires_at' => 'datetime',
@@ -48,77 +39,28 @@ class HotspotUser extends Model
         'data_used' => 'integer',
     ];
 
-    protected $hidden = [
-        'password',
-    ];
-
-    /**
-     * Get the package associated with the hotspot user
-     */
     public function package()
     {
         return $this->belongsTo(Package::class);
     }
 
-    /**
-     * Get all sessions for the hotspot user
-     */
     public function sessions()
     {
         return $this->hasMany(HotspotSession::class);
     }
 
-    /**
-     * Get the active session for the hotspot user
-     */
-    public function activeSession()
+    public function radiusSessions()
     {
-        return $this->hasOne(HotspotSession::class)->where('is_active', true);
+        return $this->hasMany(RadiusSession::class);
     }
 
-    /**
-     * Check if user has an active subscription
-     */
-    public function hasActiveSubscription(): bool
+    public function credentials()
     {
-        return $this->has_active_subscription && 
-               $this->subscription_expires_at && 
-               $this->subscription_expires_at->isFuture();
+        return $this->hasMany(HotspotCredential::class);
     }
 
-    /**
-     * Get remaining data in bytes
-     */
-    public function getRemainingDataAttribute(): int
+    public function dataUsageLogs()
     {
-        if (!$this->data_limit) {
-            return 0;
-        }
-        
-        return max(0, $this->data_limit - $this->data_used);
-    }
-
-    /**
-     * Get data usage percentage
-     */
-    public function getDataUsagePercentageAttribute(): float
-    {
-        if (!$this->data_limit || $this->data_limit == 0) {
-            return 0;
-        }
-        
-        return min(100, ($this->data_used / $this->data_limit) * 100);
-    }
-
-    /**
-     * Check if data limit is exceeded
-     */
-    public function isDataLimitExceeded(): bool
-    {
-        if (!$this->data_limit) {
-            return false;
-        }
-        
-        return $this->data_used >= $this->data_limit;
+        return $this->hasMany(DataUsageLog::class);
     }
 }

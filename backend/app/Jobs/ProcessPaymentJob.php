@@ -19,7 +19,7 @@ class ProcessPaymentJob implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
     use TenantAwareJob;
 
-    public $payment;
+    public $paymentId;
     
     /**
      * The number of times the job may be attempted.
@@ -44,10 +44,10 @@ class ProcessPaymentJob implements ShouldQueue
     /**
      * Create a new job instance.
      */
-    public function __construct(Payment $payment)
+    public function __construct($paymentId, $tenantId)
     {
-        $this->payment = $payment;
-        $this->setTenantContext($payment->tenant_id);
+        $this->paymentId = $paymentId;
+        $this->setTenantContext($tenantId);
         $this->onQueue('payments'); // Dedicated queue for payments
     }
 
@@ -59,62 +59,75 @@ class ProcessPaymentJob implements ShouldQueue
         $this->executeInTenantContext(function() use ($provisioningService) {
             Log::info('Processing payment job started', [
                 'job_id' => $this->job->getJobId(),
-                'payment_id' => $this->payment->id,
+                'payment_id' => $this->paymentId,
                 'tenant_id' => $this->tenantId,
                 'attempt' => $this->attempts(),
             ]);
 
-        try {
-            // Check if payment is already processed
-            if ($this->payment->isCompleted()) {
-                Log::info('Payment already processed, skipping', [
-                    'payment_id' => $this->payment->id
+            try {
+                $payment = Payment::find($this->paymentId);
+
+                if (!$payment) {
+                    Log::error('Payment not found during processing', [
+                        'payment_id' => $this->paymentId,
+                        'tenant_id' => $this->tenantId
+                    ]);
+                    return;
+                }
+
+                // Check if payment is already processed
+                if ($payment->isCompleted()) {
+                    Log::info('Payment already processed, skipping', [
+                        'payment_id' => $payment->id
+                    ]);
+                    return;
+                }
+
+                // Process payment and provision user
+                $result = $provisioningService->processPayment($payment);
+
+                // Mark payment as completed
+                $payment->markAsCompleted();
+
+                Log::info('Payment processed successfully', [
+                    'payment_id' => $payment->id,
+                    'user_id' => $result['user']->id,
+                    'subscription_id' => $result['subscription']->id,
                 ]);
-                return;
-            }
 
-            // Process payment and provision user
-            $result = $provisioningService->processPayment($this->payment);
-
-            // Mark payment as completed
-            $this->payment->markAsCompleted();
-
-            Log::info('Payment processed successfully', [
-                'payment_id' => $this->payment->id,
-                'user_id' => $result['user']->id,
-                'subscription_id' => $result['subscription']->id,
-            ]);
-
-            // Broadcast success event to admins
-            broadcast(new PaymentProcessed(
-                $this->payment,
-                $result['user'],
-                $result['subscription'],
-                $result['credentials']
-            ))->toOthers();
-
-        } catch (\Exception $e) {
-            Log::error('Payment processing failed', [
-                'payment_id' => $this->payment->id,
-                'attempt' => $this->attempts(),
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
-
-            // If this is the last attempt, mark payment as failed
-            if ($this->attempts() >= $this->tries) {
-                $this->payment->markAsFailed();
-                
-                // Broadcast failure event to admins
-                broadcast(new PaymentFailed(
-                    $this->payment,
-                    $e->getMessage()
+                // Broadcast success event to admins
+                broadcast(new PaymentProcessed(
+                    $payment,
+                    $result['user'],
+                    $result['subscription'],
+                    $result['credentials']
                 ))->toOthers();
-            }
 
-            // Re-throw to trigger retry
-            throw $e;
-        }
+            } catch (\Exception $e) {
+                Log::error('Payment processing failed', [
+                    'payment_id' => $this->paymentId,
+                    'attempt' => $this->attempts(),
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString(),
+                ]);
+
+                // Re-fetch payment to ensure we have the model for failure handling
+                $payment = Payment::find($this->paymentId);
+
+                // If this is the last attempt, mark payment as failed
+                if ($this->attempts() >= $this->tries && $payment) {
+                    $payment->markAsFailed();
+                    
+                    // Broadcast failure event to admins
+                    broadcast(new PaymentFailed(
+                        $payment,
+                        $e->getMessage()
+                    ))->toOthers();
+                }
+
+                // Re-throw to trigger retry
+                throw $e;
+            }
         });
     }
 
@@ -124,18 +137,13 @@ class ProcessPaymentJob implements ShouldQueue
     public function failed(\Throwable $exception): void
     {
         Log::error('Payment job failed permanently', [
-            'payment_id' => $this->payment->id,
+            'payment_id' => $this->paymentId,
+            'tenant_id' => $this->tenantId,
             'error' => $exception->getMessage(),
         ]);
 
-        // Mark payment as failed
-        $this->payment->markAsFailed();
-
-        // Broadcast failure event to admins
-        broadcast(new PaymentFailed(
-            $this->payment,
-            $exception->getMessage()
-        ))->toOthers();
+        // Note: We can't easily mark as failed here without context, 
+        // but handle() try-catch block covers the last attempt failure logic.
     }
 
     /**
@@ -144,9 +152,8 @@ class ProcessPaymentJob implements ShouldQueue
     public function tags(): array
     {
         return [
-            'payment:' . $this->payment->id,
-            'phone:' . $this->payment->phone_number,
-            'package:' . $this->payment->package_id,
+            'payment:' . $this->paymentId,
+            'tenant:' . $this->tenantId,
         ];
     }
 }

@@ -4,14 +4,13 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use App\Traits\HasUuid;
 
 class UserSession extends Model
 {
-    /** @use HasFactory<\Database\Factories\UserSessionFactory> */
-    use HasFactory;
+    use HasFactory, HasUuid;
 
     protected $fillable = [
-        'tenant_id',
         'payment_id',
         'voucher',
         'mac_address',
@@ -29,17 +28,10 @@ class UserSession extends Model
         'data_used' => 'integer',
         'data_upload' => 'integer',
         'data_download' => 'integer',
-        'created_at' => 'datetime',
-        'updated_at' => 'datetime',
     ];
 
     public function payment()
     {
         return $this->belongsTo(Payment::class);
-    }
-
-    public function package()
-    {
-        return $this->belongsTo(Package::class, 'package_id');
     }
 }

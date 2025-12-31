@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\TenantVpnTunnel;
 use App\Models\VpnConfiguration;
+use App\Models\Scopes\TenantScope;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Process;
 

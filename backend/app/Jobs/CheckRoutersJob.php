@@ -4,7 +4,9 @@ namespace App\Jobs;
 
 use App\Events\RouterStatusUpdated;
 use App\Models\Router;
+use App\Models\Tenant;
 use App\Services\MikrotikProvisioningService;
+use App\Traits\TenantAwareJob;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -16,6 +18,7 @@ use Throwable;
 class CheckRoutersJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    use TenantAwareJob;
 
     /**
      * The number of times the job may be attempted.
@@ -34,8 +37,9 @@ class CheckRoutersJob implements ShouldQueue
     /**
      * Create a new job instance.
      */
-    public function __construct()
+    public function __construct($tenantId = null)
     {
+        $this->tenantId = $tenantId;
         $this->onQueue('router-checks'); // Assign to specific queue
     }
 
@@ -44,106 +48,125 @@ class CheckRoutersJob implements ShouldQueue
      */
     public function handle(MikrotikProvisioningService $service): void
     {
-        $context = [
-            'job' => 'CheckRoutersJob',
-            'attempt' => $this->attempts(),
-            'job_id' => $this->job?->getJobId() ?? 'unknown',
-        ];
-
-        Log::withContext($context)->info('Starting router status check job');
-
-        try {
-            $routers = $service->getAllRouters();
-            $updatedStatuses = [];
-
-            foreach ($routers as $router) {
-                try {
-                    $connectivityData = $service->verifyConnectivity($router);
-                    $status = $connectivityData['status'] === 'connected' ? 'online' : 'offline';
-
-                    $router->update([
-                        'status' => $status,
-                        'last_checked' => now(),
-                        'model' => $connectivityData['model'] ?? $router->model,
-                        'os_version' => $connectivityData['os_version'] ?? $router->os_version,
-                        'last_seen' => $connectivityData['last_seen'] ?? $router->last_seen,
-                    ]);
-
-                    $updatedStatuses[] = [
-                        'id' => $router->id,
-                        'ip_address' => $router->ip_address,
-                        'name' => $router->name,
-                        'status' => $status,
-                        'last_checked' => $router->last_checked,
-                        'model' => $router->model,
-                        'os_version' => $router->os_version,
-                        'last_seen' => $router->last_seen,
-                    ];
-
-                    Log::withContext(array_merge($context, [
-                        'router_id' => $router->id,
-                        'ip_address' => $router->ip_address,
-                        'name' => $router->name,
-                    ]))->info('Router status updated', [
-                        'status' => $status,
-                        'model' => $router->model,
-                        'os_version' => $router->os_version,
-                    ]);
-
-                } catch (Throwable $e) {
-                    // Mark as offline on failure
-                    $router->update([
-                        'status' => 'offline',
-                        'last_checked' => now(),
-                    ]);
-
-                    $updatedStatuses[] = [
-                        'id' => $router->id,
-                        'ip_address' => $router->ip_address,
-                        'name' => $router->name,
-                        'status' => 'offline',
-                        'last_checked' => $router->last_checked,
-                    ];
-
-                    Log::withContext(array_merge($context, [
-                        'router_id' => $router->id,
-                        'ip_address' => $router->ip_address,
-                        'name' => $router->name,
-                    ]))->error('Failed to verify router connectivity', [
-                        'error' => $e->getMessage(),
-                    ]);
-                }
+        // If no tenant ID is set, this is the main scheduler job.
+        // We need to dispatch a job for each active tenant.
+        if (!$this->tenantId) {
+            $tenants = Tenant::where('is_active', true)->get();
+            
+            foreach ($tenants as $tenant) {
+                self::dispatch($tenant->id);
             }
-
-            // Broadcast updates to frontend (e.g. Livewire or Vue via Soketi)
-            if (!empty($updatedStatuses)) {
-                try {
-                    broadcast(new RouterStatusUpdated($updatedStatuses))->toOthers();
-
-                    Log::withContext($context)->info('Broadcasted RouterStatusUpdated event', [
-                        'router_count' => count($updatedStatuses),
-                    ]);
-                } catch (\Exception $e) {
-                    Log::withContext($context)->warning('Failed to broadcast RouterStatusUpdated event', [
-                        'error' => $e->getMessage(),
-                        'router_count' => count($updatedStatuses),
-                    ]);
-                    // Don't fail the job if broadcasting fails
-                }
-            } else {
-                Log::withContext($context)->warning('No router statuses updated to broadcast');
-            }
-
-        } catch (Throwable $e) {
-            Log::withContext($context)->error('Router check job failed', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
-
-            throw $e; // Let Laravel handle retries
+            
+            Log::info("Dispatched router check jobs for " . $tenants->count() . " tenants");
+            return;
         }
 
-        Log::withContext($context)->info('Completed router status check job');
+        // Execute checking logic within tenant context
+        $this->executeInTenantContext(function() use ($service) {
+            $context = [
+                'job' => 'CheckRoutersJob',
+                'tenant_id' => $this->tenantId,
+                'attempt' => $this->attempts(),
+                'job_id' => $this->job?->getJobId() ?? 'unknown',
+            ];
+
+            Log::withContext($context)->info('Starting router status check job for tenant');
+
+            try {
+                $routers = $service->getAllRouters();
+                $updatedStatuses = [];
+
+                foreach ($routers as $router) {
+                    try {
+                        $connectivityData = $service->verifyConnectivity($router);
+                        $status = $connectivityData['status'] === 'connected' ? 'online' : 'offline';
+
+                        $router->update([
+                            'status' => $status,
+                            'last_checked' => now(),
+                            'model' => $connectivityData['model'] ?? $router->model,
+                            'os_version' => $connectivityData['os_version'] ?? $router->os_version,
+                            'last_seen' => $connectivityData['last_seen'] ?? $router->last_seen,
+                        ]);
+
+                        $updatedStatuses[] = [
+                            'id' => $router->id,
+                            'ip_address' => $router->ip_address,
+                            'name' => $router->name,
+                            'status' => $status,
+                            'last_checked' => $router->last_checked,
+                            'model' => $router->model,
+                            'os_version' => $router->os_version,
+                            'last_seen' => $router->last_seen,
+                        ];
+
+                        Log::withContext(array_merge($context, [
+                            'router_id' => $router->id,
+                            'ip_address' => $router->ip_address,
+                            'name' => $router->name,
+                        ]))->info('Router status updated', [
+                            'status' => $status,
+                            'model' => $router->model,
+                            'os_version' => $router->os_version,
+                        ]);
+
+                    } catch (Throwable $e) {
+                        // Mark as offline on failure
+                        $router->update([
+                            'status' => 'offline',
+                            'last_checked' => now(),
+                        ]);
+
+                        $updatedStatuses[] = [
+                            'id' => $router->id,
+                            'ip_address' => $router->ip_address,
+                            'name' => $router->name,
+                            'status' => 'offline',
+                            'last_checked' => $router->last_checked,
+                        ];
+
+                        Log::withContext(array_merge($context, [
+                            'router_id' => $router->id,
+                            'ip_address' => $router->ip_address,
+                            'name' => $router->name,
+                        ]))->error('Failed to verify router connectivity', [
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
+                }
+
+                // Broadcast updates to frontend (e.g. Livewire or Vue via Soketi)
+                // Use tenant channel
+                if (!empty($updatedStatuses)) {
+                    try {
+                        // TODO: Ensure RouterStatusUpdated supports tenant broadcasting
+                        broadcast(new RouterStatusUpdated($updatedStatuses))->toOthers();
+
+                        Log::withContext($context)->info('Broadcasted RouterStatusUpdated event', [
+                            'router_count' => count($updatedStatuses),
+                        ]);
+                    } catch (\Exception $e) {
+                        Log::withContext($context)->warning('Failed to broadcast RouterStatusUpdated event', [
+                            'error' => $e->getMessage(),
+                            'router_count' => count($updatedStatuses),
+                        ]);
+                        // Don't fail the job if broadcasting fails
+                    }
+                } else {
+                    Log::withContext($context)->warning('No router statuses updated to broadcast');
+                }
+
+            } catch (Throwable $e) {
+                Log::withContext($context)->error('Router check job failed', [
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString(),
+                ]);
+
+                throw $e; // Let Laravel handle retries
+            }
+
+            Log::withContext($context)->info('Completed router status check job');
+        });
     }
 
     /**

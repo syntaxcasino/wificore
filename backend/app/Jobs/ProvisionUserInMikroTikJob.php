@@ -6,6 +6,7 @@ use App\Models\UserSubscription;
 use App\Models\Router;
 use App\Events\UserProvisioned;
 use App\Events\ProvisioningFailed;
+use App\Traits\TenantAwareJob;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -16,8 +17,9 @@ use Illuminate\Support\Facades\Log;
 class ProvisionUserInMikroTikJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    use TenantAwareJob;
 
-    public $subscription;
+    public $subscriptionId;
     public $routerId;
     
     public $tries = 5;
@@ -27,10 +29,11 @@ class ProvisionUserInMikroTikJob implements ShouldQueue
     /**
      * Create a new job instance.
      */
-    public function __construct(UserSubscription $subscription, string $routerId)
+    public function __construct($subscriptionId, $routerId, $tenantId)
     {
-        $this->subscription = $subscription;
+        $this->subscriptionId = $subscriptionId;
         $this->routerId = $routerId;
+        $this->setTenantContext($tenantId);
         $this->onQueue('provisioning'); // Dedicated queue for provisioning
     }
 
@@ -39,69 +42,86 @@ class ProvisionUserInMikroTikJob implements ShouldQueue
      */
     public function handle(): void
     {
-        Log::info('MikroTik provisioning job started', [
-            'job_id' => $this->job->getJobId(),
-            'subscription_id' => $this->subscription->id,
-            'router_id' => $this->routerId,
-            'attempt' => $this->attempts(),
-        ]);
-
-        try {
-            $router = Router::findOrFail($this->routerId);
-            $package = $this->subscription->package;
-
-            // Connect to MikroTik
-            $client = new \RouterOS\Client([
-                'host' => $router->ip_address,
-                'user' => $router->username,
-                'pass' => $router->password,
-                'port' => $router->port ?? 8728,
-                'timeout' => 10,
-            ]);
-
-            // Check if user already exists
-            $existingUser = $this->checkUserExists($client, $this->subscription->mikrotik_username);
-            
-            if ($existingUser) {
-                Log::info('User already exists in MikroTik, updating', [
-                    'username' => $this->subscription->mikrotik_username
-                ]);
-                $this->updateUser($client, $existingUser);
-            } else {
-                $this->createUser($client);
-            }
-
-            Log::info('User provisioned in MikroTik successfully', [
-                'subscription_id' => $this->subscription->id,
+        $this->executeInTenantContext(function() {
+            Log::info('MikroTik provisioning job started', [
+                'job_id' => $this->job->getJobId(),
+                'subscription_id' => $this->subscriptionId,
                 'router_id' => $this->routerId,
-                'username' => $this->subscription->mikrotik_username,
-            ]);
-
-            // Broadcast success event to admins
-            broadcast(new UserProvisioned(
-                $this->subscription,
-                $router
-            ))->toOthers();
-
-        } catch (\Exception $e) {
-            Log::error('MikroTik provisioning failed', [
-                'subscription_id' => $this->subscription->id,
-                'router_id' => $this->routerId,
+                'tenant_id' => $this->tenantId,
                 'attempt' => $this->attempts(),
-                'error' => $e->getMessage(),
             ]);
 
-            // If this is the last attempt, broadcast failure
-            if ($this->attempts() >= $this->tries) {
-                broadcast(new ProvisioningFailed(
-                    $this->subscription,
-                    $this->routerId,
-                    $e->getMessage()
-                ))->toOthers();
-            }
+            try {
+                $subscription = UserSubscription::find($this->subscriptionId);
+                
+                if (!$subscription) {
+                    Log::error('Subscription not found for provisioning', [
+                        'subscription_id' => $this->subscriptionId,
+                        'tenant_id' => $this->tenantId
+                    ]);
+                    return;
+                }
 
-            throw $e;
-        }
+                $router = Router::findOrFail($this->routerId);
+                $package = $subscription->package;
+
+                // Connect to MikroTik
+                $client = new \RouterOS\Client([
+                    'host' => $router->ip_address,
+                    'user' => $router->username,
+                    'pass' => $router->password,
+                    'port' => $router->port ?? 8728,
+                    'timeout' => 10,
+                ]);
+
+                // Check if user already exists
+                $existingUser = $this->checkUserExists($client, $subscription->mikrotik_username);
+                
+                if ($existingUser) {
+                    Log::info('User already exists in MikroTik, updating', [
+                        'username' => $subscription->mikrotik_username
+                    ]);
+                    $this->updateUser($client, $existingUser, $subscription);
+                } else {
+                    $this->createUser($client, $subscription);
+                }
+
+                Log::info('User provisioned in MikroTik successfully', [
+                    'subscription_id' => $this->subscriptionId,
+                    'router_id' => $this->routerId,
+                    'username' => $subscription->mikrotik_username,
+                ]);
+
+                // Broadcast success event to admins
+                broadcast(new UserProvisioned(
+                    $subscription,
+                    $router
+                ))->toOthers();
+
+            } catch (\Exception $e) {
+                Log::error('MikroTik provisioning failed', [
+                    'subscription_id' => $this->subscriptionId,
+                    'router_id' => $this->routerId,
+                    'attempt' => $this->attempts(),
+                    'error' => $e->getMessage(),
+                ]);
+
+                // If this is the last attempt, broadcast failure
+                if ($this->attempts() >= $this->tries) {
+                    // Try to get subscription for event, if possible
+                    $subscription = UserSubscription::find($this->subscriptionId);
+                    if ($subscription) {
+                        broadcast(new ProvisioningFailed(
+                            $subscription,
+                            $this->routerId,
+                            $e->getMessage()
+                        ))->toOthers();
+                    }
+                }
+
+                throw $e;
+            }
+        });
     }
 
     /**
@@ -124,17 +144,17 @@ class ProvisionUserInMikroTikJob implements ShouldQueue
     /**
      * Create user in MikroTik
      */
-    protected function createUser($client): void
+    protected function createUser($client, UserSubscription $subscription): void
     {
-        $package = $this->subscription->package;
+        $package = $subscription->package;
         
         $query = new \RouterOS\Query('/ip/hotspot/user/add');
-        $query->equal('name', $this->subscription->mikrotik_username);
-        $query->equal('password', $this->subscription->mikrotik_password);
+        $query->equal('name', $subscription->mikrotik_username);
+        $query->equal('password', $subscription->mikrotik_password);
         $query->equal('limit-uptime', $this->formatDuration($package->duration));
         $query->equal('limit-bytes-total', $this->calculateDataLimit($package));
         $query->equal('profile', $this->getProfileName($package));
-        $query->equal('comment', 'Auto-provisioned - Subscription #' . $this->subscription->id);
+        $query->equal('comment', 'Auto-provisioned - Subscription #' . $subscription->id);
 
         $client->query($query)->read();
     }
@@ -142,13 +162,13 @@ class ProvisionUserInMikroTikJob implements ShouldQueue
     /**
      * Update existing user in MikroTik
      */
-    protected function updateUser($client, $existingUser): void
+    protected function updateUser($client, $existingUser, UserSubscription $subscription): void
     {
-        $package = $this->subscription->package;
+        $package = $subscription->package;
         
         $query = new \RouterOS\Query('/ip/hotspot/user/set');
         $query->equal('.id', $existingUser['.id']);
-        $query->equal('password', $this->subscription->mikrotik_password);
+        $query->equal('password', $subscription->mikrotik_password);
         $query->equal('limit-uptime', $this->formatDuration($package->duration));
         $query->equal('limit-bytes-total', $this->calculateDataLimit($package));
         $query->equal('profile', $this->getProfileName($package));
@@ -218,16 +238,13 @@ class ProvisionUserInMikroTikJob implements ShouldQueue
     public function failed(\Throwable $exception): void
     {
         Log::error('MikroTik provisioning job failed permanently', [
-            'subscription_id' => $this->subscription->id,
+            'subscription_id' => $this->subscriptionId,
             'router_id' => $this->routerId,
             'error' => $exception->getMessage(),
         ]);
 
-        broadcast(new ProvisioningFailed(
-            $this->subscription,
-            $this->routerId,
-            $exception->getMessage()
-        ))->toOthers();
+        // Note: Can't broadcast ProvisioningFailed easily without model, 
+        // but try catch in handle() covers it.
     }
 
     /**
@@ -236,9 +253,9 @@ class ProvisionUserInMikroTikJob implements ShouldQueue
     public function tags(): array
     {
         return [
-            'subscription:' . $this->subscription->id,
+            'subscription:' . $this->subscriptionId,
             'router:' . $this->routerId,
-            'user:' . $this->subscription->user_id,
+            'tenant:' . $this->tenantId,
         ];
     }
 }

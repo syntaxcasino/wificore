@@ -9,7 +9,7 @@ use App\Traits\BelongsToTenant;
 
 class ApActiveSession extends Model
 {
-    use HasFactory, HasUuid, BelongsToTenant;
+    use HasFactory, HasUuid;
 
     protected $fillable = [
         'access_point_id',

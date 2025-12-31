@@ -43,13 +43,14 @@ class UserProvisioningService extends TenantAwareService
 
             // Dispatch MikroTik provisioning to queue (if router is available)
             if ($payment->router_id) {
-                ProvisionUserInMikroTikJob::dispatch($subscription, $payment->router_id)
+                ProvisionUserInMikroTikJob::dispatch($subscription->id, $payment->router_id, $tenantId)
                     ->onQueue('provisioning')
                     ->delay(now()->addSeconds(5)); // Delay to ensure RADIUS entry is committed
                 
                 \Log::info('MikroTik provisioning job dispatched', [
                     'subscription_id' => $subscription->id,
-                    'router_id' => $payment->router_id
+                    'router_id' => $payment->router_id,
+                    'tenant_id' => $tenantId
                 ]);
             }
 

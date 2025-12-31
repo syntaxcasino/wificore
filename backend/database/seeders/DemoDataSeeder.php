@@ -130,9 +130,11 @@ class DemoDataSeeder extends Seeder
 
     private function createDemoRouter(Tenant $tenant, string $name, string $ip): Router
     {
-        return Router::firstOrCreate(
+        // Switch to tenant schema
+        \Illuminate\Support\Facades\DB::statement("SET search_path TO {$tenant->schema_name}, public");
+
+        $router = Router::firstOrCreate(
             [
-                'tenant_id' => $tenant->id,
                 'ip_address' => $ip,
             ],
             [
@@ -145,5 +147,10 @@ class DemoDataSeeder extends Seeder
                 'device_type' => 'router',
             ]
         );
+
+        // Switch back to public schema
+        \Illuminate\Support\Facades\DB::statement("SET search_path TO public");
+
+        return $router;
     }
 }

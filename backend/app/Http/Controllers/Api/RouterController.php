@@ -455,10 +455,11 @@ class RouterController extends Controller
             ]);
 
             // Dispatch the provisioning job
-            \App\Jobs\RouterProvisioningJob::dispatch($router, $provisioningData);
+            \App\Jobs\RouterProvisioningJob::dispatch($router->id, $router->tenant_id, $provisioningData);
 
             Log::info('Provisioning job dispatched', [
                 'router_id' => $router->id,
+                'tenant_id' => $router->tenant_id,
                 'service_type' => $validated['service_type'],
             ]);
 

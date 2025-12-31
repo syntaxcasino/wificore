@@ -44,17 +44,28 @@ class GenieACSService
             // Method 1: Create a Preset for this device (Pre-provisioning)
             // This works even if device hasn't connected yet.
             $presetName = "tenant-{$tenantId}-{$deviceId}";
+            
+            $configurations = [
+                [
+                    'type' => 'add_tag',
+                    'tag' => "tenant:{$tenantId}"
+                ]
+            ];
+            
+            // Add extra tags
+            foreach ($extraTags as $tag) {
+                $configurations[] = [
+                    'type' => 'add_tag',
+                    'tag' => $tag
+                ];
+            }
+            
             $presetData = [
                 'weight' => 10,
                 'precondition' => [
                     '_id' => $deviceId
                 ],
-                'configurations' => [
-                    [
-                        'type' => 'add_tag',
-                        'tag' => "tenant:{$tenantId}"
-                    ]
-                ]
+                'configurations' => $configurations
             ];
             
             $response = Http::put("{$this->nbiUrl}/presets/{$presetName}", $presetData);

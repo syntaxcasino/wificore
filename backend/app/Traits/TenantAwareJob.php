@@ -63,9 +63,16 @@ trait TenantAwareJob
         // Set auth context
         Auth::setUser($systemUser);
 
+        // Switch schema context
+        $previousSearchPath = \Illuminate\Support\Facades\DB::selectOne('SHOW search_path')->search_path;
+        \Illuminate\Support\Facades\DB::statement("SET search_path TO {$tenant->schema_name}, public");
+
         try {
             $result = $callback();
         } finally {
+            // Restore schema context
+            \Illuminate\Support\Facades\DB::statement("SET search_path TO {$previousSearchPath}");
+            
             // Clear auth context
             Auth::logout();
         }
