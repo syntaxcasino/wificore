@@ -128,8 +128,27 @@ class DemoDataSeeder extends Seeder
         }
     }
 
-    private function createDemoRouter(Tenant $tenant, string $name, string $ip): Router
+    private function createDemoRouter(Tenant $tenant, string $name, string $ip): ?Router
     {
+        // Check if tenant schema is created
+        if (!$tenant->schema_created || empty($tenant->schema_name)) {
+            $this->command->warn("⚠️  Skipping router creation for {$tenant->name} - schema not created yet");
+            return null;
+        }
+
+        // Verify schema exists
+        $schemaExists = \Illuminate\Support\Facades\DB::selectOne("
+            SELECT EXISTS (
+                SELECT FROM information_schema.schemata 
+                WHERE schema_name = ?
+            ) as exists
+        ", [$tenant->schema_name]);
+
+        if (!$schemaExists->exists) {
+            $this->command->warn("⚠️  Skipping router creation for {$tenant->name} - schema does not exist");
+            return null;
+        }
+
         // Switch to tenant schema
         \Illuminate\Support\Facades\DB::statement("SET search_path TO {$tenant->schema_name}, public");
 
