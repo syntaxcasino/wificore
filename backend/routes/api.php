@@ -119,59 +119,66 @@ Route::get('/public/tenant-by-domain', [PublicTenantController::class, 'getTenan
 Route::post('/public/subdomain/check', [PublicTenantController::class, 'checkSubdomainAvailability'])
     ->name('api.public.subdomain.check');
 
-// Unified Login - Public route for authentication (system admin, tenant admin, hotspot users)
-Route::post('/login', [UnifiedAuthController::class, 'login'])
+// =============================================================================
+// RATE-LIMITED AUTHENTICATION ROUTES
+// =============================================================================
+
+// Unified Login - Rate limited to prevent brute force attacks
+Route::middleware('throttle:5,1')->post('/login', [UnifiedAuthController::class, 'login'])
     ->name('api.login');
 
-// Tenant Registration - Public route for tenant and admin creation
+// Tenant Registration - Rate limited to prevent spam
 Route::prefix('register')->group(function () {
-    Route::post('/tenant', [TenantRegistrationController::class, 'register'])
+    Route::middleware('throttle:3,1')->post('/tenant', [TenantRegistrationController::class, 'register'])
         ->name('api.register.tenant');
     Route::get('/verify/{token}', [TenantRegistrationController::class, 'verifyEmail'])
         ->name('api.register.verify');
     Route::get('/status/{token}', [TenantRegistrationController::class, 'getStatus'])
         ->name('api.register.status');
-    Route::post('/resend', [TenantRegistrationController::class, 'resendVerification'])
+    Route::middleware('throttle:3,1')->post('/resend', [TenantRegistrationController::class, 'resendVerification'])
         ->name('api.register.resend');
 });
 
 // Legacy hotspot user registration (kept for backward compatibility)
-Route::post('/register', [LoginController::class, 'register'])
+Route::middleware('throttle:5,1')->post('/register', [LoginController::class, 'register'])
     ->name('api.register.legacy');
 
-
 // Resend Verification Email
-Route::post('/email/resend', [LoginController::class, 'resendVerification'])
+Route::middleware('throttle:3,1')->post('/email/resend', [LoginController::class, 'resendVerification'])
     ->name('verification.resend');
+
+// =============================================================================
+// RATE-LIMITED PUBLIC ROUTES
+// =============================================================================
 
 // Packages - Public viewing for hotspot users (uses PublicPackageController for proper tenant detection)
 // This route is for unauthenticated hotspot users, NOT for tenant dashboard
 // Tenant dashboard should use /api/packages (authenticated route)
-Route::get('/packages', [PublicPackageController::class, 'getPublicPackages'])
+Route::middleware('throttle:60,1')->get('/packages', [PublicPackageController::class, 'getPublicPackages'])
     ->name('api.public.packages.list');
 
-// Payment Initiation - Public for hotspot users
-Route::post('/payments/initiate', [PaymentController::class, 'initiateSTK'])
+// Payment Initiation - Rate limited to prevent payment spam
+Route::middleware('throttle:10,1')->post('/payments/initiate', [PaymentController::class, 'initiateSTK'])
     ->name('api.payments.initiate');
 
 // Payment Status Check - For auto-login
-Route::get('/payments/{payment}/status', [PaymentController::class, 'checkStatus'])
+Route::middleware('throttle:30,1')->get('/payments/{payment}/status', [PaymentController::class, 'checkStatus'])
     ->name('api.payments.status');
 
-// M-Pesa Callback - Webhook endpoint
-Route::post('/mpesa/callback', [PaymentController::class, 'callback'])
+// M-Pesa Callback - Webhook endpoint (rate limited to prevent abuse)
+Route::middleware('throttle:100,1')->post('/mpesa/callback', [PaymentController::class, 'callback'])
     ->name('api.mpesa.callback');
 
-// Hotspot User Login - Public for hotspot users
-Route::post('/hotspot/login', [HotspotController::class, 'login'])
+// Hotspot User Login - Rate limited to prevent brute force
+Route::middleware('throttle:10,1')->post('/hotspot/login', [HotspotController::class, 'login'])
     ->name('api.hotspot.login');
 
 // Hotspot User Logout - Public
-Route::post('/hotspot/logout', [HotspotController::class, 'logout'])
+Route::middleware('throttle:30,1')->post('/hotspot/logout', [HotspotController::class, 'logout'])
     ->name('api.hotspot.logout');
 
 // Hotspot Session Check - Public
-Route::post('/hotspot/check-session', [HotspotController::class, 'checkSession'])
+Route::middleware('throttle:60,1')->post('/hotspot/check-session', [HotspotController::class, 'checkSession'])
     ->name('api.hotspot.check-session');
 
 // Health Check - Public (for monitoring/uptime)
