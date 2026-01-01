@@ -7,6 +7,7 @@ use App\Models\Tenant;
 use App\Models\VpnConfiguration;
 use App\Services\VpnService;
 use App\Events\VpnConfigurationCreated;
+use App\Traits\TenantAwareJob;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -17,19 +18,26 @@ use Illuminate\Support\Facades\Log;
 class ProvisionVpnConfigurationJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    use TenantAwareJob;
 
     public $tries = 3;
     public $timeout = 120;
     public $backoff = [10, 30, 60];
 
+    public ?string $routerId = null;
+    public array $options = [];
+
     /**
      * Create a new job instance.
      */
     public function __construct(
-        public string $tenantId,
-        public ?string $routerId = null,
-        public array $options = []
+        string $tenantId,
+        ?string $routerId = null,
+        array $options = []
     ) {
+        $this->tenantId = $tenantId;
+        $this->routerId = $routerId;
+        $this->options = $options;
         $this->onQueue('vpn-provisioning');
     }
 
@@ -37,6 +45,16 @@ class ProvisionVpnConfigurationJob implements ShouldQueue
      * Execute the job.
      */
     public function handle(VpnService $vpnService): void
+    {
+        $this->executeInTenantContext(function() use ($vpnService) {
+            $this->provisionVpn($vpnService);
+        });
+    }
+
+    /**
+     * Provision VPN configuration within tenant context
+     */
+    protected function provisionVpn(VpnService $vpnService): void
     {
         try {
             Log::info('VPN provisioning job started', [
@@ -47,7 +65,7 @@ class ProvisionVpnConfigurationJob implements ShouldQueue
             // Load tenant
             $tenant = Tenant::findOrFail($this->tenantId);
 
-            // Load router if specified
+            // Load router if specified (now within tenant context)
             $router = $this->routerId ? Router::findOrFail($this->routerId) : null;
 
             // Create VPN configuration

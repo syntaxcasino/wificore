@@ -16,20 +16,23 @@ use Illuminate\Support\Facades\Log;
 /**
  * Async job to update user password
  * Updates both database and RADIUS
+ * SECURITY: Validates tenant_id to prevent cross-tenant password changes
  */
 class UpdatePasswordJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public string $userId;
+    public string $tenantId;
     public string $newPassword;
 
     /**
      * Create a new job instance.
      */
-    public function __construct(string $userId, string $newPassword)
+    public function __construct(string $userId, string $tenantId, string $newPassword)
     {
         $this->userId = $userId;
+        $this->tenantId = $tenantId;
         $this->newPassword = $newPassword;
         
         $this->onQueue('user-management');
@@ -44,6 +47,17 @@ class UpdatePasswordJob implements ShouldQueue
         
         try {
             $user = User::findOrFail($this->userId);
+            
+            // SECURITY: Validate user belongs to the expected tenant
+            if ($user->tenant_id !== $this->tenantId) {
+                Log::error('Attempted cross-tenant password update blocked', [
+                    'user_id' => $this->userId,
+                    'user_tenant_id' => $user->tenant_id,
+                    'expected_tenant_id' => $this->tenantId,
+                    'job' => 'UpdatePasswordJob',
+                ]);
+                throw new \Exception("Tenant mismatch: User {$this->userId} does not belong to tenant {$this->tenantId}");
+            }
             
             // Update password in database
             $user->update([
@@ -64,6 +78,7 @@ class UpdatePasswordJob implements ShouldQueue
             Log::info('Password updated successfully (async)', [
                 'user_id' => $user->id,
                 'username' => $user->username,
+                'tenant_id' => $user->tenant_id,
                 'job' => 'UpdatePasswordJob',
             ]);
             
@@ -73,6 +88,7 @@ class UpdatePasswordJob implements ShouldQueue
             Log::error('Failed to update password (async)', [
                 'error' => $e->getMessage(),
                 'user_id' => $this->userId,
+                'tenant_id' => $this->tenantId,
                 'trace' => $e->getTraceAsString(),
                 'job' => 'UpdatePasswordJob',
             ]);
