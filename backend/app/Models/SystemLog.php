@@ -21,8 +21,12 @@ class SystemLog extends Model
 
     protected $fillable = [
         'tenant_id',
+        'user_id',
+        'category',
         'action',
         'details',
+        'ip_address',
+        'user_agent',
     ];
 
     protected $casts = [
@@ -30,4 +34,20 @@ class SystemLog extends Model
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];
+
+    /**
+     * Get the user that performed the action
+     */
+    public function user()
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    /**
+     * Get the tenant this log belongs to
+     */
+    public function tenant()
+    {
+        return $this->belongsTo(Tenant::class);
+    }
 }

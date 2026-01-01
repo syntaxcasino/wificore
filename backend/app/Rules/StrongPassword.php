@@ -15,8 +15,8 @@ class StrongPassword implements Rule
      */
     public function passes($attribute, $value)
     {
-        // Minimum 8 characters
-        if (strlen($value) < 8) {
+        // Minimum 12 characters (enhanced security - P1 fix)
+        if (strlen($value) < 12) {
             return false;
         }
 
@@ -50,6 +50,6 @@ class StrongPassword implements Rule
      */
     public function message()
     {
-        return 'The :attribute must be at least 8 characters and contain at least one uppercase letter, one lowercase letter, one number, and one special character.';
+        return 'The :attribute must be at least 12 characters and contain at least one uppercase letter, one lowercase letter, one number, and one special character.';
     }
 }
