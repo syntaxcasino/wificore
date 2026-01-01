@@ -232,23 +232,16 @@ class CacheService
         $warmed = [];
 
         try {
-            // Warm up packages
+            // Warm up packages (public schema)
             if (!self::getPackages()) {
                 $packages = \App\Models\Package::all()->toArray();
                 self::cachePackages($packages, self::TTL_HOUR);
                 $warmed[] = 'packages';
             }
 
-            // Warm up router list
-            $routers = \App\Models\Router::select('id', 'name', 'ip_address', 'status')
-                ->get()
-                ->toArray();
+            // Skip routers - they are tenant-specific and should not be cached at system level
+            // Router caching should be done within tenant context by tenant-aware jobs
             
-            foreach ($routers as $router) {
-                self::cacheRouter($router['id'], $router, self::TTL_MEDIUM);
-            }
-            $warmed[] = 'routers';
-
             Log::info('Cache warmed up successfully', ['items' => $warmed]);
         } catch (\Exception $e) {
             Log::error('Failed to warm up cache', ['error' => $e->getMessage()]);

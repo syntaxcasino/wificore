@@ -41,7 +41,7 @@ return new class extends Migration
                 $table->string('model')->nullable();
                 $table->string('software_version')->nullable();
                 $table->string('hardware_version')->nullable();
-                $table->inet('ip_address')->nullable();
+                $table->string('ip_address', 45)->nullable()->comment('IPv4 or IPv6 address');
                 $table->string('connection_status', 50)->default('unknown')->comment('online, offline, error, unknown');
                 $table->timestamp('last_inform')->nullable()->comment('Last time device contacted ACS');
                 $table->timestamp('last_boot')->nullable()->comment('Device last boot time');
