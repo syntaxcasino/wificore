@@ -317,6 +317,17 @@ services:
       - wificore-network
     ports:
       - "7547:7547"
+    healthcheck:
+      test: ["CMD", "sh", "-c", "wget --spider -q http://localhost:7547 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   wificore-genieacs-nbi:
     container_name: wificore-genieacs-nbi
@@ -334,6 +345,17 @@ services:
       - wificore-network
     ports:
       - "7557:7557"
+    healthcheck:
+      test: ["CMD", "sh", "-c", "wget --spider -q http://localhost:7557 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   wificore-genieacs-fs:
     container_name: wificore-genieacs-fs
@@ -351,6 +373,17 @@ services:
       - wificore-network
     ports:
       - "7567:7567"
+    healthcheck:
+      test: ["CMD", "sh", "-c", "wget --spider -q http://localhost:7567 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   wificore-genieacs-ui:
     container_name: wificore-genieacs-ui
@@ -368,6 +401,17 @@ services:
       - wificore-network
     ports:
       - "3000:3000"
+    healthcheck:
+      test: ["CMD", "sh", "-c", "wget --spider -q http://localhost:3000 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   postgres_data:

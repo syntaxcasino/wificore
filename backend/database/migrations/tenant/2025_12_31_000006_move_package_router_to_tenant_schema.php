@@ -53,7 +53,11 @@ return new class extends Migration
                 $table->unique(['package_id', 'router_id']);
             });
 
-            $this->migrateFromPublic('package_router');
+            try {
+                $this->migrateFromPublic('package_router');
+            } catch (\Exception $e) {
+                \Log::warning("Failed to migrate package_router from public schema: " . $e->getMessage());
+            }
         }
     }
 

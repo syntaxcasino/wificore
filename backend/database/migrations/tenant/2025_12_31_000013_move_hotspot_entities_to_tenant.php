@@ -53,7 +53,11 @@ return new class extends Migration
                 $table->index('phone_number');
                 $table->index('package_id');
             });
-            $this->migrateFromPublic('hotspot_users');
+            try {
+                $this->migrateFromPublic('hotspot_users');
+            } catch (\Exception $e) {
+                \Log::warning("Failed to migrate hotspot_users: " . $e->getMessage());
+            }
         }
 
         // 2. Hotspot Sessions
@@ -81,7 +85,11 @@ return new class extends Migration
                 $table->index('hotspot_user_id');
                 $table->index('is_active');
             });
-            $this->migrateFromPublic('hotspot_sessions');
+            try {
+                $this->migrateFromPublic('hotspot_sessions');
+            } catch (\Exception $e) {
+                \Log::warning("Failed to migrate hotspot_sessions: " . $e->getMessage());
+            }
         }
 
         // 3. User Sessions
@@ -110,7 +118,11 @@ return new class extends Migration
                 $table->index('status');
                 $table->index('data_used');
             });
-            $this->migrateFromPublic('user_sessions');
+            try {
+                $this->migrateFromPublic('user_sessions');
+            } catch (\Exception $e) {
+                \Log::warning("Failed to migrate user_sessions: " . $e->getMessage());
+            }
         }
 
         // 4. Vouchers
@@ -139,7 +151,11 @@ return new class extends Migration
                 $table->index('status');
                 $table->index('package_id');
             });
-            $this->migrateFromPublic('vouchers');
+            try {
+                $this->migrateFromPublic('vouchers');
+            } catch (\Exception $e) {
+                \Log::warning("Failed to migrate vouchers: " . $e->getMessage());
+            }
         }
 
         // 5. Radius Sessions
@@ -175,7 +191,11 @@ return new class extends Migration
                 $table->index('status');
                 $table->index('username');
             });
-            $this->migrateFromPublic('radius_sessions');
+            try {
+                $this->migrateFromPublic('radius_sessions');
+            } catch (\Exception $e) {
+                \Log::warning("Failed to migrate radius_sessions: " . $e->getMessage());
+            }
         }
 
         // 6. Hotspot Credentials
@@ -211,7 +231,11 @@ return new class extends Migration
                 $table->index('phone_number');
                 $table->index('sms_sent');
             });
-            $this->migrateFromPublic('hotspot_credentials');
+            try {
+                $this->migrateFromPublic('hotspot_credentials');
+            } catch (\Exception $e) {
+                \Log::warning("Failed to migrate hotspot_credentials: " . $e->getMessage());
+            }
         }
 
         // 7. Session Disconnections
@@ -244,7 +268,11 @@ return new class extends Migration
                 $table->index('disconnected_at');
                 $table->index('disconnect_method');
             });
-            $this->migrateFromPublic('session_disconnections');
+            try {
+                $this->migrateFromPublic('session_disconnections');
+            } catch (\Exception $e) {
+                \Log::warning("Failed to migrate session_disconnections: " . $e->getMessage());
+            }
         }
 
         // 8. Data Usage Logs
@@ -275,7 +303,11 @@ return new class extends Migration
                 $table->index('radius_session_id');
                 $table->index('recorded_at');
             });
-            $this->migrateFromPublic('data_usage_logs');
+            try {
+                $this->migrateFromPublic('data_usage_logs');
+            } catch (\Exception $e) {
+                \Log::warning("Failed to migrate data_usage_logs: " . $e->getMessage());
+            }
         }
 
         // Add triggers

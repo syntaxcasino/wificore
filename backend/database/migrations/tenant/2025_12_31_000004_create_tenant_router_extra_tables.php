@@ -64,7 +64,11 @@ return new class extends Migration
                 $table->unique('wireguard_public_key');
             });
             
-            $this->migrateFromPublic('router_vpn_configs');
+            try {
+                $this->migrateFromPublic('router_vpn_configs');
+            } catch (\Exception $e) {
+                \Log::warning("Failed to migrate router_vpn_configs: " . $e->getMessage());
+            }
         }
 
         // 2. Create router_configs table
@@ -85,7 +89,11 @@ return new class extends Migration
                 $table->index('config_type');
             });
             
-            $this->migrateFromPublic('router_configs');
+            try {
+                $this->migrateFromPublic('router_configs');
+            } catch (\Exception $e) {
+                \Log::warning("Failed to migrate router_configs: " . $e->getMessage());
+            }
         }
     }
 

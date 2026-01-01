@@ -267,11 +267,20 @@ class TenantMigrationManager
      */
     private function executeMigration(string $migrationFile, Tenant $tenant, int $batch): void
     {
-        // Include the migration file
-        $migration = include $migrationFile;
-        
-        // Execute the up method
-        $migration->up();
+        try {
+            // Include the migration file
+            $migration = include $migrationFile;
+            
+            // Execute the up method
+            $migration->up();
+        } catch (\Exception $e) {
+            Log::error("Migration failed: " . basename($migrationFile), [
+                'tenant_id' => $tenant->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            throw $e;
+        }
     }
     
     /**

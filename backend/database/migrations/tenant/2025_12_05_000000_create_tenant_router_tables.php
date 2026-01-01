@@ -57,7 +57,11 @@ return new class extends Migration
             });
             
             // Migrate data from public schema if exists
-            $this->migrateFromPublic('routers');
+            try {
+                $this->migrateFromPublic('routers');
+            } catch (\Exception $e) {
+                \Log::warning("Failed to migrate routers from public schema: " . $e->getMessage());
+            }
         }
 
         // 2. Create Router Services Table

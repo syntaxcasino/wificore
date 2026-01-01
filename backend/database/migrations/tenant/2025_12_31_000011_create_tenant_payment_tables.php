@@ -67,7 +67,11 @@ return new class extends Migration
                 $table->index('created_at');
             });
 
-            $this->migrateFromPublic('payments');
+            try {
+                $this->migrateFromPublic('payments');
+            } catch (\Exception $e) {
+                \Log::warning("Failed to migrate payments: " . $e->getMessage());
+            }
         }
 
         // 2. Create User Subscriptions Table
@@ -123,7 +127,11 @@ return new class extends Migration
                 DB::statement("ALTER TABLE user_subscriptions ADD CONSTRAINT user_subscriptions_status_check CHECK (status IN ('active', 'expired', 'suspended', 'grace_period', 'disconnected', 'cancelled'))");
             }
 
-            $this->migrateFromPublic('user_subscriptions');
+            try {
+                $this->migrateFromPublic('user_subscriptions');
+            } catch (\Exception $e) {
+                \Log::warning("Failed to migrate user_subscriptions: " . $e->getMessage());
+            }
         }
 
         // 3. Payment Reminders
@@ -166,7 +174,11 @@ return new class extends Migration
                 DB::statement("ALTER TABLE payment_reminders ADD CONSTRAINT payment_reminders_status_check CHECK (status IN ('sent', 'failed', 'pending', 'delivered'))");
             }
 
-            $this->migrateFromPublic('payment_reminders');
+            try {
+                $this->migrateFromPublic('payment_reminders');
+            } catch (\Exception $e) {
+                \Log::warning("Failed to migrate payment_reminders: " . $e->getMessage());
+            }
         }
 
         // 4. Service Control Logs
@@ -208,7 +220,11 @@ return new class extends Migration
                 DB::statement("ALTER TABLE service_control_logs ADD CONSTRAINT service_control_logs_status_check CHECK (status IN ('pending', 'completed', 'failed', 'retrying'))");
             }
 
-            $this->migrateFromPublic('service_control_logs');
+            try {
+                $this->migrateFromPublic('service_control_logs');
+            } catch (\Exception $e) {
+                \Log::warning("Failed to migrate service_control_logs: " . $e->getMessage());
+            }
         }
     }
 
