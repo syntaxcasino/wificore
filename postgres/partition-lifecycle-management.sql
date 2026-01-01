@@ -392,7 +392,7 @@ $$ LANGUAGE plpgsql;
 GRANT EXECUTE ON FUNCTION run_archive_maintenance() TO admin;
 
 -- Schedule monthly archive maintenance (runs on 1st of each month at 3 AM)
-DO $$
+DO $outer$
 BEGIN
     IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron') THEN
         -- Remove existing job if it exists
@@ -402,14 +402,14 @@ BEGIN
         PERFORM cron.schedule(
             'archive_maintenance',
             '0 3 1 * *',  -- Run at 3 AM on 1st of each month
-            $$SELECT run_archive_maintenance()$$
+            'SELECT run_archive_maintenance()'
         );
         
         RAISE NOTICE 'Archive maintenance scheduled for 1st of each month at 3 AM';
     ELSE
         RAISE NOTICE 'pg_cron not available - schedule archive maintenance manually';
     END IF;
-END $$;
+END $outer$;
 
 -- =====================================================================
 -- Summary and Usage Instructions
