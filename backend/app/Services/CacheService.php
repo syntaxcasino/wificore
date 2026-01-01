@@ -145,27 +145,57 @@ class CacheService
     }
 
     /**
-     * Cache router data
+     * Cache router data (tenant-aware)
      */
-    public static function cacheRouter(int $routerId, array $data, int $ttl = self::TTL_MEDIUM): bool
+    public static function cacheRouter(string $tenantId, string $routerId, array $data, int $ttl = self::TTL_MEDIUM): bool
     {
-        return self::put(self::PREFIX_ROUTER . $routerId, $data, $ttl);
+        $key = self::PREFIX_ROUTER . $tenantId . ':' . $routerId;
+        return self::put($key, $data, $ttl);
     }
 
     /**
-     * Get cached router data
+     * Get cached router data (tenant-aware)
      */
-    public static function getRouter(int $routerId)
+    public static function getRouter(string $tenantId, string $routerId)
     {
-        return self::get(self::PREFIX_ROUTER . $routerId);
+        $key = self::PREFIX_ROUTER . $tenantId . ':' . $routerId;
+        return self::get($key);
     }
 
     /**
-     * Invalidate router cache
+     * Invalidate router cache (tenant-aware)
      */
-    public static function invalidateRouter(int $routerId): bool
+    public static function invalidateRouter(string $tenantId, string $routerId): bool
     {
-        return self::forget(self::PREFIX_ROUTER . $routerId);
+        $key = self::PREFIX_ROUTER . $tenantId . ':' . $routerId;
+        return self::forget($key);
+    }
+
+    /**
+     * Cache router list for a tenant
+     */
+    public static function cacheRouterList(string $tenantId, array $routers, int $ttl = self::TTL_MEDIUM): bool
+    {
+        $key = self::PREFIX_ROUTER . $tenantId . ':list';
+        return self::put($key, $routers, $ttl);
+    }
+
+    /**
+     * Get cached router list for a tenant
+     */
+    public static function getRouterList(string $tenantId)
+    {
+        $key = self::PREFIX_ROUTER . $tenantId . ':list';
+        return self::get($key);
+    }
+
+    /**
+     * Invalidate all router cache for a tenant
+     */
+    public static function invalidateTenantRouters(string $tenantId): int
+    {
+        $pattern = self::PREFIX_ROUTER . $tenantId . ':*';
+        return self::flushPattern($pattern);
     }
 
     /**

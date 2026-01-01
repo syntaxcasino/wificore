@@ -125,6 +125,13 @@ Schedule::command('cache:warmup')
     ->name('cache-warmup')
     ->onOneServer();
 
+// Cache routers for all tenants every 10 minutes
+Schedule::job(new \App\Jobs\CacheRoutersJob)
+    ->everyTenMinutes()
+    ->name('cache-tenant-routers')
+    ->withoutOverlapping()
+    ->onOneServer();
+
 // =============================================================================
 // PERFORMANCE METRICS
 // =============================================================================
