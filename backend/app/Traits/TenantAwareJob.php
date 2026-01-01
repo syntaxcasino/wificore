@@ -52,6 +52,17 @@ trait TenantAwareJob
             throw new \Exception("Tenant is not active: {$this->tenantId}");
         }
 
+        // Verify tenant schema is created
+        if (!$tenant->schema_created || empty($tenant->schema_name)) {
+            \Illuminate\Support\Facades\Log::warning("Skipping job execution: Tenant schema not created", [
+                'tenant_id' => $this->tenantId,
+                'schema_name' => $tenant->schema_name,
+                'schema_created' => $tenant->schema_created,
+                'job_class' => get_class($this),
+            ]);
+            return null; // Skip execution gracefully
+        }
+
         // Create a fake authenticated user context for tenant scoping
         // This ensures all queries within the job are scoped to the tenant
         $systemUser = new \App\Models\User([

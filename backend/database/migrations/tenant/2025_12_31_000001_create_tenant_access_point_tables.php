@@ -93,7 +93,7 @@ return new class extends Migration
 
                 $table->foreign('router_id')
                     ->references('id')
-                    ->on(new \Illuminate\Database\Query\Expression('public.routers'))
+                    ->on('routers') // Routers is in tenant schema
                     ->onDelete('cascade');
 
                 // Indexes
