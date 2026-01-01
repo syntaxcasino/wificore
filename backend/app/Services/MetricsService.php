@@ -324,11 +324,7 @@ class MetricsService extends TenantAwareService
                 ];
             }
             
-            // Get additional system metrics
-            $activeSessions = DB::table('user_sessions')
-                ->where('status', 'active')
-                ->count();
-            
+            // Get additional system metrics (only public schema tables)
             $pendingJobs = DB::table('jobs')->count();
             $failedJobs = DB::table('failed_jobs')->count();
 
@@ -345,7 +341,7 @@ class MetricsService extends TenantAwareService
                 'cache_keys' => $cacheStats['keys'],
                 'cache_memory_used' => $cacheStats['memory_used'],
                 'cache_hit_rate' => $cacheStats['hit_rate'],
-                'active_sessions' => $activeSessions,
+                'active_sessions' => 0, // Removed: user_sessions is tenant-specific
                 'pending_jobs' => $pendingJobs,
                 'failed_jobs' => $failedJobs,
             ]);
