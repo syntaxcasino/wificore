@@ -157,3 +157,31 @@ Schedule::call(function () {
 Schedule::call(function () {
     \App\Services\MetricsService::cleanupOldMetrics();
 })->dailyAt('02:00')->name('cleanup-old-metrics');
+
+// =============================================================================
+// P2 SECURITY - AUTOMATED MAINTENANCE
+// =============================================================================
+
+// Database backup - daily at 3:00 AM (full backup)
+Schedule::command('db:backup --type=full')
+    ->dailyAt('03:00')
+    ->name('database-backup-full')
+    ->onOneServer();
+
+// Database backup - schema only at 12:00 PM (for quick recovery testing)
+Schedule::command('db:backup --type=schema')
+    ->dailyAt('12:00')
+    ->name('database-backup-schema')
+    ->onOneServer();
+
+// Dependency vulnerability scan - weekly on Mondays at 4:00 AM
+Schedule::command('security:scan-dependencies --report')
+    ->weeklyOn(1, '04:00')
+    ->name('security-dependency-scan')
+    ->onOneServer();
+
+// Data cleanup according to retention policies - daily at 2:30 AM
+Schedule::command('data:cleanup')
+    ->dailyAt('02:30')
+    ->name('data-retention-cleanup')
+    ->onOneServer();

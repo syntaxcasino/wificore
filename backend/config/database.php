@@ -101,7 +101,7 @@ return [
                 // Enable persistent connections for connection pooling
                 PDO::ATTR_PERSISTENT => env('DB_PERSISTENT', true),
                 
-                // Set connection timeout
+                // Set connection timeout (P2 Security Fix)
                 PDO::ATTR_TIMEOUT => env('DB_TIMEOUT', 5),
                 
                 // Enable prepared statement emulation for better performance
@@ -116,6 +116,10 @@ return [
                 // Set default fetch mode
                 PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_OBJ,
             ],
+            
+            // Statement timeout to prevent long-running queries (P2 Security Fix)
+            'statement_timeout' => env('DB_STATEMENT_TIMEOUT', 30000), // 30 seconds in milliseconds
+            'lock_timeout' => env('DB_LOCK_TIMEOUT', 10000), // 10 seconds in milliseconds
             
             // Pool configuration
             'pool' => [
