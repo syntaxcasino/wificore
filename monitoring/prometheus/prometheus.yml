@@ -1,0 +1,67 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'wificore-production'
+    environment: 'production'
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+
+# Load rules once and periodically evaluate them
+rule_files:
+  - "/etc/prometheus/alerts/*.yml"
+
+# Scrape configurations
+scrape_configs:
+  # PostgreSQL metrics
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['postgres-exporter:9187']
+        labels:
+          service: 'postgresql'
+
+  # Redis metrics
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis-exporter:9121']
+        labels:
+          service: 'redis'
+
+  # Backend application metrics
+  - job_name: 'backend'
+    static_configs:
+      - targets: ['wificore-backend:9090']
+        labels:
+          service: 'laravel-backend'
+
+  # Soketi WebSocket metrics
+  - job_name: 'soketi'
+    static_configs:
+      - targets: ['wificore-soketi:9670']
+        labels:
+          service: 'websocket'
+
+  # Node exporter for system metrics
+  - job_name: 'node'
+    static_configs:
+      - targets: ['node-exporter:9100']
+        labels:
+          service: 'system'
+
+  # PgBouncer metrics
+  - job_name: 'pgbouncer'
+    static_configs:
+      - targets: ['pgbouncer-exporter:9127']
+        labels:
+          service: 'pgbouncer'
+
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          service: 'prometheus'

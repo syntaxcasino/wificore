@@ -1,0 +1,121 @@
+version: '3.8'
+
+services:
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: wificore-prometheus
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus/alerts:/etc/prometheus/alerts:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - wificore-network
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: wificore-grafana
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_INSTALL_PLUGINS=redis-datasource
+      - GF_SERVER_ROOT_URL=http://localhost:3001
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "3001:3000"
+    networks:
+      - wificore-network
+    depends_on:
+      - prometheus
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: wificore-postgres-exporter
+    restart: unless-stopped
+    environment:
+      - DATA_SOURCE_NAME=postgresql://${DB_USERNAME:-admin}:${DB_PASSWORD}@wificore-postgres:5432/${DB_DATABASE:-wms_770_ts}?sslmode=disable
+    ports:
+      - "9187:9187"
+    networks:
+      - wificore-network
+    depends_on:
+      - wificore-postgres
+
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    container_name: wificore-redis-exporter
+    restart: unless-stopped
+    environment:
+      - REDIS_ADDR=redis://wificore-redis:6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+    ports:
+      - "9121:9121"
+    networks:
+      - wificore-network
+    depends_on:
+      - wificore-redis
+
+  pgbouncer-exporter:
+    image: prometheuscommunity/pgbouncer-exporter:latest
+    container_name: wificore-pgbouncer-exporter
+    restart: unless-stopped
+    environment:
+      - PGBOUNCER_EXPORTER_HOST=wificore-pgbouncer
+      - PGBOUNCER_EXPORTER_PORT=6432
+      - PGBOUNCER_EXPORTER_USER=${DB_USERNAME:-admin}
+      - PGBOUNCER_EXPORTER_PASSWORD=${DB_PASSWORD}
+    ports:
+      - "9127:9127"
+    networks:
+      - wificore-network
+    depends_on:
+      - wificore-pgbouncer
+
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: wificore-node-exporter
+    restart: unless-stopped
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    ports:
+      - "9100:9100"
+    networks:
+      - wificore-network
+
+volumes:
+  prometheus_data:
+    name: wificore-prometheus-data
+  grafana_data:
+    name: wificore-grafana-data
+
+networks:
+  wificore-network:
+    external: true
+    name: wificore-network
