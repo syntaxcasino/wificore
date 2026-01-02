@@ -42,8 +42,16 @@ def run_command(cmd, check=True):
             text=True,
             check=check
         )
+        # Even with check=False, consider non-zero return code as failure
+        success = result.returncode == 0
+        
+        if not success:
+            logger.error(f"Command failed with return code {result.returncode}: {cmd}")
+            logger.error(f"STDOUT: {result.stdout}")
+            logger.error(f"STDERR: {result.stderr}")
+        
         return {
-            'success': True,
+            'success': success,
             'stdout': result.stdout,
             'stderr': result.stderr,
             'returncode': result.returncode
@@ -109,22 +117,40 @@ def apply_config():
                 logger.warning(f"wg-quick failed, trying manual creation: {result['stderr']}")
                 
                 # Create interface manually
-                run_command(f"ip link add dev {interface} type wireguard", check=False)
-                run_command(f"wg setconf {interface} {config_path}", check=False)
+                logger.info(f"Step 1: Creating WireGuard interface {interface}")
+                link_result = run_command(f"ip link add dev {interface} type wireguard", check=False)
+                if not link_result['success']:
+                    raise Exception(f"Failed to create interface: {link_result['stderr']}")
+                
+                logger.info(f"Step 2: Applying WireGuard configuration")
+                conf_result = run_command(f"wg setconf {interface} {config_path}", check=False)
+                if not conf_result['success']:
+                    raise Exception(f"Failed to set configuration: {conf_result['stderr']}")
                 
                 # Extract IP address from config and set it
+                logger.info(f"Step 3: Setting IP address")
                 with open(config_path, 'r') as f:
                     for line in f:
                         if line.strip().startswith('Address'):
                             address = line.split('=')[1].strip()
-                            run_command(f"ip addr add {address} dev {interface}", check=False)
+                            addr_result = run_command(f"ip addr add {address} dev {interface}", check=False)
+                            if not addr_result['success']:
+                                logger.warning(f"Failed to add IP address: {addr_result['stderr']}")
                             break
                 
                 # Bring interface up
+                logger.info(f"Step 4: Bringing interface up")
                 result = run_command(f"ip link set {interface} up", check=False)
                 
                 if not result['success']:
                     raise Exception(f"Failed to bring up interface: {result['stderr']}")
+            
+            # Verify interface is actually up
+            verify_result = run_command(f"ip link show {interface}", check=False)
+            if verify_result['success']:
+                logger.info(f"Interface {interface} verified on host")
+            else:
+                logger.error(f"Interface {interface} not found after creation!")
             
             action = 'created'
         else:
