@@ -316,6 +316,67 @@ class TenantVpnTunnelService
     }
 
     /**
+     * Ensure host WireGuard interface is up (idempotent for host mode)
+     */
+    protected function ensureHostInterfaceUp(TenantVpnTunnel $tunnel): void
+    {
+        if (!$this->isWireGuardInstalled()) {
+            Log::warning('WireGuard not installed, skipping interface setup');
+            return;
+        }
+
+        $configPath = "/etc/wireguard/{$tunnel->interface_name}.conf";
+        
+        // Check if interface is already up
+        $interfaceStatus = shell_exec("ip link show {$tunnel->interface_name} 2>&1");
+        
+        if (strpos($interfaceStatus, 'does not exist') === false) {
+            Log::info('WireGuard interface already exists', [
+                'interface' => $tunnel->interface_name,
+            ]);
+            return;
+        }
+
+        // Check if config file exists
+        if (!file_exists($configPath)) {
+            // Generate and save config
+            $config = $this->generateServerConfig($tunnel);
+            
+            try {
+                file_put_contents($configPath, $config);
+                chmod($configPath, 0600);
+                
+                Log::info('WireGuard config file created', [
+                    'interface' => $tunnel->interface_name,
+                    'config_path' => $configPath,
+                ]);
+            } catch (\Exception $e) {
+                Log::error('Failed to create WireGuard config', [
+                    'interface' => $tunnel->interface_name,
+                    'error' => $e->getMessage(),
+                ]);
+                throw $e;
+            }
+        }
+
+        // Bring up the interface
+        try {
+            $output = shell_exec("wg-quick up {$tunnel->interface_name} 2>&1");
+            
+            Log::info('WireGuard interface brought up', [
+                'interface' => $tunnel->interface_name,
+                'output' => $output,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to bring up WireGuard interface', [
+                'interface' => $tunnel->interface_name,
+                'error' => $e->getMessage(),
+            ]);
+            throw $e;
+        }
+    }
+
+    /**
      * Create WireGuard interface on server
      */
     protected function createWireGuardInterface(TenantVpnTunnel $tunnel): void

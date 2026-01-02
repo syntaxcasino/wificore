@@ -57,6 +57,27 @@ class CreateTenantWorkspaceJob implements ShouldQueue
                 'tenant_slug' => $this->registration->tenant_slug,
             ]);
 
+            // Check if tenant already exists (handle duplicate registration attempts)
+            $existingTenant = Tenant::where('slug', $this->registration->tenant_slug)->first();
+            
+            if ($existingTenant) {
+                Log::warning('Tenant already exists, using existing tenant', [
+                    'registration_id' => $this->registration->id,
+                    'tenant_id' => $existingTenant->id,
+                    'tenant_slug' => $this->registration->tenant_slug,
+                ]);
+                
+                // Update registration to link to existing tenant
+                $this->registration->update([
+                    'tenant_id' => $existingTenant->id,
+                    'status' => 'completed',
+                    'error_message' => 'Tenant already exists - linked to existing workspace'
+                ]);
+                
+                DB::commit();
+                return; // Exit gracefully
+            }
+
             // Broadcast workspace creation started
             event(new TenantWorkspaceCreating($this->registration));
 
