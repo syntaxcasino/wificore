@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket Test</title>
+    <script src="https://js.pusher.com/7.0/pusher.min.js"></script>
+    <script>
+        // Enable pusher logging - don't include this in production
+        Pusher.logToConsole = true;
+
+        const pusher = new Pusher('app-key', {
+            wsHost: window.location.hostname,
+            wsPort: 6001,
+            forceTLS: false,
+            enabledTransports: ['ws', 'wss'],
+            disableStats: true,
+            cluster: 'mt1'
+        });
+
+        const channel = pusher.subscribe('test-channel');
+        channel.bind('test-event', function(data) {
+            console.log('Received test event:', data);
+            document.getElementById('status').innerHTML += '<p>Event received: ' + JSON.stringify(data) + '</p>';
+        });
+
+        // Display connection status
+        pusher.connection.bind('state_change', function(states) {
+            console.log('Connection state changed:', states);
+            document.getElementById('status').innerHTML += '<p>Connection state: ' + states.current + '</p>';
+        });
+
+        // Display connection established
+        pusher.connection.bind('connected', function() {
+            console.log('Connected to WebSocket server');
+            document.getElementById('status').innerHTML += '<p>Connected to WebSocket server</p>';
+        });
+
+        // Display connection error
+        pusher.connection.bind('error', function(err) {
+            console.error('WebSocket error:', err);
+            document.getElementById('status').innerHTML += '<p>Error: ' + err.message + '</p>';
+        });
+    </script>
+</head>
+<body>
+    <h1>WebSocket Test</h1>
+    <div id="status">
+        <p>Connecting to WebSocket server...</p>
+    </div>
+</body>
+</html>
