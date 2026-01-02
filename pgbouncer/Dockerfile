@@ -1,14 +1,14 @@
 FROM pgbouncer/pgbouncer:latest
 
-# Copy custom configuration
-COPY pgbouncer.ini /etc/pgbouncer/pgbouncer.ini
-COPY userlist.txt /etc/pgbouncer/userlist.txt
-COPY entrypoint.sh /entrypoint.sh
+USER root
 
-# Set proper permissions
-RUN chmod 644 /etc/pgbouncer/pgbouncer.ini && \
-    chmod 600 /etc/pgbouncer/userlist.txt && \
-    chmod +x /entrypoint.sh
+# Copy custom configuration
+COPY --chmod=644 pgbouncer.ini /etc/pgbouncer/pgbouncer.ini
+COPY --chmod=600 userlist.txt /etc/pgbouncer/userlist.txt
+COPY --chmod=755 entrypoint.sh /entrypoint.sh
+
+# Switch back to pgbouncer user
+USER pgbouncer
 
 EXPOSE 6432
 
