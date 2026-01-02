@@ -145,7 +145,7 @@ services:
       - VPN_SERVER_PORT=${VPN_LISTEN_PORT:-51830}
       - VPN_SERVER_ENDPOINT=${VPN_SERVER_ENDPOINT:-vpn.example.com:51830}
       - VPN_SUBNET_BASE=${VPN_SUBNET_BASE:-10.0.0.0/8}
-      - WIREGUARD_CONTROLLER_URL=http://127.0.0.1:8080
+      - WIREGUARD_CONTROLLER_URL=http://172.17.0.1:8080
       - WIREGUARD_API_KEY=${WIREGUARD_API_KEY}
     depends_on:
       wificore-postgres:
