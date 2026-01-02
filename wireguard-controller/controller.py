@@ -156,30 +156,45 @@ def apply_config():
         else:
             # Interface exists, reload configuration
             logger.info(f"Reloading existing interface: {interface}")
-            result = run_command(f"wg syncconf {interface} {config_path}")
+            
+            # wg syncconf only accepts peer configuration, not interface settings
+            # Extract only the peer sections from the config
+            peers_config_path = f"/etc/wireguard/{interface}_peers.conf"
+            with open(config_path, 'r') as f:
+                lines = f.readlines()
+            
+            # Write peers-only config (skip [Interface] section)
+            with open(peers_config_path, 'w') as f:
+                in_interface_section = False
+                for line in lines:
+                    if line.strip().startswith('[Interface]'):
+                        in_interface_section = True
+                        continue
+                    elif line.strip().startswith('[Peer]'):
+                        in_interface_section = False
+                    
+                    if not in_interface_section:
+                        f.write(line)
+            
+            os.chmod(peers_config_path, 0o600)
+            logger.info(f"Peers-only config written to {peers_config_path}")
+            
+            # Use wg syncconf with peers-only config
+            result = run_command(f"wg syncconf {interface} {peers_config_path}", check=False)
             
             if not result['success']:
-                # If syncconf fails, try down/up
-                logger.warning(f"syncconf failed, trying down/up for {interface}")
-                run_command(f"wg-quick down {interface}", check=False)
+                # If syncconf fails, try full reload with wg-quick
+                logger.warning(f"syncconf failed, trying full reload for {interface}")
                 
-                # Try wg-quick up
-                result = run_command(f"wg-quick up {interface}", check=False)
+                # Use wg-quick strip to safely reload
+                result = run_command(f"wg-quick strip {interface} | wg syncconf {interface} /dev/stdin", check=False)
                 
                 if not result['success']:
-                    # Manual recreation
-                    run_command(f"ip link del {interface}", check=False)
-                    run_command(f"ip link add dev {interface} type wireguard", check=False)
-                    run_command(f"wg setconf {interface} {config_path}", check=False)
+                    logger.warning(f"Strip/syncconf failed, trying down/up for {interface}")
+                    down_result = run_command(f"wg-quick down {interface}", check=False)
                     
-                    with open(config_path, 'r') as f:
-                        for line in f:
-                            if line.strip().startswith('Address'):
-                                address = line.split('=')[1].strip()
-                                run_command(f"ip addr add {address} dev {interface}", check=False)
-                                break
-                    
-                    result = run_command(f"ip link set {interface} up", check=False)
+                    # Try wg-quick up
+                    result = run_command(f"wg-quick up {interface}", check=False)
                     
                     if not result['success']:
                         raise Exception(f"Failed to reload interface: {result['stderr']}")
