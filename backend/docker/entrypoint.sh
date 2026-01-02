@@ -121,7 +121,18 @@ if [ "${AUTO_MIGRATE}" = "true" ] || [ "${AUTO_MIGRATE}" = "1" ]; then
     
     # Create storage link
     echo "🔗 Creating storage link..."
-    su -s /bin/bash www-data -c "php artisan storage:link" || echo "Storage link already exists"
+    # Ensure public directory exists and has correct permissions
+    mkdir -p /var/www/html/public
+    chown -R www-data:www-data /var/www/html/public
+    chmod -R 775 /var/www/html/public
+    
+    # Remove existing symlink if it exists
+    if [ -L /var/www/html/public/storage ]; then
+        rm -f /var/www/html/public/storage
+    fi
+    
+    # Create storage link as www-data user
+    su -s /bin/bash www-data -c "php artisan storage:link" || echo "⚠️  Storage link creation failed (may already exist)"
     echo ""
   fi
 fi

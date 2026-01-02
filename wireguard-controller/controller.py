@@ -100,10 +100,31 @@ def apply_config():
         if check_result['returncode'] != 0:
             # Interface doesn't exist, bring it up
             logger.info(f"Creating new interface: {interface}")
-            result = run_command(f"wg-quick up {interface}")
+            
+            # Try wg-quick up first
+            result = run_command(f"wg-quick up {interface}", check=False)
             
             if not result['success']:
-                raise Exception(f"Failed to bring up interface: {result['stderr']}")
+                # If wg-quick fails, try manual interface creation
+                logger.warning(f"wg-quick failed, trying manual creation: {result['stderr']}")
+                
+                # Create interface manually
+                run_command(f"ip link add dev {interface} type wireguard", check=False)
+                run_command(f"wg setconf {interface} {config_path}", check=False)
+                
+                # Extract IP address from config and set it
+                with open(config_path, 'r') as f:
+                    for line in f:
+                        if line.strip().startswith('Address'):
+                            address = line.split('=')[1].strip()
+                            run_command(f"ip addr add {address} dev {interface}", check=False)
+                            break
+                
+                # Bring interface up
+                result = run_command(f"ip link set {interface} up", check=False)
+                
+                if not result['success']:
+                    raise Exception(f"Failed to bring up interface: {result['stderr']}")
             
             action = 'created'
         else:
@@ -115,10 +136,27 @@ def apply_config():
                 # If syncconf fails, try down/up
                 logger.warning(f"syncconf failed, trying down/up for {interface}")
                 run_command(f"wg-quick down {interface}", check=False)
-                result = run_command(f"wg-quick up {interface}")
+                
+                # Try wg-quick up
+                result = run_command(f"wg-quick up {interface}", check=False)
                 
                 if not result['success']:
-                    raise Exception(f"Failed to reload interface: {result['stderr']}")
+                    # Manual recreation
+                    run_command(f"ip link del {interface}", check=False)
+                    run_command(f"ip link add dev {interface} type wireguard", check=False)
+                    run_command(f"wg setconf {interface} {config_path}", check=False)
+                    
+                    with open(config_path, 'r') as f:
+                        for line in f:
+                            if line.strip().startswith('Address'):
+                                address = line.split('=')[1].strip()
+                                run_command(f"ip addr add {address} dev {interface}", check=False)
+                                break
+                    
+                    result = run_command(f"ip link set {interface} up", check=False)
+                    
+                    if not result['success']:
+                        raise Exception(f"Failed to reload interface: {result['stderr']}")
             
             action = 'reloaded'
         
