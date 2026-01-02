@@ -85,8 +85,11 @@ RUN mkdir -p \
     bootstrap/cache \
     /var/log/supervisor \
     /etc/supervisor/conf.d \
+    /etc/wireguard \
     && chown -R www-data:www-data storage bootstrap/cache \
     && chmod -R 775 storage bootstrap/cache \
+    && chown -R www-data:www-data /etc/wireguard \
+    && chmod -R 775 /etc/wireguard \
     && rm -f bootstrap/cache/*.php
 
 # Copy Supervisor configs
