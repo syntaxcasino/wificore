@@ -168,8 +168,13 @@ max_locks_per_transaction: 256
 
 **Access:**
 ```bash
+# Local development:
 Prometheus: http://localhost:9090
 Grafana: http://localhost:3001 (admin/admin123)
+
+# Production (via nginx reverse proxy):
+Prometheus: https://wificore.traidsolutions.com/prometheus/
+Grafana: https://wificore.traidsolutions.com/grafana/ (admin/<your-password>)
 ```
 
 **Alerts Configured:**
