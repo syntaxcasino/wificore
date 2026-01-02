@@ -38,7 +38,7 @@ class WebSocketService {
       wsHost: wsHost,
       wsPort: wsPort,
       wssPort: wsPort,
-      wsPath: import.meta.env.VITE_PUSHER_PATH || '/app',
+      wsPath: import.meta.env.VITE_PUSHER_PATH || '/',
       forceTLS: isSecure, // Use wss:// if on HTTPS, ws:// if on HTTP
       encrypted: isSecure,
       disableStats: true,
