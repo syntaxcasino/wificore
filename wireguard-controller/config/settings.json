@@ -1,0 +1,9 @@
+{
+  "service_name": "WireGuard Controller",
+  "version": "1.0.0",
+  "max_interfaces": 100,
+  "default_keepalive": 25,
+  "config_path": "/etc/wireguard",
+  "log_level": "INFO",
+  "api_port": 8080
+}

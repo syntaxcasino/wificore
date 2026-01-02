@@ -88,4 +88,32 @@ return [
         'api_key' => env('MAILERSEND_API_KEY'),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | WireGuard Controller Configuration
+    |--------------------------------------------------------------------------
+    |
+    | Configuration for the dedicated WireGuard controller service.
+    | The controller manages VPN interfaces and configurations separately
+    | from the main application for security and scalability.
+    |
+    */
+
+    'wireguard' => [
+        'controller_url' => env('WIREGUARD_CONTROLLER_URL', 'http://wificore-wireguard:8080'),
+        'api_key' => env('WIREGUARD_API_KEY'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | RADIUS Server Configuration
+    |--------------------------------------------------------------------------
+    */
+
+    'radius' => [
+        'host' => env('RADIUS_SERVER_HOST', 'wificore-freeradius'),
+        'port' => env('RADIUS_SERVER_PORT', 1812),
+        'secret' => env('RADIUS_SECRET'),
+    ],
+
 ];

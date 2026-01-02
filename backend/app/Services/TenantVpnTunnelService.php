@@ -317,58 +317,58 @@ class TenantVpnTunnelService
 
     /**
      * Ensure host WireGuard interface is up (idempotent for host mode)
+     * Uses WireGuard Controller API instead of direct system calls
      */
     protected function ensureHostInterfaceUp(TenantVpnTunnel $tunnel): void
     {
-        if (!$this->isWireGuardInstalled()) {
-            Log::warning('WireGuard not installed, skipping interface setup');
-            return;
-        }
-
-        $configPath = "/etc/wireguard/{$tunnel->interface_name}.conf";
+        $controllerUrl = config('services.wireguard.controller_url');
+        $apiKey = config('services.wireguard.api_key');
         
-        // Check if interface is already up
-        $interfaceStatus = shell_exec("ip link show {$tunnel->interface_name} 2>&1");
-        
-        if (strpos($interfaceStatus, 'does not exist') === false) {
-            Log::info('WireGuard interface already exists', [
-                'interface' => $tunnel->interface_name,
+        if (empty($controllerUrl) || empty($apiKey)) {
+            Log::error('WireGuard controller not configured', [
+                'controller_url' => $controllerUrl,
+                'api_key_set' => !empty($apiKey),
             ]);
-            return;
+            throw new \Exception('WireGuard controller configuration missing');
         }
 
-        // Check if config file exists
-        if (!file_exists($configPath)) {
-            // Generate and save config
-            $config = $this->generateServerConfig($tunnel);
-            
-            try {
-                file_put_contents($configPath, $config);
-                chmod($configPath, 0600);
-                
-                Log::info('WireGuard config file created', [
-                    'interface' => $tunnel->interface_name,
-                    'config_path' => $configPath,
-                ]);
-            } catch (\Exception $e) {
-                Log::error('Failed to create WireGuard config', [
-                    'interface' => $tunnel->interface_name,
-                    'error' => $e->getMessage(),
-                ]);
-                throw $e;
-            }
-        }
-
-        // Bring up the interface
+        // Generate WireGuard config
+        $config = $this->generateServerConfig($tunnel);
+        
         try {
-            $output = shell_exec("wg-quick up {$tunnel->interface_name} 2>&1");
+            // Send config to WireGuard controller
+            $response = \Illuminate\Support\Facades\Http::timeout(30)
+                ->withHeaders([
+                    'Authorization' => 'Bearer ' . $apiKey,
+                    'Content-Type' => 'application/json',
+                ])
+                ->post($controllerUrl . '/vpn/apply', [
+                    'interface' => $tunnel->interface_name,
+                    'config' => $config,
+                ]);
             
-            Log::info('WireGuard interface brought up', [
+            if ($response->failed()) {
+                $error = $response->json('error') ?? $response->body();
+                throw new \Exception('Controller returned error: ' . $error);
+            }
+            
+            $result = $response->json();
+            
+            Log::info('WireGuard interface configured via controller', [
                 'interface' => $tunnel->interface_name,
-                'output' => $output,
+                'action' => $result['action'] ?? 'unknown',
+                'status' => $result['status'] ?? 'unknown',
             ]);
+            
+        } catch (\Illuminate\Http\Client\ConnectionException $e) {
+            Log::error('Failed to connect to WireGuard controller', [
+                'interface' => $tunnel->interface_name,
+                'controller_url' => $controllerUrl,
+                'error' => $e->getMessage(),
+            ]);
+            throw new \Exception('WireGuard controller unreachable: ' . $e->getMessage());
         } catch (\Exception $e) {
-            Log::error('Failed to bring up WireGuard interface', [
+            Log::error('Failed to configure WireGuard via controller', [
                 'interface' => $tunnel->interface_name,
                 'error' => $e->getMessage(),
             ]);
