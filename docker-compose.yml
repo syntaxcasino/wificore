@@ -14,7 +14,8 @@ services:
       wificore-backend:
         condition: service_healthy
     networks:
-      - wificore-network
+      wificore-network:
+        ipv4_address: 172.70.0.10
     healthcheck:
       test: ["CMD", "nginx", "-t"]
       interval: 10s
@@ -42,7 +43,8 @@ services:
       wificore-soketi:
         condition: service_healthy
     networks:
-      - wificore-network
+      wificore-network:
+        ipv4_address: 172.70.0.11
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost"]
       interval: 10s
@@ -146,7 +148,8 @@ services:
       wificore-wireguard:
         condition: service_healthy
     networks:
-      - wificore-network
+      wificore-network:
+        ipv4_address: 172.70.0.5
     healthcheck:
       test: ["CMD-SHELL", "php-fpm -t || exit 1"]
       interval: 10s
@@ -169,6 +172,7 @@ services:
     # No volumes - all configs copied during build for better performance
     networks:
       wificore-network:
+        ipv4_address: 172.70.0.2
         aliases:
           - freeradius
     dns:
@@ -217,7 +221,8 @@ services:
       SOKETI_METRICS_SERVER_PORT: 9670
       SOKETI_METRICS_ENABLED: true
     networks:
-      - wificore-network
+      wificore-network:
+        ipv4_address: 172.70.0.6
     healthcheck:
       test: ["CMD", "sh", "-c", "wget --quiet --tries=1 --timeout=5 -O /dev/null http://localhost:9670/usage"]
       interval: 30s
@@ -234,7 +239,8 @@ services:
       - TZ=Africa/Nairobi
       - REDIS_PASSWORD=${REDIS_PASSWORD}
     networks:
-      - wificore-network
+      wificore-network:
+        ipv4_address: 172.70.0.7
     healthcheck:
       test: ["CMD", "sh", "-c", "redis-cli -a ${REDIS_PASSWORD:-} ping || exit 1"]
       interval: 10s
@@ -261,7 +267,8 @@ services:
       wificore-postgres:
         condition: service_healthy
     networks:
-      - wificore-network
+      wificore-network:
+        ipv4_address: 172.70.0.3
     ports:
       - "6432:6432"
     healthcheck:
@@ -321,9 +328,7 @@ services:
       # Note: init.sql is baked into the image, not mounted
     networks:
       wificore-network:
-        aliases:
-          - postgres
-          - database
+        ipv4_address: 172.70.0.4
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "admin", "-d", "wms_770_ts"]
       interval: 10s
@@ -339,7 +344,8 @@ services:
       - MONGO_INITDB_ROOT_USERNAME=${MONGO_USERNAME:-admin}
       - MONGO_INITDB_ROOT_PASSWORD=${MONGO_PASSWORD:-password}
     networks:
-      - wificore-network
+      wificore-network:
+        ipv4_address: 172.70.0.8
     volumes:
       - mongo_data:/data/db
     healthcheck:
@@ -361,7 +367,8 @@ services:
       wificore-mongo:
         condition: service_healthy
     networks:
-      - wificore-network
+      wificore-network:
+        ipv4_address: 172.70.0.9
     ports:
       - "7547:7547"
     healthcheck:
@@ -389,7 +396,8 @@ services:
       wificore-mongo:
         condition: service_healthy
     networks:
-      - wificore-network
+      wificore-network:
+        ipv4_address: 172.70.0.12
     ports:
       - "7557:7557"
     healthcheck:
@@ -417,7 +425,8 @@ services:
       wificore-mongo:
         condition: service_healthy
     networks:
-      - wificore-network
+      wificore-network:
+        ipv4_address: 172.70.0.13
     ports:
       - "7567:7567"
     healthcheck:
@@ -445,7 +454,8 @@ services:
       wificore-mongo:
         condition: service_healthy
     networks:
-      - wificore-network
+      wificore-network:
+        ipv4_address: 172.70.0.14
     ports:
       - "3000:3000"
     healthcheck:
@@ -477,6 +487,7 @@ networks:
     name: wificore-network
     driver: bridge
     ipam:
+      driver: default
       config:
         - subnet: 172.70.0.0/16
           gateway: 172.70.255.254
