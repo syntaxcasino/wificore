@@ -418,7 +418,12 @@ class TenantVpnTunnelService
     protected function generateServerConfig(TenantVpnTunnel $tunnel): string
     {
         $privateKey = decrypt($tunnel->server_private_key);
-        $radiusHost = config('services.radius.host', env('RADIUS_SERVER_HOST', 'wificore-freeradius'));
+        
+        // In host network mode, Docker hostnames don't resolve in iptables
+        // Use the FreeRADIUS container IP from the Docker bridge network
+        // The custom bridge network is 172.70.0.0/16, FreeRADIUS typically gets .2 or .3
+        // We'll use an environment variable to make this configurable
+        $radiusHost = env('RADIUS_SERVER_IP', '172.70.0.2');
 
         // PostUp:
         // 1. Forward traffic from WG to eth0 (Internet/Services)
