@@ -107,6 +107,9 @@ class RouterController extends Controller
             'port' => $router->port,
         ]);
 
+        // Generate sanitized script for UI display (hides secrets)
+        $sanitizedScript = $this->generateSanitizedScript($router, $connectivityScript);
+
         return response()->json([
             'id' => $router->id,
             'name' => $router->name,
@@ -114,13 +117,14 @@ class RouterController extends Controller
             'config_token' => $router->config_token,
             'connectivity_script' => $connectivityScript,
             'vpn_script' => $vpnScript,
+            'sanitized_script' => $sanitizedScript, // Safe to display in UI
             'vpn_ip' => $vpnConfig->client_ip,
             'status' => $router->status,
             'model' => $router->model,
             'os_version' => $router->os_version,
             'last_seen' => $router->last_seen,
             'vpn_enabled' => true,
-            'vpn_status' => 'pending',
+            'vpn_status' => 'active',
         ], 201);
     } catch (\Exception $e) {
         Log::error('Failed to create router: ' . $e->getMessage(), [
@@ -745,6 +749,47 @@ class RouterController extends Controller
             ]);
             return response()->json(['error' => 'Configuration not found'], 404);
         }
+    }
+
+    /**
+     * Generate sanitized script for UI display (hides secrets)
+     */
+    private function generateSanitizedScript(Router $router, string $connectivityScript): string
+    {
+        $fetchUrl = config('app.url') . '/api/routers/' . $router->config_token . '/fetch-config';
+        
+        return <<<EOT
+# ============================================
+# ROUTER CONFIGURATION SCRIPT
+# ============================================
+# Router: {$router->name}
+# Management IP: Will be assigned via VPN
+# 
+# SECURITY NOTE: This script contains sensitive credentials.
+# Copy and paste into your MikroTik terminal.
+# The full configuration will be fetched securely from the server.
+
+# ============================================
+# STEP 1: Basic Connectivity Setup
+# ============================================
+/ip service set api disabled=no port={$router->port}
+/ip service set ssh disabled=no port=22 address=""
+/user add name={$router->username} password="[HIDDEN]" group=full
+/ip firewall filter add chain=input protocol=tcp dst-port=22 action=accept place-before=0 comment="Allow SSH access"
+/system identity set name="{$router->name}"
+/system note set note="Managed by Traidnet Solution LTD"
+
+# ============================================
+# STEP 2: Fetch Full Configuration
+# ============================================
+# The full VPN configuration will be fetched from:
+# {$fetchUrl}
+#
+# To apply the full configuration, use the "Complete Configuration Script" 
+# button below or manually fetch it using:
+# /tool fetch url="{$fetchUrl}" mode=https dst-path=router-config.txt
+
+EOT;
     }
 
     private function generateConnectivityScript(Router $router)
