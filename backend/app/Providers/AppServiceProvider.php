@@ -20,6 +20,9 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(RadiusService::class, function ($app) {
             return new RadiusService();
         });
+        
+        // Register TenantContext as singleton to maintain state across middleware and controllers
+        $this->app->singleton(\App\Services\TenantContext::class);
     }
 
     /**

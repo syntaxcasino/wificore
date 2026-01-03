@@ -32,16 +32,7 @@ return new class extends Migration
             $table->index('is_active');
         });
 
-        // Create default tenant for existing data
-        DB::table('tenants')->insert([
-            'id' => DB::raw('gen_random_uuid()'),
-            'name' => 'Default Tenant',
-            'slug' => 'default',
-            'email' => 'default@tenant.local',
-            'is_active' => true,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+        // No default tenant - all tenants must register through the system
     }
 
     /**
