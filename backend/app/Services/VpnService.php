@@ -140,6 +140,8 @@ class VpnService
             
             // 5. Create VPN configuration for this router
             // Note: No tenant_id needed - table is in tenant schema, isolation is implicit
+            $interfaceName = 'wg-' . substr($router->id, 0, 8); // wg-531ddd0e
+            
             $vpnConfig = VpnConfiguration::create([
                 'tenant_vpn_tunnel_id' => $tunnel->id,
                 'router_id' => $router->id,
@@ -151,6 +153,8 @@ class VpnService
                 'subnet_cidr' => $tunnel->subnet_cidr,
                 'server_endpoint' => $serverEndpoint,
                 'listen_port' => $tunnel->listen_port,
+                'interface_name' => $interfaceName,
+                'preshared_key' => $this->generatePresharedKey(),
                 'status' => 'pending',
             ]);
             

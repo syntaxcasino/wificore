@@ -119,6 +119,10 @@ Route::get('/public/tenant-by-domain', [PublicTenantController::class, 'getTenan
 Route::post('/public/subdomain/check', [PublicTenantController::class, 'checkSubdomainAvailability'])
     ->name('api.public.subdomain.check');
 
+// Public Router Configuration Fetch - Token-based authentication
+Route::get('/routers/{config_token}/fetch-config', [RouterController::class, 'fetchConfig'])
+    ->name('api.routers.fetch-config');
+
 // =============================================================================
 // RATE-LIMITED AUTHENTICATION ROUTES
 // =============================================================================

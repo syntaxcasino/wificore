@@ -711,36 +711,67 @@ class RouterController extends Controller
 
     private function generateUniqueIp()
     {
-        $subnet = '192.168.56';
-        $cidr = 24;
-        $maxAttempts = 10;
-        $attempt = 0;
+        // Generate a placeholder IP - will be replaced with VPN IP after VPN config creation
+        // This is just for initial router creation, actual management happens via VPN
+        return '0.0.0.0/32';
+    }
 
-        do {
-            $lastOctet = rand(2, 254);
-            $ipAddress = "$subnet.$lastOctet/$cidr";
-            $exists = Router::where('ip_address', $ipAddress)->exists();
-            $attempt++;
-        } while ($exists && $attempt < $maxAttempts);
-
-        if ($exists) {
-            throw new \Exception('Unable to generate unique IP address after maximum attempts');
+    /**
+     * Fetch router configuration using config token (public endpoint)
+     */
+    public function fetchConfig($configToken)
+    {
+        try {
+            $router = Router::where('config_token', $configToken)->firstOrFail();
+            
+            // Get VPN configuration
+            $vpnConfig = $router->vpnConfiguration;
+            
+            if (!$vpnConfig) {
+                return response()->json([
+                    'error' => 'VPN configuration not found. Please contact support.'
+                ], 404);
+            }
+            
+            return response()->json([
+                'router_name' => $router->name,
+                'vpn_script' => $vpnConfig->mikrotik_script,
+                'status' => 'success'
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to fetch router config', [
+                'config_token' => $configToken,
+                'error' => $e->getMessage()
+            ]);
+            return response()->json(['error' => 'Configuration not found'], 404);
         }
-
-        return $ipAddress;
     }
 
     private function generateConnectivityScript(Router $router)
     {
         $decryptedPassword = Crypt::decrypt($router->password);
+        $fetchUrl = config('app.url') . '/api/routers/' . $router->config_token . '/fetch-config';
+        
         return <<<EOT
-/ip address add address={$router->ip_address} interface=ether2
+# ============================================
+# STEP 1: Basic Connectivity Setup
+# ============================================
 /ip service set api disabled=no port={$router->port}
 /ip service set ssh disabled=no port=22 address=""
 /user add name={$router->username} password="$decryptedPassword" group=full
 /ip firewall filter add chain=input protocol=tcp dst-port=22 action=accept place-before=0 comment="Allow SSH access"
 /system identity set name="{$router->name}"
 /system note set note="Managed by Traidnet Solution LTD"
+
+# ============================================
+# STEP 2: Fetch and Apply VPN Configuration
+# ============================================
+# Run this command to fetch and apply VPN config:
+/tool fetch url="{$fetchUrl}" mode=https dst-path=vpn-config.json
+
+# After fetch completes, you can view the configuration at:
+# /file print file=vpn-config.json
+
 EOT;
     }
 private function generateServiceScript(array $interfaceAssignments, array $interfaceServices, array $configurations): string
