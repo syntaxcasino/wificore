@@ -35,8 +35,8 @@ const createEchoConfig = () => {
     enabledTransports: ['ws', 'wss'],
     cluster: env.VITE_PUSHER_APP_CLUSTER || 'mt1',
     
-    // Path configuration
-    path: env.VITE_PUSHER_PATH || '/',
+    // Path configuration - empty string so Pusher appends /app (not //app)
+    path: env.VITE_PUSHER_PATH || '',
     
     // Authentication - Use broadcasting auth endpoint (nginx routes to backend)
     authEndpoint: env.VITE_PUSHER_AUTH_ENDPOINT || '/api/broadcasting/auth',

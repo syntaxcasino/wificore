@@ -41,7 +41,7 @@ services:
       - VITE_PUSHER_HOST=wificore.traidsolutions.com
       - VITE_PUSHER_PORT=${PUSHER_PORT:-6071}
       - VITE_PUSHER_SCHEME=${PUSHER_SCHEME:-wss}
-      - VITE_PUSHER_PATH=/
+      - VITE_PUSHER_PATH=
       - VITE_PUSHER_APP_CLUSTER=${PUSHER_APP_CLUSTER:-mt1}
       - VITE_API_BASE_URL=${API_BASE_URL}
     depends_on:
