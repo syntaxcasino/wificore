@@ -35,22 +35,15 @@ class RouterController extends Controller
         ]);
 
         try {
-            // Get current tenant from authenticated user
-            $user = $request->user();
-            if (!$user || !$user->tenant_id) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'User must belong to a tenant to create routers'
-                ], 403);
-            }
-
-            // Get tenant object
-            $tenant = \App\Models\Tenant::find($user->tenant_id);
+            // Get tenant from TenantContext service (set by SetTenantContext middleware)
+            $tenantContext = app(\App\Services\TenantContext::class);
+            $tenant = $tenantContext->getTenant();
+            
             if (!$tenant) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Tenant not found'
-                ], 404);
+                    'message' => 'Tenant context not set. User must belong to a tenant to create routers.'
+                ], 403);
             }
 
             $ipAddress = $this->generateUniqueIp();
