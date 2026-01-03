@@ -35,6 +35,24 @@ class RouterController extends Controller
         ]);
 
         try {
+            // Get current tenant from authenticated user
+            $user = $request->user();
+            if (!$user || !$user->tenant_id) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'User must belong to a tenant to create routers'
+                ], 403);
+            }
+
+            // Get tenant object
+            $tenant = \App\Models\Tenant::find($user->tenant_id);
+            if (!$tenant) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Tenant not found'
+                ], 404);
+            }
+
             $ipAddress = $this->generateUniqueIp();
             $username = 'traidnet_user';
             $password = Str::random(12);
@@ -67,7 +85,7 @@ class RouterController extends Controller
             // Create VPN configuration SYNCHRONOUSLY so we can return the script immediately
         $vpnService = app(\App\Services\VpnService::class);
         $vpnConfig = $vpnService->createVpnConfiguration(
-            $router->tenant,
+            $tenant,
             $router
         );
 
