@@ -91,11 +91,21 @@ class RouterController extends Controller
         // Use the authoritative script from VpnService
         $vpnScript = $vpnConfig->mikrotik_script;
 
+        // Generate complete inline script (connectivity + VPN)
+        $completeScript = $connectivityScript . "\n" . $vpnScript;
+
         // Store VPN script in router configs
         RouterConfig::create([
             'router_id' => $router->id,
             'config_type' => 'vpn',
             'config_content' => $vpnScript,
+        ]);
+
+        // Store complete script
+        RouterConfig::create([
+            'router_id' => $router->id,
+            'config_type' => 'complete',
+            'config_content' => $completeScript,
         ]);
 
         Log::info('Router created with VPN configuration:', [
@@ -117,6 +127,7 @@ class RouterController extends Controller
             'config_token' => $router->config_token,
             'connectivity_script' => $connectivityScript,
             'vpn_script' => $vpnScript,
+            'complete_script' => $completeScript, // Full script with VPN inline
             'sanitized_script' => $sanitizedScript, // Safe to display in UI
             'vpn_ip' => $vpnConfig->client_ip,
             'status' => $router->status,
@@ -756,8 +767,6 @@ class RouterController extends Controller
      */
     private function generateSanitizedScript(Router $router, string $connectivityScript): string
     {
-        $fetchUrl = config('app.url') . '/api/routers/' . $router->config_token . '/fetch-config';
-        
         return <<<EOT
 # ============================================
 # ROUTER CONFIGURATION SCRIPT
@@ -765,9 +774,8 @@ class RouterController extends Controller
 # Router: {$router->name}
 # Management IP: Will be assigned via VPN
 # 
-# SECURITY NOTE: This script contains sensitive credentials.
-# Copy and paste into your MikroTik terminal.
-# The full configuration will be fetched securely from the server.
+# SECURITY NOTE: Sensitive credentials are hidden in this preview.
+# Use the "Copy Complete Script" button to get the full configuration.
 
 # ============================================
 # STEP 1: Basic Connectivity Setup
@@ -780,14 +788,15 @@ class RouterController extends Controller
 /system note set note="Managed by Traidnet Solution LTD"
 
 # ============================================
-# STEP 2: Fetch Full Configuration
+# STEP 2: VPN Configuration
 # ============================================
-# The full VPN configuration will be fetched from:
-# {$fetchUrl}
-#
-# To apply the full configuration, use the "Complete Configuration Script" 
-# button below or manually fetch it using:
-# /tool fetch url="{$fetchUrl}" mode=https dst-path=router-config.txt
+# VPN configuration with WireGuard keys and credentials
+# [HIDDEN - Use "Copy Complete Script" button to view]
+
+# After applying the complete script:
+# 1. Router will connect to VPN
+# 2. Management IP will be assigned automatically
+# 3. Server can reach router via VPN tunnel
 
 EOT;
     }
@@ -795,9 +804,17 @@ EOT;
     private function generateConnectivityScript(Router $router)
     {
         $decryptedPassword = Crypt::decrypt($router->password);
-        $fetchUrl = config('app.url') . '/api/routers/' . $router->config_token . '/fetch-config';
         
         return <<<EOT
+# ============================================
+# ROUTER CONNECTIVITY SETUP
+# ============================================
+# Router: {$router->name}
+# Generated: {$router->created_at}
+#
+# IMPORTANT: Copy and paste this entire script into your MikroTik terminal
+# The VPN configuration is included inline below
+
 # ============================================
 # STEP 1: Basic Connectivity Setup
 # ============================================
@@ -807,15 +824,6 @@ EOT;
 /ip firewall filter add chain=input protocol=tcp dst-port=22 action=accept place-before=0 comment="Allow SSH access"
 /system identity set name="{$router->name}"
 /system note set note="Managed by Traidnet Solution LTD"
-
-# ============================================
-# STEP 2: Fetch and Apply VPN Configuration
-# ============================================
-# Run this command to fetch and apply VPN config:
-/tool fetch url="{$fetchUrl}" mode=https dst-path=vpn-config.json
-
-# After fetch completes, you can view the configuration at:
-# /file print file=vpn-config.json
 
 EOT;
     }
