@@ -164,14 +164,24 @@ class VpnService
             // 7. Generate configuration scripts
             $vpnConfig->mikrotik_script = $this->generateMikrotikScript($vpnConfig);
             $vpnConfig->linux_script = $this->generateLinuxScript($vpnConfig);
+            
+            // 8. Update router with VPN IP
+            $router->update([
+                'vpn_ip' => $clientIp,
+                'ip_address' => $clientIp . '/32', // Use VPN IP as primary management IP
+            ]);
+            
+            // 9. Set VPN config to active
+            $vpnConfig->status = 'active';
             $vpnConfig->save();
             
-            Log::info('VPN configuration created for router', [
+            Log::info('VPN configuration created and activated for router', [
                 'tenant_id' => $tenant->id,
                 'router_id' => $router->id,
                 'tunnel_id' => $tunnel->id,
                 'interface' => $tunnel->interface_name,
                 'client_ip' => $clientIp,
+                'vpn_status' => 'active',
             ]);
             
             return $vpnConfig;
