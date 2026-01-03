@@ -202,7 +202,14 @@ class CreateTenantWorkspaceJob implements ShouldQueue
                 'username' => $username
             ]);
 
-            event(new TenantEmailVerified($this->registration));
+            // Update registration status to completed
+            $this->registration->update([
+                'status' => 'completed',
+                'credentials_sent' => false // Will be set to true by SendCredentialsEmailJob
+            ]);
+
+            // Broadcast workspace created event
+            event(new TenantWorkspaceCreated($this->registration));
 
             // Dispatch job to send credentials
             SendCredentialsEmailJob::dispatch($this->registration)
