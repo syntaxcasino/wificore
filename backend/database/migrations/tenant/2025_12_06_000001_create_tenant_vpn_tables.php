@@ -38,7 +38,7 @@ return new class extends Migration
                 $table->text('server_private_key')->nullable();
                 $table->text('client_public_key')->nullable();
                 $table->text('client_private_key')->nullable();
-                $table->string('preshared_key', 255)->nullable();
+                $table->text('preshared_key')->nullable();
                 
                 // Network Configuration
                 $table->ipAddress('server_ip');
