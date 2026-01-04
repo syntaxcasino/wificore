@@ -857,9 +857,10 @@ EOT;
             DB::statement("SET search_path TO public");
             
             // Return as .rsc file for MikroTik /tool fetch
-            // CRITICAL: Use text/plain for MikroTik compatibility
+            // CRITICAL: MikroTik requires Content-Disposition for dst-path to work
             return response($completeScript, 200)
-                ->header('Content-Type', 'text/plain; charset=utf-8')
+                ->header('Content-Type', 'application/octet-stream')
+                ->header('Content-Disposition', 'attachment; filename="config.rsc"')
                 ->header('Content-Length', (string) strlen($completeScript))
                 ->header('Cache-Control', 'no-cache, no-store, must-revalidate');
                 
