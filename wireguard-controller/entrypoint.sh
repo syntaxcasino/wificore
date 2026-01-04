@@ -122,8 +122,18 @@ fi
 # Bring up interface if needed
 if [ "$NEEDS_RECREATION" = true ]; then
     echo "Bringing up ${VPN_INTERFACE_NAME} interface..."
+    
+    # First, ensure any existing interface is completely removed
+    if ip link show "${VPN_INTERFACE_NAME}" > /dev/null 2>&1; then
+        echo "Removing existing ${VPN_INTERFACE_NAME} interface..."
+        ip link delete "${VPN_INTERFACE_NAME}" 2>/dev/null || true
+        sleep 1
+    fi
+    
+    # Now bring up fresh interface
     wg-quick up "${VPN_INTERFACE_NAME}" || {
-        echo "Failed to bring up interface, retrying..."
+        echo "wg-quick failed, retrying after cleanup..."
+        ip link delete "${VPN_INTERFACE_NAME}" 2>/dev/null || true
         sleep 2
         wg-quick up "${VPN_INTERFACE_NAME}"
     }
