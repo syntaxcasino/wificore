@@ -130,14 +130,43 @@ if [ "$NEEDS_RECREATION" = true ]; then
         sleep 1
     fi
     
-    # Now bring up fresh interface
-    wg-quick up "${VPN_INTERFACE_NAME}" || {
-        echo "wg-quick failed, retrying after cleanup..."
-        ip link delete "${VPN_INTERFACE_NAME}" 2>/dev/null || true
-        sleep 2
-        wg-quick up "${VPN_INTERFACE_NAME}"
-    }
-    echo "✓ ${VPN_INTERFACE_NAME} interface is up"
+    # Manual interface creation to ensure ListenPort is set correctly
+    # wg-quick uses wg setconf which doesn't set ListenPort, so we do it manually
+    echo "Creating WireGuard interface manually with explicit port ${VPN_LISTEN_PORT}..."
+    
+    # Step 1: Create interface
+    ip link add dev "${VPN_INTERFACE_NAME}" type wireguard
+    
+    # Step 2: Set private key using temp file
+    echo "${VPN_SERVER_PRIVATE_KEY}" > /tmp/wg_private_key
+    chmod 600 /tmp/wg_private_key
+    wg set "${VPN_INTERFACE_NAME}" private-key /tmp/wg_private_key
+    rm -f /tmp/wg_private_key
+    
+    # Step 3: CRITICAL - Explicitly set listen port
+    wg set "${VPN_INTERFACE_NAME}" listen-port "${VPN_LISTEN_PORT}"
+    
+    # Step 4: Set IP address
+    ip addr add "${VPN_SERVER_IP}/24" dev "${VPN_INTERFACE_NAME}"
+    
+    # Step 5: Set MTU
+    ip link set mtu 1420 dev "${VPN_INTERFACE_NAME}"
+    
+    # Step 6: Bring interface up
+    ip link set "${VPN_INTERFACE_NAME}" up
+    
+    # Step 7: Add route for VPN subnet
+    ip route add 10.0.0.0/8 dev "${VPN_INTERFACE_NAME}" 2>/dev/null || echo "Route already exists"
+    
+    # Step 8: Setup iptables rules
+    echo "Setting up iptables rules..."
+    iptables -A FORWARD -i "${VPN_INTERFACE_NAME}" -o eth0 -j ACCEPT 2>/dev/null || true
+    iptables -A FORWARD -i "${VPN_INTERFACE_NAME}" -o "${VPN_INTERFACE_NAME}" -j ACCEPT 2>/dev/null || true
+    iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE 2>/dev/null || true
+    iptables -t nat -A PREROUTING -i "${VPN_INTERFACE_NAME}" -p udp --dport 1812 -j DNAT --to-destination ${RADIUS_IP}:1812 2>/dev/null || true
+    iptables -t nat -A PREROUTING -i "${VPN_INTERFACE_NAME}" -p udp --dport 1813 -j DNAT --to-destination ${RADIUS_IP}:1813 2>/dev/null || true
+    
+    echo "✓ ${VPN_INTERFACE_NAME} interface is up with port ${VPN_LISTEN_PORT}"
 else
     echo "✓ ${VPN_INTERFACE_NAME} interface is already correctly configured"
 fi
