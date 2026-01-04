@@ -44,14 +44,13 @@ sysctl -w net.ipv6.conf.all.forwarding=1 > /dev/null 2>&1 || echo "IPv6 forwardi
 mkdir -p /etc/wireguard
 chmod 755 /etc/wireguard
 
-# Auto-create WireGuard interface configuration if it doesn't exist
+# Auto-create/fix WireGuard interface configuration
 CONFIG_FILE="/etc/wireguard/${VPN_INTERFACE_NAME}.conf"
-if [ ! -f "$CONFIG_FILE" ]; then
-    echo "Creating initial WireGuard configuration for ${VPN_INTERFACE_NAME}..."
-    
-    # Get RADIUS server IP from environment or use default
-    RADIUS_IP="${RADIUS_SERVER_IP:-172.70.0.2}"
-    
+RADIUS_IP="${RADIUS_SERVER_IP:-172.70.0.2}"
+NEEDS_RECREATION=false
+
+# Function to create config file
+create_config() {
     cat > "$CONFIG_FILE" << EOF
 [Interface]
 Address = ${VPN_SERVER_IP}/24
@@ -62,25 +61,75 @@ PostDown = iptables -D FORWARD -i ${VPN_INTERFACE_NAME} -o eth0 -j ACCEPT; iptab
 
 # Peers will be added dynamically via API
 EOF
-    
     chmod 600 "$CONFIG_FILE"
+}
+
+if [ ! -f "$CONFIG_FILE" ]; then
+    echo "Creating initial WireGuard configuration for ${VPN_INTERFACE_NAME}..."
+    create_config
     echo "✓ Configuration created at $CONFIG_FILE"
-    
-    # Bring up the interface
-    echo "Bringing up ${VPN_INTERFACE_NAME} interface..."
-    wg-quick up "${VPN_INTERFACE_NAME}" || echo "Interface may already be up"
-    
-    echo "✓ ${VPN_INTERFACE_NAME} interface initialized"
+    NEEDS_RECREATION=true
 else
-    echo "Configuration already exists at $CONFIG_FILE"
+    echo "Configuration exists, checking if it needs update..."
     
-    # Check if interface is up, if not bring it up
-    if ! ip link show "${VPN_INTERFACE_NAME}" > /dev/null 2>&1; then
-        echo "Interface ${VPN_INTERFACE_NAME} is down, bringing it up..."
-        wg-quick up "${VPN_INTERFACE_NAME}" || echo "Failed to bring up interface"
+    # Check if interface is up
+    if ip link show "${VPN_INTERFACE_NAME}" > /dev/null 2>&1; then
+        # Get current listen port
+        CURRENT_PORT=$(wg show "${VPN_INTERFACE_NAME}" listen-port 2>/dev/null || echo "0")
+        
+        # Check if port matches configured port
+        if [ "$CURRENT_PORT" != "$VPN_LISTEN_PORT" ]; then
+            echo "⚠ Port mismatch detected: current=$CURRENT_PORT, expected=$VPN_LISTEN_PORT"
+            echo "Recreating interface with correct port..."
+            
+            # Bring down interface
+            wg-quick down "${VPN_INTERFACE_NAME}" 2>/dev/null || true
+            
+            # Recreate config with correct port
+            create_config
+            echo "✓ Configuration updated"
+            NEEDS_RECREATION=true
+        else
+            echo "✓ Port is correct ($CURRENT_PORT)"
+        fi
+        
+        # Check if private key matches
+        CURRENT_PUBKEY=$(wg show "${VPN_INTERFACE_NAME}" public-key 2>/dev/null || echo "")
+        EXPECTED_PUBKEY=$(echo "$VPN_SERVER_PRIVATE_KEY" | wg pubkey 2>/dev/null || echo "")
+        
+        if [ -n "$CURRENT_PUBKEY" ] && [ -n "$EXPECTED_PUBKEY" ] && [ "$CURRENT_PUBKEY" != "$EXPECTED_PUBKEY" ]; then
+            echo "⚠ Public key mismatch detected"
+            echo "Current: $CURRENT_PUBKEY"
+            echo "Expected: $EXPECTED_PUBKEY"
+            echo "Recreating interface with correct keys..."
+            
+            # Bring down interface
+            wg-quick down "${VPN_INTERFACE_NAME}" 2>/dev/null || true
+            
+            # Recreate config
+            create_config
+            echo "✓ Configuration updated"
+            NEEDS_RECREATION=true
+        else
+            echo "✓ Keys are correct"
+        fi
     else
-        echo "Interface ${VPN_INTERFACE_NAME} is already up"
+        echo "Interface is down, will bring it up"
+        NEEDS_RECREATION=true
     fi
+fi
+
+# Bring up interface if needed
+if [ "$NEEDS_RECREATION" = true ]; then
+    echo "Bringing up ${VPN_INTERFACE_NAME} interface..."
+    wg-quick up "${VPN_INTERFACE_NAME}" || {
+        echo "Failed to bring up interface, retrying..."
+        sleep 2
+        wg-quick up "${VPN_INTERFACE_NAME}"
+    }
+    echo "✓ ${VPN_INTERFACE_NAME} interface is up"
+else
+    echo "✓ ${VPN_INTERFACE_NAME} interface is already correctly configured"
 fi
 
 echo "WireGuard Controller initialization complete"
