@@ -154,52 +154,69 @@ def apply_config():
             
             action = 'created'
         else:
-            # Interface exists, reload configuration
+            # Interface exists - need to check if ListenPort changed
             logger.info(f"Reloading existing interface: {interface}")
             
-            # wg syncconf only accepts peer configuration, not interface settings
-            # Extract only the peer sections from the config
-            peers_config_path = f"/etc/wireguard/{interface}_peers.conf"
+            # Extract ListenPort from new config
+            new_listen_port = None
             with open(config_path, 'r') as f:
-                lines = f.readlines()
+                for line in f:
+                    if line.strip().startswith('ListenPort'):
+                        new_listen_port = line.split('=')[1].strip()
+                        break
             
-            # Write peers-only config (skip [Interface] section)
-            with open(peers_config_path, 'w') as f:
-                in_interface_section = False
-                for line in lines:
-                    if line.strip().startswith('[Interface]'):
-                        in_interface_section = True
-                        continue
-                    elif line.strip().startswith('[Peer]'):
-                        in_interface_section = False
-                    
-                    if not in_interface_section:
-                        f.write(line)
+            # Get current ListenPort
+            current_port_result = run_command(f"wg show {interface} listen-port", check=False)
+            current_listen_port = current_port_result['stdout'].strip() if current_port_result['success'] else None
             
-            os.chmod(peers_config_path, 0o600)
-            logger.info(f"Peers-only config written to {peers_config_path}")
-            
-            # Use wg syncconf with peers-only config
-            result = run_command(f"wg syncconf {interface} {peers_config_path}", check=False)
-            
-            if not result['success']:
-                # If syncconf fails, try full reload with wg-quick
-                logger.warning(f"syncconf failed, trying full reload for {interface}")
+            # If ListenPort changed, we need full reload (down/up)
+            if new_listen_port and current_listen_port and new_listen_port != current_listen_port:
+                logger.info(f"ListenPort changed from {current_listen_port} to {new_listen_port}, performing full reload")
                 
-                # Use wg-quick strip to safely reload
-                result = run_command(f"wg-quick strip {interface} | wg syncconf {interface} /dev/stdin", check=False)
+                # Full reload required for interface settings
+                down_result = run_command(f"wg-quick down {interface}", check=False)
+                result = run_command(f"wg-quick up {interface}", check=False)
                 
                 if not result['success']:
-                    logger.warning(f"Strip/syncconf failed, trying down/up for {interface}")
+                    raise Exception(f"Failed to reload interface with new port: {result['stderr']}")
+                
+                action = 'reloaded (port changed)'
+            else:
+                # Port unchanged, just sync peers
+                # Extract only the peer sections from the config
+                peers_config_path = f"/etc/wireguard/{interface}_peers.conf"
+                with open(config_path, 'r') as f:
+                    lines = f.readlines()
+                
+                # Write peers-only config (skip [Interface] section)
+                with open(peers_config_path, 'w') as f:
+                    in_interface_section = False
+                    for line in lines:
+                        if line.strip().startswith('[Interface]'):
+                            in_interface_section = True
+                            continue
+                        elif line.strip().startswith('[Peer]'):
+                            in_interface_section = False
+                        
+                        if not in_interface_section:
+                            f.write(line)
+                
+                os.chmod(peers_config_path, 0o600)
+                logger.info(f"Peers-only config written to {peers_config_path}")
+                
+                # Use wg syncconf with peers-only config
+                result = run_command(f"wg syncconf {interface} {peers_config_path}", check=False)
+                
+                if not result['success']:
+                    # If syncconf fails, try full reload
+                    logger.warning(f"syncconf failed, trying full reload for {interface}")
                     down_result = run_command(f"wg-quick down {interface}", check=False)
-                    
-                    # Try wg-quick up
                     result = run_command(f"wg-quick up {interface}", check=False)
                     
                     if not result['success']:
                         raise Exception(f"Failed to reload interface: {result['stderr']}")
-            
-            action = 'reloaded'
+                
+                action = 'reloaded'
         
         # Get interface status
         status_result = run_command(f"wg show {interface}", check=False)
