@@ -99,10 +99,10 @@ class RouterController extends Controller
 /ip service set api disabled=no port={$router->port}
 /ip service set ssh disabled=no port=22 address=""
 /user add name={$router->username} password="$decryptedPassword" group=full
-/ip firewall filter add chain=input protocol=tcp dst-port=22 action=accept comment="Allow SSH access"
 /system identity set name="{$router->name}"
 /system note set note="Managed by Traidnet Solution LTD"
 $vpnScript
+/ip firewall filter add chain=input protocol=tcp dst-port=22 action=accept comment="Allow SSH access"
 
 EOT;
 
@@ -825,10 +825,10 @@ EOT;
 /ip service set api disabled=no port={$router->port}
 /ip service set ssh disabled=no port=22 address=""
 /user add name={$router->username} password="$decryptedPassword" group=full
-/ip firewall filter add chain=input protocol=tcp dst-port=22 action=accept comment="Allow SSH access"
 /system identity set name="{$router->name}"
 /system note set note="Managed by Traidnet Solution LTD"
 $vpnScript
+/ip firewall filter add chain=input protocol=tcp dst-port=22 action=accept comment="Allow SSH access"
 
 EOT;
 
