@@ -788,8 +788,7 @@ class RouterController extends Controller
                     'tenants_searched' => $tenants->count(),
                 ]);
                 return response('# ERROR: Configuration not found. Please verify your config token.', 404)
-                    ->header('Content-Type', 'application/octet-stream')
-                    ->header('Content-Disposition', 'attachment; filename="error.rsc"');
+                    ->header('Content-Type', 'text/plain; charset=utf-8');
             }
             
             // Now set the correct tenant context for subsequent queries
@@ -801,8 +800,7 @@ class RouterController extends Controller
             if (!$vpnConfig) {
                 DB::statement("SET search_path TO public");
                 return response('# ERROR: VPN configuration not found. Please contact support.', 404)
-                    ->header('Content-Type', 'application/octet-stream')
-                    ->header('Content-Disposition', 'attachment; filename="error.rsc"');
+                    ->header('Content-Type', 'text/plain; charset=utf-8');
             }
             
             // Get stored complete configuration
@@ -843,10 +841,9 @@ EOT;
             DB::statement("SET search_path TO public");
             
             // Return as .rsc file for MikroTik /tool fetch
-            // CRITICAL: Must use application/octet-stream or text/plain with .rsc extension
+            // CRITICAL: Use text/plain for MikroTik compatibility
             return response($completeScript, 200)
-                ->header('Content-Type', 'application/octet-stream')
-                ->header('Content-Disposition', 'attachment; filename="config.rsc"')
+                ->header('Content-Type', 'text/plain; charset=utf-8')
                 ->header('Cache-Control', 'no-cache, no-store, must-revalidate');
                 
         } catch (\Exception $e) {
@@ -859,8 +856,7 @@ EOT;
                 'trace' => $e->getTraceAsString(),
             ]);
             return response('# ERROR: Configuration not found', 404)
-                ->header('Content-Type', 'application/octet-stream')
-                ->header('Content-Disposition', 'attachment; filename="error.rsc"');
+                ->header('Content-Type', 'text/plain; charset=utf-8');
         }
     }
 
