@@ -122,24 +122,52 @@ def apply_config():
                 if not link_result['success']:
                     raise Exception(f"Failed to create interface: {link_result['stderr']}")
                 
-                logger.info(f"Step 2: Applying WireGuard configuration")
-                conf_result = run_command(f"wg setconf {interface} {config_path}", check=False)
-                if not conf_result['success']:
-                    raise Exception(f"Failed to set configuration: {conf_result['stderr']}")
+                # Extract configuration values from config file
+                private_key = None
+                listen_port = None
+                address = None
                 
-                # Extract IP address from config and set it
-                logger.info(f"Step 3: Setting IP address")
                 with open(config_path, 'r') as f:
                     for line in f:
-                        if line.strip().startswith('Address'):
+                        line = line.strip()
+                        if line.startswith('PrivateKey'):
+                            private_key = line.split('=')[1].strip()
+                        elif line.startswith('ListenPort'):
+                            listen_port = line.split('=')[1].strip()
+                        elif line.startswith('Address'):
                             address = line.split('=')[1].strip()
-                            addr_result = run_command(f"ip addr add {address} dev {interface}", check=False)
-                            if not addr_result['success']:
-                                logger.warning(f"Failed to add IP address: {addr_result['stderr']}")
-                            break
+                
+                # Set private key
+                if private_key:
+                    logger.info(f"Step 2: Setting private key")
+                    key_result = run_command(f"wg set {interface} private-key <(echo '{private_key}')", shell=True, check=False)
+                    if not key_result['success']:
+                        # Try alternative method
+                        import tempfile
+                        with tempfile.NamedTemporaryFile(mode='w', delete=False) as tmp:
+                            tmp.write(private_key)
+                            tmp_path = tmp.name
+                        key_result = run_command(f"wg set {interface} private-key {tmp_path}", check=False)
+                        os.unlink(tmp_path)
+                        if not key_result['success']:
+                            raise Exception(f"Failed to set private key: {key_result['stderr']}")
+                
+                # Set listen port - CRITICAL: This must be set explicitly
+                if listen_port:
+                    logger.info(f"Step 3: Setting listen port to {listen_port}")
+                    port_result = run_command(f"wg set {interface} listen-port {listen_port}", check=False)
+                    if not port_result['success']:
+                        raise Exception(f"Failed to set listen port: {port_result['stderr']}")
+                
+                # Set IP address
+                if address:
+                    logger.info(f"Step 4: Setting IP address {address}")
+                    addr_result = run_command(f"ip addr add {address} dev {interface}", check=False)
+                    if not addr_result['success']:
+                        logger.warning(f"Failed to add IP address: {addr_result['stderr']}")
                 
                 # Bring interface up
-                logger.info(f"Step 4: Bringing interface up")
+                logger.info(f"Step 5: Bringing interface up")
                 result = run_command(f"ip link set {interface} up", check=False)
                 
                 if not result['success']:
