@@ -477,7 +477,8 @@ EOT;
 
         try {
             // Add peer via WireGuard Controller API
-            $response = \Illuminate\Support\Facades\Http::timeout(30)
+            $response = \Illuminate\Support\Facades\Http::timeout(5)
+                ->retry(3, 1000)
                 ->withHeaders([
                     'Authorization' => 'Bearer ' . $apiKey,
                     'Content-Type' => 'application/json',
@@ -504,21 +505,19 @@ EOT;
                 'client_public_key' => substr($config->client_public_key, 0, 16) . '...',
                 'status' => $result['status'] ?? 'unknown',
             ]);
-        } catch (\Illuminate\Http\Client\ConnectionException $e) {
-            Log::error('Failed to connect to WireGuard controller for peer addition', [
+        } catch (\Exception $e) {
+            Log::error('Failed to add router peer via controller - CRITICAL ERROR', [
                 'interface' => $tunnel->interface_name,
                 'router_id' => $config->router_id,
                 'controller_url' => $controllerUrl,
+                'client_public_key' => $config->client_public_key,
+                'client_ip' => $config->client_ip,
                 'error' => $e->getMessage(),
             ]);
-            throw new \Exception('WireGuard controller unreachable: ' . $e->getMessage());
-        } catch (\Exception $e) {
-            Log::error('Failed to add router peer via controller', [
-                'interface' => $tunnel->interface_name,
-                'router_id' => $config->router_id,
-                'error' => $e->getMessage(),
-            ]);
-            throw $e;
+            
+            // CRITICAL: Re-throw exception to prevent router creation without VPN peer
+            // This ensures the transaction rolls back and the router is not created
+            throw new \Exception('CRITICAL: Failed to add VPN peer to server. Router creation aborted. Error: ' . $e->getMessage());
         }
     }
 
