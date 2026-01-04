@@ -91,8 +91,19 @@ class RouterController extends Controller
         // Use the authoritative script from VpnService
         $vpnScript = $vpnConfig->mikrotik_script;
 
-        // Generate complete inline script (connectivity + VPN)
-        $completeScript = $connectivityScript . "\n" . $vpnScript;
+        // Generate complete configuration script (basic setup + VPN)
+        // This is what will be in the .rsc file that MikroTik downloads
+        $decryptedPassword = Crypt::decrypt($router->password);
+        $completeScript = <<<EOT
+/ip service set api disabled=no port={$router->port}
+/ip service set ssh disabled=no port=22 address=""
+/user add name={$router->username} password="$decryptedPassword" group=full
+/ip firewall filter add chain=input protocol=tcp dst-port=22 action=accept place-before=0 comment="Allow SSH access"
+/system identity set name="{$router->name}"
+/system note set note="Managed by Traidnet Solution LTD"
+$vpnScript
+
+EOT;
 
         // Store VPN script in router configs
         RouterConfig::create([
@@ -101,7 +112,7 @@ class RouterController extends Controller
             'config_content' => $vpnScript,
         ]);
 
-        // Store complete script
+        // Store complete script (this is what fetchConfig will return)
         RouterConfig::create([
             'router_id' => $router->id,
             'config_type' => 'complete',
