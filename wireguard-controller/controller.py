@@ -182,8 +182,8 @@ def apply_config():
             
             action = 'created'
         else:
-            # Interface exists - need to check if ListenPort changed
-            logger.info(f"Reloading existing interface: {interface}")
+            # Interface exists - check current state
+            logger.info(f"Interface {interface} already exists, checking state...")
             
             # Extract ListenPort from new config
             new_listen_port = None
@@ -197,54 +197,68 @@ def apply_config():
             current_port_result = run_command(f"wg show {interface} listen-port", check=False)
             current_listen_port = current_port_result['stdout'].strip() if current_port_result['success'] else None
             
-            # If ListenPort changed, we need full reload (down/up)
-            if new_listen_port and current_listen_port and new_listen_port != current_listen_port:
-                logger.info(f"ListenPort changed from {current_listen_port} to {new_listen_port}, performing full reload")
+            # Check if port matches
+            if new_listen_port and current_listen_port and new_listen_port == current_listen_port:
+                # Port is correct - interface is already configured properly by entrypoint
+                # Just ensure it's up and skip any reload to preserve the port
+                logger.info(f"Interface {interface} already configured with correct port {current_listen_port}")
                 
-                # Full reload required for interface settings
-                down_result = run_command(f"wg-quick down {interface}", check=False)
-                result = run_command(f"wg-quick up {interface}", check=False)
-                
-                if not result['success']:
-                    raise Exception(f"Failed to reload interface with new port: {result['stderr']}")
-                
-                action = 'reloaded (port changed)'
+                # Verify interface is up
+                link_check = run_command(f"ip link show {interface}", check=False)
+                if link_check['success'] and 'UP' in link_check['stdout']:
+                    logger.info(f"Interface {interface} is already up with correct configuration")
+                    action = 'already configured'
+                else:
+                    logger.info(f"Interface {interface} exists but is down, bringing it up")
+                    up_result = run_command(f"ip link set {interface} up", check=False)
+                    if not up_result['success']:
+                        raise Exception(f"Failed to bring up interface: {up_result['stderr']}")
+                    action = 'brought up'
             else:
-                # Port unchanged, just sync peers
-                # Extract only the peer sections from the config
-                peers_config_path = f"/etc/wireguard/{interface}_peers.conf"
+                # Port mismatch - need to fix it
+                logger.warning(f"Port mismatch: current={current_listen_port}, expected={new_listen_port}")
+                logger.info(f"Recreating interface with correct port...")
+                
+                # Delete existing interface
+                run_command(f"ip link delete {interface}", check=False)
+                
+                # Extract config values
+                private_key = None
+                listen_port = None
+                address = None
+                
                 with open(config_path, 'r') as f:
-                    lines = f.readlines()
+                    for line in f:
+                        line = line.strip()
+                        if line.startswith('PrivateKey'):
+                            private_key = line.split('=')[1].strip()
+                        elif line.startswith('ListenPort'):
+                            listen_port = line.split('=')[1].strip()
+                        elif line.startswith('Address'):
+                            address = line.split('=')[1].strip()
                 
-                # Write peers-only config (skip [Interface] section)
-                with open(peers_config_path, 'w') as f:
-                    in_interface_section = False
-                    for line in lines:
-                        if line.strip().startswith('[Interface]'):
-                            in_interface_section = True
-                            continue
-                        elif line.strip().startswith('[Peer]'):
-                            in_interface_section = False
-                        
-                        if not in_interface_section:
-                            f.write(line)
+                # Recreate interface manually with correct port
+                run_command(f"ip link add dev {interface} type wireguard", check=False)
                 
-                os.chmod(peers_config_path, 0o600)
-                logger.info(f"Peers-only config written to {peers_config_path}")
+                if private_key:
+                    import tempfile
+                    with tempfile.NamedTemporaryFile(mode='w', delete=False) as tmp:
+                        tmp.write(private_key)
+                        tmp_path = tmp.name
+                    run_command(f"wg set {interface} private-key {tmp_path}", check=False)
+                    os.unlink(tmp_path)
                 
-                # Use wg syncconf with peers-only config
-                result = run_command(f"wg syncconf {interface} {peers_config_path}", check=False)
+                if listen_port:
+                    logger.info(f"Setting listen port to {listen_port}")
+                    run_command(f"wg set {interface} listen-port {listen_port}", check=False)
                 
-                if not result['success']:
-                    # If syncconf fails, try full reload
-                    logger.warning(f"syncconf failed, trying full reload for {interface}")
-                    down_result = run_command(f"wg-quick down {interface}", check=False)
-                    result = run_command(f"wg-quick up {interface}", check=False)
-                    
-                    if not result['success']:
-                        raise Exception(f"Failed to reload interface: {result['stderr']}")
+                if address:
+                    run_command(f"ip addr add {address} dev {interface}", check=False)
                 
-                action = 'reloaded'
+                run_command(f"ip link set mtu 1420 dev {interface}", check=False)
+                run_command(f"ip link set {interface} up", check=False)
+                
+                action = 'recreated with correct port'
         
         # Get interface status
         status_result = run_command(f"wg show {interface}", check=False)
