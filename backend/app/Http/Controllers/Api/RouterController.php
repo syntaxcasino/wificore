@@ -869,83 +869,17 @@ EOT;
      */
     private function generateSanitizedScript(Router $router, string $connectivityScript): string
     {
-        $fetchUrl = config('app.url') . '/api/routers/' . $router->config_token . '/fetch-config';
-        
-        return <<<EOT
-# ============================================
-# PROVISIONING COMMAND
-# ============================================
-# Router: {$router->name}
-# Management IP: Will be assigned via VPN
-# 
-# SECURITY NOTE: This is a safe preview.
-# The actual provisioning command is available via the "Copy" button.
-
-/tool fetch mode=https url="{$fetchUrl}" dst-path=config.rsc; :delay 2s; /import config.rsc
-
-# ============================================
-# What this command does:
-# ============================================
-# 1. Fetches your router's complete configuration from our secure server
-# 2. Saves it locally as config.rsc
-# 3. Automatically imports and applies the configuration
-#
-# The configuration includes:
-# ✓ User credentials and access settings
-# ✓ WireGuard VPN configuration (encrypted)
-# ✓ Router identity and management settings
-# ✓ Firewall rules for secure access
-#
-# After execution:
-# ✓ Router connects to management VPN
-# ✓ Assigned VPN IP for secure management
-# ✓ Server can monitor and manage router remotely
-#
-# IMPORTANT: 
-# - Ensure router has internet connectivity
-# - /tool fetch must be enabled (not restricted by license)
-# - HTTPS mode is used for secure transfer
-
-EOT;
+        return $connectivityScript;
     }
 
     private function generateConnectivityScript(Router $router)
     {
         $fetchUrl = config('app.url') . '/api/routers/' . $router->config_token . '/fetch-config';
         
-        return <<<EOT
-# ============================================
-# PROVISIONING COMMAND
-# ============================================
-# Router: {$router->name}
-# Generated: {$router->created_at}
-#
-# IMPORTANT: Copy and paste this command into your MikroTik terminal
-# This will fetch and apply the complete configuration from the server
-
-/tool fetch mode=https url="{$fetchUrl}" dst-path=config.rsc; :delay 2s; /import config.rsc
-
-# ============================================
-# What this does:
-# ============================================
-# 1. Fetches complete configuration from server (HTTPS)
-# 2. Saves it as config.rsc
-# 3. Waits 2 seconds for download to complete
-# 4. Imports and executes the configuration
-#
-# The configuration includes:
-# - Basic connectivity setup (API, SSH, user)
-# - WireGuard VPN configuration
-# - Router identity and management settings
-#
-# After execution:
-# - Router will be connected to management VPN
-# - Server can reach router at assigned VPN IP
-# - Router status will update automatically
-
-EOT;
+        return "/tool fetch mode=https url=\"{$fetchUrl}\" dst-path=config.rsc; :delay 2s; /import config.rsc";
     }
-private function generateServiceScript(array $interfaceAssignments, array $interfaceServices, array $configurations): string
+
+    private function generateServiceScript(array $interfaceAssignments, array $interfaceServices, array $configurations): string
 {
     Log::info('Starting generateServiceScript', [
         'interface_assignments' => $interfaceAssignments,
