@@ -113,16 +113,16 @@ class TenantVpnTunnelService
         $interfaceName = config('vpn.interface_name', 'wg0');
         $listenPort = config('vpn.listen_port', 51830);
         
-        // Get configured keys
+        // Get configured keys - REQUIRED for production
         $privateKey = config('vpn.server_private_key');
         $publicKey = config('vpn.server_public_key');
 
         if (empty($privateKey) || empty($publicKey)) {
-             // Fallback for dev/testing if not set, but log warning
-             Log::warning('VPN keys not configured for Host mode, generating temporary keys. This will cause issues if container restarts.');
-             $keys = $this->generateKeys();
-             $privateKey = $keys['private'];
-             $publicKey = $keys['public'];
+            Log::error('VPN keys not configured in .env - CRITICAL ERROR', [
+                'private_key_set' => !empty($privateKey),
+                'public_key_set' => !empty($publicKey),
+            ]);
+            throw new \Exception('VPN_SERVER_PRIVATE_KEY and VPN_SERVER_PUBLIC_KEY must be configured in .env file');
         }
 
         // 2. Create tunnel record
