@@ -7,6 +7,7 @@ use App\Jobs\ProvisionVpnConfigurationJob;
 use App\Models\Router;
 use App\Models\VpnConfiguration;
 use App\Services\VpnService;
+use App\Services\VpnConnectivityService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
@@ -14,7 +15,8 @@ use Illuminate\Support\Facades\Validator;
 class VpnConfigurationController extends Controller
 {
     public function __construct(
-        private VpnService $vpnService
+        private VpnService $vpnService,
+        private VpnConnectivityService $connectivityService
     ) {}
 
     /**
@@ -272,6 +274,115 @@ class VpnConfigurationController extends Controller
                 'available_ips' => $availableIps,
                 'usage_percentage' => $usagePercentage,
                 'status' => $tunnel->status,
+            ],
+        ]);
+    }
+
+    /**
+     * Verify VPN connectivity to a router
+     * Tests if server can ping the router's VPN IP
+     */
+    public function verifyConnectivity(Request $request, int $id)
+    {
+        $config = VpnConfiguration::findOrFail($id);
+
+        Log::info('VPN connectivity verification requested', [
+            'config_id' => $id,
+            'router_id' => $config->router_id,
+            'client_ip' => $config->client_ip,
+        ]);
+
+        // Perform connectivity check
+        $result = $this->connectivityService->verifyConnectivity($config);
+
+        // Update VPN configuration status based on result
+        if ($result['success'] && $result['packet_loss'] === 0) {
+            $config->update([
+                'status' => 'connected',
+                'last_handshake_at' => now(),
+            ]);
+        } else {
+            $config->update([
+                'status' => 'disconnected',
+            ]);
+        }
+
+        return response()->json([
+            'success' => $result['success'],
+            'data' => [
+                'config_id' => $id,
+                'router_id' => $config->router_id,
+                'client_ip' => $config->client_ip,
+                'connectivity' => [
+                    'reachable' => $result['success'],
+                    'packet_loss' => $result['packet_loss'],
+                    'latency_ms' => $result['latency'],
+                    'status' => $result['success'] ? 'connected' : 'disconnected',
+                ],
+                'message' => $result['message'],
+            ],
+        ]);
+    }
+
+    /**
+     * Wait for VPN connectivity with retries
+     * Useful for polling until router establishes VPN tunnel
+     */
+    public function waitForConnectivity(Request $request, int $id)
+    {
+        $validator = Validator::make($request->all(), [
+            'max_wait_seconds' => 'integer|min:10|max:300',
+            'retry_interval' => 'integer|min:2|max:30',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        $config = VpnConfiguration::findOrFail($id);
+
+        $maxWaitSeconds = $request->input('max_wait_seconds', 120);
+        $retryInterval = $request->input('retry_interval', 5);
+
+        Log::info('Waiting for VPN connectivity', [
+            'config_id' => $id,
+            'router_id' => $config->router_id,
+            'max_wait_seconds' => $maxWaitSeconds,
+        ]);
+
+        // Wait for connectivity
+        $result = $this->connectivityService->waitForConnectivity(
+            $config,
+            $maxWaitSeconds,
+            $retryInterval
+        );
+
+        // Update status
+        if ($result['success']) {
+            $config->update([
+                'status' => 'connected',
+                'last_handshake_at' => now(),
+            ]);
+        }
+
+        return response()->json([
+            'success' => $result['success'],
+            'data' => [
+                'config_id' => $id,
+                'router_id' => $config->router_id,
+                'client_ip' => $config->client_ip,
+                'connectivity' => [
+                    'reachable' => $result['success'],
+                    'packet_loss' => $result['packet_loss'],
+                    'latency_ms' => $result['latency'],
+                    'status' => $result['success'] ? 'connected' : 'timeout',
+                    'attempts' => $result['attempts'] ?? null,
+                ],
+                'message' => $result['message'],
             ],
         ]);
     }

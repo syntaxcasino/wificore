@@ -548,6 +548,12 @@ Route::middleware(['auth:sanctum', 'role:admin', 'user.active', 'tenant.context'
         
         // Get tenant subnet information
         Route::get('/subnet/info', [\App\Http\Controllers\Api\VpnConfigurationController::class, 'getSubnetInfo'])->name('subnet.info');
+        
+        // Verify VPN connectivity (ping test)
+        Route::post('/{id}/verify-connectivity', [\App\Http\Controllers\Api\VpnConfigurationController::class, 'verifyConnectivity'])->name('verify.connectivity');
+        
+        // Wait for VPN connectivity with retries
+        Route::post('/{id}/wait-connectivity', [\App\Http\Controllers\Api\VpnConfigurationController::class, 'waitForConnectivity'])->name('wait.connectivity');
     });
     
     // -------------------------------------------------------------------------
