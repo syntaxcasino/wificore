@@ -275,21 +275,22 @@ SCRIPT;
      */
     private function executeCommand(string $command): string
     {
-        // In production, this would execute actual WireGuard commands
-        // For now, we'll generate mock keys for development
-        if (str_contains($command, 'genkey')) {
-            return base64_encode(random_bytes(32));
+        // Execute actual WireGuard commands
+        try {
+            $output = shell_exec($command . ' 2>&1');
+            
+            if ($output === null) {
+                throw new \Exception('Failed to execute command: ' . $command);
+            }
+            
+            return $output;
+        } catch (\Exception $e) {
+            Log::error('Failed to execute WireGuard command', [
+                'command' => $command,
+                'error' => $e->getMessage(),
+            ]);
+            throw new \Exception('Failed to generate WireGuard keys: ' . $e->getMessage());
         }
-        
-        if (str_contains($command, 'pubkey')) {
-            return base64_encode(random_bytes(32));
-        }
-        
-        if (str_contains($command, 'genpsk')) {
-            return base64_encode(random_bytes(32));
-        }
-
-        return '';
     }
 
     private function getEndpointHost(string $endpoint): string
