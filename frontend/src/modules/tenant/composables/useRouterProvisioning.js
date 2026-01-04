@@ -178,13 +178,12 @@ export function useRouterProvisioning(props, emit) {
   }
 
   const continueToMonitoring = async () => {
-    // Check if VPN is configured before proceeding
-    if (!vpnConfig.value || !vpnScript.value) {
-      provisioningStatus.value = 'Waiting for VPN configuration...'
-      addLog('warning', 'VPN configuration not ready yet. Please wait.')
-      return
-    }
-
+    // VPN configuration is automatically included in the .rsc file
+    // No need to check for vpnScript.value since VPN is baked into the fetch command
+    // The backend creates VPN config synchronously during router creation
+    
+    addLog('info', 'VPN configuration included in fetch command')
+    
     // Move to stage 2: VPN connectivity verification
     currentStage.value = 2
     provisioningProgress.value = 40
