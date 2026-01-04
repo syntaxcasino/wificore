@@ -282,15 +282,46 @@ def add_peer():
     data = request.json
     interface = data.get('interface')
     public_key = data.get('public_key')
+    preshared_key = data.get('preshared_key')
     allowed_ips = data.get('allowed_ips')
     persistent_keepalive = data.get('persistent_keepalive', 25)
+    endpoint = data.get('endpoint')
     
     if not all([interface, public_key, allowed_ips]):
         return jsonify({'error': 'Missing required fields'}), 400
     
     try:
-        cmd = f"wg set {interface} peer {public_key} allowed-ips {allowed_ips} persistent-keepalive {persistent_keepalive}"
+        # Build wg set command
+        cmd_parts = [
+            f"wg set {interface}",
+            f"peer {public_key}",
+            f"allowed-ips {allowed_ips}",
+            f"persistent-keepalive {persistent_keepalive}"
+        ]
+        
+        # Add preshared key if provided
+        if preshared_key:
+            # Write preshared key to temporary file (wg requires it from file or stdin)
+            import tempfile
+            with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.key') as f:
+                f.write(preshared_key)
+                psk_file = f.name
+            os.chmod(psk_file, 0o600)
+            cmd_parts.append(f"preshared-key {psk_file}")
+        
+        # Add endpoint if provided
+        if endpoint:
+            cmd_parts.append(f"endpoint {endpoint}")
+        
+        cmd = ' '.join(cmd_parts)
         result = run_command(cmd)
+        
+        # Clean up preshared key file
+        if preshared_key:
+            try:
+                os.unlink(psk_file)
+            except:
+                pass
         
         if not result['success']:
             raise Exception(f"Failed to add peer: {result['stderr']}")
@@ -298,7 +329,7 @@ def add_peer():
         # Save config
         run_command(f"wg-quick save {interface}", check=False)
         
-        logger.info(f"Peer added to {interface}: {public_key}")
+        logger.info(f"Peer added to {interface}: {public_key[:16]}... (with preshared key: {bool(preshared_key)})")
         
         return jsonify({
             'status': 'success',

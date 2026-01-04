@@ -460,35 +460,60 @@ EOT;
 
     /**
      * Add router peer to tenant tunnel
+     * Uses WireGuard Controller API to add peer to the server
      */
     public function addRouterPeer(TenantVpnTunnel $tunnel, VpnConfiguration $config): void
     {
-        if (!$this->isWireGuardInstalled()) {
-            Log::warning('WireGuard not installed, skipping peer addition');
+        $controllerUrl = config('services.wireguard.controller_url');
+        $apiKey = config('services.wireguard.api_key');
+        
+        if (empty($controllerUrl) || empty($apiKey)) {
+            Log::warning('WireGuard controller not configured, skipping peer addition', [
+                'interface' => $tunnel->interface_name,
+                'router_id' => $config->router_id,
+            ]);
             return;
         }
 
         try {
-            // Add peer to WireGuard interface
-            $command = sprintf(
-                'wg set %s peer %s allowed-ips %s/32 persistent-keepalive 25',
-                $tunnel->interface_name,
-                $config->client_public_key,
-                $config->client_ip
-            );
+            // Add peer via WireGuard Controller API
+            $response = \Illuminate\Support\Facades\Http::timeout(30)
+                ->withHeaders([
+                    'Authorization' => 'Bearer ' . $apiKey,
+                    'Content-Type' => 'application/json',
+                ])
+                ->post($controllerUrl . '/vpn/peer/add', [
+                    'interface' => $tunnel->interface_name,
+                    'public_key' => $config->client_public_key,
+                    'preshared_key' => $config->preshared_key,
+                    'allowed_ips' => $config->client_ip . '/32',
+                    'persistent_keepalive' => 25,
+                ]);
 
-            shell_exec($command . ' 2>&1');
+            if ($response->failed()) {
+                $error = $response->json('error') ?? $response->body();
+                throw new \Exception('Controller returned error: ' . $error);
+            }
 
-            // Persist config
-            shell_exec("wg-quick save {$tunnel->interface_name} 2>&1");
+            $result = $response->json();
 
-            Log::info('Router peer added to tunnel', [
+            Log::info('Router peer added to tunnel via controller', [
                 'interface' => $tunnel->interface_name,
                 'router_id' => $config->router_id,
                 'client_ip' => $config->client_ip,
+                'client_public_key' => substr($config->client_public_key, 0, 16) . '...',
+                'status' => $result['status'] ?? 'unknown',
             ]);
+        } catch (\Illuminate\Http\Client\ConnectionException $e) {
+            Log::error('Failed to connect to WireGuard controller for peer addition', [
+                'interface' => $tunnel->interface_name,
+                'router_id' => $config->router_id,
+                'controller_url' => $controllerUrl,
+                'error' => $e->getMessage(),
+            ]);
+            throw new \Exception('WireGuard controller unreachable: ' . $e->getMessage());
         } catch (\Exception $e) {
-            Log::error('Failed to add router peer', [
+            Log::error('Failed to add router peer via controller', [
                 'interface' => $tunnel->interface_name,
                 'router_id' => $config->router_id,
                 'error' => $e->getMessage(),
@@ -499,32 +524,46 @@ EOT;
 
     /**
      * Remove router peer from tenant tunnel
+     * Uses WireGuard Controller API to remove peer from the server
      */
     public function removeRouterPeer(TenantVpnTunnel $tunnel, VpnConfiguration $config): void
     {
-        if (!$this->isWireGuardInstalled()) {
+        $controllerUrl = config('services.wireguard.controller_url');
+        $apiKey = config('services.wireguard.api_key');
+        
+        if (empty($controllerUrl) || empty($apiKey)) {
+            Log::warning('WireGuard controller not configured, skipping peer removal');
             return;
         }
 
         try {
-            // Remove peer from WireGuard interface
-            $command = sprintf(
-                'wg set %s peer %s remove',
-                $tunnel->interface_name,
-                $config->client_public_key
-            );
+            // Remove peer via WireGuard Controller API
+            $response = \Illuminate\Support\Facades\Http::timeout(30)
+                ->withHeaders([
+                    'Authorization' => 'Bearer ' . $apiKey,
+                    'Content-Type' => 'application/json',
+                ])
+                ->post($controllerUrl . '/vpn/peer/remove', [
+                    'interface' => $tunnel->interface_name,
+                    'public_key' => $config->client_public_key,
+                ]);
 
-            shell_exec($command . ' 2>&1');
+            if ($response->failed()) {
+                $error = $response->json('error') ?? $response->body();
+                Log::warning('Failed to remove peer via controller', [
+                    'interface' => $tunnel->interface_name,
+                    'router_id' => $config->router_id,
+                    'error' => $error,
+                ]);
+                return;
+            }
 
-            // Persist config
-            shell_exec("wg-quick save {$tunnel->interface_name} 2>&1");
-
-            Log::info('Router peer removed from tunnel', [
+            Log::info('Router peer removed from tunnel via controller', [
                 'interface' => $tunnel->interface_name,
                 'router_id' => $config->router_id,
             ]);
         } catch (\Exception $e) {
-            Log::error('Failed to remove router peer', [
+            Log::error('Failed to remove router peer via controller', [
                 'interface' => $tunnel->interface_name,
                 'router_id' => $config->router_id,
                 'error' => $e->getMessage(),
