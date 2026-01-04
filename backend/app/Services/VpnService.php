@@ -197,45 +197,11 @@ class VpnService
         $listenPort = $config->listen_port;
         
         return <<<SCRIPT
-# WireGuard VPN Configuration for MikroTik RouterOS
-# Generated for Tenant: {$config->tenant_id}
-# Router IP: {$config->client_ip}
-# Generated: {$config->created_at}
-
-# Step 1: Create WireGuard interface
-/interface/wireguard
-add name={$interfaceName} listen-port={$listenPort} private-key="{$config->client_private_key}"
-
-# Step 2: Add IP address to WireGuard interface
-/ip/address
-add address={$config->client_ip}/16 interface={$interfaceName}
-
-# Step 3: Add WireGuard peer (server)
-/interface/wireguard/peers
-add interface={$interfaceName} \\
-    public-key="{$config->server_public_key}" \\
-    preshared-key="{$config->preshared_key}" \\
-    endpoint-address={$this->getEndpointHost($config->server_endpoint)} \\
-    endpoint-port={$this->getEndpointPort($config->server_endpoint)} \\
-    allowed-address=0.0.0.0/0 \\
-    persistent-keepalive=00:00:25
-
-# Step 4: Add route through VPN (optional - for management traffic only)
-# Uncomment if you want all management traffic through VPN
-/ip/route
-add dst-address=10.0.0.0/8 gateway={$interfaceName}
-
-# Step 5: Add firewall rule to allow VPN traffic
-/ip/firewall/filter
-add chain=input action=accept protocol=udp dst-port={$listenPort} comment="Allow WireGuard VPN"
-
-# Step 6: Enable interface
-/interface/wireguard
-enable {$interfaceName}
-
-# Configuration complete!
-# Your router should now be connected to the management VPN
-# Server can reach this router at: {$config->client_ip}
+/interface wireguard add name={$interfaceName} listen-port={$listenPort} private-key="{$config->client_private_key}"
+/ip address add address={$config->client_ip}/16 interface={$interfaceName}
+/interface wireguard peers add interface={$interfaceName} public-key="{$config->server_public_key}" preshared-key="{$config->preshared_key}" endpoint-address={$this->getEndpointHost($config->server_endpoint)} endpoint-port={$this->getEndpointPort($config->server_endpoint)} allowed-address=0.0.0.0/0 persistent-keepalive=00:00:25
+/ip route add dst-address=10.0.0.0/8 gateway={$interfaceName}
+/ip firewall filter add chain=input action=accept protocol=udp dst-port={$listenPort} comment="Allow WireGuard VPN"
 SCRIPT;
     }
 

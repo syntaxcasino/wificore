@@ -125,9 +125,7 @@ class RouterController extends Controller
             'name' => $router->name,
             'ip_address' => $router->ip_address,
             'config_token' => $router->config_token,
-            'connectivity_script' => $connectivityScript,
-            'vpn_script' => $vpnScript,
-            'complete_script' => $completeScript, // Full script with VPN inline
+            'connectivity_script' => $connectivityScript, // Minimal fetch command only
             'sanitized_script' => $sanitizedScript, // Safe to display in UI
             'vpn_ip' => $vpnConfig->client_ip,
             'status' => $router->status,
@@ -790,7 +788,8 @@ class RouterController extends Controller
                     'tenants_searched' => $tenants->count(),
                 ]);
                 return response('# ERROR: Configuration not found. Please verify your config token.', 404)
-                    ->header('Content-Type', 'text/plain');
+                    ->header('Content-Type', 'application/octet-stream')
+                    ->header('Content-Disposition', 'attachment; filename="error.rsc"');
             }
             
             // Now set the correct tenant context for subsequent queries
@@ -802,7 +801,8 @@ class RouterController extends Controller
             if (!$vpnConfig) {
                 DB::statement("SET search_path TO public");
                 return response('# ERROR: VPN configuration not found. Please contact support.', 404)
-                    ->header('Content-Type', 'text/plain');
+                    ->header('Content-Type', 'application/octet-stream')
+                    ->header('Content-Disposition', 'attachment; filename="error.rsc"');
             }
             
             // Get stored complete configuration
@@ -860,9 +860,11 @@ EOT;
             // Reset to public schema
             DB::statement("SET search_path TO public");
             
-            // Return as plain text for MikroTik /tool fetch
+            // Return as .rsc file for MikroTik /tool fetch
+            // CRITICAL: Must use application/octet-stream or text/plain with .rsc extension
             return response($completeScript, 200)
-                ->header('Content-Type', 'text/plain; charset=utf-8')
+                ->header('Content-Type', 'application/octet-stream')
+                ->header('Content-Disposition', 'attachment; filename="config.rsc"')
                 ->header('Cache-Control', 'no-cache, no-store, must-revalidate');
                 
         } catch (\Exception $e) {
@@ -875,7 +877,8 @@ EOT;
                 'trace' => $e->getTraceAsString(),
             ]);
             return response('# ERROR: Configuration not found', 404)
-                ->header('Content-Type', 'text/plain');
+                ->header('Content-Type', 'application/octet-stream')
+                ->header('Content-Disposition', 'attachment; filename="error.rsc"');
         }
     }
 
