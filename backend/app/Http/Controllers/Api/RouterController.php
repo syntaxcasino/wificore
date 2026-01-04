@@ -812,38 +812,20 @@ class RouterController extends Controller
             
             if (!$completeConfig) {
                 // Fallback: generate on-the-fly
+                // CRITICAL: Regenerate VPN script to ensure latest format
+                $vpnService = app(\App\Services\VpnService::class);
+                $vpnScript = $vpnService->generateMikroTikScript($vpnConfig);
+                
                 $decryptedPassword = Crypt::decrypt($router->password);
-                $vpnScript = $vpnConfig->mikrotik_script;
                 
                 $completeScript = <<<EOT
-# ============================================
-# ROUTER CONFIGURATION SCRIPT
-# ============================================
-# Router: {$router->name}
-# Generated: {$router->created_at}
-# Config Token: {$router->config_token}
-
-# ============================================
-# STEP 1: Basic Connectivity Setup
-# ============================================
 /ip service set api disabled=no port={$router->port}
 /ip service set ssh disabled=no port=22 address=""
 /user add name={$router->username} password="$decryptedPassword" group=full
 /ip firewall filter add chain=input protocol=tcp dst-port=22 action=accept place-before=0 comment="Allow SSH access"
 /system identity set name="{$router->name}"
 /system note set note="Managed by Traidnet Solution LTD"
-
-# ============================================
-# STEP 2: VPN Configuration
-# ============================================
-
 $vpnScript
-
-# ============================================
-# CONFIGURATION COMPLETE
-# ============================================
-# Your router is now configured and connected to the management VPN
-# Server can reach this router at: {$vpnConfig->client_ip}
 
 EOT;
             } else {
