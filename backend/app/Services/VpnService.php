@@ -184,6 +184,21 @@ class VpnService
                 'vpn_status' => 'active',
             ]);
             
+            // 10. Dispatch background job to verify connectivity
+            // This will ping the router's VPN IP and broadcast events via WebSocket
+            \App\Jobs\VerifyVpnConnectivityJob::dispatch(
+                $tenant->id,
+                $vpnConfig->id,
+                120, // max_wait_seconds
+                5    // retry_interval
+            )->onQueue('default');
+            
+            Log::info('VPN connectivity verification job dispatched', [
+                'tenant_id' => $tenant->id,
+                'vpn_config_id' => $vpnConfig->id,
+                'router_id' => $router->id,
+            ]);
+            
             return $vpnConfig;
         });
     }

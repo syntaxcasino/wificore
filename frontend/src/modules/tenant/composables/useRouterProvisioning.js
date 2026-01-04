@@ -1,7 +1,10 @@
 import { ref, reactive, computed, watch, onMounted, onUnmounted } from 'vue'
 import axios from '@/services/api/axios'
+import { usePusher } from '@/composables/usePusher'
 
 export function useRouterProvisioning(props, emit) {
+  // Get Pusher instance for WebSocket events
+  const { pusher, isConnected } = usePusher()
   // Reactive data
   const routerName = ref('')
   const formSubmitted = ref(false)
@@ -21,6 +24,9 @@ export function useRouterProvisioning(props, emit) {
   const vpnConfig = ref(null)
   const vpnScript = ref('')
   const vpnConnected = ref(false)
+  const vpnConnectivityStatus = ref('pending') // pending, checking, verified, failed
+  const vpnConnectivityAttempts = ref(0)
+  const vpnLatencyMs = ref(null)
 
   // Service configuration
   const enableHotspot = ref(false)
@@ -179,19 +185,23 @@ export function useRouterProvisioning(props, emit) {
 
   const continueToMonitoring = async () => {
     // VPN configuration is automatically included in the .rsc file
-    // No need to check for vpnScript.value since VPN is baked into the fetch command
-    // The backend creates VPN config synchronously during router creation
+    // Backend dispatches VerifyVpnConnectivityJob which will broadcast events
+    // Frontend listens for WebSocket events to know when VPN is ready
     
     addLog('info', 'VPN configuration included in fetch command')
+    addLog('info', 'Waiting for router to apply configuration and establish VPN tunnel...')
     
     // Move to stage 2: VPN connectivity verification
     currentStage.value = 2
     provisioningProgress.value = 40
     provisioningStatus.value = 'Waiting for VPN connection...'
-    addLog('info', 'Verifying VPN connectivity...')
+    vpnConnectivityStatus.value = 'checking'
     
-    // Start probing VPN connectivity
-    await probeVpnConnectivity()
+    // Subscribe to VPN connectivity events
+    subscribeToVpnEvents()
+    
+    // Note: No polling needed! Backend job will broadcast events via WebSocket
+    // Continue button will be enabled when vpn.connectivity.verified event is received
   }
 
   const probeVpnConnectivity = async () => {
@@ -593,6 +603,95 @@ export function useRouterProvisioning(props, emit) {
     }
   }
 
+  // Subscribe to VPN connectivity events via WebSocket
+  const subscribeToVpnEvents = () => {
+    const user = JSON.parse(localStorage.getItem('user'))
+    if (!user || !user.tenant_id) {
+      addLog('error', 'Cannot subscribe to VPN events: No tenant ID')
+      return
+    }
+
+    const channelName = `tenant.${user.tenant_id}.vpn`
+    addLog('info', `Subscribing to VPN events on channel: ${channelName}`)
+
+    try {
+      const channel = pusher.subscribe(channelName)
+
+      // Listen for connectivity checking events (progress updates)
+      channel.bind('vpn.connectivity.checking', (data) => {
+        console.log('VPN connectivity checking:', data)
+        
+        if (data.router_id === provisioningRouter.value?.id) {
+          vpnConnectivityAttempts.value = data.attempt
+          const progress = data.progress || 0
+          
+          addLog('info', `Checking VPN connectivity... Attempt ${data.attempt}/${data.max_attempts} (${progress.toFixed(0)}%)`)
+          
+          // Update progress bar
+          provisioningProgress.value = 40 + (progress * 0.2) // 40% to 60%
+          provisioningStatus.value = `Verifying VPN connectivity (${progress.toFixed(0)}%)...`
+        }
+      })
+
+      // Listen for connectivity verified event (SUCCESS!)
+      channel.bind('vpn.connectivity.verified', (data) => {
+        console.log('VPN connectivity verified:', data)
+        
+        if (data.router_id === provisioningRouter.value?.id) {
+          vpnConnectivityStatus.value = 'verified'
+          vpnConnected.value = true
+          vpnLatencyMs.value = data.connectivity.latency_ms
+          
+          addLog('success', `✅ VPN connectivity verified! Latency: ${data.connectivity.latency_ms.toFixed(1)}ms`)
+          addLog('success', `Router is reachable via VPN at ${data.client_ip}`)
+          
+          provisioningProgress.value = 60
+          provisioningStatus.value = 'VPN connected successfully'
+          connectionStatus.value = 'Connected'
+          
+          // Unsubscribe from channel
+          pusher.unsubscribe(channelName)
+          
+          // Auto-proceed to next stage after 2 seconds
+          setTimeout(() => {
+            if (currentStage.value === 2) {
+              addLog('info', 'Proceeding to interface discovery...')
+              probeVpnConnectivity()
+            }
+          }, 2000)
+        }
+      })
+
+      // Listen for connectivity failed event (TIMEOUT/ERROR)
+      channel.bind('vpn.connectivity.failed', (data) => {
+        console.log('VPN connectivity failed:', data)
+        
+        if (data.router_id === provisioningRouter.value?.id) {
+          vpnConnectivityStatus.value = 'failed'
+          vpnConnected.value = false
+          
+          addLog('error', `❌ VPN connectivity verification failed`)
+          addLog('error', data.reason)
+          addLog('warning', 'Please verify:')
+          addLog('warning', '1. Router applied the fetch command')
+          addLog('warning', '2. Router has internet connectivity')
+          addLog('warning', '3. Firewall allows UDP port 51830')
+          
+          provisioningStatus.value = 'VPN connectivity failed'
+          connectionStatus.value = 'Failed'
+          
+          // Unsubscribe from channel
+          pusher.unsubscribe(channelName)
+        }
+      })
+
+      addLog('success', 'Subscribed to VPN connectivity events')
+    } catch (error) {
+      console.error('Failed to subscribe to VPN events:', error)
+      addLog('error', 'Failed to subscribe to VPN events: ' + error.message)
+    }
+  }
+
   const resetForm = () => {
     routerName.value = ''
     formSubmitted.value = false
@@ -608,6 +707,9 @@ export function useRouterProvisioning(props, emit) {
     vpnConfig.value = null
     vpnScript.value = ''
     vpnConnected.value = false
+    vpnConnectivityStatus.value = 'pending'
+    vpnConnectivityAttempts.value = 0
+    vpnLatencyMs.value = null
     enableHotspot.value = false
     enablePPPoE.value = false
     serviceScript.value = ''
@@ -647,6 +749,9 @@ export function useRouterProvisioning(props, emit) {
     vpnConfig,
     vpnScript,
     vpnConnected,
+    vpnConnectivityStatus,
+    vpnConnectivityAttempts,
+    vpnLatencyMs,
     enableHotspot,
     enablePPPoE,
     serviceScript,
