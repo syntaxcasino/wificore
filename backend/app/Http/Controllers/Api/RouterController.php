@@ -734,16 +734,73 @@ class RouterController extends Controller
     /**
      * Fetch router configuration using config token (public endpoint)
      * Returns complete configuration script as plain text for /tool fetch
+     * 
+     * CRITICAL: This is a public endpoint that must work without authentication
+     * We need to find the tenant from the router's config_token and set schema context
      */
     public function fetchConfig($configToken)
     {
         try {
-            $router = Router::where('config_token', $configToken)->firstOrFail();
+            // CRITICAL: Router table is in tenant schema, but we don't know which tenant yet
+            // We need to search across all tenant schemas to find the router
+            
+            // First, get all active tenants
+            $tenants = \App\Models\Tenant::where('is_active', true)->get();
+            
+            $router = null;
+            $foundTenant = null;
+            
+            // Search for router in each tenant schema
+            foreach ($tenants as $tenant) {
+                try {
+                    // Set search path to tenant schema
+                    DB::statement("SET search_path TO {$tenant->schema_name}, public");
+                    
+                    // Try to find router in this tenant's schema
+                    $router = Router::where('config_token', $configToken)->first();
+                    
+                    if ($router) {
+                        $foundTenant = $tenant;
+                        Log::info('Router found in tenant schema', [
+                            'tenant_id' => $tenant->id,
+                            'tenant_slug' => $tenant->slug,
+                            'schema_name' => $tenant->schema_name,
+                            'router_id' => $router->id,
+                            'config_token' => $configToken,
+                        ]);
+                        break;
+                    }
+                } catch (\Exception $e) {
+                    // Schema might not exist or have issues, continue to next tenant
+                    Log::debug('Could not search tenant schema', [
+                        'tenant_id' => $tenant->id,
+                        'schema_name' => $tenant->schema_name,
+                        'error' => $e->getMessage(),
+                    ]);
+                    continue;
+                }
+            }
+            
+            // Reset to public schema
+            DB::statement("SET search_path TO public");
+            
+            if (!$router || !$foundTenant) {
+                Log::warning('Router not found with config token', [
+                    'config_token' => $configToken,
+                    'tenants_searched' => $tenants->count(),
+                ]);
+                return response('# ERROR: Configuration not found. Please verify your config token.', 404)
+                    ->header('Content-Type', 'text/plain');
+            }
+            
+            // Now set the correct tenant context for subsequent queries
+            DB::statement("SET search_path TO {$foundTenant->schema_name}, public");
             
             // Get VPN configuration
             $vpnConfig = $router->vpnConfiguration;
             
             if (!$vpnConfig) {
+                DB::statement("SET search_path TO public");
                 return response('# ERROR: VPN configuration not found. Please contact support.', 404)
                     ->header('Content-Type', 'text/plain');
             }
@@ -793,11 +850,15 @@ EOT;
                 $completeScript = $completeConfig->config_content;
             }
             
-            Log::info('Router configuration fetched', [
+            Log::info('Router configuration fetched successfully', [
+                'tenant_id' => $foundTenant->id,
                 'router_id' => $router->id,
                 'router_name' => $router->name,
                 'config_token' => $configToken,
             ]);
+            
+            // Reset to public schema
+            DB::statement("SET search_path TO public");
             
             // Return as plain text for MikroTik /tool fetch
             return response($completeScript, 200)
@@ -805,6 +866,9 @@ EOT;
                 ->header('Cache-Control', 'no-cache, no-store, must-revalidate');
                 
         } catch (\Exception $e) {
+            // Ensure we reset to public schema on error
+            DB::statement("SET search_path TO public");
+            
             Log::error('Failed to fetch router config', [
                 'config_token' => $configToken,
                 'error' => $e->getMessage(),
