@@ -94,12 +94,9 @@ export function useRouterProvisioning(props, emit) {
 
   const deploymentStatus = computed(() => provisioningStatus.value)
 
-  // Combined script: Connectivity + VPN (both scripts in one)
+  // Combined script: Only show minimal fetch command (VPN is in the .rsc file)
   const combinedScript = computed(() => {
-    if (!initialConfig.value) return ''
-    if (!vpnScript.value) return initialConfig.value
-    
-    return `${initialConfig.value}\n\n# ============================================\n# VPN CONFIGURATION (MANDATORY)\n# ============================================\n\n${vpnScript.value}`
+    return initialConfig.value || ''
   })
 
   // Methods
@@ -115,36 +112,23 @@ export function useRouterProvisioning(props, emit) {
         name: routerName.value,
       })
 
-      // Backend returns the router object directly with BOTH scripts
+      // Backend returns minimal fetch command only (VPN is in the .rsc file)
       console.log('🔍 API Response:', response.data)
       
       if (response.data && response.data.id) {
         provisioningRouter.value = response.data
         initialConfig.value = response.data.connectivity_script || ''
         
-        console.log('📝 initialConfig set:', initialConfig.value ? 'YES' : 'NO')
-        console.log('📝 initialConfig length:', initialConfig.value?.length || 0)
+        console.log('📝 Fetch command set:', initialConfig.value ? 'YES' : 'NO')
         
-        // Backend now returns VPN script immediately!
-        if (response.data.vpn_script) {
-          vpnScript.value = response.data.vpn_script
-          console.log('🔐 vpnScript set:', vpnScript.value ? 'YES' : 'NO')
-          console.log('🔐 vpnScript length:', vpnScript.value?.length || 0)
-          addLog('success', 'VPN configuration ready!')
-          provisioningProgress.value = 30
-          provisioningStatus.value = 'Router created with VPN configuration'
-        } else {
-          console.warn('⚠️ NO vpn_script in response!')
-          // Fallback: poll if not included (shouldn't happen)
-          addLog('info', 'VPN provisioning initiated...')
-          pollVpnConfiguration()
-          provisioningProgress.value = 15
-          provisioningStatus.value = 'Router created - VPN provisioning initiated'
-        }
+        // VPN is automatically included in the .rsc file - no need to display it
+        addLog('success', 'Router created with VPN configuration (included in .rsc file)')
+        provisioningProgress.value = 30
+        provisioningStatus.value = 'Router ready - VPN included in configuration file'
         
-        console.log('✅ Combined script will be:', combinedScript.value ? 'READY' : 'EMPTY')
+        console.log('✅ Fetch command ready:', combinedScript.value ? 'READY' : 'EMPTY')
         
-        // Stay on stage 1 to show the combined script
+        // Stay on stage 1 to show the fetch command
         // User must click "Continue" button to proceed
       }
     } catch (error) {
