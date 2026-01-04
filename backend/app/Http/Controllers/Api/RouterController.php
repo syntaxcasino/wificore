@@ -814,20 +814,13 @@ EOT;
                     ->header('Content-Type', 'text/plain; charset=utf-8');
             }
             
-            // Get stored complete configuration
-            $completeConfig = RouterConfig::where('router_id', $router->id)
-                ->where('config_type', 'complete')
-                ->first();
-            
-            if (!$completeConfig) {
-                // Fallback: generate on-the-fly
-                // CRITICAL: Regenerate VPN script to ensure latest format
-                $vpnService = app(\App\Services\VpnService::class);
-                $vpnScript = $vpnService->generateMikroTikScript($vpnConfig);
-                
-                $decryptedPassword = Crypt::decrypt($router->password);
-                
-                $completeScript = <<<EOT
+            // Always regenerate the latest complete configuration script
+            $vpnService = app(\App\Services\VpnService::class);
+            $vpnScript = $vpnService->generateMikroTikScript($vpnConfig);
+
+            $decryptedPassword = Crypt::decrypt($router->password);
+
+            $completeScript = <<<EOT
 /ip service set api disabled=no port={$router->port}
 /ip service set ssh disabled=no port=22 address=""
 /user add name={$router->username} password="$decryptedPassword" group=full
@@ -837,9 +830,20 @@ EOT;
 $vpnScript
 
 EOT;
-            } else {
-                $completeScript = $completeConfig->config_content;
-            }
+
+            // Ensure trailing newline for RouterOS import compatibility
+            $completeScript = rtrim($completeScript) . "\n";
+
+            // Persist the latest generated script in the tenant DB
+            RouterConfig::updateOrCreate(
+                [
+                    'router_id'   => $router->id,
+                    'config_type' => 'complete',
+                ],
+                [
+                    'config_content' => $completeScript,
+                ]
+            );
             
             Log::info('Router configuration fetched successfully', [
                 'tenant_id' => $foundTenant->id,
@@ -855,6 +859,7 @@ EOT;
             // CRITICAL: Use text/plain for MikroTik compatibility
             return response($completeScript, 200)
                 ->header('Content-Type', 'text/plain; charset=utf-8')
+                ->header('Content-Length', (string) strlen($completeScript))
                 ->header('Cache-Control', 'no-cache, no-store, must-revalidate');
                 
         } catch (\Exception $e) {
@@ -883,7 +888,7 @@ EOT;
     {
         $fetchUrl = config('app.url') . '/api/routers/' . $router->config_token . '/fetch-config';
         
-        return "/tool fetch mode=https url=\"{$fetchUrl}\" dst-path=config.rsc; :delay 2s; /import config.rsc";
+        return "/tool fetch mode=https url=\"{$fetchUrl}\" dst-path=config.rsc keep-result=yes check-certificate=no; :delay 5s; /import config.rsc";
     }
 
     private function generateServiceScript(array $interfaceAssignments, array $interfaceServices, array $configurations): string
