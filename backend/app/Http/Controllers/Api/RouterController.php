@@ -733,6 +733,7 @@ class RouterController extends Controller
 
     /**
      * Fetch router configuration using config token (public endpoint)
+     * Returns complete configuration script as plain text for /tool fetch
      */
     public function fetchConfig($configToken)
     {
@@ -743,77 +744,27 @@ class RouterController extends Controller
             $vpnConfig = $router->vpnConfiguration;
             
             if (!$vpnConfig) {
-                return response()->json([
-                    'error' => 'VPN configuration not found. Please contact support.'
-                ], 404);
+                return response('# ERROR: VPN configuration not found. Please contact support.', 404)
+                    ->header('Content-Type', 'text/plain');
             }
             
-            return response()->json([
-                'router_name' => $router->name,
-                'vpn_script' => $vpnConfig->mikrotik_script,
-                'status' => 'success'
-            ]);
-        } catch (\Exception $e) {
-            Log::error('Failed to fetch router config', [
-                'config_token' => $configToken,
-                'error' => $e->getMessage()
-            ]);
-            return response()->json(['error' => 'Configuration not found'], 404);
-        }
-    }
-
-    /**
-     * Generate sanitized script for UI display (hides secrets)
-     */
-    private function generateSanitizedScript(Router $router, string $connectivityScript): string
-    {
-        return <<<EOT
+            // Get stored complete configuration
+            $completeConfig = RouterConfig::where('router_id', $router->id)
+                ->where('config_type', 'complete')
+                ->first();
+            
+            if (!$completeConfig) {
+                // Fallback: generate on-the-fly
+                $decryptedPassword = Crypt::decrypt($router->password);
+                $vpnScript = $vpnConfig->mikrotik_script;
+                
+                $completeScript = <<<EOT
 # ============================================
 # ROUTER CONFIGURATION SCRIPT
 # ============================================
 # Router: {$router->name}
-# Management IP: Will be assigned via VPN
-# 
-# SECURITY NOTE: Sensitive credentials are hidden in this preview.
-# Use the "Copy Complete Script" button to get the full configuration.
-
-# ============================================
-# STEP 1: Basic Connectivity Setup
-# ============================================
-/ip service set api disabled=no port={$router->port}
-/ip service set ssh disabled=no port=22 address=""
-/user add name={$router->username} password="[HIDDEN]" group=full
-/ip firewall filter add chain=input protocol=tcp dst-port=22 action=accept place-before=0 comment="Allow SSH access"
-/system identity set name="{$router->name}"
-/system note set note="Managed by Traidnet Solution LTD"
-
-# ============================================
-# STEP 2: VPN Configuration
-# ============================================
-# VPN configuration with WireGuard keys and credentials
-# [HIDDEN - Use "Copy Complete Script" button to view]
-
-# After applying the complete script:
-# 1. Router will connect to VPN
-# 2. Management IP will be assigned automatically
-# 3. Server can reach router via VPN tunnel
-
-EOT;
-    }
-
-    private function generateConnectivityScript(Router $router)
-    {
-        $decryptedPassword = Crypt::decrypt($router->password);
-        
-        return <<<EOT
-# ============================================
-# ROUTER CONNECTIVITY SETUP
-# ============================================
-# Router: {$router->name}
 # Generated: {$router->created_at}
-#
-# IMPORTANT: Copy and paste this entire script into your MikroTik terminal
-# The VPN configuration is included inline below
+# Config Token: {$router->config_token}
 
 # ============================================
 # STEP 1: Basic Connectivity Setup
@@ -824,6 +775,124 @@ EOT;
 /ip firewall filter add chain=input protocol=tcp dst-port=22 action=accept place-before=0 comment="Allow SSH access"
 /system identity set name="{$router->name}"
 /system note set note="Managed by Traidnet Solution LTD"
+
+# ============================================
+# STEP 2: VPN Configuration
+# ============================================
+
+$vpnScript
+
+# ============================================
+# CONFIGURATION COMPLETE
+# ============================================
+# Your router is now configured and connected to the management VPN
+# Server can reach this router at: {$vpnConfig->client_ip}
+
+EOT;
+            } else {
+                $completeScript = $completeConfig->config_content;
+            }
+            
+            Log::info('Router configuration fetched', [
+                'router_id' => $router->id,
+                'router_name' => $router->name,
+                'config_token' => $configToken,
+            ]);
+            
+            // Return as plain text for MikroTik /tool fetch
+            return response($completeScript, 200)
+                ->header('Content-Type', 'text/plain; charset=utf-8')
+                ->header('Cache-Control', 'no-cache, no-store, must-revalidate');
+                
+        } catch (\Exception $e) {
+            Log::error('Failed to fetch router config', [
+                'config_token' => $configToken,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return response('# ERROR: Configuration not found', 404)
+                ->header('Content-Type', 'text/plain');
+        }
+    }
+
+    /**
+     * Generate sanitized script for UI display (hides secrets)
+     */
+    private function generateSanitizedScript(Router $router, string $connectivityScript): string
+    {
+        $fetchUrl = config('app.url') . '/api/routers/' . $router->config_token . '/fetch-config';
+        
+        return <<<EOT
+# ============================================
+# PROVISIONING COMMAND
+# ============================================
+# Router: {$router->name}
+# Management IP: Will be assigned via VPN
+# 
+# SECURITY NOTE: This is a safe preview.
+# The actual provisioning command is available via the "Copy" button.
+
+/tool fetch mode=https url="{$fetchUrl}" dst-path=config.rsc; :delay 2s; /import config.rsc
+
+# ============================================
+# What this command does:
+# ============================================
+# 1. Fetches your router's complete configuration from our secure server
+# 2. Saves it locally as config.rsc
+# 3. Automatically imports and applies the configuration
+#
+# The configuration includes:
+# ✓ User credentials and access settings
+# ✓ WireGuard VPN configuration (encrypted)
+# ✓ Router identity and management settings
+# ✓ Firewall rules for secure access
+#
+# After execution:
+# ✓ Router connects to management VPN
+# ✓ Assigned VPN IP for secure management
+# ✓ Server can monitor and manage router remotely
+#
+# IMPORTANT: 
+# - Ensure router has internet connectivity
+# - /tool fetch must be enabled (not restricted by license)
+# - HTTPS mode is used for secure transfer
+
+EOT;
+    }
+
+    private function generateConnectivityScript(Router $router)
+    {
+        $fetchUrl = config('app.url') . '/api/routers/' . $router->config_token . '/fetch-config';
+        
+        return <<<EOT
+# ============================================
+# PROVISIONING COMMAND
+# ============================================
+# Router: {$router->name}
+# Generated: {$router->created_at}
+#
+# IMPORTANT: Copy and paste this command into your MikroTik terminal
+# This will fetch and apply the complete configuration from the server
+
+/tool fetch mode=https url="{$fetchUrl}" dst-path=config.rsc; :delay 2s; /import config.rsc
+
+# ============================================
+# What this does:
+# ============================================
+# 1. Fetches complete configuration from server (HTTPS)
+# 2. Saves it as config.rsc
+# 3. Waits 2 seconds for download to complete
+# 4. Imports and executes the configuration
+#
+# The configuration includes:
+# - Basic connectivity setup (API, SSH, user)
+# - WireGuard VPN configuration
+# - Router identity and management settings
+#
+# After execution:
+# - Router will be connected to management VPN
+# - Server can reach router at assigned VPN IP
+# - Router status will update automatically
 
 EOT;
     }
