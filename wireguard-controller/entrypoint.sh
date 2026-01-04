@@ -160,12 +160,28 @@ if [ "$NEEDS_RECREATION" = true ]; then
     
     # Step 8: Setup iptables rules
     echo "Setting up iptables rules..."
-    iptables -A FORWARD -i "${VPN_INTERFACE_NAME}" -o eth0 -j ACCEPT 2>/dev/null || true
-    iptables -A FORWARD -i "${VPN_INTERFACE_NAME}" -o "${VPN_INTERFACE_NAME}" -j ACCEPT 2>/dev/null || true
-    iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE 2>/dev/null || true
-    iptables -t nat -A PREROUTING -i "${VPN_INTERFACE_NAME}" -p udp --dport 1812 -j DNAT --to-destination ${RADIUS_IP}:1812 2>/dev/null || true
-    iptables -t nat -A PREROUTING -i "${VPN_INTERFACE_NAME}" -p udp --dport 1813 -j DNAT --to-destination ${RADIUS_IP}:1813 2>/dev/null || true
     
+    # Remove old rules first to avoid duplicates
+    iptables -D FORWARD -i "${VPN_INTERFACE_NAME}" -o eth0 -j ACCEPT 2>/dev/null || true
+    iptables -D FORWARD -i eth0 -o "${VPN_INTERFACE_NAME}" -j ACCEPT 2>/dev/null || true
+    iptables -D FORWARD -i "${VPN_INTERFACE_NAME}" -o "${VPN_INTERFACE_NAME}" -j ACCEPT 2>/dev/null || true
+    iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE 2>/dev/null || true
+    iptables -t nat -D PREROUTING -i "${VPN_INTERFACE_NAME}" -p udp --dport 1812 -j DNAT --to-destination ${RADIUS_IP}:1812 2>/dev/null || true
+    iptables -t nat -D PREROUTING -i "${VPN_INTERFACE_NAME}" -p udp --dport 1813 -j DNAT --to-destination ${RADIUS_IP}:1813 2>/dev/null || true
+    
+    # Add rules
+    iptables -I FORWARD 1 -i "${VPN_INTERFACE_NAME}" -o eth0 -j ACCEPT
+    iptables -I FORWARD 1 -i eth0 -o "${VPN_INTERFACE_NAME}" -j ACCEPT
+    iptables -I FORWARD 1 -i "${VPN_INTERFACE_NAME}" -o "${VPN_INTERFACE_NAME}" -j ACCEPT
+    iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+    iptables -t nat -A PREROUTING -i "${VPN_INTERFACE_NAME}" -p udp --dport 1812 -j DNAT --to-destination ${RADIUS_IP}:1812
+    iptables -t nat -A PREROUTING -i "${VPN_INTERFACE_NAME}" -p udp --dport 1813 -j DNAT --to-destination ${RADIUS_IP}:1813
+    
+    # Allow INPUT from VPN interface (for ping to server IP)
+    iptables -D INPUT -i "${VPN_INTERFACE_NAME}" -j ACCEPT 2>/dev/null || true
+    iptables -I INPUT 1 -i "${VPN_INTERFACE_NAME}" -j ACCEPT
+    
+    echo "✓ iptables rules configured"
     echo "✓ ${VPN_INTERFACE_NAME} interface is up with port ${VPN_LISTEN_PORT}"
 else
     echo "✓ ${VPN_INTERFACE_NAME} interface is already correctly configured"
