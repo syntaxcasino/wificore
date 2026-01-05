@@ -623,21 +623,73 @@ const resendVerificationEmail = async () => {
   }
 }
 
-// Pure event-based initialization
-onMounted(() => {
-  // Restore registration token after refresh / tab close-open so we can keep listening to events
+// Check registration status and restore state
+const checkRegistrationStatus = async (token) => {
+  try {
+    const response = await axios.get(`/register/status/${token}`)
+    
+    if (response.data.success) {
+      const { email_verified, credentials_sent, status } = response.data
+      
+      // If credentials already sent, redirect to login immediately
+      if (credentials_sent) {
+        statusMessage.value = {
+          type: 'success',
+          title: 'Registration Already Complete',
+          message: 'Your account is ready. Redirecting to login...'
+        }
+        setTimeout(() => {
+          sessionStorage.removeItem(REG_TOKEN_STORAGE_KEY)
+          router.push({ name: 'login' })
+        }, 2000)
+        return
+      }
+      
+      // If email verified but credentials not sent, move to step 3
+      if (email_verified) {
+        currentStep.value = 3
+        stepStatus.value.step1 = 'done'
+        stepStatus.value.step2 = 'done'
+        stepStatus.value.step3 = 'processing'
+        statusMessage.value = {
+          type: 'info',
+          title: 'Setting Up Your Workspace',
+          message: 'Your email is verified. Creating your workspace and sending credentials...'
+        }
+      } else {
+        // Email not verified yet, stay at step 2
+        currentStep.value = 2
+        stepStatus.value.step1 = 'done'
+        stepStatus.value.step2 = 'processing'
+        statusMessage.value = {
+          type: 'info',
+          title: 'Waiting for Email Verification',
+          message: 'Please check your email and click the verification link to continue.'
+        }
+      }
+      
+      // Subscribe to WebSocket events
+      subscribeToRegistrationEvents(token)
+    }
+  } catch (err) {
+    console.error('Failed to check registration status:', err)
+    // If status check fails, assume step 2 and subscribe to events
+    currentStep.value = 2
+    stepStatus.value.step1 = 'done'
+    stepStatus.value.step2 = 'processing'
+    subscribeToRegistrationEvents(token)
+  }
+}
+
+// Pure event-based initialization with state restoration
+onMounted(async () => {
+  // Restore registration token after refresh / tab close-open
   if (!registrationToken.value) {
     const storedToken = sessionStorage.getItem(REG_TOKEN_STORAGE_KEY)
     if (storedToken) {
       registrationToken.value = storedToken
-      // If the user was already at step 2 previously, resume listening
-      if (currentStep.value === 1) {
-        currentStep.value = 2
-        stepStatus.value.step1 = 'done'
-        stepStatus.value.step2 = 'processing'
-      }
-      // Subscribe to WebSocket events - pure event-based, no polling
-      subscribeToRegistrationEvents(storedToken)
+      // Check current status and restore to correct step
+      await checkRegistrationStatus(storedToken)
     }
   }
 })
