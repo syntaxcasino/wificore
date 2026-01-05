@@ -74,8 +74,13 @@ trait TenantAwareJob
         // Set auth context
         Auth::setUser($systemUser);
 
-        // Switch schema context
+        // Switch schema context - use reconnect to ensure new connection with correct search_path
         $previousSearchPath = \Illuminate\Support\Facades\DB::selectOne('SHOW search_path')->search_path;
+        
+        // Force reconnect to ensure search_path is set on a fresh connection
+        \Illuminate\Support\Facades\DB::purge('pgsql');
+        \Illuminate\Support\Facades\DB::reconnect('pgsql');
+        
         \Illuminate\Support\Facades\DB::statement("SET search_path TO {$tenant->schema_name}, public");
 
         try {
@@ -83,6 +88,10 @@ trait TenantAwareJob
         } finally {
             // Restore schema context
             \Illuminate\Support\Facades\DB::statement("SET search_path TO {$previousSearchPath}");
+            
+            // Force reconnect to clear tenant context
+            \Illuminate\Support\Facades\DB::purge('pgsql');
+            \Illuminate\Support\Facades\DB::reconnect('pgsql');
             
             // Clear auth context
             Auth::logout();
