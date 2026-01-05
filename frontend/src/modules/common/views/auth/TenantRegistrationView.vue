@@ -547,14 +547,14 @@ const handleSubmit = async () => {
 }
 
 // Resend verification email
-// Handle credentials sent - pure event-based
+// Handle credentials sent - pure event-based with auto-redirect
 const handleCredentialsSent = () => {
   if (currentStep.value === 3) {
     stepStatus.value.step3 = 'done'
     statusMessage.value = {
       type: 'success',
       title: 'Registration Complete!',
-      message: `Your credentials have been sent to <strong>${form.value.tenant_email}</strong>. You can now login with your username and password.`
+      message: `Your credentials have been sent to <strong>${form.value.tenant_email}</strong>. Redirecting to login...`
     }
     
     notificationStore.success(
@@ -562,6 +562,12 @@ const handleCredentialsSent = () => {
       'Your account is ready. Check your email for login credentials.',
       8000
     )
+    
+    // Redirect to login after 3 seconds
+    setTimeout(() => {
+      sessionStorage.removeItem(REG_TOKEN_STORAGE_KEY)
+      router.push({ name: 'login' })
+    }, 3000)
   }
 }
 
