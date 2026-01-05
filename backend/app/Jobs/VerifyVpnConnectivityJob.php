@@ -22,12 +22,21 @@ class VerifyVpnConnectivityJob implements ShouldQueue
     public int $tries = 1;
     public int $timeout = 300; // 5 minutes max
 
+    public int $vpnConfigId;
+    public int $maxWaitSeconds;
+    public int $retryInterval;
+
     public function __construct(
-        public int $tenantId,
-        public int $vpnConfigId,
-        public int $maxWaitSeconds = 120,
-        public int $retryInterval = 5
-    ) {}
+        int $tenantId,
+        int $vpnConfigId,
+        int $maxWaitSeconds = 120,
+        int $retryInterval = 5
+    ) {
+        $this->tenantId = $tenantId;
+        $this->vpnConfigId = $vpnConfigId;
+        $this->maxWaitSeconds = $maxWaitSeconds;
+        $this->retryInterval = $retryInterval;
+    }
 
     public function handle(VpnConnectivityService $connectivityService): void
     {
