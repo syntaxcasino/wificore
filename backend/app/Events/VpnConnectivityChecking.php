@@ -13,7 +13,7 @@ class VpnConnectivityChecking implements ShouldBroadcast
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
     public function __construct(
-        public int $tenantId,
+        public string $tenantId,
         public string $routerId,
         public int $vpnConfigId,
         public string $clientIp,
