@@ -27,7 +27,7 @@ class VerifyVpnConnectivityJob implements ShouldQueue
     public int $retryInterval;
 
     public function __construct(
-        int $tenantId,
+        string $tenantId,
         int $vpnConfigId,
         int $maxWaitSeconds = 120,
         int $retryInterval = 5
