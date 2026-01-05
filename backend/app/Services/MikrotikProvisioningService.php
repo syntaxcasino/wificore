@@ -279,7 +279,7 @@ class MikrotikProvisioningService extends TenantAwareService
     public function getAllRouters()
     {
         try {
-            return Router::select('id', 'name', 'ip_address', 'username', 'port', 'password', 'status')->get();
+            return Router::select('id', 'name', 'ip_address', 'vpn_ip', 'username', 'port', 'password', 'status', 'model', 'os_version', 'last_seen', 'last_checked')->get();
         } catch (\Exception $e) {
             Log::error('Failed to fetch routers:', [
                 'error' => $e->getMessage(),

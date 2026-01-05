@@ -713,8 +713,26 @@ onMounted(() => {
     }
   }
 
-  // Start polling as fallback if we have a token
-  if (registrationToken.value && currentStep.value >= 2) {
+  // Check if user clicked verification link (verified=true in query params)
+  if (route.query.verified === 'true') {
+    const token = route.query.token || registrationToken.value
+    if (token) {
+      registrationToken.value = token
+      sessionStorage.setItem(REG_TOKEN_STORAGE_KEY, token)
+      currentStep.value = 3
+      stepStatus.value.step1 = 'done'
+      stepStatus.value.step2 = 'done'
+      stepStatus.value.step3 = 'processing'
+      statusMessage.value = {
+        type: 'success',
+        title: 'Email Verified!',
+        message: 'Your email has been verified. Setting up your workspace...'
+      }
+      subscribeToRegistrationEvents(token)
+      startStatusPolling()
+    }
+  } else if (registrationToken.value && currentStep.value >= 2) {
+    // Start polling as fallback if we have a token
     startStatusPolling()
   }
 })

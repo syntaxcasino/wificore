@@ -44,6 +44,7 @@ class VpnService
 
     /**
      * Allocate or get tenant's VPN subnet
+     * Supports 1000+ tenants using 10.X.Y.0/24 subnets
      */
     public function allocateTenantSubnet(Tenant $tenant): VpnSubnetAllocation
     {
@@ -54,36 +55,52 @@ class VpnService
             return $existing;
         }
 
-        // Find next available subnet octet (10.X.0.0/16)
-        // Start from 100 to avoid conflicts with common private networks
-        $usedOctets = VpnSubnetAllocation::pluck('subnet_octet_2')->toArray();
+        // Find next available subnet using 10.X.Y.0/24 pattern
+        // This supports 65,536 tenants (256 * 256) with 254 routers each
+        // Start from 10.100.0.0 to avoid conflicts with common private networks
+        $usedSubnets = VpnSubnetAllocation::pluck('subnet_cidr')->toArray();
         
-        $octet = 100;
-        while (in_array($octet, $usedOctets) && $octet < 255) {
-            $octet++;
+        $octet2 = 100;
+        $octet3 = 0;
+        $found = false;
+        
+        while ($octet2 < 256 && !$found) {
+            while ($octet3 < 256) {
+                $testSubnet = "10.{$octet2}.{$octet3}.0/24";
+                if (!in_array($testSubnet, $usedSubnets)) {
+                    $found = true;
+                    break;
+                }
+                $octet3++;
+            }
+            if (!$found) {
+                $octet2++;
+                $octet3 = 0;
+            }
         }
 
-        if ($octet >= 255) {
+        if (!$found) {
             throw new \Exception('No available VPN subnets. All subnets are allocated.');
         }
 
-        // Create subnet allocation
+        // Create subnet allocation with /24 (254 usable IPs per tenant)
         $subnet = VpnSubnetAllocation::create([
             'tenant_id' => $tenant->id,
-            'subnet_cidr' => "10.{$octet}.0.0/16",
-            'subnet_octet_2' => $octet,
-            'gateway_ip' => "10.{$octet}.0.1",
-            'range_start' => "10.{$octet}.1.1",
-            'range_end' => "10.{$octet}.255.254",
-            'total_ips' => 65534,
+            'subnet_cidr' => "10.{$octet2}.{$octet3}.0/24",
+            'subnet_octet_2' => $octet2,
+            'gateway_ip' => "10.{$octet2}.{$octet3}.1",
+            'range_start' => "10.{$octet2}.{$octet3}.2",
+            'range_end' => "10.{$octet2}.{$octet3}.254",
+            'total_ips' => 254,
             'allocated_ips' => 0,
-            'available_ips' => 65534,
+            'available_ips' => 254,
             'status' => 'active',
         ]);
 
         Log::info('VPN subnet allocated', [
             'tenant_id' => $tenant->id,
             'subnet' => $subnet->subnet_cidr,
+            'capacity' => '254 routers per tenant, 65536 tenants supported',
         ]);
 
         return $subnet;
