@@ -379,9 +379,7 @@ const resendingEmail = ref(false)
 const resendCooldown = ref(0)
 let cooldownInterval = null
 
-// Polling for status updates (fallback if WebSocket fails)
-let statusPollingInterval = null
-const pollingActive = ref(false)
+// Removed polling - using pure event-based system via WebSockets
 
 const canSubmit = computed(() => {
   return form.value.accept_terms && form.value.tenant_name.length >= 3
@@ -549,7 +547,7 @@ const handleSubmit = async () => {
 }
 
 // Resend verification email
-// Handle credentials sent - common function for WebSocket and polling
+// Handle credentials sent - pure event-based
 const handleCredentialsSent = () => {
   if (currentStep.value === 3) {
     stepStatus.value.step3 = 'done'
@@ -564,86 +562,9 @@ const handleCredentialsSent = () => {
       'Your account is ready. Check your email for login credentials.',
       8000
     )
-    
-    // Stop polling if active
-    stopStatusPolling()
-    
-    // Redirect to login after 3 seconds
-    setTimeout(() => {
-      sessionStorage.removeItem(REG_TOKEN_STORAGE_KEY)
-      router.push({ name: 'login' })
-    }, 3000)
   }
 }
 
-// Start polling for registration status (fallback if WebSocket fails)
-const startStatusPolling = () => {
-  if (pollingActive.value || !registrationToken.value) return
-  
-  console.log('Starting status polling for registration token:', registrationToken.value)
-  pollingActive.value = true
-  
-  // Poll every 3 seconds
-  statusPollingInterval = setInterval(async () => {
-    try {
-      const response = await axios.get(`/register/status/${registrationToken.value}`)
-      
-      if (response.data.success) {
-        const status = response.data.status
-        const emailVerified = response.data.email_verified
-        const credentialsSent = response.data.credentials_sent
-        
-        console.log('Registration status:', status, 'Email verified:', emailVerified, 'Credentials sent:', credentialsSent)
-        
-        // Check if email has been verified and move to step 3
-        if (emailVerified && currentStep.value === 2) {
-          currentStep.value = 3
-          stepStatus.value.step2 = 'done'
-          stepStatus.value.step3 = 'processing'
-          statusMessage.value = {
-            type: 'success',
-            title: 'Email Verified!',
-            message: 'Your email has been verified. Setting up your workspace...'
-          }
-          
-          notificationStore.success(
-            'Email Verified! ✓',
-            'Your workspace is being created...',
-            5000
-          )
-        }
-        
-        // Check if credentials have been sent
-        if (credentialsSent && currentStep.value === 3) {
-          handleCredentialsSent()
-        }
-        
-        // Check for errors
-        if (status === 'failed') {
-          stopStatusPolling()
-          statusMessage.value = {
-            type: 'error',
-            title: 'Registration Failed',
-            message: response.data.error_message || 'An error occurred during registration. Please try again or contact support.'
-          }
-        }
-      }
-    } catch (err) {
-      console.error('Status polling error:', err)
-      // Don't stop polling on error, just log it
-    }
-  }, 3000)
-}
-
-// Stop status polling
-const stopStatusPolling = () => {
-  if (statusPollingInterval) {
-    clearInterval(statusPollingInterval)
-    statusPollingInterval = null
-    pollingActive.value = false
-    console.log('Status polling stopped')
-  }
-}
 
 const resendVerificationEmail = async () => {
   if (resendCooldown.value > 0 || resendingEmail.value || !registrationToken.value) return
@@ -696,7 +617,7 @@ const resendVerificationEmail = async () => {
   }
 }
 
-// Check for verified query parameter on mount
+// Pure event-based initialization
 onMounted(() => {
   // Restore registration token after refresh / tab close-open so we can keep listening to events
   if (!registrationToken.value) {
@@ -709,31 +630,9 @@ onMounted(() => {
         stepStatus.value.step1 = 'done'
         stepStatus.value.step2 = 'processing'
       }
+      // Subscribe to WebSocket events - pure event-based, no polling
       subscribeToRegistrationEvents(storedToken)
     }
-  }
-
-  // Check if user clicked verification link (verified=true in query params)
-  if (route.query.verified === 'true') {
-    const token = route.query.token || registrationToken.value
-    if (token) {
-      registrationToken.value = token
-      sessionStorage.setItem(REG_TOKEN_STORAGE_KEY, token)
-      currentStep.value = 3
-      stepStatus.value.step1 = 'done'
-      stepStatus.value.step2 = 'done'
-      stepStatus.value.step3 = 'processing'
-      statusMessage.value = {
-        type: 'success',
-        title: 'Email Verified!',
-        message: 'Your email has been verified. Setting up your workspace...'
-      }
-      subscribeToRegistrationEvents(token)
-      startStatusPolling()
-    }
-  } else if (registrationToken.value && currentStep.value >= 2) {
-    // Start polling as fallback if we have a token
-    startStatusPolling()
   }
 })
 
@@ -746,7 +645,6 @@ onUnmounted(() => {
   if (cooldownInterval) {
     clearInterval(cooldownInterval)
   }
-  stopStatusPolling()
 })
 </script>
 

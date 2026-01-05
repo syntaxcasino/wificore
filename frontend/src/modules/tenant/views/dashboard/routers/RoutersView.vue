@@ -3,23 +3,38 @@
     <!-- Header -->
     <div class="flex-shrink-0 bg-white border-b border-slate-200 shadow-sm relative z-0">
       <!-- Top Bar -->
-      <div class="px-6 py-5">
-        <div class="flex items-center justify-between gap-6">
+      <div class="px-4 md:px-6 py-3 md:py-5">
+        <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 md:gap-6">
           <!-- Left: Title & Icon -->
-          <div class="flex items-center gap-3 z-0">
-            <div class="w-11 h-11 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg">
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904 3.905 10.236 3.905 14.142 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0" />
-              </svg>
+          <div class="flex items-center justify-between gap-3 z-0">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 md:w-11 md:h-11 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 md:h-6 md:w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904 3.905 10.236 3.905 14.142 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0" />
+                </svg>
+              </div>
+              <div>
+                <h2 class="text-lg md:text-xl font-bold text-slate-900">Router Management</h2>
+                <p class="text-xs text-slate-500 mt-0.5 hidden md:block">Monitor and configure your network infrastructure</p>
+              </div>
             </div>
-            <div>
-              <h2 class="text-xl font-bold text-slate-900">Router Management</h2>
-              <p class="text-xs text-slate-500 mt-0.5">Monitor and configure your network infrastructure</p>
+            
+            <!-- Mobile: Quick Stats -->
+            <div class="flex md:hidden items-center gap-2 px-2 py-1.5 bg-slate-50 rounded-lg border border-slate-200">
+              <div class="flex items-center gap-1">
+                <span class="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
+                <span class="text-xs font-semibold text-slate-700">{{ onlineCount }}</span>
+              </div>
+              <span class="text-slate-300 text-xs">|</span>
+              <div class="flex items-center gap-1">
+                <span class="w-1.5 h-1.5 bg-slate-400 rounded-full"></span>
+                <span class="text-xs font-semibold text-slate-700">{{ offlineCount }}</span>
+              </div>
             </div>
           </div>
           
-          <!-- Center: Search Bar -->
-          <div class="flex-1 max-w-xl">
+          <!-- Center: Search Bar (Desktop only) -->
+          <div class="hidden md:block flex-1 max-w-xl">
             <div class="relative">
               <div class="absolute inset-y-0 left-0 flex items-center pl-3.5 pointer-events-none">
                 <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -43,9 +58,9 @@
           </div>
           
           <!-- Right: Stats & Actions -->
-          <div class="flex items-center gap-3">
-            <!-- Quick Stats -->
-            <div class="flex items-center gap-2 px-3 py-2 bg-slate-50 rounded-lg border border-slate-200">
+          <div class="flex items-center justify-between md:justify-end gap-2 md:gap-3">
+            <!-- Desktop: Quick Stats -->
+            <div class="hidden md:flex items-center gap-2 px-3 py-2 bg-slate-50 rounded-lg border border-slate-200">
               <div class="flex items-center gap-1.5">
                 <span class="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
                 <span class="text-xs font-semibold text-slate-700">{{ onlineCount }}</span>
@@ -61,22 +76,23 @@
             
             <!-- Action Buttons -->
             <button @click="fetchRouters" :disabled="loading"
-              class="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 hover:border-slate-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all">
+              class="inline-flex items-center gap-1.5 px-2 md:px-3 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 hover:border-slate-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all">
               <svg xmlns="http://www.w3.org/2000/svg" :class="loading ? 'animate-spin' : ''" class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
                 <path fill-rule="evenodd"
                   d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z"
                   clip-rule="evenodd" />
               </svg>
-              <span>Refresh</span>
+              <span class="hidden md:inline">Refresh</span>
             </button>
             <button @click="openCreateOverlay"
-              class="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-gradient-to-r from-blue-600 to-indigo-600 rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all shadow-md hover:shadow-lg">
+              class="inline-flex items-center gap-1.5 px-3 md:px-4 py-2 text-xs font-semibold text-white bg-gradient-to-r from-blue-600 to-indigo-600 rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all shadow-md hover:shadow-lg">
               <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
                 <path fill-rule="evenodd"
                   d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z"
                   clip-rule="evenodd" />
               </svg>
-              <span>Add Router</span>
+              <span class="hidden sm:inline">Add Router</span>
+              <span class="sm:hidden">Add</span>
             </button>
           </div>
         </div>
