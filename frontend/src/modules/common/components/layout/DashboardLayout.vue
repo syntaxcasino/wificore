@@ -1,8 +1,20 @@
 <template>
   <div class="dashboard-layout">
-    <Sidebar :isSidebarOpen="isSidebarOpen" @toggle-sidebar="toggleSidebar" />
+    <!-- Mobile overlay -->
+    <div 
+      v-if="isMobile && isSidebarOpen" 
+      class="mobile-overlay"
+      @click="closeSidebar"
+    ></div>
 
-    <div class="main-content" :class="{ 'sidebar-closed': !isSidebarOpen }">
+    <Sidebar 
+      :isSidebarOpen="isSidebarOpen" 
+      :isMobile="isMobile"
+      @toggle-sidebar="toggleSidebar"
+      @close-sidebar="closeSidebar" 
+    />
+
+    <div class="main-content" :class="{ 'sidebar-closed': !isSidebarOpen, 'mobile': isMobile }">
       <AppHeader @toggle-sidebar="toggleSidebar" />
 
       <div class="content-area">
@@ -28,6 +40,10 @@ const toggleSidebar = () => {
   isSidebarOpen.value = !isSidebarOpen.value
 }
 
+const closeSidebar = () => {
+  isSidebarOpen.value = false
+}
+
 // Handle window resize
 const handleResize = () => {
   const wasMobile = isMobile.value
@@ -41,24 +57,12 @@ const handleResize = () => {
   }
 }
 
-// Close sidebar when clicking outside on mobile
-const closeSidebarOnClickOutside = (event) => {
-  if (isMobile.value && isSidebarOpen.value) {
-    const sidebar = document.querySelector('.sidebar')
-    if (sidebar && !sidebar.contains(event.target)) {
-      isSidebarOpen.value = false
-    }
-  }
-}
-
 onMounted(() => {
   window.addEventListener('resize', handleResize)
-  document.addEventListener('click', closeSidebarOnClickOutside)
 })
 
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize)
-  document.removeEventListener('click', closeSidebarOnClickOutside)
 })
 </script>
 
@@ -67,6 +71,28 @@ onUnmounted(() => {
   display: flex;
   min-height: 100vh;
   background-color: #f5f7fa;
+  position: relative;
+}
+
+/* Mobile overlay */
+.mobile-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 50;
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .main-content {
@@ -76,11 +102,19 @@ onUnmounted(() => {
   flex-direction: column;
   min-height: 100vh;
   transition: margin-left 0.3s ease-in-out;
+  width: calc(100% - 256px);
 }
 
 /* When sidebar is closed, expand content to full width */
 .main-content.sidebar-closed {
   margin-left: 0;
+  width: 100%;
+}
+
+/* Mobile: always full width */
+.main-content.mobile {
+  margin-left: 0 !important;
+  width: 100% !important;
 }
 
 .content-area {
@@ -95,16 +129,13 @@ onUnmounted(() => {
 /* Responsive adjustments */
 @media (max-width: 768px) {
   .main-content {
-    margin-left: 0;
+    margin-left: 0 !important;
+    width: 100% !important;
   }
 
-  .sidebar {
-    transform: translateX(-100%);
-    /* Add mobile toggle functionality */
-  }
-
-  .sidebar.open {
-    transform: translateX(0);
+  .content-area {
+    padding: 12px;
+    padding-top: 72px;
   }
 }
 </style>

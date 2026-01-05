@@ -1,9 +1,11 @@
 <template>
   <aside
-    class="fixed top-16 left-0 w-64 h-[calc(100vh-4rem)] bg-gradient-to-b from-gray-900 via-gray-900 to-gray-950 text-gray-100 flex flex-col justify-between border-r border-gray-800/50 shadow-2xl transition-all duration-300 ease-in-out z-[60]"
+    class="fixed top-16 left-0 w-64 h-[calc(100vh-4rem)] bg-gradient-to-b from-gray-900 via-gray-900 to-gray-950 text-gray-100 flex flex-col justify-between border-r border-gray-800/50 shadow-2xl transition-all duration-300 ease-in-out"
     :class="{
-      hidden: !isSidebarOpen,
-      block: isSidebarOpen,
+      'sidebar-open': isSidebarOpen,
+      'sidebar-closed': !isSidebarOpen,
+      'sidebar-mobile': isMobile,
+      'sidebar-desktop': !isMobile,
     }"
   >
     <div
@@ -570,7 +572,7 @@ const props = defineProps({
   }
 })
 
-defineEmits(['close-sidebar'])
+const emit = defineEmits(['close-sidebar', 'toggle-sidebar'])
 
 const authStore = useAuthStore()
 const route = useRoute()
@@ -616,3 +618,36 @@ const isDashboardActive = computed(() => route.path === '/dashboard' || route.pa
 const isOnSystemAdminRoute = computed(() => route.path.startsWith('/system-admin'))
 const isSystemAdmin = computed(() => authStore.user?.role === 'system_admin')
 </script>
+
+<style scoped>
+/* Desktop sidebar - always visible when open */
+.sidebar-desktop.sidebar-open {
+  transform: translateX(0);
+  z-index: 60;
+}
+
+.sidebar-desktop.sidebar-closed {
+  transform: translateX(-100%);
+  z-index: 60;
+}
+
+/* Mobile sidebar - slides over content */
+.sidebar-mobile {
+  z-index: 70;
+}
+
+.sidebar-mobile.sidebar-open {
+  transform: translateX(0);
+}
+
+.sidebar-mobile.sidebar-closed {
+  transform: translateX(-100%);
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+  aside {
+    box-shadow: 2px 0 10px rgba(0, 0, 0, 0.3);
+  }
+}
+</style>
