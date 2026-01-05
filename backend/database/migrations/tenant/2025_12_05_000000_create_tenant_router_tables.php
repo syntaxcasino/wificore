@@ -38,6 +38,7 @@ return new class extends Migration
                 $table->string('model')->nullable();
                 $table->string('os_version')->nullable();
                 $table->timestamp('last_seen')->nullable();
+                $table->timestamp('last_checked')->nullable();
                 $table->integer('port')->default(8728);
                 $table->string('username');
                 $table->string('password'); // Will be encrypted by model
