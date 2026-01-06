@@ -12,12 +12,11 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 
 class VerifyVpnConnectivityJob implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, TenantAwareJob;
+    use Dispatchable, InteractsWithQueue, Queueable, TenantAwareJob;
 
     public int $tries = 1;
     public int $timeout = 300; // 5 minutes max
