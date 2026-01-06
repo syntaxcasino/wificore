@@ -290,14 +290,35 @@ class MikrotikProvisioningService extends TenantAwareService
     }
     
     /**
-     * Fetch live data from router
+     * Fetch live data from router with connection locking to prevent concurrent API access
      */
     public function fetchLiveRouterData(Router $router): array
     {
+        $lockKey = "router_api_lock_{$router->id}";
+        
+        // Try to acquire lock with 10 second timeout
+        $lock = Cache::lock($lockKey, 10);
+        
         try {
+            // Wait up to 10 seconds to acquire the lock
+            if (!$lock->block(10)) {
+                Log::warning('Failed to acquire router API lock for live data fetch - another operation in progress', [
+                    'router_id' => $router->id,
+                ]);
+                throw new \Exception('Router is busy with another operation', 503);
+            }
+            
             $decryptedPassword = Crypt::decrypt($router->password);
             Log::info('Password decrypted successfully:', ['router_id' => $router->id]);
         } catch (\Exception $e) {
+            if ($lock->owner()) {
+                $lock->release();
+            }
+            
+            if ($e->getCode() === 503) {
+                throw $e; // Re-throw busy exception
+            }
+            
             Log::error('Password decryption failed:', [
                 'router_id' => $router->id,
                 'error' => $e->getMessage(),
@@ -305,76 +326,83 @@ class MikrotikProvisioningService extends TenantAwareService
             throw new \Exception('Failed to decrypt password: ' . $e->getMessage(), 500);
         }
 
-        // Use VPN IP if available
-        $ip = $router->vpn_ip ?? $router->ip_address;
-        $host = explode('/', $ip)[0];
-        
-        $client = new Client([
-            'host' => $host,
-            'user' => $router->username,
-            'pass' => $decryptedPassword,
-            'port' => $router->port,
-            'timeout' => 3,
-        ]);
-
-        // Batch queries to reduce round-trips
-        $queries = [
-            'resource' => new Query('/system/resource/print'),
-            'identity' => new Query('/system/identity/print'),
-            'interface' => new Query('/interface/print'),
-            'dhcp' => new Query('/ip/dhcp-server/lease/print'),
-        ];
-
-        $results = [];
-        foreach ($queries as $key => $query) {
-            $results[$key] = $client->query($query)->read();
-        }
-
-        // Try to get hotspot active users, but handle if hotspot is not configured
-        $hotspotActiveUsers = [];
         try {
-            $hotspotQuery = new Query('/ip/hotspot/active/print');
-            $hotspotActiveUsers = $client->query($hotspotQuery)->read();
+            // Use VPN IP if available
+            $ip = $router->vpn_ip ?? $router->ip_address;
+            $host = explode('/', $ip)[0];
             
-            // Filter out any sessions that might be system/bypass entries
-            // Only count actual user sessions (those with a 'user' field that's not empty)
-            $hotspotActiveUsers = array_filter($hotspotActiveUsers, function($session) {
-                return isset($session['user']) && !empty($session['user']);
-            });
-        } catch (\Exception $e) {
-            // Hotspot might not be configured, that's okay
-            Log::debug('Hotspot query failed (might not be configured)', [
-                'router_id' => $router->id,
-                'error' => $e->getMessage()
+            $client = new Client([
+                'host' => $host,
+                'user' => $router->username,
+                'pass' => $decryptedPassword,
+                'port' => $router->port,
+                'timeout' => 3,
             ]);
+
+            // Batch queries to reduce round-trips
+            $queries = [
+                'resource' => new Query('/system/resource/print'),
+                'identity' => new Query('/system/identity/print'),
+                'interface' => new Query('/interface/print'),
+                'dhcp' => new Query('/ip/dhcp-server/lease/print'),
+            ];
+
+            $results = [];
+            foreach ($queries as $key => $query) {
+                $results[$key] = $client->query($query)->read();
+            }
+
+            // Try to get hotspot active users, but handle if hotspot is not configured
+            $hotspotActiveUsers = [];
+            try {
+                $hotspotQuery = new Query('/ip/hotspot/active/print');
+                $hotspotActiveUsers = $client->query($hotspotQuery)->read();
+                
+                // Filter out any sessions that might be system/bypass entries
+                // Only count actual user sessions (those with a 'user' field that's not empty)
+                $hotspotActiveUsers = array_filter($hotspotActiveUsers, function($session) {
+                    return isset($session['user']) && !empty($session['user']);
+                });
+            } catch (\Exception $e) {
+                // Hotspot might not be configured, that's okay
+                Log::debug('Hotspot query failed (might not be configured)', [
+                    'router_id' => $router->id,
+                    'error' => $e->getMessage()
+                ]);
+            }
+
+            $resource = $results['resource'][0] ?? [];
+            $interfaces = $results['interface'] ?? [];
+            $dhcpLeases = $results['dhcp'] ?? [];
+
+            return [
+                'cpu_load' => $resource['cpu-load'] ?? 'N/A',
+                'free_memory' => $resource['free-memory'] ?? 'N/A',
+                'total_memory' => $resource['total-memory'] ?? 'N/A',
+                'free_hdd_space' => $resource['free-hdd-space'] ?? 'N/A',
+                'total_hdd_space' => $resource['total-hdd-space'] ?? 'N/A',
+                'uptime' => $resource['uptime'] ?? 'N/A',
+                'board_name' => $resource['board-name'] ?? 'N/A',
+                'version' => $resource['version'] ?? 'N/A',
+                'identity' => $results['identity'][0]['name'] ?? 'N/A',
+                'interface_count' => count($interfaces),
+                'active_connections' => count($hotspotActiveUsers),
+                'dhcp_leases' => count($dhcpLeases),
+                'interfaces' => array_map(function ($iface) {
+                    return [
+                        'name' => $iface['name'] ?? 'Unknown',
+                        'type' => $iface['type'] ?? 'Unknown',
+                        'running' => $iface['running'] ?? false,
+                        'mtu' => $iface['mtu'] ?? 'N/A',
+                    ];
+                }, $interfaces),
+            ];
+        } finally {
+            // Always release the lock
+            if ($lock->owner()) {
+                $lock->release();
+            }
         }
-
-        $resource = $results['resource'][0] ?? [];
-        $interfaces = $results['interface'] ?? [];
-        $dhcpLeases = $results['dhcp'] ?? [];
-
-        return [
-            'cpu_load' => $resource['cpu-load'] ?? 'N/A',
-            'free_memory' => $resource['free-memory'] ?? 'N/A',
-            'total_memory' => $resource['total-memory'] ?? 'N/A',
-            'free_hdd_space' => $resource['free-hdd-space'] ?? 'N/A',
-            'total_hdd_space' => $resource['total-hdd-space'] ?? 'N/A',
-            'uptime' => $resource['uptime'] ?? 'N/A',
-            'board_name' => $resource['board-name'] ?? 'N/A',
-            'version' => $resource['version'] ?? 'N/A',
-            'identity' => $results['identity'][0]['name'] ?? 'N/A',
-            'interface_count' => count($interfaces),
-            'active_connections' => count($hotspotActiveUsers),
-            'dhcp_leases' => count($dhcpLeases),
-            'interfaces' => array_map(function ($iface) {
-                return [
-                    'name' => $iface['name'] ?? 'Unknown',
-                    'type' => $iface['type'] ?? 'Unknown',
-                    'running' => $iface['running'] ?? false,
-                    'mtu' => $iface['mtu'] ?? 'N/A',
-                ];
-            }, $interfaces),
-        ];
     }
 
     /**
@@ -409,11 +437,27 @@ class MikrotikProvisioningService extends TenantAwareService
     }
     
     /**
-     * Verify router connectivity
+     * Verify router connectivity with connection locking to prevent concurrent API access
      */
     public function verifyConnectivity(Router $router): array
     {
+        $lockKey = "router_api_lock_{$router->id}";
+        
+        // Try to acquire lock with 35 second timeout (5 seconds more than API timeout)
+        $lock = Cache::lock($lockKey, 35);
+        
         try {
+            // Wait up to 35 seconds to acquire the lock
+            if (!$lock->block(35)) {
+                Log::warning('Failed to acquire router API lock - another operation in progress', [
+                    'router_id' => $router->id,
+                ]);
+                return [
+                    'status' => 'busy',
+                    'message' => 'Router is busy with another operation',
+                ];
+            }
+            
             $decryptedPassword = Crypt::decrypt($router->password);
             Log::info('Verifying connectivity:', [
                 'router_id' => $router->id,
@@ -422,6 +466,7 @@ class MikrotikProvisioningService extends TenantAwareService
                 'port' => $router->port,
             ]);
         } catch (\Exception $e) {
+            $lock->release();
             Log::error('Password decryption failed:', [
                 'router_id' => $router->id,
                 'error' => $e->getMessage(),
@@ -480,6 +525,9 @@ class MikrotikProvisioningService extends TenantAwareService
                 'message' => 'Unable to connect to router',
                 'error' => $e->getMessage(),
             ];
+        } finally {
+            // Always release the lock
+            $lock->release();
         }
     }
     
