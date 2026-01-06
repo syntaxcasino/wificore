@@ -9,21 +9,35 @@ use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
-use Illuminate\Queue\SerializesModels;
 
 class RouterCreated implements ShouldBroadcast
 {
-    use Dispatchable, InteractsWithSockets, SerializesModels;
+    use Dispatchable, InteractsWithSockets;
     use BroadcastsToTenant;
 
-    public Router $router;
+    public array $routerData;
+    public string $tenantId;
 
     /**
      * Create a new event instance.
      */
     public function __construct(Router $router)
     {
-        $this->router = $router;
+        // Extract data instead of serializing the model
+        $this->routerData = [
+            'id' => $router->id,
+            'tenant_id' => $router->tenant_id,
+            'name' => $router->name,
+            'ip_address' => $router->ip_address,
+            'vpn_ip' => $router->vpn_ip,
+            'vpn_status' => $router->vpn_status,
+            'vpn_enabled' => $router->vpn_enabled,
+            'status' => $router->status,
+            'model' => $router->model,
+            'os_version' => $router->os_version,
+            'created_at' => $router->created_at->toIso8601String(),
+        ];
+        $this->tenantId = (string) $router->tenant_id;
     }
 
     /**
@@ -50,19 +64,7 @@ class RouterCreated implements ShouldBroadcast
     public function broadcastWith(): array
     {
         return [
-            'router' => [
-                'id' => $this->router->id,
-                'tenant_id' => $this->router->tenant_id,
-                'name' => $this->router->name,
-                'ip_address' => $this->router->ip_address,
-                'vpn_ip' => $this->router->vpn_ip,
-                'vpn_status' => $this->router->vpn_status,
-                'vpn_enabled' => $this->router->vpn_enabled,
-                'status' => $this->router->status,
-                'model' => $this->router->model,
-                'os_version' => $this->router->os_version,
-                'created_at' => $this->router->created_at->toIso8601String(),
-            ],
+            'router' => $this->routerData,
             'message' => 'Router created successfully',
             'timestamp' => now()->toIso8601String(),
         ];
@@ -73,6 +75,6 @@ class RouterCreated implements ShouldBroadcast
      */
     protected function getTenantId(): string
     {
-        return (string) $this->router->tenant_id;
+        return $this->tenantId;
     }
 }
