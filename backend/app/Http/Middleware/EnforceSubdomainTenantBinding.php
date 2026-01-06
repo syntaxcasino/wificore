@@ -144,12 +144,17 @@ class EnforceSubdomainTenantBinding
             ], 403);
         }
 
-        // All checks passed - allow request
-        \Log::debug('Subdomain-tenant binding validated', [
-            'user_id' => $user->id,
-            'tenant_id' => $tenant->id,
-            'subdomain' => $subdomain,
-        ]);
+        // All checks passed - set tenant schema context for this request
+        if ($tenant->schema_name) {
+            \Illuminate\Support\Facades\DB::statement("SET search_path TO {$tenant->schema_name}, public");
+            
+            \Log::debug('Tenant schema context set for request', [
+                'user_id' => $user->id,
+                'tenant_id' => $tenant->id,
+                'schema_name' => $tenant->schema_name,
+                'subdomain' => $subdomain,
+            ]);
+        }
 
         return $next($request);
     }
