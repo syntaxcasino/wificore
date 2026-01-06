@@ -160,20 +160,15 @@ class VerifyVpnConnectivityJob implements ShouldQueue
                 return;
             }
 
+            Log::info('Starting interface discovery after VPN verification', [
+                'router_id' => $router->id,
+                'vpn_ip' => $vpnConfig->client_ip,
+            ]);
+
             // Use MikrotikProvisioningService to fetch interfaces
+            // Skip redundant connectivity check - VPN is already verified
             $provisioningService = app(\App\Services\MikrotikProvisioningService::class);
             
-            // Verify connectivity first
-            $connectivity = $provisioningService->verifyConnectivity($router);
-            
-            if ($connectivity['status'] !== 'connected' && $connectivity['status'] !== 'online') {
-                Log::warning('Router not connected for interface discovery', [
-                    'router_id' => $router->id,
-                    'status' => $connectivity['status'],
-                ]);
-                return;
-            }
-
             // Fetch live data which includes interfaces
             $liveData = $provisioningService->fetchLiveRouterData($router);
             
@@ -202,12 +197,19 @@ class VerifyVpnConnectivityJob implements ShouldQueue
                 Log::info('Router interfaces discovered and broadcasted', [
                     'router_id' => $router->id,
                     'interface_count' => count($liveData['interfaces']),
+                    'tenant_id' => $this->tenantId,
+                ]);
+            } else {
+                Log::warning('No interfaces found in live data', [
+                    'router_id' => $router->id,
+                    'live_data_keys' => array_keys($liveData ?? []),
                 ]);
             }
         } catch (\Exception $e) {
             Log::error('Failed to discover router interfaces', [
                 'router_id' => $vpnConfig->router_id,
                 'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
             ]);
         }
     }
