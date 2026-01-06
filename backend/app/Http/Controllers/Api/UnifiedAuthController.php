@@ -178,34 +178,14 @@ class UnifiedAuthController extends Controller
             }
         }
 
-        // System admins can login from any subdomain, but validate they're not using a tenant subdomain
+        // System admins can login from any subdomain (including tenant subdomains)
+        // This allows sysadmin to manage the platform from any entry point
         if ($user->role === 'system_admin') {
-            $host = $request->getHost();
-            if (!$this->isLocalhost($host)) {
-                $subdomain = $this->extractSubdomain($host);
-                
-                // Check if subdomain belongs to a tenant
-                if ($subdomain) {
-                    $tenantExists = \App\Models\Tenant::where('subdomain', $subdomain)
-                        ->orWhere('custom_domain', $host)
-                        ->exists();
-                    
-                    if ($tenantExists) {
-                        \Log::warning('System admin attempting to login via tenant subdomain', [
-                            'user_id' => $user->id,
-                            'username' => $user->username,
-                            'subdomain' => $subdomain,
-                            'host' => $host,
-                        ]);
-
-                        return response()->json([
-                            'success' => false,
-                            'message' => 'System admins cannot login via tenant subdomains. Please use the main domain.',
-                            'code' => 'SYSTEM_ADMIN_SUBDOMAIN_FORBIDDEN',
-                        ], 403);
-                    }
-                }
-            }
+            \Log::info('System admin login allowed from any subdomain', [
+                'user_id' => $user->id,
+                'username' => $user->username,
+                'host' => $request->getHost(),
+            ]);
         }
 
         // SCHEMA-BASED MULTI-TENANCY: Validate schema mapping for tenant users

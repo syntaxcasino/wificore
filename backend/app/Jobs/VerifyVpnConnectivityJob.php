@@ -108,6 +108,9 @@ class VerifyVpnConnectivityJob implements ShouldQueue
                         $attempt
                     ));
 
+                    // Auto-discover router interfaces after VPN is verified
+                    $this->discoverRouterInterfaces($vpnConfig);
+
                     return;
                 }
 
