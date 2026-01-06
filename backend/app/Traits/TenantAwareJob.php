@@ -74,22 +74,9 @@ trait TenantAwareJob
         // Set auth context
         Auth::setUser($systemUser);
 
-        // Force a fresh connection to ensure clean state
-        \Illuminate\Support\Facades\DB::purge('pgsql');
-        \Illuminate\Support\Facades\DB::reconnect('pgsql');
-
-        // Set search_path for the entire connection session, not just transaction
+        // Set search_path for the entire connection session
         // This ensures queries outside transactions (like event broadcasting) use correct schema
         \Illuminate\Support\Facades\DB::statement("SET search_path TO {$tenant->schema_name}, public");
-
-        // Log the search_path to verify it's set correctly
-        $currentPath = \Illuminate\Support\Facades\DB::selectOne('SHOW search_path');
-        \Illuminate\Support\Facades\Log::debug('Tenant context set', [
-            'tenant_id' => $this->tenantId,
-            'schema_name' => $tenant->schema_name,
-            'search_path' => $currentPath->search_path,
-            'job_class' => get_class($this),
-        ]);
 
         try {
             // Execute callback - no transaction needed since search_path is set at connection level
@@ -97,10 +84,6 @@ trait TenantAwareJob
         } finally {
             // Reset search_path to default
             \Illuminate\Support\Facades\DB::statement("SET search_path TO public");
-            
-            // Force reconnect to clear tenant context
-            \Illuminate\Support\Facades\DB::purge('pgsql');
-            \Illuminate\Support\Facades\DB::reconnect('pgsql');
             
             // Clear auth context
             Auth::logout();
