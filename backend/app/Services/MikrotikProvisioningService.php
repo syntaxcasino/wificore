@@ -443,7 +443,7 @@ class MikrotikProvisioningService extends TenantAwareService
                 'user' => $router->username,
                 'pass' => $decryptedPassword,
                 'port' => $router->port,
-                'timeout' => 5,
+                'timeout' => 30,
             ]);
 
             $identity = $client->query(new Query('/system/identity/print'))->read();
@@ -793,14 +793,19 @@ class MikrotikProvisioningService extends TenantAwareService
                         // The import succeeded, so we'll trust it
                     }
                     
-                    // Clean up the file
+                    // Clean up the .rsc file after successful import
                     try {
                         $client->query((new Query('/file/remove'))
-                            ->equal('numbers', $rscFileName)
+                            ->equal('.id', $rscFileName)
                         )->read();
-                    } catch (\Exception $e) {
-                        Log::debug('File cleanup failed (non-critical)', [
+                        Log::info('.rsc file deleted successfully', [
                             'router_id' => $router->id,
+                            'file_name' => $rscFileName
+                        ]);
+                    } catch (\Exception $e) {
+                        Log::warning('.rsc file cleanup failed (non-critical)', [
+                            'router_id' => $router->id,
+                            'file_name' => $rscFileName,
                             'error' => $e->getMessage()
                         ]);
                     }
