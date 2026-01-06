@@ -2,9 +2,11 @@
 
 namespace App\Jobs;
 
+use App\Events\RouterInterfacesDiscovered;
 use App\Events\VpnConnectivityChecking;
 use App\Events\VpnConnectivityFailed;
 use App\Events\VpnConnectivityVerified;
+use App\Models\Router;
 use App\Models\VpnConfiguration;
 use App\Services\VpnConnectivityService;
 use App\Traits\TenantAwareJob;
