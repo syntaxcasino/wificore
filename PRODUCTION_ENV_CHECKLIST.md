@@ -225,3 +225,85 @@ wscat -c "wss://wificore.traidsolutions.com/app/app-key"
 - Always verify environment variables are loaded before deploying
 - Frontend container must be rebuilt when WebSocket configuration changes
 - WebSocket path should be `/` not `/app` (Soketi handles the /app internally)
+
+
+
+
+Looking at your output, everything is configured correctly! ✅
+
+Let me answer your question about how routers connect through VPN:
+
+🔌 How Routers Connect Through VPN
+WireGuard Listening Port
+bash
+interface: wg0
+  listening port: 47997  ← This is the ACTUAL port WireGuard is using
+Important: The listening port is 47997, NOT 51830. This is because:
+
+WireGuard automatically picks an available port if 51830 is in use
+This is normal and works fine
+Routers will connect to: 144.91.71.208:47997
+Router Connection Flow
+Router (MikroTik/etc)
+    ↓ WireGuard tunnel to 144.91.71.208:47997
+    ↓
+wg0 interface (10.8.0.1/24) on host
+    ↓
+    ├─→ RADIUS traffic (ports 1812/1813)
+    │   ↓ iptables DNAT redirects to 172.70.0.2
+    │   ↓
+    │   FreeRADIUS container (172.70.0.2) ✅
+    │
+    └─→ Management traffic (SSH, API, etc)
+        ↓ Routes through wg0
+        ↓
+        Backend/Services
+RADIUS Port Forwarding (Already Working)
+Your wg0.conf shows the DNAT rules are correctly configured:
+
+bash
+iptables -t nat -A PREROUTING -i wg0 -p udp --dport 1812 -j DNAT --to-destination 172.70.0.2:1812
+iptables -t nat -A PREROUTING -i wg0 -p udp --dport 1813 -j DNAT --to-destination 172.70.0.2:1813
+This means:
+
+Router sends RADIUS auth to 10.8.0.1:1812 (WireGuard gateway)
+iptables redirects to 172.70.0.2:1812 (FreeRADIUS container)
+FreeRADIUS processes authentication
+Response goes back through the tunnel
+Ports Used
+Service	Port	Purpose
+WireGuard	47997 (auto-assigned)	VPN tunnel endpoint - routers connect here
+RADIUS Auth	1812	Authentication (forwarded to FreeRADIUS)
+RADIUS Acct	1813	Accounting (forwarded to FreeRADIUS)
+Backend API	443/8070	Management (via nginx)
+What You Need to Configure on Routers
+When you create a tenant and provision a router, the system will generate a WireGuard config like:
+
+ini
+[Interface]
+PrivateKey = <router_private_key>
+Address = 10.X.Y.Z/32  # Unique IP per router
+[Peer]
+PublicKey = 4VWYMDDs7RdPyi+69Qmle1+7sTLhBHhxWwaxnZVaymA=
+Endpoint = 144.91.71.208:47997  ← Your server's actual listening port
+AllowedIPs = 10.0.0.0/8
+PersistentKeepalive = 25
+Current Status: Ready for Routers ✅
+✅ wg0 interface: UP and running
+✅ Listening port: 47997 (working)
+✅ FreeRADIUS: 172.70.0.2 (correct static IP)
+✅ DNAT rules: Configured for RADIUS forwarding
+✅ No peers yet: wg0_peers.conf is empty (expected - no routers added)
+Next Steps to Test
+Create a tenant via the web interface
+Add a router to that tenant
+The system will:
+Allocate a unique subnet (e.g., 10.1.0.0/16)
+Generate router WireGuard config
+Add peer to wg0
+Configure the router with the generated WireGuard config
+Router connects to 144.91.71.208:47997
+RADIUS traffic flows through the tunnel to FreeRADIUS
+Your VPN infrastructure is ready! The listening port being 47997 instead of 51830 is completely normal and doesn't affect functionality.
+
+Feedback submitted

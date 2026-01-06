@@ -141,6 +141,72 @@ class VerifyVpnConnectivityJob implements ShouldQueue
         });
     }
 
+    /**
+     * Discover router interfaces after VPN connectivity is verified
+     */
+    private function discoverRouterInterfaces($vpnConfig): void
+    {
+        try {
+            $router = Router::find($vpnConfig->router_id);
+            if (!$router) {
+                Log::warning('Router not found for interface discovery', [
+                    'router_id' => $vpnConfig->router_id,
+                ]);
+                return;
+            }
+
+            // Use MikrotikProvisioningService to fetch interfaces
+            $provisioningService = app(\App\Services\MikrotikProvisioningService::class);
+            
+            // Verify connectivity first
+            $connectivity = $provisioningService->verifyConnectivity($router);
+            
+            if ($connectivity['status'] !== 'connected' && $connectivity['status'] !== 'online') {
+                Log::warning('Router not connected for interface discovery', [
+                    'router_id' => $router->id,
+                    'status' => $connectivity['status'],
+                ]);
+                return;
+            }
+
+            // Fetch live data which includes interfaces
+            $liveData = $provisioningService->fetchLiveRouterData($router);
+            
+            if (isset($liveData['interfaces']) && is_array($liveData['interfaces'])) {
+                // Update router status
+                $router->update([
+                    'status' => 'online',
+                    'model' => $liveData['board_name'] ?? $router->model,
+                    'os_version' => $liveData['version'] ?? $router->os_version,
+                    'last_seen' => now(),
+                ]);
+
+                // Broadcast interfaces discovered event
+                broadcast(new RouterInterfacesDiscovered(
+                    $this->tenantId,
+                    $router->id,
+                    $liveData['interfaces'],
+                    [
+                        'model' => $liveData['board_name'] ?? null,
+                        'version' => $liveData['version'] ?? null,
+                        'uptime' => $liveData['uptime'] ?? null,
+                        'interface_count' => count($liveData['interfaces']),
+                    ]
+                ));
+
+                Log::info('Router interfaces discovered and broadcasted', [
+                    'router_id' => $router->id,
+                    'interface_count' => count($liveData['interfaces']),
+                ]);
+            }
+        } catch (\Exception $e) {
+            Log::error('Failed to discover router interfaces', [
+                'router_id' => $vpnConfig->router_id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
     public function failed(\Throwable $exception): void
     {
         Log::error('VPN connectivity verification job failed', [
