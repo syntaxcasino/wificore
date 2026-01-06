@@ -74,18 +74,20 @@ trait TenantAwareJob
         // Set auth context
         Auth::setUser($systemUser);
 
-        // Use transaction to ensure search_path persists for all queries
-        return \Illuminate\Support\Facades\DB::transaction(function () use ($callback, $tenant) {
-            // Set search_path at transaction level - this persists for all queries in transaction
-            \Illuminate\Support\Facades\DB::statement("SET LOCAL search_path TO {$tenant->schema_name}, public");
+        // Set search_path for the entire connection session, not just transaction
+        // This ensures queries outside transactions (like event broadcasting) use correct schema
+        \Illuminate\Support\Facades\DB::statement("SET search_path TO {$tenant->schema_name}, public");
+
+        try {
+            // Execute callback - no transaction needed since search_path is set at connection level
+            return $callback();
+        } finally {
+            // Reset search_path to default
+            \Illuminate\Support\Facades\DB::statement("SET search_path TO public");
             
-            try {
-                return $callback();
-            } finally {
-                // Clear auth context
-                Auth::logout();
-            }
-        });
+            // Clear auth context
+            Auth::logout();
+        }
     }
 
     /**
