@@ -646,19 +646,40 @@ export function useRouterProvisioning(props, emit) {
           addLog('success', `Router is reachable via VPN at ${data.client_ip}`)
           
           provisioningProgress.value = 60
-          provisioningStatus.value = 'VPN connected successfully'
+          provisioningStatus.value = 'VPN connected - Discovering interfaces...'
           connectionStatus.value = 'Connected'
           
-          // Unsubscribe from channel
+          // Don't unsubscribe yet - wait for interfaces.discovered event
+          addLog('info', 'Waiting for interface discovery...')
+        }
+      })
+
+      // Listen for router interfaces discovered event (AUTO-DISCOVERY!)
+      channel.bind('router.interfaces.discovered', (data) => {
+        console.log('Router interfaces discovered:', data)
+        
+        if (data.router_id === provisioningRouter.value?.id) {
+          availableInterfaces.value = data.interfaces || []
+          
+          addLog('success', `✅ Discovered ${data.interfaces.length} interfaces`)
+          addLog('info', `Router: ${data.router_info.model} (${data.router_info.version})`)
+          
+          // Update router info
+          if (provisioningRouter.value) {
+            provisioningRouter.value.status = 'online'
+            provisioningRouter.value.model = data.router_info.model
+            provisioningRouter.value.os_version = data.router_info.version
+          }
+          
+          // Move to Stage 3: Service Configuration
+          currentStage.value = 3
+          provisioningProgress.value = 75
+          provisioningStatus.value = 'Router connected - Configure services'
+          
+          // Unsubscribe from VPN channel
           pusher.unsubscribe(channelName)
           
-          // Auto-proceed to next stage after 2 seconds
-          setTimeout(() => {
-            if (currentStage.value === 2) {
-              addLog('info', 'Proceeding to interface discovery...')
-              probeVpnConnectivity()
-            }
-          }, 2000)
+          addLog('success', 'Ready for service configuration')
         }
       })
 
