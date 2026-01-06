@@ -1,12 +1,12 @@
 <template>
   <div class="flex flex-col h-full bg-gradient-to-br from-slate-50 via-gray-50 to-blue-50/30 rounded-lg shadow-lg overflow-hidden">
     <!-- Header -->
-    <div class="flex-shrink-0 bg-white border-b border-slate-200 shadow-sm relative z-0">
+    <div class="flex-shrink-0 bg-white border-b border-slate-200 shadow-sm relative">
       <!-- Top Bar -->
       <div class="px-4 md:px-6 py-3 md:py-5">
         <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 md:gap-6">
           <!-- Left: Title & Icon -->
-          <div class="flex items-center justify-between gap-3 z-0">
+          <div class="flex items-center justify-between gap-3">
             <div class="flex items-center gap-3">
               <div class="w-10 h-10 md:w-11 md:h-11 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 md:h-6 md:w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
