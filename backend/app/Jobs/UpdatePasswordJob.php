@@ -20,7 +20,7 @@ use Illuminate\Support\Facades\Log;
  */
 class UpdatePasswordJob implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    use Dispatchable, InteractsWithQueue, Queueable;
 
     public string $userId;
     public string $tenantId;

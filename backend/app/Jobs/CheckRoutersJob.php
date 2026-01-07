@@ -88,6 +88,17 @@ class CheckRoutersJob implements ShouldQueue
                         continue;
                     }
 
+                    // Check if router is currently locked by another operation
+                    $lockKey = "router_api_lock_{$router->id}";
+                    if (Cache::has($lockKey)) {
+                        Log::withContext(array_merge($context, [
+                            'router_id' => $router->id,
+                            'ip_address' => $router->ip_address,
+                            'name' => $router->name,
+                        ]))->info('Skipping router health check - router is busy with another operation');
+                        continue;
+                    }
+
                     try {
                         $connectivityData = $service->verifyConnectivity($router);
                         $status = $connectivityData['status'] === 'connected' ? 'online' : 'offline';
@@ -122,6 +133,16 @@ class CheckRoutersJob implements ShouldQueue
                         ]);
 
                     } catch (Throwable $e) {
+                        // Don't mark as offline if router is busy (503 error)
+                        if ($e->getCode() === 503 || str_contains($e->getMessage(), 'busy')) {
+                            Log::withContext(array_merge($context, [
+                                'router_id' => $router->id,
+                                'ip_address' => $router->ip_address,
+                                'name' => $router->name,
+                            ]))->info('Router is busy with another operation, skipping health check');
+                            continue;
+                        }
+
                         // Mark as offline on failure
                         $router->update([
                             'status' => 'offline',

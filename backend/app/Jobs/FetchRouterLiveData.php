@@ -74,6 +74,15 @@ class FetchRouterLiveData implements ShouldQueue
                         'router_name' => $router->name
                     ]);
 
+                    // Skip routers that are under provisioning
+                    if (in_array($router->status, ['pending', 'deploying', 'provisioning', 'verifying'])) {
+                        Log::info('Skipping router - under provisioning', [
+                            'router_id' => $router->id,
+                            'status' => $router->status
+                        ]);
+                        continue;
+                    }
+
                     try {
                         // Use 'live' context to fetch all monitoring data
                         $liveData = $routerService->fetchLiveRouterData($router, 'live', false);
@@ -101,9 +110,27 @@ class FetchRouterLiveData implements ShouldQueue
                         // Update router status
                         $this->updateRouterStatus($router, $liveData, 'online');
                         $successfulRouters[] = $router->id;
-                        
-
                     } catch (\Exception $e) {
+                        // Don't count as failure if router is busy
+                        if ($e->getCode() === 503 || str_contains($e->getMessage(), 'busy')) {
+                            Log::info('Router is busy, skipping live data fetch', [
+                                'router_id' => $router->id
+                            ]);
+                            continue;
+                        }
+
+                        // Don't count as failure if password decryption failed (APP_KEY issue)
+                        if (str_contains($e->getMessage(), 'decrypt')) {
+                            Log::error('Password decryption failed - possible APP_KEY mismatch', [
+                                'router_id' => $router->id,
+                                'router_name' => $router->name,
+                                'error' => $e->getMessage(),
+                                'hint' => 'Check if APP_KEY in .env.production matches the key used when router was created'
+                            ]);
+                        }
+
+                        $failedRouters[] = $router->id;
+                        
                         Log::warning('Failed to fetch live data for router', [
                             'router_id' => $router->id,
                             'error' => $e->getMessage(),
@@ -112,7 +139,6 @@ class FetchRouterLiveData implements ShouldQueue
 
                         $this->cacheErrorState($router, $e);
                         $this->updateRouterStatus($router, [], 'offline');
-                        $failedRouters[] = $router->id;
                     }
                 }
 

@@ -55,6 +55,7 @@ class DiscoverRouterInterfacesJob implements ShouldQueue
                 $liveData = $provisioningService->fetchLiveRouterData($router, 'provisioning', true);
                 
                 if (isset($liveData['interfaces']) && is_array($liveData['interfaces'])) {
+                    // Update router to 'online' status - provisioning complete
                     $router->update([
                         'status' => 'online',
                         'model' => $liveData['board_name'] ?? $router->model,
@@ -74,10 +75,13 @@ class DiscoverRouterInterfacesJob implements ShouldQueue
                         ]
                     ));
 
-                    Log::info('Router interfaces discovered and broadcasted', [
+                    Log::info('Router provisioning completed successfully', [
                         'router_id' => $router->id,
+                        'router_name' => $router->name,
                         'interface_count' => count($liveData['interfaces']),
                         'tenant_id' => $this->tenantId,
+                        'status' => 'online',
+                        'message' => 'Router is now online and ready for service configuration',
                     ]);
                 } else {
                     Log::warning('No interfaces found in live data', [

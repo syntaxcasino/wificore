@@ -327,15 +327,19 @@ class MikrotikProvisioningService extends TenantAwareService
         $lockKey = "router_api_lock_{$router->id}";
         
         // Adjust timeout based on context
-        $timeout = $context === 'provisioning' ? 10 : 15;
-        $lock = Cache::lock($lockKey, $timeout);
+        $timeout = $context === 'provisioning' ? 15 : 20;
+        $lockDuration = $timeout + 5; // Lock duration slightly longer than operation timeout
+        $lock = Cache::lock($lockKey, $lockDuration);
         
         try {
-            // Wait to acquire the lock
-            if (!$lock->block($timeout)) {
-                Log::warning('Failed to acquire router API lock', [
+            // Wait to acquire the lock with longer wait time
+            $waitTime = $context === 'provisioning' ? 5 : 3;
+            if (!$lock->block($waitTime)) {
+                Log::warning('Failed to acquire router API lock - router is busy', [
                     'router_id' => $router->id,
+                    'router_name' => $router->name,
                     'context' => $context,
+                    'wait_time' => $waitTime,
                 ]);
                 throw new \Exception('Router is busy with another operation', 503);
             }
