@@ -79,9 +79,8 @@ export function useRouterProvisioning(props, emit) {
   const currentStageText = computed(() => {
     const stages = {
       1: 'Router Identity',
-      2: 'Monitoring Setup',
-      3: 'Service Configuration',
-      4: 'Deployment',
+      2: 'VPN Connection',
+      3: 'Provisioning Complete',
     }
     return stages[currentStage.value] || 'Unknown'
   })
@@ -679,15 +678,20 @@ export function useRouterProvisioning(props, emit) {
             provisioningRouter.value.os_version = data.router_info.version
           }
           
-          // Move to Stage 3: Service Configuration
+          // Provisioning complete - show SSH access instructions
           currentStage.value = 3
-          provisioningProgress.value = 75
-          provisioningStatus.value = 'Router connected - Configure services'
+          provisioningProgress.value = 100
+          provisioningStatus.value = 'Router provisioned successfully - SSH access ready'
           
           // Unsubscribe from VPN channel
           pusher.unsubscribe(channelName)
           
-          addLog('success', 'Ready for service configuration')
+          addLog('success', '🎉 Router provisioning complete!')
+          addLog('info', '🔐 You can now SSH to the router for configuration')
+          addLog('info', `📍 SSH Address: ${provisioningRouter.value.vpn_ip || data.router_info.vpn_ip}`)
+          addLog('info', `👤 Username: admin`)
+          addLog('info', `🔑 Password: [Your router admin password]`)
+          addLog('info', '💡 Use WinBox or SSH client to configure services (Hotspot, PPPoE, etc.)')
         }
       })
 

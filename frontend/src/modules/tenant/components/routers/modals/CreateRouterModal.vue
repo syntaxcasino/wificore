@@ -325,210 +325,117 @@
               </div>
             </div>
 
-            <!-- Stage 3: Interface Discovery & Service Selection -->
+            <!-- Stage 3: Provisioning Complete - SSH Access -->
             <div v-if="currentStage === 3" class="space-y-4">
               <div class="text-center mb-4">
                 <div class="w-16 h-16 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
                   <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                 </div>
-                <h4 class="text-lg font-medium text-gray-800 mb-2">Configure Router Services</h4>
-                <p class="text-gray-600 text-sm">Select the services and interfaces for your router configuration</p>
+                <h4 class="text-lg font-bold text-gray-800 mb-2">🎉 Router Provisioned Successfully!</h4>
+                <p class="text-gray-600 text-sm">Your router is connected and ready for configuration</p>
               </div>
 
               <!-- Router Information -->
               <div class="grid grid-cols-2 gap-3">
                 <div class="bg-white p-3 rounded-lg border border-gray-200 shadow-sm">
-                  <h4 class="text-xs font-medium text-gray-600 uppercase tracking-wider mb-1">Router ID</h4>
-                  <p class="text-gray-900 font-medium">{{ provisioningRouter?.id || 'N/A' }}</p>
+                  <h4 class="text-xs font-medium text-gray-600 uppercase tracking-wider mb-1">Router Name</h4>
+                  <p class="text-gray-900 font-medium">{{ provisioningRouter?.name || 'N/A' }}</p>
                 </div>
                 <div class="bg-white p-3 rounded-lg border border-gray-200 shadow-sm">
                   <h4 class="text-xs font-medium text-gray-600 uppercase tracking-wider mb-1">Status</h4>
-                  <p class="text-gray-900 font-medium">{{ provisioningRouter?.status || 'Pending' }}</p>
+                  <p class="text-green-600 font-medium flex items-center gap-1">
+                    <span class="w-2 h-2 bg-green-500 rounded-full"></span>
+                    {{ provisioningRouter?.status || 'Online' }}
+                  </p>
                 </div>
               </div>
 
-              <!-- Service Selection - Two Column Layout -->
-              <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <!-- Hotspot Service -->
-                <div class="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
-                  <div class="flex items-center justify-between mb-3">
-                    <div class="flex items-center space-x-3">
-                      <label class="relative inline-flex items-center cursor-pointer">
-                        <input
-                          type="checkbox"
-                          v-model="enableHotspot"
-                          class="sr-only peer"
-                        />
-                        <div class="w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
-                      </label>
-                      <div>
-                        <h3 class="text-sm font-medium text-gray-800">Hotspot Service</h3>
-                        <p class="text-xs text-gray-600">WiFi hotspot with captive portal</p>
-                      </div>
-                    </div>
-                    <div class="text-2xl">📶</div>
-                  </div>
-
-                  <!-- Hotspot Configuration -->
-                  <div v-if="enableHotspot" class="space-y-3 border-t border-gray-200 pt-3">
-                    <div>
-                      <label class="block text-sm font-medium text-gray-700 mb-2">Select Interfaces</label>
-                      <div class="grid grid-cols-2 gap-2">
-                        <label v-for="iface in availableInterfaces" :key="iface.name" class="flex items-center space-x-2 p-2 rounded hover:bg-gray-50 border border-gray-200">
-                          <input
-                            type="checkbox"
-                            :checked="selectedHotspotInterfaces.includes(iface.name)"
-                            @change="toggleInterfaceSelection('hotspot', iface.name)"
-                            class="rounded border-gray-300 text-green-600 focus:ring-green-500"
-                          />
-                          <div class="flex-1 min-w-0">
-                            <span class="text-sm text-gray-900 block truncate">{{ iface.name }}</span>
-                            <span class="text-xs text-gray-500">({{ iface.type }})</span>
-                          </div>
-                        </label>
-                      </div>
-                    </div>
-
-                    <!-- Captive Portal Configuration -->
-                    <div class="space-y-2">
-                      <h4 class="text-sm font-medium text-gray-700">Captive Portal Settings</h4>
-                      <div class="space-y-2">
-                        <div>
-                          <label class="block text-xs font-medium text-gray-600 mb-1">Portal Title</label>
-                          <input
-                            v-model="hotspotConfig.portalTitle"
-                            type="text"
-                            placeholder="Welcome to our WiFi"
-                            class="block w-full text-sm rounded-lg border-gray-300 bg-white text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 p-2"
-                          />
-                        </div>
-                        <div>
-                          <label class="block text-xs font-medium text-gray-600 mb-1">Login Methods</label>
-                          <select
-                            v-model="hotspotConfig.loginMethod"
-                            class="block w-full text-sm rounded-lg border-gray-300 bg-white text-gray-900 shadow-sm focus:border-green-500 focus:ring-green-500 p-2"
-                          >
-                            <option value="mac">MAC Address</option>
-                            <option value="http-chap">HTTP CHAP</option>
-                            <option value="https">HTTPS</option>
-                          </select>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- PPPoE Service -->
-                <div class="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
-                  <div class="flex items-center justify-between mb-3">
-                    <div class="flex items-center space-x-3">
-                      <label class="relative inline-flex items-center cursor-pointer">
-                        <input
-                          type="checkbox"
-                          v-model="enablePPPoE"
-                          class="sr-only peer"
-                        />
-                        <div class="w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                      </label>
-                      <div>
-                        <h3 class="text-sm font-medium text-gray-800">PPPoE Service</h3>
-                        <p class="text-xs text-gray-600">Point-to-Point Protocol over Ethernet</p>
-                      </div>
-                    </div>
-                    <div class="text-2xl">🌐</div>
-                  </div>
-
-                  <!-- PPPoE Configuration -->
-                  <div v-if="enablePPPoE" class="space-y-3 border-t border-gray-200 pt-3">
-                    <div>
-                      <label class="block text-sm font-medium text-gray-700 mb-2">Select Interfaces</label>
-                      <div class="grid grid-cols-2 gap-2">
-                        <label v-for="iface in availableInterfaces" :key="iface.name" class="flex items-center space-x-2 p-2 rounded hover:bg-gray-50 border border-gray-200">
-                          <input
-                            type="checkbox"
-                            :checked="selectedPPPoEInterfaces.includes(iface.name)"
-                            @change="toggleInterfaceSelection('pppoe', iface.name)"
-                            class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                          />
-                          <div class="flex-1 min-w-0">
-                            <span class="text-sm text-gray-900 block truncate">{{ iface.name }}</span>
-                            <span class="text-xs text-gray-500">({{ iface.type }})</span>
-                          </div>
-                        </label>
-                      </div>
-                    </div>
-
-                    <!-- PPPoE Settings -->
-                    <div class="space-y-2">
-                      <h4 class="text-sm font-medium text-gray-700">PPPoE Settings</h4>
-                      <div class="space-y-2">
-                        <div>
-                          <label class="block text-xs font-medium text-gray-600 mb-1">Service Name</label>
-                          <input
-                            v-model="pppoeConfig.serviceName"
-                            type="text"
-                            placeholder="pppoe-service"
-                            class="block w-full text-sm rounded-lg border-gray-300 bg-white text-gray-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2"
-                          />
-                        </div>
-                        <div>
-                          <label class="block text-xs font-medium text-gray-600 mb-1">IP Pool Range</label>
-                          <input
-                            v-model="pppoeConfig.ipPool"
-                            type="text"
-                            placeholder="192.168.2.100-192.168.2.200"
-                            class="block w-full text-sm rounded-lg border-gray-300 bg-white text-gray-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Stage 4: Configuration Generation & Deployment -->
-            <div v-if="currentStage === 4" class="space-y-4">
-              <div class="text-center mb-4">
-                <div class="w-16 h-16 bg-purple-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01" />
-                  </svg>
-                </div>
-                <h4 class="text-lg font-medium text-gray-800 mb-2">Deploy Configuration</h4>
-                <p class="text-gray-600 text-sm">Review and deploy the service configuration to your router</p>
-              </div>
-
-              <!-- Deployment Progress -->
-              <div v-if="deploymentStatus" class="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
-                <div class="flex items-center justify-between mb-3">
-                  <span class="text-sm font-semibold text-gray-700">Deployment Status</span>
-                  <div class="flex items-center space-x-2">
-                    <span :class="deploymentStatusClass" class="text-sm font-medium">{{ deploymentStatus }}</span>
-                    <div v-if="waitingForJobCompletion" class="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-                  </div>
-                </div>
-                <div v-if="deploymentProgress > 0" class="w-full bg-gray-200 rounded-full h-2.5 mb-2">
-                  <div :class="deploymentProgressClass" class="h-2.5 rounded-full transition-all duration-300" :style="{ width: deploymentProgress + '%' }"></div>
-                </div>
-                <p class="text-xs text-gray-600">{{ deploymentMessage }}</p>
-
-                <!-- Retry Button for Failed Deployments -->
-                <div v-if="deploymentStatus === 'Failed'" class="flex justify-center mt-3">
-                  <button
-                    @click="retryDeployment"
-                    class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition-colors flex items-center space-x-2 shadow-sm"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              <!-- SSH Access Instructions -->
+              <div class="bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-lg p-4">
+                <div class="flex items-start gap-3">
+                  <div class="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                     </svg>
-                    <span>Retry Deployment</span>
-                  </button>
+                  </div>
+                  <div class="flex-1">
+                    <h5 class="text-base font-bold text-gray-800 mb-2">🔐 SSH Access Ready</h5>
+                    <p class="text-sm text-gray-700 mb-3">Your router is now accessible via SSH through the VPN tunnel. Configure services directly on the router.</p>
+                    
+                    <div class="bg-white rounded-lg p-3 space-y-2 border border-blue-200">
+                      <div class="flex items-center justify-between">
+                        <span class="text-xs font-semibold text-gray-600">SSH Address:</span>
+                        <code class="text-sm font-mono bg-gray-100 px-2 py-1 rounded text-blue-600">{{ provisioningRouter?.vpn_ip || 'N/A' }}</code>
+                      </div>
+                      <div class="flex items-center justify-between">
+                        <span class="text-xs font-semibold text-gray-600">Username:</span>
+                        <code class="text-sm font-mono bg-gray-100 px-2 py-1 rounded text-gray-800">admin</code>
+                      </div>
+                      <div class="flex items-center justify-between">
+                        <span class="text-xs font-semibold text-gray-600">Port:</span>
+                        <code class="text-sm font-mono bg-gray-100 px-2 py-1 rounded text-gray-800">22</code>
+                      </div>
+                    </div>
+
+                    <div class="mt-3 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                      <div class="flex items-start gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-yellow-600 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <div class="text-xs text-yellow-800">
+                          <p class="font-semibold mb-1">SSH Connection Command:</p>
+                          <code class="block bg-yellow-100 px-2 py-1 rounded font-mono text-xs">ssh admin@{{ provisioningRouter?.vpn_ip || 'router-ip' }}</code>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
+
+              <!-- Available Interfaces Info -->
+              <div class="bg-white border border-gray-200 rounded-lg p-4">
+                <h5 class="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                  Discovered Interfaces ({{ availableInterfaces.length }})
+                </h5>
+                <div class="grid grid-cols-2 gap-2">
+                  <div v-for="iface in availableInterfaces" :key="iface.name" class="bg-gray-50 border border-gray-200 rounded p-2">
+                    <div class="flex items-center justify-between">
+                      <span class="text-sm font-medium text-gray-900">{{ iface.name }}</span>
+                      <span class="text-xs text-gray-500 bg-white px-2 py-0.5 rounded">{{ iface.type }}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Configuration Guide -->
+              <div class="bg-white border border-gray-200 rounded-lg p-4">
+                <h5 class="text-sm font-bold text-gray-800 mb-3">💡 Next Steps</h5>
+                <ol class="space-y-2 text-sm text-gray-700">
+                  <li class="flex items-start gap-2">
+                    <span class="font-bold text-blue-600">1.</span>
+                    <span>SSH into the router using the credentials above</span>
+                  </li>
+                  <li class="flex items-start gap-2">
+                    <span class="font-bold text-blue-600">2.</span>
+                    <span>Configure Hotspot, PPPoE, or other services via CLI or WinBox</span>
+                  </li>
+                  <li class="flex items-start gap-2">
+                    <span class="font-bold text-blue-600">3.</span>
+                    <span>Services will automatically integrate with RADIUS for authentication</span>
+                  </li>
+                  <li class="flex items-start gap-2">
+                    <span class="font-bold text-blue-600">4.</span>
+                    <span>Monitor router status from the dashboard</span>
+                  </li>
+                </ol>
+              </div>
             </div>
+
         </div>
 
         <!-- Real-time Logs -->
@@ -585,42 +492,13 @@
             </button>
             <button
               v-if="currentStage === 3"
-              @click="generateServiceConfig"
-              :disabled="(!enableHotspot && !enablePPPoE) || formSubmitting"
-              class="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              @click="$emit('close-form'); $emit('refresh-routers')"
+              class="px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-md transition-colors flex items-center space-x-2"
             >
-              {{ formSubmitting ? 'Generating...' : 'Generate' }}
-            </button>
-            <button
-              v-if="currentStage === 4 && !deploymentFailed"
-              @click="deployConfiguration"
-              :disabled="!serviceScript || formSubmitting || waitingForJobCompletion"
-              class="px-3 py-1.5 text-xs font-medium text-white bg-green-600 hover:bg-green-700 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-1.5"
-            >
-              <span v-if="waitingForJobCompletion" class="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-              <span>{{ waitingForJobCompletion ? 'Waiting...' : formSubmitting ? 'Deploying...' : 'Deploy' }}</span>
-            </button>
-            <button
-              v-if="currentStage === 4 && deploymentFailed"
-              @click="retryDeployment"
-              :disabled="formSubmitting"
-              class="px-3 py-1.5 text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-1.5"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              <span>Retry Deployment</span>
-            </button>
-            <button
-              v-if="currentStage === 5 && deploymentTimedOut"
-              @click="retryDeployment"
-              :disabled="formSubmitting"
-              class="px-3 py-1.5 text-xs font-medium text-white bg-yellow-600 hover:bg-yellow-700 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-1.5"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-              <span>Retry Check</span>
+              <span>Done - View Dashboard</span>
             </button>
           </div>
         </div>
