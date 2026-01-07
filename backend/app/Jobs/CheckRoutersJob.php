@@ -77,6 +77,17 @@ class CheckRoutersJob implements ShouldQueue
                 $updatedStatuses = [];
 
                 foreach ($routers as $router) {
+                    // Skip routers that are still under provisioning
+                    if (in_array($router->status, ['pending', 'deploying', 'provisioning', 'verifying'])) {
+                        Log::withContext(array_merge($context, [
+                            'router_id' => $router->id,
+                            'ip_address' => $router->ip_address,
+                            'name' => $router->name,
+                            'status' => $router->status,
+                        ]))->info('Skipping router health check - router is under provisioning');
+                        continue;
+                    }
+
                     try {
                         $connectivityData = $service->verifyConnectivity($router);
                         $status = $connectivityData['status'] === 'connected' ? 'online' : 'offline';
