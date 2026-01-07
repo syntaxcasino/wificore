@@ -213,6 +213,32 @@ class RouterServiceManager extends TenantAwareService
     }
     
     /**
+     * Generate configuration script for service
+     * Used by deployment job
+     */
+    public function generateConfigurationScript(RouterService $service): string
+    {
+        $this->setTenant($service->router->tenant_id);
+        
+        switch ($service->service_type) {
+            case RouterService::TYPE_HOTSPOT:
+                $generator = new \App\Services\MikroTik\ZeroConfigHotspotGenerator();
+                return $generator->generate($service);
+                
+            case RouterService::TYPE_PPPOE:
+                $generator = new \App\Services\MikroTik\ZeroConfigPPPoEGenerator();
+                return $generator->generate($service);
+                
+            case RouterService::TYPE_HYBRID:
+                $generator = new \App\Services\MikroTik\ZeroConfigHybridGenerator();
+                return $generator->generate($service);
+                
+            default:
+                throw new \Exception("Unsupported service type: {$service->service_type}");
+        }
+    }
+    
+    /**
      * Deploy a service to a router (legacy method - kept for compatibility)
      * 
      * @param Router $router

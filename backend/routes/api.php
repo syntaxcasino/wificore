@@ -21,6 +21,8 @@ use App\Http\Controllers\Api\CacheController;
 use App\Http\Controllers\Api\MetricsController;
 // NEW: Service Management & Access Point Controllers
 use App\Http\Controllers\Api\RouterServiceController;
+use App\Http\Controllers\Api\ServiceConfigurationController;
+use App\Http\Controllers\Api\TenantIpPoolController;
 use App\Http\Controllers\Api\AccessPointController;
 use App\Http\Controllers\Api\TenantController;
 use App\Http\Controllers\Api\SystemAdminController;
@@ -284,6 +286,19 @@ Route::middleware(['auth:sanctum', 'system.admin'])->prefix('system')->name('api
         ->name('queue.retry-failed');
     
     // -------------------------------------------------------------------------
+    // TENANT IP POOL MANAGEMENT (Advanced Users)
+    // -------------------------------------------------------------------------
+    Route::prefix('tenant')->name('tenant.')->group(function () {
+        Route::get('/ip-pools', [TenantIpPoolController::class, 'index'])->name('ip-pools.index');
+        Route::get('/ip-pools/stats', [TenantIpPoolController::class, 'stats'])->name('ip-pools.stats');
+        Route::post('/ip-pools', [TenantIpPoolController::class, 'store'])->name('ip-pools.store');
+        Route::get('/ip-pools/{pool}', [TenantIpPoolController::class, 'show'])->name('ip-pools.show');
+        Route::put('/ip-pools/{pool}', [TenantIpPoolController::class, 'update'])->name('ip-pools.update');
+        Route::delete('/ip-pools/{pool}', [TenantIpPoolController::class, 'destroy'])->name('ip-pools.destroy');
+        Route::post('/ip-pools/{pool}/expand', [TenantIpPoolController::class, 'expand'])->name('ip-pools.expand');
+    });
+    
+    // -------------------------------------------------------------------------
     // Activity Logs
     // -------------------------------------------------------------------------
     Route::get('/activity-logs', [SystemAdminController::class, 'getActivityLogs'])
@@ -518,12 +533,17 @@ Route::middleware(['auth:sanctum', 'role:admin', 'user.active', 'tenant.context'
         // NEW: SERVICE MANAGEMENT ROUTES
         // =========================================================================
         
-        // Service Management
+        // Service Management (Legacy)
         Route::get('/{router}/services', [RouterServiceController::class, 'index'])->name('services.index');
         Route::post('/{router}/services', [RouterServiceController::class, 'store'])->name('services.store');
         Route::get('/{router}/services/{service}', [RouterServiceController::class, 'show'])->name('services.show');
         Route::put('/{router}/services/{service}', [RouterServiceController::class, 'update'])->name('services.update');
         Route::delete('/{router}/services/{service}', [RouterServiceController::class, 'destroy'])->name('services.destroy');
+        
+        // Zero-Config Service Configuration
+        Route::post('/{router}/services/configure', [ServiceConfigurationController::class, 'configure'])->name('services.configure');
+        Route::post('/{router}/services/{service}/validate', [ServiceConfigurationController::class, 'validateService'])->name('services.validate');
+        Route::post('/{router}/services/{service}/deploy', [ServiceConfigurationController::class, 'deploy'])->name('services.deploy');
     });
     
     // -------------------------------------------------------------------------
