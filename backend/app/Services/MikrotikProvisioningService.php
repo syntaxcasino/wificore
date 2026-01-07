@@ -336,7 +336,7 @@ class MikrotikProvisioningService extends TenantAwareService
                 'user' => $router->username,
                 'pass' => $decryptedPassword,
                 'port' => $router->port,
-                'timeout' => 3,
+                'timeout' => 15,
             ]);
 
             // Batch queries to reduce round-trips

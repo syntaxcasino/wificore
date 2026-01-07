@@ -18,7 +18,8 @@ class DiscoverRouterInterfacesJob implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, TenantAwareJob;
 
     public $tries = 3;
-    public $timeout = 60;
+    public $timeout = 120;
+    public $backoff = 10;
 
     public string $routerId;
 
@@ -47,6 +48,9 @@ class DiscoverRouterInterfacesJob implements ShouldQueue
             ]);
 
             try {
+                // Add a small delay to ensure router is fully ready
+                sleep(2);
+                
                 $liveData = $provisioningService->fetchLiveRouterData($router);
                 
                 if (isset($liveData['interfaces']) && is_array($liveData['interfaces'])) {
@@ -80,6 +84,16 @@ class DiscoverRouterInterfacesJob implements ShouldQueue
                         'live_data_keys' => array_keys($liveData ?? []),
                     ]);
                 }
+            } catch (\RouterOS\Exceptions\StreamException $e) {
+                Log::warning('Router API stream timeout during interface discovery - will retry', [
+                    'router_id' => $router->id,
+                    'tenant_id' => $this->tenantId,
+                    'error' => $e->getMessage(),
+                    'attempt' => $this->attempts(),
+                ]);
+                
+                // Release the job back to queue for retry
+                $this->release(30);
             } catch (\Exception $e) {
                 Log::error('Failed to discover router interfaces', [
                     'router_id' => $router->id,
