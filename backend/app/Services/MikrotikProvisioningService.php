@@ -290,102 +290,58 @@ class MikrotikProvisioningService extends TenantAwareService
     }
     
     /**
-     * Fetch only router interfaces (optimized for interface discovery)
+     * Check if an interface is configurable (not system/virtual/slave)
      */
-    public function fetchRouterInterfaces(Router $router): array
+    private function isConfigurableInterface(array $interface): bool
     {
-        $lockKey = "router_api_lock_{$router->id}";
+        $name = $interface['name'] ?? '';
+        $type = $interface['type'] ?? '';
         
-        // Try to acquire lock with 5 second timeout
-        $lock = Cache::lock($lockKey, 5);
+        // Exclude system/virtual interfaces
+        $excludedTypes = ['bridge', 'vlan', 'vrrp', 'vpls', 'ovpn-out', 'ovpn-in', 'wireguard', 'gre', 'ipip', 'eoip'];
+        if (in_array($type, $excludedTypes)) {
+            return false;
+        }
         
-        try {
-            // Wait up to 5 seconds to acquire the lock
-            if (!$lock->block(5)) {
-                Log::warning('Failed to acquire router API lock for interface fetch', [
-                    'router_id' => $router->id,
-                ]);
-                throw new \Exception('Router is busy with another operation', 503);
-            }
-            
-            $decryptedPassword = Crypt::decrypt($router->password);
-        } catch (\Exception $e) {
-            if ($lock->owner()) {
-                $lock->release();
-            }
-            
-            if ($e->getCode() === 503) {
-                throw $e;
-            }
-            
-            Log::error('Password decryption failed:', [
-                'router_id' => $router->id,
-                'error' => $e->getMessage(),
-            ]);
-            throw new \Exception('Failed to decrypt password: ' . $e->getMessage(), 500);
+        // Exclude slave interfaces (bonding members)
+        if (isset($interface['slave']) && $interface['slave'] === 'true') {
+            return false;
         }
-
-        try {
-            // Use VPN IP if available
-            $ip = $router->vpn_ip ?? $router->ip_address;
-            $host = explode('/', $ip)[0];
-            
-            $client = new Client([
-                'host' => $host,
-                'user' => $router->username,
-                'pass' => $decryptedPassword,
-                'port' => $router->port,
-                'timeout' => 10,
-            ]);
-
-            // Fetch only essential data for interface discovery
-            $interfaces = $client->query(new Query('/interface/print'))->read();
-            $resource = $client->query(new Query('/system/resource/print'))->read();
-            $identity = $client->query(new Query('/system/identity/print'))->read();
-
-            return [
-                'interfaces' => array_map(function ($iface) {
-                    return [
-                        'name' => $iface['name'] ?? 'Unknown',
-                        'type' => $iface['type'] ?? 'Unknown',
-                        'running' => $iface['running'] ?? false,
-                        'mtu' => $iface['mtu'] ?? 'N/A',
-                    ];
-                }, $interfaces),
-                'board_name' => $resource[0]['board-name'] ?? 'N/A',
-                'version' => $resource[0]['version'] ?? 'N/A',
-                'uptime' => $resource[0]['uptime'] ?? 'N/A',
-                'identity' => $identity[0]['name'] ?? 'N/A',
-            ];
-        } finally {
-            // Always release the lock
-            if ($lock->owner()) {
-                $lock->release();
-            }
+        
+        // Exclude interfaces with master (part of bridge/bond)
+        if (isset($interface['master-port']) && !empty($interface['master-port'])) {
+            return false;
         }
+        
+        return true;
     }
 
     /**
-     * Fetch live data from router with connection locking to prevent concurrent API access
+     * Fetch router data with context-aware optimization
+     * @param Router $router
+     * @param string $context 'provisioning' for interface discovery, 'live' for full monitoring data
+     * @param bool $filterConfigurable Only return configurable interfaces (excludes bridges, VLANs, slaves, etc.)
      */
-    public function fetchLiveRouterData(Router $router): array
+    public function fetchLiveRouterData(Router $router, string $context = 'live', bool $filterConfigurable = false): array
     {
         $lockKey = "router_api_lock_{$router->id}";
         
-        // Try to acquire lock with 10 second timeout
-        $lock = Cache::lock($lockKey, 10);
+        // Adjust timeout based on context
+        $timeout = $context === 'provisioning' ? 10 : 15;
+        $lock = Cache::lock($lockKey, $timeout);
         
         try {
-            // Wait up to 10 seconds to acquire the lock
-            if (!$lock->block(10)) {
-                Log::warning('Failed to acquire router API lock for live data fetch - another operation in progress', [
+            // Wait to acquire the lock
+            if (!$lock->block($timeout)) {
+                Log::warning('Failed to acquire router API lock', [
                     'router_id' => $router->id,
+                    'context' => $context,
                 ]);
                 throw new \Exception('Router is busy with another operation', 503);
             }
             
             $decryptedPassword = Crypt::decrypt($router->password);
-            Log::info('Password decrypted successfully:', ['router_id' => $router->id]);
+            Log::info('Password decrypted successfully:', ['router_id' => $router->id, 'context' => $context]);
         } catch (\Exception $e) {
             if ($lock->owner()) {
                 $lock->release();
@@ -412,10 +368,41 @@ class MikrotikProvisioningService extends TenantAwareService
                 'user' => $router->username,
                 'pass' => $decryptedPassword,
                 'port' => $router->port,
-                'timeout' => 15,
+                'timeout' => $timeout,
             ]);
 
-            // Batch queries to reduce round-trips
+            // Context-aware data fetching
+            if ($context === 'provisioning') {
+                // During provisioning, fetch only essential data for interface discovery
+                $interfaces = $client->query(new Query('/interface/print'))->read();
+                $resource = $client->query(new Query('/system/resource/print'))->read();
+                $identity = $client->query(new Query('/system/identity/print'))->read();
+                
+                // Filter interfaces if requested
+                if ($filterConfigurable) {
+                    $interfaces = array_values(array_filter($interfaces, function($iface) {
+                        return $this->isConfigurableInterface($iface);
+                    }));
+                }
+                
+                return [
+                    'interfaces' => array_map(function ($iface) {
+                        return [
+                            'name' => $iface['name'] ?? 'Unknown',
+                            'type' => $iface['type'] ?? 'Unknown',
+                            'running' => $iface['running'] ?? false,
+                            'mtu' => $iface['mtu'] ?? 'N/A',
+                            'comment' => $iface['comment'] ?? '',
+                        ];
+                    }, $interfaces),
+                    'board_name' => $resource[0]['board-name'] ?? 'N/A',
+                    'version' => $resource[0]['version'] ?? 'N/A',
+                    'uptime' => $resource[0]['uptime'] ?? 'N/A',
+                    'identity' => $identity[0]['name'] ?? 'N/A',
+                ];
+            }
+            
+            // Live context: fetch all data for monitoring
             $queries = [
                 'resource' => new Query('/system/resource/print'),
                 'identity' => new Query('/system/identity/print'),
@@ -435,7 +422,6 @@ class MikrotikProvisioningService extends TenantAwareService
                 $hotspotActiveUsers = $client->query($hotspotQuery)->read();
                 
                 // Filter out any sessions that might be system/bypass entries
-                // Only count actual user sessions (those with a 'user' field that's not empty)
                 $hotspotActiveUsers = array_filter($hotspotActiveUsers, function($session) {
                     return isset($session['user']) && !empty($session['user']);
                 });
@@ -450,6 +436,13 @@ class MikrotikProvisioningService extends TenantAwareService
             $resource = $results['resource'][0] ?? [];
             $interfaces = $results['interface'] ?? [];
             $dhcpLeases = $results['dhcp'] ?? [];
+            
+            // Filter interfaces if requested
+            if ($filterConfigurable) {
+                $interfaces = array_values(array_filter($interfaces, function($iface) {
+                    return $this->isConfigurableInterface($iface);
+                }));
+            }
 
             return [
                 'cpu_load' => $resource['cpu-load'] ?? 'N/A',
@@ -470,6 +463,7 @@ class MikrotikProvisioningService extends TenantAwareService
                         'type' => $iface['type'] ?? 'Unknown',
                         'running' => $iface['running'] ?? false,
                         'mtu' => $iface['mtu'] ?? 'N/A',
+                        'comment' => $iface['comment'] ?? '',
                     ];
                 }, $interfaces),
             ];

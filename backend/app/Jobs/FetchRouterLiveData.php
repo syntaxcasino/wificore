@@ -75,7 +75,8 @@ class FetchRouterLiveData implements ShouldQueue
                     ]);
 
                     try {
-                        $liveData = $routerService->fetchLiveRouterData($router);
+                        // Use 'live' context to fetch all monitoring data
+                        $liveData = $routerService->fetchLiveRouterData($router, 'live', false);
                         
                         Log::debug('Fetched live data for router', [
                             'router_id' => $router->id,

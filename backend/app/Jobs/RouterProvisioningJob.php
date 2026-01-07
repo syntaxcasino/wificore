@@ -96,8 +96,8 @@ class RouterProvisioningJob implements ShouldQueue
                     }
                 }
 
-                // Fetch live data to verify device responsiveness
-                $liveData = $provisioningService->fetchLiveRouterData($router);
+                // Fetch live data to verify device responsiveness (use 'live' context for full data)
+                $liveData = $provisioningService->fetchLiveRouterData($router, 'live', false);
                 
                 // Update router status
                 $router->update([
