@@ -67,7 +67,7 @@ class TenantRegistrationController extends Controller
             ]);
 
             // Dispatch verification email job
-            SendVerificationEmailJob::dispatch($registration)
+            SendVerificationEmailJob::dispatch($registration->id)
                 ->onQueue('emails');
 
             Log::info('Tenant registration initiated', [
@@ -234,7 +234,7 @@ class TenantRegistrationController extends Controller
 
         try {
             // Dispatch verification email job
-            SendVerificationEmailJob::dispatch($registration)
+            SendVerificationEmailJob::dispatch($registration->id)
                 ->onQueue('emails');
 
             Log::info('Verification email resent', [
