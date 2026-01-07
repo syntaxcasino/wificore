@@ -49,34 +49,44 @@ return new class extends Migration
             }
         });
         
-        // Add foreign keys and indexes
+        // Add foreign keys and indexes using raw SQL checks (Laravel 11+ compatible)
         Schema::table('router_services', function (Blueprint $table) {
-            // Add foreign key to tenant_ip_pools if not exists
-            $foreignKeys = Schema::getConnection()
-                ->getDoctrineSchemaManager()
-                ->listTableForeignKeys('router_services');
+            // Check if foreign key exists using PostgreSQL system catalogs
+            $hasFkToIpPools = \DB::select("
+                SELECT 1 FROM pg_constraint 
+                WHERE conname LIKE '%router_services_ip_pool_id_foreign%'
+                LIMIT 1
+            ");
             
-            $hasFkToIpPools = false;
-            foreach ($foreignKeys as $fk) {
-                if ($fk->getForeignTableName() === 'tenant_ip_pools') {
-                    $hasFkToIpPools = true;
-                    break;
-                }
-            }
-            
-            if (!$hasFkToIpPools && Schema::hasColumn('router_services', 'ip_pool_id')) {
+            if (empty($hasFkToIpPools) && Schema::hasColumn('router_services', 'ip_pool_id')) {
                 $table->foreign('ip_pool_id')
                     ->references('id')
                     ->on('tenant_ip_pools')
                     ->onDelete('set null');
             }
+        });
+        
+        // Add indexes separately to avoid conflicts
+        Schema::table('router_services', function (Blueprint $table) {
+            // Check and add deployment_status index
+            $hasDeploymentIndex = \DB::select("
+                SELECT 1 FROM pg_indexes 
+                WHERE indexname = 'idx_router_services_deployment_status'
+                LIMIT 1
+            ");
             
-            // Add indexes if they don't exist
-            if (Schema::hasColumn('router_services', 'deployment_status')) {
+            if (empty($hasDeploymentIndex) && Schema::hasColumn('router_services', 'deployment_status')) {
                 $table->index('deployment_status', 'idx_router_services_deployment_status');
             }
             
-            if (Schema::hasColumns('router_services', ['router_id', 'deployment_status'])) {
+            // Check and add router_deployment composite index
+            $hasRouterDeploymentIndex = \DB::select("
+                SELECT 1 FROM pg_indexes 
+                WHERE indexname = 'idx_router_services_router_deployment'
+                LIMIT 1
+            ");
+            
+            if (empty($hasRouterDeploymentIndex) && Schema::hasColumns('router_services', ['router_id', 'deployment_status'])) {
                 $table->index(['router_id', 'deployment_status'], 'idx_router_services_router_deployment');
             }
         });
