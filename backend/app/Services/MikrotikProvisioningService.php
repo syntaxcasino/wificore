@@ -290,6 +290,82 @@ class MikrotikProvisioningService extends TenantAwareService
     }
     
     /**
+     * Fetch only router interfaces (optimized for interface discovery)
+     */
+    public function fetchRouterInterfaces(Router $router): array
+    {
+        $lockKey = "router_api_lock_{$router->id}";
+        
+        // Try to acquire lock with 5 second timeout
+        $lock = Cache::lock($lockKey, 5);
+        
+        try {
+            // Wait up to 5 seconds to acquire the lock
+            if (!$lock->block(5)) {
+                Log::warning('Failed to acquire router API lock for interface fetch', [
+                    'router_id' => $router->id,
+                ]);
+                throw new \Exception('Router is busy with another operation', 503);
+            }
+            
+            $decryptedPassword = Crypt::decrypt($router->password);
+        } catch (\Exception $e) {
+            if ($lock->owner()) {
+                $lock->release();
+            }
+            
+            if ($e->getCode() === 503) {
+                throw $e;
+            }
+            
+            Log::error('Password decryption failed:', [
+                'router_id' => $router->id,
+                'error' => $e->getMessage(),
+            ]);
+            throw new \Exception('Failed to decrypt password: ' . $e->getMessage(), 500);
+        }
+
+        try {
+            // Use VPN IP if available
+            $ip = $router->vpn_ip ?? $router->ip_address;
+            $host = explode('/', $ip)[0];
+            
+            $client = new Client([
+                'host' => $host,
+                'user' => $router->username,
+                'pass' => $decryptedPassword,
+                'port' => $router->port,
+                'timeout' => 10,
+            ]);
+
+            // Fetch only essential data for interface discovery
+            $interfaces = $client->query(new Query('/interface/print'))->read();
+            $resource = $client->query(new Query('/system/resource/print'))->read();
+            $identity = $client->query(new Query('/system/identity/print'))->read();
+
+            return [
+                'interfaces' => array_map(function ($iface) {
+                    return [
+                        'name' => $iface['name'] ?? 'Unknown',
+                        'type' => $iface['type'] ?? 'Unknown',
+                        'running' => $iface['running'] ?? false,
+                        'mtu' => $iface['mtu'] ?? 'N/A',
+                    ];
+                }, $interfaces),
+                'board_name' => $resource[0]['board-name'] ?? 'N/A',
+                'version' => $resource[0]['version'] ?? 'N/A',
+                'uptime' => $resource[0]['uptime'] ?? 'N/A',
+                'identity' => $identity[0]['name'] ?? 'N/A',
+            ];
+        } finally {
+            // Always release the lock
+            if ($lock->owner()) {
+                $lock->release();
+            }
+        }
+    }
+
+    /**
      * Fetch live data from router with connection locking to prevent concurrent API access
      */
     public function fetchLiveRouterData(Router $router): array

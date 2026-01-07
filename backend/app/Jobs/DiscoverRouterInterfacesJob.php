@@ -51,7 +51,8 @@ class DiscoverRouterInterfacesJob implements ShouldQueue
                 // Add a small delay to ensure router is fully ready
                 sleep(2);
                 
-                $liveData = $provisioningService->fetchLiveRouterData($router);
+                // Use optimized method that fetches only interfaces
+                $liveData = $provisioningService->fetchRouterInterfaces($router);
                 
                 if (isset($liveData['interfaces']) && is_array($liveData['interfaces'])) {
                     $router->update([
