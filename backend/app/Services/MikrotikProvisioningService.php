@@ -488,7 +488,7 @@ class MikrotikProvisioningService extends TenantAwareService
                 'user' => $router->username,
                 'pass' => $decryptedPassword,
                 'port' => $router->port,
-                'timeout' => 30,
+                'timeout' => 15,
             ]);
 
             $identity = $client->query(new Query('/system/identity/print'))->read();
