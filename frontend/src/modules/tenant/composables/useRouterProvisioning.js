@@ -188,13 +188,18 @@ export function useRouterProvisioning(props, emit) {
     // Backend dispatches VerifyVpnConnectivityJob which will broadcast events
     // Frontend listens for WebSocket events to know when VPN is ready
     
-    addLog('info', 'VPN configuration included in fetch command')
-    addLog('info', 'Waiting for router to apply configuration and establish VPN tunnel...')
+    addLog('success', '✅ Router created successfully!')
+    addLog('info', '📋 Configuration script ready - copy and paste it to your MikroTik terminal')
+    addLog('info', '⏱️ After applying the script, the router will:')
+    addLog('info', '   1. Download the full configuration file (.rsc)')
+    addLog('info', '   2. Establish VPN tunnel (30-60 seconds)')
+    addLog('info', '   3. Connect to the management system')
+    addLog('info', '🔄 Monitoring for VPN connection...')
     
     // Move to stage 2: VPN connectivity verification
     currentStage.value = 2
     provisioningProgress.value = 40
-    provisioningStatus.value = 'Waiting for VPN connection...'
+    provisioningStatus.value = 'Apply script on router - Waiting for VPN connection'
     vpnConnectivityStatus.value = 'checking'
     
     // Subscribe to VPN connectivity events
@@ -625,11 +630,14 @@ export function useRouterProvisioning(props, emit) {
           vpnConnectivityAttempts.value = data.attempt
           const progress = data.progress || 0
           
-          addLog('info', `Checking VPN connectivity... Attempt ${data.attempt}/${data.max_attempts} (${progress.toFixed(0)}%)`)
+          // Only log every 5th attempt to avoid spam
+          if (data.attempt % 5 === 0 || data.attempt === 1) {
+            addLog('info', `🔍 Checking VPN connectivity... Attempt ${data.attempt}/${data.max_attempts}`)
+          }
           
           // Update progress bar
           provisioningProgress.value = 40 + (progress * 0.2) // 40% to 60%
-          provisioningStatus.value = `Verifying VPN connectivity (${progress.toFixed(0)}%)...`
+          provisioningStatus.value = `Verifying VPN connection (${progress.toFixed(0)}%) - Attempt ${data.attempt}/${data.max_attempts}`
         }
       })
 
@@ -692,13 +700,15 @@ export function useRouterProvisioning(props, emit) {
           vpnConnected.value = false
           
           addLog('error', `❌ VPN connectivity verification failed`)
-          addLog('error', data.reason)
-          addLog('warning', 'Please verify:')
-          addLog('warning', '1. Router applied the fetch command')
-          addLog('warning', '2. Router has internet connectivity')
-          addLog('warning', '3. Firewall allows UDP port 51830')
+          addLog('error', data.reason || 'Connection timeout after 120 seconds')
+          addLog('warning', '⚠️ Troubleshooting steps:')
+          addLog('warning', '1. Verify you copied and pasted the FULL script to the router')
+          addLog('warning', '2. Check router has active internet connectivity')
+          addLog('warning', '3. Ensure firewall allows UDP traffic on the VPN port')
+          addLog('warning', '4. Check router terminal for any error messages')
+          addLog('info', '💡 You can retry by clicking "Continue" again')
           
-          provisioningStatus.value = 'VPN connectivity failed'
+          provisioningStatus.value = 'VPN connectivity failed - Check troubleshooting steps'
           connectionStatus.value = 'Failed'
           
           // Unsubscribe from channel
