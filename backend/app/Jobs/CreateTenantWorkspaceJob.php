@@ -212,7 +212,7 @@ class CreateTenantWorkspaceJob implements ShouldQueue
             event(new TenantWorkspaceCreated($this->registration));
 
             // Dispatch job to send credentials
-            SendCredentialsEmailJob::dispatch($this->registration)
+            SendCredentialsEmailJob::dispatch($this->registration->id)
                 ->onQueue('emails');
 
         } catch (\Exception $e) {
