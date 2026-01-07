@@ -13,10 +13,17 @@ class RouterService extends Model
     use HasFactory, HasUuid;
 
     protected $fillable = [
-        // tenant_id removed
         'router_id',
+        'interface_name',
         'service_type',
         'service_name',
+        'ip_pool_id',
+        'vlan_id',
+        'vlan_required',
+        'radius_profile',
+        'advanced_config',
+        'deployment_status',
+        'deployed_at',
         'interfaces',
         'configuration',
         'status',
@@ -29,6 +36,11 @@ class RouterService extends Model
     protected $casts = [
         'id' => 'string',
         'router_id' => 'string',
+        'ip_pool_id' => 'string',
+        'vlan_id' => 'integer',
+        'vlan_required' => 'boolean',
+        'advanced_config' => 'array',
+        'deployed_at' => 'datetime',
         'interfaces' => 'array',
         'configuration' => 'array',
         'active_users' => 'integer',
@@ -42,10 +54,18 @@ class RouterService extends Model
     // Service type constants
     const TYPE_HOTSPOT = 'hotspot';
     const TYPE_PPPOE = 'pppoe';
+    const TYPE_HYBRID = 'hybrid';
+    const TYPE_NONE = 'none';
     const TYPE_VPN = 'vpn';
     const TYPE_FIREWALL = 'firewall';
     const TYPE_DHCP = 'dhcp';
     const TYPE_DNS = 'dns';
+
+    // Deployment status constants
+    const DEPLOYMENT_PENDING = 'pending';
+    const DEPLOYMENT_DEPLOYING = 'deploying';
+    const DEPLOYMENT_DEPLOYED = 'deployed';
+    const DEPLOYMENT_FAILED = 'failed';
 
     // Status constants
     const STATUS_ACTIVE = 'active';
@@ -60,6 +80,22 @@ class RouterService extends Model
     public function router()
     {
         return $this->belongsTo(Router::class);
+    }
+
+    /**
+     * Get the IP pool assigned to this service
+     */
+    public function ipPool()
+    {
+        return $this->belongsTo(TenantIpPool::class, 'ip_pool_id');
+    }
+
+    /**
+     * Get the VLANs for this service
+     */
+    public function vlans()
+    {
+        return $this->hasMany(ServiceVlan::class);
     }
 
     /**
@@ -155,5 +191,58 @@ class RouterService extends Model
     public function scopeEnabled($query)
     {
         return $query->where('enabled', true);
+    }
+
+    /**
+     * Scope to get deployed services
+     */
+    public function scopeDeployed($query)
+    {
+        return $query->where('deployment_status', self::DEPLOYMENT_DEPLOYED);
+    }
+
+    /**
+     * Scope to get pending services
+     */
+    public function scopePending($query)
+    {
+        return $query->where('deployment_status', self::DEPLOYMENT_PENDING);
+    }
+
+    /**
+     * Check if service is deployed
+     */
+    public function isDeployed(): bool
+    {
+        return $this->deployment_status === self::DEPLOYMENT_DEPLOYED;
+    }
+
+    /**
+     * Check if service requires VLAN
+     */
+    public function requiresVlan(): bool
+    {
+        return $this->vlan_required || $this->service_type === self::TYPE_HYBRID;
+    }
+
+    /**
+     * Mark service as deployed
+     */
+    public function markAsDeployed(): void
+    {
+        $this->update([
+            'deployment_status' => self::DEPLOYMENT_DEPLOYED,
+            'deployed_at' => now(),
+        ]);
+    }
+
+    /**
+     * Mark service as failed
+     */
+    public function markAsFailed(): void
+    {
+        $this->update([
+            'deployment_status' => self::DEPLOYMENT_FAILED,
+        ]);
     }
 }

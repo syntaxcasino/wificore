@@ -15,19 +15,205 @@ class RouterServiceManager extends TenantAwareService
     protected InterfaceManagementService $interfaceManager;
     protected HotspotService $hotspotService;
     protected PPPoEService $pppoeService;
+    protected TenantIpamService $ipamService;
+    protected VlanManager $vlanManager;
 
     public function __construct(
         InterfaceManagementService $interfaceManager,
         HotspotService $hotspotService,
-        PPPoEService $pppoeService
+        PPPoEService $pppoeService,
+        TenantIpamService $ipamService,
+        VlanManager $vlanManager
     ) {
         $this->interfaceManager = $interfaceManager;
         $this->hotspotService = $hotspotService;
         $this->pppoeService = $pppoeService;
+        $this->ipamService = $ipamService;
+        $this->vlanManager = $vlanManager;
     }
 
     /**
-     * Deploy a service to a router
+     * Configure service with zero-config defaults
+     * User only provides: interface + service type
+     * SaaS handles: IP pools, VLANs, RADIUS, everything else
+     * 
+     * @param Router $router
+     * @param string $interface
+     * @param string $serviceType (hotspot|pppoe|hybrid|none)
+     * @param array $advancedOptions (optional)
+     * @return RouterService
+     */
+    public function configureService(
+        Router $router,
+        string $interface,
+        string $serviceType,
+        array $advancedOptions = []
+    ): RouterService {
+        DB::beginTransaction();
+        
+        try {
+            $this->setTenant($router->tenant_id);
+            
+            // Validate service type
+            if (!in_array($serviceType, ['hotspot', 'pppoe', 'hybrid', 'none'])) {
+                throw new \Exception("Invalid service type: {$serviceType}");
+            }
+            
+            // Handle 'none' - remove any existing service
+            if ($serviceType === 'none') {
+                $this->removeServiceFromInterface($router, $interface);
+                DB::commit();
+                return null;
+            }
+            
+            // Handle hybrid service (requires VLAN enforcement)
+            if ($serviceType === 'hybrid') {
+                return $this->configureHybridService($router, $interface, $advancedOptions);
+            }
+            
+            // Handle single service (hotspot or pppoe)
+            return $this->configureSingleService($router, $interface, $serviceType, $advancedOptions);
+            
+        } catch (\Exception $e) {
+            DB::rollBack();
+            
+            Log::error('Failed to configure service', [
+                'router_id' => $router->id,
+                'interface' => $interface,
+                'service_type' => $serviceType,
+                'error' => $e->getMessage(),
+            ]);
+            
+            throw $e;
+        }
+    }
+    
+    /**
+     * Configure single service (hotspot or pppoe)
+     */
+    private function configureSingleService(
+        Router $router,
+        string $interface,
+        string $serviceType,
+        array $advancedOptions = []
+    ): RouterService {
+        // Get or create IP pool for this service type
+        $ipPool = $advancedOptions['ip_pool_id'] 
+            ? TenantIpPool::find($advancedOptions['ip_pool_id'])
+            : $this->ipamService->getOrCreateServicePool($router->tenant, $serviceType);
+        
+        // Generate RADIUS profile name
+        $radiusProfile = $advancedOptions['radius_profile'] 
+            ?? "{$serviceType}-{$router->tenant_id}";
+        
+        // Create service record
+        $service = RouterService::create([
+            'router_id' => $router->id,
+            'interface_name' => $interface,
+            'service_type' => $serviceType,
+            'service_name' => $advancedOptions['service_name'] ?? ucfirst($serviceType) . ' Service',
+            'ip_pool_id' => $ipPool->id,
+            'vlan_id' => null,
+            'vlan_required' => false,
+            'radius_profile' => $radiusProfile,
+            'advanced_config' => $advancedOptions,
+            'deployment_status' => RouterService::DEPLOYMENT_PENDING,
+            'status' => RouterService::STATUS_INACTIVE,
+            'enabled' => true,
+        ]);
+        
+        Log::info('Service configured (zero-config)', [
+            'router_id' => $router->id,
+            'service_id' => $service->id,
+            'service_type' => $serviceType,
+            'interface' => $interface,
+            'ip_pool' => $ipPool->network_cidr,
+        ]);
+        
+        DB::commit();
+        
+        return $service;
+    }
+    
+    /**
+     * Configure hybrid service with VLAN enforcement
+     */
+    private function configureHybridService(
+        Router $router,
+        string $interface,
+        array $advancedOptions = []
+    ): RouterService {
+        // Get IP pools for both services
+        $hotspotPool = $advancedOptions['hotspot_pool_id']
+            ? TenantIpPool::find($advancedOptions['hotspot_pool_id'])
+            : $this->ipamService->getOrCreateServicePool($router->tenant, 'hotspot');
+            
+        $pppoePool = $advancedOptions['pppoe_pool_id']
+            ? TenantIpPool::find($advancedOptions['pppoe_pool_id'])
+            : $this->ipamService->getOrCreateServicePool($router->tenant, 'pppoe');
+        
+        // Allocate VLANs (auto or manual)
+        $hotspotVlan = $advancedOptions['hotspot_vlan'] 
+            ?? $this->vlanManager->allocateVlanForService($router, 'hotspot');
+            
+        $pppoeVlan = $advancedOptions['pppoe_vlan']
+            ?? $this->vlanManager->allocateVlanForService($router, 'pppoe');
+        
+        // Create hybrid service record
+        $service = RouterService::create([
+            'router_id' => $router->id,
+            'interface_name' => $interface,
+            'service_type' => RouterService::TYPE_HYBRID,
+            'service_name' => $advancedOptions['service_name'] ?? 'Hybrid Service',
+            'ip_pool_id' => null, // Hybrid uses multiple pools
+            'vlan_id' => null, // Hybrid uses multiple VLANs
+            'vlan_required' => true,
+            'radius_profile' => "hybrid-{$router->tenant_id}",
+            'advanced_config' => array_merge($advancedOptions, [
+                'hotspot_pool_id' => $hotspotPool->id,
+                'pppoe_pool_id' => $pppoePool->id,
+                'hotspot_vlan' => $hotspotVlan,
+                'pppoe_vlan' => $pppoeVlan,
+            ]),
+            'deployment_status' => RouterService::DEPLOYMENT_PENDING,
+            'status' => RouterService::STATUS_INACTIVE,
+            'enabled' => true,
+        ]);
+        
+        // Create VLAN records
+        $this->vlanManager->createServiceVlan($service, $hotspotVlan, $interface, 'hotspot');
+        $this->vlanManager->createServiceVlan($service, $pppoeVlan, $interface, 'pppoe');
+        
+        Log::info('Hybrid service configured with VLAN separation', [
+            'router_id' => $router->id,
+            'service_id' => $service->id,
+            'interface' => $interface,
+            'hotspot_vlan' => $hotspotVlan,
+            'pppoe_vlan' => $pppoeVlan,
+        ]);
+        
+        DB::commit();
+        
+        return $service;
+    }
+    
+    /**
+     * Remove service from interface
+     */
+    private function removeServiceFromInterface(Router $router, string $interface): void
+    {
+        RouterService::where('router_id', $router->id)
+            ->where('interface_name', $interface)
+            ->delete();
+            
+        Log::info('Removed service from interface', [
+            'router_id' => $router->id,
+            'interface' => $interface,
+        ]);
+    }
+    
+    /**
+     * Deploy a service to a router (legacy method - kept for compatibility)
      * 
      * @param Router $router
      * @param string $serviceType
