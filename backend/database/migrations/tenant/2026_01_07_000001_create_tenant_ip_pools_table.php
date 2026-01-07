@@ -17,11 +17,11 @@ return new class extends Migration
             $table->enum('service_type', ['hotspot', 'pppoe', 'management'])->index();
             $table->string('pool_name');
             $table->string('network_cidr', 50);
-            $table->inet('gateway_ip');
-            $table->inet('range_start');
-            $table->inet('range_end');
-            $table->inet('dns_primary')->nullable();
-            $table->inet('dns_secondary')->nullable();
+            $table->string('gateway_ip', 45);
+            $table->string('range_start', 45);
+            $table->string('range_end', 45);
+            $table->string('dns_primary', 45)->nullable();
+            $table->string('dns_secondary', 45)->nullable();
             $table->integer('total_ips');
             $table->integer('allocated_ips')->default(0);
             $table->integer('available_ips');
