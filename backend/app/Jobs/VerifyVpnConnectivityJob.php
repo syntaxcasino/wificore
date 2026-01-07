@@ -169,6 +169,20 @@ class VerifyVpnConnectivityJob implements ShouldQueue
             // Skip redundant connectivity check - VPN is already verified
             $provisioningService = app(\App\Services\MikrotikProvisioningService::class);
             
+            // Dispatch interface discovery as a separate job to avoid timeout
+            // This allows the VPN verification to complete successfully
+            dispatch(new \App\Jobs\DiscoverRouterInterfacesJob(
+                $this->tenantId,
+                $router->id
+            ))->onQueue('router-provisioning');
+            
+            Log::info('Interface discovery job dispatched', [
+                'router_id' => $router->id,
+                'tenant_id' => $this->tenantId,
+            ]);
+            
+            return;
+            
             // Fetch live data which includes interfaces
             $liveData = $provisioningService->fetchLiveRouterData($router);
             
