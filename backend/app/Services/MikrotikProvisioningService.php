@@ -1241,6 +1241,21 @@ class MikrotikProvisioningService extends TenantAwareService
                 'ip_address' => $data['ip_address'] ?? $router->ip_address,
                 'config_token' => $data['config_token'] ?? $router->config_token,
             ]);
+
+            Log::info('Router updated successfully:', ['router_id' => $router->id]);
+            return $router->fresh();
+        } catch (\Exception $e) {
+            Log::error('Failed to update router:', [
+                'router_id' => $router->id,
+                'error' => $e->getMessage(),
+            ]);
+            throw new \Exception('Failed to update router: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * Delete a router
+     */
     public function deleteRouter(Router $router): void
     {
         try {
