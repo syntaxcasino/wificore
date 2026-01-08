@@ -58,27 +58,16 @@ use App\Events\TestWebSocketEvent;
 // BROADCASTING AUTH - Sanctum-based authentication for WebSocket channels
 // =============================================================================
 Route::post('/broadcasting/auth', function (Request $request) {
-    $user = null;
+    // Apply Sanctum middleware to authenticate the request
+    $middleware = new \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful();
+    $middleware->handle($request, function ($req) {
+        // Continue to next middleware
+    });
     
-    // Method 1: Parse Bearer token from Authorization header manually
-    $authHeader = $request->header('Authorization');
-    if ($authHeader && str_starts_with($authHeader, 'Bearer ')) {
-        $token = substr($authHeader, 7);
-        if ($token) {
-            // Find the token in personal_access_tokens table
-            $accessToken = \Laravel\Sanctum\PersonalAccessToken::findToken($token);
-            if ($accessToken) {
-                $user = $accessToken->tokenable;
-            }
-        }
-    }
+    // Now try to get the authenticated user via Sanctum guard
+    $user = $request->user('sanctum');
     
-    // Method 2: Try Sanctum guard (may work if middleware was applied)
-    if (!$user) {
-        $user = $request->user('sanctum');
-    }
-    
-    // Method 3: Try web guard (for cookie-based sessions)
+    // Fallback: Try web guard for cookie-based sessions
     if (!$user) {
         $user = $request->user('web');
     }
