@@ -49,17 +49,20 @@ const createEchoConfig = () => {
       },
     },
     
-    // Custom authorizer - ONLY for private/presence channels
-    // Public channels (like tenant.{id}.vpn) don't need authentication
+    // Custom authorizer for private and presence channels
+    // All tenant channels use PrivateChannel and require authentication
     authorizer: (channel, options) => {
-      // Only authenticate private and presence channels
-      // Public channels should not trigger authentication
+      // Skip auth only for truly public channels (no prefix)
+      // Private channels have 'private-' prefix, presence channels have 'presence-' prefix
       if (!channel.name.startsWith('private-') && !channel.name.startsWith('presence-')) {
         if (IS_DEV) {
           console.log('📢 Public channel, skipping auth:', channel.name);
         }
-        // Return null to let Pusher handle public channels without auth
         return null;
+      }
+      
+      if (IS_DEV) {
+        console.log('🔐 Authenticating channel:', channel.name);
       }
       
       return {

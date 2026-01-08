@@ -615,16 +615,16 @@ export function useRouterProvisioning(props, emit) {
       return
     }
 
-    // Use PRIVATE channels for tenant security - prefix with 'private-'
-    const vpnChannelName = `private-tenant.${user.tenant_id}.vpn`
-    const routersChannelName = `private-tenant.${user.tenant_id}.routers`
+    // Use Echo's .private() method - it automatically adds 'private-' prefix
+    const vpnChannelName = `tenant.${user.tenant_id}.vpn`
+    const routersChannelName = `tenant.${user.tenant_id}.routers`
     addLog('info', `Subscribing to provisioning events on private channels: ${vpnChannelName}, ${routersChannelName}`)
 
     try {
       // Subscribe to PRIVATE VPN channel for connectivity events (requires auth)
-      const vpnChannel = pusher.subscribe(vpnChannelName)
+      const vpnChannel = window.Echo.private(vpnChannelName)
       // Subscribe to PRIVATE routers channel for interface discovery events (requires auth)
-      const routersChannel = pusher.subscribe(routersChannelName)
+      const routersChannel = window.Echo.private(routersChannelName)
 
       // Listen for connectivity checking events (progress updates)
       vpnChannel.bind('vpn.connectivity.checking', (data) => {
@@ -689,8 +689,8 @@ export function useRouterProvisioning(props, emit) {
           provisioningStatus.value = 'Router provisioned successfully - SSH access ready'
           
           // Unsubscribe from both channels
-          pusher.unsubscribe(vpnChannelName)
-          pusher.unsubscribe(routersChannelName)
+          window.Echo.leave(`private-${vpnChannelName}`)
+          window.Echo.leave(`private-${routersChannelName}`)
           
           addLog('success', '🎉 Router provisioning complete!')
           addLog('info', '🔐 You can now SSH to the router for configuration')
@@ -722,8 +722,8 @@ export function useRouterProvisioning(props, emit) {
           connectionStatus.value = 'Failed'
           
           // Unsubscribe from both channels
-          pusher.unsubscribe(vpnChannelName)
-          pusher.unsubscribe(routersChannelName)
+          window.Echo.leave(`private-${vpnChannelName}`)
+          window.Echo.leave(`private-${routersChannelName}`)
         }
       })
 
