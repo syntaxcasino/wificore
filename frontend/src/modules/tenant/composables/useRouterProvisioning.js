@@ -615,14 +615,15 @@ export function useRouterProvisioning(props, emit) {
       return
     }
 
-    const vpnChannelName = `tenant.${user.tenant_id}.vpn`
-    const routersChannelName = `tenant.${user.tenant_id}.routers`
-    addLog('info', `Subscribing to provisioning events on channels: ${vpnChannelName}, ${routersChannelName}`)
+    // Use PRIVATE channels for tenant security - prefix with 'private-'
+    const vpnChannelName = `private-tenant.${user.tenant_id}.vpn`
+    const routersChannelName = `private-tenant.${user.tenant_id}.routers`
+    addLog('info', `Subscribing to provisioning events on private channels: ${vpnChannelName}, ${routersChannelName}`)
 
     try {
-      // Subscribe to VPN channel for connectivity events
+      // Subscribe to PRIVATE VPN channel for connectivity events (requires auth)
       const vpnChannel = pusher.subscribe(vpnChannelName)
-      // Subscribe to routers channel for interface discovery events
+      // Subscribe to PRIVATE routers channel for interface discovery events (requires auth)
       const routersChannel = pusher.subscribe(routersChannelName)
 
       // Listen for connectivity checking events (progress updates)

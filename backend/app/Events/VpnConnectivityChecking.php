@@ -2,7 +2,7 @@
 
 namespace App\Events;
 
-use Illuminate\Broadcasting\Channel;
+use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
@@ -22,10 +22,11 @@ class VpnConnectivityChecking implements ShouldBroadcastNow
 
     /**
      * Get the channels the event should broadcast on.
+     * Uses PrivateChannel for tenant data security.
      */
-    public function broadcastOn(): Channel
+    public function broadcastOn(): PrivateChannel
     {
-        return new Channel("tenant.{$this->tenantId}.vpn");
+        return new PrivateChannel("tenant.{$this->tenantId}.vpn");
     }
 
     /**

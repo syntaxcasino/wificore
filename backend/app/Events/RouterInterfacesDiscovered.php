@@ -2,7 +2,7 @@
 
 namespace App\Events;
 
-use Illuminate\Broadcasting\Channel;
+use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
@@ -29,9 +29,12 @@ class RouterInterfacesDiscovered implements ShouldBroadcastNow
         $this->routerInfo = $routerInfo;
     }
 
-    public function broadcastOn(): Channel
+    /**
+     * Uses PrivateChannel for tenant data security.
+     */
+    public function broadcastOn(): PrivateChannel
     {
-        return new Channel("tenant.{$this->tenantId}.routers");
+        return new PrivateChannel("tenant.{$this->tenantId}.routers");
     }
 
     public function broadcastAs(): string
