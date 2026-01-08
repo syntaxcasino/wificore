@@ -39,7 +39,7 @@ class MikrotikSshService
     public function fetchInterfaces(Router $router, bool $filterConfigurable = false): array
     {
         try {
-            $decryptedPassword = Crypt::decryptString($router->password);
+            $decryptedPassword = Crypt::decrypt($router->password);
             $ssh = $this->connect($router, $decryptedPassword);
             
             // Get interfaces
@@ -187,7 +187,7 @@ class MikrotikSshService
     public function testConnection(Router $router): bool
     {
         try {
-            $decryptedPassword = Crypt::decryptString($router->password);
+            $decryptedPassword = Crypt::decrypt($router->password);
             $ssh = $this->connect($router, $decryptedPassword);
             $output = $ssh->exec('/system identity print');
             $ssh->disconnect();
