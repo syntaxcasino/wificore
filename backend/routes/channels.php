@@ -26,6 +26,18 @@ Broadcast::channel('tenant.{tenantId}.router-updates', function ($user, $tenantI
     return (string) $user->tenant_id === (string) $tenantId;
 });
 
+// Tenant-specific routers channel - for router interface discovery and status events
+Broadcast::channel('tenant.{tenantId}.routers', function ($user, $tenantId) {
+    // SECURITY: Only users belonging to this specific tenant can access
+    return (string) $user->tenant_id === (string) $tenantId;
+});
+
+// Tenant-specific VPN channel - for VPN connectivity verification events
+Broadcast::channel('tenant.{tenantId}.vpn', function ($user, $tenantId) {
+    // SECURITY: Only users belonging to this specific tenant can access
+    return (string) $user->tenant_id === (string) $tenantId;
+});
+
 // Private router status channel - requires authentication and tenant isolation
 Broadcast::channel('router-status', function ($user) {
     // SECURITY: This channel should be tenant-specific, not global

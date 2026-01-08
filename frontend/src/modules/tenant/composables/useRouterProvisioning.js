@@ -615,14 +615,18 @@ export function useRouterProvisioning(props, emit) {
       return
     }
 
-    const channelName = `tenant.${user.tenant_id}.vpn`
-    addLog('info', `Subscribing to VPN events on channel: ${channelName}`)
+    const vpnChannelName = `tenant.${user.tenant_id}.vpn`
+    const routersChannelName = `tenant.${user.tenant_id}.routers`
+    addLog('info', `Subscribing to provisioning events on channels: ${vpnChannelName}, ${routersChannelName}`)
 
     try {
-      const channel = pusher.subscribe(channelName)
+      // Subscribe to VPN channel for connectivity events
+      const vpnChannel = pusher.subscribe(vpnChannelName)
+      // Subscribe to routers channel for interface discovery events
+      const routersChannel = pusher.subscribe(routersChannelName)
 
       // Listen for connectivity checking events (progress updates)
-      channel.bind('vpn.connectivity.checking', (data) => {
+      vpnChannel.bind('vpn.connectivity.checking', (data) => {
         console.log('VPN connectivity checking:', data)
         
         if (data.router_id === provisioningRouter.value?.id) {
@@ -641,15 +645,15 @@ export function useRouterProvisioning(props, emit) {
       })
 
       // Listen for connectivity verified event (SUCCESS!)
-      channel.bind('vpn.connectivity.verified', (data) => {
+      vpnChannel.bind('vpn.connectivity.verified', (data) => {
         console.log('VPN connectivity verified:', data)
         
         if (data.router_id === provisioningRouter.value?.id) {
           vpnConnectivityStatus.value = 'verified'
           vpnConnected.value = true
-          vpnLatencyMs.value = data.connectivity.latency_ms
+          vpnLatencyMs.value = data.connectivity?.latency_ms || 0
           
-          addLog('success', `✅ VPN connectivity verified! Latency: ${data.connectivity.latency_ms.toFixed(1)}ms`)
+          addLog('success', `✅ VPN connectivity verified! Latency: ${(data.connectivity?.latency_ms || 0).toFixed(1)}ms`)
           addLog('success', `Router is reachable via VPN at ${data.client_ip}`)
           
           provisioningProgress.value = 60
@@ -661,8 +665,8 @@ export function useRouterProvisioning(props, emit) {
         }
       })
 
-      // Listen for router interfaces discovered event (AUTO-DISCOVERY!)
-      channel.bind('router.interfaces.discovered', (data) => {
+      // Listen for router interfaces discovered event on ROUTERS channel (AUTO-DISCOVERY!)
+      routersChannel.bind('router.interfaces.discovered', (data) => {
         console.log('Router interfaces discovered:', data)
         
         if (data.router_id === provisioningRouter.value?.id) {
@@ -683,8 +687,9 @@ export function useRouterProvisioning(props, emit) {
           provisioningProgress.value = 100
           provisioningStatus.value = 'Router provisioned successfully - SSH access ready'
           
-          // Unsubscribe from VPN channel
-          pusher.unsubscribe(channelName)
+          // Unsubscribe from both channels
+          pusher.unsubscribe(vpnChannelName)
+          pusher.unsubscribe(routersChannelName)
           
           addLog('success', '🎉 Router provisioning complete!')
           addLog('info', '🔐 You can now SSH to the router for configuration')
@@ -696,7 +701,7 @@ export function useRouterProvisioning(props, emit) {
       })
 
       // Listen for connectivity failed event (TIMEOUT/ERROR)
-      channel.bind('vpn.connectivity.failed', (data) => {
+      vpnChannel.bind('vpn.connectivity.failed', (data) => {
         console.log('VPN connectivity failed:', data)
         
         if (data.router_id === provisioningRouter.value?.id) {
@@ -715,8 +720,9 @@ export function useRouterProvisioning(props, emit) {
           provisioningStatus.value = 'VPN connectivity failed - Check troubleshooting steps'
           connectionStatus.value = 'Failed'
           
-          // Unsubscribe from channel
-          pusher.unsubscribe(channelName)
+          // Unsubscribe from both channels
+          pusher.unsubscribe(vpnChannelName)
+          pusher.unsubscribe(routersChannelName)
         }
       })
 
