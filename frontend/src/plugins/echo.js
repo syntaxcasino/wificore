@@ -49,8 +49,19 @@ const createEchoConfig = () => {
       },
     },
     
-    // Additional Pusher options
+    // Custom authorizer - ONLY for private/presence channels
+    // Public channels (like tenant.{id}.vpn) don't need authentication
     authorizer: (channel, options) => {
+      // Only authenticate private and presence channels
+      // Public channels should not trigger authentication
+      if (!channel.name.startsWith('private-') && !channel.name.startsWith('presence-')) {
+        if (IS_DEV) {
+          console.log('📢 Public channel, skipping auth:', channel.name);
+        }
+        // Return null to let Pusher handle public channels without auth
+        return null;
+      }
+      
       return {
         authorize: (socketId, callback) => {
           const headers = {
@@ -77,7 +88,12 @@ const createEchoConfig = () => {
             }),
             credentials: 'same-origin',
           })
-          .then(response => response.json())
+          .then(response => {
+            if (!response.ok) {
+              throw new Error(`Auth failed with status ${response.status}`);
+            }
+            return response.json();
+          })
           .then(data => {
             if (IS_DEV) {
               console.log('🔑 Channel auth response:', { channel: channel.name, data, endpoint: authEndpoint });
@@ -85,7 +101,7 @@ const createEchoConfig = () => {
             callback(false, data);
           })
           .catch(error => {
-            console.error('🔴 Channel auth error:', error);
+            console.error('🔴 Channel auth error:', { channel: channel.name, error: error.message });
             callback(true, error);
           });
         }
