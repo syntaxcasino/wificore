@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Events\RouterStatusUpdated;
+use App\Jobs\DiscoverRouterInterfacesJob;
 use App\Models\Router;
 use App\Models\Tenant;
 use App\Models\VpnConfiguration;
@@ -216,13 +217,19 @@ class CheckRoutersJob implements ShouldQueue
         $vpnConfig = VpnConfiguration::where('router_id', $router->id)->first();
         
         if (!$vpnConfig) {
-            Log::withContext($routerContext)->debug('No VPN config found for pending router');
+            Log::withContext($routerContext)->info('No VPN config found for pending router');
             return;
         }
 
+        Log::withContext($routerContext)->info('Checking VPN connectivity for pending router', [
+            'vpn_config_id' => $vpnConfig->id,
+            'client_ip' => $vpnConfig->client_ip,
+            'vpn_status' => $vpnConfig->status,
+        ]);
+
         // Skip if VPN is already connected
         if ($vpnConfig->status === 'connected') {
-            Log::withContext($routerContext)->debug('VPN already connected, checking if discovery job needed');
+            Log::withContext($routerContext)->info('VPN already connected, checking if discovery job needed');
             
             // If VPN is connected but router is still pending, dispatch discovery
             if ($router->status === 'pending') {
@@ -236,7 +243,7 @@ class CheckRoutersJob implements ShouldQueue
         // Rate limit VPN checks to avoid excessive pinging (once per minute per router)
         $vpnCheckKey = "vpn_check_pending_{$router->id}";
         if (Cache::has($vpnCheckKey)) {
-            Log::withContext($routerContext)->debug('VPN check rate limited');
+            Log::withContext($routerContext)->info('VPN check rate limited, skipping');
             return;
         }
 
@@ -266,13 +273,16 @@ class CheckRoutersJob implements ShouldQueue
 
                 Log::withContext($routerContext)->info('Dispatched interface discovery for newly connected router');
             } else {
-                Log::withContext($routerContext)->debug('Pending router VPN still not reachable', [
+                Log::withContext($routerContext)->info('Pending router VPN not reachable', [
+                    'success' => $result['success'] ?? false,
                     'packet_loss' => $result['packet_loss'] ?? 100,
+                    'raw_output' => substr($result['raw_output'] ?? '', 0, 500),
                 ]);
             }
         } catch (Throwable $e) {
-            Log::withContext($routerContext)->debug('VPN check failed for pending router', [
+            Log::withContext($routerContext)->error('VPN check failed for pending router', [
                 'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
             ]);
         }
     }

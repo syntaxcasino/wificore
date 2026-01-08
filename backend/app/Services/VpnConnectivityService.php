@@ -83,8 +83,10 @@ class VpnConnectivityService
             }
         }
 
-        // Extract average latency (rtt min/avg/max/mdev)
-        if (preg_match('/rtt min\/avg\/max\/mdev = [\d.]+\/([\d.]+)\/[\d.]+\/[\d.]+/', $output, $matches)) {
+        // Extract average latency - support both Linux (rtt) and Alpine (round-trip) formats
+        // Alpine: round-trip min/avg/max = 231.665/233.759/235.853 ms
+        // Linux: rtt min/avg/max/mdev = 1.234/2.345/3.456/0.123 ms
+        if (preg_match('/(?:rtt|round-trip) min\/avg\/max(?:\/mdev)? = [\d.]+\/([\d.]+)\/[\d.]+/', $output, $matches)) {
             $result['latency'] = (float)$matches[1];
         }
 
