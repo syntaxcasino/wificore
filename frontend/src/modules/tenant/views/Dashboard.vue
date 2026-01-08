@@ -456,9 +456,16 @@ onMounted(() => {
   // Fetch initial dashboard stats ONCE
   fetchDashboardStats()
   
+  // Get tenant ID for tenant-specific channels
+  const tenantId = user.value?.tenant_id
+  if (!tenantId) {
+    console.warn('No tenant_id available - cannot subscribe to tenant channels')
+    return
+  }
+
   // ✅ EVENT-BASED: Subscribe to dashboard stats updates via WebSocket
   // Backend broadcasts DashboardStatsUpdated event when stats change
-  subscribeToPrivateChannel('dashboard-stats', {
+  subscribeToPrivateChannel(`tenant.${tenantId}.dashboard-stats`, {
     'DashboardStatsUpdated': (event) => {
       console.log('📊 Dashboard stats updated via WebSocket:', event)
       if (event.stats) {
@@ -473,8 +480,8 @@ onMounted(() => {
     },
   })
 
-  // ✅ EVENT-BASED: Subscribe to router status updates
-  subscribeToPrivateChannel('router-status', {
+  // ✅ EVENT-BASED: Subscribe to router status updates (tenant-specific)
+  subscribeToPrivateChannel(`tenant.${tenantId}.routers`, {
     'RouterStatusUpdated': (event) => {
       console.log('🔌 Router status update received:', event)
       // Update stats reactively from event data instead of refetching
@@ -492,8 +499,8 @@ onMounted(() => {
     },
   })
 
-  // ✅ EVENT-BASED: Subscribe to routers channel
-  subscribeToPrivateChannel('routers', {
+  // ✅ EVENT-BASED: Subscribe to router-updates channel (tenant-specific)
+  subscribeToPrivateChannel(`tenant.${tenantId}.router-updates`, {
     'RouterCreated': (event) => {
       console.log('✨ New router created:', event)
       recentActivities.value.unshift({
@@ -514,8 +521,8 @@ onMounted(() => {
     },
   })
 
-  // ✅ EVENT-BASED: Subscribe to presence channel for online users
-  subscribeToPresenceChannel('online', {
+  // ✅ EVENT-BASED: Subscribe to presence channel for online users (tenant-specific)
+  subscribeToPresenceChannel(`tenant.${tenantId}.online`, {
     here: (users) => {
       console.log('👥 Users currently online:', users)
       onlineUsers.value = users

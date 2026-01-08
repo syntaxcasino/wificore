@@ -338,17 +338,23 @@ const {
   userGrowth,
 } = useDashboard()
 
-// Subscribe to WebSocket channels
+// Subscribe to WebSocket channels (tenant-specific for security)
 onMounted(() => {
   fetchDashboardStats()
   
-  subscribeToPrivateChannel('dashboard-stats', {
+  const tenantId = user.value?.tenant_id
+  if (!tenantId) {
+    console.warn('No tenant_id available - cannot subscribe to tenant channels')
+    return
+  }
+
+  subscribeToPrivateChannel(`tenant.${tenantId}.dashboard-stats`, {
     'DashboardStatsUpdated': (event) => {
       if (event.stats) updateStatsFromEvent(event.stats)
     },
   })
 
-  subscribeToPrivateChannel('router-status', {
+  subscribeToPrivateChannel(`tenant.${tenantId}.routers`, {
     'RouterStatusUpdated': (event) => {
       if (event.stats) updateStatsFromEvent(event.stats)
       recentActivities.value.unshift({

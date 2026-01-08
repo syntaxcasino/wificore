@@ -802,11 +802,13 @@ export default {
       // Update last update time every minute
       updateInterval = setInterval(updateLastUpdateTime, 60000);
 
-      // Subscribe to private channel for router updates (requires authentication)
+      // Subscribe to tenant-specific private channel for router updates (requires authentication)
       const authToken = localStorage.getItem('authToken');
-      if (authToken) {
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      if (authToken && user.tenant_id) {
         try {
-          const routerUpdatesChannel = window.Echo.private('router-updates');
+          // Use tenant-specific channels for security isolation
+          const routerUpdatesChannel = window.Echo.private(`tenant.${user.tenant_id}.router-updates`);
 
           // Listen for router events
           routerUpdatesChannel
@@ -846,8 +848,8 @@ export default {
               }
             });
 
-          // Also subscribe to router-status private channel for additional status updates
-          const statusChannel = window.Echo.private('router-status');
+          // Also subscribe to tenant-specific routers channel for status updates
+          const statusChannel = window.Echo.private(`tenant.${user.tenant_id}.routers`);
           statusChannel
             .listen('.router.status.changed', (e) => {
               const idx = routers.value.findIndex((r) => r.id === e.router_id);
@@ -860,7 +862,7 @@ export default {
           console.error('Failed to subscribe to private router channels:', err);
         }
       } else {
-        console.warn('User not authenticated - cannot subscribe to router updates');
+        console.warn('User not authenticated or no tenant_id - cannot subscribe to router updates');
       }
 
       document.addEventListener('click', handleClickOutside);
@@ -871,10 +873,11 @@ export default {
       document.removeEventListener('click', handleClickOutside);
       clearInterval(updateInterval);
       
-      // Leave all channels
-      if (window.Echo) {
-        window.Echo.leave('private-router-updates');
-        window.Echo.leave('private-router-status');
+      // Leave all tenant-specific channels
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      if (window.Echo && user.tenant_id) {
+        window.Echo.leave(`private-tenant.${user.tenant_id}.router-updates`);
+        window.Echo.leave(`private-tenant.${user.tenant_id}.routers`);
       }
     });
 
