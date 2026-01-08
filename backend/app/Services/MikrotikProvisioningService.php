@@ -74,7 +74,7 @@ class MikrotikProvisioningService extends TenantAwareService
         ];
 
         try {
-            $decryptedPassword = Crypt::decrypt($router->password);
+            $decryptedPassword = Crypt::decryptString($router->password);
             // Use VPN IP if available
             $ip = $router->vpn_ip ?? $router->ip_address;
             $host = explode('/', $ip)[0];
@@ -344,7 +344,7 @@ class MikrotikProvisioningService extends TenantAwareService
                 throw new \Exception('Router is busy with another operation', 503);
             }
             
-            $decryptedPassword = Crypt::decrypt($router->password);
+            $decryptedPassword = Crypt::decryptString($router->password);
             Log::info('Password decrypted successfully:', ['router_id' => $router->id, 'context' => $context]);
         } catch (\Exception $e) {
             if ($lock->owner()) {
@@ -532,7 +532,7 @@ class MikrotikProvisioningService extends TenantAwareService
                 ];
             }
             
-            $decryptedPassword = Crypt::decrypt($router->password);
+            $decryptedPassword = Crypt::decryptString($router->password);
             Log::info('Verifying connectivity:', [
                 'router_id' => $router->id,
                 'ip_address' => $router->ip_address,
@@ -683,7 +683,7 @@ class MikrotikProvisioningService extends TenantAwareService
             ]);
 
             // 3. Get router credentials
-            $decryptedPassword = Crypt::decrypt($router->password);
+            $decryptedPassword = Crypt::decryptString($router->password);
             $host = explode('/', $router->ip_address)[0];
             
             // 4. Connect to router
@@ -1258,7 +1258,7 @@ class MikrotikProvisioningService extends TenantAwareService
      */
     private function generateConnectivityScript(Router $router): string
     {
-        $decryptedPassword = Crypt::decrypt($router->password);
+        $decryptedPassword = Crypt::decryptString($router->password);
         
         return <<<EOT
 /ip address add address={$router->ip_address} interface=ether2
