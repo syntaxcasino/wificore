@@ -5,7 +5,9 @@ namespace App\Jobs;
 use App\Events\RouterStatusUpdated;
 use App\Models\Router;
 use App\Models\Tenant;
+use App\Models\VpnConfiguration;
 use App\Services\MikrotikProvisioningService;
+use App\Services\VpnConnectivityService;
 use App\Traits\TenantAwareJob;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -78,14 +80,9 @@ class CheckRoutersJob implements ShouldQueue
                 $updatedStatuses = [];
 
                 foreach ($routers as $router) {
-                    // Skip routers that are still under provisioning
+                    // For pending routers, check if VPN is now reachable and trigger discovery
                     if (in_array($router->status, ['pending', 'deploying', 'provisioning', 'verifying'])) {
-                        Log::withContext(array_merge($context, [
-                            'router_id' => $router->id,
-                            'ip_address' => $router->ip_address,
-                            'name' => $router->name,
-                            'status' => $router->status,
-                        ]))->info('Skipping router health check - router is under provisioning');
+                        $this->checkPendingRouterVpn($router, $context);
                         continue;
                     }
 
@@ -200,6 +197,84 @@ class CheckRoutersJob implements ShouldQueue
 
             Log::withContext($context)->info('Completed router status check job');
         });
+    }
+
+    /**
+     * Check if a pending router's VPN is now reachable and trigger discovery.
+     * This allows provisioning to continue after user applies the config script.
+     */
+    private function checkPendingRouterVpn(Router $router, array $context): void
+    {
+        $routerContext = array_merge($context, [
+            'router_id' => $router->id,
+            'ip_address' => $router->ip_address,
+            'name' => $router->name,
+            'status' => $router->status,
+        ]);
+
+        // Check if there's a VPN configuration for this router
+        $vpnConfig = VpnConfiguration::where('router_id', $router->id)->first();
+        
+        if (!$vpnConfig) {
+            Log::withContext($routerContext)->debug('No VPN config found for pending router');
+            return;
+        }
+
+        // Skip if VPN is already connected
+        if ($vpnConfig->status === 'connected') {
+            Log::withContext($routerContext)->debug('VPN already connected, checking if discovery job needed');
+            
+            // If VPN is connected but router is still pending, dispatch discovery
+            if ($router->status === 'pending') {
+                Log::withContext($routerContext)->info('VPN connected but router pending - dispatching discovery job');
+                dispatch(new DiscoverRouterInterfacesJob($this->tenantId, $router->id))
+                    ->onQueue('router-provisioning');
+            }
+            return;
+        }
+
+        // Rate limit VPN checks to avoid excessive pinging (once per minute per router)
+        $vpnCheckKey = "vpn_check_pending_{$router->id}";
+        if (Cache::has($vpnCheckKey)) {
+            Log::withContext($routerContext)->debug('VPN check rate limited');
+            return;
+        }
+
+        // Set rate limit for 55 seconds (job runs every minute)
+        Cache::put($vpnCheckKey, true, 55);
+
+        try {
+            $connectivityService = app(VpnConnectivityService::class);
+            
+            // Quick ping check (2 pings, 3 second timeout)
+            $result = $connectivityService->verifyConnectivity($vpnConfig, 2, 3);
+
+            if ($result['success'] && $result['packet_loss'] === 0) {
+                // VPN is now reachable! Update status and dispatch discovery
+                Log::withContext($routerContext)->info('Pending router VPN now reachable!', [
+                    'latency_ms' => $result['latency'],
+                ]);
+
+                $vpnConfig->update([
+                    'status' => 'connected',
+                    'last_handshake_at' => now(),
+                ]);
+
+                // Dispatch interface discovery job
+                dispatch(new DiscoverRouterInterfacesJob($this->tenantId, $router->id))
+                    ->onQueue('router-provisioning');
+
+                Log::withContext($routerContext)->info('Dispatched interface discovery for newly connected router');
+            } else {
+                Log::withContext($routerContext)->debug('Pending router VPN still not reachable', [
+                    'packet_loss' => $result['packet_loss'] ?? 100,
+                ]);
+            }
+        } catch (Throwable $e) {
+            Log::withContext($routerContext)->debug('VPN check failed for pending router', [
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**
