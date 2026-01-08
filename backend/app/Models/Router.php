@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use App\Traits\HasUuid;
 use App\Traits\BelongsToTenant;
 use App\Models\Scopes\TenantScope;
+use Illuminate\Support\Facades\Log;
 
 class Router extends Model
 {
@@ -15,6 +16,35 @@ class Router extends Model
     protected static function booted(): void
     {
         // No global scope needed for tenant-specific tables
+    }
+
+    /**
+     * Resolve the model for route model binding.
+     * Ensures tenant context is set before querying tenant-specific tables.
+     */
+    public function resolveRouteBinding($value, $field = null)
+    {
+        // Get the authenticated user and set tenant context before query
+        $user = request()->user();
+        
+        if ($user && $user->tenant_id) {
+            $tenant = Tenant::find($user->tenant_id);
+            
+            if ($tenant && $tenant->schema_name) {
+                $tenantContext = app(\App\Services\TenantContext::class);
+                
+                // Only set if not already set
+                if (!$tenantContext->getTenant()) {
+                    $tenantContext->setTenant($tenant);
+                    Log::debug('Router route binding: Set tenant context', [
+                        'tenant_id' => $tenant->id,
+                        'schema_name' => $tenant->schema_name,
+                    ]);
+                }
+            }
+        }
+        
+        return parent::resolveRouteBinding($value, $field);
     }
 
     protected $fillable = [
