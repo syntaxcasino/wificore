@@ -318,6 +318,7 @@ class MikrotikProvisioningService extends TenantAwareService
 
     /**
      * Fetch router data with context-aware optimization
+     * API first, SSH fallback for reliability
      * @param Router $router
      * @param string $context 'provisioning' for interface discovery, 'live' for full monitoring data
      * @param bool $filterConfigurable Only return configurable interfaces (excludes bridges, VLANs, slaves, etc.)
@@ -362,6 +363,52 @@ class MikrotikProvisioningService extends TenantAwareService
             throw new \Exception('Failed to decrypt password: ' . $e->getMessage(), 500);
         }
 
+        // Try API first
+        try {
+            return $this->fetchViaApi($router, $decryptedPassword, $context, $filterConfigurable, $timeout, $lock);
+        } catch (\Exception $apiException) {
+            Log::warning('API fetch failed, trying SSH fallback', [
+                'router_id' => $router->id,
+                'api_error' => $apiException->getMessage(),
+                'context' => $context
+            ]);
+            
+            // Try SSH fallback for provisioning context (interface discovery)
+            if ($context === 'provisioning') {
+                try {
+                    $sshService = app(\App\Services\MikrotikSshService::class);
+                    $result = $sshService->fetchInterfaces($router, $filterConfigurable);
+                    
+                    $lock->release();
+                    
+                    Log::info('SSH fallback successful', [
+                        'router_id' => $router->id,
+                        'interface_count' => count($result['interfaces'] ?? [])
+                    ]);
+                    
+                    return $result;
+                } catch (\Exception $sshException) {
+                    $lock->release();
+                    Log::error('Both API and SSH failed', [
+                        'router_id' => $router->id,
+                        'api_error' => $apiException->getMessage(),
+                        'ssh_error' => $sshException->getMessage()
+                    ]);
+                    throw new \Exception('Failed to connect via API and SSH: ' . $sshException->getMessage());
+                }
+            }
+            
+            // For live context, re-throw API exception (SSH doesn't support full monitoring)
+            $lock->release();
+            throw $apiException;
+        }
+    }
+
+    /**
+     * Fetch data via MikroTik API
+     */
+    private function fetchViaApi(Router $router, string $decryptedPassword, string $context, bool $filterConfigurable, int $timeout, $lock): array
+    {
         try {
             // Use VPN IP if available
             $ip = $router->vpn_ip ?? $router->ip_address;
@@ -471,11 +518,13 @@ class MikrotikProvisioningService extends TenantAwareService
                     ];
                 }, $interfaces),
             ];
-        } finally {
-            // Always release the lock
-            if ($lock->owner()) {
-                $lock->release();
-            }
+            
+            $lock->release();
+            return $liveData;
+
+        } catch (\Exception $e) {
+            // Don't release lock here - let caller handle it for fallback
+            throw $e;
         }
     }
 
@@ -1192,27 +1241,6 @@ class MikrotikProvisioningService extends TenantAwareService
                 'ip_address' => $data['ip_address'] ?? $router->ip_address,
                 'config_token' => $data['config_token'] ?? $router->config_token,
             ]);
-
-            Log::info('Router updated successfully:', [
-                'router_id' => $router->id,
-                'name' => $router->name,
-                'ip_address' => $router->ip_address,
-            ]);
-
-            return $router;
-        } catch (\Exception $e) {
-            Log::error('Failed to update router:', [
-                'router_id' => $router->id,
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
-            throw new \Exception('Failed to update router: ' . $e->getMessage(), 500);
-        }
-    }
-
-    /**
-     * Delete a router
-     */
     public function deleteRouter(Router $router): void
     {
         try {
