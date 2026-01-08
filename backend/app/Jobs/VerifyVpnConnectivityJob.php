@@ -185,45 +185,6 @@ class VerifyVpnConnectivityJob implements ShouldQueue
                 'router_id' => $router->id,
                 'tenant_id' => $this->tenantId,
             ]);
-            
-            return;
-            
-            // Fetch live data which includes interfaces
-            $liveData = $provisioningService->fetchLiveRouterData($router);
-            
-            if (isset($liveData['interfaces']) && is_array($liveData['interfaces'])) {
-                // Update router status
-                $router->update([
-                    'status' => 'online',
-                    'model' => $liveData['board_name'] ?? $router->model,
-                    'os_version' => $liveData['version'] ?? $router->os_version,
-                    'last_seen' => now(),
-                ]);
-
-                // Broadcast interfaces discovered event
-                broadcast(new RouterInterfacesDiscovered(
-                    $this->tenantId,
-                    $router->id,
-                    $liveData['interfaces'],
-                    [
-                        'model' => $liveData['board_name'] ?? null,
-                        'version' => $liveData['version'] ?? null,
-                        'uptime' => $liveData['uptime'] ?? null,
-                        'interface_count' => count($liveData['interfaces']),
-                    ]
-                ));
-
-                Log::info('Router interfaces discovered and broadcasted', [
-                    'router_id' => $router->id,
-                    'interface_count' => count($liveData['interfaces']),
-                    'tenant_id' => $this->tenantId,
-                ]);
-            } else {
-                Log::warning('No interfaces found in live data', [
-                    'router_id' => $router->id,
-                    'live_data_keys' => array_keys($liveData ?? []),
-                ]);
-            }
         } catch (\Exception $e) {
             Log::error('Failed to discover router interfaces', [
                 'router_id' => $vpnConfig->router_id,
