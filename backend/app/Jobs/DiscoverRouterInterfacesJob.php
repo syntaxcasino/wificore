@@ -42,6 +42,27 @@ class DiscoverRouterInterfacesJob implements ShouldQueue
                 return;
             }
 
+            // Skip if router is already online (another job completed discovery)
+            if ($router->status === 'online') {
+                Log::info('Router already online, skipping discovery', [
+                    'router_id' => $router->id,
+                    'tenant_id' => $this->tenantId,
+                ]);
+                return;
+            }
+
+            // Deduplication: prevent concurrent discovery jobs for same router
+            $discoveryLockKey = "router_discovery_lock_{$router->id}";
+            $lock = \Illuminate\Support\Facades\Cache::lock($discoveryLockKey, 120); // 2 minute lock
+            
+            if (!$lock->get()) {
+                Log::info('Discovery already in progress for router, skipping', [
+                    'router_id' => $router->id,
+                    'tenant_id' => $this->tenantId,
+                ]);
+                return;
+            }
+
             Log::info('Discovering router interfaces', [
                 'router_id' => $router->id,
                 'tenant_id' => $this->tenantId,
@@ -89,7 +110,13 @@ class DiscoverRouterInterfacesJob implements ShouldQueue
                         'live_data_keys' => array_keys($liveData ?? []),
                     ]);
                 }
+                
+                // Release lock on success
+                $lock->release();
             } catch (\RouterOS\Exceptions\StreamException $e) {
+                // Release lock before retry
+                $lock->release();
+                
                 Log::warning('Router API stream timeout during interface discovery - will retry', [
                     'router_id' => $router->id,
                     'tenant_id' => $this->tenantId,
@@ -100,6 +127,9 @@ class DiscoverRouterInterfacesJob implements ShouldQueue
                 // Release the job back to queue for retry
                 $this->release(30);
             } catch (\Exception $e) {
+                // Release lock on error
+                $lock->release();
+                
                 Log::error('Failed to discover router interfaces', [
                     'router_id' => $router->id,
                     'tenant_id' => $this->tenantId,

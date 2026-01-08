@@ -165,12 +165,17 @@ class VerifyVpnConnectivityJob implements ShouldQueue
                 'vpn_ip' => $vpnConfig->client_ip,
             ]);
 
-            // Use MikrotikProvisioningService to fetch interfaces
-            // Skip redundant connectivity check - VPN is already verified
-            $provisioningService = app(\App\Services\MikrotikProvisioningService::class);
+            // Dispatch interface discovery as a separate job (with deduplication)
+            $discoveryDispatchKey = "discovery_dispatch_{$router->id}";
+            if (\Illuminate\Support\Facades\Cache::has($discoveryDispatchKey)) {
+                Log::info('Discovery job already dispatched recently, skipping duplicate', [
+                    'router_id' => $router->id,
+                ]);
+                return;
+            }
             
-            // Dispatch interface discovery as a separate job to avoid timeout
-            // This allows the VPN verification to complete successfully
+            \Illuminate\Support\Facades\Cache::put($discoveryDispatchKey, true, 120); // 2 minute deduplication
+            
             dispatch(new \App\Jobs\DiscoverRouterInterfacesJob(
                 $this->tenantId,
                 $router->id

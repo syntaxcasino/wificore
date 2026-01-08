@@ -229,13 +229,20 @@ class CheckRoutersJob implements ShouldQueue
 
         // Skip if VPN is already connected
         if ($vpnConfig->status === 'connected') {
-            Log::withContext($routerContext)->info('VPN already connected, checking if discovery job needed');
+            // Refresh router to get latest status (another job may have updated it)
+            $router->refresh();
             
-            // If VPN is connected but router is still pending, dispatch discovery
+            // If VPN is connected but router is still pending, dispatch discovery (with deduplication)
             if ($router->status === 'pending') {
-                Log::withContext($routerContext)->info('VPN connected but router pending - dispatching discovery job');
-                dispatch(new DiscoverRouterInterfacesJob($this->tenantId, $router->id))
-                    ->onQueue('router-provisioning');
+                $discoveryDispatchKey = "discovery_dispatch_{$router->id}";
+                if (!Cache::has($discoveryDispatchKey)) {
+                    Cache::put($discoveryDispatchKey, true, 120); // 2 minute deduplication
+                    Log::withContext($routerContext)->info('VPN connected but router pending - dispatching discovery job');
+                    dispatch(new DiscoverRouterInterfacesJob($this->tenantId, $router->id))
+                        ->onQueue('router-provisioning');
+                } else {
+                    Log::withContext($routerContext)->info('Discovery job already dispatched recently, skipping');
+                }
             }
             return;
         }
@@ -267,11 +274,16 @@ class CheckRoutersJob implements ShouldQueue
                     'last_handshake_at' => now(),
                 ]);
 
-                // Dispatch interface discovery job
-                dispatch(new DiscoverRouterInterfacesJob($this->tenantId, $router->id))
-                    ->onQueue('router-provisioning');
-
-                Log::withContext($routerContext)->info('Dispatched interface discovery for newly connected router');
+                // Dispatch interface discovery job (with deduplication)
+                $discoveryDispatchKey = "discovery_dispatch_{$router->id}";
+                if (!Cache::has($discoveryDispatchKey)) {
+                    Cache::put($discoveryDispatchKey, true, 120); // 2 minute deduplication
+                    dispatch(new DiscoverRouterInterfacesJob($this->tenantId, $router->id))
+                        ->onQueue('router-provisioning');
+                    Log::withContext($routerContext)->info('Dispatched interface discovery for newly connected router');
+                } else {
+                    Log::withContext($routerContext)->info('Discovery job already dispatched recently, skipping duplicate');
+                }
             } else {
                 Log::withContext($routerContext)->info('Pending router VPN not reachable', [
                     'success' => $result['success'] ?? false,
