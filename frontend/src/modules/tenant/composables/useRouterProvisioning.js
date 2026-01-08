@@ -627,7 +627,7 @@ export function useRouterProvisioning(props, emit) {
       const routersChannel = window.Echo.private(routersChannelName)
 
       // Listen for connectivity checking events (progress updates)
-      vpnChannel.bind('vpn.connectivity.checking', (data) => {
+      vpnChannel.listen('.vpn.connectivity.checking', (data) => {
         console.log('VPN connectivity checking:', data)
         
         if (data.router_id === provisioningRouter.value?.id) {
@@ -646,7 +646,7 @@ export function useRouterProvisioning(props, emit) {
       })
 
       // Listen for connectivity verified event (SUCCESS!)
-      vpnChannel.bind('vpn.connectivity.verified', (data) => {
+      vpnChannel.listen('.vpn.connectivity.verified', (data) => {
         console.log('VPN connectivity verified:', data)
         
         if (data.router_id === provisioningRouter.value?.id) {
@@ -667,7 +667,7 @@ export function useRouterProvisioning(props, emit) {
       })
 
       // Listen for router interfaces discovered event on ROUTERS channel (AUTO-DISCOVERY!)
-      routersChannel.bind('router.interfaces.discovered', (data) => {
+      routersChannel.listen('.router.interfaces.discovered', (data) => {
         console.log('Router interfaces discovered:', data)
         
         if (data.router_id === provisioningRouter.value?.id) {
@@ -702,7 +702,7 @@ export function useRouterProvisioning(props, emit) {
       })
 
       // Listen for connectivity failed event (TIMEOUT/ERROR)
-      vpnChannel.bind('vpn.connectivity.failed', (data) => {
+      vpnChannel.listen('.vpn.connectivity.failed', (data) => {
         console.log('VPN connectivity failed:', data)
         
         if (data.router_id === provisioningRouter.value?.id) {
