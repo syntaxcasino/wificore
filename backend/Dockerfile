@@ -17,7 +17,7 @@ RUN apk add --no-cache --virtual .build-deps \
     unzip \
     git \
     curl \
- && docker-php-ext-install -j$(nproc) sockets zip pdo pdo_pgsql \
+ && docker-php-ext-install -j$(nproc) sockets zip pdo pdo_pgsql ftp \
  && apk del .build-deps
 
 # Install Composer
@@ -33,6 +33,14 @@ RUN composer install --optimize-autoloader --no-interaction --no-progress --no-s
 
 # Copy application source
 COPY . .
+
+# Regenerate autoloader after copying all files
+RUN composer dump-autoload --optimize --no-dev
+
+# Verify critical files exist in builder
+RUN test -f app/Providers/RouteServiceProvider.php || (echo "ERROR: RouteServiceProvider.php not found in builder!" && exit 1) \
+    && test -f bootstrap/providers.php || (echo "ERROR: bootstrap/providers.php not found in builder!" && exit 1) \
+    && echo "✅ Critical provider files verified in builder"
 
 # Clean any cached bootstrap files and unnecessary files
 RUN rm -f bootstrap/cache/*.php \
@@ -63,7 +71,7 @@ RUN apk add --no-cache --virtual .build-deps \
       wireguard-tools \
       iptables \
       iproute2 \
- && docker-php-ext-install -j$(nproc) pdo_pgsql sockets zip opcache \
+ && docker-php-ext-install -j$(nproc) pdo_pgsql sockets zip opcache ftp \
  && pecl install redis \
  && docker-php-ext-enable redis \
  && apk del .build-deps \
@@ -75,6 +83,11 @@ COPY --chown=root:root ./docker/php-opcache.ini /usr/local/etc/php/conf.d/opcach
 
 # Copy vendor and application from builder
 COPY --from=builder /var/www/html /var/www/html
+
+# Verify critical files exist
+RUN test -f app/Providers/RouteServiceProvider.php || (echo "ERROR: RouteServiceProvider.php not found!" && exit 1) \
+    && test -f bootstrap/providers.php || (echo "ERROR: bootstrap/providers.php not found!" && exit 1) \
+    && echo "✅ Critical provider files verified"
 
 # Create Laravel-required directories with correct permissions
 RUN mkdir -p \

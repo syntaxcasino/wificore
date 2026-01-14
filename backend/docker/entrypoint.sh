@@ -83,25 +83,46 @@ if [ "${AUTO_MIGRATE}" = "true" ] || [ "${AUTO_MIGRATE}" = "1" ]; then
     echo "✅ Database is ready (attempt $TRIES/$MAX_TRIES)"
     echo ""
     
-    # Run migrations
-    echo "🔄 Running database migrations..."
-    if [ "${FRESH_INSTALL}" = "true" ]; then
-      echo "⚠️  Fresh install mode - dropping all tables..."
-      if su -s /bin/bash www-data -c "php artisan migrate:fresh --force"; then
-        echo "✅ Fresh migrations completed"
+    # Check if database already has migrations (skip if volume exists with data)
+    MIGRATION_COUNT=$(PGPASSWORD="${DB_PASSWORD}" psql -h "${DB_HOST}" -U "${DB_USERNAME}" -d "${DB_DATABASE}" -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'migrations';" 2>/dev/null | xargs || echo "0")
+    
+    if [ "$MIGRATION_COUNT" -gt 0 ]; then
+      # Check if migrations table has records
+      MIGRATION_RECORDS=$(PGPASSWORD="${DB_PASSWORD}" psql -h "${DB_HOST}" -U "${DB_USERNAME}" -d "${DB_DATABASE}" -t -c "SELECT COUNT(*) FROM migrations;" 2>/dev/null | xargs || echo "0")
+      
+      if [ "$MIGRATION_RECORDS" -gt 0 ]; then
+        echo "📦 Database volume already exists with $MIGRATION_RECORDS migrations"
+        echo "⏭️  Skipping migrations (database already initialized)"
+        echo ""
+        SKIP_MIGRATIONS=true
       else
-        echo "❌ Fresh migrations failed"
-        exit 1
+        SKIP_MIGRATIONS=false
       fi
     else
-      if su -s /bin/bash www-data -c "php artisan migrate --force"; then
-        echo "✅ Migrations completed"
-      else
-        echo "❌ Migrations failed"
-        exit 1
-      fi
+      SKIP_MIGRATIONS=false
     fi
-    echo ""
+    
+    # Run migrations only if not skipped
+    if [ "$SKIP_MIGRATIONS" != "true" ]; then
+      echo "🔄 Running database migrations..."
+      if [ "${FRESH_INSTALL}" = "true" ]; then
+        echo "⚠️  Fresh install mode - dropping all tables..."
+        if su -s /bin/bash www-data -c "php artisan migrate:fresh --force"; then
+          echo "✅ Fresh migrations completed"
+        else
+          echo "❌ Fresh migrations failed"
+          exit 1
+        fi
+      else
+        if su -s /bin/bash www-data -c "php artisan migrate --force"; then
+          echo "✅ Migrations completed"
+        else
+          echo "❌ Migrations failed"
+          exit 1
+        fi
+      fi
+      echo ""
+    fi
     
     # Run seeders
     if [ "${AUTO_SEED}" = "true" ] || [ "${AUTO_SEED}" = "1" ]; then
