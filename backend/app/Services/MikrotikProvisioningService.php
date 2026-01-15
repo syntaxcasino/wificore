@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Router;
 use App\Models\RouterConfig;
 use App\Services\MikroTik\ConfigurationService;
+use App\Services\MikroTik\SshExecutor;
 use App\Events\RouterProvisioningProgress;
 use App\Events\RouterConnected;
 use App\Events\ProvisioningFailed;
@@ -12,8 +13,6 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
-use RouterOS\Client;
-use RouterOS\Query;
 
 /**
  * MikroTik Provisioning Service
@@ -74,22 +73,13 @@ class MikrotikProvisioningService extends TenantAwareService
         ];
 
         try {
-            $decryptedPassword = Crypt::decrypt($router->password);
-            // Use VPN IP if available
-            $ip = $router->vpn_ip ?? $router->ip_address;
-            $host = explode('/', $ip)[0];
-
-            $client = new Client([
-                'host' => $host,
-                'user' => $router->username,
-                'pass' => $decryptedPassword,
-                'port' => $router->port,
-                'timeout' => 10, // Increased timeout for better reliability
-                'attempts' => 2,
-            ]);
+            // Use SSH-only via SshExecutor (short timeout: 10s)
+            $ssh = new SshExecutor($router, 10);
+            $ssh->connect();
 
             // 1. Check hotspot server
-            $hotspotCheck = $client->query((new Query('/ip/hotspot/print')))->read();
+            $hotspotOutput = $ssh->exec('/ip hotspot print detail without-paging');
+            $hotspotCheck = $this->parseKeyValueList($hotspotOutput);
             $verification['checks']['hotspot_server'] = [
                 'status' => !empty($hotspotCheck),
                 'count' => count($hotspotCheck),
@@ -107,7 +97,8 @@ class MikrotikProvisioningService extends TenantAwareService
             ];
 
             // 2. Check hotspot profile
-            $profileCheck = $client->query((new Query('/ip/hotspot/profile/print')))->read();
+            $profileOutput = $ssh->exec('/ip hotspot profile print detail without-paging');
+            $profileCheck = $this->parseKeyValueList($profileOutput);
             $verification['checks']['hotspot_profile'] = [
                 'status' => !empty($profileCheck),
                 'count' => count($profileCheck),
@@ -125,7 +116,8 @@ class MikrotikProvisioningService extends TenantAwareService
             ];
 
             // 3. Check RADIUS configuration
-            $radiusCheck = $client->query((new Query('/radius/print')))->read();
+            $radiusOutput = $ssh->exec('/radius print detail without-paging');
+            $radiusCheck = $this->parseKeyValueList($radiusOutput);
             $verification['checks']['radius'] = [
                 'status' => !empty($radiusCheck),
                 'count' => count($radiusCheck),
@@ -144,7 +136,8 @@ class MikrotikProvisioningService extends TenantAwareService
             ];
 
             // 4. Check IP pool
-            $poolCheck = $client->query((new Query('/ip/pool/print')))->read();
+            $poolOutput = $ssh->exec('/ip pool print detail without-paging');
+            $poolCheck = $this->parseKeyValueList($poolOutput);
             $verification['checks']['ip_pool'] = [
                 'status' => !empty($poolCheck),
                 'count' => count($poolCheck),
@@ -160,7 +153,8 @@ class MikrotikProvisioningService extends TenantAwareService
             ];
 
             // 5. Check DHCP server
-            $dhcpCheck = $client->query((new Query('/ip/dhcp-server/print')))->read();
+            $dhcpOutput = $ssh->exec('/ip dhcp-server print detail without-paging');
+            $dhcpCheck = $this->parseKeyValueList($dhcpOutput);
             $verification['checks']['dhcp_server'] = [
                 'status' => !empty($dhcpCheck),
                 'count' => count($dhcpCheck),
@@ -178,7 +172,8 @@ class MikrotikProvisioningService extends TenantAwareService
             ];
 
             // 6. Check NAT rules
-            $natCheck = $client->query((new Query('/ip/firewall/nat/print')))->read();
+            $natOutput = $ssh->exec('/ip firewall nat print detail without-paging');
+            $natCheck = $this->parseKeyValueList($natOutput);
             $hotspotNatRules = array_filter($natCheck, function($rule) {
                 return isset($rule['comment']) && str_contains($rule['comment'], 'hotspot');
             });
@@ -198,7 +193,8 @@ class MikrotikProvisioningService extends TenantAwareService
             ];
 
             // 7. Check firewall rules
-            $firewallCheck = $client->query((new Query('/ip/firewall/filter/print')))->read();
+            $firewallOutput = $ssh->exec('/ip firewall filter print detail without-paging');
+            $firewallCheck = $this->parseKeyValueList($firewallOutput);
             $hotspotFirewallRules = array_filter($firewallCheck, function($rule) {
                 return isset($rule['comment']) && str_contains($rule['comment'], 'hotspot');
             });
@@ -211,15 +207,15 @@ class MikrotikProvisioningService extends TenantAwareService
             ];
 
             // 8. Check DNS settings
-            $dnsCheck = $client->query((new Query('/ip/dns/print')))->read();
+            $dnsOutput = $ssh->exec('/ip dns print');
+            $dnsCheck = $this->parseSingleKeyValueBlock($dnsOutput);
+            $servers = $dnsCheck['servers'] ?? null;
             $verification['checks']['dns'] = [
-                'status' => !empty($dnsCheck) && 
-                           !empty($dnsCheck[0]['servers']) && 
-                           $dnsCheck[0]['servers'] !== '0.0.0.0',
-                'message' => !empty($dnsCheck) && !empty($dnsCheck[0]['servers']) && $dnsCheck[0]['servers'] !== '0.0.0.0'
+                'status' => !empty($servers) && $servers !== '0.0.0.0',
+                'message' => !empty($servers) && $servers !== '0.0.0.0'
                     ? 'DNS servers are properly configured'
                     : 'DNS servers are not properly configured',
-                'servers' => !empty($dnsCheck) ? $dnsCheck[0]['servers'] ?? 'Not set' : 'Not configured'
+                'servers' => $servers ?? 'Not configured'
             ];
 
             // Determine overall status
@@ -330,6 +326,7 @@ class MikrotikProvisioningService extends TenantAwareService
         // Adjust timeout based on context
         $timeout = $context === 'provisioning' ? 15 : 20;
         $lockDuration = $timeout + 5; // Lock duration slightly longer than operation timeout
+        $lockDuration = min($lockDuration, 30); // Ensure lock duration does not exceed 30 seconds
         $lock = Cache::lock($lockKey, $lockDuration);
         
         try {
@@ -345,8 +342,10 @@ class MikrotikProvisioningService extends TenantAwareService
                 throw new \Exception('Router is busy with another operation', 503);
             }
             
-            $decryptedPassword = Crypt::decrypt($router->password);
-            Log::info('Password decrypted successfully:', ['router_id' => $router->id, 'context' => $context]);
+            // Password decryption is now handled in SshExecutor constructor
+            // This reduces redundant decryption attempts and improves performance
+            Log::debug('Preparing to fetch router data', ['router_id' => $router->id, 'context' => $context]);
+            
         } catch (\Exception $e) {
             if ($lock->owner()) {
                 $lock->release();
@@ -363,170 +362,44 @@ class MikrotikProvisioningService extends TenantAwareService
             throw new \Exception('Failed to decrypt password: ' . $e->getMessage(), 500);
         }
 
-        // Try API first
+        // Use SSH for all operations
         try {
-            return $this->fetchViaApi($router, $decryptedPassword, $context, $filterConfigurable, $timeout, $lock);
-        } catch (\Exception $apiException) {
-            Log::warning('API fetch failed, trying SSH fallback', [
-                'router_id' => $router->id,
-                'api_error' => $apiException->getMessage(),
-                'context' => $context
-            ]);
+            $sshService = app(\App\Services\MikrotikSshService::class);
             
-            // Try SSH fallback for provisioning context (interface discovery)
             if ($context === 'provisioning') {
-                try {
-                    $sshService = app(\App\Services\MikrotikSshService::class);
-                    $result = $sshService->fetchInterfaces($router, $filterConfigurable);
-                    
-                    $lock->release();
-                    
-                    Log::info('SSH fallback successful', [
-                        'router_id' => $router->id,
-                        'interface_count' => count($result['interfaces'] ?? [])
-                    ]);
-                    
-                    return $result;
-                } catch (\Exception $sshException) {
-                    $lock->release();
-                    Log::error('Both API and SSH failed', [
-                        'router_id' => $router->id,
-                        'api_error' => $apiException->getMessage(),
-                        'ssh_error' => $sshException->getMessage()
-                    ]);
-                    throw new \Exception('Failed to connect via API and SSH: ' . $sshException->getMessage());
-                }
-            }
-            
-            // For live context, re-throw API exception (SSH doesn't support full monitoring)
-            $lock->release();
-            throw $apiException;
-        }
-    }
-
-    /**
-     * Fetch data via MikroTik API
-     */
-    private function fetchViaApi(Router $router, string $decryptedPassword, string $context, bool $filterConfigurable, int $timeout, $lock): array
-    {
-        try {
-            // Use VPN IP if available
-            $ip = $router->vpn_ip ?? $router->ip_address;
-            $host = explode('/', $ip)[0];
-            
-            $client = new Client([
-                'host' => $host,
-                'user' => $router->username,
-                'pass' => $decryptedPassword,
-                'port' => $router->port,
-                'timeout' => $timeout,
-            ]);
-
-            // Context-aware data fetching
-            if ($context === 'provisioning') {
-                // During provisioning, fetch only essential data for interface discovery
-                $interfaces = $client->query(new Query('/interface/print'))->read();
-                $resource = $client->query(new Query('/system/resource/print'))->read();
-                $identity = $client->query(new Query('/system/identity/print'))->read();
+                // Fetch interfaces for provisioning
+                $result = $sshService->fetchInterfaces($router, $filterConfigurable);
                 
-                // Filter interfaces if requested
-                if ($filterConfigurable) {
-                    $interfaces = array_values(array_filter($interfaces, function($iface) {
-                        return $this->isConfigurableInterface($iface);
-                    }));
-                }
+                $lock->release();
                 
-                return [
-                    'interfaces' => array_map(function ($iface) {
-                        return [
-                            'name' => $iface['name'] ?? 'Unknown',
-                            'type' => $iface['type'] ?? 'Unknown',
-                            'running' => $iface['running'] ?? false,
-                            'mtu' => $iface['mtu'] ?? 'N/A',
-                            'comment' => $iface['comment'] ?? '',
-                        ];
-                    }, $interfaces),
-                    'board_name' => $resource[0]['board-name'] ?? 'N/A',
-                    'version' => $resource[0]['version'] ?? 'N/A',
-                    'uptime' => $resource[0]['uptime'] ?? 'N/A',
-                    'identity' => $identity[0]['name'] ?? 'N/A',
-                ];
-            }
-            
-            // Live context: fetch all data for monitoring
-            $queries = [
-                'resource' => new Query('/system/resource/print'),
-                'identity' => new Query('/system/identity/print'),
-                'interface' => new Query('/interface/print'),
-                'dhcp' => new Query('/ip/dhcp-server/lease/print'),
-            ];
-
-            $results = [];
-            foreach ($queries as $key => $query) {
-                $results[$key] = $client->query($query)->read();
-            }
-
-            // Try to get hotspot active users, but handle if hotspot is not configured
-            $hotspotActiveUsers = [];
-            try {
-                $hotspotQuery = new Query('/ip/hotspot/active/print');
-                $hotspotActiveUsers = $client->query($hotspotQuery)->read();
-                
-                // Filter out any sessions that might be system/bypass entries
-                $hotspotActiveUsers = array_filter($hotspotActiveUsers, function($session) {
-                    return isset($session['user']) && !empty($session['user']);
-                });
-            } catch (\Exception $e) {
-                // Hotspot might not be configured, that's okay
-                Log::debug('Hotspot query failed (might not be configured)', [
+                Log::info('SSH interface fetch successful', [
                     'router_id' => $router->id,
-                    'error' => $e->getMessage()
+                    'interface_count' => count($result['interfaces'] ?? [])
                 ]);
+                
+                return $result;
+            } else {
+                // For live monitoring context, fetch full data
+                $result = $sshService->fetchLiveData($router);
+                
+                $lock->release();
+                
+                Log::info('SSH live data fetch successful', [
+                    'router_id' => $router->id
+                ]);
+                
+                return $result;
             }
-
-            $resource = $results['resource'][0] ?? [];
-            $interfaces = $results['interface'] ?? [];
-            $dhcpLeases = $results['dhcp'] ?? [];
-            
-            // Filter interfaces if requested
-            if ($filterConfigurable) {
-                $interfaces = array_values(array_filter($interfaces, function($iface) {
-                    return $this->isConfigurableInterface($iface);
-                }));
-            }
-
-            return [
-                'cpu_load' => $resource['cpu-load'] ?? 'N/A',
-                'free_memory' => $resource['free-memory'] ?? 'N/A',
-                'total_memory' => $resource['total-memory'] ?? 'N/A',
-                'free_hdd_space' => $resource['free-hdd-space'] ?? 'N/A',
-                'total_hdd_space' => $resource['total-hdd-space'] ?? 'N/A',
-                'uptime' => $resource['uptime'] ?? 'N/A',
-                'board_name' => $resource['board-name'] ?? 'N/A',
-                'version' => $resource['version'] ?? 'N/A',
-                'identity' => $results['identity'][0]['name'] ?? 'N/A',
-                'interface_count' => count($interfaces),
-                'active_connections' => count($hotspotActiveUsers),
-                'dhcp_leases' => count($dhcpLeases),
-                'interfaces' => array_map(function ($iface) {
-                    return [
-                        'name' => $iface['name'] ?? 'Unknown',
-                        'type' => $iface['type'] ?? 'Unknown',
-                        'running' => $iface['running'] ?? false,
-                        'mtu' => $iface['mtu'] ?? 'N/A',
-                        'comment' => $iface['comment'] ?? '',
-                    ];
-                }, $interfaces),
-            ];
-            
+        } catch (\Exception $sshException) {
             $lock->release();
-            return $liveData;
-
-        } catch (\Exception $e) {
-            // Don't release lock here - let caller handle it for fallback
-            throw $e;
+            Log::error('SSH connection failed', [
+                'router_id' => $router->id,
+                'error' => $sshException->getMessage()
+            ]);
+            throw new \Exception('Failed to connect via SSH: ' . $sshException->getMessage());
         }
     }
+
 
     /**
      * Get router details (DB + live data)
@@ -560,98 +433,132 @@ class MikrotikProvisioningService extends TenantAwareService
     }
     
     /**
-     * Verify router connectivity with connection locking to prevent concurrent API access
+     * Verify router connectivity via SSH (no RouterOS API)
      */
     public function verifyConnectivity(Router $router): array
     {
-        $lockKey = "router_api_lock_{$router->id}";
-        
-        // Try to acquire lock with 35 second timeout (5 seconds more than API timeout)
-        $lock = Cache::lock($lockKey, 35);
-        
         try {
-            // Wait up to 35 seconds to acquire the lock
-            if (!$lock->block(35)) {
-                Log::warning('Failed to acquire router API lock - another operation in progress', [
-                    'router_id' => $router->id,
-                ]);
-                return [
-                    'status' => 'busy',
-                    'message' => 'Router is busy with another operation',
-                ];
-            }
-            
-            $decryptedPassword = Crypt::decrypt($router->password);
-            Log::info('Verifying connectivity:', [
+            Log::info('Verifying connectivity via SSH:', [
                 'router_id' => $router->id,
                 'ip_address' => $router->ip_address,
+                'vpn_ip' => $router->vpn_ip,
                 'username' => $router->username,
                 'port' => $router->port,
             ]);
-        } catch (\Exception $e) {
-            $lock->release();
-            Log::error('Password decryption failed:', [
-                'router_id' => $router->id,
-                'error' => $e->getMessage(),
-            ]);
-            return [
-                'status' => 'failed',
-                'message' => 'Failed to decrypt password',
-                'error' => $e->getMessage(),
-            ];
-        }
 
-        // Use VPN IP if available
-        $ip = $router->vpn_ip ?? $router->ip_address;
-        $host = explode('/', $ip)[0];
+            // Use short timeout for connectivity check
+            $ssh = new SshExecutor($router, 10);
+            $ssh->connect();
 
-        try {
-            $client = new Client([
-                'host' => $host,
-                'user' => $router->username,
-                'pass' => $decryptedPassword,
-                'port' => $router->port,
-                'timeout' => 15,
-            ]);
+            // Identity and system resource info
+            $identityOutput = $ssh->exec('/system identity print');
+            $resourceOutput = $ssh->exec('/system resource print');
+            $interfacesOutput = $ssh->exec('/interface print count-only');
 
-            $identity = $client->query(new Query('/system/identity/print'))->read();
-            $resource = $client->query(new Query('/system/resource/print'))->read();
-            $interfaces = $client->query(new Query('/interface/print'))->read();
+            $identity = $this->parseSingleKeyValueBlock($identityOutput);
+            $resource = $this->parseSingleKeyValueBlock($resourceOutput);
 
-            $model = $resource[0]['board-name'] ?? 'Unknown';
-            $osVersion = $resource[0]['version'] ?? 'Unknown';
+            $model = $resource['board-name'] ?? 'Unknown';
+            $osVersion = $resource['version'] ?? 'Unknown';
 
-            Log::info('Connectivity verified successfully:', [
+            // Parse interface count (best-effort)
+            $interfacesCount = 0;
+            if (!empty($interfacesOutput)) {
+                $interfacesCount = (int) trim($interfacesOutput);
+            }
+
+            Log::info('Connectivity verified successfully via SSH:', [
                 'router_id' => $router->id,
                 'model' => $model,
                 'os_version' => $osVersion,
-                'interfaces_count' => count($interfaces),
+                'interfaces_count' => $interfacesCount,
             ]);
 
             return [
                 'status' => 'connected',
                 'model' => $model,
                 'os_version' => $osVersion,
-                'identity' => $identity[0]['name'] ?? 'Unknown',
-                'interfaces' => $interfaces,
+                'identity' => $identity['name'] ?? 'Unknown',
+                'interfaces' => [], // SSH path does not return full interface list here
                 'last_seen' => now(),
             ];
         } catch (\Exception $e) {
-            Log::warning('Connectivity verification failed:', [
+            Log::warning('Connectivity verification via SSH failed:', [
                 'router_id' => $router->id,
-                'host' => $host,
                 'error' => $e->getMessage(),
             ]);
 
             return [
                 'status' => 'failed',
-                'message' => 'Unable to connect to router',
+                'message' => 'Unable to connect to router via SSH',
                 'error' => $e->getMessage(),
             ];
-        } finally {
-            // Always release the lock
-            $lock->release();
         }
+    }
+
+    /**
+     * Helper: parse RouterOS key/value print output into array of rows
+     */
+    private function parseKeyValueList(string $output): array
+    {
+        $rows = [];
+        $current = [];
+
+        $lines = preg_split('/\r?\n/', $output);
+        foreach ($lines as $line) {
+            $line = trim($line);
+            if ($line === '' || str_starts_with($line, ';;;')) {
+                continue;
+            }
+
+            // New row often starts with an index like "0   name=..."
+            if (preg_match('/^\d+\s+/', $line)) {
+                if (!empty($current)) {
+                    $rows[] = $current;
+                    $current = [];
+                }
+            }
+
+            // Extract key=value pairs
+            if (preg_match_all('/(\w+)=([^\s"]+|"[^"]*")/', $line, $matches, PREG_SET_ORDER)) {
+                foreach ($matches as $match) {
+                    $key = $match[1];
+                    $value = trim($match[2], '"');
+                    $current[$key] = $value;
+                }
+            }
+        }
+
+        if (!empty($current)) {
+            $rows[] = $current;
+        }
+
+        return $rows;
+    }
+
+    /**
+     * Helper: parse a single-key/value block (e.g. /system resource print)
+     */
+    private function parseSingleKeyValueBlock(string $output): array
+    {
+        $result = [];
+        $lines = preg_split('/\r?\n/', $output);
+        foreach ($lines as $line) {
+            $line = trim($line);
+            if ($line === '' || str_starts_with($line, ';;;')) {
+                continue;
+            }
+
+            if (preg_match_all('/(\w+):\s*([^\r\n]+)/', $line, $matches, PREG_SET_ORDER)) {
+                foreach ($matches as $match) {
+                    $key = $match[1];
+                    $value = trim($match[2]);
+                    $result[$key] = $value;
+                }
+            }
+        }
+
+        return $result;
     }
     
     /**
@@ -731,30 +638,22 @@ class MikrotikProvisioningService extends TenantAwareService
                 'script_preview' => substr($serviceScript, 0, 200) . (strlen($serviceScript) > 200 ? '...' : '')
             ]);
 
-            // 3. Get router credentials
-            $decryptedPassword = Crypt::decrypt($router->password);
-            $host = explode('/', $router->ip_address)[0];
-            
-            // 4. Connect to router
+            // 3. Connect via SSH (SSH-ONLY approach - credentials decrypted once in SshExecutor)
             if ($broadcast) {
                 RouterProvisioningProgress::dispatch(
                     $router->id,
                     'connecting',
                     20,
-                    'Connecting to router',
-                    ['host' => $host, 'port' => $router->port]
+                    'Connecting to router via SSH',
+                    ['method' => 'SSH']
                 );
             }
 
+            // Initialize SSH executor (credentials decrypted ONCE here)
+            $ssh = new SshExecutor($router, 30);
+            
             try {
-                $client = new Client([
-                    'host' => $host,
-                    'user' => $router->username,
-                    'pass' => $decryptedPassword,
-                    'port' => $router->port,
-                    'timeout' => 120, // 2 minutes timeout for large script execution
-                    'attempts' => 2,
-                ]);
+                $ssh->connect();
                 
                 if ($broadcast) {
                     broadcast(new RouterConnected($router))->toOthers();
@@ -763,290 +662,131 @@ class MikrotikProvisioningService extends TenantAwareService
                         'connected',
                         30,
                         'Successfully connected to router',
-                        ['host' => $host]
+                        ['method' => 'SSH']
                     );
                 }
+                
             } catch (\Exception $e) {
-                $errorMsg = 'Failed to connect to router: ' . $e->getMessage();
+                $errorMsg = 'Failed to connect to router via SSH: ' . $e->getMessage();
                 if ($broadcast) {
                     ProvisioningFailed::dispatch(
                         $router->id,
                         'connection_failed',
                         $errorMsg,
-                        [
-                            'host' => $host,
-                            'port' => $router->port,
-                            'error' => $e->getMessage()
-                        ]
+                        ['error' => $e->getMessage()]
                     );
                 }
                 throw new \Exception($errorMsg, 503, $e);
             }
 
-            // 5. Split script into chunks if too large
-            $maxChunkSize = 4000; // RouterOS has a limit on script size
-            $chunks = str_split($serviceScript, $maxChunkSize);
-            
-            // 7. Prepare system script for execution
-            $scriptName = "hotspot_config_" . $router->id . "_" . time();
+            // 4. Apply configuration directly via SSH commands (no file upload/import)
+            $scriptName = "svc_deploy_" . $router->id . "_" . time();
             
             if ($broadcast) {
                 RouterProvisioningProgress::dispatch(
                     $router->id,
-                    'uploading_script',
+                    'applying_config',
                     40,
-                    'Preparing configuration script',
+                    'Applying configuration via SSH',
                     ['script_name' => $scriptName]
                 );
             }
 
-            Log::info('Preparing configuration script for execution', [
+            Log::info('Applying configuration script via SSH (direct commands)', [
                 'router_id' => $router->id,
                 'script_name' => $scriptName,
                 'script_length' => strlen($serviceScript),
             ]);
             
             try {
-                // Upload .rsc file and import - MUCH faster than executing via API!
-                $rscFileName = $scriptName . '.rsc';
-                
-                Log::info('Preparing to upload .rsc file', [
-                    'router_id' => $router->id,
-                    'file_name' => $rscFileName,
-                    'content_length' => strlen($serviceScript)
-                ]);
-                
-                // Use FTP upload (fast and reliable)
-                $uploadSuccessful = false;
-                
-                // SECURITY: Enable FTP service temporarily for upload
-                Log::info('Enabling FTP service temporarily', ['router_id' => $router->id]);
-                try {
-                    $client->query((new Query('/ip/service/set'))
-                        ->equal('numbers', 'ftp')
-                        ->equal('disabled', 'no')
-                    )->read();
-                    Log::info('FTP service enabled', ['router_id' => $router->id]);
-                } catch (\Exception $e) {
-                    Log::warning('Could not enable FTP service', [
-                        'router_id' => $router->id,
-                        'error' => $e->getMessage()
-                    ]);
-                    // Continue anyway - FTP might already be enabled
+                // Split script into individual RouterOS commands
+                $lines = preg_split('/\r\n|\n|\r/', $serviceScript);
+                $commands = [];
+                foreach ($lines as $line) {
+                    $line = trim($line);
+                    if ($line === '' || str_starts_with($line, '#')) {
+                        continue; // skip empty lines and comments
+                    }
+                    $commands[] = $line;
                 }
-                
-                Log::info('Attempting FTP upload', ['router_id' => $router->id, 'host' => $host]);
-                
-                try {
-                    // Connect to FTP (no error suppression for proper logging)
-                    $ftpConnection = ftp_connect($host, 21, 10);
-                    
-                    if (!$ftpConnection) {
-                        $lastError = error_get_last();
-                        throw new \Exception('FTP connection failed: ' . ($lastError['message'] ?? 'Unknown error'));
-                    }
-                    
-                    Log::info('FTP connected successfully', ['router_id' => $router->id]);
-                    
-                    // Login to FTP
-                    if (!ftp_login($ftpConnection, $router->username, $decryptedPassword)) {
-                        ftp_close($ftpConnection);
-                        throw new \Exception('FTP login failed - invalid credentials');
-                    }
-                    
-                    Log::info('FTP login successful', ['router_id' => $router->id]);
-                    
-                    // Enable passive mode
-                    ftp_pasv($ftpConnection, true);
-                    
-                    // Create temporary file
-                    $tempFile = tempnam(sys_get_temp_dir(), 'rsc_');
-                    file_put_contents($tempFile, $serviceScript);
-                    
-                    Log::info('Uploading file to router', [
-                        'router_id' => $router->id,
-                        'file_name' => $rscFileName,
-                        'size' => strlen($serviceScript)
-                    ]);
-                    
-                    // Upload file
-                    if (!ftp_put($ftpConnection, $rscFileName, $tempFile, FTP_ASCII)) {
-                        unlink($tempFile);
-                        ftp_close($ftpConnection);
-                        throw new \Exception('FTP upload failed - file transfer error');
-                    }
-                    
-                    $uploadSuccessful = true;
-                    
-                    Log::info('File uploaded via FTP successfully', [
-                        'router_id' => $router->id,
-                        'file_name' => $rscFileName,
-                        'size' => strlen($serviceScript)
-                    ]);
-                    
-                    // Cleanup
-                    unlink($tempFile);
-                    ftp_close($ftpConnection);
-                    
-                } catch (\Exception $ftpError) {
-                    Log::error('FTP upload failed', [
-                        'router_id' => $router->id,
-                        'error' => $ftpError->getMessage(),
-                        'host' => $host,
-                        'port' => 21
-                    ]);
-                    
-                    // SECURITY: Disable FTP service on failure
-                    try {
-                        $client->query((new Query('/ip/service/set'))
-                            ->equal('numbers', 'ftp')
-                            ->equal('disabled', 'yes')
-                        )->read();
-                        Log::info('FTP service disabled after upload failure', ['router_id' => $router->id]);
-                    } catch (\Exception $e) {
-                        Log::warning('Could not disable FTP service after failure', [
-                            'router_id' => $router->id,
-                            'error' => $e->getMessage()
-                        ]);
-                    }
-                    
-                    // FTP is the only supported upload method
-                    throw new \Exception('Failed to upload configuration file via FTP: ' . $ftpError->getMessage());
-                }
-                
-                // Import the .rsc file - this is FAST!
-                Log::info('Importing .rsc file', [
-                    'router_id' => $router->id,
-                    'file_name' => $rscFileName
-                ]);
-                
-                try {
-                    $importResult = $client->query((new Query('/import'))
-                        ->equal('file-name', $rscFileName)
-                    )->read();
 
-                    Log::info('.rsc file imported successfully', [
-                        'router_id' => $router->id,
-                        'file_name' => $rscFileName,
-                        'result' => $importResult
-                    ]);
-                    
-                    // CRITICAL: Verify deployment was successful
-                    Log::info('Verifying deployment...', ['router_id' => $router->id]);
-                    
-                    sleep(2); // Give router time to process configuration
-                    
-                    try {
-                        // Check if hotspot was created
-                        $hotspots = $client->query(new Query('/ip/hotspot/print'))->read();
-                        
-                        if (empty($hotspots)) {
-                            Log::error('Deployment verification failed - no hotspot found', [
-                                'router_id' => $router->id,
-                                'expected' => 'hotspot configuration',
-                                'found' => 'none'
-                            ]);
-                            throw new \Exception('Deployment verification failed: Hotspot configuration not found on router after import. The import may have failed silently.');
-                        }
-                        
-                        Log::info('Deployment verified successfully', [
-                            'router_id' => $router->id,
-                            'hotspot_count' => count($hotspots),
-                            'hotspot_names' => array_map(function($h) { return $h['name'] ?? 'unnamed'; }, $hotspots)
-                        ]);
-                        
-                    } catch (\Exception $verifyError) {
-                        Log::error('Deployment verification check failed', [
-                            'router_id' => $router->id,
-                            'error' => $verifyError->getMessage()
-                        ]);
-                        // Don't throw here - verification query might fail for other reasons
-                        // The import succeeded, so we'll trust it
-                    }
-                    
-                    // Clean up the .rsc file after successful import
-                    try {
-                        $client->query((new Query('/file/remove'))
-                            ->equal('.id', $rscFileName)
-                        )->read();
-                        Log::info('.rsc file deleted successfully', [
-                            'router_id' => $router->id,
-                            'file_name' => $rscFileName
-                        ]);
-                    } catch (\Exception $e) {
-                        Log::warning('.rsc file cleanup failed (non-critical)', [
-                            'router_id' => $router->id,
-                            'file_name' => $rscFileName,
-                            'error' => $e->getMessage()
-                        ]);
-                    }
-                    
-                    // SECURITY: Disable FTP service after successful deployment
-                    Log::info('Disabling FTP service for security', ['router_id' => $router->id]);
-                    try {
-                        $client->query((new Query('/ip/service/set'))
-                            ->equal('numbers', 'ftp')
-                            ->equal('disabled', 'yes')
-                        )->read();
-                        Log::info('FTP service disabled successfully', ['router_id' => $router->id]);
-                    } catch (\Exception $e) {
-                        Log::warning('Could not disable FTP service', [
-                            'router_id' => $router->id,
-                            'error' => $e->getMessage()
-                        ]);
-                        // Non-critical - continue
-                    }
-                    
-                    // SECURITY: Apply comprehensive security hardening
-                    Log::info('Applying security hardening', ['router_id' => $router->id]);
-                    try {
-                        $securityService = new \App\Services\MikroTik\SecurityHardeningService();
-                        $hardeningResult = $securityService->applySecurityHardening($router);
-                        
-                        if ($hardeningResult['success']) {
-                            Log::info('Security hardening applied successfully', [
-                                'router_id' => $router->id,
-                                'applied' => $hardeningResult['applied']
-                            ]);
-                        } else {
-                            Log::warning('Security hardening completed with errors', [
-                                'router_id' => $router->id,
-                                'errors' => $hardeningResult['errors']
-                            ]);
-                        }
-                    } catch (\Exception $e) {
-                        Log::warning('Security hardening failed (non-critical)', [
-                            'router_id' => $router->id,
-                            'error' => $e->getMessage()
-                        ]);
-                        // Non-critical - continue
-                    }
-                    
-                } catch (\Exception $execErr) {
-                    Log::error('.rsc file import failed', [
-                        'router_id' => $router->id,
-                        'file_name' => $rscFileName,
-                        'error'       => $execErr->getMessage(),
-                    ]);
-                    throw $execErr;
+                if (empty($commands)) {
+                    throw new \Exception('No executable commands found in service script');
                 }
+
+                if ($broadcast) {
+                    RouterProvisioningProgress::dispatch(
+                        $router->id,
+                        'executing_script',
+                        70,
+                        'Executing configuration commands with automatic retry',
+                        ['command_count' => count($commands)]
+                    );
+                }
+
+                // Execute commands with automatic retry logic (3 attempts with exponential backoff)
+                // This handles transient failures automatically without manual intervention
+                $validator = function($sshExecutor) use ($router) {
+                    // Validate deployment by checking if services were created
+                    try {
+                        $hotspotCount = (int)trim($sshExecutor->exec('/ip hotspot print count-only'));
+                        $pppoeCount = (int)trim($sshExecutor->exec('/interface pppoe-server server print count-only'));
+                        
+                        if ($hotspotCount > 0 || $pppoeCount > 0) {
+                            Log::info('Service deployment validation passed', [
+                                'router_id' => $router->id,
+                                'hotspot_count' => $hotspotCount,
+                                'pppoe_count' => $pppoeCount,
+                            ]);
+                            return ['valid' => true];
+                        }
+                        
+                        return [
+                            'valid' => false,
+                            'error' => 'No services were created (hotspot: 0, pppoe: 0)'
+                        ];
+                    } catch (\Exception $e) {
+                        return [
+                            'valid' => false,
+                            'error' => 'Validation check failed: ' . $e->getMessage()
+                        ];
+                    }
+                };
                 
-                // Clean up - remove the script after execution
-                try {
-                    $client->query((new Query('/system/script/remove'))
-                        ->equal('numbers', $scriptName)
-                    )->read();
-                    Log::info('System script cleaned up', ['script_name' => $scriptName]);
-                } catch (\Exception $cleanupError) {
-                    Log::warning('Failed to clean up system script', [
-                        'script_name' => $scriptName,
-                        'error' => $cleanupError->getMessage()
-                    ]);
+                $executionResult = $ssh->execBatchWithRetry(
+                    $commands,
+                    3,  // Max 3 retry attempts
+                    2,  // Base delay of 2 seconds (2s, 4s, 8s exponential backoff)
+                    $validator
+                );
+
+                if (!$executionResult['success']) {
+                    throw new \Exception($executionResult['message']);
+                }
+
+                Log::info('Configuration commands executed successfully', [
+                    'router_id' => $router->id,
+                    'command_count' => count($commands),
+                    'attempts' => $executionResult['attempt'],
+                ]);
+
+                // Brief wait for router to stabilize
+                sleep(1);
+
+                // Final verification
+                if ($broadcast) {
+                    RouterProvisioningProgress::dispatch(
+                        $router->id,
+                        'verifying',
+                        85,
+                        'Verifying deployment',
+                        ['status' => 'verifying', 'attempts' => $executionResult['attempt']]
+                    );
                 }
                 
             } catch (\Exception $e) {
-                $errorMsg = 'Failed to execute configuration script: ' . $e->getMessage();
-                Log::error('Script execution failed', [
+                $errorMsg = 'Failed to execute configuration script via SSH commands: ' . $e->getMessage();
+                Log::error('Script execution failed (direct SSH)', [
                     'router_id' => $router->id,
                     'error' => $e->getMessage(),
                     'content_preview' => substr($serviceScript, 0, 200)
@@ -1060,62 +800,18 @@ class MikrotikProvisioningService extends TenantAwareService
                     );
                 }
                 throw new \Exception($errorMsg, 500, $e);
-            }
-
-            // 8. Script execution completed
-            if ($broadcast) {
-                RouterProvisioningProgress::dispatch(
-                    $router->id,
-                    'executing_script',
-                    60,
-                    'Configuration script executed successfully',
-                    ['script_name' => $scriptName ?? 'hotspot_config']
-                );
-            }
-
-            Log::info('Configuration script executed successfully', [
-                'router_id' => $router->id,
-                'execution_time' => round(microtime(true) - $startTime, 2) . 's',
-                'script_name' => $scriptName ?? 'hotspot_config'
-            ]);
-
-            // 10. Verify the deployment (with a small delay to allow changes to take effect)
-            if ($broadcast) {
-                RouterProvisioningProgress::dispatch(
-                    $router->id,
-                    'verifying',
-                    80,
-                    'Verifying deployment',
-                    ['status' => 'verifying']
-                );
-            }
-            
-            sleep(3); // Wait 3 seconds for the router to apply changes
-            $verification = $this->verifyHotspotDeployment($router);
-            
-            if (!$verification['success']) {
-                // If verification fails, try one more time after a short delay
-                sleep(5);
-                $verification = $this->verifyHotspotDeployment($router);
-                
-                if (!$verification['success']) {
-                    // Log warning but don't fail - the configuration might be applied but verification is too strict
-                    Log::warning('Hotspot deployment verification failed, but continuing anyway', [
-                        'router_id' => $router->id,
-                        'message' => $verification['message'] ?? 'Unknown error',
-                        'checks' => $verification['checks'] ?? []
-                    ]);
-                    // Don't throw exception - allow provisioning to complete
-                }
+            } finally {
+                // Always disconnect SSH and cleanup credentials
+                $ssh->disconnect();
             }
 
             $result = [
                 'success' => true,
-                'message' => 'Configuration applied successfully',
-                'verification' => $verification,
+                'message' => 'Configuration applied successfully via SSH',
                 'execution_time' => round(microtime(true) - $startTime, 2) . 's',
                 'script_name' => $scriptName,
                 'router_id' => $router->id,
+                'method' => 'SSH'
             ];
 
             if ($broadcast) {
@@ -1123,12 +819,12 @@ class MikrotikProvisioningService extends TenantAwareService
                     $router->id,
                     'completed',
                     100,
-                    'Provisioning completed successfully',
+                    'Service deployment completed successfully',
                     array_merge($result, ['status' => 'completed'])
                 );
             }
 
-            Log::info('Configuration applied successfully', $result);
+            Log::info('Configuration applied successfully via SSH', $result);
             return $result;
 
         } catch (\Exception $e) {
@@ -1137,43 +833,24 @@ class MikrotikProvisioningService extends TenantAwareService
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
                 'execution_time' => round(microtime(true) - $startTime, 2) . 's',
-                'script_name' => $scriptName,
+                'script_name' => $scriptName ?? 'unknown',
             ];
             
-            Log::error('Failed to apply configuration', $errorContext);
+            Log::error('Failed to apply configuration via SSH', $errorContext);
             
             // Convert to a more user-friendly error message
             $errorMessage = $e->getMessage();
             
             if (str_contains($errorMessage, 'Unable to connect to') || 
-                str_contains($errorMessage, 'Connection timed out')) {
-                $errorMessage = 'Unable to connect to router. Please check network connectivity and credentials.';
-            } elseif (str_contains($errorMessage, 'invalid user name or password')) {
-                $errorMessage = 'Authentication failed. Please check the router credentials.';
-            } elseif (str_contains($errorMessage, 'script already exists')) {
-                $errorMessage = 'A script with this name already exists on the router. Please try again in a moment.';
-            } elseif (str_contains($errorMessage, 'script not found')) {
-                $errorMessage = 'Failed to execute script on router. The script may have been removed.';
+                str_contains($errorMessage, 'Connection timed out') ||
+                str_contains($errorMessage, 'SSH connection failed')) {
+                $errorMessage = 'Unable to connect to router via SSH. Please check network connectivity and credentials.';
+            } elseif (str_contains($errorMessage, 'authentication failed') || 
+                      str_contains($errorMessage, 'invalid user name or password')) {
+                $errorMessage = 'SSH authentication failed. Please check the router credentials.';
             }
             
             throw new \Exception($errorMessage, $e->getCode(), $e);
-            
-        } finally {
-            // 11. Always clean up the script if client is available
-            if ($client !== null) {
-                try {
-                    $client->query((new Query('/system/script/remove'))
-                        ->equal('.id', $scriptName)
-                    )->read();
-                    Log::debug('Script cleaned up', ['script_name' => $scriptName]);
-                } catch (\Exception $cleanupException) {
-                    Log::warning('Failed to clean up script', [
-                        'router_id' => $router->id,
-                        'script_name' => $scriptName,
-                        'error' => $cleanupException->getMessage(),
-                    ]);
-                }
-            }
         }
     }
     
