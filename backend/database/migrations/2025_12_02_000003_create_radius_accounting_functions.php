@@ -13,7 +13,10 @@ return new class extends Migration
     public function up(): void
     {
         // Drop existing functions to avoid conflicts
-        // Use CASCADE to drop all versions regardless of signature
+        // First drop the old radius_accounting_stop with its exact old signature
+        DB::statement("DROP FUNCTION IF EXISTS radius_accounting_stop(character varying,character varying,bigint,integer,bigint,bigint,character varying,character varying) CASCADE");
+        
+        // Then drop all other functions using CASCADE to handle any signature variations
         DB::statement("DROP FUNCTION IF EXISTS radius_accounting_onoff CASCADE");
         DB::statement("DROP FUNCTION IF EXISTS radius_accounting_start CASCADE");
         DB::statement("DROP FUNCTION IF EXISTS radius_accounting_stop CASCADE");
