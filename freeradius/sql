@@ -8,6 +8,12 @@ sql {
     password = "secret"
     radius_db = "wms_770_ts"
 
+    # PostgreSQL-specific connection options
+    # Ensure search_path is set to public schema by default
+    postgresql {
+        send_application_name = no
+    }
+
     # IMPORTANT: Schema-based multi-tenancy support
     # FreeRADIUS will use radius_user_schema_mapping to determine tenant schema
     # Then switch to that schema before querying RADIUS tables
