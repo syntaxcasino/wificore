@@ -16,9 +16,12 @@ return new class extends Migration
         // First drop the old radius_accounting_stop with its exact old signature
         DB::statement("DROP FUNCTION IF EXISTS radius_accounting_stop(character varying,character varying,bigint,integer,bigint,bigint,character varying,character varying) CASCADE");
         
+        // Drop both versions of radius_accounting_start explicitly
+        DB::statement("DROP FUNCTION IF EXISTS radius_accounting_start(character varying,character varying,character varying,character varying,character varying,character varying,bigint,character varying,character varying,character varying,character varying,character varying,character varying,character varying) CASCADE");
+        DB::statement("DROP FUNCTION IF EXISTS radius_accounting_start(character varying,character varying,character varying,character varying,character varying,character varying,character varying,character varying) CASCADE");
+        
         // Then drop all other functions using CASCADE to handle any signature variations
         DB::statement("DROP FUNCTION IF EXISTS radius_accounting_onoff CASCADE");
-        DB::statement("DROP FUNCTION IF EXISTS radius_accounting_start CASCADE");
         DB::statement("DROP FUNCTION IF EXISTS radius_accounting_stop CASCADE");
         DB::statement("DROP FUNCTION IF EXISTS radius_accounting_update CASCADE");
         DB::statement("DROP FUNCTION IF EXISTS radius_post_auth_insert CASCADE");
