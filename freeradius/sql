@@ -2,8 +2,8 @@ sql {
     driver = "rlm_sql_postgresql"
     dialect = "postgresql"
 
-    server = "wificore-pgbouncer"
-    port = 6432
+    server = "wificore-postgres"
+    port = 5432
     login = "admin"
     password = "secret"
     radius_db = "wms_770_ts"
@@ -44,7 +44,7 @@ sql {
         max = 10
         spare = 3
         uses = 0
-        lifetime = 0
+        lifetime = 300
         idle_timeout = 60
         retry_delay = 1
     }
