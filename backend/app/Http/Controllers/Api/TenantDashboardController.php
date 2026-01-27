@@ -33,7 +33,7 @@ class TenantDashboardController extends Controller
         // Cache key specific to this tenant
         $cacheKey = "tenant_{$tenantId}_dashboard_stats";
 
-        $stats = Cache::remember($cacheKey, 300, function () use ($tenantId) {
+        $stats = Cache::remember($cacheKey, 60, function () use ($tenantId) {
             return [
                 'users' => [
                     'total' => User::where('tenant_id', $tenantId)->count(),

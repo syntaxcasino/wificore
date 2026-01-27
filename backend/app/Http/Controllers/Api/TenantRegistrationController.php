@@ -147,7 +147,7 @@ class TenantRegistrationController extends Controller
             event(new \App\Events\TenantEmailVerified($registration));
 
             // Dispatch workspace creation job to queue
-            CreateTenantWorkspaceJob::dispatch($registration)
+            CreateTenantWorkspaceJob::dispatch($registration->id)
                 ->onQueue('tenant-management');
             
             Log::info('Workspace creation job dispatched', [

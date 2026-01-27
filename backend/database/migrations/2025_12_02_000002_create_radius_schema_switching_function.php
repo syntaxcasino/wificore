@@ -13,17 +13,17 @@ return new class extends Migration
     public function up(): void
     {
         // Create function to get user's schema
-        DB::statement("
+        DB::statement('
             CREATE OR REPLACE FUNCTION get_user_schema(p_username VARCHAR)
-            RETURNS VARCHAR AS $$
+            RETURNS VARCHAR AS $func$
             DECLARE
                 v_schema VARCHAR;
             BEGIN
                 -- Check if user is a system admin (in public schema)
-                SELECT 'public' INTO v_schema
+                SELECT \'public\' INTO v_schema
                 FROM public.users
                 WHERE username = p_username
-                AND role = 'system_admin'
+                AND role = \'system_admin\'
                 LIMIT 1;
                 
                 IF v_schema IS NOT NULL THEN
@@ -36,25 +36,16 @@ return new class extends Migration
                 WHERE username = p_username
                 AND is_active = true
                 LIMIT 1;
-                
-                -- If no mapping found, try to get from user's tenant
-                IF v_schema IS NULL THEN
-                    SELECT t.schema_name INTO v_schema
-                    FROM public.users u
-                    INNER JOIN public.tenants t ON u.tenant_id = t.id
-                    WHERE u.username = p_username
-                    AND t.schema_created = true
-                    LIMIT 1;
-                END IF;
-                
-                -- Default to public if no schema found
-                RETURN COALESCE(v_schema, 'public');
+
+                -- Do not guess. Tenant users must exist in radius_user_schema_mapping.
+                -- Return NULL when no mapping exists so RADIUS SQL functions can treat it as "user not found".
+                RETURN v_schema;
             END;
-            $$ LANGUAGE plpgsql SECURITY DEFINER;
-        ");
+            $func$ LANGUAGE plpgsql SECURITY DEFINER
+        ');
         
         // Create function to check RADIUS credentials (schema-aware)
-        DB::statement("
+        DB::statement('
             CREATE OR REPLACE FUNCTION radius_check_password(
                 p_username VARCHAR,
                 p_password VARCHAR
@@ -64,19 +55,20 @@ return new class extends Migration
                 attribute VARCHAR,
                 op VARCHAR,
                 value VARCHAR
-            ) AS $$
+            ) AS $func$
             DECLARE
                 v_schema VARCHAR;
                 v_query TEXT;
             BEGIN
-                -- Get user's schema
+                -- Get user\'s schema
                 v_schema := get_user_schema(p_username);
+
+                IF v_schema IS NULL OR v_schema = \'\' THEN
+                    RETURN;
+                END IF;
                 
-                -- Set search path to user's schema
-                EXECUTE format('SET search_path TO %I, public', v_schema);
-                
-                -- Query radcheck table in the correct schema
-                RETURN QUERY EXECUTE format('
+                -- Query radcheck table in the correct schema using fully qualified name
+                RETURN QUERY EXECUTE format(\'
                     SELECT 
                         username::VARCHAR,
                         attribute::VARCHAR,
@@ -85,35 +77,33 @@ return new class extends Migration
                     FROM %I.radcheck
                     WHERE username = $1
                     ORDER BY id
-                ', v_schema)
+                \', v_schema)
                 USING p_username;
-                
-                -- Reset search path
-                SET search_path TO public;
             END;
-            $$ LANGUAGE plpgsql SECURITY DEFINER;
-        ");
+            $func$ LANGUAGE plpgsql SECURITY DEFINER
+        ');
         
         // Create function to get RADIUS reply attributes (schema-aware)
-        DB::statement("
+        DB::statement('
             CREATE OR REPLACE FUNCTION radius_get_reply(p_username VARCHAR)
             RETURNS TABLE(
                 username VARCHAR,
                 attribute VARCHAR,
                 op VARCHAR,
                 value VARCHAR
-            ) AS $$
+            ) AS $func$
             DECLARE
                 v_schema VARCHAR;
             BEGIN
-                -- Get user's schema
+                -- Get user\'s schema
                 v_schema := get_user_schema(p_username);
+
+                IF v_schema IS NULL OR v_schema = \'\' THEN
+                    RETURN;
+                END IF;
                 
-                -- Set search path to user's schema
-                EXECUTE format('SET search_path TO %I, public', v_schema);
-                
-                -- Query radreply table in the correct schema
-                RETURN QUERY EXECUTE format('
+                -- Query radreply table in the correct schema using fully qualified name
+                RETURN QUERY EXECUTE format(\'
                     SELECT 
                         username::VARCHAR,
                         attribute::VARCHAR,
@@ -122,17 +112,14 @@ return new class extends Migration
                     FROM %I.radreply
                     WHERE username = $1
                     ORDER BY id
-                ', v_schema)
+                \', v_schema)
                 USING p_username;
-                
-                -- Reset search path
-                SET search_path TO public;
             END;
-            $$ LANGUAGE plpgsql SECURITY DEFINER;
-        ");
+            $func$ LANGUAGE plpgsql SECURITY DEFINER
+        ');
         
         // Create function to log RADIUS accounting (schema-aware)
-        DB::statement("
+        DB::statement('
             CREATE OR REPLACE FUNCTION radius_accounting_start(
                 p_username VARCHAR,
                 p_session_id VARCHAR,
@@ -143,18 +130,22 @@ return new class extends Migration
                 p_called_station VARCHAR,
                 p_calling_station VARCHAR
             )
-            RETURNS VOID AS $$
+            RETURNS VOID AS $func$
             DECLARE
                 v_schema VARCHAR;
             BEGIN
-                -- Get user's schema
+                -- Get user\'s schema
                 v_schema := get_user_schema(p_username);
+
+                IF v_schema IS NULL OR v_schema = \'\' THEN
+                    RETURN;
+                END IF;
                 
-                -- Set search path to user's schema
-                EXECUTE format('SET search_path TO %I, public', v_schema);
+                -- Set search path to user\'s schema
+                EXECUTE format(\'SET search_path TO %I, public\', v_schema);
                 
                 -- Insert accounting record in the correct schema
-                EXECUTE format('
+                EXECUTE format(\'
                     INSERT INTO %I.radacct (
                         acctsessionid, acctuniqueid, username,
                         nasipaddress, nasportid, nasporttype,
@@ -164,7 +155,7 @@ return new class extends Migration
                         $1, $2, $3, $4::inet, $5, $6,
                         NOW(), NOW(), $7, $8
                     )
-                ', v_schema)
+                \', v_schema)
                 USING p_session_id, p_unique_id, p_username,
                       p_nas_ip, p_nas_port, p_nas_port_type,
                       p_called_station, p_calling_station;
@@ -172,8 +163,8 @@ return new class extends Migration
                 -- Reset search path
                 SET search_path TO public;
             END;
-            $$ LANGUAGE plpgsql SECURITY DEFINER;
-        ");
+            $func$ LANGUAGE plpgsql SECURITY DEFINER
+        ');
         
         \Log::info("Created RADIUS schema-switching functions");
     }

@@ -38,6 +38,7 @@ docker compose build wificore-wireguard
 
 echo "Building PgBouncer..."
 docker compose build wificore-pgbouncer
+docker compose build wificore-pgbouncer-read
 # ==========================
 # TAG
 # ==========================
@@ -54,9 +55,6 @@ docker tag wificore-wificore-postgres:latest   $DOCKERHUB_USERNAME/$REPO_NAME:${
 # Tag new Phase 1 services
 docker tag wificore-wificore-wireguard:latest  $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-wireguard-$GIT_SHA
 docker tag wificore-wificore-pgbouncer:latest  $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-pgbouncer-$GIT_SHA
-
-# Redis is already tagged correctly by docker-compose, just add git SHA tag
-docker tag $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-redis $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-redis-$GIT_SHA
 
 # Tag with "latest" style tags
 docker tag $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-backend-$GIT_SHA    $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-backend
@@ -79,7 +77,6 @@ docker push $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-nginx-$GIT_SHA
 docker push $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-postgres-$GIT_SHA
 docker push $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-freeradius-$GIT_SHA
 docker push $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-soketi-$GIT_SHA
-docker push $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-redis-$GIT_SHA
 docker push $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-wireguard-$GIT_SHA
 docker push $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-pgbouncer-$GIT_SHA
 
@@ -91,7 +88,6 @@ docker push $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-nginx
 docker push $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-postgres
 docker push $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-freeradius
 docker push $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-soketi
-docker push $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-redis
 docker push $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-wireguard
 docker push $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-pgbouncer
 
@@ -104,8 +100,8 @@ echo "  - Nginx: $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-nginx"
 echo "  - PostgreSQL: $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-postgres"
 echo "  - FreeRADIUS: $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-freeradius"
 echo "  - Soketi: $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-soketi"
-echo "  - Redis: $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-redis"
 echo "  - WireGuard: $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-wireguard"
 echo "  - PgBouncer: $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-pgbouncer"
+echo "  - PgBouncer Read: uses the same image tag as PgBouncer ($DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-pgbouncer)"
 echo ""
 echo "⏰ Completed at: $(date '+%Y-%m-%d %H:%M:%S %Z')"

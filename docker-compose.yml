@@ -87,9 +87,12 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
+      - APP_KEY=${APP_KEY}
       - DB_CONNECTION=${DB_CONNECTION:-pgsql}
-      - DB_HOST=${DB_HOST:-wificore-postgres}
-      - DB_PORT=${DB_PORT:-5432}
+      - DB_HOST=${DB_HOST:-wificore-pgbouncer}
+      - DB_READ_HOST=${DB_READ_HOST:-wificore-pgbouncer-read}
+      - DB_PORT=${DB_PORT:-6432}
+      - DB_READ_PORT=${DB_READ_PORT:-6432}
       - DB_DATABASE=${DB_DATABASE:-wms_770_ts}
       - DB_USERNAME=${DB_USERNAME:-admin}
       - DB_PASSWORD=${DB_PASSWORD}
@@ -144,6 +147,19 @@ services:
       - VPN_SUBNET_BASE=10.0.0.0/8
       - WIREGUARD_CONTROLLER_URL=http://172.70.255.254:8080
       - WIREGUARD_API_KEY=${WIREGUARD_API_KEY}
+      - MIKROTIK_SSH_PRIVATE_KEY_PATH=${MIKROTIK_SSH_PRIVATE_KEY_PATH:-/run/secrets/mikrotik_id_rsa}
+      - MIKROTIK_SSH_PRIVATE_KEY_PASSPHRASE=${MIKROTIK_SSH_PRIVATE_KEY_PASSPHRASE:-}
+      - MIKROTIK_SSH_CONNECT_RETRIES=${MIKROTIK_SSH_CONNECT_RETRIES:-3}
+      - MIKROTIK_SSH_CONNECT_RETRY_DELAY=${MIKROTIK_SSH_CONNECT_RETRY_DELAY:-1}
+      - MIKROTIK_SSH_AUTO_GENERATE=${MIKROTIK_SSH_AUTO_GENERATE:-true}
+      - MIKROTIK_SSH_AUTO_BOOTSTRAP=${MIKROTIK_SSH_AUTO_BOOTSTRAP:-true}
+      - ROUTER_POLLING_MODE=${ROUTER_POLLING_MODE:-telegraf}
+      - TELEGRAF_SHARD_INDEX=${TELEGRAF_SHARD_INDEX:-0}
+      - TELEGRAF_SHARD_COUNT=${TELEGRAF_SHARD_COUNT:-1}
+      - TELEGRAF_FAST_INTERVAL=${TELEGRAF_FAST_INTERVAL:-3s}
+      - TELEGRAF_SLOW_INTERVAL=${TELEGRAF_SLOW_INTERVAL:-30s}
+      - TELEGRAF_SNMP_COMMUNITY=${TELEGRAF_SNMP_COMMUNITY:-public}
+      - VICTORIA_METRICS_WRITE_URL=${VICTORIA_METRICS_WRITE_URL:-http://wificore-nginx/internal/vm/api/v1/write}
     depends_on:
       wificore-postgres:
         condition: service_healthy
@@ -238,17 +254,20 @@ services:
 
   wificore-redis:
     container_name: wificore-redis
-    image: redis:alpine
-    command: sh -c 'if [ -n "$$REDIS_PASSWORD" ]; then redis-server --requirepass "$$REDIS_PASSWORD" --maxmemory 4gb --maxmemory-policy allkeys-lru --save 60 1000 --appendonly yes; else redis-server --maxmemory 4gb --maxmemory-policy allkeys-lru --save 60 1000 --appendonly yes; fi'
+    build:
+      context: ./docker/redis
+      dockerfile: Dockerfile
+    image: kja2aro/wificore:wificore-redis
     restart: unless-stopped
     environment:
       - TZ=Africa/Nairobi
       - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - REDIS_MAXMEMORY=4gb
     networks:
       wificore-network:
         ipv4_address: 172.70.0.7
     healthcheck:
-      test: ["CMD", "sh", "-c", "redis-cli -a ${REDIS_PASSWORD:-} ping || exit 1"]
+      test: ["CMD", "/usr/local/bin/redis-healthcheck.sh"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -260,6 +279,7 @@ services:
     build:
       context: ./pgbouncer
       dockerfile: Dockerfile
+
     container_name: wificore-pgbouncer
     restart: unless-stopped
     environment:
@@ -278,7 +298,34 @@ services:
     ports:
       - "6432:6432"
     healthcheck:
-      test: ["CMD", "pg_isready", "-h", "localhost", "-p", "6432", "-U", "admin"]
+      test: ["CMD", "pg_isready", "-h", "localhost", "-p", "6432", "-U", "admin", "-d", "wms_770_ts"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  wificore-pgbouncer-read:
+    build:
+      context: ./pgbouncer
+      dockerfile: Dockerfile
+
+    container_name: wificore-pgbouncer-read
+    restart: unless-stopped
+    environment:
+      - DB_HOST=wificore-postgres-replica
+      - DB_PORT=5432
+      - DB_DATABASE=${DB_DATABASE:-wms_770_ts}
+      - DB_USERNAME=${DB_USERNAME:-admin}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - TZ=Africa/Nairobi
+    depends_on:
+      wificore-postgres-replica:
+        condition: service_healthy
+    networks:
+      wificore-network:
+        ipv4_address: 172.70.0.17
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "localhost", "-p", "6432", "-U", "admin", "-d", "wms_770_ts"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -291,9 +338,16 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
+      - POSTGRES_ROLE=primary
       - POSTGRES_DB=${DB_DATABASE:-wms_770_ts}
       - POSTGRES_USER=${DB_USERNAME:-admin}
       - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_PRIMARY_HOST=wificore-postgres
+      - POSTGRES_PRIMARY_PORT=5432
+      - POSTGRES_REPLICATION_USER=${POSTGRES_REPLICATION_USER:-replicator}
+      - POSTGRES_REPLICATION_PASSWORD=${POSTGRES_REPLICATION_PASSWORD}
+      - POSTGRES_REPLICATION_SLOT=${POSTGRES_REPLICATION_SLOT:-wificore_replica}
+      - POSTGRES_REPLICATION_APPLICATION_NAME=${POSTGRES_REPLICATION_APPLICATION_NAME:-wificore-postgres-replica}
       - TZ=Africa/Nairobi
       - POSTGRES_MAX_CONNECTIONS=200
       - POSTGRES_SHARED_BUFFERS=256MB
@@ -307,34 +361,105 @@ services:
       - POSTGRES_WORK_MEM=4MB
       - POSTGRES_MIN_WAL_SIZE=1GB
       - POSTGRES_MAX_WAL_SIZE=4GB
-    command: >
-      postgres
-      -c shared_preload_libraries=pg_stat_statements
-      -c max_connections=200
-      -c shared_buffers=256MB
-      -c effective_cache_size=1GB
-      -c maintenance_work_mem=64MB
-      -c checkpoint_completion_target=0.9
-      -c wal_buffers=16MB
-      -c default_statistics_target=100
-      -c random_page_cost=1.1
-      -c effective_io_concurrency=200
-      -c work_mem=4MB
-      -c min_wal_size=1GB
-      -c max_wal_size=4GB
-      -c max_worker_processes=4
-      -c max_parallel_workers_per_gather=2
-      -c max_parallel_workers=4
-      -c max_parallel_maintenance_workers=2
-      -c pg_stat_statements.max=10000
-      -c pg_stat_statements.track=all
-      -c max_locks_per_transaction=256
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pg_stat_statements
+      - -c
+      - wal_level=replica
+      - -c
+      - max_wal_senders=10
+      - -c
+      - max_replication_slots=10
+      - -c
+      - synchronous_commit=${POSTGRES_SYNCHRONOUS_COMMIT:-on}
+      - -c
+      - "synchronous_standby_names=${POSTGRES_SYNCHRONOUS_STANDBY_NAMES:-}"
+      - -c
+      - max_connections=200
+      - -c
+      - shared_buffers=256MB
+      - -c
+      - effective_cache_size=1GB
+      - -c
+      - maintenance_work_mem=64MB
+      - -c
+      - checkpoint_completion_target=0.9
+      - -c
+      - wal_buffers=16MB
+      - -c
+      - default_statistics_target=100
+      - -c
+      - random_page_cost=1.1
+      - -c
+      - effective_io_concurrency=200
+      - -c
+      - work_mem=4MB
+      - -c
+      - min_wal_size=1GB
+      - -c
+      - max_wal_size=4GB
+      - -c
+      - max_worker_processes=4
+      - -c
+      - max_parallel_workers_per_gather=2
+      - -c
+      - max_parallel_workers=4
+      - -c
+      - max_parallel_maintenance_workers=2
+      - -c
+      - pg_stat_statements.max=10000
+      - -c
+      - pg_stat_statements.track=all
+      - -c
+      - max_locks_per_transaction=256
     volumes:
       - postgres_data:/var/lib/postgresql/data
       # Note: init.sql is baked into the image, not mounted
     networks:
       wificore-network:
         ipv4_address: 172.70.0.4
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "admin", "-d", "wms_770_ts"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  wificore-postgres-replica:
+    container_name: wificore-postgres-replica
+    build:
+      context: ./postgres
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      wificore-postgres:
+        condition: service_healthy
+    environment:
+      - POSTGRES_ROLE=replica
+      - POSTGRES_DB=${DB_DATABASE:-wms_770_ts}
+      - POSTGRES_USER=${DB_USERNAME:-admin}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_PRIMARY_HOST=wificore-postgres
+      - POSTGRES_PRIMARY_PORT=5432
+      - POSTGRES_REPLICATION_USER=${POSTGRES_REPLICATION_USER:-replicator}
+      - POSTGRES_REPLICATION_PASSWORD=${POSTGRES_REPLICATION_PASSWORD}
+      - POSTGRES_REPLICATION_SLOT=${POSTGRES_REPLICATION_SLOT:-wificore_replica}
+      - POSTGRES_REPLICATION_APPLICATION_NAME=${POSTGRES_REPLICATION_APPLICATION_NAME:-wificore-postgres-replica}
+      - TZ=Africa/Nairobi
+    command:
+      - postgres
+      - -c
+      - hot_standby=on
+      - -c
+      - max_connections=200
+      - -c
+      - max_locks_per_transaction=256
+    networks:
+      wificore-network:
+        ipv4_address: 172.70.0.16
+    volumes:
+      - postgres_replica_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "admin", "-d", "wms_770_ts"]
       interval: 10s
@@ -378,7 +503,7 @@ services:
     ports:
       - "7547:7547"
     healthcheck:
-      test: ["CMD", "sh", "-c", "wget --spider -q http://localhost:7547 || exit 1"]
+      test: ["CMD", "sh", "-c", "wget --quiet --tries=1 --timeout=5 -O /dev/null http://localhost:7547 || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -407,7 +532,7 @@ services:
     ports:
       - "7557:7557"
     healthcheck:
-      test: ["CMD", "sh", "-c", "wget --spider -q http://localhost:7557 || exit 1"]
+      test: ["CMD", "sh", "-c", "wget --quiet --tries=1 --timeout=5 -O /dev/null http://localhost:7557 || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -436,7 +561,7 @@ services:
     ports:
       - "7567:7567"
     healthcheck:
-      test: ["CMD", "sh", "-c", "wget --spider -q http://localhost:7567 || exit 1"]
+      test: ["CMD", "sh", "-c", "wget --quiet --tries=1 --timeout=5 -O /dev/null http://localhost:7567 || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -465,7 +590,7 @@ services:
     ports:
       - "3000:3000"
     healthcheck:
-      test: ["CMD", "sh", "-c", "wget --spider -q http://localhost:3000 || exit 1"]
+      test: ["CMD", "sh", "-c", "wget --quiet --tries=1 --timeout=5 -O /dev/null http://localhost:3000 || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -476,11 +601,180 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  wificore-victoriametrics:
+    image: victoriametrics/victoria-metrics:latest
+    container_name: wificore-victoriametrics
+    restart: unless-stopped
+    command:
+      - '-storageDataPath=/victoria-metrics-data'
+      - '-retentionPeriod=12'
+    networks:
+      wificore-network:
+        ipv4_address: 172.70.0.21
+    volumes:
+      - victoriametrics_data:/victoria-metrics-data
+
+  wificore-telegraf-config:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: wificore-telegraf-config
+    restart: unless-stopped
+    environment:
+      - APP_KEY=${APP_KEY}
+      - DB_CONNECTION=${DB_CONNECTION:-pgsql}
+      - DB_HOST=${DB_HOST:-wificore-pgbouncer}
+      - DB_PORT=${DB_PORT:-6432}
+      - DB_DIRECT_HOST=${DB_DIRECT_HOST:-wificore-postgres}
+      - DB_DIRECT_PORT=${DB_DIRECT_PORT:-5432}
+      - DB_DATABASE=${DB_DATABASE:-wms_770_ts}
+      - DB_USERNAME=${DB_USERNAME:-admin}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - TELEGRAF_SHARD_INDEX=${TELEGRAF_SHARD_INDEX:-0}
+      - TELEGRAF_SHARD_COUNT=${TELEGRAF_SHARD_COUNT:-1}
+      - TELEGRAF_FAST_INTERVAL=${TELEGRAF_FAST_INTERVAL:-3s}
+      - TELEGRAF_SLOW_INTERVAL=${TELEGRAF_SLOW_INTERVAL:-30s}
+      - TELEGRAF_SNMP_COMMUNITY=${TELEGRAF_SNMP_COMMUNITY:-public}
+      - VICTORIA_METRICS_WRITE_URL=${VICTORIA_METRICS_WRITE_URL:-http://wificore-nginx/internal/vm/api/v1/write}
+    command:
+      - sh
+      - -lc
+      - |
+        set +e;
+        OUT_DIR="/var/www/html/storage/app/telegraf/shards";
+        OUT_FILE="$$OUT_DIR/$${TELEGRAF_SHARD_INDEX:-0}.conf";
+        mkdir -p "$$OUT_DIR";
+
+        if [ ! -f "$$OUT_FILE" ]; then
+          printf '%s\n' \
+            '[agent]' \
+            "interval = \"$${TELEGRAF_FAST_INTERVAL:-3s}\"" \
+            'round_interval = true' \
+            'metric_batch_size = 1000' \
+            'metric_buffer_limit = 50000' \
+            'flush_interval = "1s"' \
+            'flush_jitter = "0s"' \
+            'collection_jitter = "0s"' \
+            'precision = ""' \
+            'hostname = ""' \
+            'omit_hostname = true' \
+            '' \
+            '[[inputs.internal]]' \
+            "interval = \"$${TELEGRAF_FAST_INTERVAL:-3s}\"" \
+            '' \
+            '[[outputs.http]]' \
+            "url = \"$${VICTORIA_METRICS_WRITE_URL:-http://wificore-nginx/internal/vm/api/v1/write}\"" \
+            'timeout = "5s"' \
+            'method = "POST"' \
+            'data_format = "prometheusremotewrite"' \
+            '' \
+            '[outputs.http.headers]' \
+            'Content-Type = "application/x-protobuf"' \
+            'Content-Encoding = "snappy"' \
+            'X-Prometheus-Remote-Write-Version = "0.1.0"' \
+            > "$$OUT_FILE";
+        fi
+
+        if ! grep -q '^\[\[inputs\.' "$$OUT_FILE" 2>/dev/null; then
+          printf '%s\n' \
+            '' \
+            '[[inputs.internal]]' \
+            "interval = \"$${TELEGRAF_FAST_INTERVAL:-3s}\"" \
+            >> "$$OUT_FILE";
+        fi
+
+        (
+          while true; do
+            export PGPASSWORD="$$DB_PASSWORD";
+            HOST="$$DB_HOST";
+            PORT="$$DB_PORT";
+            psql -h "$$HOST" -p "$$PORT" -U "$$DB_USERNAME" -d "$$DB_DATABASE" -tAc "select 1" >/dev/null 2>&1;
+            if [ $$? -ne 0 ]; then
+              if [ -n "$$DB_DIRECT_HOST" ]; then
+                HOST="$$DB_DIRECT_HOST";
+                PORT="$$DB_DIRECT_PORT";
+                psql -h "$$HOST" -p "$$PORT" -U "$$DB_USERNAME" -d "$$DB_DATABASE" -tAc "select 1" >/dev/null 2>&1;
+              fi
+            fi
+            if [ $$? -ne 0 ]; then
+              echo " Waiting for database...";
+              sleep 5;
+              continue;
+            fi
+
+            TENANTS_TABLE=$(psql -h "$$HOST" -p "$$PORT" -U "$$DB_USERNAME" -d "$$DB_DATABASE" -tAc "select 1 from information_schema.tables where table_schema='public' and table_name='tenants';" 2>/dev/null | tr -d '[:space:]');
+            if [ "$$TENANTS_TABLE" != "1" ]; then
+              echo " Waiting for core migrations (tenants table)...";
+              sleep 10;
+              continue;
+            fi
+
+            php artisan telegraf:generate-config --shard-index=$${TELEGRAF_SHARD_INDEX:-0} --shard-count=$${TELEGRAF_SHARD_COUNT:-1} --output-dir=/var/www/html/storage/app/telegraf/shards || true;
+            sleep 300;
+          done
+        ) &
+
+        exec tail -f /dev/null
+    depends_on:
+      wificore-postgres:
+        condition: service_healthy
+    networks:
+      wificore-network:
+        ipv4_address: 172.70.0.22
+    volumes:
+      - laravel-storage:/var/www/html/storage:rw
+    healthcheck:
+      test: ["CMD", "sh", "-c", "test -f /var/www/html/storage/app/telegraf/shards/$${TELEGRAF_SHARD_INDEX:-0}.conf"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  wificore-telegraf:
+    image: telegraf:latest
+    container_name: wificore-telegraf
+    restart: unless-stopped
+    environment:
+      - TELEGRAF_SHARD_INDEX=${TELEGRAF_SHARD_INDEX:-0}
+    entrypoint:
+      - sh
+      - -lc
+    command:
+      - |
+        set -e;
+        CONF="/var/www/html/storage/app/telegraf/shards/$${TELEGRAF_SHARD_INDEX:-0}.conf";
+        echo "⏳ Telegraf waiting for config: $$CONF";
+        while [ ! -f "$$CONF" ]; do
+          sleep 2;
+        done
+        SANITIZED="/tmp/telegraf.conf";
+        cp "$$CONF" "$$SANITIZED";
+        if command -v sed >/dev/null 2>&1; then
+          (sed -E 's#udp://([0-9.]+)/[0-9]+:#udp://\1:#g' "$$CONF" > "$$SANITIZED" 2>/dev/null) \
+            || (sed -r 's#udp://([0-9.]+)/[0-9]+:#udp://\1:#g' "$$CONF" > "$$SANITIZED" 2>/dev/null) \
+            || true;
+        fi
+        exec telegraf --config "$$SANITIZED"
+    depends_on:
+      wificore-telegraf-config:
+        condition: service_healthy
+      wificore-victoriametrics:
+        condition: service_started
+    networks:
+      wificore-network:
+        ipv4_address: 172.70.0.20
+    volumes:
+      - laravel-storage:/var/www/html/storage:ro
+
 volumes:
   postgres_data:
     name: wificore-postgres-data
+  postgres_replica_data:
+    name: wificore-postgres-replica-data
   redis_data:
     name: wificore-redis-data
+  victoriametrics_data:
+    name: wificore-victoriametrics-data
   mongo_data:
     name: wificore-mongo-data
   wireguard_config:

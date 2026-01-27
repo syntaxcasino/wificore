@@ -53,7 +53,7 @@ class RouterProvisioningJob implements ShouldQueue
 
             try {
                 // Stage 1: Verify connectivity (should already be done, but double-check)
-                $this->broadcastProgress($router, 'verifying', 10, 'Verifying router connectivity...');
+                $this->broadcastProgress($router, 'verifying', 5, 'Verifying router connectivity...');
                 
                 $connectivity = $provisioningService->verifyConnectivity($router);
                 
@@ -76,20 +76,21 @@ class RouterProvisioningJob implements ShouldQueue
                 // Stage 3: Verify deployment
                 $this->broadcastProgress($router, 'verifying_deployment', 85, 'Verifying deployment...');
                 
-                // Small delay to let router process configs
-                sleep(3);
+                // Reduced delay for faster deployment (low-end device compatible)
+                sleep(1);
 
                 // If hotspot was requested, verify hotspot resources exist
                 $serviceType = $this->provisioningData['service_type'] ?? 'unknown';
                 if ($serviceType === 'hotspot' || ($this->provisioningData['enable_hotspot'] ?? false)) {
                     $this->broadcastProgress($router, 'verifying_hotspot', 88, 'Verifying hotspot deployment...');
                     $verified = false;
-                    for ($i = 0; $i < 5; $i++) {
+                    // Reduced attempts for faster deployment (2 attempts with 1s delay)
+                    for ($i = 0; $i < 2; $i++) {
                         if ($provisioningService->verifyHotspotDeployment($router)) {
                             $verified = true;
                             break;
                         }
-                        sleep(2);
+                        sleep(1);
                     }
                     if (!$verified) {
                         throw new \Exception('Hotspot deployment verification failed: hotspot resources not found');
@@ -151,8 +152,8 @@ class RouterProvisioningJob implements ShouldQueue
             $data
         ))->toOthers();
 
-        // Small delay to ensure broadcast is sent
-        usleep(100000); // 100ms
+        // Reduced delay to ensure broadcast is sent (low-end device optimized)
+        usleep(50000); // 50ms
     }
 
     /**

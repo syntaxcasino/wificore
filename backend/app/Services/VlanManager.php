@@ -20,7 +20,6 @@ class VlanManager extends TenantAwareService
      */
     public function allocateVlanForService(Router $router, string $serviceType): int
     {
-        $this->setTenant($router->tenant_id);
 
         [$rangeStart, $rangeEnd] = self::VLAN_RANGES[$serviceType] ?? [100, 199];
 
@@ -53,7 +52,6 @@ class VlanManager extends TenantAwareService
         string $parentInterface,
         string $serviceType
     ): ServiceVlan {
-        $this->setTenant($service->router->tenant_id);
 
         $vlan = ServiceVlan::create([
             'router_service_id' => $service->id,
@@ -78,7 +76,6 @@ class VlanManager extends TenantAwareService
      */
     public function validateVlanConfiguration(Router $router, array $vlans): bool
     {
-        $this->setTenant($router->tenant_id);
 
         // Check for duplicate VLAN IDs
         $vlanIds = array_column($vlans, 'vlan_id');
@@ -109,7 +106,6 @@ class VlanManager extends TenantAwareService
      */
     public function getAvailableVlanRange(Router $router, string $serviceType): array
     {
-        $this->setTenant($router->tenant_id);
 
         [$rangeStart, $rangeEnd] = self::VLAN_RANGES[$serviceType] ?? [100, 199];
 
@@ -132,7 +128,6 @@ class VlanManager extends TenantAwareService
      */
     public function isVlanAvailable(Router $router, int $vlanId): bool
     {
-        $this->setTenant($router->tenant_id);
 
         return !ServiceVlan::whereHas('routerService', function ($query) use ($router) {
             $query->where('router_id', $router->id);
@@ -144,7 +139,6 @@ class VlanManager extends TenantAwareService
      */
     public function getVlanStats(Router $router): array
     {
-        $this->setTenant($router->tenant_id);
 
         $vlans = ServiceVlan::whereHas('routerService', function ($query) use ($router) {
             $query->where('router_id', $router->id);

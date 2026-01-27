@@ -61,6 +61,9 @@ class Router extends Model
         'port',
         'username',
         'password',
+        'ssh_key',
+        'ssh_key_created_at',
+        'ssh_key_rotated_at',
         'location',
         'status',
         'provisioning_stage',
@@ -72,15 +75,29 @@ class Router extends Model
         'capabilities',
         'interface_list',
         'reserved_interfaces',
+
+        'snmp_enabled',
+        'snmp_version',
+        'snmp_v3_user',
+        'snmp_v3_auth_protocol',
+        'snmp_v3_auth_password',
+        'snmp_v3_priv_protocol',
+        'snmp_v3_priv_password',
+        'snmp_trap_enabled',
+        'snmp_trap_version',
+        'snmp_trap_community',
+        'snmp_trap_target',
     ];
 
-    protected $hidden = ['password'];
+    protected $hidden = ['password', 'ssh_key', 'snmp_v3_auth_password', 'snmp_v3_priv_password', 'snmp_trap_community'];
 
     protected $casts = [
         'id' => 'string',
         'last_seen' => 'datetime',
         'vpn_last_handshake' => 'datetime',
         'vpn_enabled' => 'boolean',
+        'ssh_key_created_at' => 'datetime',
+        'ssh_key_rotated_at' => 'datetime',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
         'deleted_at' => 'datetime',
@@ -89,7 +106,14 @@ class Router extends Model
         'capabilities' => 'array',
         'interface_list' => 'array',
         'reserved_interfaces' => 'array',
+
+        'snmp_enabled' => 'boolean',
+        'snmp_trap_enabled' => 'boolean',
+        'snmp_v3_auth_password' => 'encrypted',
+        'snmp_v3_priv_password' => 'encrypted',
+        'snmp_trap_community' => 'encrypted',
     ];
+
     public function wireguardPeers()
     {
         return $this->hasMany(WireguardPeer::class, 'router_id', 'id');
@@ -182,7 +206,7 @@ class Router extends Model
      */
     public function services()
     {
-        return $this->hasMany(RouterService::class);
+        return $this->hasMany(RouterService::class, 'router_id', 'id');
     }
 
     /**
@@ -190,7 +214,7 @@ class Router extends Model
      */
     public function accessPoints()
     {
-        return $this->hasMany(AccessPoint::class);
+        return $this->hasMany(AccessPoint::class, 'router_id', 'id');
     }
 
     // ========================================
@@ -296,5 +320,4 @@ class Router extends Model
         $reserved = array_keys($this->reserved_interfaces ?? []);
         return array_diff($all, $reserved);
     }
-} 
- 
+}

@@ -7,6 +7,8 @@ export function useRouters() {
   const refreshing = ref(false)
   const listError = ref('')
   const formError = ref('')
+  const detailsError = ref('')
+  const detailsLoading = ref(false)
   const showFormOverlay = ref(false)
   const showDetailsOverlay = ref(false)
   const showUpdateOverlay = ref(false)
@@ -73,28 +75,107 @@ export function useRouters() {
     }
   }
 
+  const fetchRouterMetricsBatch = async (routerIds) => {
+    if (!Array.isArray(routerIds) || routerIds.length === 0) return {}
+
+    try {
+      const response = await axios.post('/routers/metrics/live', {
+        router_ids: routerIds,
+      })
+
+      if (response.data?.success && response.data?.live_data && typeof response.data.live_data === 'object') {
+        return response.data.live_data
+      }
+
+      return {}
+    } catch (err) {
+      console.warn('fetchRouterMetricsBatch error:', err.message, err.response?.data)
+      return {}
+    }
+  }
+
   const fetchRouters = async () => {
-    loading.value = true
-    listError.value = ''
+    const isInitialLoad = routers.value.length === 0
+
+    if (isInitialLoad) {
+      loading.value = true
+      listError.value = ''
+    } else {
+      refreshing.value = true
+    }
     try {
       const response = await axios.get('/routers')
       // API returns array directly, not wrapped in data property
       const fetchedRouters = Array.isArray(response.data) ? response.data : (response.data.data || [])
-      
-      // Sort by ID to maintain consistent order
-      routers.value = fetchedRouters.sort((a, b) => {
-        const idA = a.id || 0
-        const idB = b.id || 0
-        return idA - idB
+
+      // Sort deterministically so order does not reshuffle between refreshes
+      const normalizeName = (router) => String(router?.name ?? '').trim()
+      const normalizeId = (router) => String(router?.id ?? '')
+
+      const parseIp = (ipAddress) => {
+        const ip = String(ipAddress ?? '').split('/')[0].trim()
+        if (!ip) return null
+        const parts = ip.split('.').map((p) => Number(p))
+        if (parts.length !== 4 || parts.some((n) => Number.isNaN(n))) return null
+        return parts
+      }
+
+      const compareIp = (aIp, bIp) => {
+        if (!aIp && !bIp) return 0
+        if (!aIp) return 1
+        if (!bIp) return -1
+        for (let i = 0; i < 4; i++) {
+          if (aIp[i] !== bIp[i]) return aIp[i] - bIp[i]
+        }
+        return 0
+      }
+
+      const sortedRouters = [...fetchedRouters].sort((a, b) => {
+        const byName = normalizeName(a).localeCompare(normalizeName(b), undefined, { numeric: true, sensitivity: 'base' })
+        if (byName !== 0) return byName
+
+        const byIp = compareIp(parseIp(a?.ip_address), parseIp(b?.ip_address))
+        if (byIp !== 0) return byIp
+
+        return normalizeId(a).localeCompare(normalizeId(b), undefined, { numeric: true, sensitivity: 'base' })
       })
-      
+
+      routers.value = sortedRouters
+
+      const routerIds = sortedRouters.map((r) => String(r?.id ?? '')).filter((id) => id !== '')
+      const liveDataMap = await fetchRouterMetricsBatch(routerIds)
+      if (liveDataMap && typeof liveDataMap === 'object') {
+        routers.value = routers.value.map((router) => {
+          const rid = String(router?.id ?? '')
+          const live = liveDataMap[rid]
+
+          if (!live || typeof live !== 'object') {
+            return router
+          }
+
+          return {
+            ...router,
+            live_data: {
+              ...(router.live_data || {}),
+              ...live,
+            },
+          }
+        })
+      }
+
       // Routers fetched and sorted successfully
     } catch (err) {
-      listError.value = err.response?.data?.error || 'Failed to fetch routers'
+      const errorMessage = err.response?.data?.error || 'Failed to fetch routers'
       console.error('fetchRouters error:', err.message, err.response?.data)
-      routers.value = [] // Reset on error
+
+      // Only show the full-page error state if there is nothing to render.
+      // During refresh, keep current list visible.
+      if (routers.value.length === 0) {
+        listError.value = errorMessage
+      }
     } finally {
       loading.value = false
+      refreshing.value = false
     }
   }
 
@@ -352,26 +433,71 @@ export function useRouters() {
 
   const fetchRouterDetails = async (routerId) => {
     refreshing.value = true
+    detailsLoading.value = true
+    detailsError.value = ''
     try {
       console.log('Fetching details for router:', routerId)
       const response = await axios.get(`/routers/${routerId}/details`)
       console.log('Fetched router details:', response.data)
-      currentRouter.value = { ...currentRouter.value, ...response.data }
+
+      let metricsLive = {}
+      try {
+        const metricsResponse = await axios.get(`/routers/${routerId}/metrics/live`)
+        if (metricsResponse.data?.success && metricsResponse.data?.live_data && typeof metricsResponse.data.live_data === 'object') {
+          metricsLive = metricsResponse.data.live_data
+        }
+      } catch (err) {
+        console.warn('Could not fetch router metrics:', err.message, err.response?.data)
+      }
+
+      const data = response.data || {}
+      const routerPayload = data.router || {}
+      const liveResources = data.resources || {}
+
+      const mergedLive = {
+        ...(currentRouter.value?.live_data || {}),
+        ...liveResources,
+        ...(metricsLive || {}),
+      }
+
+      const activeConnectionsFromApi =
+        data.active_connections ?? liveResources.active_connections ?? mergedLive.active_connections
+
+      if (activeConnectionsFromApi !== undefined && activeConnectionsFromApi !== null) {
+        mergedLive.active_connections = activeConnectionsFromApi
+      }
+
+      if (Array.isArray(data.interfaces)) {
+        mergedLive.interfaces = data.interfaces
+      }
+
+      currentRouter.value = {
+        ...currentRouter.value,
+        ...routerPayload,
+        live_data: mergedLive,
+        interfaces: data.interfaces || currentRouter.value?.interfaces || [],
+        hotspots: data.hotspots || currentRouter.value?.hotspots || [],
+        radius_servers: data.radius_servers || currentRouter.value?.radius_servers || [],
+        services: data.services || currentRouter.value?.services || [],
+        access_points: data.access_points || currentRouter.value?.access_points || [],
+      }
+
+      if (data.success === false && data.error) {
+        detailsError.value = data.error
+      }
     } catch (error) {
       console.warn('Could not fetch fresh router details:', error.message)
+      detailsError.value =
+        error.response?.data?.error || error.message || 'Failed to fetch router details'
     } finally {
       refreshing.value = false
+      detailsLoading.value = false
     }
   }
 
   const refreshDetails = async () => {
     if (currentRouter.value && currentRouter.value.id) {
-      refreshing.value = true
-      try {
-        await fetchRouterDetails(currentRouter.value.id)
-      } finally {
-        refreshing.value = false
-      }
+      await fetchRouterDetails(currentRouter.value.id)
     }
   }
 
@@ -485,6 +611,8 @@ export function useRouters() {
     refreshing,
     listError,
     formError,
+    detailsError,
+    detailsLoading,
     showFormOverlay,
     showDetailsOverlay,
     showUpdateOverlay,

@@ -4,13 +4,11 @@ namespace App\Services;
 
 use App\Models\Tenant;
 use App\Models\TenantIpPool;
-use App\Traits\TenantAware;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class TenantIpamService extends TenantAwareService
 {
-    use TenantAware;
 
     private const DEFAULT_POOL_SIZES = [
         'hotspot' => 254,
@@ -29,8 +27,6 @@ class TenantIpamService extends TenantAwareService
      */
     public function getOrCreateServicePool(Tenant $tenant, string $serviceType): TenantIpPool
     {
-        $this->setTenant($tenant->id);
-
         // Try to find existing active pool
         $pool = TenantIpPool::where('tenant_id', $tenant->id)
             ->forService($serviceType)
@@ -54,8 +50,6 @@ class TenantIpamService extends TenantAwareService
      */
     private function createServicePool(Tenant $tenant, string $serviceType): TenantIpPool
     {
-        $this->setTenant($tenant->id);
-
         // Find next available network
         $network = $this->findAvailableNetwork($tenant, $serviceType);
         
@@ -104,8 +98,6 @@ class TenantIpamService extends TenantAwareService
      */
     private function findAvailableNetwork(Tenant $tenant, string $serviceType): string
     {
-        $this->setTenant($tenant->id);
-
         $baseNetwork = self::BASE_NETWORKS[$serviceType];
         $baseParts = explode('.', $baseNetwork);
         
@@ -218,8 +210,6 @@ class TenantIpamService extends TenantAwareService
      */
     public function getPoolStats(Tenant $tenant): array
     {
-        $this->setTenant($tenant->id);
-
         $pools = TenantIpPool::where('tenant_id', $tenant->id)->get();
 
         return [

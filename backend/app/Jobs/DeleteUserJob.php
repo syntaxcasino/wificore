@@ -51,7 +51,7 @@ class DeleteUserJob implements ShouldQueue
                 ->where('username', $username)
                 ->delete();
                 
-            DB::table('radius_user_schema_mapping')
+            DB::table('public.radius_user_schema_mapping')
                 ->where('username', $username)
                 ->delete();
             

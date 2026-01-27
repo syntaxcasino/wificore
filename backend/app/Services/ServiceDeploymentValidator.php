@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Router;
 use App\Models\RouterService;
+use App\Models\ServiceVlan;
 use App\Models\TenantIpPool;
 use Illuminate\Support\Facades\Log;
 
@@ -28,7 +29,6 @@ class ServiceDeploymentValidator extends TenantAwareService
      */
     public function validate(RouterService $service): array
     {
-        $this->setTenant($service->router->tenant_id);
 
         $errors = [];
         $warnings = [];
@@ -140,7 +140,14 @@ class ServiceDeploymentValidator extends TenantAwareService
             // Check for VLAN conflicts
             $vlanIds = $vlans->pluck('vlan_id')->toArray();
             foreach ($vlanIds as $vlanId) {
-                if (!$this->vlanManager->isVlanAvailable($router, $vlanId)) {
+                $conflict = ServiceVlan::whereHas('routerService', function ($query) use ($router) {
+                    $query->where('router_id', $router->id);
+                })
+                    ->where('vlan_id', $vlanId)
+                    ->where('router_service_id', '!=', $service->id)
+                    ->exists();
+
+                if ($conflict) {
                     $errors[] = "VLAN {$vlanId} is already in use on this router";
                 }
             }
@@ -260,9 +267,20 @@ class ServiceDeploymentValidator extends TenantAwareService
             }
         }
 
-        // Check if router is online
-        if ($router->status !== 'online') {
-            $errors[] = "Router is {$router->status} - must be online for deployment";
+        // Check if router is reachable
+        // Consider router available if:
+        // 1. Status is explicitly 'online', OR
+        // 2. VPN is connected and router was seen recently (within 5 minutes)
+        $isReachable = $router->status === 'online' || 
+                      ($router->vpn_status === 'connected' && 
+                       $router->last_seen && 
+                       $router->last_seen->diffInMinutes(now()) < 5);
+        
+        if (!$isReachable) {
+            $lastSeenInfo = $router->last_seen 
+                ? " (last seen " . $router->last_seen->diffForHumans() . ")" 
+                : " (never seen)";
+            $errors[] = "Router is {$router->status} - must be reachable for deployment{$lastSeenInfo}";
         }
 
         // Check license level (if available)

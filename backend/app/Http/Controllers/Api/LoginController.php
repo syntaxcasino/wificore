@@ -30,7 +30,7 @@ class LoginController extends Controller
                 \Log::info('RADIUS authentication successful', ['username' => $request->username]);
                 
                 // SCHEMA-BASED MULTI-TENANCY: Look up tenant schema from mapping table
-                $schemaMapping = \DB::table('radius_user_schema_mapping')
+                $schemaMapping = \DB::table('public.radius_user_schema_mapping')
                     ->where('username', $request->username)
                     ->where('is_active', true)
                     ->first();

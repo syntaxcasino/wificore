@@ -29,6 +29,33 @@ chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache
 chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache
 chmod -R 775 /var/www/html/storage/logs
 
+if [ "${MIKROTIK_SSH_AUTO_GENERATE}" = "true" ] || [ "${MIKROTIK_SSH_AUTO_GENERATE}" = "1" ]; then
+  REAL_KEY_DIR="/var/www/html/storage/ssh"
+  REAL_KEY_PATH="${REAL_KEY_DIR}/mikrotik_id_rsa"
+  REAL_PUB_PATH="${REAL_KEY_DIR}/mikrotik_id_rsa.pub"
+  mkdir -p "${REAL_KEY_DIR}"
+  chown -R www-data:www-data "${REAL_KEY_DIR}"
+  chmod 700 "${REAL_KEY_DIR}"
+
+  if [ ! -f "${REAL_KEY_PATH}" ]; then
+    if [ -f /var/www/html/vendor/autoload.php ]; then
+      if ! php -r 'require "/var/www/html/vendor/autoload.php"; $key=\phpseclib3\Crypt\RSA::createKey(2048); file_put_contents($argv[1], $key->toString("PKCS8")); chmod($argv[1], 0600); $pub=$key->getPublicKey()->toString("OpenSSH", ["comment"=>"wificore-global"]); file_put_contents($argv[2], rtrim($pub)."\n"); chmod($argv[2], 0644);' "${REAL_KEY_PATH}" "${REAL_PUB_PATH}"; then
+        echo "⚠️  Failed to generate MikroTik SSH keypair (will continue with password fallback if available)"
+      fi
+    fi
+    chown www-data:www-data "${REAL_KEY_PATH}" 2>/dev/null || true
+    chown www-data:www-data "${REAL_PUB_PATH}" 2>/dev/null || true
+  fi
+
+  mkdir -p /run/secrets
+  if [ -f "${REAL_KEY_PATH}" ]; then
+    ln -sf "${REAL_KEY_PATH}" /run/secrets/mikrotik_id_rsa
+  fi
+  if [ -f "${REAL_PUB_PATH}" ]; then
+    ln -sf "${REAL_PUB_PATH}" /run/secrets/mikrotik_id_rsa.pub
+  fi
+fi
+
 # Run Laravel optimizations (after .env is present)
 if [ -f /var/www/html/.env ]; then
   echo "🧹 Clearing Laravel caches..."

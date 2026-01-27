@@ -131,47 +131,87 @@
           <div class="space-y-4">
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">Speed *</label>
-              <input
-                v-model="formData.speed"
-                type="text"
-                required
-                class="w-full px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="e.g., 10 Mbps"
-              />
+              <div class="flex items-center gap-2">
+                <input
+                  v-model="speedValue"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  required
+                  class="flex-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="e.g., 10"
+                />
+                <select
+                  v-model="speedUnit"
+                  class="w-24 px-2 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option v-for="unit in speedUnits" :key="unit" :value="unit">{{ unit }}</option>
+                </select>
+              </div>
             </div>
 
             <div class="grid grid-cols-2 gap-4">
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Upload Speed *</label>
-                <input
-                  v-model="formData.upload_speed"
-                  type="text"
-                  required
-                  class="w-full px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="e.g., 5 Mbps"
-                />
+                <div class="flex items-center gap-2">
+                  <input
+                    v-model="uploadSpeedValue"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    required
+                    class="flex-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="e.g., 5"
+                  />
+                  <select
+                    v-model="uploadSpeedUnit"
+                    class="w-24 px-2 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option v-for="unit in speedUnits" :key="unit" :value="unit">{{ unit }}</option>
+                  </select>
+                </div>
               </div>
 
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Download Speed *</label>
-                <input
-                  v-model="formData.download_speed"
-                  type="text"
-                  required
-                  class="w-full px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="e.g., 10 Mbps"
-                />
+                <div class="flex items-center gap-2">
+                  <input
+                    v-model="downloadSpeedValue"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    required
+                    class="flex-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="e.g., 10"
+                  />
+                  <select
+                    v-model="downloadSpeedUnit"
+                    class="w-24 px-2 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option v-for="unit in speedUnits" :key="unit" :value="unit">{{ unit }}</option>
+                  </select>
+                </div>
               </div>
             </div>
 
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">Data Limit</label>
-              <input
-                v-model="formData.data_limit"
-                type="text"
-                class="w-full px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="e.g., 50 GB (leave empty for unlimited)"
-              />
+              <div class="flex items-center gap-2">
+                <input
+                  v-model="dataLimitValue"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  class="flex-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="e.g., 50 (leave empty for unlimited)"
+                />
+                <select
+                  v-model="dataLimitUnit"
+                  class="w-24 px-2 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option v-for="unit in dataUnits" :key="unit" :value="unit">{{ unit }}</option>
+                </select>
+              </div>
             </div>
           </div>
         </div>
@@ -182,24 +222,44 @@
           <div class="space-y-4">
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">Duration *</label>
-              <input
-                v-model="formData.duration"
-                type="text"
-                required
-                class="w-full px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="e.g., 1 hour, 1 day, 30 days"
-              />
+              <div class="flex items-center gap-2">
+                <input
+                  v-model="durationValue"
+                  type="number"
+                  min="0"
+                  step="1"
+                  required
+                  class="flex-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="e.g., 1"
+                />
+                <select
+                  v-model="durationUnit"
+                  class="w-28 px-2 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option v-for="unit in durationUnits" :key="unit" :value="unit">{{ unit }}</option>
+                </select>
+              </div>
             </div>
 
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">Validity *</label>
-              <input
-                v-model="formData.validity"
-                type="text"
-                required
-                class="w-full px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="e.g., 1 hour, 24 hours, 30 days"
-              />
+              <div class="flex items-center gap-2">
+                <input
+                  v-model="validityValue"
+                  type="number"
+                  min="0"
+                  step="1"
+                  required
+                  class="flex-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="e.g., 1"
+                />
+                <select
+                  v-model="validityUnit"
+                  class="w-28 px-2 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option v-for="unit in durationUnits" :key="unit" :value="unit">{{ unit }}</option>
+                </select>
+              </div>
             </div>
           </div>
         </div>
@@ -292,7 +352,7 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 const props = defineProps({
   showFormOverlay: Boolean,
@@ -303,6 +363,134 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['close-form', 'submit'])
+
+const speedUnits = ['Mbps', 'Gbps']
+const dataUnits = ['MB', 'GB', 'TB']
+const durationUnits = ['Hours', 'Days', 'Months', 'Years']
+
+const speedValue = ref('')
+const speedUnit = ref('Mbps')
+const uploadSpeedValue = ref('')
+const uploadSpeedUnit = ref('Mbps')
+const downloadSpeedValue = ref('')
+const downloadSpeedUnit = ref('Mbps')
+const dataLimitValue = ref('')
+const dataLimitUnit = ref('GB')
+const durationValue = ref('')
+const durationUnit = ref('Hours')
+const validityValue = ref('')
+const validityUnit = ref('Hours')
+
+const parseValueUnit = (input, allowedUnits, defaultUnit) => {
+  const raw = String(input || '').trim()
+  if (!raw) return { value: '', unit: defaultUnit }
+  const m = raw.match(/^\s*([0-9]+(?:\.[0-9]+)?)\s*([a-zA-Z]+)\s*$/)
+  if (!m) return { value: raw, unit: defaultUnit }
+  const value = m[1]
+  const unit = m[2]
+  const normalized = allowedUnits.find((u) => u.toLowerCase() === unit.toLowerCase())
+  return { value, unit: normalized || defaultUnit }
+}
+
+const parseDurationValueUnit = (input) => {
+  const raw = String(input || '').trim()
+  if (!raw) return { value: '', unit: 'Hours' }
+  const m = raw.match(/^\s*(\d+)\s*([a-zA-Z]+)\s*$/)
+  if (!m) return { value: raw, unit: 'Hours' }
+  const value = m[1]
+  const unitRaw = m[2].toLowerCase()
+  const unitMap = {
+    hour: 'Hours',
+    hours: 'Hours',
+    day: 'Days',
+    days: 'Days',
+    month: 'Months',
+    months: 'Months',
+    year: 'Years',
+    years: 'Years',
+  }
+  return { value, unit: unitMap[unitRaw] || 'Hours' }
+}
+
+const toDurationString = (value, unit) => {
+  const v = String(value || '').trim()
+  if (!v) return ''
+  const u = String(unit || '').trim()
+  const n = Number(v)
+  const isOne = Number.isFinite(n) && n === 1
+  const map = {
+    Hours: isOne ? 'hour' : 'hours',
+    Days: isOne ? 'day' : 'days',
+    Months: isOne ? 'month' : 'months',
+    Years: isOne ? 'year' : 'years',
+  }
+  return `${v} ${map[u] || (isOne ? 'hour' : 'hours')}`
+}
+
+const toValueUnitString = (value, unit) => {
+  const v = String(value || '').trim()
+  if (!v) return ''
+  return `${v} ${unit}`
+}
+
+const syncFromFormData = () => {
+  const speedParsed = parseValueUnit(props.formData?.speed, speedUnits, 'Mbps')
+  speedValue.value = speedParsed.value
+  speedUnit.value = speedParsed.unit
+
+  const upParsed = parseValueUnit(props.formData?.upload_speed, speedUnits, 'Mbps')
+  uploadSpeedValue.value = upParsed.value
+  uploadSpeedUnit.value = upParsed.unit
+
+  const downParsed = parseValueUnit(props.formData?.download_speed, speedUnits, 'Mbps')
+  downloadSpeedValue.value = downParsed.value
+  downloadSpeedUnit.value = downParsed.unit
+
+  const dataParsed = parseValueUnit(props.formData?.data_limit, dataUnits, 'GB')
+  dataLimitValue.value = dataParsed.value
+  dataLimitUnit.value = dataParsed.unit
+
+  const durationParsed = parseDurationValueUnit(props.formData?.duration)
+  durationValue.value = durationParsed.value
+  durationUnit.value = durationParsed.unit
+
+  const validityParsed = parseDurationValueUnit(props.formData?.validity)
+  validityValue.value = validityParsed.value
+  validityUnit.value = validityParsed.unit
+}
+
+watch(
+  () => props.showFormOverlay,
+  (show) => {
+    if (show) {
+      syncFromFormData()
+    }
+  }
+)
+
+watch([speedValue, speedUnit], () => {
+  props.formData.speed = toValueUnitString(speedValue.value, speedUnit.value)
+})
+
+watch([uploadSpeedValue, uploadSpeedUnit], () => {
+  props.formData.upload_speed = toValueUnitString(uploadSpeedValue.value, uploadSpeedUnit.value)
+})
+
+watch([downloadSpeedValue, downloadSpeedUnit], () => {
+  props.formData.download_speed = toValueUnitString(downloadSpeedValue.value, downloadSpeedUnit.value)
+})
+
+watch([dataLimitValue, dataLimitUnit], () => {
+  props.formData.data_limit = toValueUnitString(dataLimitValue.value, dataLimitUnit.value)
+})
+
+watch([durationValue, durationUnit], () => {
+  props.formData.duration = toDurationString(durationValue.value, durationUnit.value)
+})
+
+watch([validityValue, validityUnit], () => {
+  props.formData.validity = toDurationString(validityValue.value, validityUnit.value)
+})
 
 // Minimum datetime (current time)
 const minDateTime = computed(() => {

@@ -2,7 +2,6 @@
 namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
-use RouterOS\Client;
 use App\Events\RouterStatusUpdated;
 use Illuminate\Support\Facades\Log;
 
@@ -14,19 +13,20 @@ class CheckRouterStatus extends Command
     public function handle()
     {
         try {
-            $client = new Client([
-                'host' => config('mikrotik.host'),
-                'user' => config('mikrotik.user'),
-                'pass' => config('mikrotik.pass'),
-                'port' => config('mikrotik.port'),
+            $routerIp = config('mikrotik.host');
+
+            // Simple ping-based connectivity check (no RouterOS API)
+            $pingCommand = strtoupper(substr(PHP_OS, 0, 3)) === 'WIN'
+                ? "ping -n 1 -w 1000 {$routerIp}"
+                : "ping -c 1 -W 1 {$routerIp}";
+
+            exec($pingCommand, $output, $resultCode);
+            $status = $resultCode === 0 ? 'online' : 'offline';
+
+            Log::info('Router status (ping): ' . $status, [
+                'router_ip' => $routerIp,
+                'result_code' => $resultCode,
             ]);
-
-            // Simple query to test connection
-            $query = new \RouterOS\Query('/system/identity/print');
-            $response = $client->query($query)->read();
-
-            $status = !empty($response) ? 'online' : 'offline';
-            Log::info('Router status: ' . $status);
         } catch (\Exception $e) {
             $status = 'offline';
             Log::error('Router check failed: ' . $e->getMessage());

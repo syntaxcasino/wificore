@@ -7,12 +7,47 @@ use App\Models\UserSubscription;
 use App\Models\Payment;
 use App\Models\Package;
 use App\Jobs\ProvisionUserInMikroTikJob;
+use App\Models\Router;
+use App\Services\MikroTik\SshExecutor;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 
 class UserProvisioningService extends TenantAwareService
 {
+    private function quoteSchemaName(string $schemaName): string
+    {
+        if (!preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $schemaName)) {
+            throw new \InvalidArgumentException('Invalid schema name');
+        }
+
+        return '"' . str_replace('"', '""', $schemaName) . '"';
+    }
+
+    private function getTenantSchemaName(string $tenantId): ?string
+    {
+        $schemaName = DB::table('public.tenants')
+            ->where('id', $tenantId)
+            ->value('schema_name');
+
+        return $schemaName ?: null;
+    }
+
+    private function ensureRadiusSchemaMapping(string $username, string $schemaName, string $tenantId): void
+    {
+        DB::table('public.radius_user_schema_mapping')->updateOrInsert(
+            ['username' => $username],
+            [
+                'schema_name' => $schemaName,
+                'tenant_id' => $tenantId,
+                'user_role' => User::ROLE_HOTSPOT_USER,
+                'is_active' => true,
+                'updated_at' => now(),
+                'created_at' => now(),
+            ]
+        );
+    }
+
     /**
      * Process payment and provision user
      */
@@ -39,7 +74,7 @@ class UserProvisioningService extends TenantAwareService
             $credentials = $this->generateMikroTikCredentials($user, $subscription);
 
             // Create RADIUS entry immediately
-            $this->createRadiusEntry($credentials['username'], $credentials['password']);
+            $this->createRadiusEntry($credentials['username'], $credentials['password'], $tenantId);
 
             // Dispatch MikroTik provisioning to queue (if router is available)
             if ($payment->router_id) {
@@ -81,7 +116,9 @@ class UserProvisioningService extends TenantAwareService
     protected function findOrCreateUser(Payment $payment): User
     {
         // Try to find user by phone number
-        $user = User::where('phone_number', $payment->phone_number)->first();
+        $user = User::where('tenant_id', $payment->tenant_id)
+            ->where('phone_number', $payment->phone_number)
+            ->first();
 
         if ($user) {
             \Log::info('Returning user found', [
@@ -96,6 +133,7 @@ class UserProvisioningService extends TenantAwareService
         $password = Str::random(12);
 
         $user = User::create([
+            'tenant_id' => $payment->tenant_id,
             'name' => 'Hotspot User',
             'username' => $username,
             'email' => $username . '@hotspot.local',
@@ -175,33 +213,39 @@ class UserProvisioningService extends TenantAwareService
     protected function provisionInMikroTik(UserSubscription $subscription, array $credentials, string $routerId): void
     {
         try {
-            $router = \App\Models\Router::findOrFail($routerId);
+            $router = Router::findOrFail($routerId);
             $package = $subscription->package;
 
-            // Connect to MikroTik
-            $client = new \RouterOS\Client([
-                'host' => $router->ip_address,
-                'user' => $router->username,
-                'pass' => $router->password,
-                'port' => $router->port ?? 8728,
-            ]);
+            // Use SSH-only provisioning via SshExecutor (no RouterOS API)
+            $ssh = new SshExecutor($router, 10);
+            $ssh->connect();
 
-            $query = new \RouterOS\Query('/ip/hotspot/user/add');
-            $query->equal('name', $credentials['username']);
-            $query->equal('password', $credentials['password']);
-            $query->equal('limit-uptime', $this->formatDuration($package->duration));
-            $query->equal('limit-bytes-total', $this->calculateDataLimit($package));
-            $query->equal('profile', $this->getProfileName($package));
+            $username = $credentials['username'];
+            $password = $credentials['password'];
+            $limitUptime = $this->formatDuration($package->duration);
+            $limitBytes = $this->calculateDataLimit($package);
+            $profile = $this->getProfileName($package);
 
-            $response = $client->query($query)->read();
+            // Create hotspot user via RouterOS CLI
+            $comment = 'Auto-provisioned - Subscription #' . $subscription->id;
+            $command = sprintf(
+                '/ip hotspot user add name="%s" password="%s" limit-uptime=%s limit-bytes-total=%d profile="%s" comment="%s"',
+                addslashes($username),
+                addslashes($password),
+                $limitUptime,
+                $limitBytes,
+                addslashes($profile),
+                addslashes($comment)
+            );
 
-            \Log::info('User provisioned in MikroTik', [
+            $result = $ssh->exec($command);
+
+            \Log::info('User provisioned in MikroTik via SSH', [
                 'subscription_id' => $subscription->id,
                 'router_id' => $routerId,
-                'username' => $credentials['username'],
-                'response' => $response
+                'username' => $username,
+                'result_preview' => substr($result, 0, 200),
             ]);
-
         } catch (\Exception $e) {
             \Log::error('MikroTik provisioning failed', [
                 'subscription_id' => $subscription->id,
@@ -215,15 +259,32 @@ class UserProvisioningService extends TenantAwareService
     /**
      * Create RADIUS entry for authentication
      */
-    protected function createRadiusEntry(string $username, string $password): void
+    protected function createRadiusEntry(string $username, string $password, string $tenantId): void
     {
         try {
-            DB::table('radcheck')->insert([
-                'username' => $username,
-                'attribute' => 'Cleartext-Password',
-                'op' => ':=',
-                'value' => $password,
-            ]);
+            $schemaName = $this->getTenantSchemaName($tenantId);
+            if (!$schemaName) {
+                return;
+            }
+
+            $this->ensureRadiusSchemaMapping($username, $schemaName, $tenantId);
+
+            DB::statement('SET LOCAL search_path TO ' . $this->quoteSchemaName($schemaName) . ', public');
+
+            DB::table('radcheck')->updateOrInsert(
+                ['username' => $username, 'attribute' => 'Cleartext-Password'],
+                ['op' => ':=', 'value' => $password, 'updated_at' => now(), 'created_at' => now()]
+            );
+
+            DB::table('radreply')->updateOrInsert(
+                ['username' => $username, 'attribute' => 'Tenant-ID'],
+                ['op' => ':=', 'value' => $tenantId, 'updated_at' => now(), 'created_at' => now()]
+            );
+
+            DB::table('radreply')->updateOrInsert(
+                ['username' => $username, 'attribute' => 'Service-Type'],
+                ['op' => ':=', 'value' => 'Framed-User', 'updated_at' => now(), 'created_at' => now()]
+            );
 
             \Log::info('RADIUS entry created', [
                 'username' => $username

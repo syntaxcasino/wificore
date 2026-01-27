@@ -25,7 +25,6 @@ import LoginPageCustomization from '@/modules/tenant/views/dashboard/hotspot/Log
 
 import PPPoELayout from '@/modules/tenant/views/dashboard/pppoe/PPPoELayout.vue'
 import PPPoESessions from '@/modules/tenant/views/dashboard/pppoe/PPPoESessions.vue'
-import AddPPPoEUser from '@/modules/tenant/views/dashboard/pppoe/AddPPPoEUser.vue'
 import RadiusProfiles from '@/modules/tenant/views/dashboard/pppoe/RadiusProfiles.vue'
 import QueuesBandwidthControl from '@/modules/tenant/views/dashboard/pppoe/QueuesBandwidthControl.vue'
 import AutoDisconnectRules from '@/modules/tenant/views/dashboard/pppoe/AutoDisconnectRules.vue'
@@ -175,7 +174,7 @@ const routes = [
         children: [
           { path: 'users', name: 'pppoe.users', component: () => import('@/modules/tenant/views/dashboard/pppoe/PPPoEUsers.vue') },
           { path: 'sessions', name: 'pppoe.sessions', component: () => import('@/modules/tenant/views/dashboard/pppoe/PPPoESessionsNew.vue') },
-          { path: 'add-user', name: 'pppoe.add-user', component: AddPPPoEUser },
+          { path: 'add-user', name: 'pppoe.add-user', component: () => import('@/modules/tenant/views/dashboard/pppoe/PPPoEUsers.vue') },
           { path: 'radius-profiles', name: 'pppoe.radius-profiles', component: RadiusProfiles },
           { path: 'queues', name: 'pppoe.queues', component: QueuesBandwidthControl },
           {

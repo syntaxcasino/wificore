@@ -5,28 +5,158 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Router;
 use App\Models\RouterConfig;
+use App\Services\MikrotikProvisioningService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
-use RouterOS\Client;
-use RouterOS\Query;
-use RouterOS\Exceptions\ClientException;
-use RouterOS\Exceptions\ConfigException;
-use RouterOS\Exceptions\QueryException;
 
 class RouterController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
         try {
-            $routers = Router::all();
-            return response()->json($routers);
+            $withLive = $request->boolean('with_live', false);
+            
+            // Always return basic router data first (fast response)
+            $routers = Router::with(['services', 'accessPoints'])
+                ->orderBy('created_at', 'desc')
+                ->get();
+            
+            if (!$withLive) {
+                return response()->json([
+                    'data' => $routers,
+                    'has_live_data' => false,
+                    'message' => 'Router information loaded successfully'
+                ]);
+            }
+
+            // For with_live=true, return basic data with loading indicators
+            // The frontend can then call the live-data endpoint separately
+            $routersWithLoadingState = $routers->map(function ($router) {
+                $router->setAttribute('live_data', null);
+                $router->setAttribute('live_status', 'loading');
+                $router->setAttribute('live_error', null);
+                $router->setAttribute('is_loading', true); // Explicit loading flag
+                $router->setAttribute('loading_message', 'Fetching live data...');
+                return $router;
+            });
+
+            return response()->json([
+                'data' => $routersWithLoadingState,
+                'has_live_data' => 'loading',
+                'message' => 'Router information loaded. Live data is being fetched...',
+                'live_data_endpoint' => '/api/routers/live-data',
+                'loading_indicators' => [
+                    'live_data' => 'Loading...',
+                    'resources' => 'Loading...',
+                    'interfaces' => 'Loading...',
+                    'hotspots' => 'Loading...',
+                    'radius_servers' => 'Loading...',
+                    'active_connections' => 'Loading...'
+                ],
+                'loading_spinners' => [
+                    'live_data' => 'spinner',
+                    'resources' => 'spinner', 
+                    'interfaces' => 'spinner',
+                    'hotspots' => 'spinner',
+                    'radius_servers' => 'spinner',
+                    'active_connections' => 'spinner'
+                ],
+                'loading_classes' => [
+                    'container' => 'loading-container',
+                    'spinner' => 'loading-spinner',
+                    'text' => 'loading-text',
+                    'overlay' => 'loading-overlay'
+                ]
+            ]);
+            
         } catch (\Exception $e) {
             Log::error('Failed to fetch routers: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to fetch routers'], 500);
+            return response()->json([
+                'error' => 'Unable to load router information',
+                'message' => 'There was a problem loading the router data. Please try again.',
+                'data' => []
+            ], 500);
         }
+    }
+
+    /**
+     * Fetch live data for all routers (async endpoint)
+     */
+    public function getLiveData(Request $request)
+    {
+        try {
+            $routers = Router::with(['services', 'accessPoints'])
+                ->orderBy('created_at', 'desc')
+                ->get();
+            $provisioningService = app(\App\Services\MikrotikProvisioningService::class);
+
+            $routersWithLive = $routers->map(function ($router) use ($provisioningService) {
+                try {
+                    $liveData = $provisioningService->fetchLiveRouterData($router, 'live', false);
+                } catch (\Exception $e) {
+                    Log::warning('Failed to fetch live data for router', [
+                        'router_id' => $router->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                    $liveData = null;
+                }
+
+                $router->setAttribute('live_data', $liveData);
+                return $router;
+            });
+
+            return response()->json([
+                'data' => $routersWithLive,
+                'has_live_data' => true,
+                'message' => 'Live data fetched successfully'
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('Failed to fetch live router data: ' . $e->getMessage());
+            return response()->json(['error' => 'Failed to fetch live data'], 500);
+        }
+    }
+
+    private function shouldHideInterfaceForUi(array $iface): bool
+    {
+        $name = strtolower($iface['name'] ?? '');
+        $type = strtolower($iface['type'] ?? '');
+        $comment = strtolower($iface['comment'] ?? '');
+
+        $excludedTypes = [
+            'bridge', 'vlan', 'vrrp', 'vpls', 'ovpn-out', 'ovpn-in',
+            'wireguard', 'wg', 'gre', 'ipip', 'eoip',
+        ];
+
+        if (in_array($type, $excludedTypes, true)) {
+            return true;
+        }
+
+        // Loopback / system
+        if (in_array($name, ['lo', 'loopback'], true)) {
+            return true;
+        }
+
+        // WireGuard interfaces can appear with various naming conventions
+        if (str_contains($name, 'wireguard') || str_starts_with($name, 'wg')) {
+            return true;
+        }
+
+        // WAN / uplink ports (best-effort heuristics; can be refined with explicit router metadata)
+        if (
+            in_array($name, ['ether1', 'wan', 'uplink'], true) ||
+            str_starts_with($name, 'wan') ||
+            str_contains($comment, 'wan') ||
+            str_contains($comment, 'uplink')
+        ) {
+            return true;
+        }
+
+        return false;
     }
 
     public function store(Request $request)
@@ -244,49 +374,48 @@ EOT;
      * @param Router $router
      * @return \Illuminate\Http\JsonResponse
      */
-    public function getRouterDetails(Router $router)
+    public function getRouterDetails(Request $request, Router $router)
     {
         try {
-            // Use VPN IP if available, otherwise fall back to direct IP
-            $ip = $router->vpn_ip ?? $router->ip_address;
-            $host = explode('/', $ip)[0];
+            $withLive = $request->boolean('with_live', false);
             
-            Log::info('Connecting to router for details', [
-                'router_id' => $router->id,
-                'host' => $host,
-                'using_vpn' => !empty($router->vpn_ip)
-            ]);
-            
-            $client = new Client([
-                'host' => $host,
-                'user' => $router->username,
-                'pass' => Crypt::decrypt($router->password),
-                'port' => $router->port,
-                'timeout' => 5,
-            ]);
+            // Load relationships quickly from database
+            $services = $router->load('services')->services;
+            $accessPoints = $router->load('accessPoints')->accessPoints;
 
-            // Get system resources
-            $resourceQuery = new Query('/system/resource/print');
-            $resources = $client->query($resourceQuery)->read();
-            
-            // Get interfaces
-            $interfaceQuery = new Query('/interface/print');
-            $interfaces = $client->query($interfaceQuery)->read();
-            
-            // Get hotspot servers
-            $hotspotQuery = new Query('/ip/hotspot/print');
-            $hotspots = $client->query($hotspotQuery)->read();
-            
-            // Get RADIUS servers
-            $radiusQuery = new Query('/radius/print');
-            $radiusServers = $client->query($radiusQuery)->read();
-            
-            // Get active connections
-            $connectionQuery = new Query('/ip/hotspot/active/print');
-            $activeConnections = $client->query($connectionQuery)->read();
+            if (!$withLive) {
+                return response()->json([
+                    'success' => true,
+                    'has_live_data' => false,
+                    'message' => 'Router details loaded successfully',
+                    'router' => [
+                        'id' => $router->id,
+                        'name' => $router->name,
+                        'ip_address' => $router->ip_address,
+                        'status' => $router->status,
+                        'model' => $router->model,
+                        'os_version' => $router->os_version,
+                        'last_seen' => $router->last_seen,
+                    ],
+                    // Empty live data sections - will be populated when with_live=1
+                    'resources' => [],
+                    'interfaces' => [],
+                    'hotspots' => [],
+                    'radius_servers' => [],
+                    'active_connections' => 0,
+                    // Additional metadata from database
+                    'services' => $services,
+                    'access_points' => $accessPoints,
+                ]);
+            }
 
+            // For with_live=true, return basic details with loading indicators
+            // The frontend can then call the live-data endpoint separately
             return response()->json([
                 'success' => true,
+                'has_live_data' => 'loading',
+                'message' => 'Router details loaded. Live data is being fetched...',
+                'live_data_endpoint' => "/api/routers/{$router->id}/live-data",
                 'router' => [
                     'id' => $router->id,
                     'name' => $router->name,
@@ -296,14 +425,96 @@ EOT;
                     'os_version' => $router->os_version,
                     'last_seen' => $router->last_seen,
                 ],
-                'resources' => $resources[0] ?? [],
-                'interfaces' => $interfaces,
-                'hotspots' => $hotspots,
-                'radius_servers' => $radiusServers,
-                'active_connections' => count($activeConnections),
+                // Loading state for live data sections
+                'resources' => null,
+                'interfaces' => null,
+                'hotspots' => null,
+                'radius_servers' => null,
+                'active_connections' => null,
+                // Additional metadata from database
+                'services' => $services,
+                'access_points' => $accessPoints,
+                // Explicit loading indicators
+                'loading_indicators' => [
+                    'live_data' => 'Loading...',
+                    'resources' => 'Loading...',
+                    'interfaces' => 'Loading...',
+                    'hotspots' => 'Loading...',
+                    'radius_servers' => 'Loading...',
+                    'active_connections' => 'Loading...'
+                ],
+                'loading_spinners' => [
+                    'live_data' => 'spinner',
+                    'resources' => 'spinner', 
+                    'interfaces' => 'spinner',
+                    'hotspots' => 'spinner',
+                    'radius_servers' => 'spinner',
+                    'active_connections' => 'spinner'
+                ],
+                'loading_classes' => [
+                    'container' => 'loading-container',
+                    'spinner' => 'loading-spinner',
+                    'text' => 'loading-text',
+                    'overlay' => 'loading-overlay'
+                ]
             ]);
+            
         } catch (\Exception $e) {
-            Log::warning('Could not connect to router for details', [
+            Log::error('Failed to fetch router details: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'error' => 'Unable to load router details',
+                'message' => 'There was a problem loading the router information. Please try again.',
+                'router' => null
+            ], 500);
+        }
+    }
+
+    /**
+     * Get live data for a specific router
+     * 
+     * @param Router $router
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function getRouterLiveData(Router $router)
+    {
+        try {
+            /** @var \App\Services\MikrotikProvisioningService $provisioningService */
+            $provisioningService = app(\App\Services\MikrotikProvisioningService::class);
+
+            // Fetch live data from router
+            $details = $provisioningService->getRouterDetails($router);
+            $live = $details['live'] ?? [];
+
+            // Prefer the richer active_connections metric when available, but
+            // keep hotspot_active as a fallback for backwards compatibility.
+            $activeConnections = $live['active_connections']
+                ?? $live['hotspot_active']
+                ?? 0;
+
+            return response()->json([
+                'success' => true,
+                'has_live_data' => true,
+                'message' => 'Live data fetched successfully',
+                'router' => [
+                    'id' => $details['id'] ?? $router->id,
+                    'name' => $details['name'] ?? $router->name,
+                    'ip_address' => $details['ip_address'] ?? $router->ip_address,
+                    'status' => $details['status'] ?? $router->status,
+                    'model' => $details['model'] ?? $router->model,
+                    'os_version' => $details['os_version'] ?? $router->os_version,
+                    'last_seen' => $details['last_seen'] ?? $router->last_seen,
+                ],
+                // Live data sections
+                'resources' => $live,
+                'interfaces' => $live['interfaces'] ?? [],
+                'hotspots' => $live['hotspots'] ?? [],
+                'radius_servers' => $live['radius_servers'] ?? [],
+                'active_connections' => $activeConnections,
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::warning('Could not connect to router for live data', [
                 'router_id' => $router->id,
                 'router_name' => $router->name,
                 'ip_address' => $router->ip_address,
@@ -313,6 +524,7 @@ EOT;
             // Return 200 with success: false for offline routers (not a server error)
             return response()->json([
                 'success' => false,
+                'has_live_data' => false,
                 'error' => 'Router is offline or unreachable',
                 'message' => 'Could not connect to router. It may be offline or network unreachable.',
                 'router' => [
@@ -321,7 +533,12 @@ EOT;
                     'ip_address' => $router->ip_address,
                     'status' => 'offline',
                 ],
-            ], 200);
+                'resources' => [],
+                'interfaces' => [],
+                'hotspots' => [],
+                'radius_servers' => [],
+                'active_connections' => 0,
+            ]);
         }
     }
 
@@ -334,20 +551,11 @@ EOT;
     public function getRouterInterfaces(Router $router)
     {
         try {
-            // Use VPN IP if available, otherwise fall back to direct IP
-            $ip = $router->vpn_ip ?? $router->ip_address;
-            $host = explode('/', $ip)[0];
-            
-            $client = new Client([
-                'host' => $host,
-                'user' => $router->username,
-                'pass' => Crypt::decrypt($router->password),
-                'port' => $router->port,
-            ]);
+            $sshService = app(\App\Services\MikrotikSshService::class);
 
-            $query = new Query('/interface/print');
-            $interfaces = $client->query($query)->read();
-            
+            $result = $sshService->fetchInterfaces($router, false);
+            $interfaces = $result['interfaces'] ?? [];
+
             $formattedInterfaces = array_map(function ($iface) {
                 return [
                     'name' => $iface['name'] ?? 'Unknown',
@@ -355,8 +563,13 @@ EOT;
                     'running' => ($iface['running'] ?? 'false') === 'true',
                     'disabled' => ($iface['disabled'] ?? 'false') === 'true',
                     'mtu' => $iface['mtu'] ?? 'N/A',
+                    'comment' => $iface['comment'] ?? '',
                 ];
             }, $interfaces);
+
+            $formattedInterfaces = array_values(array_filter($formattedInterfaces, function ($iface) {
+                return !$this->shouldHideInterfaceForUi($iface);
+            }));
 
             Log::info('Fetched router interfaces', [
                 'router_id' => $router->id,
@@ -577,7 +790,7 @@ EOT;
         }
     }
 
-    public function verifyConnectivity(Router $router)
+    public function verifyConnectivity(Router $router, MikrotikProvisioningService $provisioningService)
     {
         Log::info('verifyConnectivity called for router:', [
             'router_id' => $router->id,
@@ -587,46 +800,27 @@ EOT;
         ]);
 
         try {
-            $host = explode('/', $router->ip_address)[0];
-            Log::info('Connecting to RouterOS:', [
-                'router_id' => $router->id,
-                'host' => $host,
-                'username' => $router->username,
-                'port' => $router->port,
-            ]);
+            $result = $provisioningService->verifyConnectivity($router);
 
-            $client = new Client([
-                'host' => $host,
-                'user' => $router->username,
-                'pass' => Crypt::decrypt($router->password),
-                'port' => $router->port,
-            ]);
+            if ($result['status'] !== 'connected' && $result['status'] !== 'online') {
+                return response()->json([
+                    'status' => 'disconnected',
+                    'error' => $result['message'] ?? 'Router is not reachable via SSH',
+                ], 500);
+            }
 
-            $query = new Query('/system/resource/print');
-            $resources = $client->query($query)->read();
-            $resource = $resources[0] ?? [];
-
-            $query = new Query('/interface/print');
-            $interfaces = $client->query($query)->read();
-            $available_interfaces = array_map(function ($iface) {
-                return ['name' => $iface['name'], 'type' => $iface['type'] ?? 'unknown'];
-            }, $interfaces);
-
-            $query = new Query('/interface/wireguard/peers/print');
-            $peers = $client->query($query)->read();
-
+            // Update router metadata
             $router->update([
-                'model' => $resource['board-name'] ?? $router->model,
-                'os_version' => $resource['version'] ?? $router->os_version,
-                'last_seen' => now(),
+                'model' => $result['model'] ?? $router->model,
+                'os_version' => $result['os_version'] ?? $router->os_version,
+                'last_seen' => $result['last_seen'] ?? now(),
                 'status' => 'active',
             ]);
 
-            Log::info('Connectivity verified successfully for router:', [
+            Log::info('Connectivity verified successfully for router via SSH:', [
                 'router_id' => $router->id,
                 'model' => $router->model,
                 'os_version' => $router->os_version,
-                'interfaces_count' => count($available_interfaces),
             ]);
 
             return response()->json([
@@ -634,15 +828,12 @@ EOT;
                 'model' => $router->model,
                 'os_version' => $router->os_version,
                 'last_seen' => $router->last_seen,
-                'interfaces' => $available_interfaces,
-                'peers' => $peers,
+                'interfaces' => $result['interfaces'] ?? [],
             ]);
         } catch (\Exception $e) {
             $errorMessage = match (true) {
-                strpos($e->getMessage(), 'Connection refused') !== false => 'Connection refused. Ensure the router is online and API port (8728) is open.',
-                strpos($e->getMessage(), 'Invalid user name or password') !== false => 'Invalid credentials. Verify the username and password match the connectivity script.',
                 strpos($e->getMessage(), 'decrypt') !== false => 'Failed to decrypt password. Check OpenSSL configuration and database integrity.',
-                default => 'Failed to connect to router: ' . $e->getMessage(),
+                default => 'Failed to connect to router via SSH: ' . $e->getMessage(),
             };
 
             Log::error('Failed to verify connectivity: ' . $e->getMessage(), [
@@ -821,6 +1012,78 @@ EOT;
 
             $decryptedPassword = Crypt::decrypt($router->password);
 
+            $snmpScript = '';
+            if ((bool) ($router->snmp_enabled ?? false)) {
+                $snmpUser = $router->snmp_v3_user;
+                if (empty($snmpUser)) {
+                    $snmpUser = 'snmpv3-' . substr((string) $router->id, 0, 8);
+                }
+
+                $authProtocol = strtoupper((string) ($router->snmp_v3_auth_protocol ?? 'SHA1'));
+                $privProtocol = strtoupper((string) ($router->snmp_v3_priv_protocol ?? 'AES'));
+
+                $authPass = $router->snmp_v3_auth_password;
+                $privPass = $router->snmp_v3_priv_password;
+
+                if (empty($authPass)) {
+                    $authPass = Str::random(16);
+                }
+                if (empty($privPass)) {
+                    $privPass = Str::random(16);
+                }
+
+                $configuredTrapTarget = env('SNMP_TRAP_TARGET')
+                    ?: (config('vpn.server_ip') ?: (config('wireguard.server_vpn_ip') ?: ''));
+
+                $publicTrapTarget = (string) (config('vpn.server_public_ip') ?: env('VPN_SERVER_PUBLIC_IP'));
+                $existingTrapTarget = (string) ($router->snmp_trap_target ?? '');
+
+                $shouldOverrideTrapTarget =
+                    $existingTrapTarget === '' ||
+                    ($publicTrapTarget !== '' && $existingTrapTarget === $publicTrapTarget);
+
+                $trapTarget = $shouldOverrideTrapTarget
+                    ? ($configuredTrapTarget !== '' ? $configuredTrapTarget : $publicTrapTarget)
+                    : $existingTrapTarget;
+
+                $trapVersion = strtolower((string) ($router->snmp_trap_version ?? 'v3'));
+                $trapVersionNum = match ($trapVersion) {
+                    'v1', '1' => 1,
+                    'v2', 'v2c', '2' => 2,
+                    default => 3,
+                };
+
+                if (
+                    $router->snmp_v3_user !== $snmpUser ||
+                    $router->snmp_v3_auth_password !== $authPass ||
+                    $router->snmp_v3_priv_password !== $privPass ||
+                    $router->snmp_trap_target !== $trapTarget
+                ) {
+                    $router->snmp_v3_user = $snmpUser;
+                    $router->snmp_v3_auth_protocol = $authProtocol;
+                    $router->snmp_v3_auth_password = $authPass;
+                    $router->snmp_v3_priv_protocol = $privProtocol;
+                    $router->snmp_v3_priv_password = $privPass;
+                    $router->snmp_trap_version = 'v' . (string) $trapVersionNum;
+                    $router->snmp_trap_community = $snmpUser;
+                    $router->snmp_trap_target = $trapTarget;
+                    $router->save();
+                }
+
+                $trapTargetCmd = '';
+                if (!empty($trapTarget)) {
+                    $trapTargetCmd = "/snmp set trap-target={$trapTarget}";
+                }
+
+                $snmpScript = <<<EOT
+:do { /snmp set enabled=yes } on-error={}
+:do { /snmp community add name="{$snmpUser}" addresses=0.0.0.0/0 security=private read-access=yes write-access=no authentication-protocol={$authProtocol} encryption-protocol={$privProtocol} authentication-password="{$authPass}" encryption-password="{$privPass}" } on-error={ :do { /snmp community set [find name="{$snmpUser}"] addresses=0.0.0.0/0 security=private read-access=yes write-access=no authentication-protocol={$authProtocol} encryption-protocol={$privProtocol} authentication-password="{$authPass}" encryption-password="{$privPass}" } on-error={} }
+:do { /snmp set trap-community="{$snmpUser}" trap-version={$trapVersionNum} } on-error={}
+:do { {$trapTargetCmd} } on-error={}
+
+EOT;
+            }
+
             $completeScript = <<<EOT
 /ip service set api disabled=no port={$router->port}
 /ip service set ssh disabled=no port=22 address=""
@@ -828,6 +1091,7 @@ EOT;
 /system identity set name="{$router->name}"
 /system note set note="Managed by Traidnet Solution LTD"
 $vpnScript
+$snmpScript
 /ip firewall filter add chain=input protocol=tcp dst-port=22 action=accept comment="Allow SSH access"
 
 EOT;

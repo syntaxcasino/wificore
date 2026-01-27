@@ -10,6 +10,7 @@ NO_CACHE=false
 PARALLEL=true
 PUSH=false
 VERBOSE=false
+REMOVE_VOLUMES=false
 
 # Simple flags (shortened for ease)
 while [[ $# -gt 0 ]]; do
@@ -51,6 +52,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         -v|--verbose)
             VERBOSE=true
+            shift
+            ;;
+        --volumes)
+            REMOVE_VOLUMES=true
             shift
             ;;
         # Services (non-flags)
@@ -102,7 +107,10 @@ up_cmd() {
 }
 
 down_cmd() {
-    local cmd="docker compose down -v"  # Default to remove volumes for clean stops
+    local cmd="docker compose down"
+    if [ "$REMOVE_VOLUMES" = true ]; then
+        cmd="$cmd -v"
+    fi
     if [ ${#SERVICES[@]} -gt 0 ]; then
         cmd="$cmd ${SERVICES[*]}"
     fi

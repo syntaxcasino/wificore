@@ -67,8 +67,7 @@
         </BaseSelect>
         <BaseSelect v-model="filters.router" class="w-40">
           <option value="">All Routers</option>
-          <option value="router1">Router 01</option>
-          <option value="router2">Router 02</option>
+          <option v-for="r in routerOptions" :key="r.id" :value="r.id">{{ r.name }}</option>
         </BaseSelect>
       </div>
     </div>
@@ -119,7 +118,7 @@
             <div class="p-6">
               <h3 class="text-lg font-semibold text-slate-900 mb-4">Router Distribution</h3>
               <div class="space-y-4">
-                <div v-for="router in routers" :key="router.id">
+                <div v-for="router in displayedRouters" :key="router.id">
                   <div class="flex items-center justify-between mb-2">
                     <span class="text-sm font-medium text-slate-700">{{ router.name }}</span>
                     <span class="text-sm font-bold text-slate-900">{{ formatBytes(router.traffic) }}/s</span>
@@ -138,7 +137,8 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
+import axios from 'axios'
 import { BarChart3, RefreshCw, Download, Activity, ArrowDown, ArrowUp, TrendingUp } from 'lucide-vue-next'
 import PageContainer from '@/modules/common/components/layout/templates/PageContainer.vue'
 import PageHeader from '@/modules/common/components/layout/templates/PageHeader.vue'
@@ -157,29 +157,50 @@ const refreshing = ref(false)
 const filters = ref({ timeRange: '1h', router: '' })
 
 const stats = ref({
-  current: 125000000,
-  download: 95000000,
-  upload: 30000000,
-  peak: 180000000
+  current: 0,
+  download: 0,
+  upload: 0,
+  peak: 0,
 })
 
-const trafficData = ref(Array.from({ length: 60 }, () => ({
-  download: Math.floor(Math.random() * 100000000) + 50000000,
-  upload: Math.floor(Math.random() * 40000000) + 20000000
-})))
+const trafficData = ref([])
 
-const topConsumers = ref(Array.from({ length: 5 }, (_, i) => ({
-  id: i + 1,
-  username: `user${i + 1}`,
-  bandwidth: Math.floor(Math.random() * 10000000) + 5000000
-})))
+const topConsumers = ref([])
 
-const routers = ref([
-  { id: 1, name: 'Router 01', traffic: 75000000, percentage: 60 },
-  { id: 2, name: 'Router 02', traffic: 50000000, percentage: 40 }
-])
+const routers = ref([])
+const routerTraffic = ref({})
 
-const maxTraffic = computed(() => Math.max(...trafficData.value.map(d => d.download + d.upload)))
+const routerOptions = computed(() => {
+  const list = routers.value.map((r) => ({
+    id: String(r?.id ?? ''),
+    name: r?.name ?? String(r?.id ?? ''),
+  }))
+  return list.filter((r) => r.id !== '')
+})
+
+const displayedRouters = computed(() => {
+  const rows = routerOptions.value.map((r) => {
+    const t = routerTraffic.value?.[r.id] ?? 0
+    return {
+      id: r.id,
+      name: r.name,
+      traffic: t,
+    }
+  })
+
+  const total = rows.reduce((sum, r) => sum + (r.traffic || 0), 0)
+  return rows
+    .sort((a, b) => (b.traffic || 0) - (a.traffic || 0))
+    .map((r) => ({
+      ...r,
+      percentage: total > 0 ? Math.round((r.traffic / total) * 100) : 0,
+    }))
+})
+
+const maxTraffic = computed(() => {
+  if (!trafficData.value.length) return 1
+  return Math.max(...trafficData.value.map(d => (d.download || 0) + (d.upload || 0)), 1)
+})
 
 const formatBytes = (bytes) => {
   if (!bytes) return '0 B'
@@ -191,25 +212,161 @@ const formatBytes = (bytes) => {
 
 const refreshData = async () => {
   refreshing.value = true
-  await new Promise(resolve => setTimeout(resolve, 500))
+  await loadTraffic()
   refreshing.value = false
 }
 
 const exportData = () => alert('Export feature coming soon!')
 
-let refreshInterval
+const parseVmSeriesValues = (vmResponse) => {
+  const result = vmResponse?.data?.result
+  if (!Array.isArray(result) || !result.length) return []
 
-onMounted(() => {
-  refreshInterval = setInterval(() => {
-    trafficData.value.shift()
-    trafficData.value.push({
-      download: Math.floor(Math.random() * 100000000) + 50000000,
-      upload: Math.floor(Math.random() * 40000000) + 20000000
+  const values = result[0]?.values
+  if (!Array.isArray(values)) return []
+
+  return values
+    .map((pair) => {
+      if (!Array.isArray(pair) || pair.length < 2) return null
+      const ts = Number(pair[0])
+      const v = Number(pair[1])
+      if (!Number.isFinite(ts) || !Number.isFinite(v)) return null
+      return { ts, v }
     })
-  }, 2000)
+    .filter(Boolean)
+}
+
+const parseVmMatrixByRouter = (vmResponse) => {
+  const result = vmResponse?.data?.result
+  if (!Array.isArray(result) || !result.length) return {}
+
+  const out = {}
+  for (const series of result) {
+    const rid = String(series?.metric?.router_id ?? '')
+    if (!rid) continue
+    const values = Array.isArray(series?.values) ? series.values : []
+    const points = values
+      .map((pair) => {
+        if (!Array.isArray(pair) || pair.length < 2) return null
+        const ts = Number(pair[0])
+        const v = Number(pair[1])
+        if (!Number.isFinite(ts) || !Number.isFinite(v)) return null
+        return { ts, v }
+      })
+      .filter(Boolean)
+    out[rid] = points
+  }
+  return out
+}
+
+const getLastValue = (points) => {
+  if (!Array.isArray(points) || points.length === 0) return 0
+  return points[points.length - 1]?.v ?? 0
+}
+
+const loadRouters = async () => {
+  try {
+    const response = await axios.get('/routers')
+    const fetched = Array.isArray(response.data) ? response.data : (response.data?.data || [])
+    routers.value = Array.isArray(fetched) ? fetched : []
+  } catch (err) {
+    console.warn('Failed to load routers:', err.message)
+    routers.value = []
+  }
+}
+
+const loadTraffic = async () => {
+  const range = filters.value.timeRange
+  const routerId = String(filters.value.router ?? '')
+
+  const url = routerId
+    ? `/routers/${routerId}/metrics/traffic`
+    : '/routers/metrics/traffic'
+
+  try {
+    const response = await axios.get(url, {
+      params: {
+        range,
+        step: '30s',
+      },
+    })
+
+    const data = response.data || {}
+    if (!data.success) {
+      return
+    }
+
+    if (routerId) {
+      const inSeries = parseVmSeriesValues(data.in?.data)
+      const outSeries = parseVmSeriesValues(data.out?.data)
+      const maxLen = Math.max(inSeries.length, outSeries.length)
+      const points = []
+
+      for (let i = 0; i < maxLen; i++) {
+        points.push({
+          download: inSeries[i]?.v ?? 0,
+          upload: outSeries[i]?.v ?? 0,
+        })
+      }
+
+      trafficData.value = points.slice(-60)
+      const currentIn = getLastValue(inSeries)
+      const currentOut = getLastValue(outSeries)
+      stats.value.download = currentIn
+      stats.value.upload = currentOut
+      stats.value.current = currentIn + currentOut
+      stats.value.peak = points.reduce((m, p) => Math.max(m, (p.download || 0) + (p.upload || 0)), 0)
+
+      routerTraffic.value = {
+        [routerId]: currentIn + currentOut,
+      }
+      return
+    }
+
+    const totalIn = parseVmSeriesValues(data.total_in?.data)
+    const totalOut = parseVmSeriesValues(data.total_out?.data)
+    const maxLen = Math.max(totalIn.length, totalOut.length)
+    const points = []
+
+    for (let i = 0; i < maxLen; i++) {
+      points.push({
+        download: totalIn[i]?.v ?? 0,
+        upload: totalOut[i]?.v ?? 0,
+      })
+    }
+
+    trafficData.value = points.slice(-60)
+    const currentIn = getLastValue(totalIn)
+    const currentOut = getLastValue(totalOut)
+    stats.value.download = currentIn
+    stats.value.upload = currentOut
+    stats.value.current = currentIn + currentOut
+    stats.value.peak = points.reduce((m, p) => Math.max(m, (p.download || 0) + (p.upload || 0)), 0)
+
+    const byRouterIn = parseVmMatrixByRouter(data.by_router_in?.data)
+    const byRouterOut = parseVmMatrixByRouter(data.by_router_out?.data)
+    const totals = {}
+
+    for (const rid of Object.keys({ ...byRouterIn, ...byRouterOut })) {
+      const rin = getLastValue(byRouterIn[rid])
+      const rout = getLastValue(byRouterOut[rid])
+      totals[rid] = rin + rout
+    }
+    routerTraffic.value = totals
+  } catch (err) {
+    console.warn('Failed to load traffic:', err.message, err.response?.data)
+  }
+}
+
+onMounted(async () => {
+  await loadRouters()
+  await loadTraffic()
 })
 
-onUnmounted(() => {
-  if (refreshInterval) clearInterval(refreshInterval)
-})
+watch(
+  () => [filters.value.timeRange, filters.value.router],
+  async () => {
+    await loadTraffic()
+  }
+)
 </script>

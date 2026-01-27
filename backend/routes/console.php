@@ -24,13 +24,14 @@ use App\Jobs\UnsuspendExpiredAccountsJob;
 
 Schedule::job(new CheckRoutersJob)->everyMinute();
 
-// Fetch live router data every 30 seconds for real-time updates
-Schedule::job(new \App\Jobs\ScheduleRouterPollingJob)
-    ->everyThirtySeconds()
-    ->name('fetch-router-live-data')
-    ->withoutOverlapping();
+if (env('ROUTER_POLLING_MODE', 'telegraf') === 'laravel') {
+    Schedule::job(new \App\Jobs\ScheduleRouterPollingJob)
+        ->everyTwoMinutes()
+        ->name('fetch-router-live-data')
+        ->withoutOverlapping();
+}
 
-// Update dashboard statistics every 5 seconds for near real-time data (per-tenant)
+// Update dashboard statistics every 30 seconds (optimized for low-end device support)
 Schedule::call(function () {
     // Get all active tenants
     $tenants = \App\Models\Tenant::whereNull('deleted_at')->pluck('id');
@@ -38,11 +39,11 @@ Schedule::call(function () {
     foreach ($tenants as $tenantId) {
         UpdateDashboardStatsJob::dispatch($tenantId)->onQueue('dashboard');
     }
-})->everyFiveSeconds()->name('update-dashboard-stats')->withoutOverlapping();
+})->everyThirtySeconds()->name('update-dashboard-stats')->withoutOverlapping();
 
 // Schedule the RotateLogs job to run daily at 1:00 AM
 //Schedule::job(new RotateLogs)->dailyAt('01:00');
-Schedule::job(new RotateLogs)->everyMinute();
+Schedule::job(new RotateLogs)->dailyAt('00:00');
 
 // =============================================================================
 // HOTSPOT BILLING SYSTEM SCHEDULED JOBS
@@ -162,9 +163,15 @@ Schedule::call(function () {
 // P2 SECURITY - AUTOMATED MAINTENANCE
 // =============================================================================
 
-// Database backup - daily at 3:00 AM (full backup)
-Schedule::command('db:backup --type=full')
+// SSH Key Rotation - daily at 3:00 AM (90-day rotation policy)
+Schedule::command('routers:rotate-ssh-keys')
     ->dailyAt('03:00')
+    ->name('router-ssh-key-rotation')
+    ->onOneServer();
+
+// Database backup - daily at 3:30 AM (full backup) - moved to avoid conflict
+Schedule::command('db:backup --type=full')
+    ->dailyAt('03:30')
     ->name('database-backup-full')
     ->onOneServer();
 

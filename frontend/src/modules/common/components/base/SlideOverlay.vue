@@ -4,14 +4,14 @@
       <div
         v-if="modelValue"
         class="fixed inset-0 z-50 overflow-hidden"
-        @click.self="close"
+        @click.self="handleBackdrop"
       >
         <!-- Backdrop -->
         <Transition name="backdrop">
           <div
             v-if="modelValue"
             class="absolute inset-0 bg-black/[0.03]"
-            @click="close"
+            @click="handleBackdrop"
           />
         </Transition>
 
@@ -37,7 +37,7 @@
                 </div>
               </div>
               <button
-                @click="close"
+                @click="handleClose"
                 class="p-2 hover:bg-slate-200 rounded-lg transition-colors"
                 type="button"
               >
@@ -106,29 +106,32 @@ const iconComponent = computed(() => {
 
 const widthClass = computed(() => {
   const widthMap = {
-    '30%': 'w-[30%] min-w-[400px]',
-    '40%': 'w-[40%] min-w-[500px]',
-    '50%': 'w-[50%] min-w-[600px]',
-    '60%': 'w-[60%] min-w-[700px]',
-    '70%': 'w-[70%] min-w-[800px]',
-    '80%': 'w-[80%] min-w-[900px]',
-    '90%': 'w-[90%] min-w-[1000px]',
+    '30%': 'w-full sm:w-[30%] sm:min-w-[400px]',
+    '40%': 'w-full sm:w-[40%] sm:min-w-[500px]',
+    '50%': 'w-full sm:w-[50%] sm:min-w-[600px]',
+    '60%': 'w-full sm:w-[60%] sm:min-w-[700px]',
+    '70%': 'w-full sm:w-[70%] sm:min-w-[800px]',
+    '80%': 'w-full sm:w-[80%] sm:min-w-[900px]',
+    '90%': 'w-full sm:w-[90%] sm:min-w-[1000px]',
     'full': 'w-full'
   }
   return widthMap[props.width] || widthMap['50%']
 })
 
-const close = () => {
-  if (props.closeOnBackdrop) {
-    emit('update:modelValue', false)
-    emit('close')
-  }
+const handleClose = () => {
+  emit('update:modelValue', false)
+  emit('close')
+}
+
+const handleBackdrop = () => {
+  if (!props.closeOnBackdrop) return
+  handleClose()
 }
 
 // Handle escape key
 const handleEscape = (e) => {
   if (e.key === 'Escape' && props.modelValue && props.closeOnEscape) {
-    close()
+    handleClose()
   }
 }
 

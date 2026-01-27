@@ -7,6 +7,7 @@ use App\Jobs\DiscoverRouterInterfacesJob;
 use App\Models\Router;
 use App\Models\Tenant;
 use App\Models\VpnConfiguration;
+use App\Services\CacheInvalidationService;
 use App\Services\MikrotikProvisioningService;
 use App\Services\VpnConnectivityService;
 use App\Traits\TenantAwareJob;
@@ -102,6 +103,8 @@ class CheckRoutersJob implements ShouldQueue
                         $connectivityData = $service->verifyConnectivity($router);
                         $status = $connectivityData['status'] === 'connected' ? 'online' : 'offline';
 
+                        $previousStatus = $router->status;
+
                         $router->update([
                             'status' => $status,
                             'last_checked' => now(),
@@ -110,16 +113,33 @@ class CheckRoutersJob implements ShouldQueue
                             'last_seen' => $connectivityData['last_seen'] ?? $router->last_seen,
                         ]);
 
-                        $updatedStatuses[] = [
-                            'id' => $router->id,
-                            'ip_address' => $router->ip_address,
-                            'name' => $router->name,
-                            'status' => $status,
-                            'last_checked' => $router->last_checked,
-                            'model' => $router->model,
-                            'os_version' => $router->os_version,
-                            'last_seen' => $router->last_seen,
-                        ];
+                        if ($previousStatus !== $status) {
+                            CacheInvalidationService::invalidateRouterCache((string) $this->tenantId, (string) $router->id);
+
+                            $payload = [
+                                'id' => $router->id,
+                                'ip_address' => $router->ip_address,
+                                'name' => $router->name,
+                                'status' => $status,
+                                'last_checked' => $router->last_checked,
+                                'model' => $router->model,
+                                'os_version' => $router->os_version,
+                                'last_seen' => $router->last_seen,
+                                'tenant_id' => (string) $this->tenantId,
+                            ];
+
+                            $updatedStatuses[] = $payload;
+
+                            try {
+                                broadcast(new RouterStatusUpdated([$payload], (string) $this->tenantId))->toOthers();
+                            } catch (\Exception $e) {
+                                Log::withContext(array_merge($context, [
+                                    'router_id' => $router->id,
+                                ]))->warning('Failed to broadcast RouterStatusUpdated for router', [
+                                    'error' => $e->getMessage(),
+                                ]);
+                            }
+                        }
 
                         Log::withContext(array_merge($context, [
                             'router_id' => $router->id,
@@ -143,18 +163,36 @@ class CheckRoutersJob implements ShouldQueue
                         }
 
                         // Mark as offline on failure
+                        $previousStatus = $router->status;
                         $router->update([
                             'status' => 'offline',
                             'last_checked' => now(),
                         ]);
 
-                        $updatedStatuses[] = [
-                            'id' => $router->id,
-                            'ip_address' => $router->ip_address,
-                            'name' => $router->name,
-                            'status' => 'offline',
-                            'last_checked' => $router->last_checked,
-                        ];
+                        if ($previousStatus !== 'offline') {
+                            CacheInvalidationService::invalidateRouterCache((string) $this->tenantId, (string) $router->id);
+
+                            $payload = [
+                                'id' => $router->id,
+                                'ip_address' => $router->ip_address,
+                                'name' => $router->name,
+                                'status' => 'offline',
+                                'last_checked' => $router->last_checked,
+                                'tenant_id' => (string) $this->tenantId,
+                            ];
+
+                            $updatedStatuses[] = $payload;
+
+                            try {
+                                broadcast(new RouterStatusUpdated([$payload], (string) $this->tenantId))->toOthers();
+                            } catch (\Exception $ex) {
+                                Log::withContext(array_merge($context, [
+                                    'router_id' => $router->id,
+                                ]))->warning('Failed to broadcast RouterStatusUpdated for router', [
+                                    'error' => $ex->getMessage(),
+                                ]);
+                            }
+                        }
 
                         Log::withContext(array_merge($context, [
                             'router_id' => $router->id,
@@ -170,8 +208,7 @@ class CheckRoutersJob implements ShouldQueue
                 // Use tenant channel
                 if (!empty($updatedStatuses)) {
                     try {
-                        // TODO: Ensure RouterStatusUpdated supports tenant broadcasting
-                        broadcast(new RouterStatusUpdated($updatedStatuses))->toOthers();
+                        broadcast(new RouterStatusUpdated($updatedStatuses, (string) $this->tenantId))->toOthers();
 
                         Log::withContext($context)->info('Broadcasted RouterStatusUpdated event', [
                             'router_count' => count($updatedStatuses),

@@ -58,6 +58,8 @@ WORKDIR /var/www/html
 RUN apk add --no-cache --virtual .build-deps \
       postgresql-dev \
       libzip-dev \
+      icu-dev \
+      net-snmp-dev \
       linux-headers \
       autoconf \
       g++ \
@@ -65,13 +67,15 @@ RUN apk add --no-cache --virtual .build-deps \
  && apk add --no-cache \
       postgresql-client \
       libzip \
+      icu-libs \
+      net-snmp \
       supervisor \
       sudo \
       bash \
       wireguard-tools \
       iptables \
       iproute2 \
- && docker-php-ext-install -j$(nproc) pdo_pgsql sockets zip opcache ftp \
+ && docker-php-ext-install -j$(nproc) pdo_pgsql sockets zip opcache ftp snmp intl \
  && pecl install redis \
  && docker-php-ext-enable redis \
  && apk del .build-deps \

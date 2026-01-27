@@ -196,10 +196,7 @@ return new class extends Migration
                     RETURN;
                 END IF;
                 
-                -- Set search path to user\'s schema
-                EXECUTE format(\'SET search_path TO %I, public\', v_schema);
-                
-                -- Insert post-auth record in the correct schema
+                -- Insert post-auth record in the correct schema using fully qualified name
                 EXECUTE format(\'
                     INSERT INTO %I.radpostauth (
                         username, 
@@ -213,9 +210,6 @@ return new class extends Migration
                         NOW()
                     )
                 \', v_schema, p_username, p_password, COALESCE(p_reply_type, \'Unknown\'));
-                
-                -- Reset search path
-                SET search_path TO public;
             END;
             $func$ LANGUAGE plpgsql SECURITY DEFINER
         ');
@@ -234,10 +228,7 @@ return new class extends Migration
                     RETURN;
                 END IF;
                 
-                -- Set search path to user\'s schema
-                EXECUTE format(\'SET search_path TO %I, public\', v_schema);
-                
-                -- Query radcheck table in the correct schema
+                -- Query radcheck table in the correct schema using fully qualified name
                 RETURN QUERY EXECUTE format(\'
                     SELECT 
                         id::INTEGER,
@@ -250,9 +241,6 @@ return new class extends Migration
                     ORDER BY id
                 \', v_schema)
                 USING p_username;
-                
-                -- Reset search path
-                SET search_path TO public;
             END;
             $func$ LANGUAGE plpgsql SECURITY DEFINER
         ');
@@ -271,10 +259,7 @@ return new class extends Migration
                     RETURN;
                 END IF;
                 
-                -- Set search path to user\'s schema
-                EXECUTE format(\'SET search_path TO %I, public\', v_schema);
-                
-                -- Query radreply table in the correct schema
+                -- Query radreply table in the correct schema using fully qualified name
                 RETURN QUERY EXECUTE format(\'
                     SELECT 
                         id::INTEGER,
@@ -287,9 +272,6 @@ return new class extends Migration
                     ORDER BY id
                 \', v_schema)
                 USING p_username;
-                
-                -- Reset search path
-                SET search_path TO public;
             END;
             $func$ LANGUAGE plpgsql SECURITY DEFINER
         ');

@@ -12,7 +12,9 @@ use App\Events\PaymentFailed;
 use App\Events\PackageStatusChanged;
 use App\Events\RouterStatusUpdated;
 use App\Events\DashboardStatsUpdated;
+use App\Events\RouterProvisioningCompleted;
 use App\Listeners\TrackCompletedJobs;
+use App\Listeners\UpdateRouterStatus;
 use Illuminate\Foundation\Support\Providers\EventServiceProvider as ServiceProvider;
 use Illuminate\Queue\Events\JobProcessed;
 
@@ -70,6 +72,10 @@ class EventServiceProvider extends ServiceProvider
         // Router events
         RouterStatusUpdated::class => [
             // e.g., AlertAdminOfRouterIssues::class
+        ],
+        
+        RouterProvisioningCompleted::class => [
+            UpdateRouterStatus::class,
         ],
         
         // Dashboard events

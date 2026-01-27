@@ -82,7 +82,7 @@ onUnmounted(() => {
   right: 0;
   bottom: 0;
   background-color: rgba(0, 0, 0, 0.5);
-  z-index: 50;
+  z-index: 90;
   animation: fadeIn 0.3s ease-in-out;
 }
 

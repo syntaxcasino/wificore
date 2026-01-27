@@ -64,6 +64,8 @@ class CacheRoutersJob implements ShouldQueue
         try {
             // Fetch all routers for this tenant
             $routers = Router::select('id', 'name', 'ip_address', 'vpn_ip', 'status', 'port', 'username')
+                ->addSelect('created_at')
+                ->orderBy('created_at', 'desc')
                 ->get()
                 ->toArray();
             

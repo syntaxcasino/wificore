@@ -27,8 +27,14 @@ COPY init.sql /docker-entrypoint-initdb.d/01-init.sql
 COPY partitioning-setup.sql /docker-entrypoint-initdb.d/02-partitioning-setup.sql
 COPY partition-lifecycle-management.sql /docker-entrypoint-initdb.d/03-partition-lifecycle-management.sql
 
+# Replication bootstrap (primary/replica)
+COPY replication-entrypoint.sh /usr/local/bin/replication-entrypoint.sh
+
 # Set proper permissions
 RUN chmod 644 /docker-entrypoint-initdb.d/*.sql
+RUN chmod 755 /usr/local/bin/replication-entrypoint.sh
+
+ENTRYPOINT ["/usr/local/bin/replication-entrypoint.sh"]
 
 # Expose PostgreSQL port
 EXPOSE 5432

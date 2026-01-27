@@ -35,10 +35,17 @@ export function useRouterProvisioning(props, emit) {
   const availableInterfaces = ref([])
   const selectedHotspotInterfaces = ref([])
   const selectedPPPoEInterfaces = ref([])
+  const serviceMappings = ref({})
+  const mappingDeploying = ref(false)
+  const mappingStatus = ref('')
+  const mappingErrors = ref([])
+  const mappingDeployedServices = ref([])
+  const mappingPollInterval = ref(null)
   const connectionStatus = ref('Waiting')
   const deploymentFailed = ref(false)
   const deploymentTimedOut = ref(false)
-  
+  const stage2FallbackInterval = ref(null)
+
   // Computed for connection status styling
   const connectionStatusClass = computed(() => {
     const classes = {
@@ -49,7 +56,7 @@ export function useRouterProvisioning(props, emit) {
     }
     return classes[connectionStatus.value] || 'bg-gray-500'
   })
-  
+
   const connectionStatusTextClass = computed(() => {
     const classes = {
       'Waiting': 'text-yellow-600',
@@ -203,6 +210,45 @@ export function useRouterProvisioning(props, emit) {
     
     // Subscribe to VPN connectivity events
     subscribeToVpnEvents()
+
+    if (stage2FallbackInterval.value) {
+      clearInterval(stage2FallbackInterval.value)
+      stage2FallbackInterval.value = null
+    }
+
+    stage2FallbackInterval.value = setInterval(async () => {
+      try {
+        if (currentStage.value !== 2 || !provisioningRouter.value?.id) {
+          clearInterval(stage2FallbackInterval.value)
+          stage2FallbackInterval.value = null
+          return
+        }
+
+        console.log('[Stage 2 Fallback] Checking router status...')
+        const response = await axios.get(`/routers/${provisioningRouter.value.id}/provisioning-status`)
+        console.log('[Stage 2 Fallback] Provisioning status:', response.data)
+
+        if (response.data.status === 'completed' || response.data.router_status === 'online') {
+          console.log('[Stage 2 Fallback] Router online via provisioning-status, advancing...')
+          clearInterval(stage2FallbackInterval.value)
+          stage2FallbackInterval.value = null
+          await probeRouterConnectivity()
+          return
+        }
+
+        const statusResponse = await axios.get(`/routers/${provisioningRouter.value.id}/status`)
+        console.log('[Stage 2 Fallback] Router status:', statusResponse.data)
+
+        if (statusResponse.data.status === 'connected' || statusResponse.data.status === 'online') {
+          console.log('[Stage 2 Fallback] Router online via status endpoint, advancing...')
+          clearInterval(stage2FallbackInterval.value)
+          stage2FallbackInterval.value = null
+          await probeRouterConnectivity()
+        }
+      } catch (error) {
+        console.error('[Stage 2 Fallback] Error checking status:', error)
+      }
+    }, 3000)
     
     // Note: No polling needed! Backend job will broadcast events via WebSocket
     // Continue button will be enabled when vpn.connectivity.verified event is received
@@ -268,6 +314,7 @@ export function useRouterProvisioning(props, emit) {
     try {
       connectionStatus.value = 'Connecting'
       addLog('info', 'Starting connectivity probe...')
+      console.log('[probeRouterConnectivity] Starting probe for router:', provisioningRouter.value?.id)
       
       // Poll the router status endpoint
       const maxAttempts = 30 // 30 attempts = 1 minute
@@ -278,11 +325,13 @@ export function useRouterProvisioning(props, emit) {
         
         try {
           const response = await axios.get(`/routers/${provisioningRouter.value.id}/status`)
+          console.log(`[probeRouterConnectivity] Attempt ${attempts}/${maxAttempts}, status:`, response.data.status)
           
           addLog('info', `Probe attempt ${attempts}/${maxAttempts}`)
           
           // Check if router is connected (accepts 'connected' or 'online')
           if (response.data.status === 'connected' || response.data.status === 'online') {
+            console.log('[probeRouterConnectivity] Router is online! Fetching interfaces...')
             clearInterval(pollInterval)
             connectionStatus.value = 'Connected'
             
@@ -293,25 +342,37 @@ export function useRouterProvisioning(props, emit) {
             
             // Fetch available interfaces
             const interfacesResponse = await axios.get(`/routers/${provisioningRouter.value.id}/interfaces`)
+            console.log('[probeRouterConnectivity] Interfaces fetched:', interfacesResponse.data.interfaces?.length)
             
             if (interfacesResponse.data.interfaces) {
-              availableInterfaces.value = interfacesResponse.data.interfaces
+              // Filter out loopback and WireGuard interfaces
+              const allInterfaces = interfacesResponse.data.interfaces
+              availableInterfaces.value = allInterfaces.filter(iface => {
+                const name = (iface.name || '').toLowerCase()
+                return name !== 'lo' && !name.startsWith('wg-') && !name.startsWith('wg')
+              })
+              serviceMappings.value = Object.fromEntries(
+                (availableInterfaces.value || []).map((iface) => [iface.name, 'none']),
+              )
               addLog('success', `Connected! Found ${interfacesResponse.data.interfaces.length} interfaces`)
+              console.log('[probeRouterConnectivity] Moving to stage 3')
               
               // Move to stage 3 with interfaces
               currentStage.value = 3
               provisioningProgress.value = 75
-              provisioningStatus.value = 'Router connected - Configure services'
+              provisioningStatus.value = 'Router connected - Map services to interfaces'
             }
           } else if (attempts >= maxAttempts) {
             clearInterval(pollInterval)
             connectionStatus.value = 'Failed'
             addLog('error', 'Connection timeout - Router not responding')
             provisioningStatus.value = 'Connection timeout - Please verify the script was applied'
+            console.log('[probeRouterConnectivity] Timeout reached')
           } else {
             provisioningStatus.value = `Waiting for router... (${attempts}/${maxAttempts})`
           }
         } catch (error) {
+          console.error('[probeRouterConnectivity] Error on attempt', attempts, ':', error)
           if (attempts >= maxAttempts) {
             clearInterval(pollInterval)
             connectionStatus.value = 'Failed'
@@ -322,7 +383,7 @@ export function useRouterProvisioning(props, emit) {
       }, 2000) // Check every 2 seconds
       
     } catch (error) {
-      console.error('Error probing router:', error)
+      console.error('[probeRouterConnectivity] Error probing router:', error)
       connectionStatus.value = 'Failed'
       addLog('error', 'Error during connectivity probe')
       provisioningStatus.value = 'Error verifying connectivity'
@@ -333,6 +394,138 @@ export function useRouterProvisioning(props, emit) {
     if (currentStage.value > 1) {
       currentStage.value--
       provisioningProgress.value = (currentStage.value - 1) * 25
+    }
+  }
+
+  const setServiceMapping = (interfaceName, serviceType) => {
+    serviceMappings.value = {
+      ...(serviceMappings.value || {}),
+      [interfaceName]: serviceType,
+    }
+  }
+
+  const pollServiceDeployments = async (routerId, serviceIds) => {
+    const maxAttempts = 40
+    let attempts = 0
+
+    if (mappingPollInterval.value) {
+      clearInterval(mappingPollInterval.value)
+      mappingPollInterval.value = null
+    }
+
+    mappingPollInterval.value = setInterval(async () => {
+      attempts++
+      try {
+        const response = await axios.get(`/routers/${routerId}/services`)
+        const services = response.data.services || response.data.data || []
+        const target = services.filter((s) => serviceIds.includes(s.id))
+
+        const allTerminal =
+          target.length === serviceIds.length &&
+          target.every((s) => ['deployed', 'failed'].includes(s.deployment_status))
+
+        if (allTerminal || attempts >= maxAttempts) {
+          clearInterval(mappingPollInterval.value)
+          mappingPollInterval.value = null
+          mappingDeploying.value = false
+
+          const failed = target.filter((s) => s.deployment_status === 'failed')
+          if (failed.length) {
+            mappingStatus.value = 'Deployment finished with errors'
+            addLog('error', `Some services failed to deploy (${failed.length})`)
+          } else {
+            mappingStatus.value = 'Deployment completed successfully'
+            addLog('success', 'All mapped services deployed successfully')
+            provisioningProgress.value = 100
+          }
+        }
+      } catch (e) {
+        if (attempts >= maxAttempts) {
+          clearInterval(mappingPollInterval.value)
+          mappingPollInterval.value = null
+          mappingDeploying.value = false
+          mappingStatus.value = 'Deployment status check timed out'
+          addLog('warning', 'Deployment status check timed out')
+        }
+      }
+    }, 3000)
+  }
+
+  const confirmServiceMappingAndDeploy = async () => {
+    if (!provisioningRouter.value?.id) {
+      addLog('error', 'Router is not ready for service deployment')
+      return
+    }
+
+    const routerId = provisioningRouter.value.id
+    mappingErrors.value = []
+    mappingDeployedServices.value = []
+
+    const entries = Object.entries(serviceMappings.value || {})
+    const selected = entries.filter(([, type]) => type && type !== 'none')
+
+    const selectedTypes = [...new Set(selected.map(([, type]) => type))]
+
+    if (!selected.length) {
+      addLog('warning', 'Select at least one service to deploy')
+      return
+    }
+
+    mappingDeploying.value = true
+    provisioningProgress.value = 85
+    provisioningStatus.value = 'Configuring services...'
+    mappingStatus.value = 'Configuring services...'
+    addLog('info', `Configuring ${selected.length} interface mapping(s) (${selectedTypes.join(', ')})...`)
+
+    try {
+      const configured = []
+      for (const [iface, type] of selected) {
+        const resp = await axios.post(`/routers/${routerId}/services/configure`, {
+          interface: iface,
+          service_type: type,
+          advanced_options: {},
+        })
+
+        if (!resp.data?.success) {
+          throw new Error(resp.data?.message || `Failed to configure ${type} on ${iface}`)
+        }
+
+        const validation = resp.data.validation
+        if (validation && validation.valid === false) {
+          throw new Error(resp.data?.message || `Validation failed for ${type} on ${iface}`)
+        }
+
+        configured.push(resp.data.service)
+        addLog('success', `Configured ${type} on ${iface}`)
+      }
+
+      mappingDeployedServices.value = configured
+
+      provisioningProgress.value = 92
+      provisioningStatus.value = 'Deploying services...'
+      mappingStatus.value = 'Deploying services...'
+      addLog('info', `Deploying ${configured.length} configured service instance(s) across ${selected.length} interface(s)...`)
+
+      const serviceIds = []
+      for (const service of configured) {
+        const deployResp = await axios.post(`/routers/${routerId}/services/${service.id}/deploy`)
+        if (!deployResp.data?.success) {
+          throw new Error(deployResp.data?.message || `Failed to deploy service ${service.id}`)
+        }
+        serviceIds.push(service.id)
+      }
+
+      provisioningProgress.value = 96
+      provisioningStatus.value = 'Deployment in progress...'
+      mappingStatus.value = 'Deployment in progress...'
+      await pollServiceDeployments(routerId, serviceIds)
+    } catch (e) {
+      mappingDeploying.value = false
+      const msg = e.response?.data?.message || e.message || 'Service deployment failed'
+      mappingStatus.value = msg
+      mappingErrors.value = [msg]
+      provisioningStatus.value = msg
+      addLog('error', msg)
     }
   }
 
@@ -631,6 +824,11 @@ export function useRouterProvisioning(props, emit) {
         console.log('VPN connectivity checking:', data)
         
         if (data.router_id === provisioningRouter.value?.id) {
+          if (stage2FallbackInterval.value) {
+            clearInterval(stage2FallbackInterval.value)
+            stage2FallbackInterval.value = null
+          }
+
           vpnConnectivityAttempts.value = data.attempt
           const progress = data.progress || 0
           
@@ -650,6 +848,11 @@ export function useRouterProvisioning(props, emit) {
         console.log('VPN connectivity verified:', data)
         
         if (data.router_id === provisioningRouter.value?.id) {
+          if (stage2FallbackInterval.value) {
+            clearInterval(stage2FallbackInterval.value)
+            stage2FallbackInterval.value = null
+          }
+
           vpnConnectivityStatus.value = 'verified'
           vpnConnected.value = true
           vpnLatencyMs.value = data.connectivity?.latency_ms || 0
@@ -671,9 +874,19 @@ export function useRouterProvisioning(props, emit) {
         console.log('Router interfaces discovered:', data)
         
         if (data.router_id === provisioningRouter.value?.id) {
-          availableInterfaces.value = data.interfaces || []
+          if (stage2FallbackInterval.value) {
+            clearInterval(stage2FallbackInterval.value)
+            stage2FallbackInterval.value = null
+          }
+
+          // Filter out loopback and WireGuard interfaces
+          const allInterfaces = data.interfaces || []
+          availableInterfaces.value = allInterfaces.filter(iface => {
+            const name = (iface.name || '').toLowerCase()
+            return name !== 'lo' && !name.startsWith('wg-') && !name.startsWith('wg')
+          })
           
-          addLog('success', `✅ Discovered ${data.interfaces.length} interfaces`)
+          addLog('success', `✅ Discovered ${allInterfaces.length} interfaces (${availableInterfaces.value.length} available for services)`)
           addLog('info', `Router: ${data.router_info.model} (${data.router_info.version})`)
           
           // Update router info
@@ -683,21 +896,21 @@ export function useRouterProvisioning(props, emit) {
             provisioningRouter.value.os_version = data.router_info.version
           }
           
-          // Provisioning complete - show SSH access instructions
+          serviceMappings.value = Object.fromEntries(
+            (availableInterfaces.value || []).map((iface) => [iface.name, 'none']),
+          )
+
+          // Move to service mapping stage
           currentStage.value = 3
-          provisioningProgress.value = 100
-          provisioningStatus.value = 'Router provisioned successfully - SSH access ready'
+          provisioningProgress.value = 75
+          provisioningStatus.value = 'Router connected - Map services to interfaces'
           
           // Unsubscribe from both channels
           window.Echo.leave(`private-${vpnChannelName}`)
           window.Echo.leave(`private-${routersChannelName}`)
           
           addLog('success', '🎉 Router provisioning complete!')
-          addLog('info', '🔐 You can now SSH to the router for configuration')
-          addLog('info', `📍 SSH Address: ${provisioningRouter.value.vpn_ip || data.router_info.vpn_ip}`)
-          addLog('info', `👤 Username: admin`)
-          addLog('info', `🔑 Password: [Your router admin password]`)
-          addLog('info', '💡 Use WinBox or SSH client to configure services (Hotspot, PPPoE, etc.)')
+          addLog('info', 'Map services to interfaces, then confirm to deploy')
         }
       })
 
@@ -706,6 +919,11 @@ export function useRouterProvisioning(props, emit) {
         console.log('VPN connectivity failed:', data)
         
         if (data.router_id === provisioningRouter.value?.id) {
+          if (stage2FallbackInterval.value) {
+            clearInterval(stage2FallbackInterval.value)
+            stage2FallbackInterval.value = null
+          }
+
           vpnConnectivityStatus.value = 'failed'
           vpnConnected.value = false
           
@@ -766,7 +984,24 @@ export function useRouterProvisioning(props, emit) {
       serviceName: 'pppoe-service',
       ipPool: '192.168.2.100-192.168.2.200',
     })
+
+    if (stage2FallbackInterval.value) {
+      clearInterval(stage2FallbackInterval.value)
+      stage2FallbackInterval.value = null
+    }
   }
+
+  onUnmounted(() => {
+    if (stage2FallbackInterval.value) {
+      clearInterval(stage2FallbackInterval.value)
+      stage2FallbackInterval.value = null
+    }
+
+    if (mappingPollInterval.value) {
+      clearInterval(mappingPollInterval.value)
+      mappingPollInterval.value = null
+    }
+  })
 
   // Watch for overlay close
   watch(() => props.showFormOverlay, (newVal) => {
@@ -800,6 +1035,11 @@ export function useRouterProvisioning(props, emit) {
     availableInterfaces,
     selectedHotspotInterfaces,
     selectedPPPoEInterfaces,
+    serviceMappings,
+    mappingDeploying,
+    mappingStatus,
+    mappingErrors,
+    mappingDeployedServices,
     connectionStatus,
     deploymentFailed,
     deploymentTimedOut,
@@ -826,6 +1066,8 @@ export function useRouterProvisioning(props, emit) {
     getLogLevelClass,
     copyToClipboard,
     toggleInterfaceSelection,
+    setServiceMapping,
+    confirmServiceMappingAndDeploy,
     retryDeployment,
     resetForm,
   }

@@ -15,7 +15,6 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
@@ -23,9 +22,9 @@ use Illuminate\Support\Facades\Artisan;
 
 class CreateTenantWorkspaceJob implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    use Dispatchable, InteractsWithQueue, Queueable;
 
-    public $registration;
+    public $registrationId;
     public $tries = 3;
     public $timeout = 300;
     public $backoff = [5, 15, 30];
@@ -33,9 +32,9 @@ class CreateTenantWorkspaceJob implements ShouldQueue
     /**
      * Create a new job instance.
      */
-    public function __construct(TenantRegistration $registration)
+    public function __construct($registrationId)
     {
-        $this->registration = $registration;
+        $this->registrationId = $registrationId;
     }
 
     /**
@@ -43,9 +42,18 @@ class CreateTenantWorkspaceJob implements ShouldQueue
      */
     public function handle(TenantVpnTunnelService $vpnService, \App\Services\TenantMigrationManager $migrationManager): void
     {
+        $registration = TenantRegistration::find($this->registrationId);
+        if (!$registration) {
+            Log::error('CreateTenantWorkspaceJob started but registration not found', [
+                'registration_id' => $this->registrationId,
+                'attempt' => $this->attempts()
+            ]);
+            return;
+        }
+
         Log::info('CreateTenantWorkspaceJob started', [
-            'registration_id' => $this->registration->id,
-            'tenant_slug' => $this->registration->tenant_slug,
+            'registration_id' => $registration->id,
+            'tenant_slug' => $registration->tenant_slug,
             'attempt' => $this->attempts()
         ]);
 
@@ -53,22 +61,22 @@ class CreateTenantWorkspaceJob implements ShouldQueue
             DB::beginTransaction();
 
             Log::info('Creating tenant workspace', [
-                'registration_id' => $this->registration->id,
-                'tenant_slug' => $this->registration->tenant_slug,
+                'registration_id' => $registration->id,
+                'tenant_slug' => $registration->tenant_slug,
             ]);
 
             // Check if tenant already exists (handle duplicate registration attempts)
-            $existingTenant = Tenant::where('slug', $this->registration->tenant_slug)->first();
+            $existingTenant = Tenant::where('slug', $registration->tenant_slug)->first();
             
             if ($existingTenant) {
                 Log::warning('Tenant already exists, using existing tenant', [
-                    'registration_id' => $this->registration->id,
+                    'registration_id' => $registration->id,
                     'tenant_id' => $existingTenant->id,
-                    'tenant_slug' => $this->registration->tenant_slug,
+                    'tenant_slug' => $registration->tenant_slug,
                 ]);
                 
                 // Update registration to link to existing tenant
-                $this->registration->update([
+                $registration->update([
                     'tenant_id' => $existingTenant->id,
                     'status' => 'completed',
                     'error_message' => 'Tenant already exists - linked to existing workspace'
@@ -79,20 +87,20 @@ class CreateTenantWorkspaceJob implements ShouldQueue
             }
 
             // Broadcast workspace creation started
-            event(new TenantWorkspaceCreating($this->registration));
+            event(new TenantWorkspaceCreating($registration));
 
             // Generate credentials
-            $username = TenantRegistration::generateUsername($this->registration->tenant_slug);
+            $username = TenantRegistration::generateUsername($registration->tenant_slug);
             $password = TenantRegistration::generatePassword();
 
             // Create tenant with trial subscription
             $tenant = Tenant::create([
-                'name' => $this->registration->tenant_name,
-                'slug' => $this->registration->tenant_slug,
-                'subdomain' => $this->registration->tenant_slug,
-                'email' => $this->registration->tenant_email,
-                'phone' => $this->registration->tenant_phone,
-                'address' => $this->registration->tenant_address,
+                'name' => $registration->tenant_name,
+                'slug' => $registration->tenant_slug,
+                'subdomain' => $registration->tenant_slug,
+                'email' => $registration->tenant_email,
+                'phone' => $registration->tenant_phone,
+                'address' => $registration->tenant_address,
                 'is_active' => true,
                 'subscription_status' => 'trial',
                 'subscription_plan' => 'monthly',
@@ -103,9 +111,9 @@ class CreateTenantWorkspaceJob implements ShouldQueue
             // Create admin user
             $user = User::create([
                 'tenant_id' => $tenant->id,
-                'name' => $this->registration->tenant_name . ' Admin',
+                'name' => $registration->tenant_name . ' Admin',
                 'username' => $username,
-                'email' => $this->registration->tenant_email,
+                'email' => $registration->tenant_email,
                 'password' => Hash::make($password),
                 'role' => 'admin',
                 'is_active' => true,
@@ -151,7 +159,7 @@ class CreateTenantWorkspaceJob implements ShouldQueue
                     'username' => $username,
                     'attribute' => 'Tenant-ID',
                     'op' => ':=',
-                    'value' => $tenant->schema_name,
+                    'value' => (string) $tenant->id,
                     'created_at' => now(),
                     'updated_at' => now(),
                 ],
@@ -161,7 +169,7 @@ class CreateTenantWorkspaceJob implements ShouldQueue
             DB::statement("SET search_path TO public");
 
             // Create schema mapping for multi-tenant authentication
-            DB::table('radius_user_schema_mapping')->insert([
+            DB::table('public.radius_user_schema_mapping')->insert([
                 'username' => $username,
                 'schema_name' => $tenant->schema_name,
                 'tenant_id' => $tenant->id,
@@ -177,7 +185,7 @@ class CreateTenantWorkspaceJob implements ShouldQueue
             ]);
 
             // Update registration with generated credentials
-            $this->registration->update([
+            $registration->update([
                 'tenant_id' => $tenant->id,
                 'user_id' => $user->id,
                 'generated_username' => $username,
@@ -203,28 +211,28 @@ class CreateTenantWorkspaceJob implements ShouldQueue
             ]);
 
             // Update registration status to completed
-            $this->registration->update([
+            $registration->update([
                 'status' => 'completed',
                 'credentials_sent' => false // Will be set to true by SendCredentialsEmailJob
             ]);
 
             // Broadcast workspace created event
-            event(new TenantWorkspaceCreated($this->registration));
+            event(new TenantWorkspaceCreated($registration));
 
             // Dispatch job to send credentials
-            SendCredentialsEmailJob::dispatch($this->registration->id)
+            SendCredentialsEmailJob::dispatch($registration->id)
                 ->onQueue('emails');
 
         } catch (\Exception $e) {
             DB::rollBack();
 
             Log::error('Failed to create tenant workspace', [
-                'registration_id' => $this->registration->id,
+                'registration_id' => $registration->id,
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
 
-            $this->registration->update([
+            $registration->update([
                 'status' => 'failed',
                 'error_message' => 'Failed to create workspace: ' . $e->getMessage()
             ]);
@@ -238,18 +246,22 @@ class CreateTenantWorkspaceJob implements ShouldQueue
      */
     public function failed(\Throwable $exception): void
     {
+        $registration = TenantRegistration::find($this->registrationId);
+
         Log::error('CreateTenantWorkspaceJob failed permanently', [
-            'registration_id' => $this->registration->id,
-            'tenant_slug' => $this->registration->tenant_slug,
+            'registration_id' => $this->registrationId,
+            'tenant_slug' => $registration?->tenant_slug,
             'error' => $exception->getMessage(),
             'trace' => $exception->getTraceAsString(),
             'attempts' => $this->attempts()
         ]);
 
         // Update registration status
-        $this->registration->update([
-            'status' => 'failed',
-            'error_message' => 'Workspace creation failed: ' . $exception->getMessage()
-        ]);
+        if ($registration) {
+            $registration->update([
+                'status' => 'failed',
+                'error_message' => 'Workspace creation failed: ' . $exception->getMessage()
+            ]);
+        }
     }
 }

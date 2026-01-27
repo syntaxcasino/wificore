@@ -333,8 +333,8 @@
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                 </div>
-                <h4 class="text-lg font-bold text-gray-800 mb-2">🎉 Router Provisioned Successfully!</h4>
-                <p class="text-gray-600 text-sm">Your router is connected and ready for configuration</p>
+                <h4 class="text-lg font-bold text-gray-800 mb-2">Router Connected</h4>
+                <p class="text-gray-600 text-sm">Map services to interfaces, then deploy once</p>
               </div>
 
               <!-- Router Information -->
@@ -357,38 +357,97 @@
                 <div class="flex items-start gap-3">
                   <div class="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center flex-shrink-0">
                     <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                     </svg>
                   </div>
                   <div class="flex-1">
-                    <h5 class="text-base font-bold text-gray-800 mb-2">🔐 SSH Access Ready</h5>
-                    <p class="text-sm text-gray-700 mb-3">Your router is now accessible via SSH through the VPN tunnel. Configure services directly on the router.</p>
-                    
-                    <div class="bg-white rounded-lg p-3 space-y-2 border border-blue-200">
-                      <div class="flex items-center justify-between">
-                        <span class="text-xs font-semibold text-gray-600">SSH Address:</span>
-                        <code class="text-sm font-mono bg-gray-100 px-2 py-1 rounded text-blue-600">{{ provisioningRouter?.vpn_ip || 'N/A' }}</code>
-                      </div>
-                      <div class="flex items-center justify-between">
-                        <span class="text-xs font-semibold text-gray-600">Username:</span>
-                        <code class="text-sm font-mono bg-gray-100 px-2 py-1 rounded text-gray-800">admin</code>
-                      </div>
-                      <div class="flex items-center justify-between">
-                        <span class="text-xs font-semibold text-gray-600">Port:</span>
-                        <code class="text-sm font-mono bg-gray-100 px-2 py-1 rounded text-gray-800">22</code>
+                    <h5 class="text-base font-bold text-gray-800 mb-2">Service Mapping</h5>
+                    <p class="text-sm text-gray-700 mb-3">Select exactly one service per interface. Advanced options are applied automatically.</p>
+
+                    <div class="bg-white rounded-lg border border-blue-200 overflow-hidden">
+                      <div
+                        v-for="iface in availableInterfaces"
+                        :key="iface.name"
+                        class="flex items-center justify-between gap-3 px-3 py-2 border-b border-blue-100 last:border-b-0"
+                      >
+                        <div class="min-w-0">
+                          <div class="text-sm font-medium text-gray-900 truncate">{{ iface.name }}</div>
+                          <div class="text-xs text-gray-500">{{ iface.type }}</div>
+                        </div>
+
+                        <div class="flex items-center gap-3">
+                          <label class="inline-flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              class="sr-only peer"
+                              :disabled="mappingDeploying"
+                              :checked="(serviceMappings?.[iface.name] || 'none') === 'hotspot'"
+                              @change="(e) => setServiceMapping(iface.name, e.target.checked ? 'hotspot' : 'none')"
+                            />
+                            <div
+                              class="relative w-9 h-5 rounded-full transition-colors"
+                              :class="(serviceMappings?.[iface.name] || 'none') === 'hotspot' ? 'bg-blue-600' : 'bg-gray-200'"
+                            >
+                              <div
+                                class="absolute top-[2px] left-[2px] w-4 h-4 bg-white rounded-full transition-transform"
+                                :class="(serviceMappings?.[iface.name] || 'none') === 'hotspot' ? 'translate-x-4' : ''"
+                              ></div>
+                            </div>
+                            <span class="text-[11px] font-medium text-gray-700">Hotspot</span>
+                          </label>
+
+                          <label class="inline-flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              class="sr-only"
+                              :disabled="mappingDeploying"
+                              :checked="(serviceMappings?.[iface.name] || 'none') === 'pppoe'"
+                              @change="(e) => setServiceMapping(iface.name, e.target.checked ? 'pppoe' : 'none')"
+                            />
+                            <div
+                              class="relative w-9 h-5 rounded-full transition-colors"
+                              :class="(serviceMappings?.[iface.name] || 'none') === 'pppoe' ? 'bg-indigo-600' : 'bg-gray-200'"
+                            >
+                              <div
+                                class="absolute top-[2px] left-[2px] w-4 h-4 bg-white rounded-full transition-transform"
+                                :class="(serviceMappings?.[iface.name] || 'none') === 'pppoe' ? 'translate-x-4' : ''"
+                              ></div>
+                            </div>
+                            <span class="text-[11px] font-medium text-gray-700">PPPoE</span>
+                          </label>
+
+                          <label class="inline-flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              class="sr-only"
+                              :disabled="mappingDeploying"
+                              :checked="(serviceMappings?.[iface.name] || 'none') === 'hybrid'"
+                              @change="(e) => setServiceMapping(iface.name, e.target.checked ? 'hybrid' : 'none')"
+                            />
+                            <div
+                              class="relative w-9 h-5 rounded-full transition-colors"
+                              :class="(serviceMappings?.[iface.name] || 'none') === 'hybrid' ? 'bg-emerald-600' : 'bg-gray-200'"
+                            >
+                              <div
+                                class="absolute top-[2px] left-[2px] w-4 h-4 bg-white rounded-full transition-transform"
+                                :class="(serviceMappings?.[iface.name] || 'none') === 'hybrid' ? 'translate-x-4' : ''"
+                              ></div>
+                            </div>
+                            <span class="text-[11px] font-medium text-gray-700">Hybrid</span>
+                          </label>
+                        </div>
                       </div>
                     </div>
 
-                    <div class="mt-3 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-                      <div class="flex items-start gap-2">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-yellow-600 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        <div class="text-xs text-yellow-800">
-                          <p class="font-semibold mb-1">SSH Connection Command:</p>
-                          <code class="block bg-yellow-100 px-2 py-1 rounded font-mono text-xs">ssh admin@{{ provisioningRouter?.vpn_ip || 'router-ip' }}</code>
-                        </div>
-                      </div>
+                    <div v-if="mappingStatus" class="mt-3 text-sm text-gray-700">
+                      <span class="font-semibold">Status:</span>
+                      <span class="ml-1">{{ mappingStatus }}</span>
+                    </div>
+
+                    <div v-if="mappingErrors && mappingErrors.length" class="mt-3 bg-red-50 border border-red-200 rounded-lg p-3">
+                      <div class="text-xs font-semibold text-red-800 mb-1">Deployment Errors</div>
+                      <div v-for="(err, idx) in mappingErrors" :key="idx" class="text-xs text-red-700">{{ err }}</div>
                     </div>
                   </div>
                 </div>
@@ -418,15 +477,15 @@
                 <ol class="space-y-2 text-sm text-gray-700">
                   <li class="flex items-start gap-2">
                     <span class="font-bold text-blue-600">1.</span>
-                    <span>SSH into the router using the credentials above</span>
+                    <span>Select service type per interface</span>
                   </li>
                   <li class="flex items-start gap-2">
                     <span class="font-bold text-blue-600">2.</span>
-                    <span>Configure Hotspot, PPPoE, or other services via CLI or WinBox</span>
+                    <span>Click Confirm & Deploy to apply all mappings</span>
                   </li>
                   <li class="flex items-start gap-2">
                     <span class="font-bold text-blue-600">3.</span>
-                    <span>Services will automatically integrate with RADIUS for authentication</span>
+                    <span>Wait for deployment status to complete</span>
                   </li>
                   <li class="flex items-start gap-2">
                     <span class="font-bold text-blue-600">4.</span>
@@ -457,24 +516,7 @@
         </div>
 
         <!-- Action Buttons - Compact -->
-        <div class="border-t border-gray-200 bg-white px-4 py-2.5 flex justify-between items-center flex-shrink-0">
-          <div>
-            <button
-              v-if="!formSubmitting && currentStage > 1 && currentStage < 4"
-              @click="previousStage"
-              class="px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
-            >
-              ← Previous
-            </button>
-          </div>
-          <div class="flex space-x-2">
-            <button
-              @click="$emit('close-form')"
-              :disabled="waitingForJobCompletion"
-              class="px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Cancel
-            </button>
+        <div class="border-t border-gray-200 bg-white px-4 py-2.5 flex justify-end items-center flex-shrink-0 space-x-2">
             <button
               v-if="currentStage === 1 && !initialConfig"
               @click="createRouterWithConfig"
@@ -491,18 +533,29 @@
               Continue →
             </button>
             <button
-              v-if="currentStage === 3"
+              v-if="currentStage === 3 && provisioningProgress < 100"
+              @click="confirmServiceMappingAndDeploy"
+              :disabled="mappingDeploying"
+              class="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <span>{{ mappingDeploying ? 'Deploying...' : 'Confirm & Deploy' }}</span>
+            </button>
+            <button
+              v-if="currentStage === 3 && provisioningProgress >= 100"
+              @click="resetForm; $emit('close-form')"
+              class="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors flex items-center space-x-2"
+            >
+              <span>Add Another Router</span>
+            </button>
+            <button
+              v-if="currentStage === 3 && provisioningProgress >= 100"
               @click="$emit('close-form'); $emit('refresh-routers')"
               class="px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-md transition-colors flex items-center space-x-2"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
               <span>Done - View Dashboard</span>
             </button>
           </div>
         </div>
-      </div>
 </template>
 
 <script setup>
@@ -539,6 +592,12 @@ const {
   availableInterfaces,
   selectedHotspotInterfaces,
   selectedPPPoEInterfaces,
+  serviceMappings,
+  mappingDeploying,
+  mappingStatus,
+  mappingErrors,
+  setServiceMapping,
+  confirmServiceMappingAndDeploy,
   connectionStatus,
   deploymentFailed,
   deploymentTimedOut,

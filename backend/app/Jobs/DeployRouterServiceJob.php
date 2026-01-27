@@ -6,7 +6,7 @@ use App\Models\RouterService;
 use App\Services\MikroTik\ZeroConfigHotspotGenerator;
 use App\Services\MikroTik\ZeroConfigPPPoEGenerator;
 use App\Services\MikroTik\ZeroConfigHybridGenerator;
-use App\Services\MikroTik\ConfigurationService;
+use App\Services\MikrotikProvisioningService;
 use App\Traits\TenantAwareJob;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -18,13 +18,14 @@ class DeployRouterServiceJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, TenantAwareJob;
 
-    protected int $serviceId;
-    protected string $tenantId;
+    protected string $serviceId;
 
-    public function __construct(int $serviceId, string $tenantId)
+    public function __construct(string $serviceId, string $tenantId)
     {
         $this->serviceId = $serviceId;
         $this->tenantId = $tenantId;
+
+        $this->onQueue('router-provisioning');
     }
 
     public function handle(): void
@@ -47,9 +48,9 @@ class DeployRouterServiceJob implements ShouldQueue
                 // Generate configuration based on service type
                 $config = $this->generateConfiguration($service);
 
-                // Deploy to router via API
-                $configService = app(ConfigurationService::class);
-                $result = $configService->applyConfiguration($service->router, $config);
+                // Deploy to router via provisioning service
+                $provisioningService = app(MikrotikProvisioningService::class);
+                $result = $provisioningService->applyConfigs($service->router, $config, false);
 
                 if ($result['success']) {
                     $service->update([
@@ -67,6 +68,22 @@ class DeployRouterServiceJob implements ShouldQueue
                 }
 
             } catch (\Exception $e) {
+                if ((int) $e->getCode() === 503) {
+                    Log::warning('Service deployment deferred (router busy)', [
+                        'service_id' => $service->id,
+                        'router_id' => $service->router_id,
+                        'error' => $e->getMessage(),
+                    ]);
+
+                    $service->update([
+                        'deployment_status' => RouterService::DEPLOYMENT_PENDING,
+                        'status' => RouterService::STATUS_INACTIVE,
+                    ]);
+
+                    $this->release(15);
+                    return;
+                }
+
                 Log::error('Service deployment failed', [
                     'service_id' => $service->id,
                     'router_id' => $service->router_id,

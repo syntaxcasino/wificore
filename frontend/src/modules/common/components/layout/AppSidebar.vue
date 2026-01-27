@@ -1,11 +1,13 @@
 <template>
   <aside
-    class="fixed top-16 left-0 w-64 h-[calc(100vh-4rem)] bg-gradient-to-b from-gray-900 via-gray-900 to-gray-950 text-gray-100 flex flex-col justify-between border-r border-gray-800/50 shadow-2xl transition-all duration-300 ease-in-out"
+    class="fixed left-0 w-64 bg-gradient-to-b from-gray-900 via-gray-900 to-gray-950 text-gray-100 flex flex-col justify-between border-r border-gray-800/50 shadow-2xl transition-all duration-300 ease-in-out"
     :class="{
       'sidebar-open': isSidebarOpen,
       'sidebar-closed': !isSidebarOpen,
       'sidebar-mobile': isMobile,
       'sidebar-desktop': !isMobile,
+      'top-0 h-screen': isMobile,
+      'top-16 h-[calc(100vh-4rem)]': !isMobile,
     }"
   >
     <div
@@ -633,7 +635,7 @@ const isSystemAdmin = computed(() => authStore.user?.role === 'system_admin')
 
 /* Mobile sidebar - slides over content */
 .sidebar-mobile {
-  z-index: 70;
+  z-index: 100;
 }
 
 .sidebar-mobile.sidebar-open {

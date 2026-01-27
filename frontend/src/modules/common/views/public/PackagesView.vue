@@ -16,8 +16,8 @@
               </svg>
             </div>
             <div>
-              <h1 class="text-xl font-bold text-white tracking-tight">TraidNet Solutions</h1>
-              <p class="text-xs text-green-100">High-Speed WiFi Packages</p>
+              <h1 class="text-xl font-bold text-white tracking-tight">{{ tenantBranding.company_name }}</h1>
+              <p class="text-xs text-green-100">{{ tenantBranding.tagline }}</p>
             </div>
           </div>
           <div class="flex items-center gap-3">
@@ -295,8 +295,8 @@
       <div class="container mx-auto px-4">
         <div class="grid grid-cols-1 md:grid-cols-3 gap-8 mb-6">
           <div>
-            <h4 class="text-white font-bold mb-3">TraidNet Solutions</h4>
-            <p class="text-gray-400 text-sm">Providing high-speed internet solutions for homes and businesses.</p>
+            <h4 class="text-white font-bold mb-3">{{ tenantBranding.company_name }}</h4>
+            <p class="text-gray-400 text-sm">{{ tenantBranding.tagline || 'Providing high-speed internet solutions for homes and businesses.' }}</p>
           </div>
           <div>
             <h4 class="text-white font-bold mb-3">Quick Links</h4>
@@ -309,13 +309,13 @@
           <div>
             <h4 class="text-white font-bold mb-3">Contact</h4>
             <ul class="space-y-2 text-sm">
-              <li class="text-gray-400">Email: support@traidnet.com</li>
-              <li class="text-gray-400">Phone: +254 700 000 000</li>
+              <li v-if="tenantBranding.support_email" class="text-gray-400">Email: {{ tenantBranding.support_email }}</li>
+              <li v-if="tenantBranding.support_phone" class="text-gray-400">Phone: {{ tenantBranding.support_phone }}</li>
             </ul>
           </div>
         </div>
         <div class="border-t border-gray-700 pt-6 text-center">
-          <p class="text-gray-400 text-sm">© {{ new Date().getFullYear() }} TraidNet Technologies. All rights reserved.</p>
+          <p class="text-gray-400 text-sm">© {{ new Date().getFullYear() }} {{ tenantBranding.company_name }}. All rights reserved.</p>
         </div>
       </div>
     </footer>
@@ -323,13 +323,39 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import axios from 'axios'
+import { useRoute } from 'vue-router'
 import { usePublicPackages } from '@/modules/common/composables/usePublicPackages'
 import PackageCard from '@/modules/tenant/components/packages/PackageCard.vue'
 import PaymentModal from '@/modules/tenant/components/payment/PaymentModal.vue'
 
+const route = useRoute()
 const { packages, loading, error, tenantId, fetchPublicPackages } = usePublicPackages()
+
+// Tenant branding state
+const tenantBranding = ref({
+  company_name: 'TraidNet Solutions',
+  logo_url: null,
+  primary_color: '#10b981',
+  secondary_color: '#059669',
+  tagline: 'High-Speed WiFi Packages',
+  support_email: 'support@traidnet.com',
+  support_phone: '+254 700 000 000'
+})
+
+// MikroTik hotspot parameters (from URL query)
+const hotspotParams = ref({
+  mac: null,
+  ip: null,
+  username: null,
+  linkLogin: null,
+  linkLogout: null,
+  linkOrig: null,
+  error: null,
+  trial: null,
+  popup: null
+})
 
 // Public packages are already filtered by backend (only active hotspot packages)
 const publicPackages = computed(() => {
@@ -403,14 +429,108 @@ const detectMacAddress = async () => {
   }
 }
 
+// Extract subdomain from hostname
+const getSubdomain = () => {
+  const hostname = window.location.hostname
+  const parts = hostname.split('.')
+  
+  // For localhost development
+  if (hostname === 'localhost' || hostname === '127.0.0.1') {
+    return route.query.subdomain || 'demo'
+  }
+  
+  // For production, extract first part of domain
+  if (parts.length >= 3) {
+    return parts[0]
+  }
+  
+  return null
+}
+
+// Load tenant branding
+const loadTenantBranding = async () => {
+  const subdomain = getSubdomain()
+  if (!subdomain) return
+  
+  try {
+    const response = await axios.get(`/public/tenant/${subdomain}`)
+    if (response.data.success && response.data.data.branding) {
+      tenantBranding.value = {
+        ...tenantBranding.value,
+        ...response.data.data.branding
+      }
+      
+      // Apply CSS variables for branding
+      if (tenantBranding.value.primary_color) {
+        document.documentElement.style.setProperty('--primary-color', tenantBranding.value.primary_color)
+      }
+      if (tenantBranding.value.secondary_color) {
+        document.documentElement.style.setProperty('--secondary-color', tenantBranding.value.secondary_color)
+      }
+    }
+  } catch (err) {
+    console.error('Failed to load tenant branding:', err)
+  }
+}
+
+// Parse MikroTik hotspot parameters from URL
+const parseMikrotikParams = () => {
+  hotspotParams.value = {
+    mac: route.query.mac || route.query['mac-address'] || null,
+    ip: route.query.ip || null,
+    username: route.query.username || null,
+    linkLogin: route.query['link-login'] || null,
+    linkLogout: route.query['link-logout'] || null,
+    linkOrig: route.query['link-orig'] || null,
+    error: route.query.error || null,
+    trial: route.query.trial || null,
+    popup: route.query.popup || null
+  }
+  
+  // Use MAC from MikroTik if available
+  if (hotspotParams.value.mac) {
+    deviceMacAddress.value = hotspotParams.value.mac.toUpperCase()
+  }
+  
+  // Pre-fill username if provided
+  if (hotspotParams.value.username) {
+    loginForm.value.username = hotspotParams.value.username
+  }
+  
+  // Show error if MikroTik sent one
+  if (hotspotParams.value.error) {
+    const errorMessages = {
+      'invalid-credentials': 'Invalid username or password',
+      'no-credit': 'Insufficient credit',
+      'already-logged-in': 'You are already logged in from another device'
+    }
+    loginError.value = errorMessages[hotspotParams.value.error] || 'Authentication failed. Please try again.'
+  }
+}
+
 onMounted(async () => {
+  // Parse MikroTik parameters first
+  parseMikrotikParams()
+  
+  // Load tenant branding
+  await loadTenantBranding()
+  
   // Fetch public packages (tenant auto-detected from router/subdomain)
   await fetchPublicPackages()
-  deviceMacAddress.value = (await detectMacAddress()) || 'D6:D2:52:1C:90:71'
+  
+  // Detect MAC address if not provided by MikroTik
+  if (!deviceMacAddress.value) {
+    deviceMacAddress.value = (await detectMacAddress()) || 'D6:D2:52:1C:90:71'
+  }
   
   // Log tenant info for debugging
   if (tenantId.value) {
     console.log('Connected to tenant:', tenantId.value)
+  }
+  
+  // Log hotspot params for debugging
+  if (hotspotParams.value.mac || hotspotParams.value.linkLogin) {
+    console.log('MikroTik hotspot mode detected:', hotspotParams.value)
   }
 })
 
@@ -434,30 +554,78 @@ const handleLogin = async () => {
   loginError.value = null
   
   try {
-    // Call hotspot login API
-    const response = await axios.post('/hotspot/login', {
-      username: loginForm.value.username,
-      password: loginForm.value.password,
-      mac_address: deviceMacAddress.value
-    })
-    
-    if (response.data.success) {
-      // Close modal
-      showLoginForm.value = false
+    // If MikroTik hotspot mode, submit to MikroTik's link-login
+    if (hotspotParams.value.linkLogin) {
+      // Create form and submit to MikroTik
+      const form = document.createElement('form')
+      form.method = 'POST'
+      form.action = hotspotParams.value.linkLogin
       
-      // Reset form
-      loginForm.value = { username: '', password: '' }
+      // Add username
+      const usernameInput = document.createElement('input')
+      usernameInput.type = 'hidden'
+      usernameInput.name = 'username'
+      usernameInput.value = loginForm.value.username
+      form.appendChild(usernameInput)
       
-      // Show success notification
-      showNotification('Login successful! You are now connected to the internet.', 'success')
+      // Add password
+      const passwordInput = document.createElement('input')
+      passwordInput.type = 'hidden'
+      passwordInput.name = 'password'
+      passwordInput.value = loginForm.value.password
+      form.appendChild(passwordInput)
       
-      // Optional: Redirect to a success page or dashboard after a delay
-      setTimeout(() => {
-        // You can redirect here if needed
-        // window.location.href = '/dashboard'
-      }, 2000)
+      // Add destination (original URL)
+      if (hotspotParams.value.linkOrig) {
+        const dstInput = document.createElement('input')
+        dstInput.type = 'hidden'
+        dstInput.name = 'dst'
+        dstInput.value = hotspotParams.value.linkOrig
+        form.appendChild(dstInput)
+      }
+      
+      // Add popup parameter
+      if (hotspotParams.value.popup) {
+        const popupInput = document.createElement('input')
+        popupInput.type = 'hidden'
+        popupInput.name = 'popup'
+        popupInput.value = hotspotParams.value.popup
+        form.appendChild(popupInput)
+      }
+      
+      // Submit form
+      document.body.appendChild(form)
+      form.submit()
+      
+      // Show loading state
+      showNotification('Authenticating with hotspot...', 'success')
+      
     } else {
-      loginError.value = response.data.message || 'Login failed. Please try again.'
+      // Regular login via API (non-hotspot mode)
+      const response = await axios.post('/hotspot/login', {
+        username: loginForm.value.username,
+        password: loginForm.value.password,
+        mac_address: deviceMacAddress.value
+      })
+      
+      if (response.data.success) {
+        // Close modal
+        showLoginForm.value = false
+        
+        // Reset form
+        loginForm.value = { username: '', password: '' }
+        
+        // Show success notification
+        showNotification('Login successful! You are now connected to the internet.', 'success')
+        
+        // Optional: Redirect to a success page or dashboard after a delay
+        setTimeout(() => {
+          // You can redirect here if needed
+          // window.location.href = '/dashboard'
+        }, 2000)
+      } else {
+        loginError.value = response.data.message || 'Login failed. Please try again.'
+      }
     }
   } catch (err) {
     console.error('Login error:', err)

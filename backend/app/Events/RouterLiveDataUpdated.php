@@ -14,9 +14,14 @@ class RouterLiveDataUpdated implements ShouldBroadcast
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
-    public function __construct( public string $routerId, public array $liveData ) {
+    public function __construct(
+        public string $tenantId,
+        public string $routerId,
+        public array $liveData
+    ) {
         // Log when event is created
         Log::info('RouterLiveDataUpdated event created', [
+            'tenant_id' => $this->tenantId,
             'router_id' => $this->routerId,
             'data_keys' => array_keys($this->liveData)
         ]);
@@ -24,8 +29,9 @@ class RouterLiveDataUpdated implements ShouldBroadcast
 
     public function broadcastOn(): array
     {
+        // Tenant-scoped private channel to match frontend subscription
         return [
-            new PrivateChannel('router-updates'),
+            new PrivateChannel('tenant.' . $this->tenantId . '.router-updates'),
         ];
     }
 

@@ -2,13 +2,13 @@
 
 namespace App\Services;
 
+use App\Events\ProvisioningFailed;
+use App\Events\RouterProvisioningProgress;
 use App\Models\Router;
 use App\Models\RouterConfig;
 use App\Services\MikroTik\ConfigurationService;
 use App\Services\MikroTik\SshExecutor;
-use App\Events\RouterProvisioningProgress;
-use App\Events\RouterConnected;
-use App\Events\ProvisioningFailed;
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Log;
@@ -275,7 +275,9 @@ class MikrotikProvisioningService extends TenantAwareService
     public function getAllRouters()
     {
         try {
-            return Router::select('id', 'name', 'ip_address', 'vpn_ip', 'username', 'port', 'password', 'status', 'model', 'os_version', 'last_seen', 'last_checked')->get();
+            return Router::select('id', 'name', 'ip_address', 'vpn_ip', 'username', 'port', 'password', 'status', 'model', 'os_version', 'last_seen', 'last_checked', 'created_at')
+                ->orderBy('created_at', 'desc')
+                ->get();
         } catch (\Exception $e) {
             Log::error('Failed to fetch routers:', [
                 'error' => $e->getMessage(),
@@ -321,6 +323,13 @@ class MikrotikProvisioningService extends TenantAwareService
      */
     public function fetchLiveRouterData(Router $router, string $context = 'live', bool $filterConfigurable = false): array
     {
+        if ($context === 'live') {
+            $cached = Cache::get("router_live_fetch_{$router->id}");
+            if (is_array($cached) && isset($cached['data'], $cached['fetched_at']) && (time() - (int) $cached['fetched_at']) <= 10) {
+                return $cached['data'];
+            }
+        }
+
         $lockKey = "router_api_lock_{$router->id}";
         
         // Adjust timeout based on context
@@ -380,7 +389,14 @@ class MikrotikProvisioningService extends TenantAwareService
                 return $result;
             } else {
                 // For live monitoring context, fetch full data
-                $result = $sshService->fetchLiveData($router);
+                $includeInterfaces = $context === 'details';
+                $result = $sshService->fetchLiveData($router, $includeInterfaces);
+
+                Cache::put(
+                    "router_live_fetch_{$router->id}",
+                    ['fetched_at' => time(), 'data' => $result],
+                    now()->addSeconds(10)
+                );
                 
                 $lock->release();
                 
@@ -407,7 +423,7 @@ class MikrotikProvisioningService extends TenantAwareService
     public function getRouterDetails(Router $router): array
     {
         try {
-            $live = $this->fetchLiveRouterData($router);
+            $live = $this->fetchLiveRouterData($router, 'details', false);
         } catch (\Exception $e) {
             // If live fetch fails, return DB-only info with error
             Log::warning('getRouterDetails: live fetch failed, returning DB info only', [
@@ -520,7 +536,7 @@ class MikrotikProvisioningService extends TenantAwareService
             }
 
             // Extract key=value pairs
-            if (preg_match_all('/(\w+)=([^\s"]+|"[^"]*")/', $line, $matches, PREG_SET_ORDER)) {
+            if (preg_match_all('/([\w-]+)=([^\s"]+|"[^"]*")/', $line, $matches, PREG_SET_ORDER)) {
                 foreach ($matches as $match) {
                     $key = $match[1];
                     $value = trim($match[2], '"');
@@ -549,7 +565,7 @@ class MikrotikProvisioningService extends TenantAwareService
                 continue;
             }
 
-            if (preg_match_all('/(\w+):\s*([^\r\n]+)/', $line, $matches, PREG_SET_ORDER)) {
+            if (preg_match_all('/([\w-]+):\s*([^\r\n]+)/', $line, $matches, PREG_SET_ORDER)) {
                 foreach ($matches as $match) {
                     $key = $match[1];
                     $value = trim($match[2]);
@@ -575,6 +591,7 @@ class MikrotikProvisioningService extends TenantAwareService
         $routerName = $router->name ?? 'Unknown';
         $scriptName = 'hs_provision_' . $router->id . '_' . time();
         $client = null;
+        $provisionLock = null;
         
         // Broadcast provisioning start
         if ($broadcast) {
@@ -592,6 +609,23 @@ class MikrotikProvisioningService extends TenantAwareService
             'router_name' => $routerName,
             'script_provided' => $script !== null,
         ]);
+
+        $lockTtlSeconds = (int) env('MIKROTIK_PROVISION_LOCK_TTL', 300);
+        $lockWaitSeconds = (int) env('MIKROTIK_PROVISION_LOCK_WAIT', 30);
+
+        $provisionLock = Cache::lock('router_provision_lock_' . $router->id, $lockTtlSeconds);
+        try {
+            $provisionLock->block($lockWaitSeconds);
+        } catch (LockTimeoutException $e) {
+            Log::warning('Provisioning deferred: router busy (lock timeout)', [
+                'router_id' => $router->id,
+                'router_name' => $routerName,
+                'wait_seconds' => $lockWaitSeconds,
+                'ttl_seconds' => $lockTtlSeconds,
+            ]);
+
+            throw new \Exception('Router is busy with another provisioning operation', 503, $e);
+        }
 
         try {
             // 1. Get the service script
@@ -699,39 +733,139 @@ class MikrotikProvisioningService extends TenantAwareService
             ]);
             
             try {
-                // Split script into individual RouterOS commands
-                $lines = preg_split('/\r\n|\n|\r/', $serviceScript);
-                $commands = [];
-                foreach ($lines as $line) {
-                    $line = trim($line);
-                    if ($line === '' || str_starts_with($line, '#')) {
-                        continue; // skip empty lines and comments
-                    }
-                    $commands[] = $line;
-                }
+                $expectsHotspot = str_contains($serviceScript, '/ip hotspot');
+                $expectsPppoe = str_contains($serviceScript, '/interface pppoe-server');
 
-                if (empty($commands)) {
-                    throw new \Exception('No executable commands found in service script');
-                }
-
-                if ($broadcast) {
-                    RouterProvisioningProgress::dispatch(
-                        $router->id,
-                        'executing_script',
-                        70,
-                        'Executing configuration commands with automatic retry',
-                        ['command_count' => count($commands)]
-                    );
-                }
-
-                // Execute commands with automatic retry logic (3 attempts with exponential backoff)
-                // This handles transient failures automatically without manual intervention
-                $validator = function($sshExecutor) use ($router) {
-                    // Validate deployment by checking if services were created
+                $validator = function($sshExecutor) use ($router, $expectsHotspot, $expectsPppoe, $serviceScript) {
+                    // Validate deployment by checking if expected services were created
                     try {
-                        $hotspotCount = (int)trim($sshExecutor->exec('/ip hotspot print count-only'));
-                        $pppoeCount = (int)trim($sshExecutor->exec('/interface pppoe-server server print count-only'));
-                        
+                        // Generic counts can pass due to stale configs. Prefer validating the specific resources
+                        // referenced by the generated script.
+                        $expectedHotspotServer = null;
+                        $expectedHotspotProfile = null;
+                        $expectedHotspotBridge = null;
+                        $expectedPppoeServer = null;
+
+                        if ($expectsHotspot) {
+                            if (preg_match('/\/ip hotspot\s+add\s+name=(?:\\"([^\\"]+)\\"|([^\s]+))/i', $serviceScript, $m)) {
+                                $expectedHotspotServer = $m[1] ?: ($m[2] ?? null);
+                            }
+                            if (preg_match('/\/ip hotspot profile\s+add\s+name=(?:\\"([^\\"]+)\\"|([^\s]+))/i', $serviceScript, $m)) {
+                                $expectedHotspotProfile = $m[1] ?: ($m[2] ?? null);
+                            }
+                            if (preg_match('/\/interface bridge\s+add\s+name=(?:\\"([^\\"]+)\\"|([^\s]+))/i', $serviceScript, $m)) {
+                                $expectedHotspotBridge = $m[1] ?: ($m[2] ?? null);
+                            }
+                        }
+
+                        if ($expectsPppoe) {
+                            if (preg_match('/\/interface pppoe-server server\s+add\s+name=(?:\\"([^\\"]+)\\"|([^\s]+))/i', $serviceScript, $m)) {
+                                $expectedPppoeServer = $m[1] ?: ($m[2] ?? null);
+                            }
+                        }
+
+                        $hotspotCount = (int) trim($sshExecutor->exec('/ip hotspot print count-only'));
+                        $pppoeCount = (int) trim($sshExecutor->exec('/interface pppoe-server server print count-only'));
+
+                        if ($expectsHotspot) {
+                            if ($expectedHotspotServer) {
+                                $hotspotServerCount = (int) trim($sshExecutor->exec('/ip hotspot print count-only where name="' . $expectedHotspotServer . '"'));
+                                if ($hotspotServerCount < 1) {
+                                    return [
+                                        'valid' => false,
+                                        'error' => 'Hotspot deployment validation failed (missing hotspot server: ' . $expectedHotspotServer . ')'
+                                    ];
+                                }
+                            }
+
+                            if ($expectedHotspotProfile) {
+                                $hotspotProfileCount = (int) trim($sshExecutor->exec('/ip hotspot profile print count-only where name="' . $expectedHotspotProfile . '"'));
+                                if ($hotspotProfileCount < 1) {
+                                    return [
+                                        'valid' => false,
+                                        'error' => 'Hotspot deployment validation failed (missing hotspot profile: ' . $expectedHotspotProfile . ')'
+                                    ];
+                                }
+                            }
+
+                            if ($expectedHotspotBridge) {
+                                $bridgeCount = (int) trim($sshExecutor->exec('/interface bridge print count-only where name="' . $expectedHotspotBridge . '"'));
+                                $bridgePortCount = (int) trim($sshExecutor->exec('/interface bridge port print count-only where bridge="' . $expectedHotspotBridge . '"'));
+                                if ($bridgeCount < 1 || $bridgePortCount < 1) {
+                                    return [
+                                        'valid' => false,
+                                        'error' => 'Hotspot deployment validation failed (bridge not ready: ' . $expectedHotspotBridge . ', ports: ' . $bridgePortCount . ')'
+                                    ];
+                                }
+                            }
+                        }
+
+                        if ($expectsPppoe && $expectedPppoeServer) {
+                            $pppoeServerCount = (int) trim($sshExecutor->exec('/interface pppoe-server server print count-only where name="' . $expectedPppoeServer . '"'));
+                            if ($pppoeServerCount < 1) {
+                                return [
+                                    'valid' => false,
+                                    'error' => 'PPPoE deployment validation failed (missing PPPoE server: ' . $expectedPppoeServer . ')'
+                                ];
+                            }
+                        }
+
+                        if ($expectsHotspot && !$expectsPppoe) {
+                            if ($hotspotCount > 0) {
+                                Log::info('Service deployment validation passed (hotspot)', [
+                                    'router_id' => $router->id,
+                                    'hotspot_count' => $hotspotCount,
+                                    'pppoe_count' => $pppoeCount,
+                                    'expected_hotspot_server' => $expectedHotspotServer,
+                                    'expected_hotspot_profile' => $expectedHotspotProfile,
+                                    'expected_hotspot_bridge' => $expectedHotspotBridge,
+                                ]);
+                                return ['valid' => true];
+                            }
+
+                            return [
+                                'valid' => false,
+                                'error' => 'Hotspot deployment validation failed (hotspot: 0)'
+                            ];
+                        }
+
+                        if ($expectsPppoe && !$expectsHotspot) {
+                            if ($pppoeCount > 0) {
+                                Log::info('Service deployment validation passed (pppoe)', [
+                                    'router_id' => $router->id,
+                                    'hotspot_count' => $hotspotCount,
+                                    'pppoe_count' => $pppoeCount,
+                                    'expected_pppoe_server' => $expectedPppoeServer,
+                                ]);
+                                return ['valid' => true];
+                            }
+
+                            return [
+                                'valid' => false,
+                                'error' => 'PPPoE deployment validation failed (pppoe: 0)'
+                            ];
+                        }
+
+                        if ($expectsHotspot && $expectsPppoe) {
+                            if ($hotspotCount > 0 && $pppoeCount > 0) {
+                                Log::info('Service deployment validation passed (hybrid)', [
+                                    'router_id' => $router->id,
+                                    'hotspot_count' => $hotspotCount,
+                                    'pppoe_count' => $pppoeCount,
+                                    'expected_hotspot_server' => $expectedHotspotServer,
+                                    'expected_hotspot_profile' => $expectedHotspotProfile,
+                                    'expected_hotspot_bridge' => $expectedHotspotBridge,
+                                    'expected_pppoe_server' => $expectedPppoeServer,
+                                ]);
+                                return ['valid' => true];
+                            }
+
+                            return [
+                                'valid' => false,
+                                'error' => "Hybrid deployment validation failed (hotspot: {$hotspotCount}, pppoe: {$pppoeCount})"
+                            ];
+                        }
+
                         if ($hotspotCount > 0 || $pppoeCount > 0) {
                             Log::info('Service deployment validation passed', [
                                 'router_id' => $router->id,
@@ -752,23 +886,79 @@ class MikrotikProvisioningService extends TenantAwareService
                         ];
                     }
                 };
-                
-                $executionResult = $ssh->execBatchWithRetry(
-                    $commands,
-                    3,  // Max 3 retry attempts
-                    2,  // Base delay of 2 seconds (2s, 4s, 8s exponential backoff)
-                    $validator
-                );
 
-                if (!$executionResult['success']) {
-                    throw new \Exception($executionResult['message']);
+                $remoteScriptFile = $scriptName . '.rsc';
+                $tempFile = tempnam(sys_get_temp_dir(), 'wificore_rsc_');
+                if ($tempFile === false) {
+                    throw new \Exception('Failed to create temp file for router script');
                 }
 
-                Log::info('Configuration commands executed successfully', [
-                    'router_id' => $router->id,
-                    'command_count' => count($commands),
-                    'attempts' => $executionResult['attempt'],
-                ]);
+                try {
+                    file_put_contents($tempFile, $serviceScript);
+
+                    if ($broadcast) {
+                        RouterProvisioningProgress::dispatch(
+                            $router->id,
+                            'executing_script',
+                            70,
+                            'Uploading and importing configuration script (with automatic retry)',
+                            ['script_file' => $remoteScriptFile]
+                        );
+                    }
+
+                    $attempt = 0;
+                    $maxAttempts = 3;
+
+                    while ($attempt < $maxAttempts) {
+                        $attempt++;
+                        try {
+                            if ($attempt > 1) {
+                                $ssh->disconnect(false);
+                                sleep(1);
+                                $ssh->connect();
+                            }
+
+                            $ssh->uploadFile($tempFile, $remoteScriptFile);
+                            $ssh->importFile($remoteScriptFile);
+
+                            $validationResult = $validator($ssh);
+                            if (!($validationResult['valid'] ?? false)) {
+                                throw new \Exception($validationResult['error'] ?? 'Validation failed');
+                            }
+
+                            Log::info('Configuration script imported successfully', [
+                                'router_id' => $router->id,
+                                'script_name' => $scriptName,
+                                'attempts' => $attempt,
+                            ]);
+
+                            break;
+                        } catch (\Exception $e) {
+                            Log::warning('Configuration import attempt failed', [
+                                'router_id' => $router->id,
+                                'script_name' => $scriptName,
+                                'attempt' => $attempt,
+                                'max_attempts' => $maxAttempts,
+                                'error' => $e->getMessage(),
+                            ]);
+
+                            if ($attempt >= $maxAttempts) {
+                                throw $e;
+                            }
+
+                            sleep(2 * $attempt);
+                        }
+                    }
+                } finally {
+                    try {
+                        $ssh->exec('/file remove [find name="' . $remoteScriptFile . '"]');
+                    } catch (\Throwable $e) {
+                    }
+
+                    if (is_string($tempFile) && $tempFile !== '' && is_file($tempFile)) {
+                        @unlink($tempFile);
+                    }
+                }
 
                 // Brief wait for router to stabilize
                 sleep(1);
@@ -780,7 +970,7 @@ class MikrotikProvisioningService extends TenantAwareService
                         'verifying',
                         85,
                         'Verifying deployment',
-                        ['status' => 'verifying', 'attempts' => $executionResult['attempt']]
+                        ['status' => 'verifying']
                     );
                 }
                 
@@ -851,6 +1041,10 @@ class MikrotikProvisioningService extends TenantAwareService
             }
             
             throw new \Exception($errorMessage, $e->getCode(), $e);
+        } finally {
+            if ($provisionLock && method_exists($provisionLock, 'owner') && $provisionLock->owner()) {
+                $provisionLock->release();
+            }
         }
     }
     

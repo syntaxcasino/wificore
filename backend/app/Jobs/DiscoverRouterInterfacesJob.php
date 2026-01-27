@@ -69,8 +69,8 @@ class DiscoverRouterInterfacesJob implements ShouldQueue
             ]);
 
             try {
-                // Add a small delay to ensure router is fully ready
-                sleep(2);
+                // Reduced delay for low-end device compatibility
+                sleep(1);
                 
                 // Use context-aware method: provisioning context + filter for configurable interfaces only
                 $liveData = $provisioningService->fetchLiveRouterData($router, 'provisioning', true);

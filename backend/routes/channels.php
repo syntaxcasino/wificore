@@ -121,6 +121,11 @@ Broadcast::channel('tenant.{tenantId}.hotspot-users', function ($user, $tenantId
     return $user->isAdmin() && (string) $user->tenant_id === (string) $tenantId;
 });
 
+// Tenant-specific PPPoE users channel
+Broadcast::channel('tenant.{tenantId}.pppoe-users', function ($user, $tenantId) {
+    return $user->isAdmin() && (string) $user->tenant_id === (string) $tenantId;
+});
+
 // Tenant-specific packages channel
 Broadcast::channel('tenant.{tenantId}.packages', function ($user, $tenantId) {
     // SECURITY: System admins should NOT access tenant channels (data isolation)

@@ -3,8 +3,11 @@
 namespace App\Jobs;
 
 use App\Events\RouterLiveDataUpdated;
+use App\Events\RouterStatusUpdated;
 use App\Models\Router;
+use App\Services\CacheInvalidationService;
 use App\Services\MikrotikProvisioningService;
+use App\Services\MikrotikSnmpService;
 use App\Traits\TenantAwareJob;
 use Illuminate\Bus\Batchable;
 use Illuminate\Bus\Queueable;
@@ -40,9 +43,9 @@ class FetchRouterLiveData implements ShouldQueue
         ]);
     }
 
-    public function handle(MikrotikProvisioningService $routerService)
+    public function handle(MikrotikProvisioningService $routerService, MikrotikSnmpService $snmpService)
     {
-        $this->executeInTenantContext(function() use ($routerService) {
+        $this->executeInTenantContext(function() use ($routerService, $snmpService) {
             $startTime = microtime(true);
             
             Log::withContext([
@@ -84,16 +87,25 @@ class FetchRouterLiveData implements ShouldQueue
                     }
 
                     try {
-                        // Use 'live' context to fetch all monitoring data
-                        $liveData = $routerService->fetchLiveRouterData($router, 'live', false);
+                        $useSnmp = filter_var(env('MIKROTIK_SNMP_ENABLED', true), FILTER_VALIDATE_BOOL);
+
+                        if ($useSnmp) {
+                            try {
+                                $liveData = $snmpService->fetchLiveData($router, false);
+                            } catch (\Exception $snmpException) {
+                                $liveData = $routerService->fetchLiveRouterData($router, 'live', false);
+                            }
+                        } else {
+                            $liveData = $routerService->fetchLiveRouterData($router, 'live', false);
+                        }
                         
                         Log::debug('Fetched live data for router', [
                             'router_id' => $router->id,
                             'live_data' => $liveData
                         ]);
 
-                        // Broadcast event
-                        broadcast(new RouterLiveDataUpdated($router->id, $liveData));
+                        // Broadcast event on tenant-scoped channel
+                        broadcast(new RouterLiveDataUpdated((string) $this->tenantId, (string) $router->id, $liveData));
                         
                         Log::info('Broadcasted update event', [
                             'router_id' => $router->id,
@@ -104,7 +116,7 @@ class FetchRouterLiveData implements ShouldQueue
                         Cache::put(
                             "router_live_data_{$router->id}", 
                             $liveData, 
-                            now()->addMinutes(5)
+                            now()->addSeconds(60)
                         );
 
                         // Update router status
@@ -171,12 +183,39 @@ class FetchRouterLiveData implements ShouldQueue
     protected function updateRouterStatus(Router $router, array $liveData, string $status): void
     {
         try {
+            $previousStatus = $router->status;
             $router->update([
                 'status' => $status,
                 'model' => $liveData['board_name'] ?? $router->model,
                 'os_version' => $liveData['version'] ?? $router->os_version,
                 'last_seen' => $status === 'online' ? now() : $router->last_seen,
             ]);
+
+            if ($previousStatus !== $status) {
+                CacheInvalidationService::invalidateRouterCache((string) $this->tenantId, (string) $router->id);
+
+                $payload = [
+                    'id' => (string) $router->id,
+                    'ip_address' => $router->ip_address,
+                    'name' => $router->name,
+                    'status' => $status,
+                    'last_checked' => $router->last_checked,
+                    'model' => $router->model,
+                    'os_version' => $router->os_version,
+                    'last_seen' => $router->last_seen,
+                    'tenant_id' => (string) $this->tenantId,
+                ];
+
+                try {
+                    broadcast(new RouterStatusUpdated([$payload], (string) $this->tenantId))->toOthers();
+                } catch (\Exception $e) {
+                    Log::warning('Failed to broadcast RouterStatusUpdated from FetchRouterLiveData', [
+                        'router_id' => $router->id,
+                        'tenant_id' => $this->tenantId,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
         } catch (\Exception $e) {
             Log::error('Failed to update router status', [
                 'router_id' => $router->id,
@@ -196,20 +235,59 @@ class FetchRouterLiveData implements ShouldQueue
                 'last_attempt' => now()->toISOString(),
                 'exception' => get_class($e)
             ], 
-            now()->addMinutes(5)
+            now()->addSeconds(60)
         );
     }
 
     protected function markAllRoutersOffline(): void
     {
         try {
-            Router::whereIn('id', $this->routerIds)
-                ->update([
+            $routers = Router::whereIn('id', $this->routerIds)->get();
+            $broadcastPayloads = [];
+
+            foreach ($routers as $router) {
+                $previousStatus = $router->status;
+                if ($previousStatus === 'offline') {
+                    continue;
+                }
+
+                $router->update([
                     'status' => 'offline',
-                    'updated_at' => now()
+                    'updated_at' => now(),
                 ]);
 
-            Log::warning('Marked all routers as offline due to job failure');
+                CacheInvalidationService::invalidateRouterCache((string) $this->tenantId, (string) $router->id);
+
+                $broadcastPayloads[] = [
+                    'id' => (string) $router->id,
+                    'ip_address' => $router->ip_address,
+                    'name' => $router->name,
+                    'status' => 'offline',
+                    'last_checked' => $router->last_checked,
+                    'model' => $router->model,
+                    'os_version' => $router->os_version,
+                    'last_seen' => $router->last_seen,
+                    'tenant_id' => (string) $this->tenantId,
+                ];
+            }
+
+            if (!empty($broadcastPayloads)) {
+                try {
+                    broadcast(new RouterStatusUpdated($broadcastPayloads, (string) $this->tenantId))->toOthers();
+                } catch (\Exception $e) {
+                    Log::warning('Failed to broadcast RouterStatusUpdated from markAllRoutersOffline', [
+                        'tenant_id' => $this->tenantId,
+                        'router_count' => count($broadcastPayloads),
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+
+            Log::warning('Marked routers as offline due to job failure', [
+                'tenant_id' => $this->tenantId,
+                'router_count' => $routers->count(),
+                'changed_count' => count($broadcastPayloads),
+            ]);
         } catch (\Exception $e) {
             Log::critical('Failed to mark routers as offline', [
                 'error' => $e->getMessage()

@@ -63,6 +63,7 @@ class RouterService extends Model
 
     // Deployment status constants
     const DEPLOYMENT_PENDING = 'pending';
+    const DEPLOYMENT_IN_PROGRESS = 'deploying';
     const DEPLOYMENT_DEPLOYING = 'deploying';
     const DEPLOYMENT_DEPLOYED = 'deployed';
     const DEPLOYMENT_FAILED = 'failed';

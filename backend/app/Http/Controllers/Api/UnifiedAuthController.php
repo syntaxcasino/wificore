@@ -190,7 +190,7 @@ class UnifiedAuthController extends Controller
 
         // SCHEMA-BASED MULTI-TENANCY: Validate schema mapping for tenant users
         if ($user->tenant_id) {
-            $schemaMapping = DB::table('radius_user_schema_mapping')
+            $schemaMapping = DB::table('public.radius_user_schema_mapping')
                 ->where('username', $user->username)
                 ->where('tenant_id', $user->tenant_id)
                 ->where('is_active', true)
@@ -348,12 +348,15 @@ class UnifiedAuthController extends Controller
      */
     public function logout(Request $request)
     {
-        // Revoke current token
-        $request->user()->currentAccessToken()->delete();
+        // Revoke current token (if present)
+        $token = $request->user()?->currentAccessToken();
+        if ($token) {
+            $token->delete();
+        }
 
         \Log::info('User logged out', [
-            'user_id' => $request->user()->id,
-            'username' => $request->user()->username,
+            'user_id' => $request->user()?->id,
+            'username' => $request->user()?->username,
         ]);
 
         return response()->json([

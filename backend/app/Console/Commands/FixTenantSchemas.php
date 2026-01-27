@@ -54,7 +54,7 @@ class FixTenantSchemas extends Command
                     $tenant->save();
                     
                     // Update radius_user_schema_mapping
-                    DB::table('radius_user_schema_mapping')
+                    DB::table('public.radius_user_schema_mapping')
                         ->where('schema_name', $oldSchemaName)
                         ->update(['schema_name' => $newSchemaName]);
                     
@@ -170,7 +170,7 @@ class FixTenantSchemas extends Command
                         ],
                         [
                             'op' => ':=',
-                            'value' => $tenant->schema_name,
+                            'value' => (string) $tenant->id,
                             'created_at' => now(),
                             'updated_at' => now(),
                         ]

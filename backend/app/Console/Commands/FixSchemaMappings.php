@@ -57,7 +57,7 @@ class FixSchemaMappings extends Command
             foreach ($users as $user) {
                 try {
                     // Check if schema mapping already exists
-                    $exists = DB::table('radius_user_schema_mapping')
+                    $exists = DB::table('public.radius_user_schema_mapping')
                         ->where('username', $user->username)
                         ->exists();
 
@@ -68,7 +68,7 @@ class FixSchemaMappings extends Command
                     }
 
                     // Create schema mapping
-                    DB::table('radius_user_schema_mapping')->insert([
+                    DB::table('public.radius_user_schema_mapping')->insert([
                         'username' => $user->username,
                         'schema_name' => $tenant->schema_name,
                         'tenant_id' => $tenant->id,

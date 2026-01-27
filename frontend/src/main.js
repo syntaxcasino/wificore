@@ -4,14 +4,36 @@ import axios from 'axios'
 import App from './App.vue'
 import router from './router'
 import { useAuthStore } from './stores/auth'
+import { useConfirmStore } from './stores/confirm'
 import echo from './plugins/echo';
 import { registerSW } from 'virtual:pwa-register'
 
 import './assets/main.css'
 
+let piniaRef = null
+
 // Register Service Worker for PWA
 const updateSW = registerSW({
   onNeedRefresh() {
+    try {
+      if (piniaRef) {
+        const confirmStore = useConfirmStore(piniaRef)
+        confirmStore
+          .open({
+            title: 'Update Available',
+            message: 'New content is available. Reload to update?',
+            confirmText: 'Reload',
+            cancelText: 'Later',
+            variant: 'primary',
+          })
+          .then((ok) => {
+            if (ok) updateSW(true)
+          })
+        return
+      }
+    } catch (e) {
+    }
+
     if (confirm('New content available. Reload to update?')) {
       updateSW(true)
     }
@@ -143,6 +165,7 @@ app.config.globalProperties.$echo = echo;
 // Initialize Pinia
 const pinia = createPinia()
 app.use(pinia)
+piniaRef = pinia
 
 // Register global components dynamically
 const requireComponent = import.meta.glob('./components/ui/*.vue')

@@ -157,7 +157,7 @@ class CreateTenantJob implements ShouldQueue
                     'username' => $this->adminData['username'],
                     'attribute' => 'Tenant-ID',
                     'op' => ':=',
-                    'value' => $tenant->schema_name,
+                    'value' => (string) $tenant->id,
                     'created_at' => now(),
                     'updated_at' => now(),
                 ],
@@ -167,7 +167,7 @@ class CreateTenantJob implements ShouldQueue
             DB::statement("SET search_path TO public");
             
             // Add schema mapping in public schema
-            DB::table('radius_user_schema_mapping')->insert([
+            DB::table('public.radius_user_schema_mapping')->insert([
                 'username' => $this->adminData['username'],
                 'schema_name' => $tenant->schema_name,
                 'tenant_id' => $tenant->id,

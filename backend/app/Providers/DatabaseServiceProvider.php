@@ -94,7 +94,7 @@ class DatabaseServiceProvider extends ServiceProvider
         }
         
         // Optimize for read-heavy workloads
-        DB::statement("SET synchronous_commit = 'off'"); // For better write performance
+        DB::statement("SET synchronous_commit = '" . env('DB_SESSION_SYNCHRONOUS_COMMIT', 'on') . "'"); // For better write performance
         DB::statement("SET effective_cache_size = '1GB'");
         DB::statement("SET random_page_cost = 1.1"); // For SSD storage
     }

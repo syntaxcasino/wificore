@@ -39,17 +39,26 @@ AS $$
 DECLARE
     v_schema VARCHAR;
 BEGIN
-    -- Look up the schema for this username
-    -- Table radius_user_schema_mapping will be created by Laravel migration
-    SELECT schema_name INTO v_schema
-    FROM radius_user_schema_mapping
-    WHERE username = p_username;
-    
-    -- If not found, default to public (system admin)
-    IF v_schema IS NULL THEN
-        v_schema := 'public';
+    -- Check if user is a system admin (in public schema)
+    SELECT 'public' INTO v_schema
+    FROM public.users
+    WHERE username = p_username
+    AND role = 'system_admin'
+    LIMIT 1;
+
+    IF v_schema IS NOT NULL THEN
+        RETURN v_schema;
     END IF;
-    
+
+    -- Get tenant schema from mapping table
+    SELECT schema_name INTO v_schema
+    FROM public.radius_user_schema_mapping
+    WHERE username = p_username
+    AND is_active = true
+    LIMIT 1;
+
+    -- Do not guess. Tenant users must exist in radius_user_schema_mapping.
+    -- Return NULL when no mapping exists so RADIUS functions treat it as "user not found".
     RETURN v_schema;
 END;
 $$;
@@ -72,6 +81,11 @@ DECLARE
     v_query TEXT;
 BEGIN
     v_schema := get_user_schema(p_username);
+
+    IF v_schema IS NULL OR v_schema = '' THEN
+        RETURN;
+    END IF;
+
     v_query := format('SELECT id, username, attribute, value, op FROM %I.radcheck WHERE username = %L ORDER BY id', 
                       v_schema, p_username);
     RETURN QUERY EXECUTE v_query;
@@ -89,6 +103,11 @@ DECLARE
     v_query TEXT;
 BEGIN
     v_schema := get_user_schema(p_username);
+
+    IF v_schema IS NULL OR v_schema = '' THEN
+        RETURN;
+    END IF;
+
     v_query := format('SELECT id, username, attribute, value, op FROM %I.radreply WHERE username = %L ORDER BY id', 
                       v_schema, p_username);
     RETURN QUERY EXECUTE v_query;
@@ -109,6 +128,11 @@ DECLARE
     v_query TEXT;
 BEGIN
     v_schema := get_user_schema(p_username);
+
+    IF v_schema IS NULL OR v_schema = '' THEN
+        RETURN;
+    END IF;
+
     v_query := format('INSERT INTO %I.radpostauth (username, pass, reply, authdate) VALUES (%L, %L, %L, NOW())', 
                       v_schema, p_username, p_pass, p_reply);
     EXECUTE v_query;

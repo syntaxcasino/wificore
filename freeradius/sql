@@ -22,14 +22,12 @@ sql {
     groupreply_table = "radgroupreply"
     usergroup_table = "radusergroup"
 
-    read_clients = yes
-    read_groups = yes
-    read_profiles = yes
+    read_clients = no
+    read_groups = no
+    read_profiles = no
     delete_stale_sessions = yes
 
     # Set to 'yes' to read radius clients from the database
-    read_clients = yes
-
     # Table to store radius client details
     client_table = "nas"
 
@@ -46,7 +44,7 @@ sql {
     }
 
     # Set to 'yes' for no delay (for testing only!)
-    no_query_on_start = no
+    no_query_on_start = yes
     
     # SQL user name attribute - what to use as the username in queries
     sql_user_name = "%{User-Name}"
@@ -56,6 +54,10 @@ sql {
     
     # Read database-specific queries
     $INCLUDE ${modconfdir}/${.:name}/main/${dialect}/queries.conf
+    
+    post-auth {
+        query = "${..postauth_query}"
+    }
     
     # Accounting configuration
     accounting {

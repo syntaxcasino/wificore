@@ -22,6 +22,7 @@ use App\Http\Controllers\Api\MetricsController;
 // NEW: Service Management & Access Point Controllers
 use App\Http\Controllers\Api\RouterServiceController;
 use App\Http\Controllers\Api\ServiceConfigurationController;
+use App\Http\Controllers\Api\RouterMetricsController;
 use App\Http\Controllers\Api\TenantIpPoolController;
 use App\Http\Controllers\Api\AccessPointController;
 use App\Http\Controllers\Api\TenantController;
@@ -30,6 +31,8 @@ use App\Http\Controllers\Api\TenantDashboardController;
 use App\Http\Controllers\Api\PublicPackageController;
 use App\Http\Controllers\Api\PublicTenantController;
 use App\Http\Controllers\Api\EnvironmentHealthController;
+use App\Http\Controllers\Api\PppoeUserController;
+use App\Http\Controllers\Api\PppoeSessionController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\Api\TodoController;
 // HR Module Controllers
@@ -57,44 +60,7 @@ use App\Events\TestWebSocketEvent;
 // =============================================================================
 // BROADCASTING AUTH - Sanctum-based authentication for WebSocket channels
 // =============================================================================
-Route::post('/broadcasting/auth', function (Request $request) {
-    // Apply Sanctum middleware to authenticate the request
-    $middleware = new \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful();
-    $middleware->handle($request, function ($req) {
-        // Continue to next middleware
-    });
-    
-    // Now try to get the authenticated user via Sanctum guard
-    $user = $request->user('sanctum');
-    
-    // Fallback: Try web guard for cookie-based sessions
-    if (!$user) {
-        $user = $request->user('web');
-    }
-    
-    if (!$user) {
-        \Log::warning('Broadcasting auth failed - no authenticated user', [
-            'has_auth_header' => $request->hasHeader('Authorization'),
-            'has_cookie' => $request->hasCookie(config('session.cookie')),
-            'channel' => $request->input('channel_name'),
-            'socket_id' => $request->input('socket_id'),
-        ]);
-        return response()->json(['message' => 'Unauthenticated'], 403);
-    }
-    
-    \Log::info('Broadcasting auth successful', [
-        'user_id' => $user->id,
-        'channel' => $request->input('channel_name'),
-        'socket_id' => $request->input('socket_id'),
-    ]);
-    
-    // Set the authenticated user on the request for Broadcast::auth()
-    // This ensures the channel authorization callbacks receive the correct user
-    $request->setUserResolver(function () use ($user) {
-        return $user;
-    });
-    
-    // Use Laravel's broadcasting auth with the authenticated user
+Route::middleware(['auth:sanctum', 'user.active', 'tenant.context'])->post('/broadcasting/auth', function (Request $request) {
     return Broadcast::auth($request);
 });
 
@@ -120,18 +86,13 @@ Route::get('/public/packages', [PublicPackageController::class, 'getPublicPackag
 Route::post('/public/set-tenant', [PublicPackageController::class, 'setTenantSession'])
     ->name('api.public.set-tenant');
 
-// Public Tenant Routes - Subdomain-based tenant identification and packages
-Route::get('/public/tenant/{subdomain}', [PublicTenantController::class, 'getTenantBySubdomain'])
-    ->name('api.public.tenant.show');
-
-Route::get('/public/tenant/{subdomain}/packages', [PublicTenantController::class, 'getPublicPackages'])
-    ->name('api.public.tenant.packages');
-
-Route::get('/public/tenant-by-domain', [PublicTenantController::class, 'getTenantByDomain'])
-    ->name('api.public.tenant.by-domain');
-
-Route::post('/public/subdomain/check', [PublicTenantController::class, 'checkSubdomainAvailability'])
-    ->name('api.public.subdomain.check');
+// Public tenant routes (no auth required)
+Route::prefix('public')->group(function () {
+    Route::get('/tenant/{subdomain}', [PublicTenantController::class, 'getTenantBySubdomain']);
+    Route::get('/tenant/{subdomain}/packages', [PublicTenantController::class, 'getPublicPackages']);
+    Route::get('/tenant/domain', [PublicTenantController::class, 'getTenantByDomain']);
+    Route::post('/tenant/subdomain/check', [PublicTenantController::class, 'checkSubdomainAvailability']);
+});
 
 // Public Router Configuration Fetch - Token-based authentication
 Route::get('/routers/{config_token}/fetch-config', [RouterController::class, 'fetchConfig'])
@@ -479,6 +440,18 @@ Route::middleware(['auth:sanctum', 'role:admin', 'user.active', 'tenant.context'
         ->name('api.packages.update');
     Route::delete('/packages/{package}', [PackageController::class, 'destroy'])
         ->name('api.packages.destroy');
+
+    Route::prefix('pppoe')->group(function () {
+        Route::get('/users', [PppoeUserController::class, 'index']);
+        Route::post('/users', [PppoeUserController::class, 'store']);
+        Route::put('/users/{id}', [PppoeUserController::class, 'update']);
+        Route::delete('/users/{id}', [PppoeUserController::class, 'destroy']);
+        Route::post('/users/{id}/reset-password', [PppoeUserController::class, 'resetPassword']);
+        Route::post('/users/{id}/block', [PppoeUserController::class, 'block']);
+        Route::post('/users/{id}/unblock', [PppoeUserController::class, 'unblock']);
+
+        Route::get('/sessions', [PppoeSessionController::class, 'index']);
+    });
     
     // -------------------------------------------------------------------------
     // System Logs
@@ -492,6 +465,9 @@ Route::middleware(['auth:sanctum', 'role:admin', 'user.active', 'tenant.context'
     Route::prefix('routers')->name('api.routers.')->group(function () {
         // CRUD Operations
         Route::get('/', [RouterController::class, 'index'])->name('index');
+        Route::get('/live-data', [RouterController::class, 'getLiveData'])->name('live-data.all');
+        Route::post('/metrics/live', [RouterMetricsController::class, 'liveBatch'])->name('metrics.live.batch');
+        Route::get('/metrics/traffic', [RouterMetricsController::class, 'trafficRangeBatch'])->name('metrics.traffic.batch');
         Route::post('/', [RouterController::class, 'store'])->name('store');
         Route::get('/{router}', [RouterController::class, 'show'])->name('show');
         Route::put('/{router}', [RouterController::class, 'update'])->name('update');
@@ -500,9 +476,12 @@ Route::middleware(['auth:sanctum', 'role:admin', 'user.active', 'tenant.context'
         // Router Status & Details
         Route::get('/{router}/status', [RouterController::class, 'status'])->name('status');
         Route::get('/{router}/details', [RouterController::class, 'getRouterDetails'])->name('details');
+        Route::get('/{router}/metrics/live', [RouterMetricsController::class, 'live'])->name('metrics.live');
+        Route::get('/{router}/metrics/traffic', [RouterMetricsController::class, 'trafficRange'])->name('metrics.traffic.range');
+        Route::get('/{router}/live-data', [RouterController::class, 'getRouterLiveData'])->name('live-data.single');
         
         // Router Analytics & Revenue
-        Route::get('/{router}/analytics', [\App\Http\Controllers\Api\RouterAnalyticsController::class, 'getRouterDetails'])->name('analytics');
+        Route::get('/analytics/overview', [RouterAnalyticsController::class, 'overview'])->name('analytics.overview');
         Route::get('/revenue/all', [\App\Http\Controllers\Api\RouterAnalyticsController::class, 'getRouterRevenue'])->name('revenue.all');
         Route::post('/revenue/compare', [\App\Http\Controllers\Api\RouterAnalyticsController::class, 'compareRouters'])->name('revenue.compare');
         

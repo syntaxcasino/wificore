@@ -83,6 +83,20 @@ export default defineConfig({
     build: {
     outDir: 'dist',
     external: [], // <-- this is default, but you can explicitly set it
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return
+
+          if (id.includes('/vue/') || id.includes('\u0000vue')) return 'vendor-vue'
+          if (id.includes('/pinia/')) return 'vendor-pinia'
+          if (id.includes('/axios/')) return 'vendor-axios'
+          if (id.includes('/laravel-echo/') || id.includes('/pusher-js/')) return 'vendor-realtime'
+
+          return 'vendor'
+        },
+      },
+    },
   },
    base: '/', // important for Nginx SPA routing
     server: {

@@ -3,19 +3,22 @@
 namespace App\Services;
 
 use App\Models\VpnConfiguration;
+use App\Models\VpnSubnetAllocation;
 use App\Models\Tenant;
 use App\Models\Router;
 use App\Models\TenantVpnTunnel;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
-class VpnService
+class VpnService extends TenantAwareService
 {
     protected TenantVpnTunnelService $tunnelService;
+    protected TenantContext $tenantContext;
 
-    public function __construct(TenantVpnTunnelService $tunnelService)
+    public function __construct(TenantVpnTunnelService $tunnelService, TenantContext $tenantContext)
     {
         $this->tunnelService = $tunnelService;
+        $this->tenantContext = $tenantContext;
     }
     /**
      * Generate WireGuard keypair
@@ -48,62 +51,40 @@ class VpnService
      */
     public function allocateTenantSubnet(Tenant $tenant): VpnSubnetAllocation
     {
-        // Check if tenant already has a subnet
-        $existing = VpnSubnetAllocation::where('tenant_id', $tenant->id)->first();
-        
-        if ($existing) {
-            return $existing;
-        }
-
-        // Find next available subnet using 10.X.Y.0/24 pattern
-        // This supports 65,536 tenants (256 * 256) with 254 routers each
-        // Start from 10.100.0.0 to avoid conflicts with common private networks
-        $usedSubnets = VpnSubnetAllocation::pluck('subnet_cidr')->toArray();
-        
-        $octet2 = 100;
-        $octet3 = 0;
-        $found = false;
-        
-        while ($octet2 < 256 && !$found) {
-            while ($octet3 < 256) {
-                $testSubnet = "10.{$octet2}.{$octet3}.0/24";
-                if (!in_array($testSubnet, $usedSubnets)) {
-                    $found = true;
-                    break;
-                }
-                $octet3++;
+        return $this->tenantContext->runInTenantContext($tenant, function () use ($tenant) {
+            $existing = VpnSubnetAllocation::query()->orderBy('id')->first();
+            if ($existing) {
+                return $existing;
             }
-            if (!$found) {
-                $octet2++;
-                $octet3 = 0;
-            }
-        }
 
-        if (!$found) {
-            throw new \Exception('No available VPN subnets. All subnets are allocated.');
-        }
+            $tunnel = $this->tunnelService->getOrCreateTenantTunnel($tenant->id);
 
-        // Create subnet allocation with /24 (254 usable IPs per tenant)
-        $subnet = VpnSubnetAllocation::create([
-            'tenant_id' => $tenant->id,
-            'subnet_cidr' => "10.{$octet2}.{$octet3}.0/24",
-            'subnet_octet_2' => $octet2,
-            'gateway_ip' => "10.{$octet2}.{$octet3}.1",
-            'range_start' => "10.{$octet2}.{$octet3}.2",
-            'range_end' => "10.{$octet2}.{$octet3}.254",
-            'total_ips' => 254,
-            'allocated_ips' => 0,
-            'available_ips' => 254,
-            'status' => 'active',
-        ]);
+            $subnetCidr = (string) $tunnel->subnet_cidr;
+            $baseIp = explode('/', $subnetCidr, 2)[0] ?? '';
+            $parts = explode('.', $baseIp);
+            $octet2 = (int) ($parts[1] ?? 0);
 
-        Log::info('VPN subnet allocated', [
-            'tenant_id' => $tenant->id,
-            'subnet' => $subnet->subnet_cidr,
-            'capacity' => '254 routers per tenant, 65536 tenants supported',
-        ]);
+            $gatewayIp = (string) $tunnel->server_ip;
+            $rangeStart = "{$parts[0]}.{$parts[1]}.0.2";
+            $rangeEnd = "{$parts[0]}.{$parts[1]}.255.254";
 
-        return $subnet;
+            $subnet = VpnSubnetAllocation::create([
+                'subnet_cidr' => $subnetCidr,
+                'subnet_octet_2' => $octet2,
+                'gateway_ip' => $gatewayIp,
+                'range_start' => $rangeStart,
+                'range_end' => $rangeEnd,
+                'status' => 'active',
+            ]);
+
+            Log::info('VPN subnet allocation created in tenant schema', [
+                'tenant_id' => $tenant->id,
+                'subnet' => $subnet->subnet_cidr,
+                'tunnel_id' => $tunnel->id,
+            ]);
+
+            return $subnet;
+        });
     }
 
     /**
@@ -142,81 +123,71 @@ class VpnService
      */
     public function createVpnConfiguration(Tenant $tenant, Router $router): VpnConfiguration
     {
-        return DB::transaction(function () use ($tenant, $router) {
-            // 1. Get or create tenant VPN tunnel (ONE per tenant)
-            $tunnel = $this->tunnelService->getOrCreateTenantTunnel($tenant->id);
-            
-            // 2. Allocate IP address for this router from tunnel subnet
-            $clientIp = $tunnel->getNextAvailableIp();
-            
-            // 3. Generate client (router) keys
-            $clientKeys = $this->generateWireGuardKeys();
-            
-            // 4. Get server configuration from tunnel
-            $serverEndpoint = config('vpn.server_endpoint');
-            
-            // 5. Create VPN configuration for this router
-            // Note: No tenant_id needed - table is in tenant schema, isolation is implicit
-            $interfaceName = 'wg-' . substr($router->id, 0, 8); // wg-531ddd0e
-            
-            $vpnConfig = VpnConfiguration::create([
-                'tenant_vpn_tunnel_id' => $tunnel->id,
-                'router_id' => $router->id,
-                'client_private_key' => $clientKeys['private_key'],
-                'client_public_key' => $clientKeys['public_key'],
-                'client_ip' => $clientIp,
-                'server_ip' => $tunnel->server_ip,
-                'server_public_key' => $tunnel->server_public_key,
-                'subnet_cidr' => $tunnel->subnet_cidr,
-                'server_endpoint' => $serverEndpoint,
-                'listen_port' => $tunnel->listen_port,
-                'interface_name' => $interfaceName,
-                'preshared_key' => $this->generatePresharedKey(),
-                'status' => 'pending',
-            ]);
-            
-            // 6. Add router as peer to tenant tunnel
-            $this->tunnelService->addRouterPeer($tunnel, $vpnConfig);
-            
-            // 7. Generate configuration scripts
-            $vpnConfig->mikrotik_script = $this->generateMikrotikScript($vpnConfig);
-            $vpnConfig->linux_script = $this->generateLinuxScript($vpnConfig);
-            
-            // 8. Update router with VPN IP
-            $router->update([
-                'vpn_ip' => $clientIp,
-                'ip_address' => $clientIp . '/32', // Use VPN IP as primary management IP
-            ]);
-            
-            // 9. Set VPN config to active
-            $vpnConfig->status = 'active';
-            $vpnConfig->save();
-            
-            Log::info('VPN configuration created and activated for router', [
-                'tenant_id' => $tenant->id,
-                'router_id' => $router->id,
-                'tunnel_id' => $tunnel->id,
-                'interface' => $tunnel->interface_name,
-                'client_ip' => $clientIp,
-                'vpn_status' => 'active',
-            ]);
-            
-            // 10. Dispatch background job to verify connectivity
-            // This will ping the router's VPN IP and broadcast events via WebSocket
-            \App\Jobs\VerifyVpnConnectivityJob::dispatch(
-                $tenant->id,
-                $vpnConfig->id,
-                120, // max_wait_seconds
-                5    // retry_interval
-            )->onQueue('default');
-            
-            Log::info('VPN connectivity verification job dispatched', [
-                'tenant_id' => $tenant->id,
-                'vpn_config_id' => $vpnConfig->id,
-                'router_id' => $router->id,
-            ]);
-            
-            return $vpnConfig;
+        return $this->tenantContext->runInTenantContext($tenant, function () use ($tenant, $router) {
+            return DB::transaction(function () use ($tenant, $router) {
+                $tunnel = $this->tunnelService->getOrCreateTenantTunnel($tenant->id);
+
+                $clientIp = $tunnel->getNextAvailableIp();
+
+                $clientKeys = $this->generateWireGuardKeys();
+
+                $serverEndpoint = config('vpn.server_endpoint');
+
+                $interfaceName = 'wg-' . substr($router->id, 0, 8);
+
+                $vpnConfig = VpnConfiguration::create([
+                    'tenant_vpn_tunnel_id' => $tunnel->id,
+                    'router_id' => $router->id,
+                    'client_private_key' => $clientKeys['private_key'],
+                    'client_public_key' => $clientKeys['public_key'],
+                    'client_ip' => $clientIp,
+                    'server_ip' => $tunnel->server_ip,
+                    'server_public_key' => $tunnel->server_public_key,
+                    'subnet_cidr' => $tunnel->subnet_cidr,
+                    'server_endpoint' => $serverEndpoint,
+                    'listen_port' => $tunnel->listen_port,
+                    'interface_name' => $interfaceName,
+                    'preshared_key' => $this->generatePresharedKey(),
+                    'status' => 'pending',
+                ]);
+
+                $this->tunnelService->addRouterPeer($tunnel, $vpnConfig);
+
+                $vpnConfig->mikrotik_script = $this->generateMikrotikScript($vpnConfig);
+                $vpnConfig->linux_script = $this->generateLinuxScript($vpnConfig);
+
+                $router->update([
+                    'vpn_ip' => $clientIp,
+                    'ip_address' => $clientIp . '/32',
+                ]);
+
+                $vpnConfig->status = 'active';
+                $vpnConfig->save();
+
+                Log::info('VPN configuration created and activated for router', [
+                    'tenant_id' => $tenant->id,
+                    'router_id' => $router->id,
+                    'tunnel_id' => $tunnel->id,
+                    'interface' => $tunnel->interface_name,
+                    'client_ip' => $clientIp,
+                    'vpn_status' => 'active',
+                ]);
+
+                \App\Jobs\VerifyVpnConnectivityJob::dispatch(
+                    $tenant->id,
+                    $vpnConfig->id,
+                    120,
+                    5
+                )->onQueue('default');
+
+                Log::info('VPN connectivity verification job dispatched', [
+                    'tenant_id' => $tenant->id,
+                    'vpn_config_id' => $vpnConfig->id,
+                    'router_id' => $router->id,
+                ]);
+
+                return $vpnConfig;
+            });
         });
     }
 
@@ -250,7 +221,7 @@ SCRIPT;
         
         return <<<SCRIPT
 # WireGuard VPN Configuration for Linux
-# Generated for Tenant: {$config->tenant_id}
+# Generated for Tenant VPN Tunnel: {$config->tenant_vpn_tunnel_id}
 # Client IP: {$config->client_ip}
 
 [Interface]
@@ -301,7 +272,6 @@ SCRIPT;
 
             Log::info('VPN configuration deleted', [
                 'vpn_config_id' => $config->id,
-                'tenant_id' => $config->tenant_id,
                 'client_ip' => $config->client_ip,
             ]);
         });

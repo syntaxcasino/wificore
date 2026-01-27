@@ -6,6 +6,7 @@ use App\Models\UserSubscription;
 use App\Models\Router;
 use App\Events\UserProvisioned;
 use App\Events\ProvisioningFailed;
+use App\Services\MikroTik\SshExecutor;
 use App\Traits\TenantAwareJob;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -63,27 +64,21 @@ class ProvisionUserInMikroTikJob implements ShouldQueue
                 }
 
                 $router = Router::findOrFail($this->routerId);
-                $package = $subscription->package;
 
-                // Connect to MikroTik
-                $client = new \RouterOS\Client([
-                    'host' => $router->ip_address,
-                    'user' => $router->username,
-                    'pass' => $router->password,
-                    'port' => $router->port ?? 8728,
-                    'timeout' => 10,
-                ]);
+                // Use SSH-only provisioning via SshExecutor (no RouterOS API)
+                $ssh = new SshExecutor($router, 10);
+                $ssh->connect();
 
-                // Check if user already exists
-                $existingUser = $this->checkUserExists($client, $subscription->mikrotik_username);
-                
-                if ($existingUser) {
-                    Log::info('User already exists in MikroTik, updating', [
+                // Check if user already exists (by name)
+                $userExists = $this->checkUserExists($ssh, $subscription->mikrotik_username);
+
+                if ($userExists) {
+                    Log::info('User already exists in MikroTik, updating via SSH', [
                         'username' => $subscription->mikrotik_username
                     ]);
-                    $this->updateUser($client, $existingUser, $subscription);
+                    $this->updateUser($ssh, $subscription);
                 } else {
-                    $this->createUser($client, $subscription);
+                    $this->createUser($ssh, $subscription);
                 }
 
                 Log::info('User provisioned in MikroTik successfully', [
@@ -127,53 +122,68 @@ class ProvisionUserInMikroTikJob implements ShouldQueue
     /**
      * Check if user exists in MikroTik
      */
-    protected function checkUserExists($client, string $username)
+    protected function checkUserExists(SshExecutor $ssh, string $username): bool
     {
         try {
-            $query = new \RouterOS\Query('/ip/hotspot/user/print');
-            $query->where('name', $username);
-            
-            $response = $client->query($query)->read();
-            
-            return !empty($response) ? $response[0] : null;
+            $command = sprintf('/ip hotspot user print detail without-paging where name="%s"', addslashes($username));
+            $output = $ssh->exec($command);
+
+            return strpos($output, 'name="' . $username . '"') !== false;
         } catch (\Exception $e) {
-            return null;
+            Log::debug('Failed to check user existence via SSH', [
+                'username' => $username,
+                'error' => $e->getMessage(),
+            ]);
+            return false;
         }
     }
 
     /**
      * Create user in MikroTik
      */
-    protected function createUser($client, UserSubscription $subscription): void
+    protected function createUser(SshExecutor $ssh, UserSubscription $subscription): void
     {
         $package = $subscription->package;
-        
-        $query = new \RouterOS\Query('/ip/hotspot/user/add');
-        $query->equal('name', $subscription->mikrotik_username);
-        $query->equal('password', $subscription->mikrotik_password);
-        $query->equal('limit-uptime', $this->formatDuration($package->duration));
-        $query->equal('limit-bytes-total', $this->calculateDataLimit($package));
-        $query->equal('profile', $this->getProfileName($package));
-        $query->equal('comment', 'Auto-provisioned - Subscription #' . $subscription->id);
 
-        $client->query($query)->read();
+        $limitUptime = $this->formatDuration($package->duration);
+        $limitBytes = $this->calculateDataLimit($package);
+        $profile = $this->getProfileName($package);
+        $comment = 'Auto-provisioned - Subscription #' . $subscription->id;
+
+        $command = sprintf(
+            '/ip hotspot user add name="%s" password="%s" limit-uptime=%s limit-bytes-total=%d profile="%s" comment="%s"',
+            addslashes($subscription->mikrotik_username),
+            addslashes($subscription->mikrotik_password),
+            $limitUptime,
+            $limitBytes,
+            addslashes($profile),
+            addslashes($comment)
+        );
+
+        $ssh->exec($command);
     }
 
     /**
      * Update existing user in MikroTik
      */
-    protected function updateUser($client, $existingUser, UserSubscription $subscription): void
+    protected function updateUser(SshExecutor $ssh, UserSubscription $subscription): void
     {
         $package = $subscription->package;
-        
-        $query = new \RouterOS\Query('/ip/hotspot/user/set');
-        $query->equal('.id', $existingUser['.id']);
-        $query->equal('password', $subscription->mikrotik_password);
-        $query->equal('limit-uptime', $this->formatDuration($package->duration));
-        $query->equal('limit-bytes-total', $this->calculateDataLimit($package));
-        $query->equal('profile', $this->getProfileName($package));
 
-        $client->query($query)->read();
+        $limitUptime = $this->formatDuration($package->duration);
+        $limitBytes = $this->calculateDataLimit($package);
+        $profile = $this->getProfileName($package);
+
+        $command = sprintf(
+            '/ip hotspot user set [find name="%s"] password="%s" limit-uptime=%s limit-bytes-total=%d profile="%s"',
+            addslashes($subscription->mikrotik_username),
+            addslashes($subscription->mikrotik_password),
+            $limitUptime,
+            $limitBytes,
+            addslashes($profile)
+        );
+
+        $ssh->exec($command);
     }
 
     /**

@@ -64,7 +64,7 @@ class HotspotService extends BaseMikroTikService
         $dns         = $options['dns_servers'] ?? '8.8.8.8,1.1.1.1';
         
         // Resolve RADIUS hostname to IP address for MikroTik compatibility
-        $radiusHost  = $options['radius_ip'] ?? env('RADIUS_SERVER_HOST', 'traidnet-freeradius');
+        $radiusHost  = $options['radius_ip'] ?? env('VPN_SERVER_IP', env('RADIUS_SERVER_HOST', 'traidnet-freeradius'));
         $radiusIP    = gethostbyname($radiusHost);
         // If resolution fails, gethostbyname returns the hostname, so check and use fallback
         if ($radiusIP === $radiusHost && filter_var($radiusHost, FILTER_VALIDATE_IP) === false) {
@@ -83,6 +83,15 @@ class HotspotService extends BaseMikroTikService
         $server      = "hs-server-$routerId";
         $poolName    = "pool-hotspot-$routerId";
         $dhcpName    = "dhcp-hotspot-$routerId";
+
+        $portalHost = null;
+        try {
+            $portalHost = parse_url($portalURL, PHP_URL_HOST);
+        } catch (\Exception $e) {
+            $portalHost = null;
+        }
+
+        $portalUrlForHtml = $this->escapeRouterOSString($portalURL);
 
         // === Clean RSC Script Generation ===
         $script = [
@@ -127,6 +136,8 @@ class HotspotService extends BaseMikroTikService
             "/ip hotspot profile set $profile smtp-server=0.0.0.0",
             "/ip hotspot profile set $profile split-user-domain=no",
             "",
+            ":do { /file set hotspot/login.html contents=\"<html><head><meta http-equiv=refresh content=0;url=$portalUrlForHtml></head><body>Redirecting...</body></html>\" } on-error={}",
+            "",
             "# Hotspot Server",
             "/ip hotspot remove [find name=$server]",
             "/ip hotspot add name=$server interface=$bridge profile=$profile address-pool=$poolName disabled=no",
@@ -154,10 +165,22 @@ class HotspotService extends BaseMikroTikService
             "/ip hotspot profile set $profile use-radius=yes",
             "",
             "# Walled Garden - Configured via API after deployment (script import has issues with walled garden)",
+            ":do { /ip hotspot walled-garden remove [find comment=\"WiFiCore Portal\"]; } on-error={}",
+            ($portalHost ? "/ip hotspot walled-garden add dst-host=$portalHost action=allow comment=\"WiFiCore Portal\"" : ":do { } on-error={}"),
             "",
             "# Firewall Filter Rules - Security Best Practices",
-            "/ip firewall filter add chain=forward action=accept connection-state=established,related comment=\"Allow Established/Related\" place-before=0",
-            "/ip firewall filter add chain=forward action=drop connection-state=invalid comment=\"Drop Invalid\" place-before=1",
+            ":do { /ip firewall filter remove [find comment=\"Allow Established/Related\"]; } on-error={}",
+            ":do { /ip firewall filter remove [find comment=\"Drop Invalid\"]; } on-error={}",
+            ":do { /ip firewall filter remove [find comment=\"Limit TCP Connections per IP\"]; } on-error={}",
+            ":do { /ip firewall filter remove [find comment=\"Drop Port Scanners\"]; } on-error={}",
+            ":do { /ip firewall filter remove [find comment=\"Limit ICMP\"]; } on-error={}",
+            ":do { /ip firewall filter remove [find comment=\"Allow Hotspot to WAN\"]; } on-error={}",
+            ":do { /ip firewall filter remove [find comment=\"Allow DHCP\"]; } on-error={}",
+            ":do { /ip firewall filter remove [find comment=\"Allow Hotspot HTTP/HTTPS\"]; } on-error={}",
+            ":do { /ip firewall filter remove [find comment=\"Allow RADIUS\"]; } on-error={}",
+            ":do { /ip firewall filter remove [find comment=\"Drop Other Hotspot Input\"]; } on-error={}",
+            "/ip firewall filter add chain=forward action=accept connection-state=established,related comment=\"Allow Established/Related\"",
+            "/ip firewall filter add chain=forward action=drop connection-state=invalid comment=\"Drop Invalid\"",
             "/ip firewall filter add chain=forward action=drop protocol=tcp tcp-flags=syn connection-limit=20,32 comment=\"Limit TCP Connections per IP\"",
             "/ip firewall filter add chain=input action=drop protocol=tcp psd=21,3s,3,1 comment=\"Drop Port Scanners\"",
             "/ip firewall filter add chain=input action=accept protocol=icmp limit=5,5:packet comment=\"Limit ICMP\"",
@@ -193,7 +216,8 @@ class HotspotService extends BaseMikroTikService
             "# Note: FTP is managed dynamically by deployment system (enabled during upload, disabled after)",
             "",
             "# Logging Configuration - Security Audit Trail",
-            "/system logging action add name=remote-syslog target=remote remote=192.168.56.1:514",
+            ":do { /system logging action remove [find name=remote-syslog]; } on-error={}",
+            ":do { /system logging action add name=remote-syslog target=remote remote=192.168.56.1:514 } on-error={} ",
             ":do { /system logging add topics=hotspot,info action=remote-syslog } on-error={}",
             ":do { /system logging add topics=hotspot,warning action=remote-syslog } on-error={}",
             ":do { /system logging add topics=hotspot,error action=remote-syslog } on-error={}",

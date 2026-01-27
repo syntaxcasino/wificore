@@ -50,7 +50,7 @@ export function useRouterUtils() {
    * Parse memory/disk value with unit conversion to bytes
    */
   const parseMemoryValue = (value) => {
-    if (!value || value === 'N/A') return null
+    if (value === undefined || value === null || value === '' || value === 'N/A') return null
 
     // If it's already a number, return it
     if (typeof value === 'number') return value
@@ -87,16 +87,23 @@ export function useRouterUtils() {
     if (!router.live_data) return null
 
     // MikroTik returns free-memory and total-memory
-    const freeMemory = router.live_data.free_memory || router.live_data['free-memory']
-    const totalMemory = router.live_data.total_memory || router.live_data['total-memory']
+    const freeMemory = router.live_data.free_memory ?? router.live_data['free-memory']
+    const totalMemory = router.live_data.total_memory ?? router.live_data['total-memory']
 
-    if (!freeMemory || !totalMemory) return null
+    if (
+      freeMemory === undefined ||
+      freeMemory === null ||
+      totalMemory === undefined ||
+      totalMemory === null
+    ) {
+      return null
+    }
 
     // Parse memory values with proper unit conversion
     const parsedFree = parseMemoryValue(freeMemory)
     const parsedTotal = parseMemoryValue(totalMemory)
 
-    if (!parsedFree || !parsedTotal || parsedTotal === 0) {
+    if (parsedFree === null || parsedTotal === null || parsedTotal === 0) {
       return null
     }
 
@@ -116,16 +123,18 @@ export function useRouterUtils() {
     if (!router.live_data) return null
 
     // MikroTik returns free-hdd-space and total-hdd-space
-    const freeHdd = router.live_data.free_hdd_space || router.live_data['free-hdd-space']
-    const totalHdd = router.live_data.total_hdd_space || router.live_data['total-hdd-space']
+    const freeHdd = router.live_data.free_hdd_space ?? router.live_data['free-hdd-space']
+    const totalHdd = router.live_data.total_hdd_space ?? router.live_data['total-hdd-space']
 
-    if (!freeHdd || !totalHdd) return null
+    if (freeHdd === undefined || freeHdd === null || totalHdd === undefined || totalHdd === null) {
+      return null
+    }
 
     // Parse disk values with proper unit conversion
     const parsedFree = parseMemoryValue(freeHdd)
     const parsedTotal = parseMemoryValue(totalHdd)
 
-    if (!parsedFree || !parsedTotal || parsedTotal === 0) {
+    if (parsedFree === null || parsedTotal === null || parsedTotal === 0) {
       return null
     }
 
@@ -207,6 +216,9 @@ export function useRouterUtils() {
     }
     if (router.live_data?.active_connections !== undefined) {
       return router.live_data.active_connections
+    }
+    if (router.live_data?.['active-connections'] !== undefined) {
+      return router.live_data['active-connections']
     }
     return null
   }

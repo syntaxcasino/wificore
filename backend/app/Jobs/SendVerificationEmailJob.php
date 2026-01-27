@@ -41,12 +41,19 @@ class SendVerificationEmailJob implements ShouldQueue
         }
         
         $startTime = microtime(true);
+        $mailer = (string) (config('mail.default') ?: 'smtp');
+        $smtpHost = (string) config('mail.mailers.smtp.host');
+        $smtpPort = (int) (config('mail.mailers.smtp.port') ?: 0);
+        $smtpEncryption = (string) (config('mail.mailers.smtp.encryption') ?: '');
+        $smtpUsername = (string) (config('mail.mailers.smtp.username') ?: '');
+        $fromAddress = (string) (config('mail.from.address') ?: '');
+        $fromName = (string) (config('mail.from.name') ?: '');
         
         try {
             $verificationUrl = url("/register/verify/{$registration->token}");
             
             // Use Mail facade with explicit mailer for better control
-            Mail::mailer(config('mail.default'))->send(
+            $sent = Mail::mailer($mailer)->send(
                 'emails.tenant-verification',
                 [
                     'registration' => $registration,
@@ -59,6 +66,16 @@ class SendVerificationEmailJob implements ShouldQueue
                 }
             );
 
+            $messageId = null;
+            if ($sent && method_exists($sent, 'getMessageId')) {
+                $messageId = $sent->getMessageId();
+            } elseif ($sent && method_exists($sent, 'getSymfonySentMessage')) {
+                $symfonySent = $sent->getSymfonySentMessage();
+                if ($symfonySent && method_exists($symfonySent, 'getMessageId')) {
+                    $messageId = $symfonySent->getMessageId();
+                }
+            }
+
             $duration = round((microtime(true) - $startTime) * 1000, 2);
 
             $registration->update([
@@ -69,7 +86,16 @@ class SendVerificationEmailJob implements ShouldQueue
                 'registration_id' => $registration->id,
                 'email' => $registration->tenant_email,
                 'duration_ms' => $duration,
-                'attempt' => $this->attempts()
+                'attempt' => $this->attempts(),
+                'mailer' => $mailer,
+                'smtp_host' => $smtpHost,
+                'smtp_port' => $smtpPort,
+                'smtp_encryption' => $smtpEncryption,
+                'smtp_username' => $smtpUsername !== '' ? (substr($smtpUsername, 0, 3) . '***') : '',
+                'from_address' => $fromAddress,
+                'from_name' => $fromName,
+                'message_id' => $messageId,
+                'verification_url' => $verificationUrl,
             ]);
 
             event(new TenantRegistrationStarted($registration));
@@ -83,7 +109,14 @@ class SendVerificationEmailJob implements ShouldQueue
                 'error' => $e->getMessage(),
                 'duration_ms' => $duration,
                 'attempt' => $this->attempts(),
-                'max_tries' => $this->tries
+                'max_tries' => $this->tries,
+                'mailer' => $mailer,
+                'smtp_host' => $smtpHost,
+                'smtp_port' => $smtpPort,
+                'smtp_encryption' => $smtpEncryption,
+                'smtp_username' => $smtpUsername !== '' ? (substr($smtpUsername, 0, 3) . '***') : '',
+                'from_address' => $fromAddress,
+                'from_name' => $fromName,
             ]);
 
             // Only update to failed if all retries exhausted

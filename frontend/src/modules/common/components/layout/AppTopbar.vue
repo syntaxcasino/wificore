@@ -105,7 +105,7 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { Menu, ChevronDown, User, LogOut, Wifi, Users, Package, Activity, Settings, Shield } from 'lucide-vue-next'
-import { useAuth } from '@/modules/common/composables/auth/useAuth'
+import { useAuthStore } from '@/stores/auth'
 
 // Props
 const props = defineProps({
@@ -119,8 +119,8 @@ const props = defineProps({
   }
 })
 
-// Auth composable
-const { user, logout } = useAuth()
+const authStore = useAuthStore()
+const user = computed(() => authStore.user)
 const router = useRouter()
 const route = useRoute()
 
@@ -205,7 +205,8 @@ const viewProfile = () => {
 
 const handleLogout = async () => {
   closeUserMenu()
-  await logout()
+  await authStore.logout()
+  await router.push('/login')
 }
 
 // Close menu on escape key

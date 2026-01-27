@@ -75,9 +75,9 @@
             </div>
             
             <!-- Action Buttons -->
-            <button @click="fetchRouters" :disabled="loading"
+            <button @click="fetchRouters" :disabled="loading || refreshing"
               class="inline-flex items-center gap-1.5 px-2 md:px-3 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 hover:border-slate-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all">
-              <svg xmlns="http://www.w3.org/2000/svg" :class="loading ? 'animate-spin' : ''" class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
+              <svg xmlns="http://www.w3.org/2000/svg" :class="(loading || refreshing) ? 'animate-spin' : ''" class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
                 <path fill-rule="evenodd"
                   d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z"
                   clip-rule="evenodd" />
@@ -99,8 +99,44 @@
       </div>
     </div>
 
-    <!-- Main Scrollable Content Area -->
-    <div class="flex-1 min-h-0 overflow-y-auto">
+    <!-- Main Content Area -->
+    <div class="flex-1 min-h-0 overflow-y-auto md:overflow-hidden">
+      <!-- Overlays (keep mounted so provisioning flow doesn't reset during list refresh/loading) -->
+      <DetailsOverlay 
+        :show-details-overlay="showDetailsOverlay" 
+        :selected-router="currentRouter"
+        :loading="detailsLoading"
+        :error="detailsError"
+        :refreshing="refreshing"
+        @close-details="closeDetails" 
+        @refresh-details="refreshDetails" 
+      />
+      <Overlay 
+        :show-form-overlay="showFormOverlay" 
+        :loading="false" 
+        :form-error="formError"
+        @close-form="closeFormOverlay"
+        @retry="fetchRouters" 
+        @refresh-routers="fetchRouters" 
+      />
+      <UpdateOverlay 
+        :show-update-overlay="showUpdateOverlay" 
+        :selected-router="selectedRouter" 
+        :form-data="formData"
+        :form-submitting="formSubmitting" 
+        :form-message="formMessage" 
+        :form-submitted="formSubmitted"
+        :config-token="formData.config_token" 
+        :config-loading="configLoading" 
+        :error="formError"
+        :format-timestamp="formatTimestamp" 
+        @close-update="closeUpdateOverlay" 
+        @generate-configs="generateConfigs"
+        @copy-token="copyToClipboard" 
+        @update-router="handleFormSubmit" 
+        @retry="fetchRouters" 
+      />
+
       <!-- Loading Skeleton -->
       <div v-if="loading" class="p-6 space-y-4">
       <div class="animate-pulse space-y-4">
@@ -133,45 +169,110 @@
       </button>
       </div>
     
-      <div v-else class="flex flex-col">
-      <!-- Overlays -->
-      <DetailsOverlay 
-        :show-details-overlay="showDetailsOverlay" 
-        :selected-router="currentRouter"
-        :refreshing="refreshing"
-        @close-details="closeDetails" 
-        @refresh-details="refreshDetails" 
-      />
-      <Overlay 
-        :show-form-overlay="showFormOverlay" 
-        :loading="loading" 
-        :form-error="formError"
-        @close-form="closeFormOverlay"
-        @retry="fetchRouters" 
-        @refresh-routers="fetchRouters" 
-      />
-      <UpdateOverlay 
-        :show-update-overlay="showUpdateOverlay" 
-        :selected-router="selectedRouter" 
-        :form-data="formData"
-        :form-submitting="formSubmitting" 
-        :form-message="formMessage" 
-        :form-submitted="formSubmitted"
-        :config-token="formData.config_token" 
-        :config-loading="configLoading" 
-        :error="formError"
-        :format-timestamp="formatTimestamp" 
-        @close-update="closeUpdateOverlay" 
-        @generate-configs="generateConfigs"
-        @copy-token="copyToClipboard" 
-        @update-router="handleFormSubmit" 
-        @retry="fetchRouters" 
-      />
-      
+      <div v-else class="flex flex-col min-h-0">
       <!-- Routers Table Container -->
-      <div v-if="filteredRouters.length" class="px-6 pt-6 pb-2">
-        <div class="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
-          <div class="overflow-x-auto">
+      <div v-if="filteredRouters.length" class="px-4 md:px-6 pt-4 md:pt-6 pb-2 flex flex-col min-h-0">
+        <!-- Mobile Cards -->
+        <div class="md:hidden space-y-3">
+          <div
+            v-for="router in paginatedRouters"
+            :key="router.id"
+            class="bg-white rounded-lg border border-slate-200 shadow-sm p-4 cursor-pointer active:scale-[0.99] transition-transform"
+            @click="openDetails(router)"
+          >
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <div class="flex items-center gap-2 min-w-0">
+                  <span :class="getStatusDotClass(router.status)" class="w-2 h-2 rounded-full flex-shrink-0"></span>
+                  <div class="text-sm font-semibold text-slate-900 truncate">{{ router.name }}</div>
+                </div>
+                <div class="mt-1 text-xs text-slate-600 truncate">{{ router.ip_address || 'No IP' }}</div>
+                <div class="mt-1 text-xs text-slate-500 truncate">{{ formatModel(getRouterModel(router)) }}</div>
+              </div>
+              <span :class="statusBadgeClass(router.status)" class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium capitalize flex-shrink-0">
+                {{ router.status || 'Unknown' }}
+              </span>
+            </div>
+
+            <div class="mt-3 grid grid-cols-2 gap-3">
+              <div class="bg-slate-50 border border-slate-200 rounded-md p-2">
+                <div class="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">CPU</div>
+                <div v-if="router.live_data?.cpu_load !== undefined && router.live_data?.cpu_load !== null" class="mt-1 flex items-center gap-2">
+                  <div class="flex-1 h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                    <div
+                      class="h-full rounded-full transition-all"
+                      :class="getCpuColorClass(Number(router.live_data.cpu_load))"
+                      :style="{ width: String(router.live_data.cpu_load) + '%' }"
+                    ></div>
+                  </div>
+                  <div class="text-xs font-medium text-slate-700 w-10 text-right">{{ router.live_data.cpu_load }}%</div>
+                </div>
+                <div v-else class="mt-1 text-xs text-slate-400">—</div>
+              </div>
+
+              <div class="bg-slate-50 border border-slate-200 rounded-md p-2">
+                <div class="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Users</div>
+                <div class="mt-1 flex items-center gap-2">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                  </svg>
+                  <div v-if="getConnectedUsers(router) !== null" class="text-xs font-medium text-slate-700">{{ getConnectedUsers(router) }}</div>
+                  <div v-else class="text-xs text-slate-400">—</div>
+                </div>
+              </div>
+
+              <div class="bg-slate-50 border border-slate-200 rounded-md p-2">
+                <div class="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Memory</div>
+                <div v-if="getMemoryUsage(router) !== null" class="mt-1 flex items-center gap-2">
+                  <div class="flex-1 h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                    <div
+                      class="h-full rounded-full transition-all"
+                      :class="getMemoryColorClass(getMemoryUsage(router))"
+                      :style="{ width: getMemoryUsage(router) + '%' }"
+                    ></div>
+                  </div>
+                  <div class="text-xs font-medium text-slate-700 w-10 text-right">{{ getMemoryUsage(router) }}%</div>
+                </div>
+                <div v-else class="mt-1 text-xs text-slate-400">—</div>
+              </div>
+
+              <div class="bg-slate-50 border border-slate-200 rounded-md p-2">
+                <div class="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Disk</div>
+                <div v-if="getDiskUsage(router) !== null" class="mt-1 flex items-center gap-2">
+                  <div class="flex-1 h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                    <div
+                      class="h-full rounded-full transition-all"
+                      :class="getDiskColorClass(getDiskUsage(router))"
+                      :style="{ width: getDiskUsage(router) + '%' }"
+                    ></div>
+                  </div>
+                  <div class="text-xs font-medium text-slate-700 w-10 text-right">{{ getDiskUsage(router) }}%</div>
+                </div>
+                <div v-else class="mt-1 text-xs text-slate-400">—</div>
+              </div>
+            </div>
+
+            <div class="mt-3 flex items-center justify-end gap-2" @click.stop>
+              <button
+                @click="loginToRouter(router)"
+                :disabled="router.status !== 'online'"
+                class="px-3 py-2 text-xs font-medium text-emerald-700 bg-emerald-50 rounded-md hover:bg-emerald-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Login
+              </button>
+              <button
+                @click="openDetails(router)"
+                class="px-3 py-2 text-xs font-medium text-blue-700 bg-blue-50 rounded-md hover:bg-blue-100 transition-colors"
+              >
+                View
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Desktop Table -->
+        <div class="hidden md:flex bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden flex-col min-h-0">
+          <div class="overflow-x-auto overflow-y-auto flex-1 min-h-0">
             <table class="w-full">
               <!-- Table Header -->
               <thead class="bg-slate-50 border-b border-slate-200 sticky top-0 z-[5]">
@@ -237,7 +338,7 @@
                   
                   <!-- CPU Usage -->
                   <td class="px-6 py-4 hidden xl:table-cell">
-                    <div v-if="router.live_data?.cpu_load" class="flex items-center gap-1.5">
+                    <div v-if="router.live_data?.cpu_load !== undefined && router.live_data?.cpu_load !== null" class="flex items-center gap-1.5">
                       <div class="flex-1 h-1.5 bg-slate-200 rounded-full overflow-hidden">
                         <div 
                           class="h-full rounded-full transition-all"
@@ -252,7 +353,7 @@
                   
                   <!-- Memory Usage -->
                   <td class="px-6 py-4 hidden xl:table-cell">
-                    <div v-if="getMemoryUsage(router)" class="flex items-center gap-1.5">
+                    <div v-if="getMemoryUsage(router) !== null" class="flex items-center gap-1.5">
                       <div class="flex-1 h-1.5 bg-slate-200 rounded-full overflow-hidden">
                         <div 
                           class="h-full rounded-full transition-all"
@@ -267,7 +368,7 @@
                   
                   <!-- Disk Usage -->
                   <td class="px-6 py-4 hidden xl:table-cell">
-                    <div v-if="getDiskUsage(router)" class="flex items-center gap-1.5">
+                    <div v-if="getDiskUsage(router) !== null" class="flex items-center gap-1.5">
                       <div class="flex-1 h-1.5 bg-slate-200 rounded-full overflow-hidden">
                         <div 
                           class="h-full rounded-full transition-all"
@@ -341,6 +442,64 @@
             </table>
           </div>
         </div>
+
+        <div class="mt-3 bg-white rounded-lg border border-slate-200 shadow-sm px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div class="text-sm text-slate-600">
+            Showing {{ paginationInfo.start }} to {{ paginationInfo.end }} of {{ paginationInfo.total }} routers
+          </div>
+
+          <div class="flex flex-col sm:flex-row sm:items-center gap-3">
+            <div class="flex items-center gap-2">
+              <span class="text-sm text-slate-600">Show:</span>
+              <select
+                v-model.number="itemsPerPage"
+                class="h-9 px-2.5 text-sm bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:outline-none"
+              >
+                <option v-for="opt in itemsPerPageOptions" :key="opt" :value="opt">{{ opt }}</option>
+              </select>
+            </div>
+
+            <div class="flex items-center gap-1.5">
+              <button
+                type="button"
+                @click="goToFirstPage"
+                :disabled="currentPage <= 1"
+                class="h-9 px-3 text-sm font-medium bg-white border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                First
+              </button>
+              <button
+                type="button"
+                @click="goToPreviousPage"
+                :disabled="currentPage <= 1"
+                class="h-9 px-3 text-sm font-medium bg-white border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <span class="sr-only">Previous</span>
+                &lt;
+              </button>
+              <div class="h-9 px-3 flex items-center text-sm text-slate-700 bg-slate-50 border border-slate-200 rounded-lg">
+                {{ currentPage }} / {{ totalPages || 1 }}
+              </div>
+              <button
+                type="button"
+                @click="goToNextPage"
+                :disabled="currentPage >= totalPages"
+                class="h-9 px-3 text-sm font-medium bg-white border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <span class="sr-only">Next</span>
+                &gt;
+              </button>
+              <button
+                type="button"
+                @click="goToLastPage"
+                :disabled="currentPage >= totalPages"
+                class="h-9 px-3 text-sm font-medium bg-white border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Last
+              </button>
+            </div>
+          </div>
+        </div>
         
         <!-- Global Dropdown Menu Portal -->
         <Teleport to="body">
@@ -406,75 +565,18 @@
           </button>
         </div>
       </div>
-      </div>
+
     </div>
 
-    <!-- Footer with Pagination - Sticky Bottom -->
-    <div class="sticky bottom-0 flex-shrink-0 px-6 py-3 border-t border-slate-200 bg-white/95 backdrop-blur-sm z-10">
-      <div class="flex flex-col sm:flex-row items-center justify-between gap-3">
-        <!-- Left: Pagination Info & Items Per Page -->
-        <div class="flex items-center gap-4 text-xs text-slate-600">
-          <span>
-            Showing <span class="font-semibold text-slate-900">{{ paginationInfo.start }}</span> to 
-            <span class="font-semibold text-slate-900">{{ paginationInfo.end }}</span> of 
-            <span class="font-semibold text-slate-900">{{ paginationInfo.total }}</span> routers
-          </span>
-          <span class="text-slate-300">|</span>
-          <div class="flex items-center gap-2">
-            <label class="text-xs text-slate-600">Show:</label>
-            <select v-model.number="itemsPerPage" 
-              class="text-xs border border-slate-300 rounded px-2 py-1 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white">
-              <option v-for="option in itemsPerPageOptions" :key="option" :value="option">{{ option }}</option>
-            </select>
-          </div>
-          <span class="text-slate-300">|</span>
-          <span>
-            Last updated: <span class="font-medium text-slate-700">{{ lastUpdateTime }}</span>
-          </span>
-        </div>
-
-        <!-- Center: Pagination Controls -->
-        <div v-if="totalPages > 1" class="flex items-center gap-2">
-          <button @click="currentPage = 1" :disabled="currentPage === 1"
-            class="px-2 py-1 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
-            First
-          </button>
-          <button @click="currentPage--" :disabled="currentPage === 1"
-            class="px-2 py-1 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
-            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
-            </svg>
-          </button>
-          <span class="px-3 py-1 text-xs font-medium text-slate-700 bg-slate-100 rounded">
-            {{ currentPage }} / {{ totalPages }}
-          </span>
-          <button @click="currentPage++" :disabled="currentPage === totalPages"
-            class="px-2 py-1 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
-            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
-            </svg>
-          </button>
-          <button @click="currentPage = totalPages" :disabled="currentPage === totalPages"
-            class="px-2 py-1 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
-            Last
-          </button>
-        </div>
-
-        <!-- Right: Status Badge -->
-        <span :class="{
-          'text-emerald-700 bg-emerald-100': !loading,
-          'text-amber-700 bg-amber-100': loading,
-        }" class="px-2.5 py-1 rounded-full text-xs font-medium shadow-sm">
-          {{ loading ? 'Loading...' : 'Ready' }}
-        </span>
-      </div>
     </div>
+
   </div>
 </template>
 
 <script>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRouters } from '@/modules/tenant/composables/data/useRouters'
+import { useConfirmStore } from '@/stores/confirm'
 import { useRouterUtils } from '@/modules/common/composables/utils/useRouterUtils'
 import Overlay from '@/modules/tenant/components/routers/modals/CreateRouterModal.vue'
 import UpdateOverlay from '@/modules/tenant/components/routers/modals/UpdateRouterModal.vue'
@@ -494,6 +596,8 @@ export default {
       refreshing,
       listError,
       formError,
+      detailsError,
+      detailsLoading,
       showFormOverlay,
       showDetailsOverlay,
       showUpdateOverlay,
@@ -534,6 +638,8 @@ export default {
       updateFormData,
     } = useRouters()
 
+    const confirmStore = useConfirmStore()
+
     const activeMenu = ref(null)
     const menuPosition = ref({})
     const currentYear = ref(new Date().getFullYear())
@@ -558,6 +664,27 @@ export default {
       formatTimeAgo,
     } = useRouterUtils()
     
+    const normalizeName = (router) => String(router?.name ?? '').trim()
+    const normalizeId = (router) => String(router?.id ?? '')
+
+    const parseIp = (ipAddress) => {
+      const ip = String(ipAddress ?? '').split('/')[0].trim()
+      if (!ip) return null
+      const parts = ip.split('.').map((p) => Number(p))
+      if (parts.length !== 4 || parts.some((n) => Number.isNaN(n))) return null
+      return parts
+    }
+
+    const compareIp = (aIp, bIp) => {
+      if (!aIp && !bIp) return 0
+      if (!aIp) return 1
+      if (!bIp) return -1
+      for (let i = 0; i < 4; i++) {
+        if (aIp[i] !== bIp[i]) return aIp[i] - bIp[i]
+      }
+      return 0
+    }
+
     // Computed properties
     const filteredRouters = computed(() => {
       let filtered = routers.value
@@ -572,11 +699,15 @@ export default {
         )
       }
       
-      // Sort by router ID to maintain consistent order
+      // Sort deterministically so order does not reshuffle between refreshes
       return [...filtered].sort((a, b) => {
-        const idA = a.id || 0
-        const idB = b.id || 0
-        return idA - idB
+        const byName = normalizeName(a).localeCompare(normalizeName(b), undefined, { numeric: true, sensitivity: 'base' })
+        if (byName !== 0) return byName
+
+        const byIp = compareIp(parseIp(a?.ip_address), parseIp(b?.ip_address))
+        if (byIp !== 0) return byIp
+
+        return normalizeId(a).localeCompare(normalizeId(b), undefined, { numeric: true, sensitivity: 'base' })
       })
     })
     
@@ -591,9 +722,13 @@ export default {
     })
     
     const paginationInfo = computed(() => {
+      const total = filteredRouters.value.length
+      if (total === 0) {
+        return { start: 0, end: 0, total: 0 }
+      }
       const start = (currentPage.value - 1) * itemsPerPage.value + 1
-      const end = Math.min(start + itemsPerPage.value - 1, filteredRouters.value.length)
-      return { start, end, total: filteredRouters.value.length }
+      const end = Math.min(start + itemsPerPage.value - 1, total)
+      return { start, end, total }
     })
     
     // Reset to page 1 when search changes
@@ -605,6 +740,32 @@ export default {
     watch(itemsPerPage, () => {
       currentPage.value = 1
     })
+
+    watch(totalPages, (pages) => {
+      const safePages = pages || 1
+      if (currentPage.value > safePages) {
+        currentPage.value = safePages
+      }
+      if (currentPage.value < 1) {
+        currentPage.value = 1
+      }
+    })
+
+    const goToFirstPage = () => {
+      currentPage.value = 1
+    }
+
+    const goToPreviousPage = () => {
+      currentPage.value = Math.max(1, currentPage.value - 1)
+    }
+
+    const goToNextPage = () => {
+      currentPage.value = Math.min(totalPages.value || 1, currentPage.value + 1)
+    }
+
+    const goToLastPage = () => {
+      currentPage.value = totalPages.value || 1
+    }
     
     const onlineCount = computed(() => 
       routers.value.filter(r => r.status === 'online').length
@@ -711,7 +872,15 @@ export default {
     }
 
     const handleDeleteRouter = async (router) => {
-      if (confirm(`Are you sure you want to delete router ${router.name}?`)) {
+      const confirmed = await confirmStore.open({
+        title: 'Confirm Deletion',
+        message: `Are you sure you want to delete router ${router.name}?`,
+        confirmText: 'Delete',
+        cancelText: 'Cancel',
+        variant: 'danger',
+      })
+
+      if (confirmed) {
         try {
           await deleteRouter(router.id)
           formMessage.value = {
@@ -740,11 +909,15 @@ export default {
     }
 
     const handleReprovision = async (router) => {
-      if (
-        confirm(
-          `Are you sure you want to reprovision router ${router.name}? This will reapply the existing configurations.`,
-        )
-      ) {
+      const confirmed = await confirmStore.open({
+        title: 'Confirm Reprovision',
+        message: `Are you sure you want to reprovision router ${router.name}? This will reapply the existing configurations.`,
+        confirmText: 'Reprovision',
+        cancelText: 'Cancel',
+        variant: 'warning',
+      })
+
+      if (confirmed) {
         formData.value = {
           ...router,
           port: router.port || null,
@@ -799,8 +972,8 @@ export default {
     })
 
     onMounted(() => {
-      // Update last update time every minute
-      updateInterval = setInterval(updateLastUpdateTime, 60000);
+      // Update last update time every minute (purely cosmetic)
+      updateInterval = setInterval(updateLastUpdateTime, 60000)
 
       // Subscribe to tenant-specific private channel for router updates (requires authentication)
       const authToken = localStorage.getItem('authToken');
@@ -865,21 +1038,22 @@ export default {
         console.warn('User not authenticated or no tenant_id - cannot subscribe to router updates');
       }
 
-      document.addEventListener('click', handleClickOutside);
-      fetchRouters();
-    });
+      document.addEventListener('click', handleClickOutside)
+      // Initial load only; subsequent updates are driven by the Refresh button and real-time events
+      fetchRouters()
+    })
 
     onUnmounted(() => {
-      document.removeEventListener('click', handleClickOutside);
-      clearInterval(updateInterval);
+      document.removeEventListener('click', handleClickOutside)
+      clearInterval(updateInterval)
       
       // Leave all tenant-specific channels
-      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      const user = JSON.parse(localStorage.getItem('user') || '{}')
       if (window.Echo && user.tenant_id) {
-        window.Echo.leave(`private-tenant.${user.tenant_id}.router-updates`);
-        window.Echo.leave(`private-tenant.${user.tenant_id}.routers`);
+        window.Echo.leave(`private-tenant.${user.tenant_id}.router-updates`)
+        window.Echo.leave(`private-tenant.${user.tenant_id}.routers`)
       }
-    });
+    })
 
     return {
       handleEdit,
@@ -899,6 +1073,10 @@ export default {
       itemsPerPageOptions,
       totalPages,
       paginationInfo,
+      goToFirstPage,
+      goToPreviousPage,
+      goToNextPage,
+      goToLastPage,
       getStatusDotClass,
       getCpuColorClass,
       getMemoryColorClass,
@@ -913,6 +1091,8 @@ export default {
       refreshing,
       listError,
       formError,
+      detailsError,
+      detailsLoading,
       showFormOverlay,
       showDetailsOverlay,
       showUpdateOverlay,
@@ -979,19 +1159,13 @@ export default {
   background: #94a3b8;
 }
 
-/* Ensure the dropdown menu is clickable and visible */
-.relative {
-  position: relative;
-  z-index: 1000;
-}
-
-/* Smooth transition for dropdown menu */
-.fixed {
+/* Ensure the dropdown menu is clickable and visible without affecting the header/sidebar layout */
+[data-dropdown-menu] {
   transition: opacity 0.2s ease-in-out, transform 0.2s ease-in-out;
   transform-origin: top right;
 }
 
-/* Add subtle animation for menu appearance */
+/* Add subtle animation for dropdown appearance */
 @keyframes slideDown {
   from {
     opacity: 0;
@@ -1003,7 +1177,7 @@ export default {
   }
 }
 
-.fixed {
+[data-dropdown-menu] {
   animation: slideDown 0.2s ease-in-out;
 }
 

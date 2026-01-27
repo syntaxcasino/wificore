@@ -4,8 +4,10 @@ namespace App\Services;
 
 use App\Models\Router;
 use App\Models\RouterService;
+use App\Models\TenantIpPool;
 use App\Services\MikroTik\HotspotService;
 use App\Services\MikroTik\PPPoEService;
+use App\Services\TenantContext;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
@@ -17,19 +19,22 @@ class RouterServiceManager extends TenantAwareService
     protected PPPoEService $pppoeService;
     protected TenantIpamService $ipamService;
     protected VlanManager $vlanManager;
+    protected TenantContext $tenantContext;
 
     public function __construct(
         InterfaceManagementService $interfaceManager,
         HotspotService $hotspotService,
         PPPoEService $pppoeService,
         TenantIpamService $ipamService,
-        VlanManager $vlanManager
+        VlanManager $vlanManager,
+        TenantContext $tenantContext
     ) {
         $this->interfaceManager = $interfaceManager;
         $this->hotspotService = $hotspotService;
         $this->pppoeService = $pppoeService;
         $this->ipamService = $ipamService;
         $this->vlanManager = $vlanManager;
+        $this->tenantContext = $tenantContext;
     }
 
     /**
@@ -48,12 +53,10 @@ class RouterServiceManager extends TenantAwareService
         string $interface,
         string $serviceType,
         array $advancedOptions = []
-    ): RouterService {
+    ): ?RouterService {
         DB::beginTransaction();
         
         try {
-            $this->setTenant($router->tenant_id);
-            
             // Validate service type
             if (!in_array($serviceType, ['hotspot', 'pppoe', 'hybrid', 'none'])) {
                 throw new \Exception("Invalid service type: {$serviceType}");
@@ -64,6 +67,15 @@ class RouterServiceManager extends TenantAwareService
                 $this->removeServiceFromInterface($router, $interface);
                 DB::commit();
                 return null;
+            }
+
+            // Ensure one service per interface (deterministic + idempotent)
+            $existingService = RouterService::where('router_id', $router->id)
+                ->where('interface_name', $interface)
+                ->first();
+
+            if ($existingService && $existingService->service_type !== $serviceType) {
+                $existingService->delete();
             }
             
             // Handle hybrid service (requires VLAN enforcement)
@@ -97,19 +109,38 @@ class RouterServiceManager extends TenantAwareService
         string $serviceType,
         array $advancedOptions = []
     ): RouterService {
-        // Get or create IP pool for this service type
-        $ipPool = $advancedOptions['ip_pool_id'] 
-            ? TenantIpPool::find($advancedOptions['ip_pool_id'])
-            : $this->ipamService->getOrCreateServicePool($router->tenant, $serviceType);
+        // Get tenant from context (schema-based multi-tenancy)
+        $tenant = $this->tenantContext->getTenant();
+        if (!$tenant) {
+            throw new \Exception('Tenant context not set. Cannot configure service.');
+        }
+        
+        // Get or create IP pool for this service type (tenant-scoped)
+        if (!empty($advancedOptions['ip_pool_id'])) {
+            $ipPool = TenantIpPool::where('id', $advancedOptions['ip_pool_id'])
+                ->firstOrFail();
+        } else {
+            $ipPool = $this->ipamService->getOrCreateServicePool($tenant, $serviceType);
+        }
         
         // Generate RADIUS profile name
-        $radiusProfile = $advancedOptions['radius_profile'] 
-            ?? "{$serviceType}-{$router->tenant_id}";
+        $radiusProfile = !empty($advancedOptions['radius_profile'])
+            ? $advancedOptions['radius_profile']
+            : "{$serviceType}-{$tenant->id}";
+
+        $existingService = RouterService::where('router_id', $router->id)
+            ->where('interface_name', $interface)
+            ->first();
+
+        if ($existingService && $existingService->service_type !== $serviceType) {
+            $existingService->delete();
+            $existingService = null;
+        }
         
-        // Create service record
-        $service = RouterService::create([
+        $attributes = [
             'router_id' => $router->id,
             'interface_name' => $interface,
+            'interfaces' => [$interface],
             'service_type' => $serviceType,
             'service_name' => $advancedOptions['service_name'] ?? ucfirst($serviceType) . ' Service',
             'ip_pool_id' => $ipPool->id,
@@ -120,7 +151,12 @@ class RouterServiceManager extends TenantAwareService
             'deployment_status' => RouterService::DEPLOYMENT_PENDING,
             'status' => RouterService::STATUS_INACTIVE,
             'enabled' => true,
-        ]);
+        ];
+
+        // Upsert: update existing service on this interface instead of creating duplicates
+        $service = $existingService
+            ? tap($existingService)->update($attributes)
+            : RouterService::create($attributes);
         
         Log::info('Service configured (zero-config)', [
             'router_id' => $router->id,
@@ -143,32 +179,59 @@ class RouterServiceManager extends TenantAwareService
         string $interface,
         array $advancedOptions = []
     ): RouterService {
+        // Get tenant from context (schema-based multi-tenancy)
+        $tenant = $this->tenantContext->getTenant();
+        if (!$tenant) {
+            throw new \Exception('Tenant context not set. Cannot configure hybrid service.');
+        }
+        
+        $existingService = RouterService::where('router_id', $router->id)
+            ->where('interface_name', $interface)
+            ->first();
+
+        if ($existingService) {
+            $existingService->delete();
+        }
+
         // Get IP pools for both services
-        $hotspotPool = $advancedOptions['hotspot_pool_id']
-            ? TenantIpPool::find($advancedOptions['hotspot_pool_id'])
-            : $this->ipamService->getOrCreateServicePool($router->tenant, 'hotspot');
+        if (!empty($advancedOptions['hotspot_pool_id'])) {
+            $hotspotPool = TenantIpPool::where('id', $advancedOptions['hotspot_pool_id'])
+                ->firstOrFail();
+        } else {
+            $hotspotPool = $this->ipamService->getOrCreateServicePool($tenant, 'hotspot');
+        }
             
-        $pppoePool = $advancedOptions['pppoe_pool_id']
-            ? TenantIpPool::find($advancedOptions['pppoe_pool_id'])
-            : $this->ipamService->getOrCreateServicePool($router->tenant, 'pppoe');
+        if (!empty($advancedOptions['pppoe_pool_id'])) {
+            $pppoePool = TenantIpPool::where('id', $advancedOptions['pppoe_pool_id'])
+                ->firstOrFail();
+        } else {
+            $pppoePool = $this->ipamService->getOrCreateServicePool($tenant, 'pppoe');
+        }
         
         // Allocate VLANs (auto or manual)
-        $hotspotVlan = $advancedOptions['hotspot_vlan'] 
-            ?? $this->vlanManager->allocateVlanForService($router, 'hotspot');
+        $hotspotVlan = !empty($advancedOptions['hotspot_vlan'])
+            ? (int) $advancedOptions['hotspot_vlan']
+            : $this->vlanManager->allocateVlanForService($router, 'hotspot');
             
-        $pppoeVlan = $advancedOptions['pppoe_vlan']
-            ?? $this->vlanManager->allocateVlanForService($router, 'pppoe');
+        $pppoeVlan = !empty($advancedOptions['pppoe_vlan'])
+            ? (int) $advancedOptions['pppoe_vlan']
+            : $this->vlanManager->allocateVlanForService($router, 'pppoe');
+
+        if ($hotspotVlan === $pppoeVlan) {
+            throw new \Exception('Hybrid service requires different VLAN IDs for Hotspot and PPPoE');
+        }
         
         // Create hybrid service record
         $service = RouterService::create([
             'router_id' => $router->id,
             'interface_name' => $interface,
+            'interfaces' => [$interface],
             'service_type' => RouterService::TYPE_HYBRID,
             'service_name' => $advancedOptions['service_name'] ?? 'Hybrid Service',
             'ip_pool_id' => null, // Hybrid uses multiple pools
             'vlan_id' => null, // Hybrid uses multiple VLANs
             'vlan_required' => true,
-            'radius_profile' => "hybrid-{$router->tenant_id}",
+            'radius_profile' => "hybrid-{$tenant->id}",
             'advanced_config' => array_merge($advancedOptions, [
                 'hotspot_pool_id' => $hotspotPool->id,
                 'pppoe_pool_id' => $pppoePool->id,
@@ -218,8 +281,6 @@ class RouterServiceManager extends TenantAwareService
      */
     public function generateConfigurationScript(RouterService $service): string
     {
-        $this->setTenant($service->router->tenant_id);
-        
         switch ($service->service_type) {
             case RouterService::TYPE_HOTSPOT:
                 $generator = new \App\Services\MikroTik\ZeroConfigHotspotGenerator();

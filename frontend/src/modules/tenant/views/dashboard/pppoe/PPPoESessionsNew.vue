@@ -210,6 +210,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { 
   RefreshCw, Power, Eye, X, Network
 } from 'lucide-vue-next'
+import axios from 'axios'
 import PageContainer from '@/modules/common/components/layout/templates/PageContainer.vue'
 import PageHeader from '@/modules/common/components/layout/templates/PageHeader.vue'
 import PageContent from '@/modules/common/components/layout/templates/PageContent.vue'
@@ -253,42 +254,6 @@ const profiles = ref([
   { id: 2, name: '10 Mbps', speed: '10/5 Mbps', max_download: 10485760, max_upload: 5242880 },
   { id: 3, name: '20 Mbps', speed: '20/10 Mbps', max_download: 20971520, max_upload: 10485760 }
 ])
-
-// Mock data
-const mockSessions = [
-  {
-    id: 1,
-    acct_session_id: 'pppoe_1234567890',
-    username: 'pppoe_user001',
-    user: { phone: '+254712345678', package: '10 Mbps Monthly' },
-    framed_ip: '100.64.0.101',
-    calling_station_id: 'pppoe-client-001',
-    nas_ip_address: '192.168.1.1',
-    profile: { id: 2, name: '10 Mbps', speed: '10/5 Mbps', max_download: 10485760, max_upload: 5242880 },
-    start_time: new Date(Date.now() - 7200000),
-    duration: 7200,
-    input_octets: 2147483648,
-    output_octets: 536870912,
-    download_speed: 8388608,
-    upload_speed: 4194304
-  },
-  {
-    id: 2,
-    acct_session_id: 'pppoe_0987654321',
-    username: 'pppoe_user002',
-    user: { phone: '+254723456789', package: '20 Mbps Monthly' },
-    framed_ip: '100.64.0.102',
-    calling_station_id: 'pppoe-client-002',
-    nas_ip_address: '192.168.1.1',
-    profile: { id: 3, name: '20 Mbps', speed: '20/10 Mbps', max_download: 20971520, max_upload: 10485760 },
-    start_time: new Date(Date.now() - 14400000),
-    duration: 14400,
-    input_octets: 4294967296,
-    output_octets: 1073741824,
-    download_speed: 16777216,
-    upload_speed: 8388608
-  }
-]
 
 // Computed
 const filteredData = computed(() => {
@@ -345,9 +310,9 @@ const fetchSessions = async () => {
   error.value = null
   
   try {
-    // TODO: Replace with actual API call
-    await new Promise(resolve => setTimeout(resolve, 500))
-    sessions.value = mockSessions
+    const response = await axios.get('/pppoe/sessions')
+    const payload = response.data?.data ?? response.data
+    sessions.value = Array.isArray(payload) ? payload : (payload?.data ?? [])
   } catch (err) {
     error.value = 'Failed to load active sessions. Please try again.'
     console.error('Error fetching sessions:', err)
@@ -361,8 +326,9 @@ const refreshSessions = async () => {
   error.value = null
   
   try{
-    await new Promise(resolve => setTimeout(resolve, 500))
-    sessions.value = mockSessions
+    const response = await axios.get('/pppoe/sessions')
+    const payload = response.data?.data ?? response.data
+    sessions.value = Array.isArray(payload) ? payload : (payload?.data ?? [])
   } catch (err) {
     error.value = 'Failed to load active sessions. Please try again.'
     console.error('Error fetching sessions:', err)

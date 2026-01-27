@@ -47,6 +47,8 @@ chmod 755 /etc/wireguard
 # Auto-create/fix WireGuard interface configuration
 CONFIG_FILE="/etc/wireguard/${VPN_INTERFACE_NAME}.conf"
 RADIUS_IP="${RADIUS_SERVER_IP:-172.70.0.2}"
+TELEGRAF_COLLECTOR_IP="${TELEGRAF_COLLECTOR_IP:-172.70.0.20}"
+DOCKER_NETWORK_CIDR="${DOCKER_NETWORK_CIDR:-172.70.0.0/16}"
 NEEDS_RECREATION=false
 
 # Function to create config file
@@ -56,8 +58,8 @@ create_config() {
 Address = ${VPN_SERVER_IP}/24
 ListenPort = ${VPN_LISTEN_PORT}
 PrivateKey = ${VPN_SERVER_PRIVATE_KEY}
-PostUp = iptables -A FORWARD -i ${VPN_INTERFACE_NAME} -o eth0 -j ACCEPT; iptables -A FORWARD -i ${VPN_INTERFACE_NAME} -o ${VPN_INTERFACE_NAME} -j ACCEPT; iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE; ip route add 10.0.0.0/8 dev ${VPN_INTERFACE_NAME}; iptables -t nat -A PREROUTING -i ${VPN_INTERFACE_NAME} -p udp --dport 1812 -j DNAT --to-destination ${RADIUS_IP}:1812; iptables -t nat -A PREROUTING -i ${VPN_INTERFACE_NAME} -p udp --dport 1813 -j DNAT --to-destination ${RADIUS_IP}:1813
-PostDown = iptables -D FORWARD -i ${VPN_INTERFACE_NAME} -o eth0 -j ACCEPT; iptables -D FORWARD -i ${VPN_INTERFACE_NAME} -o ${VPN_INTERFACE_NAME} -j ACCEPT; iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE; ip route del 10.0.0.0/8 dev ${VPN_INTERFACE_NAME}; iptables -t nat -D PREROUTING -i ${VPN_INTERFACE_NAME} -p udp --dport 1812 -j DNAT --to-destination ${RADIUS_IP}:1812; iptables -t nat -D PREROUTING -i ${VPN_INTERFACE_NAME} -p udp --dport 1813 -j DNAT --to-destination ${RADIUS_IP}:1813
+PostUp = iptables -A FORWARD -i ${VPN_INTERFACE_NAME} -o eth0 -j ACCEPT; iptables -A FORWARD -i ${VPN_INTERFACE_NAME} -o ${VPN_INTERFACE_NAME} -j ACCEPT; iptables -A FORWARD -i ${VPN_INTERFACE_NAME} -d ${DOCKER_NETWORK_CIDR} -j ACCEPT; iptables -A FORWARD -o ${VPN_INTERFACE_NAME} -s ${DOCKER_NETWORK_CIDR} -j ACCEPT; iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE; ip route add 10.0.0.0/8 dev ${VPN_INTERFACE_NAME}; iptables -t nat -A PREROUTING -i ${VPN_INTERFACE_NAME} -p udp --dport 1812 -j DNAT --to-destination ${RADIUS_IP}:1812; iptables -t nat -A PREROUTING -i ${VPN_INTERFACE_NAME} -p udp --dport 1813 -j DNAT --to-destination ${RADIUS_IP}:1813; iptables -t nat -A PREROUTING -i ${VPN_INTERFACE_NAME} -p udp --dport 162 -j DNAT --to-destination ${TELEGRAF_COLLECTOR_IP}:162
+PostDown = iptables -D FORWARD -i ${VPN_INTERFACE_NAME} -o eth0 -j ACCEPT; iptables -D FORWARD -i ${VPN_INTERFACE_NAME} -o ${VPN_INTERFACE_NAME} -j ACCEPT; iptables -D FORWARD -i ${VPN_INTERFACE_NAME} -d ${DOCKER_NETWORK_CIDR} -j ACCEPT; iptables -D FORWARD -o ${VPN_INTERFACE_NAME} -s ${DOCKER_NETWORK_CIDR} -j ACCEPT; iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE; ip route del 10.0.0.0/8 dev ${VPN_INTERFACE_NAME}; iptables -t nat -D PREROUTING -i ${VPN_INTERFACE_NAME} -p udp --dport 1812 -j DNAT --to-destination ${RADIUS_IP}:1812; iptables -t nat -D PREROUTING -i ${VPN_INTERFACE_NAME} -p udp --dport 1813 -j DNAT --to-destination ${RADIUS_IP}:1813; iptables -t nat -D PREROUTING -i ${VPN_INTERFACE_NAME} -p udp --dport 162 -j DNAT --to-destination ${TELEGRAF_COLLECTOR_IP}:162
 
 # Peers will be added dynamically via API
 EOF
@@ -165,22 +167,42 @@ if [ "$NEEDS_RECREATION" = true ]; then
     iptables -D FORWARD -i "${VPN_INTERFACE_NAME}" -o eth0 -j ACCEPT 2>/dev/null || true
     iptables -D FORWARD -i eth0 -o "${VPN_INTERFACE_NAME}" -j ACCEPT 2>/dev/null || true
     iptables -D FORWARD -i "${VPN_INTERFACE_NAME}" -o "${VPN_INTERFACE_NAME}" -j ACCEPT 2>/dev/null || true
+    iptables -D FORWARD -i "${VPN_INTERFACE_NAME}" -d "${DOCKER_NETWORK_CIDR}" -j ACCEPT 2>/dev/null || true
+    iptables -D FORWARD -o "${VPN_INTERFACE_NAME}" -s "${DOCKER_NETWORK_CIDR}" -j ACCEPT 2>/dev/null || true
     iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE 2>/dev/null || true
     iptables -t nat -D PREROUTING -i "${VPN_INTERFACE_NAME}" -p udp --dport 1812 -j DNAT --to-destination ${RADIUS_IP}:1812 2>/dev/null || true
     iptables -t nat -D PREROUTING -i "${VPN_INTERFACE_NAME}" -p udp --dport 1813 -j DNAT --to-destination ${RADIUS_IP}:1813 2>/dev/null || true
+    iptables -t nat -D PREROUTING -i "${VPN_INTERFACE_NAME}" -p udp --dport 162 -j DNAT --to-destination ${TELEGRAF_COLLECTOR_IP}:162 2>/dev/null || true
     
     # Add rules
     iptables -I FORWARD 1 -i "${VPN_INTERFACE_NAME}" -o eth0 -j ACCEPT
     iptables -I FORWARD 1 -i eth0 -o "${VPN_INTERFACE_NAME}" -j ACCEPT
     iptables -I FORWARD 1 -i "${VPN_INTERFACE_NAME}" -o "${VPN_INTERFACE_NAME}" -j ACCEPT
+    iptables -I FORWARD 1 -i "${VPN_INTERFACE_NAME}" -d "${DOCKER_NETWORK_CIDR}" -j ACCEPT
+    iptables -I FORWARD 1 -o "${VPN_INTERFACE_NAME}" -s "${DOCKER_NETWORK_CIDR}" -j ACCEPT
     iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
     iptables -t nat -A PREROUTING -i "${VPN_INTERFACE_NAME}" -p udp --dport 1812 -j DNAT --to-destination ${RADIUS_IP}:1812
     iptables -t nat -A PREROUTING -i "${VPN_INTERFACE_NAME}" -p udp --dport 1813 -j DNAT --to-destination ${RADIUS_IP}:1813
+    iptables -t nat -A PREROUTING -i "${VPN_INTERFACE_NAME}" -p udp --dport 162 -j DNAT --to-destination ${TELEGRAF_COLLECTOR_IP}:162
     
     # Allow INPUT from VPN interface (for ping to server IP)
     iptables -D INPUT -i "${VPN_INTERFACE_NAME}" -j ACCEPT 2>/dev/null || true
     iptables -I INPUT 1 -i "${VPN_INTERFACE_NAME}" -j ACCEPT
-    
+
+    if [ -f "$CONFIG_FILE" ]; then
+        STRIP_TMP="/tmp/${VPN_INTERFACE_NAME}.stripped.conf"
+        if command -v wg-quick >/dev/null 2>&1; then
+            wg-quick strip "${VPN_INTERFACE_NAME}" > "$STRIP_TMP" 2>/dev/null || true
+        fi
+
+        if [ -s "$STRIP_TMP" ]; then
+            wg setconf "${VPN_INTERFACE_NAME}" "$STRIP_TMP" 2>/dev/null || echo "Failed to restore peers from ${CONFIG_FILE}"
+        fi
+
+        rm -f "$STRIP_TMP" 2>/dev/null || true
+        wg set "${VPN_INTERFACE_NAME}" listen-port "${VPN_LISTEN_PORT}" 2>/dev/null || true
+    fi
+
     echo "✓ iptables rules configured"
     echo "✓ ${VPN_INTERFACE_NAME} interface is up with port ${VPN_LISTEN_PORT}"
 else
