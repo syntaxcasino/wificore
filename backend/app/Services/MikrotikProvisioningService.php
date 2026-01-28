@@ -19,14 +19,51 @@ use Illuminate\Support\Str;
  * 
  * Handles router provisioning, connectivity verification, and live data fetching.
  * Uses the new clean architecture (MikroTik/* services) for configuration generation.
+ * 
+ * Network Segmentation: Supports routing operations through provisioning service
+ * for enhanced security. Enable with USE_PROVISIONING_SERVICE=true
  */
 class MikrotikProvisioningService extends TenantAwareService
 {
     protected ConfigurationService $configService;
+    protected ?ProvisioningServiceClient $provisioningClient = null;
+    protected bool $useProvisioningService = false;
     
     public function __construct()
     {
         $this->configService = new ConfigurationService();
+        
+        // Check if provisioning service is enabled
+        $this->useProvisioningService = env('USE_PROVISIONING_SERVICE', false);
+        
+        if ($this->useProvisioningService) {
+            $this->provisioningClient = new ProvisioningServiceClient();
+            Log::info('MikrotikProvisioningService: Using provisioning service for network segmentation');
+        }
+    }
+    
+    /**
+     * Check if router should use provisioning service
+     * Allows gradual rollout by router ID
+     */
+    protected function shouldUseProvisioningService(Router $router): bool
+    {
+        if (!$this->useProvisioningService) {
+            return false;
+        }
+        
+        // Check if specific router is enabled for provisioning service
+        $enabledRouters = env('PROVISIONING_SERVICE_ROUTERS', '');
+        if ($enabledRouters === 'all') {
+            return true;
+        }
+        
+        if (!empty($enabledRouters)) {
+            $routerIds = explode(',', $enabledRouters);
+            return in_array($router->id, $routerIds);
+        }
+        
+        return false;
     }
     
     /**
@@ -323,6 +360,41 @@ class MikrotikProvisioningService extends TenantAwareService
      */
     public function fetchLiveRouterData(Router $router, string $context = 'live', bool $filterConfigurable = false): array
     {
+        // Use provisioning service if enabled for this router
+        if ($this->shouldUseProvisioningService($router)) {
+            try {
+                Log::info('Fetching live data via provisioning service', [
+                    'router_id' => $router->id,
+                    'context' => $context
+                ]);
+                
+                $result = $this->provisioningClient->fetchLiveData(
+                    $router,
+                    $context,
+                    $router->tenant_id
+                );
+                
+                // Cache the result if live context
+                if ($context === 'live') {
+                    Cache::put(
+                        "router_live_fetch_{$router->id}",
+                        ['fetched_at' => time(), 'data' => $result],
+                        now()->addSeconds(10)
+                    );
+                }
+                
+                return $result;
+                
+            } catch (\Exception $e) {
+                Log::warning('Provisioning service fetch failed, falling back to direct SSH', [
+                    'router_id' => $router->id,
+                    'error' => $e->getMessage()
+                ]);
+                // Fall through to direct SSH
+            }
+        }
+        
+        // Original direct SSH implementation (fallback)
         if ($context === 'live') {
             $cached = Cache::get("router_live_fetch_{$router->id}");
             if (is_array($cached) && isset($cached['data'], $cached['fetched_at']) && (time() - (int) $cached['fetched_at']) <= 10) {
@@ -418,6 +490,23 @@ class MikrotikProvisioningService extends TenantAwareService
 
 
     /**
+     * Get SNMP configuration script
+     */
+    protected function getSnmpConfigScript(): string
+    {
+        $community = env('TELEGRAF_SNMP_COMMUNITY', 'public');
+        
+        return <<<SCRIPT
+/snmp set enabled=yes
+/snmp set contact="Network Admin"
+/snmp set location="Managed by WifiCore"
+/snmp community set [find name=public] addresses=0.0.0.0/0 name={$community}
+/snmp set trap-version=2
+/snmp set trap-community={$community}
+SCRIPT;
+    }
+
+    /**
      * Get router details (DB + live data)
      */
     public function getRouterDetails(Router $router): array
@@ -453,6 +542,30 @@ class MikrotikProvisioningService extends TenantAwareService
      */
     public function verifyConnectivity(Router $router): array
     {
+        // Use provisioning service if enabled for this router
+        if ($this->shouldUseProvisioningService($router)) {
+            try {
+                Log::info('Verifying connectivity via provisioning service', [
+                    'router_id' => $router->id
+                ]);
+                
+                $result = $this->provisioningClient->verifyConnectivity(
+                    $router,
+                    $router->tenant_id
+                );
+                
+                return $result;
+                
+            } catch (\Exception $e) {
+                Log::warning('Provisioning service connectivity check failed, falling back to direct SSH', [
+                    'router_id' => $router->id,
+                    'error' => $e->getMessage()
+                ]);
+                // Fall through to direct SSH
+            }
+        }
+        
+        // Original direct SSH implementation (fallback)
         try {
             Log::info('Verifying connectivity via SSH:', [
                 'router_id' => $router->id,
@@ -731,6 +844,13 @@ class MikrotikProvisioningService extends TenantAwareService
                 'script_name' => $scriptName,
                 'script_length' => strlen($serviceScript),
             ]);
+            
+            // Add SNMP configuration to the script if not already present
+            if (!str_contains($serviceScript, '/snmp set enabled=yes')) {
+                $snmpConfig = $this->getSnmpConfigScript();
+                $serviceScript .= "\n\n# Enable SNMP for monitoring\n" . $snmpConfig;
+                Log::info('Added SNMP configuration to provisioning script', ['router_id' => $router->id]);
+            }
             
             try {
                 $expectsHotspot = str_contains($serviceScript, '/ip hotspot');

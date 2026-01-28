@@ -17,7 +17,8 @@ return new class extends Migration
         });
 
         // Update existing packages to be public by default
-        DB::table('packages')->update(['is_public' => true]);
+        // Use DB::raw for PostgreSQL boolean compatibility
+        DB::table('packages')->update(['is_public' => DB::raw('true')]);
     }
 
     /**

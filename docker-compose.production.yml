@@ -88,6 +88,36 @@ services:
         max-size: "20m"
         max-file: "3"
 
+  wificore-provisioning:
+    image: kja2aro/wificore:wificore-provisioning
+    build:
+      context: ./provisioning-service
+      dockerfile: Dockerfile
+    container_name: wificore-provisioning
+    restart: always
+    environment:
+      - PORT=8080
+      - DEBUG=${PROVISIONING_DEBUG:-false}
+      - LOG_LEVEL=${PROVISIONING_LOG_LEVEL:-info}
+      - SSH_TIMEOUT=15
+      - BACKEND_API_URL=http://wificore-backend:9000
+      - API_KEY=${PROVISIONING_SERVICE_API_KEY}
+      - TZ=${TZ:-Africa/Nairobi}
+    networks:
+      wificore-network:
+        ipv4_address: 172.70.0.30
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "3"
+
   wificore-backend:
     image: kja2aro/wificore:wificore-backend
     container_name: wificore-backend
@@ -98,6 +128,8 @@ services:
       - DB_CONNECTION=pgsql
       - DB_HOST=${DB_HOST:-wificore-pgbouncer}
       - DB_READ_HOST=${DB_READ_HOST:-wificore-pgbouncer-read}
+      - PROVISIONING_SERVICE_URL=http://wificore-provisioning:8080
+      - PROVISIONING_SERVICE_API_KEY=${PROVISIONING_SERVICE_API_KEY}
       - DB_PORT=${DB_PORT:-6432}
       - DB_READ_PORT=${DB_READ_PORT:-6432}
       - BROADCAST_DRIVER=pusher
@@ -791,6 +823,186 @@ services:
       driver: "json-file"
       options:
         max-size: "10m"
+        max-file: "3"
+
+  wificore-victoriametrics:
+    image: victoriametrics/victoria-metrics:latest
+    container_name: wificore-victoriametrics
+    restart: always
+    command:
+      - '-storageDataPath=/victoria-metrics-data'
+      - '-retentionPeriod=12'
+    networks:
+      wificore-network:
+        ipv4_address: 172.70.0.21
+    volumes:
+      - victoriametrics_data:/victoria-metrics-data
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+
+  wificore-telegraf-config:
+    image: kja2aro/wificore:wificore-backend
+    container_name: wificore-telegraf-config
+    restart: always
+    env_file:
+      - .env.production
+    environment:
+      - APP_KEY=${APP_KEY}
+      - DB_CONNECTION=${DB_CONNECTION:-pgsql}
+      - DB_HOST=${DB_HOST:-wificore-pgbouncer}
+      - DB_PORT=${DB_PORT:-6432}
+      - DB_DIRECT_HOST=${DB_DIRECT_HOST:-wificore-postgres}
+      - DB_DIRECT_PORT=${DB_DIRECT_PORT:-5432}
+      - DB_DATABASE=${DB_DATABASE:-wms_770_ts}
+      - DB_USERNAME=${DB_USERNAME:-admin}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - TELEGRAF_SHARD_INDEX=${TELEGRAF_SHARD_INDEX:-0}
+      - TELEGRAF_SHARD_COUNT=${TELEGRAF_SHARD_COUNT:-1}
+      - TELEGRAF_FAST_INTERVAL=${TELEGRAF_FAST_INTERVAL:-3s}
+      - TELEGRAF_SLOW_INTERVAL=${TELEGRAF_SLOW_INTERVAL:-30s}
+      - TELEGRAF_SNMP_COMMUNITY=${TELEGRAF_SNMP_COMMUNITY:-public}
+      - VICTORIA_METRICS_WRITE_URL=${VICTORIA_METRICS_WRITE_URL:-http://wificore-nginx/internal/vm/api/v1/write}
+    command:
+      - sh
+      - -lc
+      - |
+        set +e;
+        OUT_DIR="/var/www/html/storage/app/telegraf/shards";
+        OUT_FILE="$$OUT_DIR/$${TELEGRAF_SHARD_INDEX:-0}.conf";
+        mkdir -p "$$OUT_DIR";
+
+        if [ ! -f "$$OUT_FILE" ]; then
+          printf '%s\n' \
+            '[agent]' \
+            "interval = \"$${TELEGRAF_FAST_INTERVAL:-3s}\"" \
+            'round_interval = true' \
+            'metric_batch_size = 1000' \
+            'metric_buffer_limit = 50000' \
+            'flush_interval = "1s"' \
+            'flush_jitter = "0s"' \
+            'collection_jitter = "0s"' \
+            'precision = ""' \
+            'hostname = ""' \
+            'omit_hostname = true' \
+            '' \
+            '[[inputs.internal]]' \
+            "interval = \"$${TELEGRAF_FAST_INTERVAL:-3s}\"" \
+            '' \
+            '[[outputs.http]]' \
+            "url = \"$${VICTORIA_METRICS_WRITE_URL:-http://wificore-nginx/internal/vm/api/v1/write}\"" \
+            'timeout = "5s"' \
+            'method = "POST"' \
+            'data_format = "prometheusremotewrite"' \
+            '' \
+            '[outputs.http.headers]' \
+            'Content-Type = "application/x-protobuf"' \
+            'Content-Encoding = "snappy"' \
+            'X-Prometheus-Remote-Write-Version = "0.1.0"' \
+            > "$$OUT_FILE";
+        fi
+
+        if ! grep -q '^\[\[inputs\.' "$$OUT_FILE" 2>/dev/null; then
+          printf '%s\n' \
+            '' \
+            '[[inputs.internal]]' \
+            "interval = \"$${TELEGRAF_FAST_INTERVAL:-3s}\"" \
+            >> "$$OUT_FILE";
+        fi
+
+        (
+          while true; do
+            export PGPASSWORD="$$DB_PASSWORD";
+            HOST="$$DB_HOST";
+            PORT="$$DB_PORT";
+            psql -h "$$HOST" -p "$$PORT" -U "$$DB_USERNAME" -d "$$DB_DATABASE" -tAc "select 1" >/dev/null 2>&1;
+            if [ $$? -ne 0 ]; then
+              if [ -n "$$DB_DIRECT_HOST" ]; then
+                HOST="$$DB_DIRECT_HOST";
+                PORT="$$DB_DIRECT_PORT";
+                psql -h "$$HOST" -p "$$PORT" -U "$$DB_USERNAME" -d "$$DB_DATABASE" -tAc "select 1" >/dev/null 2>&1;
+              fi
+            fi
+            if [ $$? -ne 0 ]; then
+              echo " Waiting for database...";
+              sleep 5;
+              continue;
+            fi
+
+            TENANTS_TABLE=$$(psql -h "$$HOST" -p "$$PORT" -U "$$DB_USERNAME" -d "$$DB_DATABASE" -tAc "select 1 from information_schema.tables where table_schema='public' and table_name='tenants';" 2>/dev/null | tr -d '[:space:]');
+            if [ "$$TENANTS_TABLE" != "1" ]; then
+              echo " Waiting for core migrations (tenants table)...";
+              sleep 10;
+              continue;
+            fi
+
+            php artisan telegraf:generate-config --shard-index=$${TELEGRAF_SHARD_INDEX:-0} --shard-count=$${TELEGRAF_SHARD_COUNT:-1} --output-dir=/var/www/html/storage/app/telegraf/shards || true;
+            sleep 300;
+          done
+        ) &
+
+        exec tail -f /dev/null
+    depends_on:
+      wificore-postgres:
+        condition: service_healthy
+    networks:
+      wificore-network:
+        ipv4_address: 172.70.0.22
+    volumes:
+      - laravel-storage:/var/www/html/storage:rw
+    healthcheck:
+      test: ["CMD", "sh", "-c", "test -f /var/www/html/storage/app/telegraf/shards/$${TELEGRAF_SHARD_INDEX:-0}.conf"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "3"
+
+  wificore-telegraf:
+    image: telegraf:latest
+    container_name: wificore-telegraf
+    restart: always
+    environment:
+      - TELEGRAF_SHARD_INDEX=${TELEGRAF_SHARD_INDEX:-0}
+    entrypoint:
+      - sh
+      - -lc
+    command:
+      - |
+        set -e;
+        CONF="/var/www/html/storage/app/telegraf/shards/$${TELEGRAF_SHARD_INDEX:-0}.conf";
+        echo "⏳ Telegraf waiting for config: $$CONF";
+        while [ ! -f "$$CONF" ]; do
+          sleep 2;
+        done
+        SANITIZED="/tmp/telegraf.conf";
+        cp "$$CONF" "$$SANITIZED";
+        if command -v sed >/dev/null 2>&1; then
+          (sed -E 's#udp://([0-9.]+)/[0-9]+:#udp://\1:#g' "$$CONF" > "$$SANITIZED" 2>/dev/null) \
+            || (sed -r 's#udp://([0-9.]+)/[0-9]+:#udp://\1:#g' "$$CONF" > "$$SANITIZED" 2>/dev/null) \
+            || true;
+        fi
+        exec telegraf --config "$$SANITIZED"
+    depends_on:
+      wificore-telegraf-config:
+        condition: service_healthy
+      wificore-victoriametrics:
+        condition: service_started
+    networks:
+      wificore-network:
+        ipv4_address: 172.70.0.20
+    volumes:
+      - laravel-storage:/var/www/html/storage:ro
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
         max-file: "3"
 
 volumes:
