@@ -1,1 +1,1 @@
-"admin" "md5placeholder"
+"admin" "placeholder"

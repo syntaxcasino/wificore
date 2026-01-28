@@ -3,10 +3,9 @@ set -e
 
 # Generate userlist.txt with password from environment
 if [ -n "$DB_PASSWORD" ]; then
-    # Generate MD5 hash for PgBouncer
-    # Format: "username" "md5" + md5(password + username)
-    PASSWORD_HASH=$(echo -n "${DB_PASSWORD}${DB_USERNAME}" | md5sum | awk '{print $1}')
-    echo "\"${DB_USERNAME}\" \"md5${PASSWORD_HASH}\"" > /etc/pgbouncer/userlist.txt
+    # For SCRAM-SHA-256 authentication, PgBouncer requires plain text passwords
+    # Format: "username" "password"
+    echo "\"${DB_USERNAME}\" \"${DB_PASSWORD}\"" > /etc/pgbouncer/userlist.txt
     chmod 600 /etc/pgbouncer/userlist.txt
 fi
 
