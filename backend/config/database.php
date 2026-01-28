@@ -113,8 +113,10 @@ return [
                 // Set connection timeout (P2 Security Fix)
                 PDO::ATTR_TIMEOUT => env('DB_TIMEOUT', 5),
                 
-                // Enable prepared statement emulation for better performance
-                PDO::ATTR_EMULATE_PREPARES => false,
+                // CRITICAL: Enable prepared statement emulation for PgBouncer compatibility
+                // PgBouncer's transaction pooling mode doesn't preserve prepared statements
+                // across transactions, causing "prepared statement does not exist" errors
+                PDO::ATTR_EMULATE_PREPARES => true,
                 
                 // Set error mode to exceptions
                 PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
