@@ -2,8 +2,8 @@ sql {
     driver = "rlm_sql_postgresql"
     dialect = "postgresql"
 
-    server = "wificore-postgres"
-    port = 5432
+    server = "wificore-pgbouncer"
+    port = 6432
     login = "admin"
     password = "secret"
     radius_db = "wms_770_ts"

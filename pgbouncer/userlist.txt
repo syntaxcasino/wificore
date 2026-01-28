@@ -1,1 +1,1 @@
-"admin" "md5secret"
+"admin" "md5placeholder"
