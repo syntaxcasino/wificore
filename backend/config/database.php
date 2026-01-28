@@ -86,15 +86,6 @@ return [
             'driver' => 'pgsql',
             'url' => env('DB_URL'),
             'host' => env('DB_HOST', '127.0.0.1'),
-            'read' => [
-                'host' => env('DB_READ_HOST', env('DB_HOST', '127.0.0.1')),
-                'port' => env('DB_READ_PORT', env('DB_PORT', '5432')),
-            ],
-            'write' => [
-                'host' => env('DB_HOST', '127.0.0.1'),
-                'port' => env('DB_PORT', '5432'),
-            ],
-            'sticky' => true,
             'port' => env('DB_PORT', '5432'),
             'database' => env('DB_DATABASE', 'wifi_hotspot'),
             'username' => env('DB_USERNAME', 'admin'),
@@ -113,10 +104,11 @@ return [
                 // Set connection timeout (P2 Security Fix)
                 PDO::ATTR_TIMEOUT => env('DB_TIMEOUT', 5),
                 
-                // CRITICAL: Enable prepared statement emulation for PgBouncer compatibility
-                // PgBouncer's transaction pooling mode doesn't preserve prepared statements
-                // across transactions, causing "prepared statement does not exist" errors
-                PDO::ATTR_EMULATE_PREPARES => true,
+                // CRITICAL: Disable prepared statement emulation for PostgreSQL 18 compatibility
+                // PostgreSQL 18 has strict type checking and emulated prepares send integers
+                // for boolean values, causing "operator does not exist: boolean = integer" errors
+                // PgBouncer session pooling mode is required when this is false
+                PDO::ATTR_EMULATE_PREPARES => false,
                 
                 // Set error mode to exceptions
                 PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
