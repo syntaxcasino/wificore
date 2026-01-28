@@ -58,7 +58,11 @@ class GenerateTelegrafConfig extends Command
 
             $fastInterval = (string) env('TELEGRAF_FAST_INTERVAL', '3s');
             $slowInterval = (string) env('TELEGRAF_SLOW_INTERVAL', '30s');
-            $snmpCommunity = (string) env('TELEGRAF_SNMP_COMMUNITY', 'public');
+            
+            // SNMPv3 credentials from environment
+            $snmpV3User = (string) env('TELEGRAF_SNMPV3_USER', 'snmpmonitor');
+            $snmpV3AuthPassword = (string) env('TELEGRAF_SNMPV3_AUTH_PASSWORD', '');
+            $snmpV3PrivPassword = (string) env('TELEGRAF_SNMPV3_PRIV_PASSWORD', '');
 
             $vmWriteUrl = (string) env('VICTORIA_METRICS_WRITE_URL', 'http://wificore-nginx/internal/vm/api/v1/write');
 
@@ -138,11 +142,6 @@ class GenerateTelegrafConfig extends Command
                         $lines[] = "interval = \"{$slowInterval}\"";
                         $lines[] = "agents = [\"udp://{$ip}:161\"]";
                         $lines[] = "version = {$version}";
-
-                        if ($version !== 3) {
-                            $lines[] = "community = \"{$this->escapeTelegrafString($snmpCommunity)}\"";
-                        }
-
                         $lines[] = 'timeout = "2s"';
                         $lines[] = 'retries = 1';
                         $lines[] = 'max_repetitions = 10';
@@ -154,29 +153,20 @@ class GenerateTelegrafConfig extends Command
                         $lines[] = '';
 
                         if ($version === 3) {
-                            $v3User = (string) ($router->snmp_v3_user ?? '');
-                            $authProto = strtoupper((string) ($router->snmp_v3_auth_protocol ?? ''));
-                            $authPass = (string) ($router->snmp_v3_auth_password ?? '');
-                            $privProto = strtoupper((string) ($router->snmp_v3_priv_protocol ?? ''));
-                            $privPass = (string) ($router->snmp_v3_priv_password ?? '');
+                            // Use router-specific credentials if available, otherwise fall back to environment defaults
+                            $v3User = (string) ($router->snmp_v3_user ?? $snmpV3User);
+                            $authProto = strtoupper((string) ($router->snmp_v3_auth_protocol ?? 'SHA256'));
+                            $authPass = (string) ($router->snmp_v3_auth_password ?? $snmpV3AuthPassword);
+                            $privProto = strtoupper((string) ($router->snmp_v3_priv_protocol ?? 'AES'));
+                            $privPass = (string) ($router->snmp_v3_priv_password ?? $snmpV3PrivPassword);
 
-                            if ($v3User !== '') {
+                            if ($v3User !== '' && $authPass !== '' && $privPass !== '') {
                                 $lines[] = "sec_name = \"{$this->escapeTelegrafString($v3User)}\"";
-
-                                $hasAuth = $authPass !== '';
-                                $hasPriv = $privPass !== '';
-                                $secLevel = $hasAuth && $hasPriv ? 'authPriv' : ($hasAuth ? 'authNoPriv' : 'noAuthNoPriv');
-                                $lines[] = "sec_level = \"{$secLevel}\"";
-
-                                if ($hasAuth) {
-                                    $lines[] = "auth_protocol = \"{$this->escapeTelegrafString($authProto !== '' ? $authProto : 'MD5')}\"";
-                                    $lines[] = "auth_password = \"{$this->escapeTelegrafString($authPass)}\"";
-                                }
-
-                                if ($hasPriv) {
-                                    $lines[] = "priv_protocol = \"{$this->escapeTelegrafString($privProto !== '' ? $privProto : 'DES')}\"";
-                                    $lines[] = "priv_password = \"{$this->escapeTelegrafString($privPass)}\"";
-                                }
+                                $lines[] = "sec_level = \"authPriv\"";
+                                $lines[] = "auth_protocol = \"{$this->escapeTelegrafString($authProto)}\"";
+                                $lines[] = "auth_password = \"{$this->escapeTelegrafString($authPass)}\"";
+                                $lines[] = "priv_protocol = \"{$this->escapeTelegrafString($privProto)}\"";
+                                $lines[] = "priv_password = \"{$this->escapeTelegrafString($privPass)}\"";
                             }
                         }
 
@@ -210,11 +200,6 @@ class GenerateTelegrafConfig extends Command
                         $lines[] = "interval = \"{$slowInterval}\"";
                         $lines[] = "agents = [\"udp://{$ip}:161\"]";
                         $lines[] = "version = {$version}";
-
-                        if ($version !== 3) {
-                            $lines[] = "community = \"{$this->escapeTelegrafString($snmpCommunity)}\"";
-                        }
-
                         $lines[] = 'timeout = "2s"';
                         $lines[] = 'retries = 1';
                         $lines[] = 'max_repetitions = 25';
@@ -226,29 +211,19 @@ class GenerateTelegrafConfig extends Command
                         $lines[] = '';
 
                         if ($version === 3) {
-                            $v3User = (string) ($router->snmp_v3_user ?? '');
-                            $authProto = strtoupper((string) ($router->snmp_v3_auth_protocol ?? ''));
-                            $authPass = (string) ($router->snmp_v3_auth_password ?? '');
-                            $privProto = strtoupper((string) ($router->snmp_v3_priv_protocol ?? ''));
-                            $privPass = (string) ($router->snmp_v3_priv_password ?? '');
+                            $v3User = (string) ($router->snmp_v3_user ?? $snmpV3User);
+                            $authProto = strtoupper((string) ($router->snmp_v3_auth_protocol ?? 'SHA256'));
+                            $authPass = (string) ($router->snmp_v3_auth_password ?? $snmpV3AuthPassword);
+                            $privProto = strtoupper((string) ($router->snmp_v3_priv_protocol ?? 'AES'));
+                            $privPass = (string) ($router->snmp_v3_priv_password ?? $snmpV3PrivPassword);
 
-                            if ($v3User !== '') {
+                            if ($v3User !== '' && $authPass !== '' && $privPass !== '') {
                                 $lines[] = "sec_name = \"{$this->escapeTelegrafString($v3User)}\"";
-
-                                $hasAuth = $authPass !== '';
-                                $hasPriv = $privPass !== '';
-                                $secLevel = $hasAuth && $hasPriv ? 'authPriv' : ($hasAuth ? 'authNoPriv' : 'noAuthNoPriv');
-                                $lines[] = "sec_level = \"{$secLevel}\"";
-
-                                if ($hasAuth) {
-                                    $lines[] = "auth_protocol = \"{$this->escapeTelegrafString($authProto !== '' ? $authProto : 'MD5')}\"";
-                                    $lines[] = "auth_password = \"{$this->escapeTelegrafString($authPass)}\"";
-                                }
-
-                                if ($hasPriv) {
-                                    $lines[] = "priv_protocol = \"{$this->escapeTelegrafString($privProto !== '' ? $privProto : 'DES')}\"";
-                                    $lines[] = "priv_password = \"{$this->escapeTelegrafString($privPass)}\"";
-                                }
+                                $lines[] = "sec_level = \"authPriv\"";
+                                $lines[] = "auth_protocol = \"{$this->escapeTelegrafString($authProto)}\"";
+                                $lines[] = "auth_password = \"{$this->escapeTelegrafString($authPass)}\"";
+                                $lines[] = "priv_protocol = \"{$this->escapeTelegrafString($privProto)}\"";
+                                $lines[] = "priv_password = \"{$this->escapeTelegrafString($privPass)}\"";
                             }
                         }
 
@@ -294,11 +269,6 @@ class GenerateTelegrafConfig extends Command
                         $lines[] = "interval = \"{$fastInterval}\"";
                         $lines[] = "agents = [\"udp://{$ip}:161\"]";
                         $lines[] = "version = {$version}";
-
-                        if ($version !== 3) {
-                            $lines[] = "community = \"{$this->escapeTelegrafString($snmpCommunity)}\"";
-                        }
-
                         $lines[] = 'timeout = "2s"';
                         $lines[] = 'retries = 1';
                         $lines[] = 'max_repetitions = 25';
@@ -310,29 +280,19 @@ class GenerateTelegrafConfig extends Command
                         $lines[] = '';
 
                         if ($version === 3) {
-                            $v3User = (string) ($router->snmp_v3_user ?? '');
-                            $authProto = strtoupper((string) ($router->snmp_v3_auth_protocol ?? ''));
-                            $authPass = (string) ($router->snmp_v3_auth_password ?? '');
-                            $privProto = strtoupper((string) ($router->snmp_v3_priv_protocol ?? ''));
-                            $privPass = (string) ($router->snmp_v3_priv_password ?? '');
+                            $v3User = (string) ($router->snmp_v3_user ?? $snmpV3User);
+                            $authProto = strtoupper((string) ($router->snmp_v3_auth_protocol ?? 'SHA256'));
+                            $authPass = (string) ($router->snmp_v3_auth_password ?? $snmpV3AuthPassword);
+                            $privProto = strtoupper((string) ($router->snmp_v3_priv_protocol ?? 'AES'));
+                            $privPass = (string) ($router->snmp_v3_priv_password ?? $snmpV3PrivPassword);
 
-                            if ($v3User !== '') {
+                            if ($v3User !== '' && $authPass !== '' && $privPass !== '') {
                                 $lines[] = "sec_name = \"{$this->escapeTelegrafString($v3User)}\"";
-
-                                $hasAuth = $authPass !== '';
-                                $hasPriv = $privPass !== '';
-                                $secLevel = $hasAuth && $hasPriv ? 'authPriv' : ($hasAuth ? 'authNoPriv' : 'noAuthNoPriv');
-                                $lines[] = "sec_level = \"{$secLevel}\"";
-
-                                if ($hasAuth) {
-                                    $lines[] = "auth_protocol = \"{$this->escapeTelegrafString($authProto !== '' ? $authProto : 'MD5')}\"";
-                                    $lines[] = "auth_password = \"{$this->escapeTelegrafString($authPass)}\"";
-                                }
-
-                                if ($hasPriv) {
-                                    $lines[] = "priv_protocol = \"{$this->escapeTelegrafString($privProto !== '' ? $privProto : 'DES')}\"";
-                                    $lines[] = "priv_password = \"{$this->escapeTelegrafString($privPass)}\"";
-                                }
+                                $lines[] = "sec_level = \"authPriv\"";
+                                $lines[] = "auth_protocol = \"{$this->escapeTelegrafString($authProto)}\"";
+                                $lines[] = "auth_password = \"{$this->escapeTelegrafString($authPass)}\"";
+                                $lines[] = "priv_protocol = \"{$this->escapeTelegrafString($privProto)}\"";
+                                $lines[] = "priv_password = \"{$this->escapeTelegrafString($privPass)}\"";
                             }
                         }
 

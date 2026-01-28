@@ -490,19 +490,20 @@ class MikrotikProvisioningService extends TenantAwareService
 
 
     /**
-     * Get SNMP configuration script
+     * Get SNMP configuration script (SNMPv3)
      */
     protected function getSnmpConfigScript(): string
     {
-        $community = env('TELEGRAF_SNMP_COMMUNITY', 'public');
+        $user = env('TELEGRAF_SNMPV3_USER', 'snmpmonitor');
+        $authPassword = env('TELEGRAF_SNMPV3_AUTH_PASSWORD', bin2hex(random_bytes(16)));
+        $privPassword = env('TELEGRAF_SNMPV3_PRIV_PASSWORD', bin2hex(random_bytes(16)));
         
         return <<<SCRIPT
 /snmp set enabled=yes
 /snmp set contact="Network Admin"
 /snmp set location="Managed by WifiCore"
-/snmp community set [find name=public] addresses=0.0.0.0/0 name={$community}
-/snmp set trap-version=2
-/snmp set trap-community={$community}
+/snmp community remove [find name=public]
+/snmp community add name={$user} addresses=0.0.0.0/0 security=private authentication-protocol=SHA256 authentication-password="{$authPassword}" encryption-protocol=aes encryption-password="{$privPassword}"
 SCRIPT;
     }
 

@@ -16,11 +16,16 @@ class SnmpConfigurationService
     }
 
     /**
-     * Enable and configure SNMP on a MikroTik router
+     * Enable and configure SNMPv3 on a MikroTik router (default method)
      */
     public function enableSnmp(Router $router, array $options = []): array
     {
-        $community = $options['community'] ?? env('TELEGRAF_SNMP_COMMUNITY', 'public');
+        // Default to SNMPv3 for security
+        $user = $options['user'] ?? env('TELEGRAF_SNMPV3_USER', 'snmpmonitor');
+        $authProtocol = $options['auth_protocol'] ?? 'SHA256';
+        $authPassword = $options['auth_password'] ?? env('TELEGRAF_SNMPV3_AUTH_PASSWORD', bin2hex(random_bytes(16)));
+        $privProtocol = $options['priv_protocol'] ?? 'AES';
+        $privPassword = $options['priv_password'] ?? env('TELEGRAF_SNMPV3_PRIV_PASSWORD', bin2hex(random_bytes(16)));
         $contact = $options['contact'] ?? 'Network Admin';
         $location = $options['location'] ?? $router->location ?? 'Unknown';
         
@@ -30,12 +35,13 @@ class SnmpConfigurationService
             "/snmp set contact=\"{$contact}\"",
             "/snmp set location=\"{$location}\"",
             
-            // Set community (v2c)
-            "/snmp community set [find name=public] addresses=0.0.0.0/0 name={$community}",
+            // Remove default public community for security
+            '/snmp community remove [find name=public]',
             
-            // Enable trap
-            '/snmp set trap-version=2',
-            '/snmp set trap-community=' . $community,
+            // Add SNMPv3 user
+            "/snmp community add name={$user} addresses=0.0.0.0/0 security=private " .
+            "authentication-protocol={$authProtocol} authentication-password=\"{$authPassword}\" " .
+            "encryption-protocol={$privProtocol} encryption-password=\"{$privPassword}\"",
         ];
 
         try {
@@ -51,21 +57,27 @@ class SnmpConfigurationService
             // Update router SNMP settings in database
             $router->update([
                 'snmp_enabled' => true,
-                'snmp_version' => 'v2c',
+                'snmp_version' => 'v3',
+                'snmp_v3_user' => $user,
+                'snmp_v3_auth_protocol' => strtoupper($authProtocol),
+                'snmp_v3_auth_password' => $authPassword,
+                'snmp_v3_priv_protocol' => strtoupper($privProtocol),
+                'snmp_v3_priv_password' => $privPassword,
             ]);
 
-            Log::info('SNMP enabled successfully', [
+            Log::info('SNMPv3 enabled successfully', [
                 'router_id' => $router->id,
                 'router_name' => $router->name,
+                'user' => $user,
             ]);
 
             return [
                 'success' => true,
-                'message' => 'SNMP enabled successfully',
+                'message' => 'SNMPv3 enabled successfully',
                 'results' => $results,
             ];
         } catch (\Exception $e) {
-            Log::error('Failed to enable SNMP', [
+            Log::error('Failed to enable SNMPv3', [
                 'router_id' => $router->id,
                 'error' => $e->getMessage(),
             ]);
@@ -173,22 +185,23 @@ class SnmpConfigurationService
     }
 
     /**
-     * Get SNMP configuration script for manual application
+     * Get SNMPv3 configuration script for manual application
      */
     public function getSnmpConfigScript(array $options = []): string
     {
-        $community = $options['community'] ?? env('TELEGRAF_SNMP_COMMUNITY', 'public');
+        $user = $options['user'] ?? env('TELEGRAF_SNMPV3_USER', 'snmpmonitor');
+        $authPassword = $options['auth_password'] ?? env('TELEGRAF_SNMPV3_AUTH_PASSWORD', bin2hex(random_bytes(16)));
+        $privPassword = $options['priv_password'] ?? env('TELEGRAF_SNMPV3_PRIV_PASSWORD', bin2hex(random_bytes(16)));
         $contact = $options['contact'] ?? 'Network Admin';
         $location = $options['location'] ?? 'Unknown';
 
         return <<<SCRIPT
-# Enable SNMP for monitoring
+# Enable SNMPv3 for monitoring
 /snmp set enabled=yes
 /snmp set contact="{$contact}"
 /snmp set location="{$location}"
-/snmp community set [find name=public] addresses=0.0.0.0/0 name={$community}
-/snmp set trap-version=2
-/snmp set trap-community={$community}
+/snmp community remove [find name=public]
+/snmp community add name={$user} addresses=0.0.0.0/0 security=private authentication-protocol=SHA256 authentication-password="{$authPassword}" encryption-protocol=aes encryption-password="{$privPassword}"
 SCRIPT;
     }
 }

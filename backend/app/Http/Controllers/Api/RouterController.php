@@ -1012,78 +1012,9 @@ EOT;
 
             $decryptedPassword = Crypt::decrypt($router->password);
 
-            $snmpScript = '';
-            if ((bool) ($router->snmp_enabled ?? false)) {
-                $snmpUser = $router->snmp_v3_user;
-                if (empty($snmpUser)) {
-                    $snmpUser = 'snmpv3-' . substr((string) $router->id, 0, 8);
-                }
-
-                $authProtocol = strtoupper((string) ($router->snmp_v3_auth_protocol ?? 'SHA1'));
-                $privProtocol = strtoupper((string) ($router->snmp_v3_priv_protocol ?? 'AES'));
-
-                $authPass = $router->snmp_v3_auth_password;
-                $privPass = $router->snmp_v3_priv_password;
-
-                if (empty($authPass)) {
-                    $authPass = Str::random(16);
-                }
-                if (empty($privPass)) {
-                    $privPass = Str::random(16);
-                }
-
-                $configuredTrapTarget = env('SNMP_TRAP_TARGET')
-                    ?: (config('vpn.server_ip') ?: (config('wireguard.server_vpn_ip') ?: ''));
-
-                $publicTrapTarget = (string) (config('vpn.server_public_ip') ?: env('VPN_SERVER_PUBLIC_IP'));
-                $existingTrapTarget = (string) ($router->snmp_trap_target ?? '');
-
-                $shouldOverrideTrapTarget =
-                    $existingTrapTarget === '' ||
-                    ($publicTrapTarget !== '' && $existingTrapTarget === $publicTrapTarget);
-
-                $trapTarget = $shouldOverrideTrapTarget
-                    ? ($configuredTrapTarget !== '' ? $configuredTrapTarget : $publicTrapTarget)
-                    : $existingTrapTarget;
-
-                $trapVersion = strtolower((string) ($router->snmp_trap_version ?? 'v3'));
-                $trapVersionNum = match ($trapVersion) {
-                    'v1', '1' => 1,
-                    'v2', 'v2c', '2' => 2,
-                    default => 3,
-                };
-
-                if (
-                    $router->snmp_v3_user !== $snmpUser ||
-                    $router->snmp_v3_auth_password !== $authPass ||
-                    $router->snmp_v3_priv_password !== $privPass ||
-                    $router->snmp_trap_target !== $trapTarget
-                ) {
-                    $router->snmp_v3_user = $snmpUser;
-                    $router->snmp_v3_auth_protocol = $authProtocol;
-                    $router->snmp_v3_auth_password = $authPass;
-                    $router->snmp_v3_priv_protocol = $privProtocol;
-                    $router->snmp_v3_priv_password = $privPass;
-                    $router->snmp_trap_version = 'v' . (string) $trapVersionNum;
-                    $router->snmp_trap_community = $snmpUser;
-                    $router->snmp_trap_target = $trapTarget;
-                    $router->save();
-                }
-
-                $trapTargetCmd = '';
-                if (!empty($trapTarget)) {
-                    $trapTargetCmd = "/snmp set trap-target={$trapTarget}";
-                }
-
-                $snmpScript = <<<EOT
-:do { /snmp set enabled=yes } on-error={}
-:do { /snmp community add name="{$snmpUser}" addresses=0.0.0.0/0 security=private read-access=yes write-access=no authentication-protocol={$authProtocol} encryption-protocol={$privProtocol} authentication-password="{$authPass}" encryption-password="{$privPass}" } on-error={ :do { /snmp community set [find name="{$snmpUser}"] addresses=0.0.0.0/0 security=private read-access=yes write-access=no authentication-protocol={$authProtocol} encryption-protocol={$privProtocol} authentication-password="{$authPass}" encryption-password="{$privPass}" } on-error={} }
-:do { /snmp set trap-community="{$snmpUser}" trap-version={$trapVersionNum} } on-error={}
-:do { {$trapTargetCmd} } on-error={}
-
-EOT;
-            }
-
+            // SNMP configuration is now handled separately via provisioning service
+            // to avoid conflicts and ensure proper SNMPv3 setup
+            
             $completeScript = <<<EOT
 /ip service set api disabled=no port={$router->port}
 /ip service set ssh disabled=no port=22 address=""
@@ -1091,7 +1022,6 @@ EOT;
 /system identity set name="{$router->name}"
 /system note set note="Managed by Traidnet Solution LTD"
 $vpnScript
-$snmpScript
 /ip firewall filter add chain=input protocol=tcp dst-port=22 action=accept comment="Allow SSH access"
 
 EOT;
