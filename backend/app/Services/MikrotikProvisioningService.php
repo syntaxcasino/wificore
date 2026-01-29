@@ -503,7 +503,7 @@ class MikrotikProvisioningService extends TenantAwareService
 /snmp set contact="Network Admin"
 /snmp set location="Managed by WifiCore"
 :do { /snmp community remove [find name=public] } on-error={}
-/snmp community add name={$user} addresses=0.0.0.0/0 security=private authentication-protocol=SHA256 authentication-password="{$authPassword}" encryption-protocol=aes encryption-password="{$privPassword}"
+/snmp community add name={$user} addresses=0.0.0.0/0 security=private authentication-protocol=SHA authentication-password="{$authPassword}" encryption-protocol=AES encryption-password="{$privPassword}"
 SCRIPT;
     }
 
