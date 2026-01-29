@@ -33,6 +33,8 @@ class SshExecutor
     private int $port;
     private int $timeout;
     private ?string $lastRouterOsError = null;
+    private ?string $lastUploadedRscContent = null;
+    private ?string $lastUploadedRscRemotePath = null;
 
     private function isRouterOsErrorOutput(string $output): bool
     {
@@ -73,6 +75,73 @@ class SshExecutor
         }
 
         return $failed;
+    }
+
+    private function parseRouterOsSyntaxErrorPosition(string $output): ?array
+    {
+        if (!preg_match('/\bline\s+(\d+)\s+column\s+(\d+)\b/i', $output, $m)) {
+            return null;
+        }
+
+        return [
+            'line' => (int) $m[1],
+            'column' => (int) $m[2],
+        ];
+    }
+
+    private function sanitizeRouterOsScriptLine(string $line): string
+    {
+        $patterns = [
+            '/(authentication-password=)"[^"]*"/i',
+            '/(encryption-password=)"[^"]*"/i',
+            '/(secret=)"[^"]*"/i',
+            '/(secret=)(\S+)/i',
+            '/(password=)"[^"]*"/i',
+            '/(password=)(\S+)/i',
+        ];
+
+        foreach ($patterns as $pattern) {
+            $line = preg_replace($pattern, '$1"***"', $line);
+        }
+
+        return (string) $line;
+    }
+
+    private function logRouterOsImportScriptContext(string $importOutput): void
+    {
+        $pos = $this->parseRouterOsSyntaxErrorPosition($importOutput);
+        if ($pos === null) {
+            return;
+        }
+
+        if ($this->lastUploadedRscContent === null || $this->lastUploadedRscRemotePath === null) {
+            return;
+        }
+
+        $lines = preg_split('/\r\n|\r|\n/', $this->lastUploadedRscContent);
+        if (!is_array($lines) || empty($lines)) {
+            return;
+        }
+
+        $lineIndex = max(0, $pos['line'] - 1);
+        $start = max(0, $lineIndex - 2);
+        $end = min(count($lines) - 1, $lineIndex + 2);
+
+        $context = [];
+        for ($i = $start; $i <= $end; $i++) {
+            $context[] = [
+                'line' => $i + 1,
+                'content' => $this->sanitizeRouterOsScriptLine((string) ($lines[$i] ?? '')),
+            ];
+        }
+
+        Log::error('SSH Executor: RouterOS import syntax error context', [
+            'router_id' => $this->router->id,
+            'remote_path' => $this->lastUploadedRscRemotePath,
+            'reported_line' => $pos['line'],
+            'reported_column' => $pos['column'],
+            'context' => $context,
+        ]);
     }
     
     /**
@@ -744,6 +813,11 @@ class SshExecutor
                 throw new \Exception("Failed to read local file: {$localPath}");
             }
 
+            if (str_ends_with($remotePath, '.rsc')) {
+                $this->lastUploadedRscContent = $content;
+                $this->lastUploadedRscRemotePath = $remotePath;
+            }
+
             $fileSize = strlen($content);
 
             Log::info('SSH Executor: Uploading file via SFTP', [
@@ -826,6 +900,10 @@ class SshExecutor
         ]);
         
         $result = $this->connection->exec("/import file-name=\"{$remotePath}\"");
+
+        if (is_string($result) && stripos($result, 'syntax error') !== false) {
+            $this->logRouterOsImportScriptContext($result);
+        }
         
         Log::info('SSH Executor: File imported', [
             'router_id' => $this->router->id,
