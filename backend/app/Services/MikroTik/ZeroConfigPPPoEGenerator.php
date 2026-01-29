@@ -160,6 +160,7 @@ class ZeroConfigPPPoEGenerator
 
         $s[] = ":do { /ip firewall filter remove [find comment~\"PPPoE-$id\"]; } on-error={}";
 
+        $s[] = "/ip firewall filter add chain=output protocol=udp dst-port=1812,1813 action=accept comment=\"PPPoE-$id-RAD-OUT\"";
         $s[] = "/ip firewall filter add chain=forward protocol=udp dst-port=1812,1813 action=accept comment=\"PPPoE-$id-RAD\"";
 
         $s[] = "/ip firewall filter add chain=forward action=fasttrack-connection connection-state=established,related comment=\"PPPoE-$id-FT\"";
