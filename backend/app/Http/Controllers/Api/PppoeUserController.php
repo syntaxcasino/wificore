@@ -235,9 +235,18 @@ class PppoeUserController extends Controller
             $pppoeUser = DB::transaction(function () use ($username, $plainPassword, $package, $router, $expiresAt, $rateLimit, $simultaneousUse, $tenantId, $tenantSchemaName) {
                 DB::statement('SET LOCAL search_path TO ' . $this->quoteSchemaName($tenantSchemaName) . ', public');
 
+                // Get tenant prefix for account number
+                $tenant = DB::table('public.tenants')->where('id', $tenantId)->first();
+                $tenantPrefix = $tenant ? substr($tenant->name, 0, 1) : 'T';
+                $accountNumber = PppoeUser::generateAccountNumber($tenantPrefix);
+
+                // Calculate payment due date (30 days from package duration)
+                $nextPaymentDue = $expiresAt ? clone $expiresAt : now()->addDays(30);
+
                 $pppoeUser = PppoeUser::create([
                     'username' => $username,
                     'password' => bcrypt($plainPassword),
+                    'account_number' => $accountNumber,
                     'package_id' => $package->id,
                     'router_id' => $router->id,
                     'expires_at' => $expiresAt,
@@ -245,6 +254,10 @@ class PppoeUserController extends Controller
                     'simultaneous_use' => $simultaneousUse,
                     'is_active' => true,
                     'status' => 'active',
+                    'payment_status' => 'unpaid',
+                    'next_payment_due' => $nextPaymentDue,
+                    'amount_due' => $package->price ?? 0,
+                    'in_grace_period' => false,
                 ]);
 
                 $this->ensureRadiusSchemaMapping($username, $tenantSchemaName, (string) $tenantId);
@@ -673,7 +686,7 @@ class PppoeUserController extends Controller
                 'username' => $username,
                 'attribute' => 'Expiration',
                 'op' => ':=',
-                'value' => $expiresAt ? $expiresAt->format('M d Y') : '',
+                'value' => $expiresAt ? $expiresAt->timestamp : '',
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
@@ -786,7 +799,7 @@ class PppoeUserController extends Controller
         if ($expiresAt) {
             DB::table('radcheck')->updateOrInsert(
                 ['username' => $username, 'attribute' => 'Expiration'],
-                ['op' => ':=', 'value' => $expiresAt->format('M d Y'), 'updated_at' => now(), 'created_at' => now()]
+                ['op' => ':=', 'value' => $expiresAt->timestamp, 'updated_at' => now(), 'created_at' => now()]
             );
 
             $sessionTimeout = max(60, (int) now()->diffInSeconds($expiresAt, false));

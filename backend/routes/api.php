@@ -451,6 +451,13 @@ Route::middleware(['auth:sanctum', 'role:admin', 'user.active', 'tenant.context'
         Route::post('/users/{id}/unblock', [PppoeUserController::class, 'unblock']);
 
         Route::get('/sessions', [PppoeSessionController::class, 'index']);
+        
+        // Payment management routes
+        Route::get('/payments', [\App\Http\Controllers\Api\PppoePaymentController::class, 'index']);
+        Route::post('/payments', [\App\Http\Controllers\Api\PppoePaymentController::class, 'store']);
+        Route::post('/payments/{id}/verify', [\App\Http\Controllers\Api\PppoePaymentController::class, 'verify']);
+        Route::get('/payments/pending', [\App\Http\Controllers\Api\PppoePaymentController::class, 'getPendingPayments']);
+        Route::get('/payments/user/{userId}', [\App\Http\Controllers\Api\PppoePaymentController::class, 'getUserPayments']);
     });
     
     // -------------------------------------------------------------------------

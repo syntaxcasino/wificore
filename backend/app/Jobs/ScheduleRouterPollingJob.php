@@ -46,7 +46,10 @@ class ScheduleRouterPollingJob implements ShouldQueue
 
         $this->executeInTenantContext(function() {
             try {
-                $routers = Router::whereIn('status', ['online', 'active'])->pluck('id')->toArray();
+                // Poll all routers except those under provisioning
+                $routers = Router::whereNotIn('status', ['pending', 'deploying', 'provisioning', 'verifying'])
+                    ->pluck('id')
+                    ->toArray();
                 
                 if (!empty($routers)) {
                     // Dispatch in chunks for better performance

@@ -116,6 +116,13 @@ Schedule::job(new ProcessScheduledPackages)
     ->withoutOverlapping()
     ->onOneServer();
 
+// Check PPPoE payment status and auto-suspend overdue users every 5 minutes
+Schedule::job(new \App\Jobs\CheckPppoePaymentStatusJob)
+    ->everyFiveMinutes()
+    ->name('check-pppoe-payment-status')
+    ->withoutOverlapping()
+    ->onOneServer();
+
 // =============================================================================
 // CACHE MANAGEMENT
 // =============================================================================
