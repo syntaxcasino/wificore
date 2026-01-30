@@ -673,7 +673,7 @@ class PppoeUserController extends Controller
                 'username' => $username,
                 'attribute' => 'Expiration',
                 'op' => ':=',
-                'value' => $expiresAt ? $expiresAt->format('Y-m-d H:i:s') : '',
+                'value' => $expiresAt ? $expiresAt->format('M d Y') : '',
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
@@ -786,7 +786,7 @@ class PppoeUserController extends Controller
         if ($expiresAt) {
             DB::table('radcheck')->updateOrInsert(
                 ['username' => $username, 'attribute' => 'Expiration'],
-                ['op' => ':=', 'value' => $expiresAt->format('Y-m-d H:i:s'), 'updated_at' => now(), 'created_at' => now()]
+                ['op' => ':=', 'value' => $expiresAt->format('M d Y'), 'updated_at' => now(), 'created_at' => now()]
             );
 
             $sessionTimeout = max(60, (int) now()->diffInSeconds($expiresAt, false));

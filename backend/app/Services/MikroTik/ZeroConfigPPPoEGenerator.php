@@ -127,7 +127,7 @@ class ZeroConfigPPPoEGenerator
         $s[] = "/ppp profile add name=\"{$p['profile']}\" ".
                 "local-address={$p['gateway_ip']} remote-address={$p['pool']} ".
                 "dns-server=\"{$p['dns_primary']},{$p['dns_secondary']}\" ".
-                "use-compression=no use-encryption=required only-one=yes ".
+                "use-compression=no use-encryption=yes only-one=yes ".
                 "change-tcp-mss=yes comment=\"PPPoE-$id\"";
         $s[] = "";
 
