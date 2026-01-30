@@ -127,6 +127,6 @@ class PppoeUser extends Model
             }
         }
         
-        return strtoupper($tenantPrefix) . '-' . str_pad($nextNumber, 5, '0', STR_PAD_LEFT);
+        return strtoupper($tenantPrefix) . str_pad($nextNumber, 5, '0', STR_PAD_LEFT);
     }
 }

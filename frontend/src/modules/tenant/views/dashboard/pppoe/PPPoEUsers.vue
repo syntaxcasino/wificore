@@ -656,6 +656,20 @@ const getStatusVariant = (status) => {
 
 const formatDate = (date) => {
   if (!date) return 'N/A'
+  
+  // Handle Unix timestamp (number or numeric string)
+  if (typeof date === 'number' || (typeof date === 'string' && /^\d+$/.test(date))) {
+    const timestamp = typeof date === 'string' ? parseInt(date, 10) : date
+    return new Date(timestamp * 1000).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+  }
+  
+  // Handle ISO date string
   return new Date(date).toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'short',
