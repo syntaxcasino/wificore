@@ -224,18 +224,17 @@
       <!-- List View -->
       <div v-else>
         <BaseCard :padding="false">
-          <div class="overflow-x-auto">
-            <table class="w-full">
+          <div class="overflow-x-auto -mx-4 sm:mx-0">
+            <table class="w-full min-w-[800px]">
               <thead class="bg-slate-50 border-b border-slate-200">
                 <tr>
-                  <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Package</th>
-                  <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Type</th>
-                  <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Price</th>
-                  <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Speed</th>
-                  <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Data Limit</th>
-                  <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Validity</th>
-                  <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Status</th>
-                  <th class="px-6 py-3 text-right text-xs font-semibold text-slate-700 uppercase tracking-wider">Actions</th>
+                  <th class="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider whitespace-nowrap">Package</th>
+                  <th class="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider whitespace-nowrap">Type</th>
+                  <th class="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider whitespace-nowrap">Price</th>
+                  <th class="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider whitespace-nowrap">Speed</th>
+                  <th class="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider whitespace-nowrap">Validity</th>
+                  <th class="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider whitespace-nowrap">Status</th>
+                  <th class="px-4 sm:px-6 py-3 text-right text-xs font-semibold text-slate-700 uppercase tracking-wider whitespace-nowrap">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -245,29 +244,28 @@
                   class="border-b border-slate-100 hover:bg-blue-50/50 transition-colors cursor-pointer"
                   @click="viewPackage(pkg)"
                 >
-                  <td class="px-6 py-4">
+                  <td class="px-4 sm:px-6 py-4">
                     <div class="flex items-center gap-3">
                       <div class="p-2 rounded-lg" :class="getIconBg(pkg.type)">
                         <component :is="getPackageIcon(pkg.type)" class="w-4 h-4" :class="getIconColor(pkg.type)" />
                       </div>
                       <div>
                         <div class="text-sm font-semibold text-slate-900">{{ pkg.name }}</div>
-                        <div class="text-xs text-slate-500">{{ pkg.description }}</div>
+                        <div class="text-xs text-slate-500 hidden sm:block">{{ pkg.description }}</div>
                       </div>
                     </div>
                   </td>
-                  <td class="px-6 py-4">
+                  <td class="px-4 sm:px-6 py-4">
                     <BaseBadge :variant="getTypeVariant(pkg.type)">
                       {{ pkg.type }}
                     </BaseBadge>
                   </td>
-                  <td class="px-6 py-4">
-                    <div class="text-sm font-bold text-slate-900">KES {{ formatMoney(pkg.price) }}</div>
+                  <td class="px-4 sm:px-6 py-4">
+                    <div class="text-sm font-bold text-slate-900 whitespace-nowrap">KES {{ formatMoney(pkg.price) }}</div>
                   </td>
-                  <td class="px-6 py-4 text-sm text-slate-900">{{ pkg.speed }}</td>
-                  <td class="px-6 py-4 text-sm text-slate-900">{{ pkg.data_limit || 'Unlimited' }}</td>
-                  <td class="px-6 py-4 text-sm text-slate-900">{{ pkg.validity }}</td>
-                  <td class="px-6 py-4">
+                  <td class="px-4 sm:px-6 py-4 text-sm text-slate-900 whitespace-nowrap">{{ pkg.speed }}</td>
+                  <td class="px-4 sm:px-6 py-4 text-sm text-slate-900 whitespace-nowrap">{{ pkg.validity }}</td>
+                  <td class="px-4 sm:px-6 py-4">
                     <BaseBadge 
                       :variant="pkg.status === 'active' ? 'success' : 'secondary'"
                       :dot="pkg.status === 'active'"
@@ -275,7 +273,7 @@
                       {{ pkg.status }}
                     </BaseBadge>
                   </td>
-                  <td class="px-6 py-4 text-right" @click.stop>
+                  <td class="px-4 sm:px-6 py-4 text-right" @click.stop>
                     <div class="flex items-center justify-end gap-1">
                       <BaseButton @click="editPackage(pkg)" variant="ghost" size="sm">
                         <Edit2 class="w-3 h-3" />
@@ -284,6 +282,7 @@
                         @click="toggleStatus(pkg)" 
                         :variant="pkg.status === 'active' ? 'warning' : 'success'" 
                         size="sm"
+                        class="hidden sm:inline-flex"
                       >
                         {{ pkg.status === 'active' ? 'Deactivate' : 'Activate' }}
                       </BaseButton>
