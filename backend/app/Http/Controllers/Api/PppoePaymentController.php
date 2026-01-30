@@ -69,12 +69,19 @@ class PppoePaymentController extends Controller
                 'notes' => $request->notes,
             ]);
 
-            // If manual payment, mark as completed immediately
-            if ($request->payment_method === 'manual') {
+            // Auto-verify MPesa, Paybill, and Bank payments
+            // Only cash payments require manual verification
+            if (in_array($request->payment_method, ['mpesa', 'paybill', 'bank', 'manual'])) {
                 $payment->markAsCompleted($request->user()->id);
                 
                 // Update user payment status
                 $this->activateUserAfterPayment($pppoeUser, $payment);
+                
+                Log::info('Payment auto-verified', [
+                    'payment_id' => $payment->id,
+                    'payment_method' => $request->payment_method,
+                    'user_id' => $pppoeUser->id,
+                ]);
             }
 
             DB::commit();
