@@ -155,9 +155,9 @@ class GenerateTelegrafConfig extends Command
                         if ($version === 3) {
                             // Use router-specific credentials if available, otherwise fall back to environment defaults
                             $v3User = (string) ($router->snmp_v3_user ?? $snmpV3User);
-                            $authProto = strtoupper((string) ($router->snmp_v3_auth_protocol ?? 'SHA256'));
+                            $authProto = (string) ($router->snmp_v3_auth_protocol ?? 'SHA');
                             $authPass = (string) ($router->snmp_v3_auth_password ?? $snmpV3AuthPassword);
-                            $privProto = strtoupper((string) ($router->snmp_v3_priv_protocol ?? 'AES'));
+                            $privProto = (string) ($router->snmp_v3_priv_protocol ?? 'AES');
                             $privPass = (string) ($router->snmp_v3_priv_password ?? $snmpV3PrivPassword);
 
                             if ($v3User !== '' && $authPass !== '' && $privPass !== '') {
@@ -212,9 +212,9 @@ class GenerateTelegrafConfig extends Command
 
                         if ($version === 3) {
                             $v3User = (string) ($router->snmp_v3_user ?? $snmpV3User);
-                            $authProto = strtoupper((string) ($router->snmp_v3_auth_protocol ?? 'SHA256'));
+                            $authProto = (string) ($router->snmp_v3_auth_protocol ?? 'SHA');
                             $authPass = (string) ($router->snmp_v3_auth_password ?? $snmpV3AuthPassword);
-                            $privProto = strtoupper((string) ($router->snmp_v3_priv_protocol ?? 'AES'));
+                            $privProto = (string) ($router->snmp_v3_priv_protocol ?? 'AES');
                             $privPass = (string) ($router->snmp_v3_priv_password ?? $snmpV3PrivPassword);
 
                             if ($v3User !== '' && $authPass !== '' && $privPass !== '') {
@@ -281,9 +281,9 @@ class GenerateTelegrafConfig extends Command
 
                         if ($version === 3) {
                             $v3User = (string) ($router->snmp_v3_user ?? $snmpV3User);
-                            $authProto = strtoupper((string) ($router->snmp_v3_auth_protocol ?? 'SHA256'));
+                            $authProto = (string) ($router->snmp_v3_auth_protocol ?? 'SHA');
                             $authPass = (string) ($router->snmp_v3_auth_password ?? $snmpV3AuthPassword);
-                            $privProto = strtoupper((string) ($router->snmp_v3_priv_protocol ?? 'AES'));
+                            $privProto = (string) ($router->snmp_v3_priv_protocol ?? 'AES');
                             $privPass = (string) ($router->snmp_v3_priv_password ?? $snmpV3PrivPassword);
 
                             if ($v3User !== '' && $authPass !== '' && $privPass !== '') {

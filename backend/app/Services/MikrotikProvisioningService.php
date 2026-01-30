@@ -492,11 +492,29 @@ class MikrotikProvisioningService extends TenantAwareService
     /**
      * Get SNMP configuration script (SNMPv3)
      */
-    protected function getSnmpConfigScript(): string
+    protected function getSnmpConfigScript(Router $router): string
     {
-        $user = env('TELEGRAF_SNMPV3_USER', 'snmpmonitor');
-        $authPassword = env('TELEGRAF_SNMPV3_AUTH_PASSWORD', bin2hex(random_bytes(16)));
-        $privPassword = env('TELEGRAF_SNMPV3_PRIV_PASSWORD', bin2hex(random_bytes(16)));
+        // Use router-specific credentials if already set, otherwise generate new ones
+        $user = $router->snmp_v3_user ?: env('TELEGRAF_SNMPV3_USER', 'snmpmonitor');
+        $authPassword = $router->snmp_v3_auth_password ?: bin2hex(random_bytes(16));
+        $privPassword = $router->snmp_v3_priv_password ?: bin2hex(random_bytes(16));
+        
+        // Save credentials to database for Telegraf to use
+        $router->update([
+            'snmp_enabled' => true,
+            'snmp_version' => 'v3',
+            'snmp_v3_user' => $user,
+            'snmp_v3_auth_protocol' => 'SHA',
+            'snmp_v3_auth_password' => $authPassword,
+            'snmp_v3_priv_protocol' => 'AES',
+            'snmp_v3_priv_password' => $privPassword,
+        ]);
+        
+        Log::info('SNMP credentials saved to database', [
+            'router_id' => $router->id,
+            'router_name' => $router->name,
+            'snmp_user' => $user,
+        ]);
         
         return <<<SCRIPT
 /snmp set enabled=yes
@@ -848,7 +866,7 @@ SCRIPT;
             
             // Add SNMP configuration to the script if not already present
             if (!str_contains($serviceScript, '/snmp set enabled=yes')) {
-                $snmpConfig = $this->getSnmpConfigScript();
+                $snmpConfig = $this->getSnmpConfigScript($router);
                 $serviceScript .= "\n\n# Enable SNMP for monitoring\n" . $snmpConfig;
                 Log::info('Added SNMP configuration to provisioning script', ['router_id' => $router->id]);
             }
