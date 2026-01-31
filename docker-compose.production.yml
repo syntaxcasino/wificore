@@ -101,7 +101,7 @@ services:
       - LOG_LEVEL=${PROVISIONING_LOG_LEVEL:-info}
       - SSH_TIMEOUT=15
       - BACKEND_API_URL=http://wificore-backend:9000
-      - API_KEY=${PROVISIONING_SERVICE_API_KEY}
+      - API_KEY=${PROVISIONING_SERVICE_API_KEY:-}
       - TZ=${TZ:-Africa/Nairobi}
     networks:
       wificore-network:
@@ -129,7 +129,7 @@ services:
       - DB_HOST=${DB_HOST:-wificore-pgbouncer}
       - DB_READ_HOST=${DB_READ_HOST:-wificore-pgbouncer-read}
       - PROVISIONING_SERVICE_URL=http://wificore-provisioning:8080
-      - PROVISIONING_SERVICE_API_KEY=${PROVISIONING_SERVICE_API_KEY}
+      - PROVISIONING_SERVICE_API_KEY=${PROVISIONING_SERVICE_API_KEY:-}
       - DB_PORT=${DB_PORT:-6432}
       - DB_READ_PORT=${DB_READ_PORT:-6432}
       - BROADCAST_DRIVER=pusher

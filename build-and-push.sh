@@ -10,9 +10,30 @@ APP_PREFIX="wificore"
 
 GIT_SHA=$(git rev-parse --short HEAD 2>/dev/null || echo "latest")
 
-echo "🚀 Building & pushing WifiCore images"
+# ==========================
+# ARGUMENT HANDLING
+# ==========================
+BUILD_MODE=${1:-2}  # Default to cached build (2)
+
+if [[ "$BUILD_MODE" != "1" && "$BUILD_MODE" != "2" ]]; then
+  echo "❌ Invalid argument. Usage:"
+  echo "  $0 1    # Build with --no-cache (clean build)"
+  echo "  $0 2    # Build with cache (default, faster)"
+  exit 1
+fi
+
+if [[ "$BUILD_MODE" == "1" ]]; then
+  BUILD_ARGS="--no-cache --parallel"
+  BUILD_TYPE="� NO CACHE (clean build)"
+else
+  BUILD_ARGS="--parallel"
+  BUILD_TYPE="⚡ WITH CACHE (faster build)"
+fi
+
+echo "�🚀 Building & pushing WifiCore images"
 echo "📦 Repo: $DOCKERHUB_USERNAME/$REPO_NAME"
 echo "🏷 Tag: $GIT_SHA"
+echo "🔧 Build Mode: $BUILD_TYPE"
 echo "----------------------------------"
 
 # ==========================
@@ -30,8 +51,8 @@ docker login
 # BUILD
 # ==========================
 echo "🏗 Building images..."
-echo "Building all services..."
-docker compose build --parallel \
+echo "Building all services with: $BUILD_ARGS"
+docker compose build $BUILD_ARGS \
   wificore-nginx \
   wificore-frontend \
   wificore-backend \

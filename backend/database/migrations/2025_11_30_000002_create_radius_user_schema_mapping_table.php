@@ -42,6 +42,9 @@ return new class extends Migration
             'Maps RADIUS usernames to tenant schemas for multi-tenant authentication. 
             Queried by FreeRADIUS BEFORE tenant context is established.'
         ");
+        
+        // Grant SELECT permission to admin user (used by FreeRADIUS)
+        DB::statement("GRANT SELECT ON public.radius_user_schema_mapping TO admin");
     }
 
     /**

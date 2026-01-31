@@ -58,6 +58,9 @@ return new class extends Migration
             
             $table->foreign('user_id')->references('id')->on('users')->onDelete('cascade');
         });
+        
+        // Grant SELECT permission to admin user (used by FreeRADIUS for system admin authentication)
+        DB::statement("GRANT SELECT ON public.users TO admin");
     }
 
     /**
