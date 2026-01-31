@@ -9,6 +9,8 @@ use App\Http\Controllers\Controller;
 use App\Models\Package;
 use App\Models\PppoeUser;
 use App\Models\Router;
+use App\Models\Tenant;
+use App\Services\TenantContext;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Schema;
@@ -19,15 +21,37 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 
+/**
+ * PPPoE User Controller
+ * 
+ * Manages PPPoE users within tenant schemas following schema-based multi-tenancy.
+ * 
+ * Architecture:
+ * - PUBLIC SCHEMA: radius_user_schema_mapping (metadata for FreeRADIUS routing)
+ * - TENANT SCHEMA: pppoe_users, radcheck, radreply (actual user data)
+ * 
+ * This controller ensures proper separation between metadata and tenant data.
+ */
 class PppoeUserController extends Controller
 {
-    private function quoteSchemaName(string $schemaName): string
-    {
-        if (!preg_match('/^ts_[a-z0-9]+$/', $schemaName)) {
-            throw new \InvalidArgumentException('Invalid tenant schema name');
-        }
+    protected TenantContext $tenantContext;
 
-        return '"' . str_replace('"', '""', $schemaName) . '"';
+    public function __construct(TenantContext $tenantContext)
+    {
+        $this->tenantContext = $tenantContext;
+    }
+
+    /**
+     * Get tenant from authenticated user with validation
+     */
+    private function getAuthenticatedTenant(Request $request): ?Tenant
+    {
+        $tenantId = $request->user()->tenant_id;
+        if (!$tenantId) {
+            return null;
+        }
+        
+        return Tenant::find($tenantId);
     }
 
     public function index(Request $request)
@@ -80,7 +104,13 @@ class PppoeUserController extends Controller
 
     public function resetPassword(Request $request, string $id)
     {
-        $tenantId = $request->user()->tenant_id;
+        $tenant = $this->getAuthenticatedTenant($request);
+        if (!$tenant) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Tenant context not available. Please contact support.',
+            ], 500);
+        }
 
         $pppoeUser = PppoeUser::find($id);
         if (!$pppoeUser) {
@@ -90,46 +120,28 @@ class PppoeUserController extends Controller
             ], 404);
         }
 
-        $tenantSchemaName = (string) DB::table('public.tenants')
-            ->where('id', $tenantId)
-            ->value('schema_name');
-
-        if ($tenantSchemaName === '') {
-            Log::error('Failed to determine tenant schema for PPPoE password reset', [
-                'tenant_id' => $tenantId,
-                'pppoe_user_id' => $id,
-            ]);
-
-            return response()->json([
-                'success' => false,
-                'message' => 'Tenant schema is not available. Please contact support.',
-            ], 500);
-        }
-
         $newPassword = Str::random(12);
 
         try {
-            // Ensure schema mapping BEFORE transaction with modified search_path
-            $this->ensureRadiusSchemaMapping($pppoeUser->username, $tenantSchemaName, (string) $tenantId);
+            // STEP 1: Ensure schema mapping in PUBLIC schema (metadata)
+            $this->ensureRadiusSchemaMapping($pppoeUser->username, $tenant->schema_name, (string) $tenant->id);
 
-            DB::transaction(function () use ($pppoeUser, $newPassword, $tenantSchemaName, $tenantId) {
-                DB::statement('SET LOCAL search_path TO ' . $this->quoteSchemaName($tenantSchemaName) . ', public');
-
+            // STEP 2: Update password and RADIUS in TENANT schema
+            $this->tenantContext->runInTenantContext($tenant, function () use ($pppoeUser, $newPassword, $tenant) {
                 $pppoeUser->password = bcrypt($newPassword);
                 $pppoeUser->save();
 
-                $this->syncRadiusForUser(
+                $this->syncRadiusCredentials(
                     (string) $pppoeUser->username,
                     $newPassword,
                     $pppoeUser->expires_at,
                     $pppoeUser->rate_limit,
                     (int) $pppoeUser->simultaneous_use,
-                    $tenantSchemaName,
-                    (string) $tenantId
+                    (string) $tenant->id
                 );
             });
 
-            event(new PppoeUserUpdated($pppoeUser, (string) $tenantId));
+            event(new PppoeUserUpdated($pppoeUser, (string) $tenant->id));
 
             return response()->json([
                 'success' => true,
@@ -152,18 +164,24 @@ class PppoeUserController extends Controller
 
     public function store(Request $request)
     {
-        $tenantId = $request->user()->tenant_id;
-
-        $tenantSchemaName = (string) DB::table('public.tenants')
-            ->where('id', $tenantId)
-            ->value('schema_name');
-
-        if ($tenantSchemaName === '') {
-            Log::error('Failed to determine tenant schema for PPPoE user creation', [
-                'tenant_id' => $tenantId,
+        $tenant = $this->getAuthenticatedTenant($request);
+        if (!$tenant) {
+            Log::error('PPPoE user creation failed - no tenant context', [
                 'user_id' => $request->user()->id ?? null,
             ]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Tenant context not available. Please contact support.',
+            ], 500);
+        }
 
+        $tenantId = $tenant->id;
+        $tenantSchemaName = $tenant->schema_name;
+
+        if (!$tenant->schema_created || !$tenantSchemaName) {
+            Log::error('PPPoE user creation failed - tenant schema not initialized', [
+                'tenant_id' => $tenantId,
+            ]);
             return response()->json([
                 'success' => false,
                 'message' => 'Tenant schema is not available. Please contact support.',
@@ -234,17 +252,19 @@ class PppoeUserController extends Controller
                 ], 422);
             }
 
-            // STEP 1: Create schema mapping FIRST (in public schema, before any search_path changes)
-            // This ensures FreeRADIUS can find the user immediately after creation
+            // STEP 1: Create schema mapping in PUBLIC schema (metadata for FreeRADIUS routing)
+            // This is NOT tenant data - it's routing metadata that tells FreeRADIUS which schema to query
             $this->ensureRadiusSchemaMapping($username, $tenantSchemaName, (string) $tenantId);
 
-            $pppoeUser = DB::transaction(function () use ($username, $plainPassword, $package, $router, $expiresAt, $rateLimit, $simultaneousUse, $tenantId, $tenantSchemaName) {
-                // STEP 2: Set search_path to tenant schema for tenant-specific operations
-                DB::statement('SET LOCAL search_path TO ' . $this->quoteSchemaName($tenantSchemaName) . ', public');
+            Log::info('Creating PPPoE user', [
+                'username' => $username,
+                'tenant_id' => $tenantId,
+                'schema' => $tenantSchemaName,
+            ]);
 
-                // Get tenant prefix for account number
-                $tenant = DB::table('public.tenants')->where('id', $tenantId)->first();
-                $tenantPrefix = $tenant ? substr($tenant->name, 0, 1) : 'T';
+            // STEP 2: Create user and RADIUS entries in TENANT schema using TenantContext
+            $pppoeUser = $this->tenantContext->runInTenantContext($tenant, function () use ($username, $plainPassword, $package, $router, $expiresAt, $rateLimit, $simultaneousUse, $tenant) {
+                $tenantPrefix = substr($tenant->name, 0, 1);
                 $accountNumber = PppoeUser::generateAccountNumber($tenantPrefix);
 
                 // Calculate payment due date (30 days from package duration)
@@ -269,7 +289,7 @@ class PppoeUserController extends Controller
                 ]);
 
                 // STEP 4: Sync RADIUS credentials in tenant schema
-                $this->syncRadiusForUser($username, $plainPassword, $expiresAt, $rateLimit, $simultaneousUse, $tenantSchemaName, (string) $tenantId);
+                $this->syncRadiusCredentials($username, $plainPassword, $expiresAt, $rateLimit, $simultaneousUse, (string) $tenant->id);
 
                 $pppoeUser->load([
                     'package:id,name,type,download_speed,upload_speed,duration',
@@ -323,7 +343,13 @@ class PppoeUserController extends Controller
 
     public function update(Request $request, string $id)
     {
-        $tenantId = $request->user()->tenant_id;
+        $tenant = $this->getAuthenticatedTenant($request);
+        if (!$tenant) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Tenant context not available. Please contact support.',
+            ], 500);
+        }
 
         $pppoeUser = PppoeUser::find($id);
         if (!$pppoeUser) {
@@ -331,22 +357,6 @@ class PppoeUserController extends Controller
                 'success' => false,
                 'message' => 'PPPoE user not found',
             ], 404);
-        }
-
-        $tenantSchemaName = (string) DB::table('public.tenants')
-            ->where('id', $tenantId)
-            ->value('schema_name');
-
-        if ($tenantSchemaName === '') {
-            Log::error('Failed to determine tenant schema for PPPoE user update', [
-                'tenant_id' => $tenantId,
-                'pppoe_user_id' => $id,
-            ]);
-
-            return response()->json([
-                'success' => false,
-                'message' => 'Tenant schema is not available. Please contact support.',
-            ], 500);
         }
 
         $validator = Validator::make($request->all(), [
@@ -368,7 +378,7 @@ class PppoeUserController extends Controller
         $package = null;
         if ($request->has('package_id')) {
             $package = Package::where('id', $request->package_id)
-                ->where('tenant_id', $tenantId)
+                ->where('tenant_id', $tenant->id)
                 ->where('type', 'pppoe')
                 ->first();
 
@@ -413,17 +423,16 @@ class PppoeUserController extends Controller
         }
 
         try {
-            // Ensure schema mapping BEFORE transaction with modified search_path
-            $this->ensureRadiusSchemaMapping($pppoeUser->username, $tenantSchemaName, (string) $tenantId);
+            // STEP 1: Ensure schema mapping in PUBLIC schema (metadata)
+            $this->ensureRadiusSchemaMapping($pppoeUser->username, $tenant->schema_name, (string) $tenant->id);
 
-            DB::transaction(function () use ($pppoeUser, $tenantSchemaName, $tenantId) {
-                DB::statement('SET LOCAL search_path TO ' . $this->quoteSchemaName($tenantSchemaName) . ', public');
-
+            // STEP 2: Update user and RADIUS in TENANT schema
+            $this->tenantContext->runInTenantContext($tenant, function () use ($pppoeUser, $tenant) {
                 $pppoeUser->save();
 
                 DB::table('radreply')->updateOrInsert(
                     ['username' => $pppoeUser->username, 'attribute' => 'Tenant-ID'],
-                    ['op' => ':=', 'value' => (string) $tenantId, 'updated_at' => now(), 'created_at' => now()]
+                    ['op' => ':=', 'value' => (string) $tenant->id, 'updated_at' => now(), 'created_at' => now()]
                 );
                 DB::table('radreply')->updateOrInsert(
                     ['username' => $pppoeUser->username, 'attribute' => 'Service-Type'],
@@ -440,7 +449,7 @@ class PppoeUserController extends Controller
                 );
             });
 
-            event(new PppoeUserUpdated($pppoeUser, (string) $tenantId));
+            event(new PppoeUserUpdated($pppoeUser, (string) $tenant->id));
 
             $pppoeUser->load([
                 'package:id,name,type,download_speed,upload_speed,duration',
@@ -467,7 +476,13 @@ class PppoeUserController extends Controller
 
     public function destroy(Request $request, string $id)
     {
-        $tenantId = $request->user()->tenant_id;
+        $tenant = $this->getAuthenticatedTenant($request);
+        if (!$tenant) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Tenant context not available. Please contact support.',
+            ], 500);
+        }
 
         $pppoeUser = PppoeUser::find($id);
         if (!$pppoeUser) {
@@ -477,37 +492,21 @@ class PppoeUserController extends Controller
             ], 404);
         }
 
-        $tenantSchemaName = (string) DB::table('public.tenants')
-            ->where('id', $tenantId)
-            ->value('schema_name');
-
-        if ($tenantSchemaName === '') {
-            Log::error('Failed to determine tenant schema for PPPoE user delete', [
-                'tenant_id' => $tenantId,
-                'pppoe_user_id' => $id,
-            ]);
-
-            return response()->json([
-                'success' => false,
-                'message' => 'Tenant schema is not available. Please contact support.',
-            ], 500);
-        }
-
         try {
             $pppoeUserId = (string) $pppoeUser->id;
             $username = (string) $pppoeUser->username;
 
-            DB::transaction(function () use ($pppoeUser, $tenantSchemaName) {
-                DB::statement('SET LOCAL search_path TO ' . $this->quoteSchemaName($tenantSchemaName) . ', public');
+            // Delete RADIUS entries and user in TENANT schema
+            $this->tenantContext->runInTenantContext($tenant, function () use ($pppoeUser) {
                 DB::table('radcheck')->where('username', $pppoeUser->username)->delete();
                 DB::table('radreply')->where('username', $pppoeUser->username)->delete();
                 $pppoeUser->delete();
             });
 
-            // Remove schema mapping AFTER transaction completes (in public schema)
+            // Remove schema mapping from PUBLIC schema (metadata cleanup)
             $this->removeRadiusSchemaMapping($username);
 
-            event(new PppoeUserDeleted($pppoeUserId, $username, (string) $tenantId));
+            event(new PppoeUserDeleted($pppoeUserId, $username, (string) $tenant->id));
 
             return response()->json([
                 'success' => true,
@@ -528,7 +527,13 @@ class PppoeUserController extends Controller
 
     public function block(Request $request, string $id)
     {
-        $tenantId = $request->user()->tenant_id;
+        $tenant = $this->getAuthenticatedTenant($request);
+        if (!$tenant) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Tenant context not available. Please contact support.',
+            ], 500);
+        }
 
         $pppoeUser = PppoeUser::find($id);
         if (!$pppoeUser) {
@@ -538,28 +543,12 @@ class PppoeUserController extends Controller
             ], 404);
         }
 
-        $tenantSchemaName = (string) DB::table('public.tenants')
-            ->where('id', $tenantId)
-            ->value('schema_name');
-
-        if ($tenantSchemaName === '') {
-            Log::error('Failed to determine tenant schema for PPPoE user block', [
-                'tenant_id' => $tenantId,
-                'pppoe_user_id' => $id,
-            ]);
-
-            return response()->json([
-                'success' => false,
-                'message' => 'Tenant schema is not available. Please contact support.',
-            ], 500);
-        }
-
         try {
-            // Ensure schema mapping exists (in public schema, before any search_path changes)
-            $this->ensureRadiusSchemaMapping($pppoeUser->username, $tenantSchemaName, (string) $tenantId);
+            // Ensure schema mapping in PUBLIC schema (metadata)
+            $this->ensureRadiusSchemaMapping($pppoeUser->username, $tenant->schema_name, (string) $tenant->id);
 
-            DB::transaction(function () use ($pppoeUser, $tenantSchemaName) {
-                DB::statement('SET LOCAL search_path TO ' . $this->quoteSchemaName($tenantSchemaName) . ', public');
+            // Block user in TENANT schema
+            $this->tenantContext->runInTenantContext($tenant, function () use ($pppoeUser) {
                 $pppoeUser->is_active = false;
                 $pppoeUser->status = 'blocked';
                 $pppoeUser->save();
@@ -570,7 +559,7 @@ class PppoeUserController extends Controller
                 );
             });
 
-            event(new PppoeUserUpdated($pppoeUser, (string) $tenantId));
+            event(new PppoeUserUpdated($pppoeUser, (string) $tenant->id));
 
             return response()->json([
                 'success' => true,
@@ -591,7 +580,13 @@ class PppoeUserController extends Controller
 
     public function unblock(Request $request, string $id)
     {
-        $tenantId = $request->user()->tenant_id;
+        $tenant = $this->getAuthenticatedTenant($request);
+        if (!$tenant) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Tenant context not available. Please contact support.',
+            ], 500);
+        }
 
         $pppoeUser = PppoeUser::find($id);
         if (!$pppoeUser) {
@@ -601,28 +596,12 @@ class PppoeUserController extends Controller
             ], 404);
         }
 
-        $tenantSchemaName = (string) DB::table('public.tenants')
-            ->where('id', $tenantId)
-            ->value('schema_name');
-
-        if ($tenantSchemaName === '') {
-            Log::error('Failed to determine tenant schema for PPPoE user unblock', [
-                'tenant_id' => $tenantId,
-                'pppoe_user_id' => $id,
-            ]);
-
-            return response()->json([
-                'success' => false,
-                'message' => 'Tenant schema is not available. Please contact support.',
-            ], 500);
-        }
-
         try {
-            // Ensure schema mapping BEFORE transaction with modified search_path
-            $this->ensureRadiusSchemaMapping($pppoeUser->username, $tenantSchemaName, (string) $tenantId);
+            // Ensure schema mapping in PUBLIC schema (metadata)
+            $this->ensureRadiusSchemaMapping($pppoeUser->username, $tenant->schema_name, (string) $tenant->id);
 
-            DB::transaction(function () use ($pppoeUser, $tenantSchemaName, $tenantId) {
-                DB::statement('SET LOCAL search_path TO ' . $this->quoteSchemaName($tenantSchemaName) . ', public');
+            // Unblock user in TENANT schema
+            $this->tenantContext->runInTenantContext($tenant, function () use ($pppoeUser, $tenant) {
                 $pppoeUser->is_active = true;
                 if ($pppoeUser->status === 'blocked') {
                     $pppoeUser->status = 'active';
@@ -637,7 +616,7 @@ class PppoeUserController extends Controller
 
                 DB::table('radreply')->updateOrInsert(
                     ['username' => $pppoeUser->username, 'attribute' => 'Tenant-ID'],
-                    ['op' => ':=', 'value' => (string) $tenantId, 'updated_at' => now(), 'created_at' => now()]
+                    ['op' => ':=', 'value' => (string) $tenant->id, 'updated_at' => now(), 'created_at' => now()]
                 );
                 DB::table('radreply')->updateOrInsert(
                     ['username' => $pppoeUser->username, 'attribute' => 'Service-Type'],
@@ -654,7 +633,7 @@ class PppoeUserController extends Controller
                 );
             });
 
-            event(new PppoeUserUpdated($pppoeUser, (string) $tenantId));
+            event(new PppoeUserUpdated($pppoeUser, (string) $tenant->id));
 
             return response()->json([
                 'success' => true,
@@ -673,10 +652,14 @@ class PppoeUserController extends Controller
         }
     }
 
-    private function syncRadiusForUser(string $username, string $plainPassword, $expiresAt, ?string $rateLimit, int $simultaneousUse, string $tenantSchemaName, string $tenantId): void
+    /**
+     * Sync RADIUS credentials in tenant schema
+     * 
+     * IMPORTANT: This method assumes TenantContext has already set the correct search_path.
+     * It operates on the tenant's radcheck and radreply tables, NOT public schema.
+     */
+    private function syncRadiusCredentials(string $username, string $plainPassword, $expiresAt, ?string $rateLimit, int $simultaneousUse, string $tenantId): void
     {
-        DB::statement('SET LOCAL search_path TO ' . $this->quoteSchemaName($tenantSchemaName) . ', public');
-
         $ntPassword = $this->calculateNtPasswordHash($plainPassword);
 
         DB::table('radcheck')->where('username', $username)->delete();
@@ -805,6 +788,12 @@ class PppoeUserController extends Controller
         Log::info('RADIUS schema mapping removed', ['username' => $username]);
     }
 
+    /**
+     * Sync RADIUS metadata (expiration, rate limits, status) in tenant schema
+     * 
+     * IMPORTANT: This method assumes TenantContext has already set the correct search_path.
+     * It operates on the tenant's radcheck and radreply tables, NOT public schema.
+     */
     private function syncRadiusMetaForUser(string $username, $expiresAt, ?string $rateLimit, int $simultaneousUse, bool $isActive, string $status): void
     {
         if (!$isActive || $status === 'blocked') {
