@@ -44,8 +44,8 @@ sql {
         max = 10
         spare = 3
         uses = 0
-        lifetime = 300
-        idle_timeout = 60
+        lifetime = 60
+        idle_timeout = 30
         retry_delay = 1
     }
 

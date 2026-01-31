@@ -23,7 +23,7 @@ class ProvisioningServiceClient
     {
         $this->baseUrl = env('PROVISIONING_SERVICE_URL', 'http://wificore-provisioning:8080');
         $this->timeout = env('PROVISIONING_SERVICE_TIMEOUT', 30);
-        $this->apiKey = env('PROVISIONING_SERVICE_API_KEY');
+        $this->apiKey = env('PROVISIONING_SERVICE_API_KEY', '');
     }
 
     /**
