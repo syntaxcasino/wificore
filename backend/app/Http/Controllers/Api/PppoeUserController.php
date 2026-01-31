@@ -109,13 +109,15 @@ class PppoeUserController extends Controller
         $newPassword = Str::random(12);
 
         try {
+            // Ensure schema mapping BEFORE transaction with modified search_path
+            $this->ensureRadiusSchemaMapping($pppoeUser->username, $tenantSchemaName, (string) $tenantId);
+
             DB::transaction(function () use ($pppoeUser, $newPassword, $tenantSchemaName, $tenantId) {
                 DB::statement('SET LOCAL search_path TO ' . $this->quoteSchemaName($tenantSchemaName) . ', public');
 
                 $pppoeUser->password = bcrypt($newPassword);
                 $pppoeUser->save();
 
-                $this->ensureRadiusSchemaMapping($pppoeUser->username, $tenantSchemaName, (string) $tenantId);
                 $this->syncRadiusForUser(
                     (string) $pppoeUser->username,
                     $newPassword,
@@ -232,7 +234,12 @@ class PppoeUserController extends Controller
                 ], 422);
             }
 
+            // STEP 1: Create schema mapping FIRST (in public schema, before any search_path changes)
+            // This ensures FreeRADIUS can find the user immediately after creation
+            $this->ensureRadiusSchemaMapping($username, $tenantSchemaName, (string) $tenantId);
+
             $pppoeUser = DB::transaction(function () use ($username, $plainPassword, $package, $router, $expiresAt, $rateLimit, $simultaneousUse, $tenantId, $tenantSchemaName) {
+                // STEP 2: Set search_path to tenant schema for tenant-specific operations
                 DB::statement('SET LOCAL search_path TO ' . $this->quoteSchemaName($tenantSchemaName) . ', public');
 
                 // Get tenant prefix for account number
@@ -243,6 +250,7 @@ class PppoeUserController extends Controller
                 // Calculate payment due date (30 days from package duration)
                 $nextPaymentDue = $expiresAt ? clone $expiresAt : now()->addDays(30);
 
+                // STEP 3: Create PPPoE user in tenant schema
                 $pppoeUser = PppoeUser::create([
                     'username' => $username,
                     'password' => bcrypt($plainPassword),
@@ -260,7 +268,7 @@ class PppoeUserController extends Controller
                     'in_grace_period' => false,
                 ]);
 
-                $this->ensureRadiusSchemaMapping($username, $tenantSchemaName, (string) $tenantId);
+                // STEP 4: Sync RADIUS credentials in tenant schema
                 $this->syncRadiusForUser($username, $plainPassword, $expiresAt, $rateLimit, $simultaneousUse, $tenantSchemaName, (string) $tenantId);
 
                 $pppoeUser->load([
@@ -405,12 +413,14 @@ class PppoeUserController extends Controller
         }
 
         try {
+            // Ensure schema mapping BEFORE transaction with modified search_path
+            $this->ensureRadiusSchemaMapping($pppoeUser->username, $tenantSchemaName, (string) $tenantId);
+
             DB::transaction(function () use ($pppoeUser, $tenantSchemaName, $tenantId) {
                 DB::statement('SET LOCAL search_path TO ' . $this->quoteSchemaName($tenantSchemaName) . ', public');
 
                 $pppoeUser->save();
 
-                $this->ensureRadiusSchemaMapping($pppoeUser->username, $tenantSchemaName, (string) $tenantId);
                 DB::table('radreply')->updateOrInsert(
                     ['username' => $pppoeUser->username, 'attribute' => 'Tenant-ID'],
                     ['op' => ':=', 'value' => (string) $tenantId, 'updated_at' => now(), 'created_at' => now()]
@@ -491,9 +501,11 @@ class PppoeUserController extends Controller
                 DB::statement('SET LOCAL search_path TO ' . $this->quoteSchemaName($tenantSchemaName) . ', public');
                 DB::table('radcheck')->where('username', $pppoeUser->username)->delete();
                 DB::table('radreply')->where('username', $pppoeUser->username)->delete();
-                $this->removeRadiusSchemaMapping((string) $pppoeUser->username);
                 $pppoeUser->delete();
             });
+
+            // Remove schema mapping AFTER transaction completes (in public schema)
+            $this->removeRadiusSchemaMapping($username);
 
             event(new PppoeUserDeleted($pppoeUserId, $username, (string) $tenantId));
 
@@ -543,6 +555,9 @@ class PppoeUserController extends Controller
         }
 
         try {
+            // Ensure schema mapping exists (in public schema, before any search_path changes)
+            $this->ensureRadiusSchemaMapping($pppoeUser->username, $tenantSchemaName, (string) $tenantId);
+
             DB::transaction(function () use ($pppoeUser, $tenantSchemaName) {
                 DB::statement('SET LOCAL search_path TO ' . $this->quoteSchemaName($tenantSchemaName) . ', public');
                 $pppoeUser->is_active = false;
@@ -603,6 +618,9 @@ class PppoeUserController extends Controller
         }
 
         try {
+            // Ensure schema mapping BEFORE transaction with modified search_path
+            $this->ensureRadiusSchemaMapping($pppoeUser->username, $tenantSchemaName, (string) $tenantId);
+
             DB::transaction(function () use ($pppoeUser, $tenantSchemaName, $tenantId) {
                 DB::statement('SET LOCAL search_path TO ' . $this->quoteSchemaName($tenantSchemaName) . ', public');
                 $pppoeUser->is_active = true;
@@ -617,7 +635,6 @@ class PppoeUserController extends Controller
                     ->where('value', 'Reject')
                     ->delete();
 
-                $this->ensureRadiusSchemaMapping($pppoeUser->username, $tenantSchemaName, (string) $tenantId);
                 DB::table('radreply')->updateOrInsert(
                     ['username' => $pppoeUser->username, 'attribute' => 'Tenant-ID'],
                     ['op' => ':=', 'value' => (string) $tenantId, 'updated_at' => now(), 'created_at' => now()]
@@ -760,24 +777,32 @@ class PppoeUserController extends Controller
 
     private function ensureRadiusSchemaMapping(string $username, string $schemaName, string $tenantId): void
     {
-        DB::table('public.radius_user_schema_mapping')->updateOrInsert(
-            ['username' => $username],
-            [
-                'schema_name' => $schemaName,
-                'tenant_id' => $tenantId,
-                'user_role' => 'pppoe',
-                'is_active' => true,
-                'updated_at' => now(),
-                'created_at' => now(),
-            ]
-        );
+        // Use raw SQL with explicit schema to bypass any search_path issues
+        // This ensures the mapping is created in public schema regardless of current search_path
+        DB::statement("
+            INSERT INTO public.radius_user_schema_mapping (username, schema_name, tenant_id, user_role, is_active, created_at, updated_at)
+            VALUES (?, ?, ?::uuid, 'pppoe', true, NOW(), NOW())
+            ON CONFLICT (username) DO UPDATE SET
+                schema_name = EXCLUDED.schema_name,
+                tenant_id = EXCLUDED.tenant_id,
+                user_role = EXCLUDED.user_role,
+                is_active = true,
+                updated_at = NOW()
+        ", [$username, $schemaName, $tenantId]);
+        
+        Log::info('RADIUS schema mapping ensured', [
+            'username' => $username,
+            'schema_name' => $schemaName,
+            'tenant_id' => $tenantId,
+        ]);
     }
 
     private function removeRadiusSchemaMapping(string $username): void
     {
-        DB::table('public.radius_user_schema_mapping')
-            ->where('username', $username)
-            ->delete();
+        // Use raw SQL with explicit schema to bypass any search_path issues
+        DB::statement("DELETE FROM public.radius_user_schema_mapping WHERE username = ?", [$username]);
+        
+        Log::info('RADIUS schema mapping removed', ['username' => $username]);
     }
 
     private function syncRadiusMetaForUser(string $username, $expiresAt, ?string $rateLimit, int $simultaneousUse, bool $isActive, string $status): void
