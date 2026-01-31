@@ -6,6 +6,7 @@ use App\Models\Tenant;
 use App\Models\User;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class FixSchemaMappings extends Command
 {
@@ -14,14 +15,14 @@ class FixSchemaMappings extends Command
      *
      * @var string
      */
-    protected $signature = 'tenants:fix-schema-mappings {--tenant-id=}';
+    protected $signature = 'tenants:fix-schema-mappings {--tenant-id=} {--include-pppoe}';
 
     /**
      * The console command description.
      *
      * @var string
      */
-    protected $description = 'Fix missing schema mappings for tenant users';
+    protected $description = 'Fix missing schema mappings for tenant users and PPPoE users';
 
     /**
      * Execute the console command.
@@ -51,39 +52,19 @@ class FixSchemaMappings extends Command
         foreach ($tenants as $tenant) {
             $this->info("Processing tenant: {$tenant->name} (ID: {$tenant->id})");
 
-            // Get all users for this tenant
+            // Fix tenant admin users (from public.users table)
             $users = User::where('tenant_id', $tenant->id)->get();
 
             foreach ($users as $user) {
-                try {
-                    // Check if schema mapping already exists
-                    $exists = DB::table('public.radius_user_schema_mapping')
-                        ->where('username', $user->username)
-                        ->exists();
+                $result = $this->ensureMapping($user->username, $tenant, 'admin');
+                if ($result === 'fixed') $fixed++;
+                elseif ($result === 'skipped') $skipped++;
+                else $errors++;
+            }
 
-                    if ($exists) {
-                        $this->line("  ✓ Mapping exists for: {$user->username}");
-                        $skipped++;
-                        continue;
-                    }
-
-                    // Create schema mapping
-                    DB::table('public.radius_user_schema_mapping')->insert([
-                        'username' => $user->username,
-                        'schema_name' => $tenant->schema_name,
-                        'tenant_id' => $tenant->id,
-                        'is_active' => true,
-                        'created_at' => now(),
-                        'updated_at' => now(),
-                    ]);
-
-                    $this->info("  ✓ Created mapping for: {$user->username} -> {$tenant->schema_name}");
-                    $fixed++;
-
-                } catch (\Exception $e) {
-                    $this->error("  ✗ Failed for {$user->username}: {$e->getMessage()}");
-                    $errors++;
-                }
+            // Fix PPPoE users (from tenant schema's pppoe_users table)
+            if ($this->option('include-pppoe') || $this->confirm("Include PPPoE users for {$tenant->name}?", true)) {
+                $this->fixPppoeUsers($tenant, $fixed, $skipped, $errors);
             }
         }
 
@@ -94,5 +75,74 @@ class FixSchemaMappings extends Command
         $this->info("  Errors: {$errors}");
 
         return 0;
+    }
+
+    /**
+     * Fix PPPoE users for a tenant
+     */
+    private function fixPppoeUsers(Tenant $tenant, int &$fixed, int &$skipped, int &$errors): void
+    {
+        $this->info("  Checking PPPoE users in schema: {$tenant->schema_name}");
+
+        try {
+            // Query PPPoE users directly from tenant schema
+            $pppoeUsers = DB::select("
+                SELECT username FROM {$tenant->schema_name}.pppoe_users
+            ");
+
+            if (empty($pppoeUsers)) {
+                $this->line("  No PPPoE users found in {$tenant->schema_name}");
+                return;
+            }
+
+            $this->info("  Found " . count($pppoeUsers) . " PPPoE users");
+
+            foreach ($pppoeUsers as $pppoeUser) {
+                $result = $this->ensureMapping($pppoeUser->username, $tenant, 'pppoe');
+                if ($result === 'fixed') $fixed++;
+                elseif ($result === 'skipped') $skipped++;
+                else $errors++;
+            }
+
+        } catch (\Exception $e) {
+            $this->error("  Failed to query PPPoE users: {$e->getMessage()}");
+            $errors++;
+        }
+    }
+
+    /**
+     * Ensure a mapping exists for a username
+     */
+    private function ensureMapping(string $username, Tenant $tenant, string $userRole): string
+    {
+        try {
+            // Check if schema mapping already exists
+            $exists = DB::table('public.radius_user_schema_mapping')
+                ->where('username', $username)
+                ->exists();
+
+            if ($exists) {
+                $this->line("    ✓ Mapping exists for: {$username}");
+                return 'skipped';
+            }
+
+            // Create schema mapping
+            DB::table('public.radius_user_schema_mapping')->insert([
+                'username' => $username,
+                'schema_name' => $tenant->schema_name,
+                'tenant_id' => $tenant->id,
+                'user_role' => $userRole,
+                'is_active' => true,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            $this->info("    ✓ Created mapping for: {$username} -> {$tenant->schema_name} (role: {$userRole})");
+            return 'fixed';
+
+        } catch (\Exception $e) {
+            $this->error("    ✗ Failed for {$username}: {$e->getMessage()}");
+            return 'error';
+        }
     }
 }
