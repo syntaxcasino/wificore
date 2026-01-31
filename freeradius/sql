@@ -2,10 +2,8 @@ sql {
     driver = "rlm_sql_postgresql"
     dialect = "postgresql"
 
-    # Connect directly to PostgreSQL to avoid PgBouncer connection pooling issues
-    # PgBouncer session pooling can cause stale data visibility in long-lived connections
-    server = "wificore-postgres"
-    port = 5432
+    server = "wificore-pgbouncer"
+    port = 6432
     login = "admin"
     password = "secret"
     radius_db = "wms_770_ts"
