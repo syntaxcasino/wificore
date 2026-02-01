@@ -117,15 +117,14 @@ class PppoeUser extends Model
 
     public static function generateAccountNumber(string $tenantPrefix): string
     {
-        $lastUser = static::orderBy('created_at', 'desc')->first();
-        $nextNumber = 1;
+        // Use withTrashed() to include soft-deleted users and get the MAX number
+        // This prevents duplicate account numbers when users are deleted
+        $maxAccountNumber = static::withTrashed()
+            ->where('account_number', 'like', strtoupper($tenantPrefix) . '%')
+            ->selectRaw("MAX(CAST(SUBSTRING(account_number FROM '[0-9]+$') AS INTEGER)) as max_num")
+            ->value('max_num');
         
-        if ($lastUser && $lastUser->account_number) {
-            preg_match('/(\d+)$/', $lastUser->account_number, $matches);
-            if (!empty($matches[1])) {
-                $nextNumber = (int)$matches[1] + 1;
-            }
-        }
+        $nextNumber = ($maxAccountNumber ?? 0) + 1;
         
         return strtoupper($tenantPrefix) . str_pad($nextNumber, 5, '0', STR_PAD_LEFT);
     }

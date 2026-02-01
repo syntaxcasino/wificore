@@ -71,19 +71,36 @@ export function usePppoeUsers() {
     }
   }
 
-  const deleteUser = async (userId) => {
-    loading.value = true
-    error.value = null
-
+  const getUser = async (userId) => {
     try {
-      await axios.delete(`/pppoe/users/${userId}`)
-      users.value = users.value.filter((u) => String(u.id) !== String(userId))
-      return true
+      const response = await axios.get(`/pppoe/users/${userId}`)
+      return response.data?.data
     } catch (err) {
-      error.value = err.response?.data?.message || 'Failed to delete PPPoE user'
+      error.value = err.response?.data?.message || 'Failed to fetch PPPoE user'
       throw err
-    } finally {
-      loading.value = false
+    }
+  }
+
+  const viewPassword = async (userId) => {
+    try {
+      const response = await axios.get(`/pppoe/users/${userId}/password`)
+      return response.data?.data
+    } catch (err) {
+      error.value = err.response?.data?.message || 'Failed to view password'
+      throw err
+    }
+  }
+
+  const resetPassword = async (userId) => {
+    try {
+      const response = await axios.post(`/pppoe/users/${userId}/reset-password`)
+      return {
+        user: response.data?.data,
+        generatedPassword: response.data?.generated_password || null,
+      }
+    } catch (err) {
+      error.value = err.response?.data?.message || 'Failed to reset password'
+      throw err
     }
   }
 
@@ -115,9 +132,11 @@ export function usePppoeUsers() {
     inactiveUsers,
     totalUsers,
     fetchUsers,
+    getUser,
     createUser,
     updateUser,
-    deleteUser,
+    viewPassword,
+    resetPassword,
     toggleUserStatus,
   }
 }

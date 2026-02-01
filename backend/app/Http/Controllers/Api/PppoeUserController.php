@@ -77,11 +77,18 @@ class PppoeUserController extends Controller
 
             $users = PppoeUser::query()
                 ->with([
-                    'package:id,name,type,download_speed,upload_speed,duration',
+                    'package:id,name,type,download_speed,upload_speed,duration,price',
                     'router:id,name',
                 ])
                 ->orderBy('created_at', 'desc')
                 ->paginate(20);
+
+            // Add computed fields for each user
+            $users->getCollection()->transform(function ($user) {
+                $user->days_to_expiry = $user->expires_at ? now()->diffInDays($user->expires_at, false) : null;
+                $user->is_expired = $user->expires_at && $user->expires_at->isPast();
+                return $user;
+            });
 
             return response()->json([
                 'success' => true,
@@ -100,6 +107,86 @@ class PppoeUserController extends Controller
                 'message' => 'Failed to fetch PPPoE users',
             ], 500);
         }
+    }
+
+    public function show(Request $request, string $id)
+    {
+        $tenant = $this->getAuthenticatedTenant($request);
+        if (!$tenant) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Tenant context not available.',
+            ], 500);
+        }
+
+        $pppoeUser = PppoeUser::with([
+            'package:id,name,type,download_speed,upload_speed,duration,price',
+            'router:id,name',
+        ])->find($id);
+
+        if (!$pppoeUser) {
+            return response()->json([
+                'success' => false,
+                'message' => 'PPPoE user not found',
+            ], 404);
+        }
+
+        // Add computed fields
+        $pppoeUser->days_to_expiry = $pppoeUser->expires_at ? now()->diffInDays($pppoeUser->expires_at, false) : null;
+        $pppoeUser->is_expired = $pppoeUser->expires_at && $pppoeUser->expires_at->isPast();
+
+        return response()->json([
+            'success' => true,
+            'data' => $pppoeUser,
+        ]);
+    }
+
+    public function viewPassword(Request $request, string $id)
+    {
+        $tenant = $this->getAuthenticatedTenant($request);
+        if (!$tenant) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Tenant context not available.',
+            ], 500);
+        }
+
+        $pppoeUser = PppoeUser::find($id);
+        if (!$pppoeUser) {
+            return response()->json([
+                'success' => false,
+                'message' => 'PPPoE user not found',
+            ], 404);
+        }
+
+        // Get plaintext password from radcheck table
+        $password = $this->tenantContext->runInTenantContext($tenant, function () use ($pppoeUser) {
+            return DB::table('radcheck')
+                ->where('username', $pppoeUser->username)
+                ->where('attribute', 'Cleartext-Password')
+                ->value('value');
+        });
+
+        if (!$password) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Password not available. User may need password reset.',
+            ], 404);
+        }
+
+        Log::info('PPPoE password viewed', [
+            'pppoe_user_id' => $id,
+            'username' => $pppoeUser->username,
+            'viewed_by' => $request->user()->id,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'username' => $pppoeUser->username,
+                'password' => $password,
+            ],
+        ]);
     }
 
     public function resetPassword(Request $request, string $id)
@@ -553,10 +640,21 @@ class PppoeUserController extends Controller
                 $pppoeUser->status = 'blocked';
                 $pppoeUser->save();
 
-                DB::table('radcheck')->updateOrInsert(
-                    ['username' => $pppoeUser->username, 'attribute' => 'Auth-Type'],
-                    ['op' => ':=', 'value' => 'Reject', 'updated_at' => now(), 'created_at' => now()]
-                );
+                // Remove all existing radcheck entries for this user
+                DB::table('radcheck')->where('username', $pppoeUser->username)->delete();
+                
+                // Add Auth-Type := Reject to block authentication
+                DB::table('radcheck')->insert([
+                    'username' => $pppoeUser->username,
+                    'attribute' => 'Auth-Type',
+                    'op' => ':=',
+                    'value' => 'Reject',
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+                
+                // Remove rate limit reply attributes so blocked user has no service
+                DB::table('radreply')->where('username', $pppoeUser->username)->delete();
             });
 
             event(new PppoeUserUpdated($pppoeUser, (string) $tenant->id));
