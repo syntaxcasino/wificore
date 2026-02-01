@@ -51,7 +51,7 @@
 #
 #	Include MikroTik vendor dictionary for rate limiting
 #
-$INCLUDE /usr/share/freeradius/dictionary.mikrotik
+$INCLUDE /opt/share/freeradius/dictionary.mikrotik
 
 #
 #	Custom attributes for multi-tenant WiFi hotspot management system
