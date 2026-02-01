@@ -105,8 +105,8 @@ class PPPoEService extends BaseMikroTikService
         $script[] = ":do { /ip address remove [find comment=\"WiFiCore PPPoE gateway ({$routerId})\"]; /ip address add address={$gateway}/24 interface=\"{$bridgeName}\" comment=\"WiFiCore PPPoE gateway ({$routerId})\"; } on-error={ :error \"PPPoE: gateway IP set failed ({$bridgeName})\" }";
         $script[] = '';
 
-        // PPP Profile (single-line)
-        $script[] = ":do { /ppp profile remove [find name=\"{$profileName}\"]; /ppp profile add name=\"{$profileName}\" use-radius=yes local-address={$gateway} remote-address=\"{$poolName}\" dns-server=\"{$dnsServers}\" use-compression=no use-encryption=no only-one=no change-tcp-mss=yes; } on-error={ :error \"PPPoE: PPP profile create failed ({$profileName})\" }";
+        // PPP Profile (single-line) - rate-limit empty to allow RADIUS override
+        $script[] = ":do { /ppp profile remove [find name=\"{$profileName}\"]; /ppp profile add name=\"{$profileName}\" use-radius=yes local-address={$gateway} remote-address=\"{$poolName}\" dns-server=\"{$dnsServers}\" use-compression=no use-encryption=no only-one=no change-tcp-mss=yes rate-limit=\"\"; } on-error={ :error \"PPPoE: PPP profile create failed ({$profileName})\" }";
         $script[] = ":if ([:len [/ppp profile find name=\"{$profileName}\"]] = 0) do={ :error \"PPPoE: PPP profile missing ({$profileName})\" }";
         $script[] = '';
 
@@ -120,10 +120,14 @@ class PPPoEService extends BaseMikroTikService
         $script[] = ":do { :if ([/interface list member find list=LAN interface=\"{$bridgeName}\"] = \"\") do={ /interface list member add list=LAN interface=\"{$bridgeName}\" comment=\"WiFiCore PPPoE bridge\" } } on-error={}";
         $script[] = '';
         
-        // RADIUS configuration
+        // RADIUS configuration with incoming/accounting enabled for rate limiting
         if ($useRadius) {
             $script[] = ':do { /radius remove [find service=ppp comment~"WiFiCore PPPoE"]; } on-error={}';
             $script[] = ":do { /radius add service=ppp address={$radiusIp} secret={$radiusSecret} authentication-port=1812 accounting-port=1813 timeout=3s comment=\"WiFiCore PPPoE ({$routerId})\"; } on-error={ :error \"PPPoE: RADIUS configure failed\" }";
+            $script[] = '';
+            
+            // Enable RADIUS incoming to accept CoA (Change of Authorization) for rate limit changes
+            $script[] = ':do { /radius incoming set accept=yes port=3799; } on-error={}';
             $script[] = '';
         }
         

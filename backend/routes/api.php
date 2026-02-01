@@ -443,10 +443,12 @@ Route::middleware(['auth:sanctum', 'role:admin', 'user.active', 'tenant.context'
 
     Route::prefix('pppoe')->group(function () {
         Route::get('/users', [PppoeUserController::class, 'index']);
+        Route::get('/users/{id}', [PppoeUserController::class, 'show']);
         Route::post('/users', [PppoeUserController::class, 'store']);
         Route::put('/users/{id}', [PppoeUserController::class, 'update']);
-        Route::delete('/users/{id}', [PppoeUserController::class, 'destroy']);
+        // PPPoE users should not be deleted, only edited (soft delete via status change)
         Route::post('/users/{id}/reset-password', [PppoeUserController::class, 'resetPassword']);
+        Route::get('/users/{id}/password', [PppoeUserController::class, 'viewPassword']);
         Route::post('/users/{id}/block', [PppoeUserController::class, 'block']);
         Route::post('/users/{id}/unblock', [PppoeUserController::class, 'unblock']);
 

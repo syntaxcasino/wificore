@@ -49,6 +49,11 @@
 #ATTRIBUTE	My-Local-Integer	3002	integer
 
 #
+#	Include MikroTik vendor dictionary for rate limiting
+#
+$INCLUDE /usr/share/freeradius/dictionary.mikrotik
+
+#
 #	Custom attributes for multi-tenant WiFi hotspot management system
 #
 ATTRIBUTE	Tenant-ID		3100	string

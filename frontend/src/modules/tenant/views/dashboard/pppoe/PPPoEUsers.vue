@@ -149,9 +149,6 @@
                       >
                         {{ user.status === 'blocked' ? 'Unblock' : 'Block' }}
                       </BaseButton>
-                      <BaseButton @click="handleDelete(user)" variant="ghost" size="sm" class="text-red-600">
-                        <Trash2 class="w-3 h-3" />
-                      </BaseButton>
                     </div>
                   </td>
                 </tr>
@@ -382,39 +379,129 @@
     title="PPPoE User Details"
     subtitle="View PPPoE account information"
     icon="Network"
-    width="40%"
+    width="45%"
     :closeOnBackdrop="true"
   >
-    <div class="space-y-4">
-      <div>
-        <div class="text-sm font-medium text-slate-700">Username</div>
-        <div class="mt-1 text-sm text-slate-900 font-mono">{{ selectedUser?.username || 'N/A' }}</div>
-      </div>
-
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div>
-          <div class="text-sm font-medium text-slate-700">Router</div>
-          <div class="mt-1 text-sm text-slate-900">{{ selectedUser?.router?.name || 'N/A' }}</div>
-        </div>
-        <div>
-          <div class="text-sm font-medium text-slate-700">Status</div>
-          <div class="mt-1">
-            <BaseBadge :variant="getStatusVariant(selectedUser?.status)">
-              {{ selectedUser?.status || 'inactive' }}
-            </BaseBadge>
+    <div class="space-y-5">
+      <!-- Account Info Section -->
+      <div class="bg-slate-50 rounded-lg p-4">
+        <h4 class="text-sm font-semibold text-slate-700 mb-3">Account Information</h4>
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <div class="text-xs text-slate-500">Username</div>
+            <div class="text-sm font-mono text-slate-900">{{ selectedUser?.username || 'N/A' }}</div>
+          </div>
+          <div>
+            <div class="text-xs text-slate-500">Account Number</div>
+            <div class="text-sm font-mono text-slate-900">{{ selectedUser?.account_number || 'N/A' }}</div>
+          </div>
+          <div>
+            <div class="text-xs text-slate-500">Status</div>
+            <div class="mt-1">
+              <BaseBadge :variant="getStatusVariant(selectedUser?.status)" :dot="selectedUser?.status === 'active'">
+                {{ selectedUser?.status || 'inactive' }}
+              </BaseBadge>
+            </div>
+          </div>
+          <div>
+            <div class="text-xs text-slate-500">Created</div>
+            <div class="text-sm text-slate-900">{{ formatDate(selectedUser?.created_at) }}</div>
           </div>
         </div>
       </div>
 
+      <!-- Password Section -->
+      <div class="bg-blue-50 rounded-lg p-4">
+        <h4 class="text-sm font-semibold text-slate-700 mb-3">Credentials</h4>
+        <div class="flex items-center justify-between">
+          <div class="flex-1">
+            <div class="text-xs text-slate-500">Password</div>
+            <div class="flex items-center gap-2 mt-1">
+              <div class="text-sm font-mono text-slate-900 bg-white border border-slate-200 rounded px-3 py-1.5 flex-1">
+                {{ showPasswordValue ? userPassword : '••••••••••••' }}
+              </div>
+              <BaseButton 
+                v-if="!showPasswordValue" 
+                variant="secondary" 
+                size="sm" 
+                @click="handleViewPassword"
+                :loading="loadingPassword"
+              >
+                <Eye class="w-4 h-4 mr-1" />
+                View
+              </BaseButton>
+              <BaseButton 
+                v-else 
+                variant="ghost" 
+                size="sm" 
+                @click="hidePassword"
+              >
+                <EyeOff class="w-4 h-4" />
+              </BaseButton>
+              <BaseButton variant="secondary" size="sm" @click="handleResetPassword">
+                <Key class="w-4 h-4 mr-1" />
+                Reset
+              </BaseButton>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Service Details -->
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
-          <div class="text-sm font-medium text-slate-700">Package</div>
-          <div class="mt-1 text-sm text-slate-900">{{ selectedUser?.package?.name || 'N/A' }}</div>
-          <div class="mt-1 text-xs text-slate-500">{{ formatPackageSpeed(selectedUser?.package) }}</div>
+          <div class="text-xs text-slate-500">Router</div>
+          <div class="text-sm text-slate-900">{{ selectedUser?.router?.name || 'N/A' }}</div>
         </div>
         <div>
-          <div class="text-sm font-medium text-slate-700">Expiry</div>
-          <div class="mt-1 text-sm text-slate-900">{{ formatDate(selectedUser?.expires_at) }}</div>
+          <div class="text-xs text-slate-500">Package</div>
+          <div class="text-sm text-slate-900">{{ selectedUser?.package?.name || 'N/A' }}</div>
+          <div class="text-xs text-slate-500">{{ formatPackageSpeed(selectedUser?.package) }}</div>
+        </div>
+        <div>
+          <div class="text-xs text-slate-500">Rate Limit</div>
+          <div class="text-sm text-slate-900">{{ selectedUser?.rate_limit || 'Not set' }}</div>
+        </div>
+        <div>
+          <div class="text-xs text-slate-500">Simultaneous Sessions</div>
+          <div class="text-sm text-slate-900">{{ selectedUser?.simultaneous_use || 1 }}</div>
+        </div>
+      </div>
+
+      <!-- Expiry & Payment Section -->
+      <div class="bg-amber-50 rounded-lg p-4">
+        <h4 class="text-sm font-semibold text-slate-700 mb-3">Subscription & Payment</h4>
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <div class="text-xs text-slate-500">Expiry Date</div>
+            <div class="text-sm text-slate-900">{{ formatDate(selectedUser?.expires_at) }}</div>
+          </div>
+          <div>
+            <div class="text-xs text-slate-500">Days to Expiry</div>
+            <div :class="['text-sm font-semibold', getDaysToExpiryClass(selectedUser?.days_to_expiry)]">
+              {{ formatDaysToExpiry(selectedUser?.days_to_expiry) }}
+            </div>
+          </div>
+          <div>
+            <div class="text-xs text-slate-500">Payment Status</div>
+            <div class="mt-1">
+              <BaseBadge :variant="selectedUser?.payment_status === 'paid' ? 'success' : 'warning'">
+                {{ selectedUser?.payment_status || 'unpaid' }}
+              </BaseBadge>
+            </div>
+          </div>
+          <div>
+            <div class="text-xs text-slate-500">Last Payment</div>
+            <div class="text-sm text-slate-900">{{ formatDate(selectedUser?.last_payment_date) || 'Never' }}</div>
+          </div>
+          <div>
+            <div class="text-xs text-slate-500">Next Payment Due</div>
+            <div class="text-sm text-slate-900">{{ formatDate(selectedUser?.next_payment_due) }}</div>
+          </div>
+          <div>
+            <div class="text-xs text-slate-500">Amount Due</div>
+            <div class="text-sm font-semibold text-slate-900">KES {{ selectedUser?.amount_due || 0 }}</div>
+          </div>
         </div>
       </div>
     </div>
@@ -431,7 +518,7 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { Plus, X, RefreshCw, Edit2, Trash2 } from 'lucide-vue-next'
+import { Plus, X, RefreshCw, Edit2, Eye, EyeOff, Key } from 'lucide-vue-next'
 import { useRoute, useRouter } from 'vue-router'
 import PageContainer from '@/modules/common/components/layout/templates/PageContainer.vue'
 import PageHeader from '@/modules/common/components/layout/templates/PageHeader.vue'
@@ -476,7 +563,8 @@ const {
   fetchUsers, 
   createUser,
   updateUser,
-  deleteUser,
+  viewPassword,
+  resetPassword,
   toggleUserStatus 
 } = usePppoeUsers()
 
@@ -509,6 +597,9 @@ const createdUser = ref(null)
 
 const showUserDetailsModal = ref(false)
 const selectedUser = ref(null)
+const showPasswordValue = ref(false)
+const userPassword = ref('')
+const loadingPassword = ref(false)
 
 const showEditUserOverlay = ref(false)
 const editSubmitting = ref(false)
@@ -694,7 +785,63 @@ const formatPackageSpeed = (pkg) => {
 
 const openUserDetails = (user) => {
   selectedUser.value = user
+  showPasswordValue.value = false
+  userPassword.value = ''
   showUserDetailsModal.value = true
+}
+
+const handleViewPassword = async () => {
+  if (!selectedUser.value) return
+  loadingPassword.value = true
+  try {
+    const data = await viewPassword(selectedUser.value.id)
+    userPassword.value = data?.password || ''
+    showPasswordValue.value = true
+  } catch (err) {
+    console.error('Failed to view password:', err)
+  } finally {
+    loadingPassword.value = false
+  }
+}
+
+const hidePassword = () => {
+  showPasswordValue.value = false
+  userPassword.value = ''
+}
+
+const handleResetPassword = async () => {
+  if (!selectedUser.value) return
+  const confirmed = await confirmStore.open({
+    title: 'Reset Password',
+    message: `Are you sure you want to reset the password for ${selectedUser.value.username}?`,
+    confirmText: 'Reset',
+    cancelText: 'Cancel',
+    variant: 'warning',
+  })
+  
+  if (confirmed) {
+    try {
+      const { generatedPassword: newPassword } = await resetPassword(selectedUser.value.id)
+      userPassword.value = newPassword || ''
+      showPasswordValue.value = true
+    } catch (err) {
+      console.error('Failed to reset password:', err)
+    }
+  }
+}
+
+const getDaysToExpiryClass = (days) => {
+  if (days === null || days === undefined) return 'text-slate-500'
+  if (days < 0) return 'text-red-600'
+  if (days <= 7) return 'text-amber-600'
+  return 'text-green-600'
+}
+
+const formatDaysToExpiry = (days) => {
+  if (days === null || days === undefined) return 'N/A'
+  if (days < 0) return `Expired ${Math.abs(days)} days ago`
+  if (days === 0) return 'Expires today'
+  return `${days} days`
 }
 
 const handleEdit = (user) => {
@@ -774,23 +921,6 @@ const handleToggleStatus = async (user) => {
   }
 }
 
-const handleDelete = async (user) => {
-  const confirmed = await confirmStore.open({
-    title: 'Confirm Deletion',
-    message: `Are you sure you want to delete ${user.name || user.username}? This action cannot be undone.`,
-    confirmText: 'Delete',
-    cancelText: 'Cancel',
-    variant: 'danger',
-  })
-  
-  if (confirmed) {
-    try {
-      await deleteUser(user.id)
-    } catch (err) {
-      console.error('Failed to delete user:', err)
-    }
-  }
-}
 
 // Lifecycle
 onMounted(() => {
