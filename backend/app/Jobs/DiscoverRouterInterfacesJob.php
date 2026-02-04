@@ -42,10 +42,12 @@ class DiscoverRouterInterfacesJob implements ShouldQueue
                 return;
             }
 
-            // Skip if router is already online (another job completed discovery)
-            if ($router->status === 'online') {
-                Log::info('Router already online, skipping discovery', [
+            // Router should already be online (marked by CheckRoutersJob via VPN ping)
+            // This job just discovers interfaces for service configuration
+            if ($router->status !== 'online' && $router->status !== 'pending') {
+                Log::info('Router not in expected state for discovery, skipping', [
                     'router_id' => $router->id,
+                    'status' => $router->status,
                     'tenant_id' => $this->tenantId,
                 ]);
                 return;
@@ -76,9 +78,8 @@ class DiscoverRouterInterfacesJob implements ShouldQueue
                 $liveData = $provisioningService->fetchLiveRouterData($router, 'provisioning', true);
                 
                 if (isset($liveData['interfaces']) && is_array($liveData['interfaces'])) {
-                    // Update router to 'online' status - provisioning complete
+                    // Update router metadata only (status already set to 'online' by CheckRoutersJob)
                     $router->update([
-                        'status' => 'online',
                         'model' => $liveData['board_name'] ?? $router->model,
                         'os_version' => $liveData['version'] ?? $router->os_version,
                         'last_seen' => now(),
@@ -96,13 +97,13 @@ class DiscoverRouterInterfacesJob implements ShouldQueue
                         ]
                     ));
 
-                    Log::info('Router provisioning completed successfully', [
+                    Log::info('Router interface discovery completed', [
                         'router_id' => $router->id,
                         'router_name' => $router->name,
                         'interface_count' => count($liveData['interfaces']),
                         'tenant_id' => $this->tenantId,
-                        'status' => 'online',
-                        'message' => 'Router is now online and ready for service configuration',
+                        'model' => $liveData['board_name'] ?? null,
+                        'message' => 'Interfaces discovered - ready for service configuration',
                     ]);
                 } else {
                     Log::warning('No interfaces found in live data', [

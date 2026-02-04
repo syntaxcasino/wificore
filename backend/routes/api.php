@@ -451,8 +451,13 @@ Route::middleware(['auth:sanctum', 'role:admin', 'user.active', 'tenant.context'
         Route::get('/users/{id}/password', [PppoeUserController::class, 'viewPassword']);
         Route::post('/users/{id}/block', [PppoeUserController::class, 'block']);
         Route::post('/users/{id}/unblock', [PppoeUserController::class, 'unblock']);
+        Route::post('/users/{id}/activate', [PppoeUserController::class, 'activate']);
+        Route::post('/users/{id}/deactivate', [PppoeUserController::class, 'deactivate']);
 
         Route::get('/sessions', [PppoeSessionController::class, 'index']);
+        Route::get('/sessions/live', [PppoeSessionController::class, 'live']);
+        Route::post('/sessions/disconnect', [PppoeSessionController::class, 'disconnect']);
+        Route::post('/sessions/disconnect-all', [PppoeSessionController::class, 'disconnectAll']);
         
         // Payment management routes
         Route::get('/payments', [\App\Http\Controllers\Api\PppoePaymentController::class, 'index']);

@@ -38,6 +38,26 @@ class DeployRouterServiceJob implements ShouldQueue
                 return;
             }
 
+            // Skip if already deployed or currently deploying (prevent duplicate deployments)
+            if ($service->deployment_status === RouterService::DEPLOYMENT_DEPLOYED) {
+                Log::info('Service already deployed, skipping', [
+                    'service_id' => $service->id,
+                    'router_id' => $service->router_id,
+                ]);
+                return;
+            }
+
+            if ($service->deployment_status === RouterService::DEPLOYMENT_IN_PROGRESS) {
+                Log::info('Service deployment already in progress, skipping', [
+                    'service_id' => $service->id,
+                    'router_id' => $service->router_id,
+                ]);
+                return;
+            }
+
+            // Mark as in progress immediately to prevent concurrent deployments
+            $service->update(['deployment_status' => RouterService::DEPLOYMENT_IN_PROGRESS]);
+
             try {
                 Log::info('Starting service deployment', [
                     'service_id' => $service->id,
@@ -111,8 +131,22 @@ class DeployRouterServiceJob implements ShouldQueue
                 return $generator->generate($service);
 
             case RouterService::TYPE_PPPOE:
+                // Collect all interfaces from all PPPoE services on this router
+                $cleanInterfaces = $this->collectCleanInterfaces($service->router_id);
+
+                // CRITICAL: Clone the service model to avoid corrupting the original
+                // The original model will be used for DB updates later
+                $serviceForGeneration = $service->replicate();
+                $serviceForGeneration->id = $service->id;
+                $serviceForGeneration->setRelation('router', $service->router);
+                $serviceForGeneration->setRelation('ipPool', $service->ipPool);
+                
+                if (!empty($cleanInterfaces)) {
+                    $serviceForGeneration->interface_name = $cleanInterfaces;
+                }
+
                 $generator = new ZeroConfigPPPoEGenerator();
-                return $generator->generate($service);
+                return $generator->generate($serviceForGeneration);
 
             case RouterService::TYPE_HYBRID:
                 $generator = new ZeroConfigHybridGenerator();
@@ -120,6 +154,72 @@ class DeployRouterServiceJob implements ShouldQueue
 
             default:
                 throw new \Exception("Unsupported service type: {$service->service_type}");
+        }
+    }
+
+    /**
+     * Collect and clean interface names from all PPPoE services on router
+     */
+    private function collectCleanInterfaces(string $routerId): array
+    {
+        $allInterfaces = [];
+        $pppoeServices = RouterService::where('router_id', $routerId)
+            ->where('service_type', RouterService::TYPE_PPPOE)
+            ->pluck('interface_name');
+
+        foreach ($pppoeServices as $iface) {
+            if (empty($iface)) {
+                continue;
+            }
+            $this->extractInterfaces($iface, $allInterfaces);
+        }
+
+        // Clean: unique, non-empty, valid interface names only
+        return array_values(array_unique(array_filter($allInterfaces, function ($i) {
+            return is_string($i) && preg_match('/^[a-zA-Z0-9_\-\.]+$/', trim($i));
+        })));
+    }
+
+    /**
+     * Recursively extract interface names from potentially nested JSON
+     */
+    private function extractInterfaces($value, array &$interfaces): void
+    {
+        if (is_array($value)) {
+            foreach ($value as $item) {
+                $this->extractInterfaces($item, $interfaces);
+            }
+            return;
+        }
+
+        if (!is_string($value) || empty($value)) {
+            return;
+        }
+
+        // Try JSON decode
+        $decoded = json_decode($value, true);
+        if (is_array($decoded)) {
+            foreach ($decoded as $item) {
+                $this->extractInterfaces($item, $interfaces);
+            }
+            return;
+        }
+
+        // Check if comma-separated
+        if (str_contains($value, ',')) {
+            foreach (explode(',', $value) as $part) {
+                $trimmed = trim($part);
+                if (!empty($trimmed) && preg_match('/^[a-zA-Z0-9_\-\.]+$/', $trimmed)) {
+                    $interfaces[] = $trimmed;
+                }
+            }
+            return;
+        }
+
+        // Plain interface name
+        $trimmed = trim($value);
+        if (!empty($trimmed) && preg_match('/^[a-zA-Z0-9_\-\.]+$/', $trimmed)) {
+            $interfaces[] = $trimmed;
         }
     }
 }

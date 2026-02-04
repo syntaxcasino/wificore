@@ -119,11 +119,25 @@ class PPPoEService extends BaseMikroTikService
         // Add PPPoE bridge to LAN list (single-line)
         $script[] = ":do { :if ([/interface list member find list=LAN interface=\"{$bridgeName}\"] = \"\") do={ /interface list member add list=LAN interface=\"{$bridgeName}\" comment=\"WiFiCore PPPoE bridge\" } } on-error={}";
         $script[] = '';
+
+        // Add PPPoE bridge to PPPOE interface list so we can safely exclude it from FastTrack rules
+        $script[] = ':do { /interface list add name=PPPOE; } on-error={}';
+        $script[] = ":do { :if ([/interface list member find list=PPPOE interface=\"{$bridgeName}\"] = \"\") do={ /interface list member add list=PPPOE interface=\"{$bridgeName}\" comment=\"WiFiCore PPPoE list\" } } on-error={}";
+        $script[] = '';
+
+        // Ensure PPPoE traffic is not FastTracked (FastTrack bypasses queues and breaks Mikrotik-Rate-Limit)
+        $script[] = ":do { /ip firewall filter remove [find comment=\"WiFiCore PPPoE NO-FT ({$routerId})\"]; } on-error={}";
+        $script[] = ":do { /ip firewall filter add chain=forward action=accept connection-state=established,related in-interface-list=PPPOE place-before=0 comment=\"WiFiCore PPPoE NO-FT ({$routerId})\"; } on-error={ :error \"PPPoE: NO-FT rule add failed\" }";
+        $script[] = '';
         
         // RADIUS configuration with incoming/accounting enabled for rate limiting
         if ($useRadius) {
             $script[] = ':do { /radius remove [find service=ppp comment~"WiFiCore PPPoE"]; } on-error={}';
             $script[] = ":do { /radius add service=ppp address={$radiusIp} secret={$radiusSecret} authentication-port=1812 accounting-port=1813 timeout=3s comment=\"WiFiCore PPPoE ({$routerId})\"; } on-error={ :error \"PPPoE: RADIUS configure failed\" }";
+            $script[] = '';
+
+            // Ensure PPP uses RADIUS and accounting is enabled (required for radacct + session age)
+            $script[] = ':do { /ppp aaa set use-radius=yes accounting=yes interim-update=5m; } on-error={ :error "PPPoE: PPP AAA configure failed" }';
             $script[] = '';
             
             // Enable RADIUS incoming to accept CoA (Change of Authorization) for rate limit changes
@@ -193,7 +207,7 @@ class PPPoEService extends BaseMikroTikService
         $script[] = '';
 
         // PPP Profile (single-line)
-        $script[] = ":do { /ppp profile remove [find name=\"{$profileName}\"]; /ppp profile add name=\"{$profileName}\" use-radius=yes local-address={$gateway} remote-address=\"{$poolName}\" dns-server=\"{$dnsServers}\" use-compression=no use-encryption=no only-one=no change-tcp-mss=yes; } on-error={ :error \"PPPoE: PPP profile create failed ({$profileName})\" }";
+        $script[] = ":do { /ppp profile remove [find name=\"{$profileName}\"]; /ppp profile add name=\"{$profileName}\" use-radius=yes local-address={$gateway} remote-address=\"{$poolName}\" dns-server=\"{$dnsServers}\" use-compression=no use-encryption=no only-one=no change-tcp-mss=yes rate-limit=\"\"; } on-error={ :error \"PPPoE: PPP profile create failed ({$profileName})\" }";
         $script[] = ":if ([:len [/ppp profile find name=\"{$profileName}\"]] = 0) do={ :error \"PPPoE: PPP profile missing ({$profileName})\" }";
         $script[] = '';
 
