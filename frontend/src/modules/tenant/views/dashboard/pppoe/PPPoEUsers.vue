@@ -139,16 +139,70 @@
                   </td>
                   <td class="px-6 py-4 text-right" @click.stop>
                     <div class="flex items-center justify-end gap-1">
-                      <BaseButton @click="handleEdit(user)" variant="ghost" size="sm">
-                        <Edit2 class="w-3 h-3" />
+                      <!-- View icon only - primary action -->
+                      <BaseButton @click="openUserDetails(user)" variant="ghost" size="sm" title="View Details">
+                        <Eye class="w-4 h-4 text-slate-600" />
                       </BaseButton>
-                      <BaseButton 
-                        @click="handleToggleStatus(user)" 
-                        :variant="user.status === 'blocked' ? 'success' : 'warning'" 
-                        size="sm"
-                      >
-                        {{ user.status === 'blocked' ? 'Unblock' : 'Block' }}
-                      </BaseButton>
+                      
+                      <!-- 3-dot menu for other actions -->
+                      <div class="relative" @click.stop>
+                        <BaseButton 
+                          @click="toggleActionMenu(user.id)" 
+                          variant="ghost" 
+                          size="sm"
+                          title="More Actions"
+                        >
+                          <MoreVertical class="w-4 h-4 text-slate-600" />
+                        </BaseButton>
+                        
+                        <!-- Dropdown Menu -->
+                        <div 
+                          v-if="activeMenuId === user.id" 
+                          class="absolute right-0 top-full mt-1 w-44 bg-white border border-slate-200 rounded-lg shadow-lg z-50"
+                        >
+                          <div class="py-1">
+                            <button 
+                              @click="handleEdit(user); closeActionMenu()" 
+                              class="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                            >
+                              <Edit2 class="w-4 h-4" />
+                              Edit User
+                            </button>
+                            <button 
+                              v-if="user.status !== 'blocked'"
+                              @click="handleToggleStatus(user); closeActionMenu()" 
+                              class="w-full px-4 py-2 text-left text-sm text-amber-600 hover:bg-amber-50 flex items-center gap-2"
+                            >
+                              <UserX class="w-4 h-4" />
+                              Block User
+                            </button>
+                            <button 
+                              v-else
+                              @click="handleToggleStatus(user); closeActionMenu()" 
+                              class="w-full px-4 py-2 text-left text-sm text-green-600 hover:bg-green-50 flex items-center gap-2"
+                            >
+                              <UserCheck class="w-4 h-4" />
+                              Unblock User
+                            </button>
+                            <button 
+                              v-if="user.status === 'active'"
+                              @click="handleDeactivate(user); closeActionMenu()" 
+                              class="w-full px-4 py-2 text-left text-sm text-slate-600 hover:bg-slate-50 flex items-center gap-2"
+                            >
+                              <PowerOff class="w-4 h-4" />
+                              Deactivate
+                            </button>
+                            <button 
+                              v-if="user.status === 'inactive'"
+                              @click="handleActivate(user); closeActionMenu()" 
+                              class="w-full px-4 py-2 text-left text-sm text-blue-600 hover:bg-blue-50 flex items-center gap-2"
+                            >
+                              <Power class="w-4 h-4" />
+                              Activate
+                            </button>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </td>
                 </tr>
@@ -386,15 +440,17 @@
       <!-- Account Info Section -->
       <div class="bg-slate-50 rounded-lg p-4">
         <h4 class="text-sm font-semibold text-slate-700 mb-3">Account Information</h4>
+        
+        <!-- Username with Account Number prominently displayed below -->
+        <div class="mb-4 p-3 bg-white rounded-lg border border-slate-200">
+          <div class="text-xs text-slate-500 mb-1">PPPoE Username</div>
+          <div class="text-lg font-mono font-semibold text-slate-900">{{ selectedUser?.username || 'N/A' }}</div>
+          <div class="text-sm font-mono text-indigo-600 mt-1">
+            ACC({{ selectedUser?.account_number || 'N/A' }})
+          </div>
+        </div>
+        
         <div class="grid grid-cols-2 gap-4">
-          <div>
-            <div class="text-xs text-slate-500">Username</div>
-            <div class="text-sm font-mono text-slate-900">{{ selectedUser?.username || 'N/A' }}</div>
-          </div>
-          <div>
-            <div class="text-xs text-slate-500">Account Number</div>
-            <div class="text-sm font-mono text-slate-900">{{ selectedUser?.account_number || 'N/A' }}</div>
-          </div>
           <div>
             <div class="text-xs text-slate-500">Status</div>
             <div class="mt-1">
@@ -517,8 +573,8 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { Plus, X, RefreshCw, Edit2, Eye, EyeOff, Key } from 'lucide-vue-next'
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { Plus, X, RefreshCw, Edit2, Eye, EyeOff, Key, MoreVertical, Power, PowerOff, UserCheck, UserX } from 'lucide-vue-next'
 import { useRoute, useRouter } from 'vue-router'
 import PageContainer from '@/modules/common/components/layout/templates/PageContainer.vue'
 import PageHeader from '@/modules/common/components/layout/templates/PageHeader.vue'
@@ -536,6 +592,7 @@ import BaseAlert from '@/modules/common/components/base/BaseAlert.vue'
 import BaseInput from '@/modules/common/components/base/BaseInput.vue'
 import BaseModal from '@/modules/common/components/base/BaseModal.vue'
 import SlideOverlay from '@/modules/common/components/base/SlideOverlay.vue'
+import axios from 'axios'
 
 import { usePppoeUsers } from '@/modules/tenant/composables/data/usePppoeUsers'
 import { useFilters } from '@/modules/common/composables/utils/useFilters'
@@ -600,6 +657,9 @@ const selectedUser = ref(null)
 const showPasswordValue = ref(false)
 const userPassword = ref('')
 const loadingPassword = ref(false)
+
+// 3-dot menu state
+const activeMenuId = ref(null)
 
 const showEditUserOverlay = ref(false)
 const editSubmitting = ref(false)
@@ -921,12 +981,70 @@ const handleToggleStatus = async (user) => {
   }
 }
 
+// 3-dot menu handlers
+const toggleActionMenu = (userId) => {
+  activeMenuId.value = activeMenuId.value === userId ? null : userId
+}
+
+const closeActionMenu = () => {
+  activeMenuId.value = null
+}
+
+// Activate/Deactivate handlers
+const handleActivate = async (user) => {
+  const confirmed = await confirmStore.open({
+    title: 'Activate User',
+    message: `Are you sure you want to activate ${user.name || user.username}? This will allow them to connect.`,
+    confirmText: 'Activate',
+    cancelText: 'Cancel',
+    variant: 'info',
+  })
+  
+  if (confirmed) {
+    try {
+      await axios.post(`pppoe/users/${user.id}/activate`)
+      await fetchUsers()
+    } catch (err) {
+      console.error('Failed to activate user:', err)
+    }
+  }
+}
+
+const handleDeactivate = async (user) => {
+  const confirmed = await confirmStore.open({
+    title: 'Deactivate User',
+    message: `Are you sure you want to deactivate ${user.name || user.username}? This will prevent them from connecting.`,
+    confirmText: 'Deactivate',
+    cancelText: 'Cancel',
+    variant: 'warning',
+  })
+  
+  if (confirmed) {
+    try {
+      await axios.post(`pppoe/users/${user.id}/deactivate`)
+      await fetchUsers()
+    } catch (err) {
+      console.error('Failed to deactivate user:', err)
+    }
+  }
+}
+
+// Close menu when clicking outside
+const handleClickOutside = (event) => {
+  if (activeMenuId.value && !event.target.closest('.relative')) {
+    closeActionMenu()
+  }
+}
+
 
 // Lifecycle
 onMounted(() => {
   fetchUsers()
   fetchPackages()
   fetchRouters()
+
+  // Add click outside listener for dropdown menu
+  document.addEventListener('click', handleClickOutside)
 
   const tenantId = authStore.tenantId
   if (tenantId) {
@@ -939,6 +1057,10 @@ onMounted(() => {
       '.PppoeUserDeleted': () => fetchUsers(),
     })
   }
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', handleClickOutside)
 })
 
 watch(

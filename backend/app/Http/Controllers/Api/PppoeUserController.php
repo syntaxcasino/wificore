@@ -10,6 +10,7 @@ use App\Models\Package;
 use App\Models\PppoeUser;
 use App\Models\Router;
 use App\Models\Tenant;
+use App\Services\MikroTik\SshExecutor;
 use App\Services\TenantContext;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -52,6 +53,43 @@ class PppoeUserController extends Controller
         }
         
         return Tenant::find($tenantId);
+    }
+
+    private function disconnectPppoeUserSessions(PppoeUser $pppoeUser): void
+    {
+        try {
+            if (empty($pppoeUser->router_id) || empty($pppoeUser->username)) {
+                return;
+            }
+
+            $router = Router::find($pppoeUser->router_id);
+            if (!$router) {
+                return;
+            }
+
+            $username = (string) $pppoeUser->username;
+
+            $ssh = new SshExecutor($router, 5);
+            $ssh->connect();
+
+            // PPPoE active sessions typically use the PPP secret name as the active session name.
+            // Use both selectors (name/user) for compatibility across RouterOS versions.
+            $ssh->exec(sprintf('/ppp active remove [find name="%s"]', addslashes($username)));
+            $ssh->exec(sprintf('/ppp active remove [find user="%s"]', addslashes($username)));
+            $ssh->disconnect();
+
+            Log::info('PPPoE active sessions disconnected (best-effort)', [
+                'pppoe_user_id' => (string) $pppoeUser->id,
+                'username' => $username,
+                'router_id' => (string) $router->id,
+            ]);
+        } catch (\Exception $e) {
+            Log::warning('Failed to disconnect PPPoE active sessions (best-effort)', [
+                'pppoe_user_id' => (string) ($pppoeUser->id ?? ''),
+                'username' => (string) ($pppoeUser->username ?? ''),
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     public function index(Request $request)
@@ -171,7 +209,7 @@ class PppoeUserController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Password not available. User may need password reset.',
-            ], 404);
+            ], 200);
         }
 
         Log::info('PPPoE password viewed', [
@@ -229,6 +267,9 @@ class PppoeUserController extends Controller
             });
 
             event(new PppoeUserUpdated($pppoeUser, (string) $tenant->id));
+
+            // Force re-auth so new password is applied.
+            $this->disconnectPppoeUserSessions($pppoeUser);
 
             return response()->json([
                 'success' => true,
@@ -290,10 +331,11 @@ class PppoeUserController extends Controller
         }
 
         $validator = Validator::make($request->all(), [
-            'username' => 'required|string|max:64|regex:/^[a-z0-9_\.-]+$/i',
+            'username' => 'required|string|max:64|regex:/^[a-z0-9_\.\-]+$/i',
             'package_id' => 'required|uuid',
             'router_id' => 'required|uuid',
             'simultaneous_use' => 'nullable|integer|min:1|max:50',
+            'grace_period_days' => 'nullable|integer|min:0|max:365',
         ]);
 
         if ($validator->fails()) {
@@ -328,7 +370,10 @@ class PppoeUserController extends Controller
             ], 404);
         }
 
-        $expiresAt = $this->calculateExpiresAtFromPackage($package, now());
+        // Calculate expiry: package duration + optional grace period
+        $gracePeriodDays = (int) ($request->grace_period_days ?? 0);
+        $baseExpiresAt = $this->calculateExpiresAtFromPackage($package, now());
+        $expiresAt = $gracePeriodDays > 0 ? $baseExpiresAt->copy()->addDays($gracePeriodDays) : $baseExpiresAt;
         $rateLimit = $this->formatMikrotikRateLimit((string) $package->download_speed, (string) $package->upload_speed);
 
         try {
@@ -358,6 +403,7 @@ class PppoeUserController extends Controller
                 $nextPaymentDue = $expiresAt ? clone $expiresAt : now()->addDays(30);
 
                 // STEP 3: Create PPPoE user in tenant schema
+                // Default to ACTIVE so user can connect, but payment_status is UNPAID until paid
                 $pppoeUser = PppoeUser::create([
                     'username' => $username,
                     'password' => bcrypt($plainPassword),
@@ -377,6 +423,15 @@ class PppoeUserController extends Controller
 
                 // STEP 4: Sync RADIUS credentials in tenant schema
                 $this->syncRadiusCredentials($username, $plainPassword, $expiresAt, $rateLimit, $simultaneousUse, (string) $tenant->id);
+
+                $this->syncRadiusMetaForUser(
+                    $pppoeUser->username,
+                    $pppoeUser->expires_at,
+                    $pppoeUser->rate_limit,
+                    (int) $pppoeUser->simultaneous_use,
+                    (bool) $pppoeUser->is_active,
+                    (string) $pppoeUser->status
+                );
 
                 $pppoeUser->load([
                     'package:id,name,type,download_speed,upload_speed,duration',
@@ -451,7 +506,7 @@ class PppoeUserController extends Controller
             'router_id' => 'sometimes|required|uuid',
             'simultaneous_use' => 'sometimes|required|integer|min:1|max:50',
             'is_active' => 'sometimes|boolean',
-            'status' => 'sometimes|required|string|in:active,inactive,blocked,expired',
+            'status' => 'sometimes|required|string|in:active,inactive,blocked,expired,suspended',
         ]);
 
         if ($validator->fails()) {
@@ -461,6 +516,9 @@ class PppoeUserController extends Controller
                 'errors' => $validator->errors(),
             ], 422);
         }
+
+        $previousRateLimit = $pppoeUser->rate_limit;
+        $previousPackageId = $pppoeUser->package_id;
 
         $package = null;
         if ($request->has('package_id')) {
@@ -537,6 +595,17 @@ class PppoeUserController extends Controller
             });
 
             event(new PppoeUserUpdated($pppoeUser, (string) $tenant->id));
+
+            $rateLimitChanged = (string) ($previousRateLimit ?? '') !== (string) ($pppoeUser->rate_limit ?? '');
+            $packageChanged = (string) ($previousPackageId ?? '') !== (string) ($pppoeUser->package_id ?? '');
+            $isNowBlockedOrInactive = !$pppoeUser->is_active || $pppoeUser->status === 'blocked' || $pppoeUser->status === 'expired' || $pppoeUser->status === 'inactive' || $pppoeUser->status === 'suspended';
+
+            // IMPORTANT: MikroTik does not reliably apply new Mikrotik-Rate-Limit mid-session.
+            // Force re-auth by disconnecting the active PPP session when rate limit/package changes,
+            // or when the account is blocked/inactive/expired.
+            if ($rateLimitChanged || $packageChanged || $isNowBlockedOrInactive) {
+                $this->disconnectPppoeUserSessions($pppoeUser);
+            }
 
             $pppoeUser->load([
                 'package:id,name,type,download_speed,upload_speed,duration',
@@ -640,24 +709,21 @@ class PppoeUserController extends Controller
                 $pppoeUser->status = 'blocked';
                 $pppoeUser->save();
 
-                // Remove all existing radcheck entries for this user
-                DB::table('radcheck')->where('username', $pppoeUser->username)->delete();
-                
-                // Add Auth-Type := Reject to block authentication
-                DB::table('radcheck')->insert([
-                    'username' => $pppoeUser->username,
-                    'attribute' => 'Auth-Type',
-                    'op' => ':=',
-                    'value' => 'Reject',
-                    'created_at' => now(),
-                    'updated_at' => now(),
-                ]);
+                // Block authentication WITHOUT deleting Cleartext-Password
+                // This preserves password visibility while still rejecting auth.
+                DB::table('radcheck')->updateOrInsert(
+                    ['username' => $pppoeUser->username, 'attribute' => 'Auth-Type'],
+                    ['op' => ':=', 'value' => 'Reject', 'updated_at' => now(), 'created_at' => now()]
+                );
                 
                 // Remove rate limit reply attributes so blocked user has no service
                 DB::table('radreply')->where('username', $pppoeUser->username)->delete();
             });
 
             event(new PppoeUserUpdated($pppoeUser, (string) $tenant->id));
+
+            // Disconnect active session immediately so blocked users lose internet right away.
+            $this->disconnectPppoeUserSessions($pppoeUser);
 
             return response()->json([
                 'success' => true,
@@ -698,20 +764,26 @@ class PppoeUserController extends Controller
             // Ensure schema mapping in PUBLIC schema (metadata)
             $this->ensureRadiusSchemaMapping($pppoeUser->username, $tenant->schema_name, (string) $tenant->id);
 
-            // Unblock user in TENANT schema
+            // Unblock user in TENANT schema - fully restore RADIUS credentials
             $this->tenantContext->runInTenantContext($tenant, function () use ($pppoeUser, $tenant) {
                 $pppoeUser->is_active = true;
-                if ($pppoeUser->status === 'blocked') {
+                // Reset status to active for blocked/inactive/suspended users
+                if (in_array($pppoeUser->status, ['blocked', 'inactive', 'suspended'])) {
                     $pppoeUser->status = 'active';
                 }
+                // Clear suspension if any
+                $pppoeUser->suspended_at = null;
+                $pppoeUser->suspension_reason = null;
                 $pppoeUser->save();
 
+                // Remove Auth-Type Reject to allow authentication
                 DB::table('radcheck')
                     ->where('username', $pppoeUser->username)
                     ->where('attribute', 'Auth-Type')
                     ->where('value', 'Reject')
                     ->delete();
 
+                // Fully restore radreply attributes including rate-limit
                 DB::table('radreply')->updateOrInsert(
                     ['username' => $pppoeUser->username, 'attribute' => 'Tenant-ID'],
                     ['op' => ':=', 'value' => (string) $tenant->id, 'updated_at' => now(), 'created_at' => now()]
@@ -721,6 +793,24 @@ class PppoeUserController extends Controller
                     ['op' => ':=', 'value' => 'Framed-User', 'updated_at' => now(), 'created_at' => now()]
                 );
 
+                // CRITICAL: Restore rate-limit attribute that was deleted during block
+                if ($pppoeUser->rate_limit) {
+                    DB::table('radreply')->updateOrInsert(
+                        ['username' => $pppoeUser->username, 'attribute' => 'Mikrotik-Rate-Limit'],
+                        ['op' => ':=', 'value' => $pppoeUser->rate_limit, 'updated_at' => now(), 'created_at' => now()]
+                    );
+                }
+
+                // Restore session timeout if expiry is set
+                if ($pppoeUser->expires_at) {
+                    $sessionTimeout = max(60, (int) now()->diffInSeconds($pppoeUser->expires_at, false));
+                    DB::table('radreply')->updateOrInsert(
+                        ['username' => $pppoeUser->username, 'attribute' => 'Session-Timeout'],
+                        ['op' => ':=', 'value' => (string) $sessionTimeout, 'updated_at' => now(), 'created_at' => now()]
+                    );
+                }
+
+                // Update radcheck attributes
                 $this->syncRadiusMetaForUser(
                     $pppoeUser->username,
                     $pppoeUser->expires_at,
@@ -735,7 +825,7 @@ class PppoeUserController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'PPPoE user unblocked',
+                'message' => 'PPPoE user unblocked and activated',
             ], 200);
         } catch (\Exception $e) {
             Log::error('Failed to unblock PPPoE user', [
@@ -746,6 +836,180 @@ class PppoeUserController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to unblock PPPoE user: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Activate an inactive PPPoE user
+     * This restores full RADIUS credentials and allows the user to connect
+     */
+    public function activate(Request $request, string $id)
+    {
+        $tenant = $this->getAuthenticatedTenant($request);
+        if (!$tenant) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Tenant context not available. Please contact support.',
+            ], 500);
+        }
+
+        $pppoeUser = PppoeUser::find($id);
+        if (!$pppoeUser) {
+            return response()->json([
+                'success' => false,
+                'message' => 'PPPoE user not found',
+            ], 404);
+        }
+
+        try {
+            // Ensure schema mapping in PUBLIC schema (metadata)
+            $this->ensureRadiusSchemaMapping($pppoeUser->username, $tenant->schema_name, (string) $tenant->id);
+
+            // Activate user in TENANT schema
+            $passwordRestored = $this->tenantContext->runInTenantContext($tenant, function () use ($pppoeUser, $tenant) {
+                $pppoeUser->is_active = true;
+                $pppoeUser->status = 'active';
+                $pppoeUser->suspended_at = null;
+                $pppoeUser->suspension_reason = null;
+                $pppoeUser->save();
+
+                // Remove Auth-Type Reject to allow authentication
+                DB::table('radcheck')
+                    ->where('username', $pppoeUser->username)
+                    ->where('attribute', 'Auth-Type')
+                    ->where('value', 'Reject')
+                    ->delete();
+
+                // Check if Cleartext-Password exists - if not, password needs reset
+                $hasPassword = DB::table('radcheck')
+                    ->where('username', $pppoeUser->username)
+                    ->where('attribute', 'Cleartext-Password')
+                    ->exists();
+
+                // Restore radreply attributes
+                DB::table('radreply')->updateOrInsert(
+                    ['username' => $pppoeUser->username, 'attribute' => 'Tenant-ID'],
+                    ['op' => ':=', 'value' => (string) $tenant->id, 'updated_at' => now(), 'created_at' => now()]
+                );
+                DB::table('radreply')->updateOrInsert(
+                    ['username' => $pppoeUser->username, 'attribute' => 'Service-Type'],
+                    ['op' => ':=', 'value' => 'Framed-User', 'updated_at' => now(), 'created_at' => now()]
+                );
+
+                // Restore rate-limit
+                if ($pppoeUser->rate_limit) {
+                    DB::table('radreply')->updateOrInsert(
+                        ['username' => $pppoeUser->username, 'attribute' => 'Mikrotik-Rate-Limit'],
+                        ['op' => ':=', 'value' => $pppoeUser->rate_limit, 'updated_at' => now(), 'created_at' => now()]
+                    );
+                }
+
+                // Restore session timeout
+                if ($pppoeUser->expires_at) {
+                    $sessionTimeout = max(60, (int) now()->diffInSeconds($pppoeUser->expires_at, false));
+                    DB::table('radreply')->updateOrInsert(
+                        ['username' => $pppoeUser->username, 'attribute' => 'Session-Timeout'],
+                        ['op' => ':=', 'value' => (string) $sessionTimeout, 'updated_at' => now(), 'created_at' => now()]
+                    );
+                }
+
+                // Update radcheck meta
+                $this->syncRadiusMetaForUser(
+                    $pppoeUser->username,
+                    $pppoeUser->expires_at,
+                    $pppoeUser->rate_limit,
+                    (int) $pppoeUser->simultaneous_use,
+                    true,
+                    'active'
+                );
+
+                return $hasPassword;
+            });
+
+            event(new PppoeUserUpdated($pppoeUser, (string) $tenant->id));
+
+            $message = 'PPPoE user activated successfully';
+            if (!$passwordRestored) {
+                $message .= '. Note: Password not found - user may need password reset.';
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => $message,
+                'password_exists' => $passwordRestored,
+            ], 200);
+        } catch (\Exception $e) {
+            Log::error('Failed to activate PPPoE user', [
+                'error' => $e->getMessage(),
+                'pppoe_user_id' => $pppoeUser->id,
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to activate PPPoE user: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Deactivate a PPPoE user (set to inactive without blocking)
+     * User will not be able to connect until reactivated
+     */
+    public function deactivate(Request $request, string $id)
+    {
+        $tenant = $this->getAuthenticatedTenant($request);
+        if (!$tenant) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Tenant context not available. Please contact support.',
+            ], 500);
+        }
+
+        $pppoeUser = PppoeUser::find($id);
+        if (!$pppoeUser) {
+            return response()->json([
+                'success' => false,
+                'message' => 'PPPoE user not found',
+            ], 404);
+        }
+
+        try {
+            // Ensure schema mapping in PUBLIC schema (metadata)
+            $this->ensureRadiusSchemaMapping($pppoeUser->username, $tenant->schema_name, (string) $tenant->id);
+
+            // Deactivate user in TENANT schema
+            $this->tenantContext->runInTenantContext($tenant, function () use ($pppoeUser) {
+                $pppoeUser->is_active = false;
+                $pppoeUser->status = 'inactive';
+                $pppoeUser->save();
+
+                // Set Auth-Type Reject to block authentication
+                // Password is preserved for future reactivation
+                DB::table('radcheck')->updateOrInsert(
+                    ['username' => $pppoeUser->username, 'attribute' => 'Auth-Type'],
+                    ['op' => ':=', 'value' => 'Reject', 'updated_at' => now(), 'created_at' => now()]
+                );
+            });
+
+            event(new PppoeUserUpdated($pppoeUser, (string) $tenant->id));
+
+            // Disconnect active session so user loses access immediately
+            $this->disconnectPppoeUserSessions($pppoeUser);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'PPPoE user deactivated',
+            ], 200);
+        } catch (\Exception $e) {
+            Log::error('Failed to deactivate PPPoE user', [
+                'error' => $e->getMessage(),
+                'pppoe_user_id' => $pppoeUser->id,
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to deactivate PPPoE user: ' . $e->getMessage(),
             ], 500);
         }
     }
@@ -894,7 +1158,7 @@ class PppoeUserController extends Controller
      */
     private function syncRadiusMetaForUser(string $username, $expiresAt, ?string $rateLimit, int $simultaneousUse, bool $isActive, string $status): void
     {
-        if (!$isActive || $status === 'blocked') {
+        if (!$isActive || $status === 'blocked' || $status === 'expired' || $status === 'inactive' || $status === 'suspended') {
             DB::table('radcheck')->updateOrInsert(
                 ['username' => $username, 'attribute' => 'Auth-Type'],
                 ['op' => ':=', 'value' => 'Reject', 'updated_at' => now(), 'created_at' => now()]

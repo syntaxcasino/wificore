@@ -161,21 +161,15 @@ class SshExecutor
         $ip = $router->vpn_ip ?? $router->ip_address;
         $this->host = explode('/', $ip)[0];
 
-        $portCandidate = (int) ($router->port ?? 0);
-        if ($portCandidate <= 0) {
-            $portCandidate = 22;
-        }
-
-        if (in_array($portCandidate, [8728, 8729, 8720], true)) {
-            Log::debug('SSH Executor: Router port appears to be RouterOS API port, defaulting SSH to 22', [
-                'router_id' => $router->id,
-                'host' => $this->host,
-                'router_port' => $portCandidate,
-            ]);
-            $portCandidate = 22;
-        }
-
-        $this->port = $portCandidate;
+        // SSH always uses port 22 - router->port is for RouterOS API (8728)
+        // The config script sets: /ip service set ssh disabled=no port=22
+        $this->port = 22;
+        
+        Log::debug('SSH Executor: Using SSH port 22', [
+            'router_id' => $router->id,
+            'host' => $this->host,
+            'router_api_port' => $router->port ?? 'not set',
+        ]);
 
         if (!$this->isReachable($this->host)) {
             Log::warning('SSH Executor: Host not reachable (ping + tcp probe failed)', [

@@ -3,7 +3,9 @@
 namespace App\Jobs;
 
 use App\Models\PppoeUser;
+use App\Models\Router;
 use App\Models\Tenant;
+use App\Services\MikroTik\SshExecutor;
 use App\Traits\TenantAwareJob;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -24,7 +26,7 @@ class CheckPppoePaymentStatusJob implements ShouldQueue
     public function __construct(string $tenantId = null)
     {
         $this->tenantId = $tenantId;
-        $this->onQueue('payment-monitoring');
+        $this->onQueue('payment-checks');
     }
 
     public function handle(): void
@@ -79,6 +81,9 @@ class CheckPppoePaymentStatusJob implements ShouldQueue
                     // Update RADIUS to reject authentication
                     $this->blockUserInRadius($user);
 
+                    // Disconnect active PPPoE session immediately (best-effort)
+                    $this->disconnectPppoeSessions($user);
+
                     Log::warning('PPPoE user suspended for non-payment', [
                         'tenant_id' => $this->tenantId,
                         'user_id' => $user->id,
@@ -99,7 +104,13 @@ class CheckPppoePaymentStatusJob implements ShouldQueue
                     $user->payment_status = 'unpaid';
                     $user->next_payment_due = now()->addDays(7); // 7 days to renew
                     $user->last_payment_date = null;
+                    $user->is_active = false;
+                    $user->status = 'expired';
                     $user->save();
+
+                    // Block in RADIUS and disconnect active session (best-effort)
+                    $this->blockUserInRadius($user);
+                    $this->disconnectPppoeSessions($user);
 
                     Log::info('PPPoE user subscription expired, payment required', [
                         'tenant_id' => $this->tenantId,
@@ -123,6 +134,42 @@ class CheckPppoePaymentStatusJob implements ShouldQueue
                 ]);
             }
         });
+    }
+
+    private function disconnectPppoeSessions(PppoeUser $user): void
+    {
+        try {
+            if (empty($user->router_id) || empty($user->username)) {
+                return;
+            }
+
+            $router = Router::find($user->router_id);
+            if (!$router) {
+                return;
+            }
+
+            $ssh = new SshExecutor($router, 5);
+            $ssh->connect();
+
+            $username = (string) $user->username;
+            $ssh->exec(sprintf('/ppp active remove [find name="%s"]', addslashes($username)));
+            $ssh->exec(sprintf('/ppp active remove [find user="%s"]', addslashes($username)));
+            $ssh->disconnect();
+
+            Log::info('PPPoE sessions disconnected due to subscription state (best-effort)', [
+                'tenant_id' => $this->tenantId,
+                'user_id' => (string) $user->id,
+                'username' => $username,
+                'router_id' => (string) $router->id,
+            ]);
+        } catch (\Exception $e) {
+            Log::warning('Failed to disconnect PPPoE sessions (best-effort)', [
+                'tenant_id' => $this->tenantId,
+                'user_id' => (string) ($user->id ?? ''),
+                'username' => (string) ($user->username ?? ''),
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     private function blockUserInRadius(PppoeUser $user): void

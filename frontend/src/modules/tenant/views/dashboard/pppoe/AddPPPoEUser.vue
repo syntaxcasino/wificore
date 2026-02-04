@@ -62,6 +62,15 @@
                 :error="fieldErrors.simultaneous_use"
                 required
               />
+
+              <BaseInput
+                v-model="form.grace_period_days"
+                type="number"
+                label="Grace Period (Days)"
+                placeholder="0"
+                :error="fieldErrors.grace_period_days"
+                hint="Extra days added to package duration. Default: 0"
+              />
             </div>
 
             <div class="flex items-center justify-end gap-3 pt-2">
@@ -146,6 +155,7 @@ const form = reactive({
   package_id: '',
   router_id: '',
   simultaneous_use: 1,
+  grace_period_days: 0,
 })
 
 const submitting = ref(false)
@@ -155,6 +165,7 @@ const fieldErrors = reactive({
   package_id: '',
   router_id: '',
   simultaneous_use: '',
+  grace_period_days: '',
 })
 
 const showPasswordModal = ref(false)
@@ -167,6 +178,7 @@ const resetErrors = () => {
   fieldErrors.package_id = ''
   fieldErrors.router_id = ''
   fieldErrors.simultaneous_use = ''
+  fieldErrors.grace_period_days = ''
 }
 
 const handleSubmit = async () => {
@@ -179,6 +191,7 @@ const handleSubmit = async () => {
       package_id: form.package_id,
       router_id: form.router_id,
       simultaneous_use: Number(form.simultaneous_use || 1),
+      grace_period_days: Number(form.grace_period_days || 0),
     }
 
     const { user, generatedPassword: password } = await createUser(payload)
@@ -195,6 +208,7 @@ const handleSubmit = async () => {
       fieldErrors.package_id = errors.package_id?.[0] || ''
       fieldErrors.router_id = errors.router_id?.[0] || ''
       fieldErrors.simultaneous_use = errors.simultaneous_use?.[0] || ''
+      fieldErrors.grace_period_days = errors.grace_period_days?.[0] || ''
       formError.value = message
     } else {
       formError.value = message

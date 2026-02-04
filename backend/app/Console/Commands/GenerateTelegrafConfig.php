@@ -196,6 +196,18 @@ class GenerateTelegrafConfig extends Command
                         $lines[] = 'oid = "1.3.6.1.4.1.14988.1.1.3.8.0"';
                         $lines[] = '';
 
+                        // Temperature (MikroTik specific)
+                        $lines[] = '[[inputs.snmp.field]]';
+                        $lines[] = 'name = "temperature"';
+                        $lines[] = 'oid = "1.3.6.1.4.1.14988.1.1.3.11.0"';
+                        $lines[] = '';
+
+                        // Active PPPoE sessions count (MikroTik PPP active count)
+                        $lines[] = '[[inputs.snmp.field]]';
+                        $lines[] = 'name = "pppoe_sessions"';
+                        $lines[] = 'oid = "1.3.6.1.4.1.14988.1.1.5.4.0"';
+                        $lines[] = '';
+
                         $lines[] = '[[inputs.snmp]]';
                         $lines[] = "interval = \"{$slowInterval}\"";
                         $lines[] = "agents = [\"udp://{$ip}:161\"]";
@@ -277,6 +289,30 @@ class GenerateTelegrafConfig extends Command
                         $lines[] = '[[inputs.snmp.table.field]]';
                         $lines[] = 'name = "ifHCOutOctets"';
                         $lines[] = 'oid = "1.3.6.1.2.1.31.1.1.1.10"';
+                        $lines[] = '';
+
+                        // Interface errors (inErrors)
+                        $lines[] = '[[inputs.snmp.table.field]]';
+                        $lines[] = 'name = "ifInErrors"';
+                        $lines[] = 'oid = "1.3.6.1.2.1.2.2.1.14"';
+                        $lines[] = '';
+
+                        // Interface errors (outErrors)
+                        $lines[] = '[[inputs.snmp.table.field]]';
+                        $lines[] = 'name = "ifOutErrors"';
+                        $lines[] = 'oid = "1.3.6.1.2.1.2.2.1.20"';
+                        $lines[] = '';
+
+                        // Interface discards (inDiscards/drops)
+                        $lines[] = '[[inputs.snmp.table.field]]';
+                        $lines[] = 'name = "ifInDiscards"';
+                        $lines[] = 'oid = "1.3.6.1.2.1.2.2.1.13"';
+                        $lines[] = '';
+
+                        // Interface discards (outDiscards/drops)
+                        $lines[] = '[[inputs.snmp.table.field]]';
+                        $lines[] = 'name = "ifOutDiscards"';
+                        $lines[] = 'oid = "1.3.6.1.2.1.2.2.1.19"';
                         $lines[] = '';
                     }
                 } catch (\Throwable $e) {

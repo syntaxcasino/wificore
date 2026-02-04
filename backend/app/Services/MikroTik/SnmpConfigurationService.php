@@ -35,8 +35,11 @@ class SnmpConfigurationService
             "/snmp set contact=\"{$contact}\"",
             "/snmp set location=\"{$location}\"",
             
-            // Remove default public community for security
-            '/snmp community remove [find name=public]',
+            // Remove default public community for security (idempotent)
+            ':do { /snmp community remove [find name=public]; } on-error={}',
+            
+            // Remove existing user before adding (idempotent)
+            ":do { /snmp community remove [find name={$user}]; } on-error={}",
             
             // Add SNMPv3 user
             "/snmp community add name={$user} addresses=0.0.0.0/0 security=private " .
@@ -109,8 +112,11 @@ class SnmpConfigurationService
             "/snmp set contact=\"{$contact}\"",
             "/snmp set location=\"{$location}\"",
             
-            // Remove default public community for security
-            '/snmp community remove [find name=public]',
+            // Remove default public community for security (idempotent)
+            ':do { /snmp community remove [find name=public]; } on-error={}',
+            
+            // Remove existing user before adding (idempotent)
+            ":do { /snmp community remove [find name={$user}]; } on-error={}",
             
             // Add SNMPv3 user
             "/snmp community add name={$user} addresses=0.0.0.0/0 security=private " .
@@ -200,7 +206,8 @@ class SnmpConfigurationService
 /snmp set enabled=yes
 /snmp set contact="{$contact}"
 /snmp set location="{$location}"
-/snmp community remove [find name=public]
+:do { /snmp community remove [find name=public]; } on-error={}
+:do { /snmp community remove [find name={$user}]; } on-error={}
 /snmp community add name={$user} addresses=0.0.0.0/0 security=private authentication-protocol=SHA256 authentication-password="{$authPassword}" encryption-protocol=aes encryption-password="{$privPassword}"
 SCRIPT;
     }

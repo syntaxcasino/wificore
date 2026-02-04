@@ -58,6 +58,8 @@ screenshots/
 *.log
 *.log.*
 logs/
+!logs/
+!logs/agent-actions.log
 *.logSSS
 backend/storage/logs/*.log
 frontend/logs/

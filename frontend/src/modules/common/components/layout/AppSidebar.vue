@@ -104,6 +104,9 @@
           </div>
         </div>
 
+        <!-- Divider -->
+        <div class="h-px bg-gray-800/50 my-2"></div>
+
         <!-- PPPoE -->
         <div>
           <button
@@ -179,58 +182,6 @@
         </div>
 
         <!-- Divider -->
-        <div class="h-px bg-gray-800/50 my-2"></div>
-
-        <!-- Billing -->
-        <div>
-          <button
-            @click="toggleMenu('billing')"
-            class="w-full flex items-center justify-between py-2 px-3 rounded-md hover:bg-gray-800/60 transition-all duration-150"
-            :class="route.path.includes('/billing') || route.path.includes('/finance') ? 'bg-gray-800/80 text-white font-medium' : 'text-gray-400'"
-          >
-            <span class="flex items-center gap-2.5">
-              <Wallet class="w-4 h-4 flex-shrink-0" />
-              <span class="text-sm">Billing</span>
-            </span>
-            <ChevronDown class="w-3 h-3 transition-transform" :class="activeMenu === 'billing' ? 'rotate-180' : ''" />
-          </button>
-          <div v-show="activeMenu === 'billing'" class="ml-6 mt-1 space-y-0.5">
-            <router-link
-              to="/dashboard/billing/invoices"
-              class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
-              :class="route.path === '/dashboard/billing/invoices' ? 'text-white font-medium' : 'text-gray-500'"
-              @click="isMobile && $emit('close-sidebar')"
-            >
-              Invoices
-            </router-link>
-            <router-link
-              to="/dashboard/billing/payments"
-              class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
-              :class="route.path === '/dashboard/billing/payments' ? 'text-white font-medium' : 'text-gray-500'"
-              @click="isMobile && $emit('close-sidebar')"
-            >
-              Payments
-            </router-link>
-            <router-link
-              to="/dashboard/finance/revenues"
-              class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
-              :class="route.path === '/dashboard/finance/revenues' ? 'text-white font-medium' : 'text-gray-500'"
-              @click="isMobile && $emit('close-sidebar')"
-            >
-              Revenues
-            </router-link>
-            <router-link
-              to="/dashboard/finance/expenses"
-              class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
-              :class="route.path === '/dashboard/finance/expenses' ? 'text-white font-medium' : 'text-gray-500'"
-              @click="isMobile && $emit('close-sidebar')"
-            >
-              Expenses
-            </router-link>
-          </div>
-        </div>
-
-        <!-- Divider -->
         <div class="h-px bg-gray-800/50 my-2" v-if="!isOnSystemAdminRoute"></div>
 
         <!-- Network -->
@@ -284,6 +235,55 @@
 
         <!-- Divider -->
         <div class="h-px bg-gray-800/50 my-2"></div>
+
+        <!-- Billing -->
+        <div>
+          <button
+            @click="toggleMenu('billing')"
+            class="w-full flex items-center justify-between py-2 px-3 rounded-md hover:bg-gray-800/60 transition-all duration-150"
+            :class="route.path.includes('/billing') || route.path.includes('/finance') ? 'bg-gray-800/80 text-white font-medium' : 'text-gray-400'"
+          >
+            <span class="flex items-center gap-2.5">
+              <Wallet class="w-4 h-4 flex-shrink-0" />
+              <span class="text-sm">Billing</span>
+            </span>
+            <ChevronDown class="w-3 h-3 transition-transform" :class="activeMenu === 'billing' ? 'rotate-180' : ''" />
+          </button>
+          <div v-show="activeMenu === 'billing'" class="ml-6 mt-1 space-y-0.5">
+            <router-link
+              to="/dashboard/billing/invoices"
+              class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
+              :class="route.path === '/dashboard/billing/invoices' ? 'text-white font-medium' : 'text-gray-500'"
+              @click="isMobile && $emit('close-sidebar')"
+            >
+              Invoices
+            </router-link>
+            <router-link
+              to="/dashboard/billing/payments"
+              class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
+              :class="route.path === '/dashboard/billing/payments' ? 'text-white font-medium' : 'text-gray-500'"
+              @click="isMobile && $emit('close-sidebar')"
+            >
+              Payments
+            </router-link>
+            <router-link
+              to="/dashboard/finance/revenues"
+              class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
+              :class="route.path === '/dashboard/finance/revenues' ? 'text-white font-medium' : 'text-gray-500'"
+              @click="isMobile && $emit('close-sidebar')"
+            >
+              Revenues
+            </router-link>
+            <router-link
+              to="/dashboard/finance/expenses"
+              class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
+              :class="route.path === '/dashboard/finance/expenses' ? 'text-white font-medium' : 'text-gray-500'"
+              @click="isMobile && $emit('close-sidebar')"
+            >
+              Expenses
+            </router-link>
+          </div>
+        </div>
 
         <!-- Reports -->
         <div>

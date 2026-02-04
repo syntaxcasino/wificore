@@ -84,6 +84,10 @@ export function usePppoeUsers() {
   const viewPassword = async (userId) => {
     try {
       const response = await axios.get(`/pppoe/users/${userId}/password`)
+      if (response.data?.success === false) {
+        error.value = response.data?.message || 'Password not available'
+        throw new Error(error.value)
+      }
       return response.data?.data
     } catch (err) {
       error.value = err.response?.data?.message || 'Failed to view password'
