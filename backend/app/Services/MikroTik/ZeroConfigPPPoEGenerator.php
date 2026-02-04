@@ -116,7 +116,7 @@ class ZeroConfigPPPoEGenerator
         // ============ PPP PROFILE (ISP-GRADE) ============
         // No static rate-limit - RADIUS sets Mikrotik-Rate-Limit dynamically
         // Idempotent: only create if missing
-        $s[] = ":do { :if ([:len [/ppp profile find name=\"{$p['profile']}\"]] = 0) do={ /ppp profile add name=\"{$p['profile']}\" local-address={$p['gateway_ip']} remote-address={$p['pool']} dns-server={$p['dns_primary']},{$p['dns_secondary']} only-one=yes change-tcp-mss=yes use-compression=no use-encryption=required comment=\"PPPoE-$id\" } } on-error={}";
+        $s[] = ":do { :if ([:len [/ppp profile find name=\"{$p['profile']}\"]] = 0) do={ /ppp profile add name=\"{$p['profile']}\" local-address={$p['gateway_ip']} remote-address={$p['pool']} dns-server={$p['dns_primary']},{$p['dns_secondary']} only-one=yes change-tcp-mss=yes use-compression=no use-encryption=no comment=\"PPPoE-$id\" } } on-error={}";
 
         // ============ INTERFACE LISTS ============
         $s[] = ":do { :if ([:len [/interface list find name={$p['wan_list']}]] = 0) do={ /interface list add name={$p['wan_list']} } } on-error={}";
