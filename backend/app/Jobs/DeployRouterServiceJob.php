@@ -38,7 +38,7 @@ class DeployRouterServiceJob implements ShouldQueue
                 return;
             }
 
-            // Skip if already deployed or currently deploying (prevent duplicate deployments)
+            // Skip if already deployed (prevent re-deployment of working config)
             if ($service->deployment_status === RouterService::DEPLOYMENT_DEPLOYED) {
                 Log::info('Service already deployed, skipping', [
                     'service_id' => $service->id,
@@ -47,16 +47,10 @@ class DeployRouterServiceJob implements ShouldQueue
                 return;
             }
 
-            if ($service->deployment_status === RouterService::DEPLOYMENT_IN_PROGRESS) {
-                Log::info('Service deployment already in progress, skipping', [
-                    'service_id' => $service->id,
-                    'router_id' => $service->router_id,
-                ]);
-                return;
+            // Mark as in progress (controller may have already set this)
+            if ($service->deployment_status !== RouterService::DEPLOYMENT_IN_PROGRESS) {
+                $service->update(['deployment_status' => RouterService::DEPLOYMENT_IN_PROGRESS]);
             }
-
-            // Mark as in progress immediately to prevent concurrent deployments
-            $service->update(['deployment_status' => RouterService::DEPLOYMENT_IN_PROGRESS]);
 
             try {
                 Log::info('Starting service deployment', [
