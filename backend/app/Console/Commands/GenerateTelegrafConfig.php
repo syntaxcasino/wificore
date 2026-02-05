@@ -239,6 +239,45 @@ class GenerateTelegrafConfig extends Command
                             }
                         }
 
+                        // hrStorageTable (HOST-RESOURCES-MIB) for disk/storage metrics
+                        $lines[] = '[[inputs.snmp.table]]';
+                        $lines[] = 'name = "storage"';
+                        $lines[] = 'oid = "1.3.6.1.2.1.25.2.3"';
+                        $lines[] = '';
+
+                        $lines[] = '[[inputs.snmp.table.field]]';
+                        $lines[] = 'name = "hrStorageIndex"';
+                        $lines[] = 'oid = "1.3.6.1.2.1.25.2.3.1.1"';
+                        $lines[] = 'is_tag = true';
+                        $lines[] = '';
+
+                        $lines[] = '[[inputs.snmp.table.field]]';
+                        $lines[] = 'name = "hrStorageType"';
+                        $lines[] = 'oid = "1.3.6.1.2.1.25.2.3.1.2"';
+                        $lines[] = 'is_tag = true';
+                        $lines[] = '';
+
+                        $lines[] = '[[inputs.snmp.table.field]]';
+                        $lines[] = 'name = "hrStorageDescr"';
+                        $lines[] = 'oid = "1.3.6.1.2.1.25.2.3.1.3"';
+                        $lines[] = 'is_tag = true';
+                        $lines[] = '';
+
+                        $lines[] = '[[inputs.snmp.table.field]]';
+                        $lines[] = 'name = "hrStorageAllocationUnits"';
+                        $lines[] = 'oid = "1.3.6.1.2.1.25.2.3.1.4"';
+                        $lines[] = '';
+
+                        $lines[] = '[[inputs.snmp.table.field]]';
+                        $lines[] = 'name = "hrStorageSize"';
+                        $lines[] = 'oid = "1.3.6.1.2.1.25.2.3.1.5"';
+                        $lines[] = '';
+
+                        $lines[] = '[[inputs.snmp.table.field]]';
+                        $lines[] = 'name = "hrStorageUsed"';
+                        $lines[] = 'oid = "1.3.6.1.2.1.25.2.3.1.6"';
+                        $lines[] = '';
+
                         $lines[] = '[[inputs.snmp]]';
                         $lines[] = "interval = \"{$fastInterval}\"";
                         $lines[] = "agents = [\"udp://{$ip}:161\"]";

@@ -206,3 +206,21 @@ Schedule::command('data:cleanup')
     ->dailyAt('02:30')
     ->name('data-retention-cleanup')
     ->onOneServer();
+
+// =============================================================================
+// SAAS TENANT SUBSCRIPTION ENFORCEMENT
+// =============================================================================
+
+// Check tenant subscriptions and suspend expired ones - every 5 minutes
+Schedule::job(new \App\Jobs\CheckTenantSubscriptionsJob())
+    ->everyFiveMinutes()
+    ->name('check-tenant-subscriptions')
+    ->onOneServer()
+    ->withoutOverlapping();
+
+// Send expiry warning notifications to tenants - daily at 8:00 AM
+Schedule::job(new \App\Jobs\SendTenantExpiryWarningJob())
+    ->dailyAt('08:00')
+    ->name('send-tenant-expiry-warnings')
+    ->onOneServer()
+    ->withoutOverlapping();
