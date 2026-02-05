@@ -189,6 +189,7 @@ import {
 import axios from 'axios'
 import { useBroadcasting } from '@/modules/common/composables/websocket/useBroadcasting'
 import { useAuthStore } from '@/stores/auth'
+import { useToast } from '@/composables/useToast'
 import PageContainer from '@/modules/common/components/layout/templates/PageContainer.vue'
 import PageHeader from '@/modules/common/components/layout/templates/PageHeader.vue'
 import PageContent from '@/modules/common/components/layout/templates/PageContent.vue'
@@ -224,6 +225,7 @@ const selectedSession = ref(null)
 
 const confirmStore = useConfirmStore()
 const authStore = useAuthStore()
+const toast = useToast()
 const { subscribeToPrivateChannel, unsubscribeFromChannel } = useBroadcasting()
 
 // Filters
@@ -401,11 +403,17 @@ const disconnectSession = async (session) => {
   if (!confirmed) return
   
   try {
-    await axios.post('pppoe/sessions/disconnect', { username: session.username })
-    await refreshSessions()
-    showDetailsOverlay.value = false
+    const response = await axios.post('pppoe/sessions/disconnect', { username: session.username })
+    if (response.data?.success) {
+      toast.success(`Successfully disconnected ${session.username}`)
+      await refreshSessions()
+      showDetailsOverlay.value = false
+    } else {
+      toast.error(response.data?.message || 'Failed to disconnect session')
+    }
   } catch (err) {
     console.error('Error disconnecting session:', err)
+    toast.error(err.response?.data?.message || 'Failed to disconnect session')
   }
 }
 
@@ -422,10 +430,16 @@ const disconnectAll = async () => {
   
   try {
     const usernames = sessions.value.map(s => s.username).filter(Boolean)
-    await axios.post('pppoe/sessions/disconnect-all', { usernames })
-    await refreshSessions()
+    const response = await axios.post('pppoe/sessions/disconnect-all', { usernames })
+    if (response.data?.success) {
+      toast.success(`Disconnected ${response.data.disconnected} sessions`)
+      await refreshSessions()
+    } else {
+      toast.error(response.data?.message || 'Failed to disconnect sessions')
+    }
   } catch (err) {
     console.error('Error disconnecting all sessions:', err)
+    toast.error(err.response?.data?.message || 'Failed to disconnect all sessions')
   }
 }
 
