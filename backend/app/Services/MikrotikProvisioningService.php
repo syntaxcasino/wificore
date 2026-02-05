@@ -11,6 +11,7 @@ use App\Services\MikroTik\SshExecutor;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
@@ -515,6 +516,14 @@ class MikrotikProvisioningService extends TenantAwareService
             'router_name' => $router->name,
             'snmp_user' => $user,
         ]);
+        
+        // Regenerate Telegraf config to include this router
+        try {
+            Artisan::call('telegraf:generate-config');
+            Log::info('Telegraf config regenerated after SNMP setup', ['router_id' => $router->id]);
+        } catch (\Exception $e) {
+            Log::warning('Failed to regenerate Telegraf config', ['error' => $e->getMessage()]);
+        }
         
         return <<<SCRIPT
 /snmp set enabled=yes
