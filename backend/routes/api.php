@@ -33,6 +33,7 @@ use App\Http\Controllers\Api\PublicTenantController;
 use App\Http\Controllers\Api\EnvironmentHealthController;
 use App\Http\Controllers\Api\PppoeUserController;
 use App\Http\Controllers\Api\PppoeSessionController;
+use App\Http\Controllers\Api\RouterAnalyticsController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\Api\TodoController;
 // HR Module Controllers
@@ -496,8 +497,8 @@ Route::middleware(['auth:sanctum', 'role:admin', 'user.active', 'tenant.context'
         
         // Router Analytics & Revenue
         Route::get('/analytics/overview', [RouterAnalyticsController::class, 'overview'])->name('analytics.overview');
-        Route::get('/revenue/all', [\App\Http\Controllers\Api\RouterAnalyticsController::class, 'getRouterRevenue'])->name('revenue.all');
-        Route::post('/revenue/compare', [\App\Http\Controllers\Api\RouterAnalyticsController::class, 'compareRouters'])->name('revenue.compare');
+        Route::get('/revenue/all', [RouterAnalyticsController::class, 'getRouterRevenue'])->name('revenue.all');
+        Route::post('/revenue/compare', [RouterAnalyticsController::class, 'compareRouters'])->name('revenue.compare');
         
         // Configuration Management
         Route::post('/{router}/configure', [RouterController::class, 'configure'])->name('configure');
