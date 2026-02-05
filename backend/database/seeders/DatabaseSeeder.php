@@ -18,8 +18,9 @@ class DatabaseSeeder extends Seeder
         // Seed in order of dependencies
         $this->call([
             SystemAdminSeeder::class,          // 1. Create system admin first
-            DefaultTenantSeeder::class,        // 2. Create default tenant
-            DemoDataSeeder::class,             // 3. Create demo data (dev/staging only)
+            SystemLandlordSeeder::class,       // 2. Create system landlord tenant and user
+            DefaultTenantSeeder::class,        // 3. Create default tenant
+            DemoDataSeeder::class,             // 4. Create demo data (dev/staging only)
         ]);
 
         $this->command->info('');

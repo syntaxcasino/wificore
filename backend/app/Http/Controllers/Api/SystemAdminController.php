@@ -74,18 +74,24 @@ class SystemAdminController extends Controller
                     'total' => Package::withoutGlobalScopes()->count(),
                     'active' => Package::withoutGlobalScopes()->where('is_active', true)->count(),
                 ],
-                'revenue' => [
-                    'total' => Payment::withoutGlobalScopes()
-                        ->where('status', 'completed')
-                        ->sum('amount'),
-                    'monthly' => Payment::withoutGlobalScopes()
-                        ->where('status', 'completed')
-                        ->whereMonth('created_at', now()->month)
-                        ->sum('amount'),
-                    'today' => Payment::withoutGlobalScopes()
-                        ->where('status', 'completed')
-                        ->whereDate('created_at', now())
-                        ->sum('amount'),
+                'subscriptions' => [
+                    'active' => Tenant::where('is_active', true)
+                        ->where('is_landlord', false)
+                        ->where(function ($q) {
+                            $q->whereNull('subscription_ends_at')
+                              ->orWhere('subscription_ends_at', '>', now());
+                        })
+                        ->count(),
+                    'expiring_soon' => Tenant::where('is_active', true)
+                        ->where('is_landlord', false)
+                        ->whereNotNull('subscription_ends_at')
+                        ->where('subscription_ends_at', '>', now())
+                        ->where('subscription_ends_at', '<=', now()->addDays(5))
+                        ->count(),
+                    'expired' => Tenant::where('is_landlord', false)
+                        ->whereNotNull('subscription_ends_at')
+                        ->where('subscription_ends_at', '<', now())
+                        ->count(),
                 ],
             ];
         });
@@ -97,39 +103,31 @@ class SystemAdminController extends Controller
     }
 
     /**
-     * Get tenant performance metrics
+     * Get tenant performance metrics (aggregate counts only - no sensitive data)
      */
     public function getTenantMetrics(Request $request)
     {
-        $tenants = Tenant::withCount([
-            'users',
-            'routers',
-            'packages',
-            'payments'
-        ])
-        ->with(['users' => function ($query) {
-            $query->select('tenant_id', DB::raw('count(*) as count'))
-                ->groupBy('tenant_id');
-        }])
-        ->get()
-        ->map(function ($tenant) {
-            return [
-                'id' => $tenant->id,
-                'name' => $tenant->name,
-                'slug' => $tenant->slug,
-                'is_active' => $tenant->is_active,
-                'users_count' => $tenant->users_count,
-                'routers_count' => $tenant->routers_count,
-                'packages_count' => $tenant->packages_count,
-                'revenue' => Payment::where('tenant_id', $tenant->id)
-                    ->where('status', 'completed')
-                    ->sum('amount'),
-                'monthly_revenue' => Payment::where('tenant_id', $tenant->id)
-                    ->where('status', 'completed')
-                    ->whereMonth('created_at', now()->month)
-                    ->sum('amount'),
-            ];
-        });
+        $tenants = Tenant::where('is_landlord', false)
+            ->withCount([
+                'users',
+                'routers',
+                'packages',
+            ])
+            ->get()
+            ->map(function ($tenant) {
+                return [
+                    'id' => $tenant->id,
+                    'name' => $tenant->name,
+                    'slug' => $tenant->slug,
+                    'is_active' => $tenant->is_active,
+                    'subscription_status' => $tenant->subscription_status,
+                    'subscription_ends_at' => $tenant->subscription_ends_at,
+                    'users_count' => $tenant->users_count,
+                    'routers_count' => $tenant->routers_count,
+                    'packages_count' => $tenant->packages_count,
+                    'has_override' => $tenant->landlord_override ?? false,
+                ];
+            });
 
         return response()->json([
             'success' => true,

@@ -33,6 +33,7 @@ use App\Http\Controllers\Api\PublicTenantController;
 use App\Http\Controllers\Api\EnvironmentHealthController;
 use App\Http\Controllers\Api\PppoeUserController;
 use App\Http\Controllers\Api\PppoeSessionController;
+use App\Http\Controllers\Api\PppoeMetricsController;
 use App\Http\Controllers\Api\RouterAnalyticsController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\Api\TodoController;
@@ -98,6 +99,16 @@ Route::prefix('public')->group(function () {
 // Public Router Configuration Fetch - Token-based authentication
 Route::get('/routers/{config_token}/fetch-config', [RouterController::class, 'fetchConfig'])
     ->name('api.routers.fetch-config');
+
+// =============================================================================
+// M-PESA C2B (PAYBILL) CALLBACKS - Public endpoints for Safaricom
+// =============================================================================
+Route::prefix('mpesa/c2b')->group(function () {
+    Route::post('/validation/{tenantId}', [\App\Http\Controllers\Api\MpesaC2BController::class, 'validation'])
+        ->name('api.mpesa.c2b.validation');
+    Route::post('/confirmation/{tenantId}', [\App\Http\Controllers\Api\MpesaC2BController::class, 'confirmation'])
+        ->name('api.mpesa.c2b.confirmation');
+});
 
 // =============================================================================
 // RATE-LIMITED AUTHENTICATION ROUTES
@@ -277,6 +288,53 @@ Route::middleware(['auth:sanctum', 'system.admin'])->prefix('system')->name('api
     // -------------------------------------------------------------------------
     Route::get('/activity-logs', [SystemAdminController::class, 'getActivityLogs'])
         ->name('activity-logs');
+    
+    // -------------------------------------------------------------------------
+    // LANDLORD BILLING & SAAS MANAGEMENT
+    // -------------------------------------------------------------------------
+    Route::prefix('landlord')->name('landlord.')->group(function () {
+        // Configuration
+        Route::get('/configuration', [\App\Http\Controllers\Api\LandlordBillingController::class, 'getConfiguration'])
+            ->name('configuration');
+        Route::put('/paybill', [\App\Http\Controllers\Api\LandlordBillingController::class, 'updateDefaultPaybill'])
+            ->name('paybill.update');
+        Route::put('/rates', [\App\Http\Controllers\Api\LandlordBillingController::class, 'updateBillingRates'])
+            ->name('rates.update');
+        
+        // Aggregate Metrics (privacy-safe)
+        Route::get('/metrics', [\App\Http\Controllers\Api\LandlordBillingController::class, 'getAggregateMetrics'])
+            ->name('metrics');
+        Route::get('/tenant-counts', [\App\Http\Controllers\Api\LandlordBillingController::class, 'getTenantCounts'])
+            ->name('tenant-counts');
+        
+        // Tenant-specific billing (rates only, no sensitive data)
+        Route::put('/tenants/{tenant}/rates', [\App\Http\Controllers\Api\LandlordBillingController::class, 'setTenantRates'])
+            ->name('tenant.rates');
+        Route::get('/tenants/{tenant}/subscription', [\App\Http\Controllers\Api\LandlordBillingController::class, 'calculateTenantSubscription'])
+            ->name('tenant.subscription');
+        
+        // Landlord Overrides
+        Route::get('/overrides', [\App\Http\Controllers\Api\LandlordBillingController::class, 'getOverriddenTenants'])
+            ->name('overrides');
+        Route::post('/tenants/{tenant}/override', [\App\Http\Controllers\Api\LandlordBillingController::class, 'applyOverride'])
+            ->name('tenant.override.apply');
+        Route::delete('/tenants/{tenant}/override', [\App\Http\Controllers\Api\LandlordBillingController::class, 'removeOverride'])
+            ->name('tenant.override.remove');
+        
+        // Tenant Lifecycle
+        Route::post('/tenants/{tenant}/reactivate', [\App\Http\Controllers\Api\LandlordBillingController::class, 'reactivateTenant'])
+            ->name('tenant.reactivate');
+        Route::get('/expiring', [\App\Http\Controllers\Api\LandlordBillingController::class, 'getExpiringSoon'])
+            ->name('expiring');
+        Route::get('/suspended', [\App\Http\Controllers\Api\LandlordBillingController::class, 'getSuspendedTenants'])
+            ->name('suspended');
+        
+        // Invoicing & Payments
+        Route::post('/tenants/{tenant}/invoice', [\App\Http\Controllers\Api\LandlordBillingController::class, 'generateInvoice'])
+            ->name('tenant.invoice');
+        Route::post('/tenants/{tenant}/payment', [\App\Http\Controllers\Api\LandlordBillingController::class, 'recordPayment'])
+            ->name('tenant.payment');
+    });
 });
 
 // =============================================================================
@@ -442,6 +500,14 @@ Route::middleware(['auth:sanctum', 'role:admin', 'user.active', 'tenant.context'
     Route::delete('/packages/{package}', [PackageController::class, 'destroy'])
         ->name('api.packages.destroy');
 
+    // M-Pesa Settings Management (Paybill configuration)
+    Route::prefix('mpesa')->group(function () {
+        Route::get('/settings', [\App\Http\Controllers\Api\MpesaC2BController::class, 'getSettings']);
+        Route::post('/settings', [\App\Http\Controllers\Api\MpesaC2BController::class, 'saveSettings']);
+        Route::post('/c2b/register-urls', [\App\Http\Controllers\Api\MpesaC2BController::class, 'registerUrls']);
+        Route::post('/test-connection', [\App\Http\Controllers\Api\MpesaC2BController::class, 'testConnection']);
+    });
+
     Route::prefix('pppoe')->group(function () {
         Route::get('/users', [PppoeUserController::class, 'index']);
         Route::get('/users/{id}', [PppoeUserController::class, 'show']);
@@ -459,6 +525,11 @@ Route::middleware(['auth:sanctum', 'role:admin', 'user.active', 'tenant.context'
         Route::get('/sessions/live', [PppoeSessionController::class, 'live']);
         Route::post('/sessions/disconnect', [PppoeSessionController::class, 'disconnect']);
         Route::post('/sessions/disconnect-all', [PppoeSessionController::class, 'disconnectAll']);
+        
+        // PPPoE traffic metrics from VictoriaMetrics (tenant-filtered)
+        Route::get('/metrics/live', [PppoeMetricsController::class, 'liveTraffic']);
+        Route::get('/metrics/user/{username}', [PppoeMetricsController::class, 'userTrafficHistory']);
+        Route::get('/metrics/aggregate', [PppoeMetricsController::class, 'aggregateTraffic']);
         
         // Payment management routes
         Route::get('/payments', [\App\Http\Controllers\Api\PppoePaymentController::class, 'index']);
