@@ -233,6 +233,7 @@ class RouterController extends Controller
 /system note set note="Managed by Traidnet Solution LTD"
 $vpnScript
 /ip firewall filter add chain=input protocol=tcp dst-port=22 action=accept comment="Allow SSH access"
+/ip firewall filter add chain=input protocol=udp dst-port=161 action=accept comment="Allow SNMP monitoring"
 
 EOT;
 
@@ -1023,6 +1024,7 @@ EOT;
 /system note set note="Managed by Traidnet Solution LTD"
 $vpnScript
 /ip firewall filter add chain=input protocol=tcp dst-port=22 action=accept comment="Allow SSH access"
+/ip firewall filter add chain=input protocol=udp dst-port=161 action=accept comment="Allow SNMP monitoring"
 
 EOT;
 
