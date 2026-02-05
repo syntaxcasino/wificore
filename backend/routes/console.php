@@ -24,6 +24,13 @@ use App\Jobs\UnsuspendExpiredAccountsJob;
 
 Schedule::job(new CheckRoutersJob)->everyMinute();
 
+// Regenerate Telegraf config every 5 minutes to pick up new routers
+Schedule::command('telegraf:generate-config')
+    ->everyFiveMinutes()
+    ->name('regenerate-telegraf-config')
+    ->withoutOverlapping()
+    ->onOneServer();
+
 if (env('ROUTER_POLLING_MODE', 'telegraf') === 'laravel') {
     Schedule::job(new \App\Jobs\ScheduleRouterPollingJob)
         ->everyTwoMinutes()
