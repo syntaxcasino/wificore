@@ -224,3 +224,14 @@ Schedule::job(new \App\Jobs\SendTenantExpiryWarningJob())
     ->name('send-tenant-expiry-warnings')
     ->onOneServer()
     ->withoutOverlapping();
+
+// =============================================================================
+// PPPOE PAYMENT CHECKING AND ENFORCEMENT
+// =============================================================================
+
+// Check PPPoE payments and disconnect overdue users - every 5 minutes
+Schedule::job(new \App\Jobs\CheckPppoePaymentsJob())
+    ->everyFiveMinutes()
+    ->name('check-pppoe-payments')
+    ->onOneServer()
+    ->withoutOverlapping();

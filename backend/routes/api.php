@@ -110,6 +110,14 @@ Route::prefix('mpesa/c2b')->group(function () {
         ->name('api.mpesa.c2b.confirmation');
 });
 
+// Tenant Paybill Callbacks (new system with landlord fallback)
+Route::prefix('mpesa/paybill')->group(function () {
+    Route::post('/validation/{tenantId}', [\App\Http\Controllers\Api\TenantPaybillController::class, 'handleValidation'])
+        ->name('api.mpesa.paybill.validation');
+    Route::post('/confirmation/{tenantId}', [\App\Http\Controllers\Api\TenantPaybillController::class, 'handleConfirmation'])
+        ->name('api.mpesa.paybill.confirmation');
+});
+
 // =============================================================================
 // RATE-LIMITED AUTHENTICATION ROUTES
 // =============================================================================
@@ -500,12 +508,26 @@ Route::middleware(['auth:sanctum', 'role:admin', 'user.active', 'tenant.context'
     Route::delete('/packages/{package}', [PackageController::class, 'destroy'])
         ->name('api.packages.destroy');
 
-    // M-Pesa Settings Management (Paybill configuration)
+    // M-Pesa Settings Management (Paybill configuration) - Legacy
     Route::prefix('mpesa')->group(function () {
         Route::get('/settings', [\App\Http\Controllers\Api\MpesaC2BController::class, 'getSettings']);
         Route::post('/settings', [\App\Http\Controllers\Api\MpesaC2BController::class, 'saveSettings']);
         Route::post('/c2b/register-urls', [\App\Http\Controllers\Api\MpesaC2BController::class, 'registerUrls']);
         Route::post('/test-connection', [\App\Http\Controllers\Api\MpesaC2BController::class, 'testConnection']);
+    });
+
+    // Tenant Paybill Billing Portal (with landlord fallback)
+    Route::prefix('billing/paybill')->group(function () {
+        Route::get('/settings', [\App\Http\Controllers\Api\TenantPaybillController::class, 'getSettings']);
+        Route::post('/settings', [\App\Http\Controllers\Api\TenantPaybillController::class, 'saveSettings']);
+        Route::post('/test', [\App\Http\Controllers\Api\TenantPaybillController::class, 'testConnection']);
+        Route::post('/register-urls', [\App\Http\Controllers\Api\TenantPaybillController::class, 'registerUrls']);
+        Route::post('/activate', [\App\Http\Controllers\Api\TenantPaybillController::class, 'activate']);
+        Route::post('/use-landlord', [\App\Http\Controllers\Api\TenantPaybillController::class, 'useLandlordPaybill']);
+        Route::get('/instructions/{userId}', [\App\Http\Controllers\Api\TenantPaybillController::class, 'getPaymentInstructions']);
+        Route::get('/transactions', [\App\Http\Controllers\Api\TenantPaybillController::class, 'getTransactions']);
+        Route::get('/logs', [\App\Http\Controllers\Api\TenantPaybillController::class, 'getCheckLogs']);
+        Route::post('/check-payments', [\App\Http\Controllers\Api\TenantPaybillController::class, 'triggerPaymentCheck']);
     });
 
     Route::prefix('pppoe')->group(function () {
