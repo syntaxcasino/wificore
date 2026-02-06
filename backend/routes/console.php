@@ -19,6 +19,8 @@ use App\Jobs\SyncAccessPointStatusJob;
 use App\Jobs\ProcessScheduledPackages;
 // Security Jobs
 use App\Jobs\UnsuspendExpiredAccountsJob;
+// Hotspot Jobs
+use App\Jobs\CheckHotspotExpirationsJob;
 
 
 
@@ -233,5 +235,16 @@ Schedule::job(new \App\Jobs\SendTenantExpiryWarningJob())
 Schedule::job(new \App\Jobs\CheckPppoePaymentsJob())
     ->everyFiveMinutes()
     ->name('check-pppoe-payments')
+    ->onOneServer()
+    ->withoutOverlapping();
+
+// =============================================================================
+// HOTSPOT SUBSCRIPTION EXPIRATION ENFORCEMENT
+// =============================================================================
+
+// Check for expired Hotspot subscriptions and disconnect users - every minute
+Schedule::job(new CheckHotspotExpirationsJob())
+    ->everyMinute()
+    ->name('check-hotspot-expirations')
     ->onOneServer()
     ->withoutOverlapping();

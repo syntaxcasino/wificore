@@ -180,6 +180,23 @@ Route::middleware('throttle:30,1')->post('/hotspot/logout', [HotspotController::
 Route::middleware('throttle:60,1')->post('/hotspot/check-session', [HotspotController::class, 'checkSession'])
     ->name('api.hotspot.check-session');
 
+// =============================================================================
+// CAPTIVE PORTAL PUBLIC ROUTES - No authentication (MikroTik redirects)
+// =============================================================================
+Route::prefix('portal')->group(function () {
+    Route::get('/config', [\App\Http\Controllers\Api\CaptivePortalController::class, 'getPortalConfig'])
+        ->name('api.portal.config');
+    Route::post('/login', [\App\Http\Controllers\Api\CaptivePortalController::class, 'login'])
+        ->middleware('throttle:10,1')
+        ->name('api.portal.login');
+    Route::post('/payment/initiate', [\App\Http\Controllers\Api\CaptivePortalController::class, 'initiatePayment'])
+        ->middleware('throttle:10,1')
+        ->name('api.portal.payment.initiate');
+    Route::get('/payment/{paymentId}/status', [\App\Http\Controllers\Api\CaptivePortalController::class, 'checkPaymentStatus'])
+        ->middleware('throttle:30,1')
+        ->name('api.portal.payment.status');
+});
+
 // Health Check - Public (for monitoring/uptime)
 Route::get('/health/ping', [HealthController::class, 'ping'])
     ->name('api.health.ping');
@@ -918,6 +935,39 @@ Route::middleware(['auth:sanctum', 'role:admin', 'user.active', 'tenant.context'
             
             return response()->json(['success' => true, 'stats' => $stats]);
         })->name('stats');
+    });
+    
+    // -------------------------------------------------------------------------
+    // Hotspot Management (Admin)
+    // -------------------------------------------------------------------------
+    Route::prefix('hotspot')->name('api.hotspot.admin.')->group(function () {
+        // List hotspot users with pagination
+        Route::get('/users', [\App\Http\Controllers\Api\HotspotController::class, 'listUsers'])
+            ->name('users.index');
+        
+        // Get specific hotspot user
+        Route::get('/users/{user}', [\App\Http\Controllers\Api\HotspotController::class, 'showUser'])
+            ->name('users.show');
+        
+        // Disconnect hotspot user (queued job)
+        Route::post('/users/{user}/disconnect', [\App\Http\Controllers\Api\HotspotController::class, 'disconnectUser'])
+            ->name('users.disconnect');
+        
+        // Grant access to user
+        Route::post('/users/{user}/grant-access', [\App\Http\Controllers\Api\HotspotController::class, 'grantAccess'])
+            ->name('users.grant-access');
+        
+        // Revoke access from user
+        Route::post('/users/{user}/revoke-access', [\App\Http\Controllers\Api\HotspotController::class, 'revokeAccess'])
+            ->name('users.revoke-access');
+        
+        // List active sessions
+        Route::get('/sessions', [\App\Http\Controllers\Api\HotspotController::class, 'listSessions'])
+            ->name('sessions.index');
+        
+        // Get hotspot statistics
+        Route::get('/stats', [\App\Http\Controllers\Api\HotspotController::class, 'getStats'])
+            ->name('stats');
     });
 });
 
