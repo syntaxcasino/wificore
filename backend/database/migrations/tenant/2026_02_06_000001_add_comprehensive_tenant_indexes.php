@@ -83,7 +83,7 @@ return new class extends Migration
             
             // Partial index for active users
             $this->createPartialIndexIfNotExists($schema, 'pppoe_users', 'pppoe_users_active_idx',
-                ['username'], "status = 'active'");
+                ['username'], "status = 'active'", ['status']);
         }
 
         // =========================================================================
@@ -125,20 +125,21 @@ return new class extends Migration
 
         // =========================================================================
         // HOTSPOT_SESSIONS TABLE - Session tracking
+        // Note: hotspot_sessions uses is_active (boolean), NOT status (string)
         // =========================================================================
         if (Schema::hasTable('hotspot_sessions')) {
             $this->createIndexIfNotExists($schema, 'hotspot_sessions', 'hotspot_sessions_user_idx', 
                 ['hotspot_user_id']);
             
-            $this->createIndexIfNotExists($schema, 'hotspot_sessions', 'hotspot_sessions_status_idx', 
-                ['status']);
+            $this->createIndexIfNotExists($schema, 'hotspot_sessions', 'hotspot_sessions_is_active_idx', 
+                ['is_active']);
             
-            $this->createIndexIfNotExists($schema, 'hotspot_sessions', 'hotspot_sessions_started_idx', 
-                ['started_at']);
+            $this->createIndexIfNotExists($schema, 'hotspot_sessions', 'hotspot_sessions_session_start_idx', 
+                ['session_start']);
             
-            // Partial index for active sessions
+            // Partial index for active sessions (is_active = true)
             $this->createPartialIndexIfNotExists($schema, 'hotspot_sessions', 'hotspot_sessions_active_idx',
-                ['hotspot_user_id'], "status = 'active'");
+                ['hotspot_user_id'], 'is_active = true', ['is_active']);
         }
 
         // =========================================================================
@@ -184,7 +185,7 @@ return new class extends Migration
             
             // Partial index for active sessions
             $this->createPartialIndexIfNotExists($schema, 'radius_sessions', 'radius_sessions_active_idx',
-                ['user_id'], 'stop_time IS NULL');
+                ['user_id'], 'stop_time IS NULL', ['stop_time']);
         }
 
         // =========================================================================
@@ -209,7 +210,7 @@ return new class extends Migration
             
             // Partial index for active sessions
             $this->createPartialIndexIfNotExists($schema, 'radacct', 'radacct_active_idx',
-                ['username'], 'acctstoptime IS NULL');
+                ['username'], 'acctstoptime IS NULL', ['acctstoptime']);
         }
 
         // =========================================================================
@@ -391,8 +392,8 @@ return new class extends Migration
             ['hotspot_users', 'hotspot_users_package_idx'],
             // Hotspot Sessions
             ['hotspot_sessions', 'hotspot_sessions_user_idx'],
-            ['hotspot_sessions', 'hotspot_sessions_status_idx'],
-            ['hotspot_sessions', 'hotspot_sessions_started_idx'],
+            ['hotspot_sessions', 'hotspot_sessions_is_active_idx'],
+            ['hotspot_sessions', 'hotspot_sessions_session_start_idx'],
             ['hotspot_sessions', 'hotspot_sessions_active_idx'],
             // User Subscriptions
             ['user_subscriptions', 'user_subs_user_status_idx'],
@@ -491,8 +492,15 @@ return new class extends Migration
 
     /**
      * Create a partial index if it does not exist.
+     * 
+     * @param string $schema The schema name
+     * @param string $table The table name
+     * @param string $indexName The index name
+     * @param array $columns Columns to index
+     * @param string $whereClause The WHERE clause for the partial index
+     * @param array $whereColumns Columns referenced in the WHERE clause (for validation)
      */
-    private function createPartialIndexIfNotExists(string $schema, string $table, string $indexName, array $columns, string $whereClause): void
+    private function createPartialIndexIfNotExists(string $schema, string $table, string $indexName, array $columns, string $whereClause, array $whereColumns = []): void
     {
         if ($this->indexExists($schema, $table, $indexName)) {
             return;
@@ -500,6 +508,20 @@ return new class extends Migration
 
         if (!Schema::hasTable($table)) {
             return;
+        }
+
+        // Validate indexed columns exist
+        foreach ($columns as $column) {
+            if (!Schema::hasColumn($table, $column)) {
+                return;
+            }
+        }
+
+        // Validate columns referenced in WHERE clause exist
+        foreach ($whereColumns as $column) {
+            if (!Schema::hasColumn($table, $column)) {
+                return;
+            }
         }
 
         $columnList = implode(', ', array_map(fn($c) => "\"$c\"", $columns));
