@@ -113,9 +113,19 @@ if [ "${AUTO_MIGRATE}" = "true" ] || [ "${AUTO_MIGRATE}" = "1" ]; then
     # Check if database already has migrations (skip if volume exists with data)
     MIGRATION_COUNT=$(PGPASSWORD="${DB_PASSWORD}" psql -h "${DB_HOST}" -U "${DB_USERNAME}" -d "${DB_DATABASE}" -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'migrations';" 2>/dev/null | xargs || echo "0")
     
+    # Ensure MIGRATION_COUNT is a valid integer (default to 0 if empty or non-numeric)
+    if ! [[ "$MIGRATION_COUNT" =~ ^[0-9]+$ ]]; then
+      MIGRATION_COUNT=0
+    fi
+    
     if [ "$MIGRATION_COUNT" -gt 0 ]; then
       # Check if migrations table has records
       MIGRATION_RECORDS=$(PGPASSWORD="${DB_PASSWORD}" psql -h "${DB_HOST}" -U "${DB_USERNAME}" -d "${DB_DATABASE}" -t -c "SELECT COUNT(*) FROM migrations;" 2>/dev/null | xargs || echo "0")
+      
+      # Ensure MIGRATION_RECORDS is a valid integer
+      if ! [[ "$MIGRATION_RECORDS" =~ ^[0-9]+$ ]]; then
+        MIGRATION_RECORDS=0
+      fi
       
       if [ "$MIGRATION_RECORDS" -gt 0 ]; then
         echo "📦 Database volume already exists with $MIGRATION_RECORDS migrations"
@@ -138,14 +148,14 @@ if [ "${AUTO_MIGRATE}" = "true" ] || [ "${AUTO_MIGRATE}" = "1" ]; then
           echo "✅ Fresh migrations completed"
         else
           echo "❌ Fresh migrations failed"
-          exit 1
+          echo "⚠️  Continuing without migrations to prevent restart loop..."
         fi
       else
         if su -s /bin/bash www-data -c "php artisan migrate --force"; then
           echo "✅ Migrations completed"
         else
           echo "❌ Migrations failed"
-          exit 1
+          echo "⚠️  Continuing without migrations to prevent restart loop..."
         fi
       fi
       echo ""
