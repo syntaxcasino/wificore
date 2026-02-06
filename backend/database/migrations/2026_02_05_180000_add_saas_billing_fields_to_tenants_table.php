@@ -3,6 +3,7 @@
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\DB;
 
 return new class extends Migration
 {
@@ -71,17 +72,18 @@ return new class extends Migration
             }
         });
 
-        // Add indexes for performance
-        Schema::table('tenants', function (Blueprint $table) {
-            // Index for subscription enforcement queries
-            if (!$this->hasIndex('tenants', 'tenants_subscription_enforcement_idx')) {
+        // Add indexes for performance (PostgreSQL-native check)
+        if (!$this->indexExists('public', 'tenants', 'tenants_subscription_enforcement_idx')) {
+            Schema::table('tenants', function (Blueprint $table) {
                 $table->index(['subscription_ends_at', 'is_active', 'landlord_override'], 'tenants_subscription_enforcement_idx');
-            }
-            
-            if (!$this->hasIndex('tenants', 'tenants_is_landlord_idx')) {
+            });
+        }
+        
+        if (!$this->indexExists('public', 'tenants', 'tenants_is_landlord_idx')) {
+            Schema::table('tenants', function (Blueprint $table) {
                 $table->index('is_landlord', 'tenants_is_landlord_idx');
-            }
-        });
+            });
+        }
     }
 
     /**
@@ -90,7 +92,12 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('tenants', function (Blueprint $table) {
-            $table->dropColumn([
+            $table->dropIndex('tenants_subscription_enforcement_idx');
+            $table->dropIndex('tenants_is_landlord_idx');
+        });
+
+        Schema::table('tenants', function (Blueprint $table) {
+            $columns = [
                 'pppoe_rate',
                 'hotspot_revenue_pct',
                 'router_rate',
@@ -102,23 +109,28 @@ return new class extends Migration
                 'subscription_warning_sent_at',
                 'custom_paybill',
                 'is_landlord',
-            ]);
+            ];
+            
+            foreach ($columns as $column) {
+                if (Schema::hasColumn('tenants', $column)) {
+                    $table->dropColumn($column);
+                }
+            }
         });
     }
 
     /**
-     * Check if an index exists on the table.
+     * Check if an index exists using PostgreSQL system catalog (Laravel 11 compatible).
      */
-    private function hasIndex(string $table, string $indexName): bool
+    private function indexExists(string $schema, string $table, string $indexName): bool
     {
-        $conn = Schema::getConnection();
-        $dbSchemaManager = $conn->getDoctrineSchemaManager();
+        $result = DB::selectOne("
+            SELECT 1 FROM pg_indexes 
+            WHERE schemaname = ? 
+            AND tablename = ? 
+            AND indexname = ?
+        ", [$schema, $table, $indexName]);
         
-        try {
-            $indexes = $dbSchemaManager->listTableIndexes($table);
-            return isset($indexes[strtolower($indexName)]);
-        } catch (\Exception $e) {
-            return false;
-        }
+        return $result !== null;
     }
 };
