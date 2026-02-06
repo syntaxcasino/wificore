@@ -189,6 +189,89 @@
         @update:items-per-page="itemsPerPage = $event"
       />
     </PageFooter>
+
+    <!-- User Details Slide-Over -->
+    <SlideOverlay
+      v-model="showUserDetails"
+      title="Hotspot User Details"
+      subtitle="View user account information and sessions"
+      icon="Wifi"
+      width="50%"
+      @close="closeUserDetails"
+    >
+      <div v-if="selectedUser" class="space-y-6">
+        <!-- User Info Card -->
+        <div class="bg-gradient-to-br from-blue-50 to-cyan-50 rounded-xl p-6">
+          <div class="flex items-center gap-4">
+            <div class="w-16 h-16 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-full flex items-center justify-center text-white text-xl font-bold">
+              {{ getUserInitials(selectedUser) }}
+            </div>
+            <div>
+              <h3 class="text-lg font-semibold text-slate-900">{{ selectedUser.name || selectedUser.username }}</h3>
+              <p class="text-sm text-slate-600">{{ selectedUser.phone || 'No phone' }}</p>
+              <BaseBadge 
+                :variant="getStatusVariant(selectedUser.status)" 
+                :dot="selectedUser.status === 'active'"
+                :pulse="selectedUser.status === 'active'"
+                class="mt-2"
+              >
+                {{ selectedUser.status || 'inactive' }}
+              </BaseBadge>
+            </div>
+          </div>
+        </div>
+
+        <!-- User Details Grid -->
+        <div class="grid grid-cols-2 gap-4">
+          <div class="bg-white rounded-lg border border-slate-200 p-4">
+            <p class="text-xs text-slate-500 uppercase tracking-wide">Voucher Code</p>
+            <p class="text-sm font-mono font-medium text-slate-900 mt-1">{{ selectedUser.voucher_code || 'N/A' }}</p>
+          </div>
+          <div class="bg-white rounded-lg border border-slate-200 p-4">
+            <p class="text-xs text-slate-500 uppercase tracking-wide">Package</p>
+            <p class="text-sm font-medium text-slate-900 mt-1">{{ selectedUser.package?.name || 'No package' }}</p>
+          </div>
+          <div class="bg-white rounded-lg border border-slate-200 p-4">
+            <p class="text-xs text-slate-500 uppercase tracking-wide">Expiry Date</p>
+            <p class="text-sm font-medium text-slate-900 mt-1">{{ formatDate(selectedUser.expiry_date) }}</p>
+          </div>
+          <div class="bg-white rounded-lg border border-slate-200 p-4">
+            <p class="text-xs text-slate-500 uppercase tracking-wide">Data Used</p>
+            <p class="text-sm font-medium text-slate-900 mt-1">{{ formatBytes(selectedUser.data_used) }}</p>
+          </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="flex items-center gap-3">
+          <BaseButton 
+            @click="viewUserSessions" 
+            variant="secondary" 
+            class="flex-1"
+          >
+            <Activity class="w-4 h-4 mr-2" />
+            View Sessions
+          </BaseButton>
+          <BaseButton 
+            v-if="selectedUser.status === 'active'"
+            @click="handleDisconnectFromModal" 
+            variant="warning" 
+            class="flex-1"
+            :loading="disconnecting[selectedUser.id]"
+          >
+            <WifiOff class="w-4 h-4 mr-2" />
+            Disconnect
+          </BaseButton>
+        </div>
+      </div>
+
+      <template #footer>
+        <div class="flex items-center justify-end">
+          <BaseButton variant="secondary" @click="closeUserDetails">
+            Close
+          </BaseButton>
+        </div>
+      </template>
+    </SlideOverlay>
   </PageContainer>
 </template>
 
@@ -207,6 +290,7 @@ import BasePagination from '@/modules/common/components/base/BasePagination.vue'
 import BaseLoading from '@/modules/common/components/base/BaseLoading.vue'
 import BaseEmpty from '@/modules/common/components/base/BaseEmpty.vue'
 import BaseAlert from '@/modules/common/components/base/BaseAlert.vue'
+import SlideOverlay from '@/modules/common/components/base/SlideOverlay.vue'
 
 import { useFilters } from '@/modules/common/composables/utils/useFilters'
 import { usePagination } from '@/modules/common/composables/utils/usePagination'
@@ -232,6 +316,10 @@ const { packages, fetchPackages } = usePackages()
 
 // Local state for disconnect confirmation
 const disconnecting = ref({})
+
+// Slide-over state for user details
+const showUserDetails = ref(false)
+const selectedUser = ref(null)
 
 // Filtering
 const { 
@@ -287,11 +375,30 @@ const formatBytes = (bytes) => {
 }
 
 const openUserDetails = (user) => {
-  console.log('View user details:', user)
+  selectedUser.value = user
+  showUserDetails.value = true
+}
+
+const closeUserDetails = () => {
+  showUserDetails.value = false
+  selectedUser.value = null
+}
+
+const viewUserSessions = () => {
+  if (selectedUser.value) {
+    console.log('View sessions for:', selectedUser.value)
+    // Future: Navigate to sessions filtered by this user
+  }
+}
+
+const handleDisconnectFromModal = async () => {
+  if (selectedUser.value) {
+    await handleDisconnect(selectedUser.value)
+  }
 }
 
 const viewSessions = (user) => {
-  console.log('View sessions for:', user)
+  openUserDetails(user)
 }
 
 const handleDisconnect = async (user) => {

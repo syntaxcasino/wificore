@@ -323,6 +323,7 @@ class SshExecutor
     /**
      * Connect to router via SSH
      * Uses SSH key if available, falls back to password
+     * Authentication order: SSH key (router-specific) -> SSH key (global) -> Password
      */
     public function connect(): void
     {
@@ -341,70 +342,102 @@ class SshExecutor
             $baseDelay = 0;
         }
 
+        // Determine available authentication methods upfront
+        $authMethods = [];
+        if ($this->sshKey !== null) {
+            $authMethods[] = 'ssh_key';
+        }
+        if ($this->decryptedPassword !== null) {
+            $authMethods[] = 'password';
+        }
+        
+        if (empty($authMethods)) {
+            Log::error('SSH Executor: No authentication methods available', [
+                'router_id' => $this->router->id,
+                'host' => $this->host,
+                'has_ssh_key' => $this->sshKey !== null,
+                'has_password' => $this->decryptedPassword !== null,
+            ]);
+            throw new \Exception('No SSH authentication methods available. Check router credentials.');
+        }
+        
+        Log::info('SSH Executor: Starting connection', [
+            'router_id' => $this->router->id,
+            'host' => $this->host,
+            'port' => $this->port,
+            'username' => $this->router->username,
+            'auth_methods_available' => $authMethods,
+        ]);
+
         $lastException = null;
+        $authErrors = [];
+        
         for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
             try {
                 $this->connection = new SSH2($this->host, $this->port, $this->timeout);
 
                 // Try SSH key first (preferred method)
                 if ($this->sshKey !== null) {
-                    $key = PublicKeyLoader::load($this->sshKey, $this->sshKeyPassphrase);
-
-                    if (!$this->connection->login($this->router->username, $key)) {
-                        if ($this->decryptedPassword === null) {
-                            throw new \Exception('SSH key authentication failed');
+                    try {
+                        $key = PublicKeyLoader::load($this->sshKey, $this->sshKeyPassphrase);
+                        
+                        if ($this->connection->login($this->router->username, $key)) {
+                            Log::info('SSH Executor: Connected via SSH key', [
+                                'router_id' => $this->router->id,
+                                'host' => $this->host,
+                                'port' => $this->port,
+                                'duration' => round(microtime(true) - $startTime, 3) . 's',
+                                'method' => 'ssh_key'
+                            ]);
+                            return;
                         }
-
-                        Log::warning('SSH Executor: SSH key authentication failed, falling back to password', [
+                        
+                        $authErrors[] = 'SSH key: authentication rejected by router';
+                        Log::warning('SSH Executor: SSH key authentication rejected', [
                             'router_id' => $this->router->id,
                             'host' => $this->host,
-                            'port' => $this->port,
                         ]);
+                    } catch (\Exception $keyError) {
+                        $authErrors[] = 'SSH key: ' . $keyError->getMessage();
+                        Log::warning('SSH Executor: SSH key loading/auth error', [
+                            'router_id' => $this->router->id,
+                            'error' => $keyError->getMessage(),
+                        ]);
+                    }
+                }
 
-                        $password = $this->resolvePasswordForLogin();
-                        if (!$this->connection->login($this->router->username, $password)) {
-                            throw new \Exception('SSH password authentication failed');
-                        }
-
-                        Log::info('SSH Executor: Connected via password (key fallback)', [
+                // Fallback to password authentication
+                if ($this->decryptedPassword !== null) {
+                    // Re-establish connection for password attempt if key failed
+                    if ($this->sshKey !== null) {
+                        $this->connection = new SSH2($this->host, $this->port, $this->timeout);
+                    }
+                    
+                    if ($this->connection->login($this->router->username, $this->decryptedPassword)) {
+                        $method = $this->sshKey !== null ? 'password_fallback' : 'password';
+                        Log::info('SSH Executor: Connected via password', [
                             'router_id' => $this->router->id,
                             'host' => $this->host,
                             'port' => $this->port,
                             'duration' => round(microtime(true) - $startTime, 3) . 's',
-                            'method' => 'password_fallback'
+                            'method' => $method
                         ]);
 
                         $this->tryAutoBootstrapPublicKey();
-
                         return;
                     }
-
-                    Log::info('SSH Executor: Connected via SSH key', [
+                    
+                    $authErrors[] = 'Password: authentication rejected by router';
+                    Log::warning('SSH Executor: Password authentication rejected', [
                         'router_id' => $this->router->id,
                         'host' => $this->host,
-                        'port' => $this->port,
-                        'duration' => round(microtime(true) - $startTime, 3) . 's',
-                        'method' => 'ssh_key'
+                        'username' => $this->router->username,
                     ]);
-                } else {
-                    // Fallback to password
-                    $password = $this->resolvePasswordForLogin();
-                    if (!$this->connection->login($this->router->username, $password)) {
-                        throw new \Exception('SSH password authentication failed');
-                    }
-
-                    Log::info('SSH Executor: Connected via password', [
-                        'router_id' => $this->router->id,
-                        'host' => $this->host,
-                        'port' => $this->port,
-                        'duration' => round(microtime(true) - $startTime, 3) . 's',
-                        'method' => 'password'
-                    ]);
-
-                    $this->tryAutoBootstrapPublicKey();
                 }
-
-                return;
+                
+                // All auth methods failed
+                throw new \Exception('All authentication methods failed: ' . implode('; ', $authErrors));
+                
             } catch (\Exception $e) {
                 $lastException = $e;
                 $this->connection = null;
@@ -416,6 +449,7 @@ class SshExecutor
                     'attempt' => $attempt,
                     'max_attempts' => $maxAttempts,
                     'error' => $e->getMessage(),
+                    'auth_errors' => $authErrors,
                 ]);
 
                 if ($attempt < $maxAttempts) {
@@ -423,17 +457,28 @@ class SshExecutor
                     if ($delay > 0) {
                         sleep($delay);
                     }
+                    // Reset auth errors for next attempt
+                    $authErrors = [];
                 }
             }
         }
 
         $error = $lastException ? $lastException->getMessage() : 'Unknown error';
-        Log::error('SSH Executor: Connection failed', [
+        Log::error('SSH Executor: Connection failed after all retries', [
             'router_id' => $this->router->id,
+            'router_name' => $this->router->name,
             'host' => $this->host,
             'port' => $this->port,
+            'username' => $this->router->username,
             'error' => $error,
-            'duration' => round(microtime(true) - $startTime, 3) . 's'
+            'auth_methods_tried' => $authMethods,
+            'duration' => round(microtime(true) - $startTime, 3) . 's',
+            'troubleshooting' => [
+                'check_ssh_enabled' => 'Verify SSH is enabled on router: /ip service print',
+                'check_user_exists' => 'Verify user exists: /user print',
+                'check_user_group' => 'Verify user has full group: /user print detail',
+                'check_ssh_port' => 'Verify SSH port is 22: /ip service print where name=ssh',
+            ]
         ]);
 
         throw new \Exception('SSH connection failed: ' . $error, 503, $lastException);
