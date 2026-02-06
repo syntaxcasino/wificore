@@ -189,7 +189,8 @@ class UnifiedAuthController extends Controller
         }
 
         // SCHEMA-BASED MULTI-TENANCY: Validate schema mapping for tenant users
-        if ($user->tenant_id) {
+        // Skip for system admins (landlords) - they operate in public schema
+        if ($user->tenant_id && $user->role !== User::ROLE_SYSTEM_ADMIN) {
             $schemaMapping = DB::table('public.radius_user_schema_mapping')
                 ->where('username', $user->username)
                 ->where('tenant_id', $user->tenant_id)
@@ -228,6 +229,11 @@ class UnifiedAuthController extends Controller
                 'username' => $user->username,
                 'schema' => $schemaMapping->schema_name,
                 'tenant_id' => $user->tenant_id
+            ]);
+        } elseif ($user->role === User::ROLE_SYSTEM_ADMIN) {
+            \Log::info('System admin login - skipping schema mapping check', [
+                'username' => $user->username,
+                'user_id' => $user->id
             ]);
         }
         

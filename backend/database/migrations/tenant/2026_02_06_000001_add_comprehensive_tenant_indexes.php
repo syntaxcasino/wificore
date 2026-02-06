@@ -469,13 +469,10 @@ return new class extends Migration
 
     /**
      * Create an index if it does not exist.
+     * Uses CREATE INDEX IF NOT EXISTS for atomic, idempotent operation.
      */
     private function createIndexIfNotExists(string $schema, string $table, string $indexName, array $columns): void
     {
-        if ($this->indexExists($schema, $table, $indexName)) {
-            return;
-        }
-
         if (!Schema::hasTable($table)) {
             return;
         }
@@ -487,11 +484,13 @@ return new class extends Migration
         }
 
         $columnList = implode(', ', array_map(fn($c) => "\"$c\"", $columns));
-        DB::statement("CREATE INDEX \"{$indexName}\" ON \"{$schema}\".\"{$table}\" ({$columnList})");
+        // Use IF NOT EXISTS for atomic idempotent index creation (PostgreSQL 9.5+)
+        DB::statement("CREATE INDEX IF NOT EXISTS \"{$indexName}\" ON \"{$schema}\".\"{$table}\" ({$columnList})");
     }
 
     /**
      * Create a partial index if it does not exist.
+     * Uses CREATE INDEX IF NOT EXISTS for atomic, idempotent operation.
      * 
      * @param string $schema The schema name
      * @param string $table The table name
@@ -502,10 +501,6 @@ return new class extends Migration
      */
     private function createPartialIndexIfNotExists(string $schema, string $table, string $indexName, array $columns, string $whereClause, array $whereColumns = []): void
     {
-        if ($this->indexExists($schema, $table, $indexName)) {
-            return;
-        }
-
         if (!Schema::hasTable($table)) {
             return;
         }
@@ -525,7 +520,8 @@ return new class extends Migration
         }
 
         $columnList = implode(', ', array_map(fn($c) => "\"$c\"", $columns));
-        DB::statement("CREATE INDEX \"{$indexName}\" ON \"{$schema}\".\"{$table}\" ({$columnList}) WHERE {$whereClause}");
+        // Use IF NOT EXISTS for atomic idempotent index creation (PostgreSQL 9.5+)
+        DB::statement("CREATE INDEX IF NOT EXISTS \"{$indexName}\" ON \"{$schema}\".\"{$table}\" ({$columnList}) WHERE {$whereClause}");
     }
 
     /**
