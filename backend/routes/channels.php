@@ -198,3 +198,25 @@ Broadcast::channel('system.queue-stats', function ($user) {
     // SECURITY: Only system admins can access queue statistics
     return $user->role === 'system_admin' && $user->tenant_id === null;
 });
+
+// =============================================================================
+// HOTSPOT CHANNELS - Real-time Hotspot updates
+// =============================================================================
+
+// Tenant-specific hotspot channel - for all hotspot events
+Broadcast::channel('tenant.{tenantId}.hotspot', function ($user, $tenantId) {
+    // SECURITY: Only tenant admins can access hotspot events
+    return $user->isAdmin() && (string) $user->tenant_id === (string) $tenantId;
+});
+
+// Tenant-specific hotspot sessions channel
+Broadcast::channel('tenant.{tenantId}.hotspot-sessions', function ($user, $tenantId) {
+    // SECURITY: Only tenant admins can access session events
+    return $user->isAdmin() && (string) $user->tenant_id === (string) $tenantId;
+});
+
+// Tenant-specific hotspot provisioning channel
+Broadcast::channel('tenant.{tenantId}.hotspot-provisioning', function ($user, $tenantId) {
+    // SECURITY: Only tenant admins can access provisioning events
+    return $user->isAdmin() && (string) $user->tenant_id === (string) $tenantId;
+});

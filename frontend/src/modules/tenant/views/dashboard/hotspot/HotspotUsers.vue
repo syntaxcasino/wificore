@@ -39,11 +39,14 @@
           <div class="flex items-center gap-2">
             <BaseBadge variant="info">{{ totalUsers }} Total</BaseBadge>
             <BaseBadge variant="success" dot pulse>{{ activeUsers.length }} Active</BaseBadge>
-            <BaseBadge variant="warning">{{ inactiveUsers.length }} Inactive</BaseBadge>
+            <BaseBadge variant="warning">{{ expiredUsers.length }} Expired</BaseBadge>
           </div>
           
-          <!-- Action Button -->
-          <div class="ml-auto">
+          <!-- Action Buttons -->
+          <div class="ml-auto flex items-center gap-2">
+            <BaseButton @click="handleRefresh" variant="ghost" size="sm" :disabled="loading">
+              <RefreshCw class="w-4 h-4" :class="{ 'animate-spin': loading }" />
+            </BaseButton>
             <BaseButton @click="$router.push('/dashboard/hotspot/vouchers/generate')" variant="primary">
               <Ticket class="w-4 h-4 mr-1" />
               Generate Vouchers
@@ -148,8 +151,21 @@
                       <BaseButton @click="viewSessions(user)" variant="ghost" size="sm">
                         <Activity class="w-3 h-3" />
                       </BaseButton>
-                      <BaseButton @click="handleDisconnect(user)" variant="warning" size="sm" v-if="user.status === 'active'">
-                        Disconnect
+                      <BaseButton 
+                        @click="handleDisconnect(user)" 
+                        variant="warning" 
+                        size="sm" 
+                        v-if="user.status === 'active'"
+                        :disabled="disconnecting[user.id]"
+                      >
+                        <template v-if="disconnecting[user.id]">
+                          <RefreshCw class="w-3 h-3 animate-spin mr-1" />
+                          Disconnecting...
+                        </template>
+                        <template v-else>
+                          <WifiOff class="w-3 h-3 mr-1" />
+                          Disconnect
+                        </template>
                       </BaseButton>
                     </div>
                   </td>
@@ -177,9 +193,8 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
-import { Ticket, X, RefreshCw, Activity } from 'lucide-vue-next'
-import axios from 'axios'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { Ticket, X, RefreshCw, Activity, Wifi, WifiOff } from 'lucide-vue-next'
 import PageContainer from '@/modules/common/components/layout/templates/PageContainer.vue'
 import PageContent from '@/modules/common/components/layout/templates/PageContent.vue'
 import PageFooter from '@/modules/common/components/layout/templates/PageFooter.vue'
@@ -196,40 +211,27 @@ import BaseAlert from '@/modules/common/components/base/BaseAlert.vue'
 import { useFilters } from '@/modules/common/composables/utils/useFilters'
 import { usePagination } from '@/modules/common/composables/utils/usePagination'
 import { usePackages } from '@/modules/tenant/composables/data/usePackages'
+import { useHotspot } from '@/modules/tenant/composables/useHotspot'
 
-// Data management
-const users = ref([])
-const loading = ref(false)
-const error = ref(null)
+// Use the WebSocket-enabled hotspot composable
+const {
+  users,
+  loading,
+  error,
+  pagination,
+  activeUsers,
+  expiredUsers,
+  totalUsers,
+  fetchUsers,
+  disconnectUser,
+  setPage,
+  setPerPage,
+} = useHotspot()
 
 const { packages, fetchPackages } = usePackages()
 
-// Fetch hotspot users
-const fetchUsers = async () => {
-  loading.value = true
-  error.value = null
-  
-  try {
-    const response = await axios.get('/hotspot/users')
-    users.value = response.data.data || response.data
-  } catch (err) {
-    error.value = err.response?.data?.message || 'Failed to fetch hotspot users'
-    console.error('Error fetching hotspot users:', err)
-  } finally {
-    loading.value = false
-  }
-}
-
-// Computed
-const activeUsers = computed(() => 
-  users.value.filter(u => u.status === 'active')
-)
-
-const inactiveUsers = computed(() => 
-  users.value.filter(u => u.status === 'inactive' || u.status === 'expired')
-)
-
-const totalUsers = computed(() => users.value.length)
+// Local state for disconnect confirmation
+const disconnecting = ref({})
 
 // Filtering
 const { 
@@ -240,7 +242,7 @@ const {
   clearFilters 
 } = useFilters(users, { status: '', package: '' })
 
-// Pagination
+// Pagination (local filtering on top of server pagination)
 const { 
   currentPage, 
   itemsPerPage, 
@@ -260,7 +262,9 @@ const getStatusVariant = (status) => {
   const variants = {
     active: 'success',
     inactive: 'warning',
-    expired: 'danger'
+    expired: 'danger',
+    revoked: 'danger',
+    disconnecting: 'warning',
   }
   return variants[status] || 'default'
 }
@@ -284,12 +288,10 @@ const formatBytes = (bytes) => {
 
 const openUserDetails = (user) => {
   console.log('View user details:', user)
-  // TODO: Implement user details modal
 }
 
 const viewSessions = (user) => {
   console.log('View sessions for:', user)
-  // TODO: Navigate to sessions view filtered by user
 }
 
 const handleDisconnect = async (user) => {
@@ -297,15 +299,21 @@ const handleDisconnect = async (user) => {
   
   if (confirmed) {
     try {
-      // TODO: Implement disconnect logic
-      console.log('Disconnecting user:', user)
+      disconnecting.value[user.id] = true
+      await disconnectUser(user.id, 'Admin disconnect')
     } catch (err) {
       console.error('Failed to disconnect user:', err)
+    } finally {
+      disconnecting.value[user.id] = false
     }
   }
 }
 
-// Lifecycle
+const handleRefresh = () => {
+  fetchUsers()
+}
+
+// Lifecycle - fetch initial data (WebSocket handles updates)
 onMounted(() => {
   fetchUsers()
   fetchPackages()

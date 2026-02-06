@@ -6,8 +6,15 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 use App\Models\HotspotUser;
 use App\Models\HotspotSession;
+use App\Models\RadiusSession;
+use App\Models\Package;
+use App\Jobs\DisconnectHotspotUserJob;
+use App\Jobs\GrantHotspotAccessJob;
+use App\Events\HotspotAccessRevoked;
+use App\Services\Hotspot\HotspotRadiusService;
 use Carbon\Carbon;
 
 class HotspotController extends Controller
@@ -263,6 +270,337 @@ class HotspotController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'An error occurred',
+            ], 500);
+        }
+    }
+
+    // =========================================================================
+    // ADMIN METHODS - Authenticated tenant admin endpoints
+    // =========================================================================
+
+    /**
+     * List hotspot users with pagination and filtering
+     */
+    public function listUsers(Request $request)
+    {
+        try {
+            $query = HotspotUser::with(['package', 'credential'])
+                ->when($request->status, function ($q, $status) {
+                    return $q->where('status', $status);
+                })
+                ->when($request->package_id, function ($q, $packageId) {
+                    return $q->where('package_id', $packageId);
+                })
+                ->when($request->search, function ($q, $search) {
+                    return $q->where(function ($query) use ($search) {
+                        $query->where('username', 'like', "%{$search}%")
+                            ->orWhere('phone', 'like', "%{$search}%")
+                            ->orWhere('voucher_code', 'like', "%{$search}%")
+                            ->orWhere('name', 'like', "%{$search}%");
+                    });
+                })
+                ->when($request->has_subscription !== null, function ($q) use ($request) {
+                    return $q->where('has_active_subscription', filter_var($request->has_subscription, FILTER_VALIDATE_BOOLEAN));
+                });
+
+            $users = $query->latest()->paginate($request->per_page ?? 15);
+
+            return response()->json([
+                'success' => true,
+                'data' => $users->items(),
+                'meta' => [
+                    'current_page' => $users->currentPage(),
+                    'last_page' => $users->lastPage(),
+                    'per_page' => $users->perPage(),
+                    'total' => $users->total(),
+                ],
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error listing hotspot users', ['error' => $e->getMessage()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch hotspot users',
+            ], 500);
+        }
+    }
+
+    /**
+     * Get specific hotspot user details
+     */
+    public function showUser(string $userId)
+    {
+        try {
+            $user = HotspotUser::with(['package', 'credential', 'sessions' => function ($q) {
+                $q->latest()->limit(10);
+            }])->findOrFail($userId);
+
+            // Get RADIUS data usage
+            $dataUsage = DB::table('radacct')
+                ->where('username', $user->username)
+                ->selectRaw('SUM(acctinputoctets) as upload, SUM(acctoutputoctets) as download')
+                ->first();
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'user' => $user,
+                    'data_usage' => [
+                        'upload' => (int) ($dataUsage->upload ?? 0),
+                        'download' => (int) ($dataUsage->download ?? 0),
+                        'total' => (int) (($dataUsage->upload ?? 0) + ($dataUsage->download ?? 0)),
+                    ],
+                ],
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error fetching hotspot user', ['user_id' => $userId, 'error' => $e->getMessage()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'User not found',
+            ], 404);
+        }
+    }
+
+    /**
+     * Disconnect a hotspot user (queued job)
+     */
+    public function disconnectUser(Request $request, string $userId)
+    {
+        try {
+            $user = HotspotUser::findOrFail($userId);
+            $reason = $request->input('reason', 'Admin disconnect');
+            $tenantId = auth()->user()->tenant_id;
+
+            // Find active sessions
+            $activeSessions = RadiusSession::where('hotspot_user_id', $user->id)
+                ->where('status', 'active')
+                ->get();
+
+            if ($activeSessions->isEmpty()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'User has no active sessions',
+                ]);
+            }
+
+            // Dispatch disconnect jobs for each session
+            foreach ($activeSessions as $session) {
+                DisconnectHotspotUserJob::dispatch(
+                    $session->id,
+                    $tenantId,
+                    $reason,
+                    auth()->id()
+                )->onQueue('hotspot-sessions');
+            }
+
+            Log::info('Disconnect jobs dispatched for hotspot user', [
+                'user_id' => $userId,
+                'username' => $user->username,
+                'sessions_count' => $activeSessions->count(),
+                'admin_id' => auth()->id(),
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Disconnect request queued',
+                'sessions_affected' => $activeSessions->count(),
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error disconnecting hotspot user', ['user_id' => $userId, 'error' => $e->getMessage()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to disconnect user',
+            ], 500);
+        }
+    }
+
+    /**
+     * Grant access to a hotspot user
+     */
+    public function grantAccess(Request $request, string $userId)
+    {
+        try {
+            $user = HotspotUser::findOrFail($userId);
+            $packageId = $request->input('package_id');
+            $tenantId = auth()->user()->tenant_id;
+
+            // Validate package if provided
+            if ($packageId) {
+                $package = Package::where('id', $packageId)->where('type', 'hotspot')->first();
+                if (!$package) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Invalid package',
+                    ], 400);
+                }
+            }
+
+            // Dispatch grant access job
+            GrantHotspotAccessJob::dispatch(
+                $userId,
+                $tenantId,
+                $packageId,
+                'admin_grant'
+            )->onQueue('hotspot-access');
+
+            Log::info('Grant access job dispatched for hotspot user', [
+                'user_id' => $userId,
+                'package_id' => $packageId,
+                'admin_id' => auth()->id(),
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Access grant request queued',
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error granting hotspot access', ['user_id' => $userId, 'error' => $e->getMessage()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to grant access',
+            ], 500);
+        }
+    }
+
+    /**
+     * Revoke access from a hotspot user
+     */
+    public function revokeAccess(Request $request, string $userId)
+    {
+        try {
+            $user = HotspotUser::findOrFail($userId);
+            $reason = $request->input('reason', 'Admin revoked');
+            $tenantId = auth()->user()->tenant_id;
+
+            DB::beginTransaction();
+
+            // Block in RADIUS
+            DB::table('radcheck')
+                ->where('username', $user->username)
+                ->where('attribute', 'Auth-Type')
+                ->delete();
+
+            DB::table('radcheck')->insert([
+                'username' => $user->username,
+                'attribute' => 'Auth-Type',
+                'op' => ':=',
+                'value' => 'Reject',
+            ]);
+
+            // Update user status
+            $user->update([
+                'has_active_subscription' => false,
+                'status' => 'revoked',
+            ]);
+
+            DB::commit();
+
+            // Disconnect active sessions
+            $activeSessions = RadiusSession::where('hotspot_user_id', $user->id)
+                ->where('status', 'active')
+                ->get();
+
+            foreach ($activeSessions as $session) {
+                DisconnectHotspotUserJob::dispatch(
+                    $session->id,
+                    $tenantId,
+                    $reason,
+                    auth()->id()
+                )->onQueue('hotspot-sessions');
+            }
+
+            // Broadcast event
+            broadcast(new HotspotAccessRevoked(
+                $user->id,
+                $tenantId,
+                $user->username,
+                $reason
+            ))->toOthers();
+
+            Log::info('Access revoked for hotspot user', [
+                'user_id' => $userId,
+                'username' => $user->username,
+                'reason' => $reason,
+                'admin_id' => auth()->id(),
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Access revoked successfully',
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Error revoking hotspot access', ['user_id' => $userId, 'error' => $e->getMessage()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to revoke access',
+            ], 500);
+        }
+    }
+
+    /**
+     * List active hotspot sessions
+     */
+    public function listSessions(Request $request)
+    {
+        try {
+            $query = RadiusSession::with(['hotspotUser'])
+                ->when($request->status, function ($q, $status) {
+                    return $q->where('status', $status);
+                })
+                ->when($request->user_id, function ($q, $userId) {
+                    return $q->where('hotspot_user_id', $userId);
+                })
+                ->when($request->active_only, function ($q) {
+                    return $q->where('status', 'active');
+                });
+
+            $sessions = $query->latest('session_start')->paginate($request->per_page ?? 20);
+
+            return response()->json([
+                'success' => true,
+                'data' => $sessions->items(),
+                'meta' => [
+                    'current_page' => $sessions->currentPage(),
+                    'last_page' => $sessions->lastPage(),
+                    'per_page' => $sessions->perPage(),
+                    'total' => $sessions->total(),
+                ],
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error listing hotspot sessions', ['error' => $e->getMessage()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch sessions',
+            ], 500);
+        }
+    }
+
+    /**
+     * Get hotspot statistics
+     */
+    public function getStats()
+    {
+        try {
+            $stats = [
+                'total_users' => HotspotUser::count(),
+                'active_users' => HotspotUser::where('has_active_subscription', true)->count(),
+                'expired_users' => HotspotUser::where('status', 'expired')->count(),
+                'active_sessions' => RadiusSession::where('status', 'active')->count(),
+                'today_logins' => RadiusSession::whereDate('session_start', today())->count(),
+                'total_data_usage' => DB::table('radacct')
+                    ->selectRaw('SUM(acctinputoctets + acctoutputoctets) as total')
+                    ->value('total') ?? 0,
+            ];
+
+            return response()->json([
+                'success' => true,
+                'data' => $stats,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error fetching hotspot stats', ['error' => $e->getMessage()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch statistics',
             ], 500);
         }
     }
