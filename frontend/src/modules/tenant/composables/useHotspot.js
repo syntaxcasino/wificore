@@ -1,6 +1,6 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import axios from 'axios'
-import { useAuthStore } from '@/modules/common/stores/authStore'
+import { useAuthStore } from '@/stores/auth'
 import Echo from 'laravel-echo'
 
 /**

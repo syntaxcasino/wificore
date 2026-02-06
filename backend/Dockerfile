@@ -5,18 +5,21 @@ FROM php:8.4.14-fpm-alpine AS builder
 
 WORKDIR /var/www/html
 
-# Install build dependencies
-RUN apk add --no-cache --virtual .build-deps \
+# Install build dependencies and runtime libraries separately
+# Runtime libs (libpq, libzip) must remain for PHP extensions to work
+RUN apk add --no-cache \
+    libpq \
+    libzip \
+    unzip \
+    git \
+    curl \
+ && apk add --no-cache --virtual .build-deps \
     libzip-dev \
     postgresql-dev \
     linux-headers \
     autoconf \
     g++ \
     make \
- && apk add --no-cache \
-    unzip \
-    git \
-    curl \
  && docker-php-ext-install -j$(nproc) sockets zip pdo pdo_pgsql ftp \
  && apk del .build-deps
 
