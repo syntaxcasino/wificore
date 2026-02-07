@@ -147,6 +147,10 @@ if [ "${AUTO_MIGRATE}" = "true" ] || [ "${AUTO_MIGRATE}" = "1" ]; then
       CONSTRAINT single_row CHECK (id = 1)
     );" > /dev/null 2>&1 || true
 
+  # Clean up stale locks older than 5 minutes (crashed container left lock behind)
+  PGPASSWORD="${DB_PASSWORD}" psql -h "${MIGRATE_DB_HOST}" -p "${MIGRATE_DB_PORT}" -U "${DB_USERNAME}" -d "${DB_DATABASE}" -c "
+    DELETE FROM _migration_lock WHERE id = 1 AND locked_at < now() - interval '5 minutes';" > /dev/null 2>&1 || true
+
   # Try to acquire lock (INSERT succeeds only if no row exists)
   CONTAINER_ID=$(hostname)
   LOCK_ACQUIRED=$(PGPASSWORD="${DB_PASSWORD}" psql -h "${MIGRATE_DB_HOST}" -p "${MIGRATE_DB_PORT}" -U "${DB_USERNAME}" -d "${DB_DATABASE}" -t -c "
@@ -211,16 +215,22 @@ if [ "${AUTO_MIGRATE}" = "true" ] || [ "${AUTO_MIGRATE}" = "1" ]; then
   else
     echo "⏳ Another container holds the migration lock — waiting for it to finish..."
     WAIT_TRIES=0
+    LOCK_CLEARED=false
     while [ $WAIT_TRIES -lt 60 ]; do
       WAIT_TRIES=$((WAIT_TRIES+1))
       LOCK_EXISTS=$(PGPASSWORD="${DB_PASSWORD}" psql -h "${MIGRATE_DB_HOST}" -p "${MIGRATE_DB_PORT}" -U "${DB_USERNAME}" -d "${DB_DATABASE}" -t -c "
         SELECT EXISTS (SELECT 1 FROM _migration_lock WHERE id = 1);" 2>/dev/null | xargs || echo "f")
       if [ "$LOCK_EXISTS" = "f" ]; then
         echo "✅ Other container finished migrations"
+        LOCK_CLEARED=true
         break
       fi
       sleep 2
     done
+    if [ "$LOCK_CLEARED" = "false" ]; then
+      echo "⚠️  Migration lock wait timed out (120s) — force-clearing stale lock"
+      PGPASSWORD="${DB_PASSWORD}" psql -h "${MIGRATE_DB_HOST}" -p "${MIGRATE_DB_PORT}" -U "${DB_USERNAME}" -d "${DB_DATABASE}" -c "DELETE FROM _migration_lock WHERE id = 1;" > /dev/null 2>&1 || true
+    fi
     echo ""
   fi
 
