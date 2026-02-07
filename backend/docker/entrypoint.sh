@@ -133,23 +133,40 @@ if [ "${AUTO_MIGRATE}" = "true" ] || [ "${AUTO_MIGRATE}" = "1" ]; then
   echo ""
 
   # -------------------------------------------------------------------------
-  # ADVISORY LOCK — Single-instance migration runner
-  # Lock key 999999 is reserved for entrypoint migration coordination.
-  # pg_try_advisory_lock returns true if lock acquired, false if another
-  # container already holds it (meaning another container is migrating).
+  # DATABASE LOCK — Single-instance migration runner
+  # Uses a simple lock table in PostgreSQL to coordinate across containers.
+  # This avoids session-scoped advisory lock issues (each psql -c is a new session).
   # -------------------------------------------------------------------------
-  LOCK_ACQUIRED=$(PGPASSWORD="${DB_PASSWORD}" psql -h "${MIGRATE_DB_HOST}" -p "${MIGRATE_DB_PORT}" -U "${DB_USERNAME}" -d "${DB_DATABASE}" -t -c "SELECT pg_try_advisory_lock(999999);" 2>/dev/null | xargs || echo "f")
 
-  if [ "$LOCK_ACQUIRED" = "t" ]; then
+  # Create lock table if it doesn't exist
+  PGPASSWORD="${DB_PASSWORD}" psql -h "${MIGRATE_DB_HOST}" -p "${MIGRATE_DB_PORT}" -U "${DB_USERNAME}" -d "${DB_DATABASE}" -c "
+    CREATE TABLE IF NOT EXISTS _migration_lock (
+      id integer PRIMARY KEY DEFAULT 1,
+      locked_by text,
+      locked_at timestamptz DEFAULT now(),
+      CONSTRAINT single_row CHECK (id = 1)
+    );" > /dev/null 2>&1 || true
+
+  # Try to acquire lock (INSERT succeeds only if no row exists)
+  CONTAINER_ID=$(hostname)
+  LOCK_ACQUIRED=$(PGPASSWORD="${DB_PASSWORD}" psql -h "${MIGRATE_DB_HOST}" -p "${MIGRATE_DB_PORT}" -U "${DB_USERNAME}" -d "${DB_DATABASE}" -t -c "
+    INSERT INTO _migration_lock (id, locked_by, locked_at) VALUES (1, '${CONTAINER_ID}', now())
+    ON CONFLICT (id) DO NOTHING
+    RETURNING id;" 2>/dev/null | xargs || echo "")
+
+  if [ "$LOCK_ACQUIRED" = "1" ]; then
     echo "🔒 Migration lock acquired — this container will run migrations"
 
-    # Check if migrations table exists and has records (already initialized)
-    MIGRATION_RECORDS=$(PGPASSWORD="${DB_PASSWORD}" psql -h "${MIGRATE_DB_HOST}" -p "${MIGRATE_DB_PORT}" -U "${DB_USERNAME}" -d "${DB_DATABASE}" -t -c "
-      SELECT CASE
-        WHEN EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='migrations')
-        THEN (SELECT COUNT(*)::text FROM migrations)
-        ELSE '0'
-      END;" 2>/dev/null | xargs || echo "0")
+    # Check if migrations table exists, then count records
+    TABLE_EXISTS=$(PGPASSWORD="${DB_PASSWORD}" psql -h "${MIGRATE_DB_HOST}" -p "${MIGRATE_DB_PORT}" -U "${DB_USERNAME}" -d "${DB_DATABASE}" -t -c "
+      SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='migrations');" 2>/dev/null | xargs || echo "f")
+
+    if [ "$TABLE_EXISTS" = "t" ]; then
+      MIGRATION_RECORDS=$(PGPASSWORD="${DB_PASSWORD}" psql -h "${MIGRATE_DB_HOST}" -p "${MIGRATE_DB_PORT}" -U "${DB_USERNAME}" -d "${DB_DATABASE}" -t -c "
+        SELECT COUNT(*)::text FROM migrations;" 2>/dev/null | xargs || echo "0")
+    else
+      MIGRATION_RECORDS=0
+    fi
 
     if ! [[ "$MIGRATION_RECORDS" =~ ^[0-9]+$ ]]; then
       MIGRATION_RECORDS=0
@@ -173,8 +190,8 @@ if [ "${AUTO_MIGRATE}" = "true" ] || [ "${AUTO_MIGRATE}" = "1" ]; then
       echo "❌ FATAL: Migrations failed with exit code $MIGRATION_EXIT"
       echo "   Container will NOT start with incomplete schema."
       echo "   Fix the migration and redeploy."
-      # Release advisory lock before exiting
-      PGPASSWORD="${DB_PASSWORD}" psql -h "${MIGRATE_DB_HOST}" -p "${MIGRATE_DB_PORT}" -U "${DB_USERNAME}" -d "${DB_DATABASE}" -c "SELECT pg_advisory_unlock(999999);" > /dev/null 2>&1 || true
+      # Release lock before exiting
+      PGPASSWORD="${DB_PASSWORD}" psql -h "${MIGRATE_DB_HOST}" -p "${MIGRATE_DB_PORT}" -U "${DB_USERNAME}" -d "${DB_DATABASE}" -c "DELETE FROM _migration_lock WHERE id = 1;" > /dev/null 2>&1 || true
       exit 1
     fi
     echo "✅ Migrations completed successfully"
@@ -188,19 +205,17 @@ if [ "${AUTO_MIGRATE}" = "true" ] || [ "${AUTO_MIGRATE}" = "1" ]; then
     fi
 
     # Release migration lock
-    PGPASSWORD="${DB_PASSWORD}" psql -h "${MIGRATE_DB_HOST}" -p "${MIGRATE_DB_PORT}" -U "${DB_USERNAME}" -d "${DB_DATABASE}" -c "SELECT pg_advisory_unlock(999999);" > /dev/null 2>&1 || true
+    PGPASSWORD="${DB_PASSWORD}" psql -h "${MIGRATE_DB_HOST}" -p "${MIGRATE_DB_PORT}" -U "${DB_USERNAME}" -d "${DB_DATABASE}" -c "DELETE FROM _migration_lock WHERE id = 1;" > /dev/null 2>&1 || true
     echo "🔓 Migration lock released"
     echo ""
   else
     echo "⏳ Another container holds the migration lock — waiting for it to finish..."
-    # Wait for the other container to finish by trying to acquire + immediately release
     WAIT_TRIES=0
     while [ $WAIT_TRIES -lt 60 ]; do
       WAIT_TRIES=$((WAIT_TRIES+1))
-      LOCK_CHECK=$(PGPASSWORD="${DB_PASSWORD}" psql -h "${MIGRATE_DB_HOST}" -p "${MIGRATE_DB_PORT}" -U "${DB_USERNAME}" -d "${DB_DATABASE}" -t -c "SELECT pg_try_advisory_lock(999999);" 2>/dev/null | xargs || echo "f")
-      if [ "$LOCK_CHECK" = "t" ]; then
-        # Got the lock — release immediately, migrations are done
-        PGPASSWORD="${DB_PASSWORD}" psql -h "${MIGRATE_DB_HOST}" -p "${MIGRATE_DB_PORT}" -U "${DB_USERNAME}" -d "${DB_DATABASE}" -c "SELECT pg_advisory_unlock(999999);" > /dev/null 2>&1 || true
+      LOCK_EXISTS=$(PGPASSWORD="${DB_PASSWORD}" psql -h "${MIGRATE_DB_HOST}" -p "${MIGRATE_DB_PORT}" -U "${DB_USERNAME}" -d "${DB_DATABASE}" -t -c "
+        SELECT EXISTS (SELECT 1 FROM _migration_lock WHERE id = 1);" 2>/dev/null | xargs || echo "f")
+      if [ "$LOCK_EXISTS" = "f" ]; then
         echo "✅ Other container finished migrations"
         break
       fi
