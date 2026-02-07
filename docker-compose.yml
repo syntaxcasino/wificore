@@ -117,6 +117,8 @@ services:
       - DB_READ_HOST=${DB_READ_HOST:-wificore-pgbouncer-read}
       - DB_PORT=${DB_PORT:-6432}
       - DB_READ_PORT=${DB_READ_PORT:-6432}
+      - DB_DIRECT_HOST=${DB_DIRECT_HOST:-wificore-postgres}
+      - DB_DIRECT_PORT=${DB_DIRECT_PORT:-5432}
       - DB_DATABASE=${DB_DATABASE:-wms_770_ts}
       - DB_USERNAME=${DB_USERNAME:-admin}
       - DB_PASSWORD=${DB_PASSWORD}
@@ -437,6 +439,12 @@ services:
       - pg_stat_statements.track=all
       - -c
       - max_locks_per_transaction=256
+      - -c
+      - statement_timeout=30000
+      - -c
+      - idle_in_transaction_session_timeout=300000
+      - -c
+      - lock_timeout=10000
     volumes:
       - postgres_data:/var/lib/postgresql/data
       # Note: init.sql is baked into the image, not mounted
@@ -646,6 +654,7 @@ services:
     restart: unless-stopped
     environment:
       - APP_KEY=${APP_KEY}
+      - AUTO_MIGRATE=false
       - DB_CONNECTION=${DB_CONNECTION:-pgsql}
       - DB_HOST=${DB_HOST:-wificore-pgbouncer}
       - DB_PORT=${DB_PORT:-6432}

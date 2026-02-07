@@ -128,10 +128,12 @@ services:
       - DB_CONNECTION=pgsql
       - DB_HOST=${DB_HOST:-wificore-pgbouncer}
       - DB_READ_HOST=${DB_READ_HOST:-wificore-pgbouncer-read}
-      - PROVISIONING_SERVICE_URL=http://wificore-provisioning:8080
-      - PROVISIONING_SERVICE_API_KEY=${PROVISIONING_SERVICE_API_KEY:-}
       - DB_PORT=${DB_PORT:-6432}
       - DB_READ_PORT=${DB_READ_PORT:-6432}
+      - DB_DIRECT_HOST=${DB_DIRECT_HOST:-wificore-postgres}
+      - DB_DIRECT_PORT=${DB_DIRECT_PORT:-5432}
+      - PROVISIONING_SERVICE_URL=http://wificore-provisioning:8080
+      - PROVISIONING_SERVICE_API_KEY=${PROVISIONING_SERVICE_API_KEY:-}
       - BROADCAST_DRIVER=pusher
       - PUSHER_HOST=wificore-soketi
       - PUSHER_PORT=6071
@@ -226,6 +228,7 @@ services:
     environment:
       - TZ=${TZ:-Africa/Nairobi}
       - APP_KEY=${APP_KEY}
+      - AUTO_MIGRATE=false
       - DB_CONNECTION=${DB_CONNECTION:-pgsql}
       - DB_HOST=${DB_HOST:-wificore-pgbouncer}
       - DB_PORT=${DB_PORT:-6432}
@@ -330,8 +333,8 @@ services:
       test: ["CMD", "sh", "-c", "test -f /var/www/html/storage/app/telegraf/shards/$${TELEGRAF_SHARD_INDEX:-0}.conf"]
       interval: 10s
       timeout: 5s
-      retries: 10
-      start_period: 10s
+      retries: 12
+      start_period: 60s
 
   wificore-telegraf:
     image: telegraf:latest
@@ -674,6 +677,14 @@ services:
       - pg_stat_statements.max=10000
       - -c
       - pg_stat_statements.track=all
+      - -c
+      - max_locks_per_transaction=256
+      - -c
+      - statement_timeout=30000
+      - -c
+      - idle_in_transaction_session_timeout=300000
+      - -c
+      - lock_timeout=10000
     networks:
       wificore-network:
         ipv4_address: 172.70.0.4
