@@ -1163,6 +1163,21 @@ SCRIPT;
                 );
             }
 
+            // Schedule cleanup of orphaned RSC files
+            try {
+                $cleanupService = new RscFileCleanupService();
+                $cleanupService->scheduleCleanup($router, $remoteScriptFile);
+                Log::debug('Scheduled RSC file cleanup', [
+                    'router_id' => $router->id,
+                    'file' => $remoteScriptFile,
+                ]);
+            } catch (\Exception $e) {
+                Log::warning('Failed to schedule RSC cleanup', [
+                    'router_id' => $router->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
             Log::info('Configuration applied successfully via SSH', $result);
             return $result;
 
