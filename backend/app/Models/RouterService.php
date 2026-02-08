@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use App\Models\IpAllocation;
 use App\Traits\HasUuid;
 use App\Traits\BelongsToTenant;
 use App\Models\Scopes\TenantScope;
@@ -98,6 +99,14 @@ class RouterService extends Model
     public function ipPool()
     {
         return $this->belongsTo(TenantIpPool::class, 'ip_pool_id');
+    }
+
+    /**
+     * Get IP allocations for this service (tenant schema).
+     */
+    public function ipAllocations()
+    {
+        return $this->morphMany(IpAllocation::class, 'allocatable');
     }
 
     /**

@@ -2,8 +2,10 @@
 
 namespace App\Services;
 
+use App\Models\IpAllocation;
 use App\Models\Tenant;
 use App\Models\TenantIpPool;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -166,10 +168,20 @@ class TenantIpamService extends TenantAwareService
     }
 
     /**
-     * Allocate IP from pool
+     * Allocate an IP from pool and record the allocation in the tenant schema.
+     *
+     * @param TenantIpPool $pool       The pool to allocate from (public schema)
+     * @param string       $type       Allocation type (router_service, access_point, user_device, management)
+     * @param Model|null   $entity     The entity receiving the IP (for polymorphic tracking)
+     * @param string|null  $description Human-readable description
+     * @return IpAllocation|null  The allocation record, or null if pool is exhausted
      */
-    public function allocateIpFromPool(TenantIpPool $pool): ?string
-    {
+    public function allocateIpFromPool(
+        TenantIpPool $pool,
+        string $type = IpAllocation::TYPE_ROUTER_SERVICE,
+        ?Model $entity = null,
+        ?string $description = null
+    ): ?IpAllocation {
         if ($pool->isExhausted()) {
             if ($pool->metadata['auto_expansion_enabled'] ?? true) {
                 $this->expandPool($pool);
@@ -179,24 +191,100 @@ class TenantIpamService extends TenantAwareService
             }
         }
 
-        // Simple allocation - just track count
-        // Actual IP assignment handled by RADIUS
+        $ip = $this->findNextAvailableIp($pool);
+        if (!$ip) {
+            Log::error('No available IP in pool despite available_ips > 0', [
+                'pool_id' => $pool->id,
+            ]);
+            return null;
+        }
+
+        // Create allocation record in tenant schema
+        $allocation = IpAllocation::create([
+            'ip_pool_id' => $pool->id,
+            'ip_address' => $ip,
+            'type' => $type,
+            'allocatable_id' => $entity?->id,
+            'allocatable_type' => $entity ? get_class($entity) : null,
+            'description' => $description,
+            'status' => IpAllocation::STATUS_ACTIVE,
+            'allocated_at' => now(),
+        ]);
+
+        // Update pool counters
         $pool->allocateIp();
 
-        return $this->getNextAvailableIp($pool);
+        Log::info('Allocated IP from pool', [
+            'pool_id' => $pool->id,
+            'ip' => $ip,
+            'type' => $type,
+            'entity' => $entity ? get_class($entity) . ':' . $entity->id : null,
+        ]);
+
+        return $allocation;
     }
 
     /**
-     * Release IP back to pool
+     * Release an IP back to the pool.
+     *
+     * @param TenantIpPool $pool  The pool the IP belongs to
+     * @param string       $ip    The IP address to release
      */
     public function releaseIp(TenantIpPool $pool, string $ip): void
     {
+        // Find and release the allocation record in tenant schema
+        $allocation = IpAllocation::where('ip_pool_id', $pool->id)
+            ->where('ip_address', $ip)
+            ->where('status', IpAllocation::STATUS_ACTIVE)
+            ->first();
+
+        if ($allocation) {
+            $allocation->release();
+        }
+
+        // Update pool counters
         $pool->releaseIp();
 
         Log::info('Released IP from pool', [
             'pool_id' => $pool->id,
             'ip' => $ip,
         ]);
+    }
+
+    /**
+     * Release all IPs allocated to a specific entity.
+     */
+    public function releaseAllocationsForEntity(Model $entity): void
+    {
+        $allocations = IpAllocation::where('allocatable_id', $entity->id)
+            ->where('allocatable_type', get_class($entity))
+            ->where('status', IpAllocation::STATUS_ACTIVE)
+            ->get();
+
+        foreach ($allocations as $allocation) {
+            $pool = TenantIpPool::withoutGlobalScopes()->find($allocation->ip_pool_id);
+            if ($pool) {
+                $pool->releaseIp();
+            }
+            $allocation->release();
+        }
+
+        Log::info('Released all IP allocations for entity', [
+            'entity_type' => get_class($entity),
+            'entity_id' => $entity->id,
+            'count' => $allocations->count(),
+        ]);
+    }
+
+    /**
+     * Get all active allocations for a pool.
+     */
+    public function getPoolAllocations(TenantIpPool $pool): \Illuminate\Database\Eloquent\Collection
+    {
+        return IpAllocation::where('ip_pool_id', $pool->id)
+            ->where('status', IpAllocation::STATUS_ACTIVE)
+            ->orderBy('ip_address')
+            ->get();
     }
 
     /**
@@ -261,13 +349,31 @@ class TenantIpamService extends TenantAwareService
     }
 
     /**
-     * Get next available IP from pool
+     * Find the next available IP in the pool by checking existing allocations.
+     * Scans the range and returns the first IP not already allocated.
      */
-    private function getNextAvailableIp(TenantIpPool $pool): string
+    private function findNextAvailableIp(TenantIpPool $pool): ?string
     {
-        $rangeParts = explode('.', $pool->range_start);
-        $lastOctet = (int)$rangeParts[3] + $pool->allocated_ips - 1;
-        
-        return "{$rangeParts[0]}.{$rangeParts[1]}.{$rangeParts[2]}.{$lastOctet}";
+        $startLong = ip2long($pool->range_start);
+        $endLong = ip2long($pool->range_end);
+
+        if ($startLong === false || $endLong === false) {
+            return null;
+        }
+
+        // Get all active IPs in this pool (tenant schema)
+        $allocatedIps = IpAllocation::where('ip_pool_id', $pool->id)
+            ->where('status', IpAllocation::STATUS_ACTIVE)
+            ->pluck('ip_address')
+            ->flip();
+
+        for ($ipLong = $startLong; $ipLong <= $endLong; $ipLong++) {
+            $ip = long2ip($ipLong);
+            if (!$allocatedIps->has($ip)) {
+                return $ip;
+            }
+        }
+
+        return null;
     }
 }
