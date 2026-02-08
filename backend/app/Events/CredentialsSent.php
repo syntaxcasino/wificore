@@ -21,10 +21,11 @@ class CredentialsSent implements ShouldBroadcast
     /**
      * Create a new event instance.
      */
-    public function __construct(HotspotCredential $credential)
+    public function __construct(HotspotCredential $credential, ?string $tenantId = null)
     {
         $this->credential = $credential;
-        $this->tenantId = $credential->tenant_id ?? null;
+        // HotspotCredential is in tenant schema - no tenant_id column
+        $this->tenantId = $tenantId ?? (auth()->user()?->tenant_id);
     }
 
     /**

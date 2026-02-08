@@ -26,7 +26,11 @@ class SystemAdminController extends Controller
                 ->whereNull('suspended_at')
                 ->count();
             $totalUsers = User::withoutGlobalScopes()->count();
-            $totalRouters = Router::withoutGlobalScopes()->count();
+
+            // Routers and packages are in tenant schemas - aggregate via cross-schema queries
+            $routerStats = $this->aggregateAcrossTenantSchemas('routers', ['status']);
+            $packageStats = $this->aggregateAcrossTenantSchemas('packages', ['is_active']);
+            $totalRouters = $routerStats['total'] ?? 0;
             
             // Get real system metrics
             $systemMetrics = SystemMetricsService::getAllMetrics();
@@ -67,12 +71,12 @@ class SystemAdminController extends Controller
                 ],
                 'routers' => [
                     'total' => $totalRouters,
-                    'online' => Router::withoutGlobalScopes()->where('status', 'online')->count(),
-                    'offline' => Router::withoutGlobalScopes()->where('status', 'offline')->count(),
+                    'online' => $routerStats['online'] ?? 0,
+                    'offline' => $routerStats['offline'] ?? 0,
                 ],
                 'packages' => [
-                    'total' => Package::withoutGlobalScopes()->count(),
-                    'active' => Package::withoutGlobalScopes()->where('is_active', true)->count(),
+                    'total' => $packageStats['total'] ?? 0,
+                    'active' => $packageStats['active'] ?? 0,
                 ],
                 'subscriptions' => [
                     'active' => Tenant::where('is_active', true)
@@ -107,14 +111,26 @@ class SystemAdminController extends Controller
      */
     public function getTenantMetrics(Request $request)
     {
+        $tenantContext = app(\App\Services\TenantContext::class);
+
         $tenants = Tenant::where('is_landlord', false)
-            ->withCount([
-                'users',
-                'routers',
-                'packages',
-            ])
+            ->withCount(['users'])
             ->get()
-            ->map(function ($tenant) {
+            ->map(function ($tenant) use ($tenantContext) {
+                $routersCount = 0;
+                $packagesCount = 0;
+
+                if ($tenant->schema_created && $tenant->schema_name) {
+                    try {
+                        $tenantContext->runInTenantContext($tenant, function () use (&$routersCount, &$packagesCount) {
+                            $routersCount = Router::count();
+                            $packagesCount = Package::count();
+                        });
+                    } catch (\Exception $e) {
+                        \Log::warning('Failed to get tenant metrics', ['tenant_id' => $tenant->id, 'error' => $e->getMessage()]);
+                    }
+                }
+
                 return [
                     'id' => $tenant->id,
                     'name' => $tenant->name,
@@ -123,8 +139,8 @@ class SystemAdminController extends Controller
                     'subscription_status' => $tenant->subscription_status,
                     'subscription_ends_at' => $tenant->subscription_ends_at,
                     'users_count' => $tenant->users_count,
-                    'routers_count' => $tenant->routers_count,
-                    'packages_count' => $tenant->packages_count,
+                    'routers_count' => $routersCount,
+                    'packages_count' => $packagesCount,
                     'has_override' => $tenant->landlord_override ?? false,
                 ];
             });
@@ -157,8 +173,8 @@ class SystemAdminController extends Controller
      */
     public function getTenantDetails(Request $request, $tenantId)
     {
-        $tenant = Tenant::with(['users', 'routers', 'packages'])
-            ->withCount(['users', 'routers', 'packages', 'payments'])
+        $tenant = Tenant::with(['users'])
+            ->withCount(['users'])
             ->findOrFail($tenantId);
 
         $stats = [
@@ -167,22 +183,29 @@ class SystemAdminController extends Controller
                 'active' => $tenant->users()->where('is_active', true)->count(),
                 'admins' => $tenant->users()->where('role', 'admin')->count(),
             ],
-            'routers' => [
-                'total' => $tenant->routers_count,
-                'online' => $tenant->routers()->where('status', 'online')->count(),
-            ],
-            'packages' => [
-                'total' => $tenant->packages_count,
-                'active' => $tenant->packages()->where('is_active', true)->count(),
-            ],
-            'revenue' => [
-                'total' => $tenant->payments()->where('status', 'completed')->sum('amount'),
-                'monthly' => $tenant->payments()
-                    ->where('status', 'completed')
-                    ->whereMonth('created_at', now()->month)
-                    ->sum('amount'),
-            ],
+            'routers' => ['total' => 0, 'online' => 0],
+            'packages' => ['total' => 0, 'active' => 0],
+            'revenue' => ['total' => 0, 'monthly' => 0],
         ];
+
+        // Fetch tenant-schema stats via context switch
+        if ($tenant->schema_created && $tenant->schema_name) {
+            try {
+                $tenantContext = app(\App\Services\TenantContext::class);
+                $tenantContext->runInTenantContext($tenant, function () use (&$stats) {
+                    $stats['routers']['total'] = Router::count();
+                    $stats['routers']['online'] = Router::where('status', 'online')->count();
+                    $stats['packages']['total'] = Package::count();
+                    $stats['packages']['active'] = Package::where('is_active', true)->count();
+                    $stats['revenue']['total'] = Payment::where('status', 'completed')->sum('amount');
+                    $stats['revenue']['monthly'] = Payment::where('status', 'completed')
+                        ->whereMonth('created_at', now()->month)
+                        ->sum('amount');
+                });
+            } catch (\Exception $e) {
+                \Log::warning('Failed to get tenant detail stats', ['tenant_id' => $tenant->id, 'error' => $e->getMessage()]);
+            }
+        }
 
         return response()->json([
             'success' => true,
@@ -235,8 +258,40 @@ class SystemAdminController extends Controller
     }
 
     /**
-     * Create system administrator user
+     * Aggregate counts across all tenant schemas for a given table.
+     * Returns totals and breakdowns by specified columns.
      */
+    private function aggregateAcrossTenantSchemas(string $table, array $breakdownColumns = []): array
+    {
+        $result = ['total' => 0];
+        $tenants = Tenant::where('schema_created', true)
+            ->whereNotNull('schema_name')
+            ->get();
+
+        foreach ($tenants as $tenant) {
+            try {
+                $count = DB::selectOne("SELECT COUNT(*) as cnt FROM {$tenant->schema_name}.{$table}");
+                $result['total'] += $count->cnt ?? 0;
+
+                if ($table === 'routers') {
+                    $online = DB::selectOne("SELECT COUNT(*) as cnt FROM {$tenant->schema_name}.{$table} WHERE status = 'online'");
+                    $offline = DB::selectOne("SELECT COUNT(*) as cnt FROM {$tenant->schema_name}.{$table} WHERE status = 'offline'");
+                    $result['online'] = ($result['online'] ?? 0) + ($online->cnt ?? 0);
+                    $result['offline'] = ($result['offline'] ?? 0) + ($offline->cnt ?? 0);
+                }
+
+                if ($table === 'packages') {
+                    $active = DB::selectOne("SELECT COUNT(*) as cnt FROM {$tenant->schema_name}.{$table} WHERE is_active = true");
+                    $result['active'] = ($result['active'] ?? 0) + ($active->cnt ?? 0);
+                }
+            } catch (\Exception $e) {
+                \Log::warning("Failed to aggregate {$table} for tenant {$tenant->name}: " . $e->getMessage());
+            }
+        }
+
+        return $result;
+    }
+
     public function createSystemAdmin(Request $request)
     {
         $validated = $request->validate([

@@ -17,13 +17,15 @@ class VpnConfigurationCreated implements ShouldBroadcast
     use BroadcastsToTenant;
 
     public VpnConfiguration $vpnConfig;
+    public ?string $tenantId;
 
     /**
      * Create a new event instance.
      */
-    public function __construct(VpnConfiguration $vpnConfig)
+    public function __construct(VpnConfiguration $vpnConfig, ?string $tenantId = null)
     {
         $this->vpnConfig = $vpnConfig;
+        $this->tenantId = $tenantId ?? (auth()->user()?->tenant_id);
     }
 
     /**
@@ -53,7 +55,6 @@ class VpnConfigurationCreated implements ShouldBroadcast
         return [
             'vpn_config' => [
                 'id' => $this->vpnConfig->id,
-                'tenant_id' => $this->vpnConfig->tenant_id,
                 'router_id' => $this->vpnConfig->router_id,
                 'vpn_type' => $this->vpnConfig->vpn_type,
                 'client_ip' => $this->vpnConfig->client_ip,
@@ -78,6 +79,6 @@ class VpnConfigurationCreated implements ShouldBroadcast
      */
     protected function getTenantId(): string
     {
-        return (string) $this->vpnConfig->tenant_id;
+        return (string) $this->tenantId;
     }
 }

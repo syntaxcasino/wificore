@@ -81,7 +81,7 @@ class SendCredentialsSMSJob implements ShouldQueue
                 ]);
                 
                 // Broadcast event
-                broadcast(new CredentialsSent($credential))->toOthers();
+                broadcast(new CredentialsSent($credential, $this->tenantId))->toOthers();
                 
                 Log::info('Credentials SMS sent successfully', [
                     'user_id' => $this->hotspotUserId,

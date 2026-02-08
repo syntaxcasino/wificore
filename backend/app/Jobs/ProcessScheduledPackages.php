@@ -65,14 +65,7 @@ class ProcessScheduledPackages implements ShouldQueue
             Log::info('ProcessScheduledPackages job started', ['tenant_id' => $this->tenantId]);
 
             try {
-                // Get packages that need to be activated (Package is in public schema, but might have tenant_id)
-                // Wait, if packages are in public schema, do we need to switch context?
-                // The `Package` model might have `TenantScope`.
-                // If we are in tenant context (which we are), `TenantScope` will filter by `tenant_id`.
-                // However, `Package` is in public schema. We need to make sure we are querying correct table.
-                // TenantAwareJob sets search_path to "tenant, public".
-                // So querying `packages` will find it in public schema if not in tenant schema.
-                
+                // Packages are in tenant schema - search_path is already set by executeInTenantContext
                 $packagesToActivate = Package::where('enable_schedule', true)
                     ->where('scheduled_activation_time', '<=', Carbon::now())
                     ->where('status', 'inactive')
@@ -139,7 +132,7 @@ class ProcessScheduledPackages implements ShouldQueue
 
             // Broadcast event to private channel
             try {
-                broadcast(new PackageStatusChanged($package, $oldStatus, 'active'))->toOthers();
+                broadcast(new PackageStatusChanged($package, $oldStatus, 'active', $this->tenantId))->toOthers();
             } catch (\Exception $e) {
                 Log::warning('Failed to broadcast PackageStatusChanged event', [
                     'tenant_id' => $this->tenantId,
@@ -179,7 +172,7 @@ class ProcessScheduledPackages implements ShouldQueue
 
             // Broadcast event to private channel
             try {
-                broadcast(new PackageStatusChanged($package, $oldStatus, 'inactive'))->toOthers();
+                broadcast(new PackageStatusChanged($package, $oldStatus, 'inactive', $this->tenantId))->toOthers();
             } catch (\Exception $e) {
                 Log::warning('Failed to broadcast PackageStatusChanged event', [
                     'tenant_id' => $this->tenantId,

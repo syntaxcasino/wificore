@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasColumn('tenants', 'subdomain')) {
+            return;
+        }
+
         Schema::table('tenants', function (Blueprint $table) {
             // Add subdomain column
             $table->string('subdomain')->unique()->nullable()->after('slug');

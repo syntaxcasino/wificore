@@ -5,8 +5,6 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use App\Traits\HasUuid;
-use App\Traits\BelongsToTenant;
-use App\Models\Scopes\TenantScope;
 use Illuminate\Support\Facades\Log;
 
 class Router extends Model
@@ -15,7 +13,57 @@ class Router extends Model
 
     protected static function booted(): void
     {
-        // No global scope needed for tenant-specific tables
+        // No global scope needed - this table is in tenant schema (schema-based isolation)
+
+        // Keep router_tenant_map in sync for cross-schema lookups
+        static::created(function (Router $router) {
+            try {
+                $tenantContext = app(\App\Services\TenantContext::class);
+                $tenantId = $tenantContext->getTenantId() ?? auth()->user()?->tenant_id;
+                if ($tenantId) {
+                    RouterTenantMap::registerRouter(
+                        $router->id, $tenantId,
+                        $router->ip_address, $router->vpn_ip, $router->config_token
+                    );
+                }
+            } catch (\Exception $e) {
+                \Illuminate\Support\Facades\Log::warning('Failed to register router in tenant map: ' . $e->getMessage());
+            }
+        });
+
+        static::updated(function (Router $router) {
+            try {
+                if ($router->isDirty(['ip_address', 'vpn_ip', 'config_token'])) {
+                    $map = RouterTenantMap::find($router->id);
+                    if ($map) {
+                        $map->update([
+                            'ip_address' => $router->ip_address,
+                            'vpn_ip' => $router->vpn_ip,
+                            'config_token' => $router->config_token,
+                        ]);
+                    }
+                }
+            } catch (\Exception $e) {
+                \Illuminate\Support\Facades\Log::warning('Failed to update router tenant map: ' . $e->getMessage());
+            }
+        });
+
+        static::deleted(function (Router $router) {
+            try {
+                RouterTenantMap::unregisterRouter($router->id);
+            } catch (\Exception $e) {
+                \Illuminate\Support\Facades\Log::warning('Failed to unregister router from tenant map: ' . $e->getMessage());
+            }
+        });
+    }
+
+    /**
+     * Get the tenant ID for this router from the public-schema lookup table.
+     * Use this instead of $router->tenant_id (which doesn't exist in tenant schema).
+     */
+    public function getTenantIdAttribute(): ?string
+    {
+        return RouterTenantMap::findTenantByRouterId($this->id);
     }
 
     /**

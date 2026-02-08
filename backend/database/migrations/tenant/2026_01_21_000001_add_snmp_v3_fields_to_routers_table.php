@@ -8,6 +8,11 @@ return new class extends Migration
 {
     public function up(): void
     {
+        // Skip if columns already exist (base table 2025_12_05_000000 includes them on fresh installs)
+        if (Schema::hasColumn('routers', 'snmp_enabled')) {
+            return;
+        }
+
         Schema::table('routers', function (Blueprint $table) {
             $table->boolean('snmp_enabled')->default(true)->after('reserved_interfaces');
             $table->string('snmp_version', 10)->default('v3')->after('snmp_enabled');

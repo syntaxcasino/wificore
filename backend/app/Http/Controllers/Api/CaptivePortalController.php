@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Package;
 use App\Models\Router;
+use App\Models\RouterTenantMap;
 use App\Models\Payment;
 use App\Models\HotspotUser;
 use App\Models\Tenant;
@@ -62,20 +63,16 @@ class CaptivePortalController extends Controller
         }
 
         try {
-            // Find router and get tenant
-            $router = Router::withoutGlobalScope(\App\Models\Scopes\TenantScope::class)
-                ->where('id', $request->router_id)
-                ->first();
-
-            if (!$router) {
+            // Find tenant via router_tenant_map (public schema lookup)
+            $tenantId = RouterTenantMap::findTenantByRouterId($request->router_id);
+            if (!$tenantId) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Router not found',
                 ], 404);
             }
 
-            // Get tenant and set context
-            $tenant = Tenant::find($router->tenant_id);
+            $tenant = Tenant::find($tenantId);
             if (!$tenant || !$tenant->is_active) {
                 return response()->json([
                     'success' => false,
@@ -84,6 +81,15 @@ class CaptivePortalController extends Controller
             }
 
             $this->tenantContext->setTenant($tenant);
+
+            // Now query router from tenant schema
+            $router = Router::find($request->router_id);
+            if (!$router) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Router not found',
+                ], 404);
+            }
 
             // Get available packages for this router
             $packages = Package::where('is_active', true)
@@ -164,19 +170,16 @@ class CaptivePortalController extends Controller
         }
 
         try {
-            // Find router and set tenant context
-            $router = Router::withoutGlobalScope(\App\Models\Scopes\TenantScope::class)
-                ->where('id', $request->router_id)
-                ->first();
-
-            if (!$router) {
+            // Find tenant via router_tenant_map, then set context
+            $tenantId = RouterTenantMap::findTenantByRouterId($request->router_id);
+            if (!$tenantId) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Service not available',
                 ], 404);
             }
 
-            $tenant = Tenant::find($router->tenant_id);
+            $tenant = Tenant::find($tenantId);
             if (!$tenant || !$tenant->is_active) {
                 return response()->json([
                     'success' => false,
@@ -185,6 +188,14 @@ class CaptivePortalController extends Controller
             }
 
             $this->tenantContext->setTenant($tenant);
+
+            $router = Router::find($request->router_id);
+            if (!$router) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Service not available',
+                ], 404);
+            }
 
             // Find user
             $user = HotspotUser::where('username', $request->username)
@@ -279,20 +290,32 @@ class CaptivePortalController extends Controller
         }
 
         try {
-            // Find router and set tenant context
-            $router = Router::withoutGlobalScope(\App\Models\Scopes\TenantScope::class)
-                ->where('id', $request->router_id)
-                ->first();
-
-            if (!$router) {
+            // Find tenant via router_tenant_map, then set context
+            $tenantId = RouterTenantMap::findTenantByRouterId($request->router_id);
+            if (!$tenantId) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Service not available',
                 ], 404);
             }
 
-            $tenant = Tenant::find($router->tenant_id);
+            $tenant = Tenant::find($tenantId);
+            if (!$tenant || !$tenant->is_active) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Service not available',
+                ], 503);
+            }
+
             $this->tenantContext->setTenant($tenant);
+
+            $router = Router::find($request->router_id);
+            if (!$router) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Service not available',
+                ], 404);
+            }
 
             // Get package
             $package = Package::where('id', $request->package_id)
@@ -374,19 +397,32 @@ class CaptivePortalController extends Controller
         }
 
         try {
-            $router = Router::withoutGlobalScope(\App\Models\Scopes\TenantScope::class)
-                ->where('id', $request->router_id)
-                ->first();
-
-            if (!$router) {
+            // Find tenant via router_tenant_map, then set context
+            $tenantId = RouterTenantMap::findTenantByRouterId($request->router_id);
+            if (!$tenantId) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Service not available',
                 ], 404);
             }
 
-            $tenant = Tenant::find($router->tenant_id);
+            $tenant = Tenant::find($tenantId);
+            if (!$tenant || !$tenant->is_active) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Service not available',
+                ], 503);
+            }
+
             $this->tenantContext->setTenant($tenant);
+
+            $router = Router::find($request->router_id);
+            if (!$router) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Service not available',
+                ], 404);
+            }
 
             $payment = Payment::where('id', $paymentId)
                 ->where('router_id', $router->id)

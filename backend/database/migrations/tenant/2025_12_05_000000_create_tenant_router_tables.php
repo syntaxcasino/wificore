@@ -53,6 +53,20 @@ return new class extends Migration
                 $table->json('capabilities')->nullable();
                 $table->json('interface_list')->nullable();
                 $table->json('reserved_interfaces')->nullable();
+
+                // SNMP columns for Telegraf/monitoring
+                $table->boolean('snmp_enabled')->default(false);
+                $table->string('snmp_version', 10)->nullable();
+                $table->string('snmp_v3_user')->nullable();
+                $table->string('snmp_v3_auth_protocol', 10)->nullable();
+                $table->text('snmp_v3_auth_password')->nullable();
+                $table->string('snmp_v3_priv_protocol', 10)->nullable();
+                $table->text('snmp_v3_priv_password')->nullable();
+                $table->boolean('snmp_trap_enabled')->default(false);
+                $table->string('snmp_trap_version', 10)->nullable();
+                $table->text('snmp_trap_community')->nullable();
+                $table->string('snmp_trap_target')->nullable();
+
                 $table->timestamps();
                 $table->softDeletes();
             });

@@ -15,6 +15,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasColumn('tenants', 'is_default')) {
+            return;
+        }
+
         Schema::table('tenants', function (Blueprint $table) {
             $table->boolean('is_default')->default(false)->after('is_landlord');
         });

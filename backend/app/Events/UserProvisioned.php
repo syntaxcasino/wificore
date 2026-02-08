@@ -23,11 +23,11 @@ class UserProvisioned implements ShouldBroadcast
     /**
      * Create a new event instance.
      */
-    public function __construct(UserSubscription $subscription, Router $router)
+    public function __construct(UserSubscription $subscription, Router $router, ?string $tenantId = null)
     {
         $this->subscription = $subscription;
         $this->router = $router;
-        $this->tenantId = $router->tenant_id ?? null;
+        $this->tenantId = $tenantId ?? (auth()->user()?->tenant_id);
     }
 
     /**

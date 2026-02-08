@@ -5,24 +5,22 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use App\Traits\HasUuid;
-use App\Traits\BelongsToTenant;
-use App\Models\Scopes\TenantScope;
 
 class Package extends Model
 {
     /** @use HasFactory<\Database\Factories\PackageFactory> */
-    use HasFactory, HasUuid, BelongsToTenant;
+    use HasFactory, HasUuid;
 
     /**
      * The "booted" method of the model.
+     * Note: No global scope needed - this table is in tenant schema (schema-based isolation)
      */
     protected static function booted(): void
     {
-        static::addGlobalScope(new TenantScope());
+        // Schema-based isolation - no global scope needed
     }
 
     protected $fillable = [
-        'tenant_id',
         'type',
         'name',
         'description',

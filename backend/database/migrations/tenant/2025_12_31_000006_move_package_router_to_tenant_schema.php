@@ -33,10 +33,10 @@ return new class extends Migration
                 $table->timestamps();
 
                 // Foreign keys
-                // Package is in public schema
+                // Package is in tenant schema (same schema)
                 $table->foreign('package_id')
                     ->references('id')
-                    ->on(new \Illuminate\Database\Query\Expression('public.packages'))
+                    ->on('packages')
                     ->onDelete('cascade');
                 
                 // Router is in tenant schema

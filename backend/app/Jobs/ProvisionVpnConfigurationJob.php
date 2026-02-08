@@ -83,7 +83,7 @@ class ProvisionVpnConfigurationJob implements ShouldQueue
             }
 
             // Fire event for real-time updates
-            event(new VpnConfigurationCreated($vpnConfig));
+            event(new VpnConfigurationCreated($vpnConfig, $this->tenantId));
 
             Log::info('VPN provisioning job completed', [
                 'tenant_id' => $this->tenantId,

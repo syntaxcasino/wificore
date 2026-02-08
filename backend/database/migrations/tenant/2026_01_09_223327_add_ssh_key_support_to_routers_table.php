@@ -14,6 +14,11 @@ return new class extends Migration
      */
     public function up(): void
     {
+        // Skip if columns already exist
+        if (Schema::hasColumn('routers', 'ssh_key')) {
+            return;
+        }
+
         Schema::table('routers', function (Blueprint $table) {
             $table->text('ssh_key')->nullable()->after('password')
                 ->comment('Encrypted SSH private key for key-based authentication (preferred)');

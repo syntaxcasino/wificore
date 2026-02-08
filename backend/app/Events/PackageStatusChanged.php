@@ -24,12 +24,12 @@ class PackageStatusChanged implements ShouldBroadcast
     /**
      * Create a new event instance.
      */
-    public function __construct(Package $package, string $oldStatus, string $newStatus)
+    public function __construct(Package $package, string $oldStatus, string $newStatus, ?string $tenantId = null)
     {
         $this->package = $package;
         $this->oldStatus = $oldStatus;
         $this->newStatus = $newStatus;
-        $this->tenantId = $package->tenant_id;
+        $this->tenantId = $tenantId ?? (auth()->user()?->tenant_id);
         $this->timestamp = now()->toIso8601String();
     }
 

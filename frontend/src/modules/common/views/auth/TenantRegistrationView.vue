@@ -491,7 +491,7 @@ const handleSubmit = async () => {
       message: 'Creating your tenant workspace...'
     }
     
-    const response = await axios.post('/api/register/tenant', form.value)
+    const response = await axios.post('/register/tenant', form.value)
     
     if (response.data.success) {
       registrationToken.value = response.data.token
@@ -578,7 +578,7 @@ const resendVerificationEmail = async () => {
   resendingEmail.value = true
   
   try {
-    const response = await axios.post('/api/register/resend', {
+    const response = await axios.post('/register/resend', {
       token: registrationToken.value
     })
     
@@ -626,7 +626,7 @@ const resendVerificationEmail = async () => {
 // Check registration status and restore state
 const checkRegistrationStatus = async (token) => {
   try {
-    const response = await axios.get(`/api/register/status/${token}`)
+    const response = await axios.get(`/register/status/${token}`)
     
     if (response.data.success) {
       const { email_verified, credentials_sent, status } = response.data
