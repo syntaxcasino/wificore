@@ -262,12 +262,8 @@ class CacheService
         $warmed = [];
 
         try {
-            // Warm up packages (public schema)
-            if (!self::getPackages()) {
-                $packages = \App\Models\Package::all()->toArray();
-                self::cachePackages($packages, self::TTL_HOUR);
-                $warmed[] = 'packages';
-            }
+            // Skip packages - they are in tenant schema and should not be cached at system level
+            // Package caching should be done within tenant context by tenant-aware jobs
 
             // Skip routers - they are tenant-specific and should not be cached at system level
             // Router caching should be done within tenant context by tenant-aware jobs

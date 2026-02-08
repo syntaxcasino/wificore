@@ -21,12 +21,11 @@ class RouterCreated implements ShouldBroadcast
     /**
      * Create a new event instance.
      */
-    public function __construct(Router $router)
+    public function __construct(Router $router, ?string $tenantId = null)
     {
         // Extract data instead of serializing the model
         $this->routerData = [
             'id' => $router->id,
-            'tenant_id' => $router->tenant_id,
             'name' => $router->name,
             'ip_address' => $router->ip_address,
             'vpn_ip' => $router->vpn_ip,
@@ -37,7 +36,7 @@ class RouterCreated implements ShouldBroadcast
             'os_version' => $router->os_version,
             'created_at' => $router->created_at->toIso8601String(),
         ];
-        $this->tenantId = (string) $router->tenant_id;
+        $this->tenantId = (string) ($tenantId ?? auth()->user()?->tenant_id);
     }
 
     /**

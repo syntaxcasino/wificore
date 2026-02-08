@@ -39,7 +39,7 @@ class TenantController extends Controller
             }
         }
         
-        $tenants = $query->withCount(['users', 'routers', 'packages', 'payments'])
+        $tenants = $query->withCount(['users'])
             ->latest()
             ->paginate($request->per_page ?? 20);
         
@@ -57,7 +57,7 @@ class TenantController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'slug' => 'nullable|string|max:255|unique:tenants,slug',
-            'domain' => 'nullable|string|max:255|unique:tenants,domain',
+            'custom_domain' => 'nullable|string|max:255|unique:tenants,custom_domain',
             'email' => 'nullable|email|max:255',
             'phone' => 'nullable|string|max:50',
             'address' => 'nullable|string',
@@ -91,22 +91,49 @@ class TenantController extends Controller
      */
     public function show(Tenant $tenant)
     {
-        $tenant->loadCount(['users', 'routers', 'packages', 'payments']);
+        $tenant->loadCount(['users']);
         
-        // Get statistics
+        // Get statistics from public schema (users only)
+        // Routers, packages, payments are in tenant schemas and cannot be queried cross-schema
         $stats = [
             'total_users' => $tenant->users()->count(),
             'active_users' => $tenant->users()->where('is_active', true)->count(),
-            'total_routers' => $tenant->routers()->count(),
-            'active_routers' => $tenant->routers()->where('status', 'online')->count(),
-            'total_packages' => $tenant->packages()->count(),
-            'active_packages' => $tenant->packages()->where('is_active', true)->count(),
-            'total_revenue' => $tenant->payments()->where('status', 'completed')->sum('amount'),
-            'monthly_revenue' => $tenant->payments()
-                ->where('status', 'completed')
-                ->whereMonth('created_at', now()->month)
-                ->sum('amount'),
         ];
+        
+        // If tenant has a schema, get tenant-schema stats via context switch
+        if ($tenant->schema_created && $tenant->schema_name) {
+            try {
+                $tenantContext = app(\App\Services\TenantContext::class);
+                $tenantContext->runInTenantContext($tenant, function () use (&$stats) {
+                    $stats['total_routers'] = \App\Models\Router::count();
+                    $stats['active_routers'] = \App\Models\Router::where('status', 'online')->count();
+                    $stats['total_packages'] = \App\Models\Package::count();
+                    $stats['active_packages'] = \App\Models\Package::where('is_active', true)->count();
+                    $stats['total_revenue'] = \App\Models\Payment::where('status', 'completed')->sum('amount');
+                    $stats['monthly_revenue'] = \App\Models\Payment::where('status', 'completed')
+                        ->whereMonth('created_at', now()->month)
+                        ->sum('amount');
+                });
+            } catch (\Exception $e) {
+                \Log::warning('Failed to get tenant schema stats', [
+                    'tenant_id' => $tenant->id,
+                    'error' => $e->getMessage()
+                ]);
+                $stats['total_routers'] = 0;
+                $stats['active_routers'] = 0;
+                $stats['total_packages'] = 0;
+                $stats['active_packages'] = 0;
+                $stats['total_revenue'] = 0;
+                $stats['monthly_revenue'] = 0;
+            }
+        } else {
+            $stats['total_routers'] = 0;
+            $stats['active_routers'] = 0;
+            $stats['total_packages'] = 0;
+            $stats['active_packages'] = 0;
+            $stats['total_revenue'] = 0;
+            $stats['monthly_revenue'] = 0;
+        }
         
         return response()->json([
             'success' => true,
@@ -123,7 +150,7 @@ class TenantController extends Controller
         $validated = $request->validate([
             'name' => 'sometimes|string|max:255',
             'slug' => ['sometimes', 'string', 'max:255', Rule::unique('tenants')->ignore($tenant->id)],
-            'domain' => ['sometimes', 'nullable', 'string', 'max:255', Rule::unique('tenants')->ignore($tenant->id)],
+            'custom_domain' => ['sometimes', 'nullable', 'string', 'max:255', Rule::unique('tenants', 'custom_domain')->ignore($tenant->id)],
             'email' => 'sometimes|nullable|email|max:255',
             'phone' => 'sometimes|nullable|string|max:50',
             'address' => 'sometimes|nullable|string',

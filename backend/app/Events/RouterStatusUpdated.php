@@ -33,13 +33,8 @@ class RouterStatusUpdated implements ShouldBroadcast
     {
         $this->routers = $routers;
         
-        // Get tenant_id from first router or provided parameter
-        $this->tenantId = $tenantId ?? ($routers[0]['tenant_id'] ?? null);
-        
-        // If still null, try from authenticated user
-        if (!$this->tenantId && auth()->check()) {
-            $this->tenantId = auth()->user()->tenant_id;
-        }
+        // Routers are in tenant schema - no tenant_id in router data
+        $this->tenantId = $tenantId ?? (auth()->check() ? auth()->user()->tenant_id : null);
 
         Log::info('RouterStatusUpdated event created', [
             'tenant_id' => $this->tenantId,

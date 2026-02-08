@@ -6,14 +6,12 @@ export function useRouterProvisioning() {
   const loading = ref(false)
   const error = ref(null)
 
-  const apiBaseUrl = 'https://api.yourserver.com/api' // Replace with your Laravel API URL
-
   // Fetch all router configurations
   const fetchRouters = async () => {
     loading.value = true
     error.value = null
     try {
-      const response = await axios.get(`${apiBaseUrl}/router-configs`)
+      const response = await axios.get('/router-configs')
       routers.value = response.data.data || response.data
     } catch (err) {
       error.value = err.response?.data?.message || 'Failed to fetch router configurations'
@@ -27,7 +25,7 @@ export function useRouterProvisioning() {
     loading.value = true
     error.value = null
     try {
-      const response = await axios.post(`${apiBaseUrl}/router-configs`, routerData)
+      const response = await axios.post('/router-configs', routerData)
       routers.value.push(response.data.data || response.data)
       return response.data.data || response.data
     } catch (err) {
@@ -43,7 +41,7 @@ export function useRouterProvisioning() {
     loading.value = true
     error.value = null
     try {
-      const response = await axios.put(`${apiBaseUrl}/router-configs/${id}`, routerData)
+      const response = await axios.put(`/router-configs/${id}`, routerData)
       const updatedRouter = response.data.data || response.data
       const index = routers.value.findIndex((r) => r.id === id)
       if (index !== -1) {
@@ -63,7 +61,7 @@ export function useRouterProvisioning() {
     loading.value = true
     error.value = null
     try {
-      const response = await axios.post(`${apiBaseUrl}/provisioning/configs`, {
+      const response = await axios.post('/provisioning/configs', {
         router_id: routerId,
         scripts,
       })
@@ -81,7 +79,7 @@ export function useRouterProvisioning() {
     loading.value = true
     error.value = null
     try {
-      const response = await axios.post(`${apiBaseUrl}/provisioning/interfaces`, {
+      const response = await axios.post('/provisioning/interfaces', {
         router_id: routerId,
       })
       return response.data
@@ -98,7 +96,7 @@ export function useRouterProvisioning() {
     loading.value = true
     error.value = null
     try {
-      const response = await axios.post(`${apiBaseUrl}/provisioning/apply`, {
+      const response = await axios.post('/provisioning/apply', {
         router_id: routerId,
         interface_assignments: interfaceAssignments,
         configurations,

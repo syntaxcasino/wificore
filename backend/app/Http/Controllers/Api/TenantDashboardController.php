@@ -36,40 +36,38 @@ class TenantDashboardController extends Controller
         $stats = Cache::remember($cacheKey, 60, function () use ($tenantId) {
             return [
                 'users' => [
+                    // Users are in public schema with tenant_id
                     'total' => User::where('tenant_id', $tenantId)->count(),
                     'active' => User::where('tenant_id', $tenantId)
                         ->where('is_active', true)
                         ->count(),
-                    'online' => UserSession::where('tenant_id', $tenantId)
-                        ->where('status', 'active')
+                    // UserSession is in tenant schema - no tenant_id filter needed
+                    'online' => UserSession::where('status', 'active')
                         ->distinct('user_id')
                         ->count('user_id'),
                 ],
-                'packages' => Package::where('tenant_id', $tenantId)
-                    ->select('id', 'name', 'price', 'type', 'is_active')
+                // Package is in tenant schema - no tenant_id filter needed
+                'packages' => Package::select('id', 'name', 'price', 'type', 'is_active')
                     ->get(),
-                'routers' => Router::where('tenant_id', $tenantId)
-                    ->select('id', 'name', 'ip_address', 'status', 'last_seen')
+                // Router is in tenant schema - no tenant_id filter needed
+                'routers' => Router::select('id', 'name', 'ip_address', 'status', 'last_seen')
                     ->get(),
                 'revenue' => [
-                    'total' => Payment::where('tenant_id', $tenantId)
-                        ->where('status', 'completed')
+                    // Payment is in tenant schema - no tenant_id filter needed
+                    'total' => Payment::where('status', 'completed')
                         ->sum('amount'),
-                    'monthly' => Payment::where('tenant_id', $tenantId)
-                        ->where('status', 'completed')
+                    'monthly' => Payment::where('status', 'completed')
                         ->whereMonth('created_at', now()->month)
                         ->sum('amount'),
-                    'today' => Payment::where('tenant_id', $tenantId)
-                        ->where('status', 'completed')
+                    'today' => Payment::where('status', 'completed')
                         ->whereDate('created_at', now())
                         ->sum('amount'),
                 ],
                 'sessions' => [
-                    'active' => UserSession::where('tenant_id', $tenantId)
-                        ->where('status', 'active')
+                    // UserSession is in tenant schema - no tenant_id filter needed
+                    'active' => UserSession::where('status', 'active')
                         ->count(),
-                    'today' => UserSession::where('tenant_id', $tenantId)
-                        ->whereDate('created_at', now())
+                    'today' => UserSession::whereDate('created_at', now())
                         ->count(),
                 ],
             ];
@@ -178,8 +176,8 @@ class TenantDashboardController extends Controller
             ], 403);
         }
 
-        $payments = Payment::where('tenant_id', $tenantId)
-            ->with(['user:id,name,email', 'package:id,name'])
+        // Payment is in tenant schema - no tenant_id filter needed
+        $payments = Payment::with(['user:id,name,email', 'package:id,name'])
             ->select('id', 'user_id', 'package_id', 'amount', 'status', 'payment_method', 'created_at')
             ->orderBy('created_at', 'desc')
             ->paginate($request->per_page ?? 15);
@@ -206,8 +204,8 @@ class TenantDashboardController extends Controller
             ], 403);
         }
 
-        $sessions = UserSession::where('tenant_id', $tenantId)
-            ->with(['user:id,name,username', 'router:id,name'])
+        // UserSession is in tenant schema - no tenant_id filter needed
+        $sessions = UserSession::with(['user:id,name,username', 'router:id,name'])
             ->where('status', 'active')
             ->select('id', 'user_id', 'router_id', 'ip_address', 'mac_address', 'upload_bytes', 'download_bytes', 'started_at')
             ->orderBy('started_at', 'desc')

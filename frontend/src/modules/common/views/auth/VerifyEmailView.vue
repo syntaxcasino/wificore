@@ -81,7 +81,7 @@ onMounted(async () => {
   if (token) {
     // Tenant registration verification
     try {
-      const response = await axios.get(`/api/register/verify/${token}`)
+      const response = await axios.get(`/register/verify/${token}`)
       
       if (response.data.success) {
         verified.value = true
@@ -115,7 +115,7 @@ onMounted(async () => {
     const { id, hash } = route.params
     
     try {
-      const response = await axios.get(`/api/email/verify/${id}/${hash}`)
+      const response = await axios.get(`/email/verify/${id}/${hash}`)
       
       if (response.data.success) {
         verified.value = true

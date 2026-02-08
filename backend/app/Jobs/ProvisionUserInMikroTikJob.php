@@ -90,7 +90,8 @@ class ProvisionUserInMikroTikJob implements ShouldQueue
                 // Broadcast success event to admins
                 broadcast(new UserProvisioned(
                     $subscription,
-                    $router
+                    $router,
+                    $this->tenantId
                 ))->toOthers();
 
             } catch (\Exception $e) {

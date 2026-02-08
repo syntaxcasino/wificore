@@ -176,7 +176,7 @@ class CreateHotspotUserJob implements ShouldQueue
                 SendCredentialsSMSJob::dispatch($hotspotUser->id, $this->tenantId)->onQueue('hotspot-sms');
                 
                 // Broadcast event
-                broadcast(new HotspotUserCreated($hotspotUser, $payment, $credentials))->toOthers();
+                broadcast(new HotspotUserCreated($hotspotUser, $payment, $credentials, $this->tenantId))->toOthers();
                 
                 Log::info('Hotspot user created successfully (async)', [
                     'user_id' => $hotspotUser->id,

@@ -28,8 +28,8 @@ class RouterAnalyticsController extends Controller
         $cacheKey = "router_revenue_tenant_{$tenantId}";
 
         $analytics = Cache::remember($cacheKey, 600, function () use ($tenantId) {
-            $routers = Router::where('tenant_id', $tenantId)
-                ->with(['payments' => function($query) {
+            // Router is in tenant schema - no tenant_id filter needed
+            $routers = Router::with(['payments' => function($query) {
                     $query->where('status', 'completed');
                 }])
                 ->get();
@@ -137,9 +137,8 @@ class RouterAnalyticsController extends Controller
                 ->orderBy('date', 'asc')
                 ->get();
 
-            // Assigned packages (global + specific)
-            $globalPackages = Package::where('tenant_id', $router->tenant_id)
-                ->where('is_global', true)
+            // Assigned packages (global + specific) - schema isolation handles tenancy
+            $globalPackages = Package::where('is_global', true)
                 ->where('is_active', true)
                 ->select('id', 'name', 'price', 'is_global')
                 ->get();

@@ -22,11 +22,12 @@ class SessionExpired implements ShouldBroadcast
     /**
      * Create a new event instance.
      */
-    public function __construct(RadiusSession $session, string $reason = 'Session expired')
+    public function __construct(RadiusSession $session, string $reason = 'Session expired', ?string $tenantId = null)
     {
         $this->session = $session;
         $this->reason = $reason;
-        $this->tenantId = $session->tenant_id ?? null;
+        // RadiusSession is in tenant schema - no tenant_id column
+        $this->tenantId = $tenantId ?? (auth()->user()?->tenant_id);
     }
 
     /**

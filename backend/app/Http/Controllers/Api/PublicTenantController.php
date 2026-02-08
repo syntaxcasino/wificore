@@ -77,23 +77,28 @@ class PublicTenantController extends Controller
             ], 403);
         }
 
-        // Get active packages for this tenant
-        $packages = Package::where('tenant_id', $tenant->id)
-            ->where('is_active', true)
-            ->where('is_public', true) // Only show public packages
-            ->select([
-                'id',
-                'name',
-                'description',
-                'price',
-                'duration_hours',
-                'data_limit_bytes',
-                'speed_limit_mbps',
-                'type',
-                'features',
-            ])
-            ->orderBy('price', 'asc')
-            ->get();
+        // Packages are in tenant schema - switch context to query them
+        $packages = collect();
+        if ($tenant->schema_created && $tenant->schema_name) {
+            $tenantContext = app(\App\Services\TenantContext::class);
+            $packages = $tenantContext->runInTenantContext($tenant, function () {
+                return Package::where('is_active', true)
+                    ->where('is_public', true)
+                    ->select([
+                        'id',
+                        'name',
+                        'description',
+                        'price',
+                        'duration',
+                        'upload_speed',
+                        'download_speed',
+                        'data_limit',
+                        'type',
+                    ])
+                    ->orderBy('price', 'asc')
+                    ->get();
+            });
+        }
 
         return response()->json([
             'success' => true,

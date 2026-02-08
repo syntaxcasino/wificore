@@ -12,6 +12,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasColumn('tenants', 'schema_name')) {
+            return;
+        }
+
         Schema::table('tenants', function (Blueprint $table) {
             // Add schema-based multi-tenancy fields
             $table->string('schema_name', 63)->unique()->nullable()->after('slug');

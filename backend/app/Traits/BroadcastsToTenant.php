@@ -42,42 +42,20 @@ trait BroadcastsToTenant
      */
     protected function getTenantId(): string
     {
-        // Try to get tenant_id from payment
-        if (isset($this->payment) && $this->payment->tenant_id) {
-            return $this->payment->tenant_id;
+        // Primary: explicit tenantId property (all events should set this)
+        if (isset($this->tenantId) && $this->tenantId) {
+            return $this->tenantId;
         }
         
-        // Try to get tenant_id from user
+        // Fallback: user has tenant_id in public schema
         if (isset($this->user) && $this->user->tenant_id) {
             return $this->user->tenant_id;
         }
         
-        // Try to get tenant_id from router
-        if (isset($this->router) && $this->router->tenant_id) {
-            return $this->router->tenant_id;
-        }
+        // Note: router, package, payment, subscription, hotspotUser are in tenant schemas
+        // and do NOT have tenant_id columns. Events using these models must set $this->tenantId explicitly.
         
-        // Try to get tenant_id from package
-        if (isset($this->package) && $this->package->tenant_id) {
-            return $this->package->tenant_id;
-        }
-        
-        // Try to get tenant_id from subscription
-        if (isset($this->subscription) && $this->subscription->tenant_id) {
-            return $this->subscription->tenant_id;
-        }
-        
-        // Try to get tenant_id from hotspot user
-        if (isset($this->hotspotUser) && $this->hotspotUser->tenant_id) {
-            return $this->hotspotUser->tenant_id;
-        }
-        
-        // Try direct tenantId property
-        if (isset($this->tenantId)) {
-            return $this->tenantId;
-        }
-        
-        throw new \Exception('Cannot determine tenant ID for broadcasting. Event: ' . get_class($this));
+        throw new \Exception('Cannot determine tenant ID for broadcasting. Event: ' . get_class($this) . '. Set $this->tenantId explicitly.');
     }
 
     /**

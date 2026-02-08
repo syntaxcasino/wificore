@@ -235,7 +235,7 @@
             <p class="text-xs text-gray-500">
               Use this command on the router to apply configurations:
               <code class="text-blue-500"
-                >/system script run [fetch url="https://api.yourserver.com/configs?token={{
+                >/system script run [fetch url="{{ apiBaseUrl }}/configs?token={{
                   configToken
                 }}"]</code
               >
@@ -285,6 +285,11 @@ export default {
     formatTimestamp: Function,
   },
   emits: ['close-update', 'generate-configs', 'copy-token', 'update-router', 'retry'],
+  computed: {
+    apiBaseUrl() {
+      return import.meta.env.VITE_API_BASE_URL || '/api'
+    },
+  },
   methods: {
     isValidIPAddress(ip) {
       const ipRegex =

@@ -73,7 +73,7 @@
 
             <div>
               <label class="block text-sm font-medium text-slate-700 mb-2">Callback URL *</label>
-              <input v-model="formData.callback_url" type="url" required class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="https://yourdomain.com/api/mpesa/callback" />
+              <input v-model="formData.callback_url" type="url" required class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500" :placeholder="`${apiBaseUrl}/mpesa/callback`" />
               <p class="mt-1 text-xs text-slate-500">URL to receive payment notifications</p>
             </div>
           </div>
@@ -156,6 +156,8 @@ const breadcrumbs = [
   { label: 'M-Pesa API' }
 ]
 
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '/api'
+
 const saving = ref(false)
 const testing = ref(false)
 const connectionStatus = ref(null)
@@ -167,7 +169,7 @@ const formData = ref({
   passkey: '',
   shortcode: '174379',
   transaction_type: 'CustomerPayBillOnline',
-  callback_url: 'https://yourdomain.com/api/mpesa/callback',
+  callback_url: `${import.meta.env.VITE_API_BASE_URL || '/api'}/mpesa/callback`,
   enabled: true,
   auto_activate: true,
   send_sms: true

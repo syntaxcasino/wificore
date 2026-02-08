@@ -101,29 +101,9 @@ class Tenant extends Model
         return $this->hasMany(User::class);
     }
 
-    /**
-     * Get routers belonging to this tenant
-     */
-    public function routers()
-    {
-        return $this->hasMany(Router::class);
-    }
-
-    /**
-     * Get packages belonging to this tenant
-     */
-    public function packages()
-    {
-        return $this->hasMany(Package::class);
-    }
-
-    /**
-     * Get payments belonging to this tenant
-     */
-    public function payments()
-    {
-        return $this->hasMany(Payment::class);
-    }
+    // Note: routers, packages, payments are in tenant schemas (no tenant_id column).
+    // They cannot be queried via hasMany from the public-schema tenants table.
+    // Use TenantContext::runInTenantContext() to query these tables.
 
     /**
      * Check if tenant is active

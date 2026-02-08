@@ -79,12 +79,8 @@ abstract class TenantAwareService
      */
     protected function validateRouter(Router $router, string $tenantId): void
     {
-        if ($router->tenant_id !== $tenantId) {
-            throw new \Exception(
-                "Router '{$router->name}' (ID: {$router->id}) does not belong to this tenant. " .
-                "Cannot perform operations on routers from other tenants."
-            );
-        }
+        // Router is in tenant schema - schema isolation guarantees ownership.
+        // If the model was queried successfully, it belongs to the current tenant.
     }
     
     /**
@@ -96,12 +92,8 @@ abstract class TenantAwareService
      */
     protected function validatePackage(Package $package, string $tenantId): void
     {
-        if ($package->tenant_id !== $tenantId) {
-            throw new \Exception(
-                "Package '{$package->name}' (ID: {$package->id}) does not belong to this tenant. " .
-                "Cannot use packages from other tenants."
-            );
-        }
+        // Package is in tenant schema - schema isolation guarantees ownership.
+        // If the model was queried successfully, it belongs to the current tenant.
     }
     
     /**
@@ -130,12 +122,7 @@ abstract class TenantAwareService
      */
     protected function validateVoucher(Voucher $voucher, string $tenantId): void
     {
-        if ($voucher->tenant_id !== $tenantId) {
-            throw new \Exception(
-                "Voucher '{$voucher->code}' does not belong to this tenant. " .
-                "Cannot use vouchers from other tenants."
-            );
-        }
+        // Voucher is in tenant schema - schema isolation guarantees ownership.
     }
     
     /**
@@ -147,12 +134,7 @@ abstract class TenantAwareService
      */
     protected function validatePayment(Payment $payment, string $tenantId): void
     {
-        if ($payment->tenant_id !== $tenantId) {
-            throw new \Exception(
-                "Payment (ID: {$payment->id}) does not belong to this tenant. " .
-                "Cannot access payments from other tenants."
-            );
-        }
+        // Payment is in tenant schema - schema isolation guarantees ownership.
     }
     
     /**
@@ -164,12 +146,7 @@ abstract class TenantAwareService
      */
     protected function validateHotspotUser(HotspotUser $hotspotUser, string $tenantId): void
     {
-        if ($hotspotUser->tenant_id !== $tenantId) {
-            throw new \Exception(
-                "Hotspot user '{$hotspotUser->username}' does not belong to this tenant. " .
-                "Cannot manage hotspot users from other tenants."
-            );
-        }
+        // HotspotUser is in tenant schema - schema isolation guarantees ownership.
     }
     
     /**

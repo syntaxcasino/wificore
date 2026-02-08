@@ -45,7 +45,7 @@ return new class extends Migration
 
             $table->foreign('package_id')
                 ->references('id')
-                ->on(new \Illuminate\Database\Query\Expression('public.packages'))
+                ->on('packages')
                 ->onDelete('restrict');
 
             $table->foreign('router_id')

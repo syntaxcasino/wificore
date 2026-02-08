@@ -46,8 +46,8 @@ return new class extends Migration
                 $table->timestamps();
                 $table->softDeletes();
                 
-                // Use explicit schema for foreign keys to public tables
-                $table->foreign('package_id')->references('id')->on(new \Illuminate\Database\Query\Expression('public.packages'))->onDelete('set null');
+                // Package is in tenant schema (same schema)
+                $table->foreign('package_id')->references('id')->on('packages')->onDelete('set null');
                 
                 $table->index('username');
                 $table->index('phone_number');
@@ -141,7 +141,7 @@ return new class extends Migration
                 $table->softDeletes();
                 
                 // Foreign keys to public tables
-                $table->foreign('package_id')->references('id')->on(new \Illuminate\Database\Query\Expression('public.packages'))->onDelete('cascade');
+                $table->foreign('package_id')->references('id')->on('packages')->onDelete('cascade');
                 $table->foreign('used_by')->references('id')->on(new \Illuminate\Database\Query\Expression('public.users'))->onDelete('set null');
                 
                 // Foreign keys to tenant tables
@@ -185,7 +185,7 @@ return new class extends Migration
                 // Foreign keys
                 $table->foreign('hotspot_user_id')->references('id')->on('hotspot_users')->onDelete('cascade');
                 $table->foreign('payment_id')->references('id')->on('payments')->onDelete('set null');
-                $table->foreign('package_id')->references('id')->on(new \Illuminate\Database\Query\Expression('public.packages'))->onDelete('set null');
+                $table->foreign('package_id')->references('id')->on('packages')->onDelete('set null');
                 
                 $table->index('hotspot_user_id');
                 $table->index('status');

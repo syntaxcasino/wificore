@@ -49,10 +49,10 @@ return new class extends Migration
                     ->on(new \Illuminate\Database\Query\Expression('public.users'))
                     ->onDelete('set null');
                 
-                // Packages are in public schema (for now, assuming shared packages or tenant-tagged public packages)
+                // Packages are in tenant schema (same schema)
                 $table->foreign('package_id')
                     ->references('id')
-                    ->on(new \Illuminate\Database\Query\Expression('public.packages'))
+                    ->on('packages')
                     ->onDelete('cascade');
                 
                 // Routers are in tenant schema
@@ -108,7 +108,7 @@ return new class extends Migration
                     
                 $table->foreign('package_id')
                     ->references('id')
-                    ->on(new \Illuminate\Database\Query\Expression('public.packages'))
+                    ->on('packages')
                     ->onDelete('cascade');
                     
                 $table->foreign('payment_id')

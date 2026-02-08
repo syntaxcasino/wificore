@@ -10,6 +10,7 @@ use App\Models\HotspotUser;
 use App\Models\HotspotCredential;
 use App\Models\RadiusSession;
 use App\Models\Package;
+use App\Models\RouterTenantMap;
 use App\Services\MpesaService;
 use App\Services\MikrotikSessionService;
 use App\Services\UserProvisioningService;
@@ -53,14 +54,25 @@ class PaymentController extends Controller
                 'router_id' => 'nullable|string',
             ]);
 
-            // 1. Fetch Package - use withoutGlobalScope only to identify the tenant
-            $package = \App\Models\Package::withoutGlobalScope(\App\Models\Scopes\TenantScope::class)
-                ->findOrFail($validated['package_id']);
-            
-            $amount = $package->price;
-            $tenantId = $package->tenant_id;
+            // 1. Identify tenant from router_id via router_tenant_map
+            $routerIdParam = $validated['router_id'] ?? null;
+            $tenantId = null;
 
-            // 2. Identify Tenant and validate it's active
+            if ($routerIdParam) {
+                $tenantId = RouterTenantMap::findTenantByRouterId($routerIdParam);
+            }
+            if (!$tenantId) {
+                // Fallback: detect from request headers/IP
+                $detectedRouterId = $this->detectRouterFromRequest($request);
+                if ($detectedRouterId) {
+                    $tenantId = RouterTenantMap::findTenantByRouterId($detectedRouterId);
+                }
+            }
+            if (!$tenantId) {
+                throw new \Exception('Unable to identify tenant. Please connect to a hotspot network.');
+            }
+
+            // 2. Validate tenant and set schema context
             $tenant = \App\Models\Tenant::find($tenantId);
             if (!$tenant || !$tenant->is_active) {
                 throw new \Exception('Tenant not found or inactive');
@@ -73,6 +85,10 @@ class PaymentController extends Controller
 
             // Switch to tenant schema (include public for shared tables like mpesa_transaction_maps)
             DB::statement("SET search_path TO {$tenant->schema_name}, public");
+
+            // 3. Fetch Package from tenant schema (now in tenant context)
+            $package = Package::findOrFail($validated['package_id']);
+            $amount = $package->price;
 
             // Auto-detect router_id if not provided
             $routerId = $validated['router_id'] ?? null;
@@ -412,12 +428,10 @@ class PaymentController extends Controller
                   ?? $request->ip();
 
         if ($gatewayIp) {
-            $router = \App\Models\Router::withoutGlobalScope(\App\Models\Scopes\TenantScope::class)
-                ->where('ip_address', $gatewayIp)
-                ->first();
-            
-            if ($router) {
-                return $router->id;
+            // Use router_tenant_map (public schema) for cross-schema lookup
+            $map = RouterTenantMap::where('ip_address', $gatewayIp)->first();
+            if ($map) {
+                return $map->router_id;
             }
         }
 

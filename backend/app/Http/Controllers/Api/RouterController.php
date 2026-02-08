@@ -705,11 +705,12 @@ EOT;
             ]);
 
             // Dispatch the provisioning job
-            \App\Jobs\RouterProvisioningJob::dispatch($router->id, $router->tenant_id, $provisioningData);
+            $tenantId = auth()->user()->tenant_id;
+            \App\Jobs\RouterProvisioningJob::dispatch($router->id, $tenantId, $provisioningData);
 
             Log::info('Provisioning job dispatched', [
                 'router_id' => $router->id,
-                'tenant_id' => $router->tenant_id,
+                'tenant_id' => $tenantId,
                 'service_type' => $validated['service_type'],
             ]);
 

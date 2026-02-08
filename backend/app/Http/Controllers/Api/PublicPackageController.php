@@ -5,6 +5,9 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Package;
 use App\Models\Router;
+use App\Models\RouterTenantMap;
+use App\Models\Tenant;
+use App\Services\TenantContext;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 
@@ -26,19 +29,27 @@ class PublicPackageController extends Controller
             ], 400);
         }
 
+        // Set tenant context so Package queries hit the correct tenant schema
+        $tenant = Tenant::find($tenantId);
+        if (!$tenant || !$tenant->is_active || !$tenant->schema_created) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Service not available'
+            ], 503);
+        }
+
+        $tenantContext = app(TenantContext::class);
+        $tenantContext->setTenant($tenant);
+
         // Cache key specific to this tenant and router
         $cacheKey = "public_packages_tenant_{$tenantId}_router_" . ($routerId ?? 'all');
 
-        $packages = Cache::remember($cacheKey, 300, function () use ($tenantId, $routerId) {
-            $query = Package::withoutGlobalScope(\App\Models\Scopes\TenantScope::class)
-                ->where('tenant_id', $tenantId)
-                ->where('type', 'hotspot')
+        $packages = Cache::remember($cacheKey, 300, function () use ($routerId) {
+            // Package is now in tenant schema - no tenant_id filter needed
+            $query = Package::where('type', 'hotspot')
                 ->where('is_active', true)
                 ->where('hide_from_client', false);
 
-            // Get packages that are either:
-            // 1. Global packages (is_global = true)
-            // 2. Packages specifically assigned to this router (if router identified)
             if ($routerId) {
                 $query->where(function($q) use ($routerId) {
                     $q->where('is_global', true)
@@ -47,11 +58,10 @@ class PublicPackageController extends Controller
                       });
                 });
             } else {
-                // If no router identified, only show global packages
                 $query->where('is_global', true);
             }
 
-            return $query->select('id', 'tenant_id', 'name', 'description', 'price', 'duration', 'speed', 'data_limit', 'validity', 'is_global')
+            return $query->select('id', 'name', 'description', 'price', 'duration', 'speed', 'data_limit', 'validity', 'is_global')
                 ->orderBy('price', 'asc')
                 ->get();
         });
@@ -75,33 +85,25 @@ class PublicPackageController extends Controller
             return $request->input('router_id');
         }
 
-        // Method 2: From router IP (most common for hotspot)
+        // Method 2: From router IP via router_tenant_map (public schema lookup)
         $clientIp = $this->getClientIp($request);
-        
-        // Check if client is connected through a router
-        $router = Router::withoutGlobalScope(\App\Models\Scopes\TenantScope::class)
-            ->where('ip_address', $clientIp)
+        $map = RouterTenantMap::where('ip_address', $clientIp)
             ->orWhere('ip_address', $request->ip())
             ->first();
-            
-        if ($router) {
-            return $router->id;
+        if ($map) {
+            return $map->router_id;
         }
 
-        // Method 3: Check if there's a gateway IP in the network
+        // Method 3: Check gateway IP
         $gatewayIp = $this->detectGatewayIp($request);
         if ($gatewayIp) {
-            $router = Router::withoutGlobalScope(\App\Models\Scopes\TenantScope::class)
-                ->where('ip_address', $gatewayIp)
-                ->first();
-                
-            if ($router) {
-                return $router->id;
+            $map = RouterTenantMap::where('ip_address', $gatewayIp)->first();
+            if ($map) {
+                return $map->router_id;
             }
         }
 
         // Method 4: From session (if router previously identified)
-        // Note: Sessions may not be available in stateless API routes
         if ($request->hasSession() && $request->session()->has('router_id')) {
             return $request->session()->get('router_id');
         }
@@ -128,40 +130,31 @@ class PublicPackageController extends Controller
         $subdomain = $this->extractSubdomain($host);
         
         if ($subdomain) {
-            $tenant = \App\Models\Tenant::where('slug', $subdomain)->first();
+            $tenant = Tenant::where('slug', $subdomain)->first();
             if ($tenant) {
                 return $tenant->id;
             }
         }
 
-        // Method 3: From router IP (most common for hotspot)
+        // Method 3: From router IP via router_tenant_map (public schema lookup)
         $clientIp = $this->getClientIp($request);
-        
-        // Check if client is connected through a router
-        $router = Router::withoutGlobalScope(\App\Models\Scopes\TenantScope::class)
-            ->where('ip_address', $clientIp)
+        $tenantId = RouterTenantMap::where('ip_address', $clientIp)
             ->orWhere('ip_address', $request->ip())
-            ->first();
-            
-        if ($router) {
-            return $router->tenant_id;
+            ->value('tenant_id');
+        if ($tenantId) {
+            return $tenantId;
         }
 
-        // Method 4: Check if there's a gateway IP in the network
-        // This is useful when client is behind NAT
+        // Method 4: Check gateway IP
         $gatewayIp = $this->detectGatewayIp($request);
         if ($gatewayIp) {
-            $router = Router::withoutGlobalScope(\App\Models\Scopes\TenantScope::class)
-                ->where('ip_address', $gatewayIp)
-                ->first();
-                
-            if ($router) {
-                return $router->tenant_id;
+            $tenantId = RouterTenantMap::where('ip_address', $gatewayIp)->value('tenant_id');
+            if ($tenantId) {
+                return $tenantId;
             }
         }
 
         // Method 5: From session (if user previously accessed)
-        // Note: Sessions may not be available in stateless API routes
         if ($request->hasSession() && $request->session()->has('tenant_id')) {
             return $request->session()->get('tenant_id');
         }

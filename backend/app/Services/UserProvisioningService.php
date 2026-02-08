@@ -56,8 +56,9 @@ class UserProvisioningService extends TenantAwareService
         try {
             DB::beginTransaction();
 
-            // SECURITY: Validate payment belongs to correct tenant
-            $tenantId = $payment->tenant_id;
+            // Get tenant ID from context (Payment is in tenant schema, no tenant_id column)
+            $tenantContext = app(TenantContext::class);
+            $tenantId = $tenantContext->getTenantId() ?? auth()->user()?->tenant_id;
             $this->validatePayment($payment, $tenantId);
 
             // Get package details and validate tenant ownership
@@ -116,7 +117,9 @@ class UserProvisioningService extends TenantAwareService
     protected function findOrCreateUser(Payment $payment): User
     {
         // Try to find user by phone number
-        $user = User::where('tenant_id', $payment->tenant_id)
+        // User is in public schema with tenant_id - get tenant from context
+        $tenantId = app(TenantContext::class)->getTenantId() ?? auth()->user()?->tenant_id;
+        $user = User::where('tenant_id', $tenantId)
             ->where('phone_number', $payment->phone_number)
             ->first();
 
@@ -133,7 +136,7 @@ class UserProvisioningService extends TenantAwareService
         $password = Str::random(12);
 
         $user = User::create([
-            'tenant_id' => $payment->tenant_id,
+            'tenant_id' => $tenantId,
             'name' => 'Hotspot User',
             'username' => $username,
             'email' => $username . '@hotspot.local',

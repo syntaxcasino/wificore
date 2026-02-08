@@ -24,12 +24,13 @@ class HotspotUserCreated implements ShouldBroadcast
     /**
      * Create a new event instance.
      */
-    public function __construct(HotspotUser $hotspotUser, Payment $payment, array $credentials)
+    public function __construct(HotspotUser $hotspotUser, Payment $payment, array $credentials, ?string $tenantId = null)
     {
         $this->hotspotUser = $hotspotUser;
         $this->payment = $payment;
         $this->credentials = $credentials;
-        $this->tenantId = $payment->tenant_id ?? $hotspotUser->tenant_id ?? null;
+        // Payment and HotspotUser are in tenant schema - no tenant_id column
+        $this->tenantId = $tenantId ?? (auth()->user()?->tenant_id);
     }
 
     /**

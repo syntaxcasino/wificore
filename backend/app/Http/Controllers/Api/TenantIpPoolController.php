@@ -28,7 +28,7 @@ class TenantIpPoolController extends Controller
      */
     public function index(Request $request)
     {
-        $pools = TenantIpPool::with('services')
+        $pools = TenantIpPool::with('routerServices')
             ->when($request->service_type, function ($query, $serviceType) {
                 $query->forService($serviceType);
             })
@@ -69,7 +69,7 @@ class TenantIpPoolController extends Controller
      */
     public function show(TenantIpPool $pool)
     {
-        $pool->load('services');
+        $pool->load('routerServices');
 
         return response()->json([
             'success' => true,
@@ -177,7 +177,7 @@ class TenantIpPoolController extends Controller
     public function destroy(TenantIpPool $pool)
     {
         // Check if pool is in use
-        if ($pool->services()->exists()) {
+        if ($pool->routerServices()->exists()) {
             return response()->json([
                 'success' => false,
                 'message' => 'Cannot delete pool - it is assigned to active services',

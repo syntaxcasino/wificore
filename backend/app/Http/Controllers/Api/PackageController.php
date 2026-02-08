@@ -24,7 +24,6 @@ class PackageController extends Controller
             ], 401);
         }
         
-        // Get current user's tenant_id for proper tenant isolation
         $tenantId = $user->tenant_id;
         
         if (!$tenantId) {
@@ -33,10 +32,9 @@ class PackageController extends Controller
             ], 403);
         }
         
-        // Cache packages per tenant to prevent data leaks
-        return Cache::remember("packages_list_tenant_{$tenantId}", 600, function () use ($tenantId) {
-            return Package::where('tenant_id', $tenantId)
-                ->with(['routers:id,name'])
+        // Cache packages per tenant - schema isolation handles tenancy
+        return Cache::remember("packages_list_tenant_{$tenantId}", 600, function () {
+            return Package::with(['routers:id,name'])
                 ->orderBy('created_at', 'desc')
                 ->get();
         });
@@ -44,18 +42,8 @@ class PackageController extends Controller
 
     public function show($id)
     {
-        // Get tenant_id from authenticated user
-        $tenantId = auth()->user()->tenant_id;
-        
-        if (!$tenantId) {
-            return response()->json([
-                'error' => 'Tenant ID is required'
-            ], 403);
-        }
-        
-        // Find package and ensure it belongs to the current tenant
+        // Schema isolation ensures only tenant's packages are visible
         $package = Package::where('id', $id)
-            ->where('tenant_id', $tenantId)
             ->with(['routers:id,name'])
             ->firstOrFail();
         
@@ -94,7 +82,7 @@ class PackageController extends Controller
             ], 422);
         }
 
-        // Get tenant_id from authenticated user
+        // Get tenant_id for cache key and event broadcasting
         $tenantId = auth()->user()->tenant_id;
         
         if (!$tenantId) {
@@ -103,8 +91,8 @@ class PackageController extends Controller
             ], 403);
         }
         
+        // Schema isolation handles tenancy - no tenant_id needed
         $package = Package::create([
-            'tenant_id' => $tenantId,
             'type' => $request->type,
             'name' => $request->name,
             'description' => $request->description,
@@ -129,7 +117,6 @@ class PackageController extends Controller
         // Attach routers if not global and router_ids provided
         if (!$package->is_global && $request->has('router_ids') && is_array($request->router_ids)) {
             $package->routers()->attach($request->router_ids, [
-                'tenant_id' => $tenantId,
                 'created_at' => now(),
                 'updated_at' => now()
             ]);
@@ -153,7 +140,7 @@ class PackageController extends Controller
 
     public function update(Request $request, $id)
     {
-        // Get tenant_id from authenticated user
+        // Get tenant_id for cache key and event broadcasting
         $tenantId = auth()->user()->tenant_id;
         
         if (!$tenantId) {
@@ -162,10 +149,8 @@ class PackageController extends Controller
             ], 403);
         }
         
-        // Find package and ensure it belongs to the current tenant
-        $package = Package::where('id', $id)
-            ->where('tenant_id', $tenantId)
-            ->firstOrFail();
+        // Schema isolation ensures only tenant's packages are visible
+        $package = Package::where('id', $id)->firstOrFail();
 
         $validator = Validator::make($request->all(), [
             'type' => 'sometimes|required|string|in:hotspot,pppoe',
@@ -230,7 +215,6 @@ class PackageController extends Controller
                 $syncData = [];
                 foreach ($request->router_ids as $routerId) {
                     $syncData[$routerId] = [
-                        'tenant_id' => $tenantId,
                         'created_at' => now(),
                         'updated_at' => now()
                     ];
@@ -257,7 +241,7 @@ class PackageController extends Controller
 
     public function destroy($id)
     {
-        // Get tenant_id from authenticated user
+        // Get tenant_id for cache key and event broadcasting
         $tenantId = auth()->user()->tenant_id;
         
         if (!$tenantId) {
@@ -266,10 +250,8 @@ class PackageController extends Controller
             ], 403);
         }
         
-        // Find package and ensure it belongs to the current tenant
-        $package = Package::where('id', $id)
-            ->where('tenant_id', $tenantId)
-            ->firstOrFail();
+        // Schema isolation ensures only tenant's packages are visible
+        $package = Package::where('id', $id)->firstOrFail();
         
         // Check if package has active payments or sessions
         $hasActivePayments = $package->payments()->where('status', 'completed')->exists();

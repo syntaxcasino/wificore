@@ -113,7 +113,7 @@ class DisconnectHotspotUserJob implements ShouldQueue
                 DB::commit();
                 
                 // 7. Broadcast event
-                broadcast(new SessionExpired($session, $this->reason))->toOthers();
+                broadcast(new SessionExpired($session, $this->reason, $this->tenantId))->toOthers();
                 
                 Log::info('User disconnected successfully', [
                     'session_id' => $session->id,

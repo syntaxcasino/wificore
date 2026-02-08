@@ -25,6 +25,11 @@ return new class extends Migration
             return;
         }
 
+        // Skip if columns already exist
+        if (Schema::hasColumn('pppoe_users', 'account_number')) {
+            return;
+        }
+
         Schema::table('pppoe_users', function (Blueprint $table) {
             // Account number with tenant prefix (e.g., T-00001 for Traidnet)
             $table->string('account_number', 20)->unique()->after('username');
