@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use App\Models\IpAllocation;
+use App\Models\TenantIpPool;
 use App\Traits\HasUuid;
 use App\Traits\BelongsToTenant;
 use App\Models\Scopes\TenantScope;
@@ -19,7 +20,18 @@ class RouterService extends Model
      */
     protected static function booted()
     {
-        // Schema-based isolation - no global scope needed
+        // Release IP allocations when a service is deleted
+        static::deleting(function (RouterService $service) {
+            $service->ipAllocations()
+                ->where('status', IpAllocation::STATUS_ACTIVE)
+                ->each(function (IpAllocation $allocation) {
+                    $pool = TenantIpPool::withoutGlobalScopes()->find($allocation->ip_pool_id);
+                    if ($pool) {
+                        $pool->releaseIp();
+                    }
+                    $allocation->release();
+                });
+        });
     }
 
     protected $fillable = [
