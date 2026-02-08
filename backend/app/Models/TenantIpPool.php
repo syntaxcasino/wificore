@@ -7,10 +7,26 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use App\Models\Scopes\TenantScope;
 
 class TenantIpPool extends Model
 {
     use HasFactory, HasUuids;
+
+    /**
+     * The table associated with the model.
+     * This table lives in the public schema (system-managed resource).
+     */
+    protected $table = 'public.tenant_ip_pools';
+
+    /**
+     * Boot the model - apply TenantScope so tenant users only see their own pools
+     * and system admins see all pools.
+     */
+    protected static function booted()
+    {
+        static::addGlobalScope(new TenantScope);
+    }
 
     protected $fillable = [
         'tenant_id',
@@ -43,6 +59,11 @@ class TenantIpPool extends Model
         return $this->belongsTo(Tenant::class);
     }
 
+    /**
+     * Get router services using this pool.
+     * RouterService lives in tenant schemas, so this is a cross-schema relationship.
+     * It works because the search_path is set to the tenant schema for authenticated requests.
+     */
     public function routerServices(): HasMany
     {
         return $this->hasMany(RouterService::class, 'ip_pool_id');

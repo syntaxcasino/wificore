@@ -7,32 +7,13 @@ use Illuminate\Support\Facades\Schema;
 return new class extends Migration
 {
     /**
-     * Run the migrations.
+     * No-op: tenant_ip_pools has been moved to the public schema.
+     * See: 2026_02_08_120000_create_tenant_ip_pools_in_public_schema.php
+     * This file is kept so existing migration records don't break.
      */
     public function up(): void
     {
-        Schema::create('tenant_ip_pools', function (Blueprint $table) {
-            $table->uuid('id')->primary();
-            $table->uuid('tenant_id');
-            $table->enum('service_type', ['hotspot', 'pppoe', 'management'])->index();
-            $table->string('pool_name');
-            $table->string('network_cidr', 50);
-            $table->string('gateway_ip', 45);
-            $table->string('range_start', 45);
-            $table->string('range_end', 45);
-            $table->string('dns_primary', 45)->nullable();
-            $table->string('dns_secondary', 45)->nullable();
-            $table->integer('total_ips');
-            $table->integer('allocated_ips')->default(0);
-            $table->integer('available_ips');
-            $table->boolean('auto_generated')->default(true);
-            $table->enum('status', ['active', 'exhausted', 'disabled'])->default('active')->index();
-            $table->jsonb('metadata')->nullable();
-            $table->timestamps();
-
-            $table->unique(['tenant_id', 'service_type', 'network_cidr']);
-            $table->index(['tenant_id', 'service_type', 'status']);
-        });
+        // IP pools are now managed in the public schema with tenant_id FK.
     }
 
     /**

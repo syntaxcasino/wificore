@@ -177,8 +177,8 @@ class ServiceDeploymentValidator extends TenantAwareService
         if ($service->service_type === RouterService::TYPE_HYBRID) {
             // Check both pools
             $advancedConfig = $service->advanced_config ?? [];
-            $hotspotPool = TenantIpPool::find($advancedConfig['hotspot_pool_id'] ?? null);
-            $pppoePool = TenantIpPool::find($advancedConfig['pppoe_pool_id'] ?? null);
+            $hotspotPool = TenantIpPool::withoutGlobalScopes()->find($advancedConfig['hotspot_pool_id'] ?? null);
+            $pppoePool = TenantIpPool::withoutGlobalScopes()->find($advancedConfig['pppoe_pool_id'] ?? null);
 
             if (!$hotspotPool) {
                 $errors[] = 'Hotspot IP pool not found';
