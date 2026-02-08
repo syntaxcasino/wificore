@@ -48,6 +48,13 @@ class Router extends Model
             }
         });
 
+        // Delete services individually so their deleting hooks fire (releases IP allocations)
+        static::deleting(function (Router $router) {
+            $router->services->each(function (RouterService $service) {
+                $service->delete();
+            });
+        });
+
         static::deleted(function (Router $router) {
             try {
                 RouterTenantMap::unregisterRouter($router->id);
