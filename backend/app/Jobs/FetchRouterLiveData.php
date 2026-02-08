@@ -6,7 +6,6 @@ use App\Events\RouterLiveDataUpdated;
 use App\Events\RouterStatusUpdated;
 use App\Models\Router;
 use App\Services\CacheInvalidationService;
-use App\Services\MikrotikProvisioningService;
 use App\Services\MikrotikSnmpService;
 use App\Traits\TenantAwareJob;
 use Illuminate\Bus\Batchable;
@@ -43,9 +42,9 @@ class FetchRouterLiveData implements ShouldQueue
         ]);
     }
 
-    public function handle(MikrotikProvisioningService $routerService, MikrotikSnmpService $snmpService)
+    public function handle(MikrotikSnmpService $snmpService)
     {
-        $this->executeInTenantContext(function() use ($routerService, $snmpService) {
+        $this->executeInTenantContext(function() use ($snmpService) {
             $startTime = microtime(true);
             
             Log::withContext([
@@ -87,17 +86,10 @@ class FetchRouterLiveData implements ShouldQueue
                     }
 
                     try {
-                        $useSnmp = filter_var(env('MIKROTIK_SNMP_ENABLED', true), FILTER_VALIDATE_BOOL);
-
-                        if ($useSnmp) {
-                            try {
-                                $liveData = $snmpService->fetchLiveData($router, false);
-                            } catch (\Exception $snmpException) {
-                                $liveData = $routerService->fetchLiveRouterData($router, 'live', false);
-                            }
-                        } else {
-                            $liveData = $routerService->fetchLiveRouterData($router, 'live', false);
-                        }
+                        // SNMP-only: SSH must NOT be used for periodic metrics collection.
+                        // VictoriaMetrics (via Telegraf SNMP) is the primary metrics source.
+                        // This Laravel polling path is a fallback for environments without Telegraf.
+                        $liveData = $snmpService->fetchLiveData($router, false);
                         
                         Log::debug('Fetched live data for router', [
                             'router_id' => $router->id,

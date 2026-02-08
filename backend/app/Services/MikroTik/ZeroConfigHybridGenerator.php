@@ -57,8 +57,8 @@ class ZeroConfigHybridGenerator
             'hotspot_pool' => $hotspotPool,
             'pppoe_pool' => $pppoePool,
             // Prefer static RADIUS IP from env/docker-compose, fallback to host name
-            'radius_server' => env('VPN_SERVER_IP', env('RADIUS_SERVER_IP', env('RADIUS_SERVER_HOST', 'wificore-freeradius'))),
-            'radius_secret' => env('RADIUS_SECRET', 'testing123'),
+            'radius_server' => config('radius.server_ip', config('services.radius.host', 'wificore-freeradius')),
+            'radius_secret' => config('radius.secret', 'testing123'),
             'tenant_id' => $router->tenant_id,
         ]);
 
@@ -149,14 +149,16 @@ class ZeroConfigHybridGenerator
         $network = explode('/', $pool->network_cidr)[0];
         $dns = "{$pool->dns_primary},{$pool->dns_secondary}";
 
+        // CAPTIVE PORTAL: Generate tenant-specific portal URL for Hybrid mode
+        // Format: https://<tenant_slug>.wificore.traidsolutions.com/api/portal/config
         $portalUrl = null;
         $portalHost = null;
         try {
             $tenant = $params['router_id'] ? (\App\Models\Router::find($params['router_id'])?->tenant) : null;
-            if ($tenant) {
-                $baseHost = parse_url(config('app.url'), PHP_URL_HOST);
-                $portalUrl = "https://{$tenant->subdomain}.{$baseHost}/portal";
-                $portalHost = parse_url($portalUrl, PHP_URL_HOST);
+            if ($tenant && $tenant->subdomain) {
+                $baseHost = config('app.base_domain', parse_url(config('app.url'), PHP_URL_HOST));
+                $portalUrl = "https://{$tenant->subdomain}.{$baseHost}/api/portal/config?router_id={$params['router_id']}";
+                $portalHost = "{$tenant->subdomain}.{$baseHost}";
             }
         } catch (\Exception $e) {
             $portalUrl = null;
@@ -189,14 +191,16 @@ class ZeroConfigHybridGenerator
             // Single-line hotspot profile add for SSH compatibility
             ":do { /ip hotspot profile add name=\"{$profile}\" hotspot-address={$gateway} login-by=http-chap,http-pap use-radius=yes html-directory=hotspot http-cookie-lifetime=1d dns-name=hotspot.local; } on-error={ /log error \"Hybrid: Hotspot profile add failed\"; :error \"Hybrid: Hotspot profile add failed\" }",
             ":if ([:len [/ip hotspot profile find name=\"{$profile}\"]] = 0) do={ /log error \"Hybrid: Hotspot profile missing\"; :error \"Hybrid: Hotspot profile missing\" }",
-            ($portalUrlForHtml ? ":do { /file set hotspot/login.html contents=\"<html><head><meta http-equiv=refresh content=0;url={$portalUrlForHtml}></head><body>Redirecting...</body></html>\" } on-error={}" : ":do { } on-error={} "),
+            // CAPTIVE PORTAL: Redirect to tenant-specific portal for package selection and payment
+            ($portalUrlForHtml ? ":do { /file set hotspot/login.html contents=\"<html><head><meta http-equiv='refresh' content='0;url={$portalUrlForHtml}'></head><body>Redirecting to portal...</body></html>\" } on-error={}" : ":do { } on-error={} "),
             "",
             "# Hotspot Server",
             ":do { /ip hotspot remove [find name=\"{$server}\"]; } on-error={} ",
             // Single-line hotspot server add for SSH compatibility
             ":do { /ip hotspot add name=\"{$server}\" interface=\"{$interface}\" profile=\"{$profile}\" address-pool={$poolName} addresses-per-mac=2 idle-timeout=5m keepalive-timeout=2m disabled=no; } on-error={ /log error \"Hybrid: Hotspot server add failed\"; :error \"Hybrid: Hotspot server add failed\" }",
             ":if ([:len [/ip hotspot find name=\"{$server}\"]] = 0) do={ /log error \"Hybrid: Hotspot server missing\"; :error \"Hybrid: Hotspot server missing\" }",
-            ($portalHost ? ":do { /ip hotspot walled-garden remove [find comment=\"WiFiCore Portal\"]; /ip hotspot walled-garden add dst-host={$portalHost} action=allow comment=\"WiFiCore Portal\"; } on-error={}" : ":do { } on-error={} "),
+            // CAPTIVE PORTAL: Walled garden for portal access without authentication
+            ($portalHost ? ":do { /ip hotspot walled-garden remove [find comment=\"WiFiCore Portal (Hybrid)\"]; /ip hotspot walled-garden add dst-host={$portalHost} action=allow comment=\"WiFiCore Portal (Hybrid)\"; } on-error={}" : ":do { } on-error={} "),
             "",
         ];
     }
@@ -278,24 +282,30 @@ class ZeroConfigHybridGenerator
         $pppoeVlan = $params['pppoe_vlan_id'];
         $hotspotInterface = "vlan-hotspot-{$hotspotVlan}";
         $pppoeInterface = "vlan-pppoe-{$pppoeVlan}";
+        $routerId = $params['router_id'];
+        $hotspotCidr = $params['hotspot_pool']->network_cidr;
+        $pppoeCidr = $params['pppoe_pool']->network_cidr;
 
         return [
-            "# Firewall Rules - VLAN Separation Enforcement",
-            "# ❌ NO traffic allowed between Hotspot and PPPoE VLANs",
-            "# ✅ Both VLANs can access WAN independently",
+            "# Firewall Rules - VLAN Separation + Authentication Enforcement",
+            "# Rule order: cross-VLAN block → established → invalid drop → authenticated subnets → DROP unauthenticated",
             "",
-            // Remove existing Hybrid firewall rules for idempotency
-            ":do { /ip firewall filter remove [find comment=\"Hybrid: Block Hotspot->PPPoE\"]; } on-error={}",
-            ":do { /ip firewall filter remove [find comment=\"Hybrid: Block PPPoE->Hotspot\"]; } on-error={}",
-            ":do { /ip firewall filter remove [find comment=\"Hybrid: Allow Established\"]; } on-error={}",
-            ":do { /ip firewall filter remove [find comment=\"Hybrid: Hotspot to WAN\"]; } on-error={}",
-            ":do { /ip firewall filter remove [find comment=\"Hybrid: PPPoE to WAN\"]; } on-error={}",
-            // Re-add rules
-            ":do { /ip firewall filter add chain=forward action=drop in-interface={$hotspotInterface} out-interface={$pppoeInterface} comment=\"Hybrid: Block Hotspot->PPPoE\"; } on-error={ /log error \"Hybrid: Firewall add failed (Block Hotspot->PPPoE)\"; :error \"Hybrid: Firewall add failed\" }",
-            ":do { /ip firewall filter add chain=forward action=drop in-interface={$pppoeInterface} out-interface={$hotspotInterface} comment=\"Hybrid: Block PPPoE->Hotspot\"; } on-error={ /log error \"Hybrid: Firewall add failed (Block PPPoE->Hotspot)\"; :error \"Hybrid: Firewall add failed\" }",
-            ":do { /ip firewall filter add chain=forward action=accept connection-state=established,related comment=\"Hybrid: Allow Established\"; } on-error={ /log error \"Hybrid: Firewall add failed (Allow Established)\"; :error \"Hybrid: Firewall add failed\" }",
-            ":do { /ip firewall filter add chain=forward action=accept in-interface={$hotspotInterface} out-interface=!{$hotspotInterface} comment=\"Hybrid: Hotspot to WAN\"; } on-error={ /log error \"Hybrid: Firewall add failed (Hotspot to WAN)\"; :error \"Hybrid: Firewall add failed\" }",
-            ":do { /ip firewall filter add chain=forward action=accept in-interface={$pppoeInterface} out-interface=!{$pppoeInterface} comment=\"Hybrid: PPPoE to WAN\"; } on-error={ /log error \"Hybrid: Firewall add failed (PPPoE to WAN)\"; :error \"Hybrid: Firewall add failed\" }",
+            // Remove existing Hybrid firewall rules for idempotent re-ordering
+            ":do { /ip firewall filter remove [find comment~\"Hybrid-{$routerId}-FW\"]; } on-error={}",
+            // 1. Block cross-VLAN traffic (isolation between Hotspot and PPPoE)
+            "/ip firewall filter add chain=forward in-interface={$hotspotInterface} out-interface={$pppoeInterface} action=drop comment=\"Hybrid-{$routerId}-FW-XVLAN-HS\"",
+            "/ip firewall filter add chain=forward in-interface={$pppoeInterface} out-interface={$hotspotInterface} action=drop comment=\"Hybrid-{$routerId}-FW-XVLAN-PP\"",
+            // 2. Accept established/related connections
+            "/ip firewall filter add chain=forward connection-state=established,related action=accept comment=\"Hybrid-{$routerId}-FW-EST\"",
+            // 3. Drop invalid connections
+            "/ip firewall filter add chain=forward connection-state=invalid action=drop comment=\"Hybrid-{$routerId}-FW-INV\"",
+            // 4. Allow authenticated Hotspot subnet traffic to WAN
+            "/ip firewall filter add chain=forward src-address={$hotspotCidr} out-interface=!{$hotspotInterface} action=accept comment=\"Hybrid-{$routerId}-FW-HS-INET\"",
+            // 5. Allow authenticated PPPoE subnet traffic to WAN
+            "/ip firewall filter add chain=forward src-address={$pppoeCidr} out-interface=!{$pppoeInterface} action=accept comment=\"Hybrid-{$routerId}-FW-PP-INET\"",
+            // 6. CRITICAL: Block ALL other traffic from both VLANs (unauthenticated devices)
+            "/ip firewall filter add chain=forward in-interface={$hotspotInterface} action=drop comment=\"Hybrid-{$routerId}-FW-HS-DROP\"",
+            "/ip firewall filter add chain=forward in-interface={$pppoeInterface} action=drop comment=\"Hybrid-{$routerId}-FW-PP-DROP\"",
             "",
         ];
     }

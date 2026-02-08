@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import axios from 'axios'
-import { websocketService } from '@/services/websocket'
+import { websocketService } from '@/modules/common/services/websocket'
 
 export const useAuthStore = defineStore('auth', {
   state: () => ({

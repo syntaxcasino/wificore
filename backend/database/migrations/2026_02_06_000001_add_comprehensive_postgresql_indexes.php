@@ -4,165 +4,157 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 return new class extends Migration
 {
     /**
+     * Advisory lock key for this migration.
+     * Prevents concurrent execution across multiple containers.
+     * Key is a stable int derived from the migration name.
+     */
+    private const ADVISORY_LOCK_KEY = 206000001; // Unique per migration file
+
+    /**
      * Run the migrations.
-     * 
-     * Adds comprehensive PostgreSQL indexes for all frequently queried columns.
-     * Uses pg_indexes catalog for idempotent index creation (Laravel 11 compatible).
+     *
+     * Adds comprehensive PostgreSQL indexes for public schema tables.
+     *
+     * SAFETY GUARANTEES:
+     * 1. Advisory lock prevents concurrent execution (multi-container safe)
+     * 2. pg_class catalog check inside DO $$ block (race-condition safe)
+     * 3. Schema-qualified index names prevent cross-schema conflicts
+     * 4. Fully idempotent — safe to re-run on partial failures
      */
     public function up(): void
     {
-        // =========================================================================
-        // PUBLIC SCHEMA INDEXES (Landlord Tables)
-        // =========================================================================
+        // Acquire session-level advisory lock — blocks until available.
+        // This prevents two containers from running this migration concurrently.
+        DB::statement('SELECT pg_advisory_lock(' . self::ADVISORY_LOCK_KEY . ')');
 
-        // TENANTS TABLE - Subscription enforcement, billing, and lookup queries
-        $this->createIndexIfNotExists('public', 'tenants', 'tenants_subscription_status_idx', 
-            ['subscription_ends_at', 'is_active', 'is_suspended']);
-        
-        $this->createIndexIfNotExists('public', 'tenants', 'tenants_billing_lookup_idx', 
-            ['last_invoice_at', 'subscription_warning_sent_at']);
-        
-        $this->createIndexIfNotExists('public', 'tenants', 'tenants_custom_paybill_idx', 
-            ['custom_paybill']);
+        try {
+            // Temporarily raise statement_timeout for index creation on large tables
+            DB::statement("SET LOCAL statement_timeout = '300s'");
 
-        // USERS TABLE - Multi-tenant user lookup and authentication
-        $this->createIndexIfNotExists('public', 'users', 'users_tenant_role_active_idx', 
-            ['tenant_id', 'role', 'is_active']);
-        
-        $this->createIndexIfNotExists('public', 'users', 'users_email_active_idx', 
-            ['email', 'is_active']);
-        
-        $this->createIndexIfNotExists('public', 'users', 'users_last_login_idx', 
-            ['last_login_at']);
+            // =================================================================
+            // TENANTS TABLE
+            // =================================================================
+            $this->safeCreateIndex('public', 'tenants', 'tenants_subscription_status_idx',
+                ['subscription_ends_at', 'is_active', 'is_suspended']);
+            $this->safeCreateIndex('public', 'tenants', 'tenants_billing_lookup_idx',
+                ['last_invoice_at', 'subscription_warning_sent_at']);
+            $this->safeCreateIndex('public', 'tenants', 'tenants_custom_paybill_idx',
+                ['custom_paybill']);
 
-        // TENANT_VPN_TUNNELS TABLE - VPN status and tenant lookup
-        $this->createIndexIfNotExists('public', 'tenant_vpn_tunnels', 'tenant_vpn_tunnels_tenant_status_idx', 
-            ['tenant_id', 'status']);
-        
-        $this->createIndexIfNotExists('public', 'tenant_vpn_tunnels', 'tenant_vpn_tunnels_interface_idx', 
-            ['interface_name']);
+            // =================================================================
+            // USERS TABLE
+            // =================================================================
+            $this->safeCreateIndex('public', 'users', 'users_tenant_role_active_idx',
+                ['tenant_id', 'role', 'is_active']);
+            $this->safeCreateIndex('public', 'users', 'users_email_active_idx',
+                ['email', 'is_active']);
+            $this->safeCreateIndex('public', 'users', 'users_last_login_idx',
+                ['last_login_at']);
 
-        // TENANT_PAYMENTS TABLE - Payment status and billing queries
-        $this->createIndexIfNotExists('public', 'tenant_payments', 'tenant_payments_tenant_status_idx', 
-            ['tenant_id', 'status']);
-        
-        $this->createIndexIfNotExists('public', 'tenant_payments', 'tenant_payments_created_idx', 
-            ['created_at']);
+            // =================================================================
+            // TENANT_VPN_TUNNELS TABLE
+            // =================================================================
+            $this->safeCreateIndex('public', 'tenant_vpn_tunnels', 'tenant_vpn_tunnels_tenant_status_idx',
+                ['tenant_id', 'status']);
+            $this->safeCreateIndex('public', 'tenant_vpn_tunnels', 'tenant_vpn_tunnels_interface_idx',
+                ['interface_name']);
 
-        // PACKAGES TABLE (PUBLIC) - Package type and availability queries
-        if (Schema::hasTable('packages')) {
-            $this->createIndexIfNotExists('public', 'packages', 'packages_tenant_type_active_idx', 
+            // =================================================================
+            // TENANT_PAYMENTS TABLE
+            // =================================================================
+            $this->safeCreateIndex('public', 'tenant_payments', 'tenant_payments_tenant_status_idx',
+                ['tenant_id', 'status']);
+            $this->safeCreateIndex('public', 'tenant_payments', 'tenant_payments_created_idx',
+                ['created_at']);
+
+            // =================================================================
+            // PACKAGES TABLE (PUBLIC)
+            // =================================================================
+            $this->safeCreateIndex('public', 'packages', 'packages_tenant_type_active_idx',
                 ['tenant_id', 'type', 'is_active']);
-            
-            $this->createIndexIfNotExists('public', 'packages', 'packages_public_lookup_idx', 
+            $this->safeCreateIndex('public', 'packages', 'packages_public_lookup_idx',
                 ['is_public', 'is_active', 'type']);
-        }
 
-        // RADIUS_USER_SCHEMA_MAPPING TABLE - Username lookup for RADIUS
-        if (Schema::hasTable('radius_user_schema_mapping')) {
-            $this->createIndexIfNotExists('public', 'radius_user_schema_mapping', 'radius_mapping_username_idx', 
+            // =================================================================
+            // RADIUS_USER_SCHEMA_MAPPING TABLE
+            // =================================================================
+            $this->safeCreateIndex('public', 'radius_user_schema_mapping', 'radius_mapping_username_idx',
                 ['username']);
-            
-            $this->createIndexIfNotExists('public', 'radius_user_schema_mapping', 'radius_mapping_tenant_idx', 
-                ['tenant_id', 'user_type']);
-        }
+            $this->safeCreateIndex('public', 'radius_user_schema_mapping', 'radius_mapping_tenant_idx',
+                ['tenant_id', 'user_role']);
 
-        // MPESA_TRANSACTION_MAPS TABLE - Transaction lookup
-        if (Schema::hasTable('mpesa_transaction_maps')) {
-            $this->createIndexIfNotExists('public', 'mpesa_transaction_maps', 'mpesa_maps_checkout_idx', 
+            // =================================================================
+            // MPESA_TRANSACTION_MAPS TABLE
+            // =================================================================
+            $this->safeCreateIndex('public', 'mpesa_transaction_maps', 'mpesa_maps_checkout_idx',
                 ['checkout_request_id']);
-            
-            $this->createIndexIfNotExists('public', 'mpesa_transaction_maps', 'mpesa_maps_tenant_idx', 
+            $this->safeCreateIndex('public', 'mpesa_transaction_maps', 'mpesa_maps_tenant_idx',
                 ['tenant_id']);
-        }
 
-        // PERFORMANCE_METRICS TABLE - Time-series queries
-        if (Schema::hasTable('performance_metrics')) {
-            $this->createIndexIfNotExists('public', 'performance_metrics', 'perf_metrics_recorded_idx', 
+            // =================================================================
+            // PERFORMANCE_METRICS TABLE
+            // =================================================================
+            $this->safeCreateIndex('public', 'performance_metrics', 'perf_metrics_recorded_idx',
                 ['recorded_at']);
-            
-            $this->createIndexIfNotExists('public', 'performance_metrics', 'perf_metrics_type_time_idx', 
-                ['metric_type', 'recorded_at']);
-        }
+            $this->safeCreateIndex('public', 'performance_metrics', 'perf_metrics_tps_time_idx',
+                ['tps_current', 'recorded_at']);
 
-        // SYSTEM_HEALTH_METRICS TABLE - Health monitoring queries
-        if (Schema::hasTable('system_health_metrics')) {
-            $this->createIndexIfNotExists('public', 'system_health_metrics', 'health_metrics_recorded_idx', 
+            // =================================================================
+            // SYSTEM_HEALTH_METRICS TABLE
+            // =================================================================
+            $this->safeCreateIndex('public', 'system_health_metrics', 'health_metrics_recorded_idx',
                 ['recorded_at']);
-        }
 
-        // =========================================================================
-        // RADIUS CORE TABLES (Public Schema)
-        // =========================================================================
-
-        // RADCHECK TABLE - Authentication queries (high frequency)
-        if (Schema::hasTable('radcheck')) {
-            $this->createIndexIfNotExists('public', 'radcheck', 'radcheck_username_attribute_idx', 
+            // =================================================================
+            // RADIUS CORE TABLES
+            // =================================================================
+            $this->safeCreateIndex('public', 'radcheck', 'radcheck_username_attribute_idx',
                 ['username', 'attribute']);
-        }
-
-        // RADREPLY TABLE - Authorization queries
-        if (Schema::hasTable('radreply')) {
-            $this->createIndexIfNotExists('public', 'radreply', 'radreply_username_attribute_idx', 
+            $this->safeCreateIndex('public', 'radreply', 'radreply_username_attribute_idx',
                 ['username', 'attribute']);
-        }
-
-        // RADACCT TABLE - Accounting queries (very high frequency)
-        if (Schema::hasTable('radacct')) {
-            $this->createIndexIfNotExists('public', 'radacct', 'radacct_username_start_idx', 
+            $this->safeCreateIndex('public', 'radacct', 'radacct_username_start_idx',
                 ['username', 'acctstarttime']);
-            
-            $this->createIndexIfNotExists('public', 'radacct', 'radacct_username_stop_idx', 
+            $this->safeCreateIndex('public', 'radacct', 'radacct_username_stop_idx',
                 ['username', 'acctstoptime']);
-            
-            $this->createIndexIfNotExists('public', 'radacct', 'radacct_nasipaddress_idx', 
+            $this->safeCreateIndex('public', 'radacct', 'radacct_nasipaddress_idx',
                 ['nasipaddress']);
-            
-            $this->createIndexIfNotExists('public', 'radacct', 'radacct_acctsessionid_idx', 
+            $this->safeCreateIndex('public', 'radacct', 'radacct_acctsessionid_idx',
                 ['acctsessionid']);
-            
-            // Partial index for active sessions (acctstoptime IS NULL)
-            $this->createPartialIndexIfNotExists('public', 'radacct', 'radacct_active_sessions_idx',
+            $this->safeCreatePartialIndex('public', 'radacct', 'radacct_active_sessions_idx',
                 ['username'], 'acctstoptime IS NULL');
-        }
 
-        // RADPOSTAUTH TABLE - Post-auth logging
-        if (Schema::hasTable('radpostauth')) {
-            $this->createIndexIfNotExists('public', 'radpostauth', 'radpostauth_username_reply_idx', 
+            // =================================================================
+            // RADPOSTAUTH TABLE
+            // =================================================================
+            $this->safeCreateIndex('public', 'radpostauth', 'radpostauth_username_reply_idx',
                 ['username', 'reply']);
-            
-            $this->createIndexIfNotExists('public', 'radpostauth', 'radpostauth_authdate_idx', 
+            $this->safeCreateIndex('public', 'radpostauth', 'radpostauth_authdate_idx',
                 ['authdate']);
-        }
 
-        // =========================================================================
-        // JOBS/QUEUE TABLES - Queue processing
-        // =========================================================================
-
-        if (Schema::hasTable('jobs')) {
-            $this->createIndexIfNotExists('public', 'jobs', 'jobs_queue_reserved_idx', 
+            // =================================================================
+            // JOBS/QUEUE TABLES
+            // =================================================================
+            $this->safeCreateIndex('public', 'jobs', 'jobs_queue_reserved_idx',
                 ['queue', 'reserved_at']);
-        }
-
-        if (Schema::hasTable('failed_jobs')) {
-            $this->createIndexIfNotExists('public', 'failed_jobs', 'failed_jobs_failed_at_idx', 
+            $this->safeCreateIndex('public', 'failed_jobs', 'failed_jobs_failed_at_idx',
                 ['failed_at']);
-        }
 
-        // =========================================================================
-        // TENANT REGISTRATIONS TABLE
-        // =========================================================================
-
-        if (Schema::hasTable('tenant_registrations')) {
-            $this->createIndexIfNotExists('public', 'tenant_registrations', 'tenant_reg_status_idx', 
+            // =================================================================
+            // TENANT REGISTRATIONS TABLE
+            // =================================================================
+            $this->safeCreateIndex('public', 'tenant_registrations', 'tenant_reg_status_idx',
                 ['status']);
-            
-            $this->createIndexIfNotExists('public', 'tenant_registrations', 'tenant_reg_email_idx', 
-                ['email']);
+            $this->safeCreateIndex('public', 'tenant_registrations', 'tenant_reg_email_idx',
+                ['tenant_email']);
+
+        } finally {
+            // Always release the advisory lock, even on failure
+            DB::statement('SELECT pg_advisory_unlock(' . self::ADVISORY_LOCK_KEY . ')');
         }
     }
 
@@ -171,119 +163,160 @@ return new class extends Migration
      */
     public function down(): void
     {
-        // Drop all indexes created by this migration
         $indexes = [
-            // Tenants
-            ['public', 'tenants', 'tenants_subscription_status_idx'],
-            ['public', 'tenants', 'tenants_billing_lookup_idx'],
-            ['public', 'tenants', 'tenants_custom_paybill_idx'],
-            // Users
-            ['public', 'users', 'users_tenant_role_active_idx'],
-            ['public', 'users', 'users_email_active_idx'],
-            ['public', 'users', 'users_last_login_idx'],
-            // VPN Tunnels
-            ['public', 'tenant_vpn_tunnels', 'tenant_vpn_tunnels_tenant_status_idx'],
-            ['public', 'tenant_vpn_tunnels', 'tenant_vpn_tunnels_interface_idx'],
-            // Tenant Payments
-            ['public', 'tenant_payments', 'tenant_payments_tenant_status_idx'],
-            ['public', 'tenant_payments', 'tenant_payments_created_idx'],
-            // Packages
-            ['public', 'packages', 'packages_tenant_type_active_idx'],
-            ['public', 'packages', 'packages_public_lookup_idx'],
-            // RADIUS mapping
-            ['public', 'radius_user_schema_mapping', 'radius_mapping_username_idx'],
-            ['public', 'radius_user_schema_mapping', 'radius_mapping_tenant_idx'],
-            // MPesa
-            ['public', 'mpesa_transaction_maps', 'mpesa_maps_checkout_idx'],
-            ['public', 'mpesa_transaction_maps', 'mpesa_maps_tenant_idx'],
-            // Metrics
-            ['public', 'performance_metrics', 'perf_metrics_recorded_idx'],
-            ['public', 'performance_metrics', 'perf_metrics_type_time_idx'],
-            ['public', 'system_health_metrics', 'health_metrics_recorded_idx'],
-            // RADIUS
-            ['public', 'radcheck', 'radcheck_username_attribute_idx'],
-            ['public', 'radreply', 'radreply_username_attribute_idx'],
-            ['public', 'radacct', 'radacct_username_start_idx'],
-            ['public', 'radacct', 'radacct_username_stop_idx'],
-            ['public', 'radacct', 'radacct_nasipaddress_idx'],
-            ['public', 'radacct', 'radacct_acctsessionid_idx'],
-            ['public', 'radacct', 'radacct_active_sessions_idx'],
-            ['public', 'radpostauth', 'radpostauth_username_reply_idx'],
-            ['public', 'radpostauth', 'radpostauth_authdate_idx'],
-            // Jobs
-            ['public', 'jobs', 'jobs_queue_reserved_idx'],
-            ['public', 'failed_jobs', 'failed_jobs_failed_at_idx'],
-            // Tenant registrations
-            ['public', 'tenant_registrations', 'tenant_reg_status_idx'],
-            ['public', 'tenant_registrations', 'tenant_reg_email_idx'],
+            ['public', 'tenants_subscription_status_idx'],
+            ['public', 'tenants_billing_lookup_idx'],
+            ['public', 'tenants_custom_paybill_idx'],
+            ['public', 'users_tenant_role_active_idx'],
+            ['public', 'users_email_active_idx'],
+            ['public', 'users_last_login_idx'],
+            ['public', 'tenant_vpn_tunnels_tenant_status_idx'],
+            ['public', 'tenant_vpn_tunnels_interface_idx'],
+            ['public', 'tenant_payments_tenant_status_idx'],
+            ['public', 'tenant_payments_created_idx'],
+            ['public', 'packages_tenant_type_active_idx'],
+            ['public', 'packages_public_lookup_idx'],
+            ['public', 'radius_mapping_username_idx'],
+            ['public', 'radius_mapping_tenant_idx'],
+            ['public', 'mpesa_maps_checkout_idx'],
+            ['public', 'mpesa_maps_tenant_idx'],
+            ['public', 'perf_metrics_recorded_idx'],
+            ['public', 'perf_metrics_type_time_idx'],
+            ['public', 'health_metrics_recorded_idx'],
+            ['public', 'radcheck_username_attribute_idx'],
+            ['public', 'radreply_username_attribute_idx'],
+            ['public', 'radacct_username_start_idx'],
+            ['public', 'radacct_username_stop_idx'],
+            ['public', 'radacct_nasipaddress_idx'],
+            ['public', 'radacct_acctsessionid_idx'],
+            ['public', 'radacct_active_sessions_idx'],
+            ['public', 'radpostauth_username_reply_idx'],
+            ['public', 'radpostauth_authdate_idx'],
+            ['public', 'jobs_queue_reserved_idx'],
+            ['public', 'failed_jobs_failed_at_idx'],
+            ['public', 'tenant_reg_status_idx'],
+            ['public', 'tenant_reg_email_idx'],
         ];
 
-        foreach ($indexes as [$schema, $table, $indexName]) {
-            $this->dropIndexIfExists($schema, $table, $indexName);
+        foreach ($indexes as [$schema, $indexName]) {
+            DB::statement("DROP INDEX IF EXISTS \"{$schema}\".\"{$indexName}\"");
         }
     }
 
+    // =====================================================================
+    // SAFE INDEX CREATION — Race-condition free via pg_class catalog check
+    // =====================================================================
+
     /**
-     * Create an index if it does not exist (PostgreSQL native).
-     * Uses CREATE INDEX IF NOT EXISTS for atomic, idempotent operation.
+     * Create a regular index using a PL/pgSQL DO block with pg_class check.
+     *
+     * This is safe against concurrent execution because:
+     * - The existence check and CREATE INDEX are in a single SQL statement
+     * - The advisory lock at the migration level prevents parallel runs
+     * - Falls back gracefully if the index already exists (duplicate_table SQLSTATE 42P07)
+     * - Validates all columns exist before attempting index creation
      */
-    private function createIndexIfNotExists(string $schema, string $table, string $indexName, array $columns): void
+    private function safeCreateIndex(string $schema, string $table, string $indexName, array $columns): void
     {
-        if (!Schema::hasTable($table)) {
+        if (!$this->tableExists($schema, $table)) {
             return;
         }
 
-        // Verify all columns exist
+        // Validate all columns exist before creating index
         foreach ($columns as $column) {
-            if (!Schema::hasColumn($table, $column)) {
+            if (!$this->columnExists($schema, $table, $column)) {
+                Log::warning("Skipping index {$indexName}: column {$column} does not exist in {$schema}.{$table}");
                 return;
             }
         }
 
-        $columnList = implode(', ', array_map(fn($c) => "\"$c\"", $columns));
-        // Use IF NOT EXISTS for atomic idempotent index creation (PostgreSQL 9.5+)
-        DB::statement("CREATE INDEX IF NOT EXISTS \"{$indexName}\" ON \"{$schema}\".\"{$table}\" ({$columnList})");
+        $columnList = implode(', ', array_map(fn($c) => '"' . $c . '"', $columns));
+
+        DB::statement("
+            DO \$\$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_class c
+                    JOIN pg_namespace n ON n.oid = c.relnamespace
+                    WHERE c.relname = '{$indexName}'
+                      AND n.nspname = '{$schema}'
+                ) THEN
+                    CREATE INDEX \"{$indexName}\" ON \"{$schema}\".\"{$table}\" ({$columnList});
+                END IF;
+            EXCEPTION WHEN duplicate_table THEN
+                -- Another session created it between our check and create — safe to ignore
+                NULL;
+            END;
+            \$\$;
+        ");
     }
 
     /**
-     * Create a partial index if it does not exist (PostgreSQL native).
-     * Uses CREATE INDEX IF NOT EXISTS for atomic, idempotent operation.
+     * Create a partial index using a PL/pgSQL DO block with pg_class check.
      */
-    private function createPartialIndexIfNotExists(string $schema, string $table, string $indexName, array $columns, string $whereClause): void
+    private function safeCreatePartialIndex(string $schema, string $table, string $indexName, array $columns, string $whereClause): void
     {
-        if (!Schema::hasTable($table)) {
+        if (!$this->tableExists($schema, $table)) {
             return;
         }
 
-        $columnList = implode(', ', array_map(fn($c) => "\"$c\"", $columns));
-        // Use IF NOT EXISTS for atomic idempotent index creation (PostgreSQL 9.5+)
-        DB::statement("CREATE INDEX IF NOT EXISTS \"{$indexName}\" ON \"{$schema}\".\"{$table}\" ({$columnList}) WHERE {$whereClause}");
-    }
-
-    /**
-     * Drop an index if it exists.
-     */
-    private function dropIndexIfExists(string $schema, string $table, string $indexName): void
-    {
-        if (!$this->indexExists($schema, $table, $indexName)) {
-            return;
+        // Validate all columns exist before creating index
+        foreach ($columns as $column) {
+            if (!$this->columnExists($schema, $table, $column)) {
+                Log::warning("Skipping partial index {$indexName}: column {$column} does not exist in {$schema}.{$table}");
+                return;
+            }
         }
 
-        DB::statement("DROP INDEX IF EXISTS \"{$schema}\".\"{$indexName}\"");
+        $columnList = implode(', ', array_map(fn($c) => '"' . $c . '"', $columns));
+
+        DB::statement("
+            DO \$\$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_class c
+                    JOIN pg_namespace n ON n.oid = c.relnamespace
+                    WHERE c.relname = '{$indexName}'
+                      AND n.nspname = '{$schema}'
+                ) THEN
+                    CREATE INDEX \"{$indexName}\" ON \"{$schema}\".\"{$table}\" ({$columnList}) WHERE {$whereClause};
+                END IF;
+            EXCEPTION WHEN duplicate_table THEN
+                NULL;
+            END;
+            \$\$;
+        ");
     }
 
     /**
-     * Check if an index exists using PostgreSQL system catalog.
+     * Check table existence via pg_class (bypasses search_path issues with PgBouncer).
      */
-    private function indexExists(string $schema, string $table, string $indexName): bool
+    private function tableExists(string $schema, string $table): bool
     {
         $result = DB::selectOne("
-            SELECT 1 FROM pg_indexes 
-            WHERE schemaname = ? 
-            AND tablename = ? 
-            AND indexname = ?
-        ", [$schema, $table, $indexName]);
-        
+            SELECT 1 FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE c.relname = ?
+              AND n.nspname = ?
+              AND c.relkind IN ('r', 'p')
+        ", [$table, $schema]);
+
+        return $result !== null;
+    }
+
+    /**
+     * Check column existence via information_schema.
+     * This is critical for ensuring indexes are only created on existing columns.
+     */
+    private function columnExists(string $schema, string $table, string $column): bool
+    {
+        $result = DB::selectOne("
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = ?
+              AND table_name = ?
+              AND column_name = ?
+        ", [$schema, $table, $column]);
+
         return $result !== null;
     }
 };

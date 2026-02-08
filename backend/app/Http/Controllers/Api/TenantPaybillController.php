@@ -46,8 +46,9 @@ class TenantPaybillController extends Controller
         try {
             $settings = TenantPaybillSetting::first();
             
-            // Get landlord config info
-            $landlordShortcode = config('mpesa.shortcode');
+            // Get landlord config info from DB (with .env fallback)
+            $systemSettings = \App\Models\SystemPaymentSetting::getActive();
+            $landlordShortcode = $systemSettings?->shortcode ?? config('mpesa.shortcode');
             $hasLandlordPaybill = !empty($landlordShortcode);
 
             if ($settings) {
@@ -311,7 +312,9 @@ class TenantPaybillController extends Controller
         $tenantId = $request->user()->tenant_id;
 
         try {
-            $landlordShortcode = config('mpesa.shortcode');
+            // Check landlord paybill from DB (with .env fallback)
+            $systemSettings = \App\Models\SystemPaymentSetting::getActive();
+            $landlordShortcode = $systemSettings?->shortcode ?? config('mpesa.shortcode');
             
             if (empty($landlordShortcode)) {
                 return response()->json([

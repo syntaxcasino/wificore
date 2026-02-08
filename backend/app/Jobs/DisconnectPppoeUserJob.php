@@ -149,15 +149,16 @@ class DisconnectPppoeUserJob implements ShouldQueue
         }
 
         try {
-            $ssh = new SshExecutor($router);
+            $ssh = new SshExecutor($router, 15);
+            $ssh->connect();
             
-            // Get active session and remove it
-            $command = sprintf(
-                '/ppp active remove [find name="%s"]',
-                addslashes($user->username)
-            );
+            // Remove active PPPoE session by name
+            $escapedUsername = addslashes($user->username);
+            $ssh->exec(sprintf('/ppp active remove [find name="%s"]', $escapedUsername));
             
-            $ssh->execute($command);
+            // Also try by user field (some RouterOS versions use 'user' instead of 'name')
+            $ssh->exec(sprintf('/ppp active remove [find user="%s"]', $escapedUsername));
+            
             $ssh->disconnect();
 
             Log::info('DisconnectPppoeUserJob: Disconnected from router', [

@@ -3,6 +3,7 @@
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\DB;
 
 return new class extends Migration
 {
@@ -33,8 +34,15 @@ return new class extends Migration
             }
         });
         
-        // Add indexes if they don't exist
-        if (!Schema::hasColumn('tenants', 'subscription_status')) {
+        // Add index if it doesn't exist (check using PostgreSQL catalog)
+        $indexExists = DB::selectOne("
+            SELECT 1 FROM pg_indexes 
+            WHERE schemaname = 'public' 
+            AND tablename = 'tenants' 
+            AND indexname = 'tenants_subscription_status_idx'
+        ");
+        
+        if (!$indexExists && Schema::hasColumn('tenants', 'subscription_status')) {
             Schema::table('tenants', function (Blueprint $table) {
                 $table->index('subscription_status');
             });

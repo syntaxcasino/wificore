@@ -1,101 +1,109 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
-import PackagesView from '@/modules/common/views/public/PackagesView.vue'
-import LoginView from '@/modules/common/views/auth/LoginView.vue'
-import VerifyEmailView from '@/modules/common/views/auth/VerifyEmailView.vue'
+// Eager imports — only for components needed on every page load
 import DashboardLayout from '@/modules/common/components/layout/DashboardLayout.vue'
 
-import Dashboard from '@/modules/tenant/views/DashboardClean.vue'
+// Lazy imports — everything else is code-split for better performance
+const PackagesView = () => import('@/modules/common/views/public/PackagesView.vue')
+const LoginView = () => import('@/modules/common/views/auth/LoginView.vue')
+const VerifyEmailView = () => import('@/modules/common/views/auth/VerifyEmailView.vue')
+const DashboardRouter = () => import('@/modules/common/views/DashboardRouter.vue')
 
-import UsersLayout from '@/modules/tenant/views/dashboard/users/UsersLayout.vue'
-import UserList from '@/modules/tenant/views/dashboard/users/UserList.vue'
-import CreateUser from '@/modules/tenant/views/dashboard/users/CreateUser.vue'
-import OnlineUsers from '@/modules/tenant/views/dashboard/users/OnlineUsers.vue'
-import BlockedUsers from '@/modules/tenant/views/dashboard/users/BlockedUsers.vue'
-import UserGroups from '@/modules/tenant/views/dashboard/users/UserGroups.vue'
+// Users
+const UsersLayout = () => import('@/modules/tenant/views/dashboard/users/UsersLayout.vue')
+const CreateUser = () => import('@/modules/tenant/views/dashboard/users/CreateUser.vue')
+const BlockedUsers = () => import('@/modules/tenant/views/dashboard/users/BlockedUsers.vue')
+const UserGroups = () => import('@/modules/tenant/views/dashboard/users/UserGroups.vue')
 
-import HotspotLayout from '@/modules/tenant/views/dashboard/hotspot/HotspotLayout.vue'
-import ActiveSessions from '@/modules/tenant/views/dashboard/hotspot/ActiveSessions.vue'
-import VouchersGenerate from '@/modules/tenant/views/dashboard/hotspot/VouchersGenerateNew.vue'
-import VouchersBulk from '@/modules/tenant/views/dashboard/hotspot/VouchersBulk.vue'
-import VoucherTemplates from '@/modules/tenant/views/dashboard/hotspot/VoucherTemplates.vue'
-import HotspotProfiles from '@/modules/tenant/views/dashboard/hotspot/HotspotProfiles.vue'
-import LoginPageCustomization from '@/modules/tenant/views/dashboard/hotspot/LoginPageCustomization.vue'
+// Hotspot
+const HotspotLayout = () => import('@/modules/tenant/views/dashboard/hotspot/HotspotLayout.vue')
+const VouchersGenerate = () => import('@/modules/tenant/views/dashboard/hotspot/VouchersGenerateNew.vue')
+const VouchersBulk = () => import('@/modules/tenant/views/dashboard/hotspot/VouchersBulk.vue')
+const VoucherTemplates = () => import('@/modules/tenant/views/dashboard/hotspot/VoucherTemplates.vue')
+const HotspotProfiles = () => import('@/modules/tenant/views/dashboard/hotspot/HotspotProfiles.vue')
+const LoginPageCustomization = () => import('@/modules/tenant/views/dashboard/hotspot/LoginPageCustomization.vue')
 
-import PPPoELayout from '@/modules/tenant/views/dashboard/pppoe/PPPoELayout.vue'
-import PPPoESessions from '@/modules/tenant/views/dashboard/pppoe/PPPoESessions.vue'
-import RadiusProfiles from '@/modules/tenant/views/dashboard/pppoe/RadiusProfiles.vue'
-import QueuesBandwidthControl from '@/modules/tenant/views/dashboard/pppoe/QueuesBandwidthControl.vue'
-import AutoDisconnectRules from '@/modules/tenant/views/dashboard/pppoe/AutoDisconnectRules.vue'
+// PPPoE
+const PPPoELayout = () => import('@/modules/tenant/views/dashboard/pppoe/PPPoELayout.vue')
+const RadiusProfiles = () => import('@/modules/tenant/views/dashboard/pppoe/RadiusProfiles.vue')
+const QueuesBandwidthControl = () => import('@/modules/tenant/views/dashboard/pppoe/QueuesBandwidthControl.vue')
+const AutoDisconnectRules = () => import('@/modules/tenant/views/dashboard/pppoe/AutoDisconnectRules.vue')
 
-import BillingLayout from '@/modules/tenant/views/dashboard/billing/BillingLayout.vue'
-import Invoices from '@/modules/tenant/views/dashboard/billing/InvoicesNew.vue'
-import Payments from '@/modules/tenant/views/dashboard/billing/PaymentsNew.vue'
-import MpesaTransactions from '@/modules/tenant/views/dashboard/billing/MpesaTransactionsNew.vue'
-import WalletAccountBalance from '@/modules/tenant/views/dashboard/billing/WalletAccountBalanceNew.vue'
-import PaymentMethods from '@/modules/tenant/views/dashboard/billing/PaymentMethodsNew.vue'
+// Billing
+const BillingLayout = () => import('@/modules/tenant/views/dashboard/billing/BillingLayout.vue')
+const Invoices = () => import('@/modules/tenant/views/dashboard/billing/InvoicesNew.vue')
+const Payments = () => import('@/modules/tenant/views/dashboard/billing/PaymentsNew.vue')
+const MpesaTransactions = () => import('@/modules/tenant/views/dashboard/billing/MpesaTransactionsNew.vue')
+const WalletAccountBalance = () => import('@/modules/tenant/views/dashboard/billing/WalletAccountBalanceNew.vue')
+const PaymentMethods = () => import('@/modules/tenant/views/dashboard/billing/PaymentMethodsNew.vue')
 
-import PackagesLayout from '@/modules/tenant/views/dashboard/packages/PackagesLayout.vue'
-import AllPackages from '@/modules/tenant/views/dashboard/packages/AllPackages.vue'
-import AddPackage from '@/modules/tenant/views/dashboard/packages/AddPackageNew.vue'
-import PackageGroups from '@/modules/tenant/views/dashboard/packages/PackageGroupsNew.vue'
-import BandwidthLimitRules from '@/modules/tenant/views/dashboard/packages/BandwidthLimitRules.vue'
+// Packages
+const PackagesLayout = () => import('@/modules/tenant/views/dashboard/packages/PackagesLayout.vue')
+const AllPackages = () => import('@/modules/tenant/views/dashboard/packages/AllPackagesNew.vue')
 
-import RoutersLayout from '@/modules/tenant/views/dashboard/routers/RoutersLayout.vue'
-import MikrotikList from '@/modules/tenant/views/dashboard/routers/MikrotikList.vue'
-import AddRouter from '@/modules/tenant/views/dashboard/routers/AddRouter.vue'
-import ApiConnectionStatus from '@/modules/tenant/views/dashboard/routers/ApiConnectionStatus.vue'
-import BackupConfigurations from '@/modules/tenant/views/dashboard/routers/BackupConfigurations.vue'
+// Routers
+const RoutersLayout = () => import('@/modules/tenant/views/dashboard/routers/RoutersLayout.vue')
+const MikrotikList = () => import('@/modules/tenant/views/dashboard/routers/MikrotikList.vue')
+const AddRouter = () => import('@/modules/tenant/views/dashboard/routers/AddRouter.vue')
+const ApiConnectionStatus = () => import('@/modules/tenant/views/dashboard/routers/ApiConnectionStatus.vue')
+const BackupConfigurations = () => import('@/modules/tenant/views/dashboard/routers/BackupConfigurations.vue')
 
-import MonitoringLayout from '@/modules/tenant/views/dashboard/monitoring/MonitoringLayout.vue'
-import LiveConnections from '@/modules/tenant/views/dashboard/monitoring/LiveConnectionsNew.vue'
-import SystemLogs from '@/modules/tenant/views/dashboard/monitoring/SystemLogsNew.vue'
-import TrafficGraphs from '@/modules/tenant/views/dashboard/monitoring/TrafficGraphsNew.vue'
-import SessionLogs from '@/modules/tenant/views/dashboard/monitoring/SessionLogsNew.vue'
-import LatencyPingTests from '@/modules/tenant/views/dashboard/monitoring/LatencyPingTests.vue'
-import ReportsLayout from '@/modules/tenant/views/dashboard/reports/ReportsLayout.vue'
-import DailyLoginReports from '@/modules/tenant/views/dashboard/reports/DailyLoginReportsNew.vue'
-import PaymentReports from '@/modules/tenant/views/dashboard/reports/PaymentReportsNew.vue'
+// Monitoring
+const MonitoringLayout = () => import('@/modules/tenant/views/dashboard/monitoring/MonitoringLayout.vue')
+const LiveConnections = () => import('@/modules/tenant/views/dashboard/monitoring/LiveConnectionsNew.vue')
+const SystemLogs = () => import('@/modules/tenant/views/dashboard/monitoring/SystemLogsNew.vue')
+const TrafficGraphs = () => import('@/modules/tenant/views/dashboard/monitoring/TrafficGraphsNew.vue')
+const SessionLogs = () => import('@/modules/tenant/views/dashboard/monitoring/SessionLogsNew.vue')
+const LatencyPingTests = () => import('@/modules/tenant/views/dashboard/monitoring/LatencyPingTests.vue')
 
-import SupportLayout from '@/modules/tenant/views/dashboard/support/SupportLayout.vue'
-import AllTickets from '@/modules/tenant/views/dashboard/support/AllTicketsNew.vue'
-import CreateTicket from '@/modules/tenant/views/dashboard/support/CreateTicketNew.vue'
-import TicketCategories from '@/modules/tenant/views/dashboard/support/TicketCategories.vue'
-import ResponseTemplates from '@/modules/tenant/views/dashboard/support/ResponseTemplates.vue'
+// Reports
+const ReportsLayout = () => import('@/modules/tenant/views/dashboard/reports/ReportsLayout.vue')
+const DailyLoginReports = () => import('@/modules/tenant/views/dashboard/reports/DailyLoginReportsNew.vue')
+const PaymentReports = () => import('@/modules/tenant/views/dashboard/reports/PaymentReportsNew.vue')
+const UserSessionHistory = () => import('@/modules/tenant/views/dashboard/reports/UserSessionHistoryNew.vue')
+const BandwidthUsageSummary = () => import('@/modules/tenant/views/dashboard/reports/BandwidthUsageSummaryNew.vue')
+const ExpiredAccounts = () => import('@/modules/tenant/views/dashboard/reports/ExpiredAccounts.vue')
 
-import UserSessionHistory from '@/modules/tenant/views/dashboard/reports/UserSessionHistoryNew.vue'
-import BandwidthUsageSummary from '@/modules/tenant/views/dashboard/reports/BandwidthUsageSummaryNew.vue'
-import ExpiredAccounts from '@/modules/tenant/views/dashboard/reports/ExpiredAccounts.vue'
+// Support
+const SupportLayout = () => import('@/modules/tenant/views/dashboard/support/SupportLayout.vue')
+const AllTickets = () => import('@/modules/tenant/views/dashboard/support/AllTicketsNew.vue')
+const CreateTicket = () => import('@/modules/tenant/views/dashboard/support/CreateTicketNew.vue')
+const TicketCategories = () => import('@/modules/tenant/views/dashboard/support/TicketCategories.vue')
+const ResponseTemplates = () => import('@/modules/tenant/views/dashboard/support/ResponseTemplates.vue')
 
-import SettingsLayout from '@/modules/tenant/views/dashboard/settings/SettingsLayout.vue'
-import GeneralSettings from '@/modules/tenant/views/dashboard/settings/GeneralSettingsNew.vue'
-import MikrotikApiCredentials from '@/modules/tenant/views/dashboard/settings/MikrotikApiCredentialsNew.vue'
-import RadiusServerSettings from '@/modules/tenant/views/dashboard/settings/RadiusServerSettingsNew.vue'
-import EmailSmsSettings from '@/modules/tenant/views/dashboard/settings/EmailSmsSettingsNew.vue'
-import MpesaApiKeys from '@/modules/tenant/views/dashboard/settings/MpesaApiKeysNew.vue'
-import TimezoneLocale from '@/modules/tenant/views/dashboard/settings/TimezoneLocaleNew.vue'
+// Settings
+const SettingsLayout = () => import('@/modules/tenant/views/dashboard/settings/SettingsLayout.vue')
+const GeneralSettings = () => import('@/modules/tenant/views/dashboard/settings/GeneralSettingsNew.vue')
+const MikrotikApiCredentials = () => import('@/modules/tenant/views/dashboard/settings/MikrotikApiCredentialsNew.vue')
+const RadiusServerSettings = () => import('@/modules/tenant/views/dashboard/settings/RadiusServerSettingsNew.vue')
+const CommunicationChannels = () => import('@/modules/tenant/views/dashboard/settings/CommunicationChannels.vue')
+const MpesaApiKeys = () => import('@/modules/tenant/views/dashboard/settings/MpesaApiKeysNew.vue')
+const TimezoneLocale = () => import('@/modules/tenant/views/dashboard/settings/TimezoneLocaleNew.vue')
 
-import AdminToolsLayout from '@/modules/tenant/views/dashboard/admin/AdminToolsLayout.vue'
-import RolesPermissions from '@/modules/tenant/views/dashboard/admin/RolesPermissionsNew.vue'
-import ActivityLogs from '@/modules/tenant/views/dashboard/admin/ActivityLogsNew.vue'
-import BackupRestore from '@/modules/tenant/views/dashboard/admin/BackupRestoreNew.vue'
-import CacheManagement from '@/modules/tenant/views/dashboard/admin/CacheManagement.vue'
-import WebSocketTest from '@/modules/common/views/test/WebSocketTestView.vue'
-import ComponentShowcase from '@/modules/common/views/test/ComponentShowcase.vue'
-import SystemUpdates from '@/modules/tenant/views/dashboard/admin/SystemUpdates.vue'
+// Admin Tools
+const AdminToolsLayout = () => import('@/modules/tenant/views/dashboard/admin/AdminToolsLayout.vue')
+const RolesPermissions = () => import('@/modules/tenant/views/dashboard/admin/RolesPermissionsNew.vue')
+const ActivityLogs = () => import('@/modules/tenant/views/dashboard/admin/ActivityLogsNew.vue')
+const BackupRestore = () => import('@/modules/tenant/views/dashboard/admin/BackupRestoreNew.vue')
+const CacheManagement = () => import('@/modules/tenant/views/dashboard/admin/CacheManagement.vue')
+const SystemUpdates = () => import('@/modules/tenant/views/dashboard/admin/SystemUpdates.vue')
 
-// Todos Module
-import TodosView from '@/modules/tenant/views/TodosView.vue'
+// Dev/Test
+const WebSocketTest = () => import('@/modules/common/views/test/WebSocketTestView.vue')
+const ComponentShowcase = () => import('@/modules/common/views/test/ComponentShowcase.vue')
 
-// HR Module
-import DepartmentsView from '@/modules/tenant/views/DepartmentsView.vue'
-import PositionsView from '@/modules/tenant/views/PositionsView.vue'
-import EmployeesView from '@/modules/tenant/views/EmployeesView.vue'
+// Todos
+const TodosView = () => import('@/modules/tenant/views/todos/TodosView.vue')
 
-// Finance Module
-import ExpensesView from '@/modules/tenant/views/ExpensesView.vue'
-import RevenuesView from '@/modules/tenant/views/RevenuesView.vue'
+// HR
+const DepartmentsView = () => import('@/modules/tenant/views/hr/DepartmentsView.vue')
+const PositionsView = () => import('@/modules/tenant/views/hr/PositionsView.vue')
+const EmployeesView = () => import('@/modules/tenant/views/hr/EmployeesView.vue')
+
+// Finance
+const ExpensesView = () => import('@/modules/tenant/views/finance/ExpensesView.vue')
+const RevenuesView = () => import('@/modules/tenant/views/finance/RevenuesView.vue')
 
 const routes = [
   // Public admin/tenant login (default homepage)
@@ -113,7 +121,7 @@ const routes = [
   { path: '/websocket-test', name: 'websocket-test', component: WebSocketTest, meta: { requiresAuth: true } },
   { path: '/component-showcase', name: 'component-showcase', component: ComponentShowcase, meta: { requiresAuth: true } },
 
-  // System Admin Dashboard (with layout)
+  // System Admin routes (with layout) — all under /system/*
   {
     path: '/system',
     component: DashboardLayout,
@@ -125,6 +133,60 @@ const routes = [
         component: () => import('@/modules/system-admin/views/system/SystemDashboardNew.vue'),
         meta: { requiresAuth: true, requiresRole: 'system_admin' }
       },
+      {
+        path: 'tenants',
+        name: 'system.tenants',
+        component: () => import('@/modules/system-admin/views/tenants/TenantsView.vue'),
+        meta: { requiresAuth: true, requiresRole: 'system_admin' }
+      },
+      {
+        path: 'admins',
+        name: 'system.admins',
+        component: () => import('@/modules/system-admin/views/admins/SystemAdminsView.vue'),
+        meta: { requiresAuth: true, requiresRole: 'system_admin' }
+      },
+      {
+        path: 'billing/configuration',
+        name: 'system.billing.config',
+        component: () => import('@/modules/system-admin/views/billing/BillingConfigView.vue'),
+        meta: { requiresAuth: true, requiresRole: 'system_admin' }
+      },
+      {
+        path: 'billing/metrics',
+        name: 'system.billing.metrics',
+        component: () => import('@/modules/system-admin/views/billing/BillingMetricsView.vue'),
+        meta: { requiresAuth: true, requiresRole: 'system_admin' }
+      },
+      {
+        path: 'billing/overrides',
+        name: 'system.billing.overrides',
+        component: () => import('@/modules/system-admin/views/billing/BillingOverridesView.vue'),
+        meta: { requiresAuth: true, requiresRole: 'system_admin' }
+      },
+      {
+        path: 'ip-pools',
+        name: 'system.ip-pools',
+        component: () => import('@/modules/system-admin/views/network/IpPoolsView.vue'),
+        meta: { requiresAuth: true, requiresRole: 'system_admin' }
+      },
+      {
+        path: 'health',
+        name: 'system.health',
+        component: () => import('@/modules/system-admin/views/monitoring/SystemHealthView.vue'),
+        meta: { requiresAuth: true, requiresRole: 'system_admin' }
+      },
+      {
+        path: 'metrics',
+        name: 'system.metrics',
+        component: () => import('@/modules/system-admin/views/monitoring/SystemMetricsView.vue'),
+        meta: { requiresAuth: true, requiresRole: 'system_admin' }
+      },
+      {
+        path: 'activity-logs',
+        name: 'system.activity-logs',
+        component: () => import('@/modules/system-admin/views/monitoring/ActivityLogsView.vue'),
+        meta: { requiresAuth: true, requiresRole: 'system_admin' }
+      },
     ]
   },
 
@@ -133,7 +195,7 @@ const routes = [
     component: DashboardLayout,
     meta: { requiresAuth: true },
     children: [
-      { path: '', name: 'overview', component: Dashboard },
+      { path: '', name: 'overview', component: DashboardRouter },
 
       {
         path: '/dashboard/users',
@@ -297,7 +359,7 @@ const routes = [
             name: 'settings.radius-server',
             component: RadiusServerSettings,
           },
-          { path: 'email-sms', name: 'settings.email-sms', component: EmailSmsSettings },
+          { path: 'communication-channels', name: 'settings.communication-channels', component: CommunicationChannels },
           { path: 'mpesa-api', name: 'settings.mpesa-api', component: MpesaApiKeys },
           { path: 'timezone-locale', name: 'settings.timezone-locale', component: TimezoneLocale },
         ],
@@ -376,6 +438,25 @@ const router = createRouter({
   routes,
 })
 
+// Tenant-only route prefixes that system_admin must not access
+// System admin should only use /dashboard (overview) and /system/* routes
+const TENANT_ONLY_PATHS = [
+  '/dashboard/hotspot',
+  '/dashboard/pppoe',
+  '/dashboard/packages',
+  '/dashboard/routers',
+  '/dashboard/monitoring',
+  '/dashboard/users',
+  '/dashboard/billing',
+  '/dashboard/finance',
+  '/dashboard/reports',
+  '/dashboard/settings',
+  '/dashboard/admin',
+  '/dashboard/support',
+  '/dashboard/todos',
+  '/dashboard/hr',
+]
+
 // Navigation guard - protect routes that require authentication
 router.beforeEach((to, from, next) => {
   const token = localStorage.getItem('authToken')
@@ -393,6 +474,9 @@ router.beforeEach((to, from, next) => {
   } else if ((to.name === 'login' || to.name === 'register') && token) {
     // Redirect to dashboard if already logged in and trying to access login/register page
     next({ path: dashboardRoute })
+  } else if (role === 'system_admin' && TENANT_ONLY_PATHS.some(p => to.path.startsWith(p))) {
+    // Block system_admin from accessing tenant-only routes
+    next({ path: '/dashboard' })
   } else {
     next()
   }

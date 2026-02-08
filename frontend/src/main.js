@@ -3,9 +3,9 @@ import { createPinia } from 'pinia'
 import axios from 'axios'
 import App from './App.vue'
 import router from './router'
-import { useAuthStore } from './stores/auth'
-import { useConfirmStore } from './stores/confirm'
-import echo from './plugins/echo';
+import { useAuthStore } from '@/stores/auth'
+import { useConfirmStore } from '@/stores/confirm'
+import echo from '@/modules/common/plugins/echo';
 import { registerSW } from 'virtual:pwa-register'
 
 import './assets/main.css'

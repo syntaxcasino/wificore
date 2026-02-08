@@ -492,7 +492,7 @@ class UnifiedAuthController extends Controller
     private function getDashboardRoute(User $user): string
     {
         return match($user->role) {
-            User::ROLE_SYSTEM_ADMIN => '/system/dashboard',
+            User::ROLE_SYSTEM_ADMIN => '/dashboard',
             User::ROLE_ADMIN => '/dashboard',
             User::ROLE_HOTSPOT_USER => '/user/dashboard',
             default => '/dashboard',

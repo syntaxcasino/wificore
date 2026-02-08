@@ -63,6 +63,7 @@ class GenerateTelegrafConfig extends Command
             $snmpV3User = (string) env('TELEGRAF_SNMPV3_USER', 'snmpmonitor');
             $snmpV3AuthPassword = (string) env('TELEGRAF_SNMPV3_AUTH_PASSWORD', '');
             $snmpV3PrivPassword = (string) env('TELEGRAF_SNMPV3_PRIV_PASSWORD', '');
+            $snmpCommunity = (string) env('TELEGRAF_SNMP_COMMUNITY', 'public');
 
             $vmWriteUrl = (string) env('VICTORIA_METRICS_WRITE_URL', 'http://wificore-nginx/internal/vm/api/v1/write');
 
@@ -136,7 +137,25 @@ class GenerateTelegrafConfig extends Command
 
                         $deviceType = (string) ($router->device_type ?? 'router');
                         $versionRaw = strtolower((string) ($router->snmp_version ?? '2c'));
-                        $version = ($versionRaw === '3' || $versionRaw === 'v3' || $versionRaw === 'snmpv3') ? 3 : (($versionRaw === '1' || $versionRaw === 'v1') ? 1 : 2);
+                        $requestedVersion = ($versionRaw === '3' || $versionRaw === 'v3' || $versionRaw === 'snmpv3') ? 3 : (($versionRaw === '1' || $versionRaw === 'v1') ? 1 : 2);
+
+                        // Check if SNMPv3 credentials are actually available
+                        $v3User = (string) ($router->snmp_v3_user ?? $snmpV3User);
+                        $authPass = (string) ($router->snmp_v3_auth_password ?? $snmpV3AuthPassword);
+                        $privPass = (string) ($router->snmp_v3_priv_password ?? $snmpV3PrivPassword);
+                        $hasV3Credentials = ($v3User !== '' && $authPass !== '' && $privPass !== '');
+
+                        // If SNMPv3 is requested but credentials are missing, fall back to SNMPv2c
+                        if ($requestedVersion === 3 && !$hasV3Credentials) {
+                            $version = 2;
+                            $community = $snmpCommunity;
+                        } elseif ($requestedVersion === 3 && $hasV3Credentials) {
+                            $version = 3;
+                            $community = '';
+                        } else {
+                            $version = $requestedVersion;
+                            $community = $snmpCommunity;
+                        }
 
                         $lines[] = '[[inputs.snmp]]';
                         $lines[] = "interval = \"{$slowInterval}\"";
@@ -146,28 +165,29 @@ class GenerateTelegrafConfig extends Command
                         $lines[] = 'retries = 1';
                         $lines[] = 'max_repetitions = 10';
                         $lines[] = 'name = "router_health"';
+                        
+                        // Add community string for SNMPv1/v2c
+                        if ($version !== 3) {
+                            $lines[] = "community = \"{$this->escapeTelegrafString($community)}\"";
+                        }
+                        
                         $lines[] = "[inputs.snmp.tags]";
                         $lines[] = "tenant_id = \"{$tenant->id}\"";
                         $lines[] = "router_id = \"{$routerId}\"";
                         $lines[] = "device_type = \"{$deviceType}\"";
                         $lines[] = '';
 
-                        if ($version === 3) {
-                            // Use router-specific credentials if available, otherwise fall back to environment defaults
-                            $v3User = (string) ($router->snmp_v3_user ?? $snmpV3User);
+                        // Add SNMPv3 credentials if available
+                        if ($version === 3 && $hasV3Credentials) {
                             $authProto = (string) ($router->snmp_v3_auth_protocol ?? 'SHA');
-                            $authPass = (string) ($router->snmp_v3_auth_password ?? $snmpV3AuthPassword);
                             $privProto = (string) ($router->snmp_v3_priv_protocol ?? 'AES');
-                            $privPass = (string) ($router->snmp_v3_priv_password ?? $snmpV3PrivPassword);
-
-                            if ($v3User !== '' && $authPass !== '' && $privPass !== '') {
-                                $lines[] = "sec_name = \"{$this->escapeTelegrafString($v3User)}\"";
-                                $lines[] = "sec_level = \"authPriv\"";
-                                $lines[] = "auth_protocol = \"{$this->escapeTelegrafString($authProto)}\"";
-                                $lines[] = "auth_password = \"{$this->escapeTelegrafString($authPass)}\"";
-                                $lines[] = "priv_protocol = \"{$this->escapeTelegrafString($privProto)}\"";
-                                $lines[] = "priv_password = \"{$this->escapeTelegrafString($privPass)}\"";
-                            }
+                            
+                            $lines[] = "sec_name = \"{$this->escapeTelegrafString($v3User)}\"";
+                            $lines[] = "sec_level = \"authPriv\"";
+                            $lines[] = "auth_protocol = \"{$this->escapeTelegrafString($authProto)}\"";
+                            $lines[] = "auth_password = \"{$this->escapeTelegrafString($authPass)}\"";
+                            $lines[] = "priv_protocol = \"{$this->escapeTelegrafString($privProto)}\"";
+                            $lines[] = "priv_password = \"{$this->escapeTelegrafString($privPass)}\"";
                         }
 
                         $lines[] = '[[inputs.snmp.field]]';
@@ -208,151 +228,9 @@ class GenerateTelegrafConfig extends Command
                         $lines[] = 'oid = "1.3.6.1.4.1.14988.1.1.5.4.0"';
                         $lines[] = '';
 
-                        $lines[] = '[[inputs.snmp]]';
-                        $lines[] = "interval = \"{$slowInterval}\"";
-                        $lines[] = "agents = [\"udp://{$ip}:161\"]";
-                        $lines[] = "version = {$version}";
-                        $lines[] = 'timeout = "2s"';
-                        $lines[] = 'retries = 1';
-                        $lines[] = 'max_repetitions = 25';
-                        $lines[] = 'name = "router_storage"';
-                        $lines[] = "[inputs.snmp.tags]";
-                        $lines[] = "tenant_id = \"{$tenant->id}\"";
-                        $lines[] = "router_id = \"{$routerId}\"";
-                        $lines[] = "device_type = \"{$deviceType}\"";
-                        $lines[] = '';
-
-                        if ($version === 3) {
-                            $v3User = (string) ($router->snmp_v3_user ?? $snmpV3User);
-                            $authProto = (string) ($router->snmp_v3_auth_protocol ?? 'SHA');
-                            $authPass = (string) ($router->snmp_v3_auth_password ?? $snmpV3AuthPassword);
-                            $privProto = (string) ($router->snmp_v3_priv_protocol ?? 'AES');
-                            $privPass = (string) ($router->snmp_v3_priv_password ?? $snmpV3PrivPassword);
-
-                            if ($v3User !== '' && $authPass !== '' && $privPass !== '') {
-                                $lines[] = "sec_name = \"{$this->escapeTelegrafString($v3User)}\"";
-                                $lines[] = "sec_level = \"authPriv\"";
-                                $lines[] = "auth_protocol = \"{$this->escapeTelegrafString($authProto)}\"";
-                                $lines[] = "auth_password = \"{$this->escapeTelegrafString($authPass)}\"";
-                                $lines[] = "priv_protocol = \"{$this->escapeTelegrafString($privProto)}\"";
-                                $lines[] = "priv_password = \"{$this->escapeTelegrafString($privPass)}\"";
-                            }
-                        }
-
-                        // hrStorageTable (HOST-RESOURCES-MIB) for disk/storage metrics
-                        $lines[] = '[[inputs.snmp.table]]';
-                        $lines[] = 'name = "storage"';
-                        $lines[] = 'oid = "1.3.6.1.2.1.25.2.3"';
-                        $lines[] = '';
-
-                        $lines[] = '[[inputs.snmp.table.field]]';
-                        $lines[] = 'name = "hrStorageIndex"';
-                        $lines[] = 'oid = "1.3.6.1.2.1.25.2.3.1.1"';
-                        $lines[] = 'is_tag = true';
-                        $lines[] = '';
-
-                        $lines[] = '[[inputs.snmp.table.field]]';
-                        $lines[] = 'name = "hrStorageType"';
-                        $lines[] = 'oid = "1.3.6.1.2.1.25.2.3.1.2"';
-                        $lines[] = 'is_tag = true';
-                        $lines[] = '';
-
-                        $lines[] = '[[inputs.snmp.table.field]]';
-                        $lines[] = 'name = "hrStorageDescr"';
-                        $lines[] = 'oid = "1.3.6.1.2.1.25.2.3.1.3"';
-                        $lines[] = 'is_tag = true';
-                        $lines[] = '';
-
-                        $lines[] = '[[inputs.snmp.table.field]]';
-                        $lines[] = 'name = "hrStorageAllocationUnits"';
-                        $lines[] = 'oid = "1.3.6.1.2.1.25.2.3.1.4"';
-                        $lines[] = '';
-
-                        $lines[] = '[[inputs.snmp.table.field]]';
-                        $lines[] = 'name = "hrStorageSize"';
-                        $lines[] = 'oid = "1.3.6.1.2.1.25.2.3.1.5"';
-                        $lines[] = '';
-
-                        $lines[] = '[[inputs.snmp.table.field]]';
-                        $lines[] = 'name = "hrStorageUsed"';
-                        $lines[] = 'oid = "1.3.6.1.2.1.25.2.3.1.6"';
-                        $lines[] = '';
-
-                        $lines[] = '[[inputs.snmp]]';
-                        $lines[] = "interval = \"{$fastInterval}\"";
-                        $lines[] = "agents = [\"udp://{$ip}:161\"]";
-                        $lines[] = "version = {$version}";
-                        $lines[] = 'timeout = "2s"';
-                        $lines[] = 'retries = 1';
-                        $lines[] = 'max_repetitions = 25';
-                        $lines[] = 'name = "interface_counters"';
-                        $lines[] = "[inputs.snmp.tags]";
-                        $lines[] = "tenant_id = \"{$tenant->id}\"";
-                        $lines[] = "router_id = \"{$routerId}\"";
-                        $lines[] = "device_type = \"{$deviceType}\"";
-                        $lines[] = '';
-
-                        if ($version === 3) {
-                            $v3User = (string) ($router->snmp_v3_user ?? $snmpV3User);
-                            $authProto = (string) ($router->snmp_v3_auth_protocol ?? 'SHA');
-                            $authPass = (string) ($router->snmp_v3_auth_password ?? $snmpV3AuthPassword);
-                            $privProto = (string) ($router->snmp_v3_priv_protocol ?? 'AES');
-                            $privPass = (string) ($router->snmp_v3_priv_password ?? $snmpV3PrivPassword);
-
-                            if ($v3User !== '' && $authPass !== '' && $privPass !== '') {
-                                $lines[] = "sec_name = \"{$this->escapeTelegrafString($v3User)}\"";
-                                $lines[] = "sec_level = \"authPriv\"";
-                                $lines[] = "auth_protocol = \"{$this->escapeTelegrafString($authProto)}\"";
-                                $lines[] = "auth_password = \"{$this->escapeTelegrafString($authPass)}\"";
-                                $lines[] = "priv_protocol = \"{$this->escapeTelegrafString($privProto)}\"";
-                                $lines[] = "priv_password = \"{$this->escapeTelegrafString($privPass)}\"";
-                            }
-                        }
-
-                        $lines[] = '[[inputs.snmp.table]]';
-                        $lines[] = 'name = "ifx"';
-                        $lines[] = 'oid = "1.3.6.1.2.1.31.1.1.1"';
-                        $lines[] = '';
-
-                        $lines[] = '[[inputs.snmp.table.field]]';
-                        $lines[] = 'name = "ifName"';
-                        $lines[] = 'oid = "1.3.6.1.2.1.31.1.1.1.1"';
-                        $lines[] = 'is_tag = true';
-                        $lines[] = '';
-
-                        $lines[] = '[[inputs.snmp.table.field]]';
-                        $lines[] = 'name = "ifHCInOctets"';
-                        $lines[] = 'oid = "1.3.6.1.2.1.31.1.1.1.6"';
-                        $lines[] = '';
-
-                        $lines[] = '[[inputs.snmp.table.field]]';
-                        $lines[] = 'name = "ifHCOutOctets"';
-                        $lines[] = 'oid = "1.3.6.1.2.1.31.1.1.1.10"';
-                        $lines[] = '';
-
-                        // Interface errors (inErrors)
-                        $lines[] = '[[inputs.snmp.table.field]]';
-                        $lines[] = 'name = "ifInErrors"';
-                        $lines[] = 'oid = "1.3.6.1.2.1.2.2.1.14"';
-                        $lines[] = '';
-
-                        // Interface errors (outErrors)
-                        $lines[] = '[[inputs.snmp.table.field]]';
-                        $lines[] = 'name = "ifOutErrors"';
-                        $lines[] = 'oid = "1.3.6.1.2.1.2.2.1.20"';
-                        $lines[] = '';
-
-                        // Interface discards (inDiscards/drops)
-                        $lines[] = '[[inputs.snmp.table.field]]';
-                        $lines[] = 'name = "ifInDiscards"';
-                        $lines[] = 'oid = "1.3.6.1.2.1.2.2.1.13"';
-                        $lines[] = '';
-
-                        // Interface discards (outDiscards/drops)
-                        $lines[] = '[[inputs.snmp.table.field]]';
-                        $lines[] = 'name = "ifOutDiscards"';
-                        $lines[] = 'oid = "1.3.6.1.2.1.2.2.1.19"';
-                        $lines[] = '';
+                        // Note: Storage and interface table queries removed due to MIB dependency issues
+                        // These require MIB files not present in standard Telegraf image
+                        // Interface metrics can be added later with MIB-enabled Telegraf image if needed
                     }
                 } catch (\Throwable $e) {
                     Log::warning('Telegraf config generation skipped tenant due to error', [

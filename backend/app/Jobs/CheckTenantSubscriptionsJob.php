@@ -44,8 +44,12 @@ class CheckTenantSubscriptionsJob implements ShouldQueue
         $overriddenCount = 0;
         $errors = [];
 
-        // Get all active, non-landlord tenants with expired subscriptions
+        // Get all active, non-landlord, non-default tenants with expired subscriptions
+        // Default tenants (is_default=true) are exempt from subscription payment
         $expiredTenants = Tenant::where('is_landlord', false)
+            ->where(function ($q) {
+                $q->where('is_default', false)->orWhereNull('is_default');
+            })
             ->where('is_active', true)
             ->whereNull('suspended_at')
             ->whereNotNull('subscription_ends_at')

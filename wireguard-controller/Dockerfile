@@ -16,7 +16,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY controller.py .
+COPY load-peers.py .
 COPY config/ /app/config/
+RUN chmod +x load-peers.py
 
 # Create WireGuard config directory
 RUN mkdir -p /etc/wireguard \

@@ -60,7 +60,7 @@
 <script>
 import { ref, onMounted, onUnmounted } from 'vue';
 import { useAuthStore } from '@/stores/auth';
-import Echo from '@/plugins/echo';
+import Echo from '@/modules/common/plugins/echo';
 
 export default {
   name: 'WebSocketTest',

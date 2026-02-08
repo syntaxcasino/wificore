@@ -72,7 +72,7 @@ class RouterServiceController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Service deployed successfully',
+                'message' => 'Service configured successfully. Deploy to apply to router.',
                 'data' => $service,
             ], 201);
         } catch (\Exception $e) {

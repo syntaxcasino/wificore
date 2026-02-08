@@ -74,11 +74,11 @@
             </div>
             <div>
               <div class="text-xs text-slate-500 mb-0.5">Session ID</div>
-              <div class="text-sm font-medium text-slate-900 font-mono text-xs">{{ session.session_id || session.acct_session_id }}</div>
+              <div class="text-sm font-medium text-slate-900 font-mono text-xs">{{ session.acct_session_id || session.session_id || 'N/A' }}</div>
             </div>
             <div>
               <div class="text-xs text-slate-500 mb-0.5">NAS IP</div>
-              <div class="text-sm font-medium text-slate-900">{{ session.nas_ip || session.nas_ip_address || 'N/A' }}</div>
+              <div class="text-sm font-medium text-slate-900">{{ session.nas_ip_address || session.nas_ip || 'N/A' }}</div>
             </div>
           </div>
         </div>

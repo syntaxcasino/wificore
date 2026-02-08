@@ -244,6 +244,15 @@ class ServiceConfigurationController extends Controller
             ], 404);
         }
 
+        // Prevent re-deploying a service that is already in progress or deployed
+        if (in_array($service->deployment_status, [RouterService::DEPLOYMENT_IN_PROGRESS, RouterService::DEPLOYMENT_DEPLOYED])) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Service is already ' . $service->deployment_status,
+                'service' => $service,
+            ], 409);
+        }
+
         // Validate before deployment
         $validation = $this->validator->validate($service);
         
@@ -256,21 +265,27 @@ class ServiceConfigurationController extends Controller
         }
 
         try {
-            // Mark as deploying
+            $tenantId = auth()->user()->tenant_id ?? null;
+            if (!$tenantId) {
+                throw new \Exception('Tenant context not available');
+            }
+
+            // Mark as deploying — only the job will mark as deployed or failed
             $service->update(['deployment_status' => RouterService::DEPLOYMENT_IN_PROGRESS]);
 
-            // Dispatch deployment job (async)
-            \App\Jobs\DeployRouterServiceJob::dispatch($service->id, auth()->user()->tenant_id);
+            // Dispatch deployment job (async) — status updates happen ONLY in the job
+            \App\Jobs\DeployRouterServiceJob::dispatch($service->id, $tenantId);
 
             return response()->json([
                 'success' => true,
                 'message' => 'Service deployment started',
+                'deployment_status' => 'deploying',
                 'service' => $service->fresh(),
                 'validation' => $validation,
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Service deployment failed', [
+            Log::error('Service deployment dispatch failed', [
                 'service_id' => $service->id,
                 'error' => $e->getMessage(),
             ]);
@@ -279,7 +294,7 @@ class ServiceConfigurationController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Service deployment failed',
+                'message' => 'Service deployment failed to start',
                 'error' => $e->getMessage(),
             ], 422);
         }

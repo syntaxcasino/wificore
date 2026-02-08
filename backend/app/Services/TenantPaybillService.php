@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Tenant;
 use App\Models\TenantPaybillSetting;
+use App\Models\SystemPaymentSetting;
 use App\Models\MpesaTransaction;
 use App\Models\PppoeUser;
 use App\Models\PppoePayment;
@@ -25,9 +26,19 @@ use Illuminate\Support\Facades\Cache;
  */
 class TenantPaybillService extends TenantAwareService
 {
+    protected ?string $tenantId = null;
     protected ?array $config = null;
     protected ?TenantPaybillSetting $settings = null;
     protected bool $usingLandlordPaybill = false;
+
+    /**
+     * Set tenant ID for this service instance
+     */
+    public function setTenantId(string $tenantId): self
+    {
+        $this->tenantId = $tenantId;
+        return $this;
+    }
 
     /**
      * Initialize service with tenant's Paybill settings
@@ -68,9 +79,20 @@ class TenantPaybillService extends TenantAwareService
 
     /**
      * Get landlord's global Paybill configuration (fallback)
+     * Reads from system_payment_settings DB table first, then .env as legacy fallback.
      */
     protected function getLandlordConfig(): array
     {
+        // Try DB-driven system settings first
+        $systemSettings = Cache::remember('system_payment_settings', 300, function () {
+            return SystemPaymentSetting::getActive();
+        });
+
+        if ($systemSettings && $systemSettings->isConfigured()) {
+            return $systemSettings->toConfigArray();
+        }
+
+        // Legacy fallback to .env
         return [
             'env' => config('mpesa.env', 'sandbox'),
             'consumer_key' => config('mpesa.consumer_key'),

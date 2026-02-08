@@ -26,6 +26,7 @@ class Tenant extends Model
         'branding',
         'is_active',
         'is_landlord',
+        'is_default',
         'is_suspended',
         'suspended_at',
         'subscription_status',
@@ -58,6 +59,7 @@ class Tenant extends Model
         'branding' => 'array',
         'is_active' => 'boolean',
         'is_landlord' => 'boolean',
+        'is_default' => 'boolean',
         'is_suspended' => 'boolean',
         'landlord_override' => 'boolean',
         'schema_created' => 'boolean',
@@ -156,19 +158,38 @@ class Tenant extends Model
     }
 
     /**
+     * Check if tenant is exempt from subscription payment.
+     * Default tenants and landlord tenants never need to pay.
+     */
+    public function isExemptFromSubscription(): bool
+    {
+        return (bool) $this->is_default || (bool) $this->is_landlord;
+    }
+
+    /**
      * Check if subscription is active (paid)
+     * Default/landlord tenants are always considered active.
      */
     public function hasActiveSubscription(): bool
     {
+        if ($this->isExemptFromSubscription()) {
+            return true;
+        }
+
         return in_array($this->subscription_status, ['active', 'paid']) && 
                (!$this->subscription_ends_at || $this->subscription_ends_at > now());
     }
 
     /**
      * Check if subscription has expired
+     * Default/landlord tenants never expire.
      */
     public function isSubscriptionExpired(): bool
     {
+        if ($this->isExemptFromSubscription()) {
+            return false;
+        }
+
         return $this->subscription_status === 'expired' || 
                ($this->subscription_ends_at && $this->subscription_ends_at <= now());
     }
@@ -219,7 +240,7 @@ class Tenant extends Model
     /**
      * Suspend tenant
      */
-    public function suspend(string $reason = null): bool
+    public function suspend(?string $reason = null): bool
     {
         $this->suspended_at = now();
         $this->suspension_reason = $reason;
@@ -328,6 +349,22 @@ class Tenant extends Model
             // Generate secure schema name if not set
             if (empty($tenant->schema_name)) {
                 $tenant->schema_name = \App\Services\TenantMigrationManager::generateSecureSchemaName($tenant->slug);
+            }
+        });
+
+        static::created(function ($tenant) {
+            // Auto-create tenant schema and run migrations
+            $migrationManager = app(\App\Services\TenantMigrationManager::class);
+
+            if ($migrationManager->setupTenantSchema($tenant)) {
+                $shouldAutoSeed = config('multitenancy.auto_seed_schema', false);
+
+                if ($shouldAutoSeed) {
+                    $seedWithTestData = config('multitenancy.seed_with_test_data')
+                        ?? app()->environment(['local', 'development', 'testing']);
+
+                    $migrationManager->seedTenantSchema($tenant, (bool) $seedWithTestData);
+                }
             }
         });
 

@@ -26,6 +26,10 @@ class CreateTenantJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
+    public int $tries = 3;
+    public int $maxExceptions = 3;
+    public array $backoff = [30, 60, 120];
+
     public array $tenantData;
     public array $adminData;
     public string $plainPassword;
@@ -211,11 +215,26 @@ class CreateTenantJob implements ShouldQueue
             Log::error('Failed to create tenant (async)', [
                 'error' => $e->getMessage(),
                 'tenant_slug' => $this->tenantData['slug'],
+                'attempt' => $this->attempts(),
+                'max_tries' => $this->tries,
                 'trace' => $e->getTraceAsString(),
                 'job' => 'CreateTenantJob',
             ]);
             
-            $this->release(60);
+            throw $e;
         }
+    }
+
+    /**
+     * Handle a job failure after all retries exhausted.
+     */
+    public function failed(?\Throwable $exception): void
+    {
+        Log::critical('CreateTenantJob permanently failed after all retries', [
+            'tenant_slug' => $this->tenantData['slug'],
+            'admin_username' => $this->adminData['username'],
+            'error' => $exception?->getMessage(),
+            'job' => 'CreateTenantJob',
+        ]);
     }
 }

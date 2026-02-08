@@ -211,6 +211,11 @@ import UserDetailsModal from '@/modules/tenant/components/users/UserDetailsModal
 import { useUsers } from '@/modules/tenant/composables/data/useUsers'
 import { useFilters } from '@/modules/common/composables/utils/useFilters'
 import { usePagination } from '@/modules/common/composables/utils/usePagination'
+import { useBroadcasting } from '@/modules/common/composables/websocket/useBroadcasting'
+import { useAuthStore } from '@/stores/auth'
+
+const authStore = useAuthStore()
+const { subscribeToPrivateChannel } = useBroadcasting()
 
 // Data management
 const { 
@@ -341,5 +346,15 @@ const handleDelete = async (user) => {
 // Lifecycle
 onMounted(() => {
   fetchUsers()
+
+  // Subscribe to tenant-scoped user events
+  const tenantId = authStore.tenantId
+  if (tenantId) {
+    subscribeToPrivateChannel(`tenant.${tenantId}.users`, {
+      '.UserCreated': () => fetchUsers(),
+      '.UserUpdated': () => fetchUsers(),
+      '.UserDeleted': () => fetchUsers(),
+    })
+  }
 })
 </script>

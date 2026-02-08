@@ -47,12 +47,17 @@ class LandlordBillingController extends Controller
 
     /**
      * Update default paybill configuration
+     * Persists to system_payment_settings DB table (replaces .env approach)
      */
     public function updateDefaultPaybill(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
             'paybill' => 'required|string|max:20',
             'paybill_name' => 'nullable|string|max:100',
+            'consumer_key' => 'nullable|string|min:10',
+            'consumer_secret' => 'nullable|string|min:10',
+            'passkey' => 'nullable|string|min:10',
+            'environment' => 'nullable|in:sandbox,production',
         ]);
 
         if ($validator->fails()) {
@@ -62,20 +67,59 @@ class LandlordBillingController extends Controller
             ], 422);
         }
 
-        // Update environment or cache (in production, update .env or database settings)
-        // For now, log the change - actual implementation depends on how you manage config
-        Log::info('Landlord updated default paybill', [
-            'old_paybill' => config('saas.default_paybill'),
-            'new_paybill' => $request->paybill,
-            'paybill_name' => $request->paybill_name,
-            'updated_by' => auth()->id(),
-        ]);
+        try {
+            $settings = \App\Models\SystemPaymentSetting::first();
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Default paybill configuration updated. Note: Requires environment variable update for persistence.',
-            'paybill' => $request->paybill,
-        ]);
+            $data = [
+                'default_paybill_number' => $request->paybill,
+                'shortcode' => $request->paybill,
+                'environment' => $request->environment ?? 'sandbox',
+                'is_active' => true,
+                'updated_by' => auth()->id(),
+            ];
+
+            // Only update credentials if provided (don't clear existing)
+            if ($request->filled('consumer_key')) {
+                $data['consumer_key'] = $request->consumer_key;
+            }
+            if ($request->filled('consumer_secret')) {
+                $data['consumer_secret'] = $request->consumer_secret;
+            }
+            if ($request->filled('passkey')) {
+                $data['passkey'] = $request->passkey;
+            }
+
+            if ($settings) {
+                $settings->update($data);
+            } else {
+                $settings = \App\Models\SystemPaymentSetting::create($data);
+            }
+
+            // Clear cached system settings
+            \App\Services\PaymentConfigService::clearSystemSettingsCache();
+
+            Log::info('Landlord updated default paybill (DB-persisted)', [
+                'shortcode' => $request->paybill,
+                'environment' => $request->environment,
+                'updated_by' => auth()->id(),
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Default paybill configuration saved to database',
+                'data' => $settings->getMaskedCredentials(),
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to update default paybill', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to save paybill configuration',
+            ], 500);
+        }
     }
 
     /**

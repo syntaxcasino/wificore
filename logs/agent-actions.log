@@ -557,3 +557,17 @@ Impact:
 2026-02-04T19:22:00Z | FIX | backend/app/Jobs/DeployRouterServiceJob.php | Deployment Guard: Added check to skip deployment if service is already DEPLOYED or IN_PROGRESS to prevent duplicate/concurrent deployments.
 
 2026-02-04T19:55:00Z | FIX | backend/app/Jobs/RouterProvisioningJob.php | Service Script Generation: Fixed critical bug where RouterProvisioningJob expected pre-saved RouterConfig with config_type='service' but none was created. Now generates config dynamically from RouterService records using ZeroConfig generators (PPPoE, Hotspot, Hybrid). This enables proper service deployment during router provisioning.
+2026-02-06T18:45:00Z | CREATE | docs/END_TO_END_REVIEW_NOTE_2026-02-06.md | Documented end-to-end review findings and decision points for captive portal tenant/router identification.
+
+2026-02-07T08:21:00Z | FIX | backend/supervisor/supervisord.conf | CRITICAL: Removed user=www-data from [supervisord] section. Supervisord must run as root to spawn php-fpm. Moved socket/pid/log paths from /tmp to /var/run and /var/log/supervisor. Root cause of EACCES spawnerr errors.
+2026-02-07T08:21:00Z | FIX | backend/supervisor/laravel-scheduler.conf | Added missing user=www-data directive. Added full php path, proper log path, stopwaitsecs, stopsignal.
+2026-02-07T08:21:00Z | FIX | backend/supervisor/php-fpm.conf | Removed --fpm-config flag (uses default config loading). Added stopwaitsecs=30 and stopsignal=QUIT for graceful shutdown.
+2026-02-07T08:21:00Z | FIX | backend/docker/php-fpm-custom.conf | Added explicit user=www-data, group=www-data, listen=9000, slowlog for debugging.
+2026-02-07T08:21:00Z | FIX | backend/database/migrations/2026_02_06_000001_add_comprehensive_postgresql_indexes.php | CRITICAL: Replaced CREATE INDEX IF NOT EXISTS (race-condition-prone) with PL/pgSQL DO blocks + pg_class catalog check + EXCEPTION WHEN duplicate_table handler + advisory lock. Root cause of SQLSTATE[23505] pg_class_relname_nsp_index violation.
+2026-02-07T08:21:00Z | FIX | backend/database/migrations/tenant/2026_02_06_000001_add_comprehensive_tenant_indexes.php | Same safe index pattern applied to tenant schema migration. Advisory lock key scoped per-tenant via crc32(schema).
+2026-02-07T08:21:00Z | FIX | backend/docker/entrypoint.sh | CRITICAL: Fail-fast migrations (exit 1 on failure instead of silent continue). Advisory lock (pg_try_advisory_lock 999999) for single-instance migration runner. Direct PostgreSQL connection (bypass PgBouncer) for DDL. Pre-creates ALL supervisor/php-fpm/scheduler log files as www-data.
+2026-02-07T08:21:00Z | FIX | backend/Dockerfile | Added /var/run directory creation. chmod 755 on /var/log/supervisor.
+2026-02-07T08:21:00Z | FIX | postgres/postgresql.conf | Documented as REFERENCE FILE only (not mounted). Added idle_in_transaction_session_timeout=300000, lock_timeout=10000. Synced with docker-compose command flags.
+2026-02-07T08:21:00Z | FIX | docker-compose.yml | Added statement_timeout, idle_in_transaction_session_timeout, lock_timeout to PostgreSQL command flags. Added DB_DIRECT_HOST/DB_DIRECT_PORT to wificore-backend env.
+2026-02-07T08:21:00Z | FIX | docker-compose.production.yml | Synced PostgreSQL timeout flags (max_locks_per_transaction, statement_timeout, idle_in_transaction_session_timeout, lock_timeout).
+2026-02-07T08:21:00Z | CREATE | docs/INFRASTRUCTURE_FIX_2026-02-07.md | Full documentation: root cause analysis, fixes applied, multi-tenant index naming strategy, verification checklist.

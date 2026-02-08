@@ -139,6 +139,7 @@ if [ "${AUTO_MIGRATE}" = "true" ] || [ "${AUTO_MIGRATE}" = "1" ]; then
   # -------------------------------------------------------------------------
 
   # Create lock table if it doesn't exist
+  CONTAINER_ID=$(hostname)
   PGPASSWORD="${DB_PASSWORD}" psql -h "${MIGRATE_DB_HOST}" -p "${MIGRATE_DB_PORT}" -U "${DB_USERNAME}" -d "${DB_DATABASE}" -c "
     CREATE TABLE IF NOT EXISTS _migration_lock (
       id integer PRIMARY KEY DEFAULT 1,
@@ -147,27 +148,32 @@ if [ "${AUTO_MIGRATE}" = "true" ] || [ "${AUTO_MIGRATE}" = "1" ]; then
       CONSTRAINT single_row CHECK (id = 1)
     );" > /dev/null 2>&1 || true
 
-  # Clean up stale locks older than 5 minutes (crashed container left lock behind)
+  # Clean up stale locks:
+  # 1. Any lock older than 5 minutes (crashed container)
+  # 2. Any lock held by a different container (previous instance is dead on restart)
   PGPASSWORD="${DB_PASSWORD}" psql -h "${MIGRATE_DB_HOST}" -p "${MIGRATE_DB_PORT}" -U "${DB_USERNAME}" -d "${DB_DATABASE}" -c "
-    DELETE FROM _migration_lock WHERE id = 1 AND locked_at < now() - interval '5 minutes';" > /dev/null 2>&1 || true
+    DELETE FROM _migration_lock WHERE id = 1
+    AND (locked_at < now() - interval '5 minutes' OR locked_by != '${CONTAINER_ID}');" > /dev/null 2>&1 || true
 
-  # Try to acquire lock (INSERT succeeds only if no row exists)
-  CONTAINER_ID=$(hostname)
-  LOCK_ACQUIRED=$(PGPASSWORD="${DB_PASSWORD}" psql -h "${MIGRATE_DB_HOST}" -p "${MIGRATE_DB_PORT}" -U "${DB_USERNAME}" -d "${DB_DATABASE}" -t -c "
+  # Try to acquire lock — use upsert and then verify we own it
+  PGPASSWORD="${DB_PASSWORD}" psql -h "${MIGRATE_DB_HOST}" -p "${MIGRATE_DB_PORT}" -U "${DB_USERNAME}" -d "${DB_DATABASE}" -c "
     INSERT INTO _migration_lock (id, locked_by, locked_at) VALUES (1, '${CONTAINER_ID}', now())
-    ON CONFLICT (id) DO NOTHING
-    RETURNING id;" 2>/dev/null | xargs || echo "")
+    ON CONFLICT (id) DO NOTHING;" > /dev/null 2>&1 || true
 
-  if [ "$LOCK_ACQUIRED" = "1" ]; then
+  # Check if WE hold the lock
+  LOCK_OWNER=$(PGPASSWORD="${DB_PASSWORD}" psql -h "${MIGRATE_DB_HOST}" -p "${MIGRATE_DB_PORT}" -U "${DB_USERNAME}" -d "${DB_DATABASE}" -t -A -c "
+    SELECT locked_by FROM _migration_lock WHERE id = 1;" 2>/dev/null || echo "")
+
+  if [ "$LOCK_OWNER" = "$CONTAINER_ID" ]; then
     echo "🔒 Migration lock acquired — this container will run migrations"
 
     # Check if migrations table exists, then count records
-    TABLE_EXISTS=$(PGPASSWORD="${DB_PASSWORD}" psql -h "${MIGRATE_DB_HOST}" -p "${MIGRATE_DB_PORT}" -U "${DB_USERNAME}" -d "${DB_DATABASE}" -t -c "
-      SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='migrations');" 2>/dev/null | xargs || echo "f")
+    TABLE_EXISTS=$(PGPASSWORD="${DB_PASSWORD}" psql -h "${MIGRATE_DB_HOST}" -p "${MIGRATE_DB_PORT}" -U "${DB_USERNAME}" -d "${DB_DATABASE}" -t -A -c "
+      SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='migrations');" 2>/dev/null || echo "f")
 
     if [ "$TABLE_EXISTS" = "t" ]; then
-      MIGRATION_RECORDS=$(PGPASSWORD="${DB_PASSWORD}" psql -h "${MIGRATE_DB_HOST}" -p "${MIGRATE_DB_PORT}" -U "${DB_USERNAME}" -d "${DB_DATABASE}" -t -c "
-        SELECT COUNT(*)::text FROM migrations;" 2>/dev/null | xargs || echo "0")
+      MIGRATION_RECORDS=$(PGPASSWORD="${DB_PASSWORD}" psql -h "${MIGRATE_DB_HOST}" -p "${MIGRATE_DB_PORT}" -U "${DB_USERNAME}" -d "${DB_DATABASE}" -t -A -c "
+        SELECT COUNT(*)::text FROM migrations;" 2>/dev/null || echo "0")
     else
       MIGRATION_RECORDS=0
     fi
@@ -204,7 +210,17 @@ if [ "${AUTO_MIGRATE}" = "true" ] || [ "${AUTO_MIGRATE}" = "1" ]; then
     # Run seeders
     if [ "${AUTO_SEED}" = "true" ] || [ "${AUTO_SEED}" = "1" ]; then
       echo "🌱 Running database seeders..."
-      su -s /bin/sh www-data -c "DB_HOST=${MIGRATE_DB_HOST} DB_PORT=${MIGRATE_DB_PORT} php artisan db:seed --force" || echo "⚠️  Seeders failed (non-fatal)"
+      SEED_EXIT=0
+      su -s /bin/sh www-data -c "DB_HOST=${MIGRATE_DB_HOST} DB_PORT=${MIGRATE_DB_PORT} php artisan db:seed --force" || SEED_EXIT=$?
+      if [ $SEED_EXIT -ne 0 ]; then
+        echo "❌ FATAL: Seeders failed with exit code $SEED_EXIT"
+        echo "   Container will NOT start with incomplete data."
+        echo "   Fix the seeder and redeploy."
+        # Release lock before exiting
+        PGPASSWORD="${DB_PASSWORD}" psql -h "${MIGRATE_DB_HOST}" -p "${MIGRATE_DB_PORT}" -U "${DB_USERNAME}" -d "${DB_DATABASE}" -c "DELETE FROM _migration_lock WHERE id = 1;" > /dev/null 2>&1 || true
+        exit 1
+      fi
+      echo "✅ Seeders completed successfully"
       echo ""
     fi
 
@@ -218,8 +234,8 @@ if [ "${AUTO_MIGRATE}" = "true" ] || [ "${AUTO_MIGRATE}" = "1" ]; then
     LOCK_CLEARED=false
     while [ $WAIT_TRIES -lt 60 ]; do
       WAIT_TRIES=$((WAIT_TRIES+1))
-      LOCK_EXISTS=$(PGPASSWORD="${DB_PASSWORD}" psql -h "${MIGRATE_DB_HOST}" -p "${MIGRATE_DB_PORT}" -U "${DB_USERNAME}" -d "${DB_DATABASE}" -t -c "
-        SELECT EXISTS (SELECT 1 FROM _migration_lock WHERE id = 1);" 2>/dev/null | xargs || echo "f")
+      LOCK_EXISTS=$(PGPASSWORD="${DB_PASSWORD}" psql -h "${MIGRATE_DB_HOST}" -p "${MIGRATE_DB_PORT}" -U "${DB_USERNAME}" -d "${DB_DATABASE}" -t -A -c "
+        SELECT EXISTS (SELECT 1 FROM _migration_lock WHERE id = 1);" 2>/dev/null || echo "f")
       if [ "$LOCK_EXISTS" = "f" ]; then
         echo "✅ Other container finished migrations"
         LOCK_CLEARED=true
@@ -228,8 +244,51 @@ if [ "${AUTO_MIGRATE}" = "true" ] || [ "${AUTO_MIGRATE}" = "1" ]; then
       sleep 2
     done
     if [ "$LOCK_CLEARED" = "false" ]; then
-      echo "⚠️  Migration lock wait timed out (120s) — force-clearing stale lock"
+      echo "⚠️  Migration lock wait timed out (120s) — force-clearing stale lock and running migrations ourselves"
       PGPASSWORD="${DB_PASSWORD}" psql -h "${MIGRATE_DB_HOST}" -p "${MIGRATE_DB_PORT}" -U "${DB_USERNAME}" -d "${DB_DATABASE}" -c "DELETE FROM _migration_lock WHERE id = 1;" > /dev/null 2>&1 || true
+
+      # Acquire lock and run migrations ourselves
+      PGPASSWORD="${DB_PASSWORD}" psql -h "${MIGRATE_DB_HOST}" -p "${MIGRATE_DB_PORT}" -U "${DB_USERNAME}" -d "${DB_DATABASE}" -c "
+        INSERT INTO _migration_lock (id, locked_by, locked_at) VALUES (1, '${CONTAINER_ID}', now())
+        ON CONFLICT (id) DO UPDATE SET locked_by = '${CONTAINER_ID}', locked_at = now();" > /dev/null 2>&1 || true
+
+      echo "🔒 Migration lock acquired after timeout — running migrations"
+      echo "🔄 Running database migrations..."
+      MIGRATION_EXIT=0
+      if [ "${FRESH_INSTALL}" = "true" ]; then
+        echo "⚠️  Fresh install mode — dropping all tables..."
+        su -s /bin/sh www-data -c "DB_HOST=${MIGRATE_DB_HOST} DB_PORT=${MIGRATE_DB_PORT} php artisan migrate:fresh --force" || MIGRATION_EXIT=$?
+      else
+        su -s /bin/sh www-data -c "DB_HOST=${MIGRATE_DB_HOST} DB_PORT=${MIGRATE_DB_PORT} php artisan migrate --force" || MIGRATION_EXIT=$?
+      fi
+
+      if [ $MIGRATION_EXIT -ne 0 ]; then
+        echo "❌ FATAL: Migrations failed with exit code $MIGRATION_EXIT"
+        echo "   Container will NOT start with incomplete schema."
+        echo "   Fix the migration and redeploy."
+        PGPASSWORD="${DB_PASSWORD}" psql -h "${MIGRATE_DB_HOST}" -p "${MIGRATE_DB_PORT}" -U "${DB_USERNAME}" -d "${DB_DATABASE}" -c "DELETE FROM _migration_lock WHERE id = 1;" > /dev/null 2>&1 || true
+        exit 1
+      fi
+      echo "✅ Migrations completed successfully (after timeout recovery)"
+
+      # Run seeders if enabled
+      if [ "${AUTO_SEED}" = "true" ] || [ "${AUTO_SEED}" = "1" ]; then
+        echo "🌱 Running database seeders..."
+        SEED_EXIT=0
+        su -s /bin/sh www-data -c "DB_HOST=${MIGRATE_DB_HOST} DB_PORT=${MIGRATE_DB_PORT} php artisan db:seed --force" || SEED_EXIT=$?
+        if [ $SEED_EXIT -ne 0 ]; then
+          echo "❌ FATAL: Seeders failed with exit code $SEED_EXIT"
+          echo "   Container will NOT start with incomplete data."
+          echo "   Fix the seeder and redeploy."
+          PGPASSWORD="${DB_PASSWORD}" psql -h "${MIGRATE_DB_HOST}" -p "${MIGRATE_DB_PORT}" -U "${DB_USERNAME}" -d "${DB_DATABASE}" -c "DELETE FROM _migration_lock WHERE id = 1;" > /dev/null 2>&1 || true
+          exit 1
+        fi
+        echo "✅ Seeders completed successfully"
+      fi
+
+      # Release lock
+      PGPASSWORD="${DB_PASSWORD}" psql -h "${MIGRATE_DB_HOST}" -p "${MIGRATE_DB_PORT}" -U "${DB_USERNAME}" -d "${DB_DATABASE}" -c "DELETE FROM _migration_lock WHERE id = 1;" > /dev/null 2>&1 || true
+      echo "🔓 Migration lock released"
     fi
     echo ""
   fi

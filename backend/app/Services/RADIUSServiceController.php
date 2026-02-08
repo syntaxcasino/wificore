@@ -205,21 +205,74 @@ class RADIUSServiceController extends TenantAwareService
 
     /**
      * Send CoA Disconnect-Request
+     * Terminates active session by removing it from the NAS (router) via SSH
      * 
      * @param array $session
      * @return bool
      */
     private function sendCoADisconnect(array $session): bool
     {
-        // TODO: Implement actual CoA disconnect using RADIUS protocol
-        // This requires php-radius extension or custom implementation
+        $username = $session['username'] ?? null;
+        $nasIpAddress = $session['nasipaddress'] ?? null;
         
-        Log::info("CoA disconnect sent (placeholder)", [
-            'username' => $session['username'] ?? 'unknown',
-            'session_id' => $session['acctsessionid'] ?? 'unknown',
-        ]);
-        
-        return true;
+        if (!$username) {
+            Log::warning('CoA disconnect: No username in session', ['session' => $session]);
+            return false;
+        }
+
+        try {
+            // Find the router by NAS IP address
+            $router = null;
+            if ($nasIpAddress) {
+                $router = \App\Models\Router::where('ip_address', $nasIpAddress)
+                    ->orWhere('vpn_ip', $nasIpAddress)
+                    ->first();
+            }
+
+            if (!$router) {
+                // Try to find router from PppoeUser association
+                $pppoeUser = \App\Models\PppoeUser::where('username', $username)->first();
+                if ($pppoeUser) {
+                    $router = \App\Models\Router::find($pppoeUser->router_id);
+                }
+            }
+
+            if (!$router) {
+                Log::warning('CoA disconnect: Router not found for session', [
+                    'username' => $username,
+                    'nas_ip' => $nasIpAddress,
+                ]);
+                return false;
+            }
+
+            // Disconnect via SSH - remove active PPPoE session
+            $ssh = new \App\Services\MikroTik\SshExecutor($router, 15);
+            $ssh->connect();
+            
+            // Try PPPoE active session removal
+            $escapedUsername = addslashes($username);
+            $ssh->exec("/ppp active remove [find name=\"{$escapedUsername}\"]");
+            
+            // Try Hotspot active session removal
+            $ssh->exec("/ip hotspot active remove [find user=\"{$escapedUsername}\"]");
+            
+            $ssh->disconnect();
+
+            Log::info('CoA disconnect: Session terminated via SSH', [
+                'username' => $username,
+                'router_id' => $router->id,
+                'nas_ip' => $nasIpAddress,
+            ]);
+            
+            return true;
+        } catch (\Exception $e) {
+            Log::error('CoA disconnect: Failed to terminate session', [
+                'username' => $username,
+                'nas_ip' => $nasIpAddress,
+                'error' => $e->getMessage(),
+            ]);
+            return false;
+        }
     }
 
     /**
@@ -307,5 +360,61 @@ class RADIUSServiceController extends TenantAwareService
     public function getSessionCount(User $user): int
     {
         return count($this->getActiveSessions($user));
+    }
+
+    /**
+     * Disconnect unauthenticated users based on RADIUS configuration
+     * 
+     * @return void
+     */
+    public function disconnectUnauthenticatedUsers() {
+        $users = DB::table('radcheck')
+            ->where('attribute', 'Auth-Type')
+            ->where('value', 'Reject')
+            ->pluck('username');
+
+        foreach ($users as $username) {
+            $this->disconnectUserByUsername($username);
+        }
+    }
+
+    /**
+     * Disconnect user by username
+     * Finds active RADIUS sessions and terminates them on the router
+     * 
+     * @param string $username
+     * @return void
+     */
+    private function disconnectUserByUsername(string $username): void
+    {
+        try {
+            // Get active sessions for this username
+            $sessions = $this->executeInUserSchema($username, function () use ($username) {
+                return DB::table('radacct')
+                    ->where('username', $username)
+                    ->whereNull('acctstoptime')
+                    ->get()
+                    ->toArray();
+            });
+
+            if (!is_array($sessions) || empty($sessions)) {
+                Log::info("No active sessions found for user: {$username}");
+                return;
+            }
+
+            foreach ($sessions as $session) {
+                $this->sendCoADisconnect((array) $session);
+            }
+
+            Log::info("Disconnected unauthenticated user", [
+                'username' => $username,
+                'sessions_terminated' => count($sessions),
+            ]);
+        } catch (\Exception $e) {
+            Log::error("Failed to disconnect user by username", [
+                'username' => $username,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 }

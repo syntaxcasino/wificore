@@ -171,7 +171,7 @@
               </div>
               <div>
                 <label class="block text-xs font-medium text-gray-500 mb-1">Board Name</label>
-                <p class="text-gray-900">{{ routerDetails.live_data?.board_name || 'N/A' }}</p>
+                <p class="text-gray-900">{{ routerDetails.resources?.board_name || routerDetails.live_data?.board_name || 'N/A' }}</p>
               </div>
             </div>
           </div>
@@ -284,7 +284,7 @@
           </div>
 
           <!-- Live Data Section -->
-          <div v-if="routerDetails.live_data" class="bg-white p-5 rounded-xl shadow-sm">
+          <div v-if="routerDetails.resources || routerDetails.live_data" class="bg-white p-5 rounded-xl shadow-sm">
             <h4 class="text-sm font-semibold text-gray-700 mb-4 flex items-center">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -302,33 +302,33 @@
               </svg>
               Live Data
             </h4>
-            <div v-if="routerDetails.live_data.error" class="bg-red-50 p-4 rounded-lg">
-              <p class="text-red-700 text-sm">{{ routerDetails.live_data.error }}</p>
+            <div v-if="(routerDetails.resources || routerDetails.live_data)?.error" class="bg-red-50 p-4 rounded-lg">
+              <p class="text-red-700 text-sm">{{ (routerDetails.resources || routerDetails.live_data).error }}</p>
             </div>
             <div v-else class="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div class="bg-gradient-to-br from-blue-50 to-blue-100 p-3 rounded-lg">
                 <label class="block text-xs font-medium text-blue-600 mb-1">CPU Load</label>
                 <p class="text-blue-800 font-bold text-lg">
-                  {{ routerDetails.live_data.cpu_load ?? 'N/A' }}%
+                  {{ (routerDetails.resources || routerDetails.live_data)?.cpu_load ?? 'N/A' }}%
                 </p>
               </div>
               <div class="bg-gradient-to-br from-green-50 to-green-100 p-3 rounded-lg">
                 <label class="block text-xs font-medium text-green-600 mb-1">Memory</label>
                 <p class="text-green-800 font-bold text-sm">
-                  {{ formatBytes(routerDetails.live_data.free_memory) }} /
-                  {{ formatBytes(routerDetails.live_data.total_memory) }}
+                  {{ formatBytes((routerDetails.resources || routerDetails.live_data)?.free_memory) }} /
+                  {{ formatBytes((routerDetails.resources || routerDetails.live_data)?.total_memory) }}
                 </p>
               </div>
               <div class="bg-gradient-to-br from-purple-50 to-purple-100 p-3 rounded-lg">
                 <label class="block text-xs font-medium text-purple-600 mb-1">Uptime</label>
                 <p class="text-purple-800 font-bold text-sm">
-                  {{ routerDetails.live_data.uptime || 'N/A' }}
+                  {{ (routerDetails.resources || routerDetails.live_data)?.uptime || 'N/A' }}
                 </p>
               </div>
               <div class="bg-gradient-to-br from-amber-50 to-amber-100 p-3 rounded-lg">
                 <label class="block text-xs font-medium text-amber-600 mb-1">Interfaces</label>
                 <p class="text-amber-800 font-bold text-lg">
-                  {{ routerDetails.live_data.interface_count ?? (routerDetails.live_data.interfaces ? routerDetails.live_data.interfaces.length : 0) }}
+                  {{ (routerDetails.resources || routerDetails.live_data)?.interface_count ?? ((routerDetails.interfaces || routerDetails.live_data?.interfaces) ? (routerDetails.interfaces || routerDetails.live_data.interfaces).length : 0) }}
                 </p>
               </div>
               <div class="bg-gradient-to-br from-cyan-50 to-cyan-100 p-3 rounded-lg">
@@ -336,26 +336,26 @@
                   >Active Connections</label
                 >
                 <p class="text-cyan-800 font-bold text-lg">
-                  {{ routerDetails.live_data.active_connections ?? 0 }}
+                  {{ routerDetails.active_connections ?? (routerDetails.resources || routerDetails.live_data)?.active_connections ?? 0 }}
                 </p>
               </div>
               <div class="bg-gradient-to-br from-pink-50 to-pink-100 p-3 rounded-lg">
                 <label class="block text-xs font-medium text-pink-600 mb-1">DHCP Leases</label>
                 <p class="text-pink-800 font-bold text-lg">
-                  {{ routerDetails.live_data.dhcp_leases ?? 0 }}
+                  {{ (routerDetails.resources || routerDetails.live_data)?.dhcp_leases ?? 0 }}
                 </p>
               </div>
               <div class="bg-gradient-to-br from-teal-50 to-teal-100 p-3 rounded-lg">
                 <label class="block text-xs font-medium text-teal-600 mb-1">Storage</label>
                 <p class="text-teal-800 font-bold text-sm">
-                  {{ formatBytes(getDiskUsed(routerDetails.live_data)) }} /
-                  {{ formatBytes(routerDetails.live_data.total_hdd_space) }}
+                  {{ formatBytes(getDiskUsed(routerDetails.resources || routerDetails.live_data)) }} /
+                  {{ formatBytes((routerDetails.resources || routerDetails.live_data)?.total_hdd_space) }}
                 </p>
               </div>
               <div class="bg-gradient-to-br from-indigo-50 to-indigo-100 p-3 rounded-lg">
                 <label class="block text-xs font-medium text-indigo-600 mb-1">Identity</label>
                 <p class="text-indigo-800 font-bold text-sm">
-                  {{ routerDetails.live_data.identity || 'N/A' }}
+                  {{ (routerDetails.resources || routerDetails.live_data)?.identity || 'N/A' }}
                 </p>
               </div>
             </div>
@@ -363,7 +363,7 @@
 
           <!-- Interfaces Section -->
           <div
-            v-if="routerDetails.live_data && routerDetails.live_data.interfaces"
+            v-if="(routerDetails.interfaces || routerDetails.live_data?.interfaces) && (routerDetails.interfaces || routerDetails.live_data.interfaces).length"
             class="bg-white p-5 rounded-xl shadow-sm"
           >
             <h4 class="text-sm font-semibold text-gray-700 mb-4 flex items-center">
@@ -385,7 +385,7 @@
             </h4>
             <div class="space-y-3">
               <div
-                v-for="(iface, index) in routerDetails.live_data.interfaces"
+                v-for="(iface, index) in (routerDetails.interfaces || routerDetails.live_data.interfaces)"
                 :key="index"
                 class="p-3 bg-gray-50 rounded-lg border border-gray-200"
               >

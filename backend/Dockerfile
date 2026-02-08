@@ -104,12 +104,14 @@ RUN mkdir -p \
     storage/logs \
     bootstrap/cache \
     /var/log/supervisor \
+    /var/run \
     /etc/supervisor/conf.d \
     /etc/wireguard \
     && chown -R www-data:www-data storage bootstrap/cache \
     && chmod -R 775 storage bootstrap/cache \
     && chown -R www-data:www-data /etc/wireguard \
     && chmod -R 775 /etc/wireguard \
+    && chmod 755 /var/log/supervisor \
     && rm -f bootstrap/cache/*.php
 
 # Copy Supervisor configs
@@ -122,8 +124,9 @@ COPY --chown=root:root ./supervisor/laravel-scheduler.conf /etc/supervisor/conf.
 COPY --chown=root:root ./supervisor/sudoers-supervisorctl /etc/sudoers.d/supervisorctl
 RUN chmod 0440 /etc/sudoers.d/supervisorctl
 
-# Copy entrypoint script
+# Copy entrypoint scripts
 COPY --chmod=755 ./docker/entrypoint.sh /entrypoint.sh
+COPY --chmod=755 ./docker/telegraf-config-entrypoint.sh /telegraf-config-entrypoint.sh
 
 # Expose PHP-FPM port
 EXPOSE 9000

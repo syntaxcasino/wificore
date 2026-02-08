@@ -5,6 +5,9 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\Package;
+use App\Events\PackageCreated;
+use App\Events\PackageUpdated;
+use App\Events\PackageDeleted;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Validator;
 
@@ -138,7 +141,14 @@ class PackageController extends Controller
         // Clear cache for current tenant
         Cache::forget("packages_list_tenant_{$tenantId}");
 
-        return response()->json($package, 201);
+        event(new PackageCreated($package->toArray(), (string) $tenantId));
+
+        return response()->json([
+            'success' => true,
+            'data' => $package,
+            'message' => 'Package created successfully',
+            'status' => 'completed',
+        ], 201);
     }
 
     public function update(Request $request, $id)
@@ -235,7 +245,14 @@ class PackageController extends Controller
         // Clear cache for current tenant
         Cache::forget("packages_list_tenant_{$tenantId}");
 
-        return response()->json($package, 200);
+        event(new PackageUpdated($package->toArray(), (string) $tenantId));
+
+        return response()->json([
+            'success' => true,
+            'data' => $package,
+            'message' => 'Package updated successfully',
+            'status' => 'completed',
+        ], 200);
     }
 
     public function destroy($id)
@@ -263,14 +280,19 @@ class PackageController extends Controller
             ], 422);
         }
 
+        $packageName = $package->name;
+        $packageId = $package->id;
         $package->delete();
 
         // Clear cache for current tenant
-        $tenantId = auth()->user()->tenant_id ?? 'system';
         Cache::forget("packages_list_tenant_{$tenantId}");
 
+        event(new PackageDeleted((string) $packageId, $packageName, (string) $tenantId));
+
         return response()->json([
-            'message' => 'Package deleted successfully'
+            'success' => true,
+            'message' => 'Package deleted successfully',
+            'status' => 'completed',
         ], 200);
     }
 }

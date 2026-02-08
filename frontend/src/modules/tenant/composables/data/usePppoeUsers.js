@@ -30,9 +30,7 @@ export function usePppoeUsers() {
     try {
       const response = await axios.post('/pppoe/users', userData)
       const createdUser = response.data?.data
-      if (createdUser) {
-        users.value.unshift(createdUser)
-      }
+      // List refresh is handled by WebSocket PppoeUserCreated event
 
       return {
         user: createdUser,
@@ -54,13 +52,7 @@ export function usePppoeUsers() {
     try {
       const response = await axios.put(`/pppoe/users/${userId}`, userData)
       const updatedUser = response.data?.data
-
-      if (updatedUser) {
-        const index = users.value.findIndex((u) => String(u.id) === String(userId))
-        if (index !== -1) {
-          users.value[index] = updatedUser
-        }
-      }
+      // List refresh is handled by WebSocket PppoeUserUpdated event
 
       return updatedUser
     } catch (err) {

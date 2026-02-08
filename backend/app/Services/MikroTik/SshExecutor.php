@@ -940,8 +940,27 @@ class SshExecutor
         
         $result = $this->connection->exec("/import file-name=\"{$remotePath}\"");
 
-        if (is_string($result) && stripos($result, 'syntax error') !== false) {
-            $this->logRouterOsImportScriptContext($result);
+        // Detect and handle RouterOS import errors
+        if (is_string($result)) {
+            $trimmedResult = trim($result);
+            
+            if (stripos($trimmedResult, 'syntax error') !== false) {
+                $this->logRouterOsImportScriptContext($result);
+                throw new \Exception('RouterOS script syntax error during import: ' . substr($trimmedResult, 0, 300));
+            }
+            
+            if (stripos($trimmedResult, 'expected end of command') !== false) {
+                $this->logRouterOsImportScriptContext($result);
+                throw new \Exception('RouterOS script parse error (expected end of command): ' . substr($trimmedResult, 0, 300));
+            }
+            
+            if (stripos($trimmedResult, 'failure:') !== false && !str_contains($trimmedResult, 'on-error')) {
+                Log::warning('SSH Executor: Import returned failure output', [
+                    'router_id' => $this->router->id,
+                    'remote_path' => $remotePath,
+                    'output_preview' => substr($trimmedResult, 0, 300),
+                ]);
+            }
         }
         
         Log::info('SSH Executor: File imported', [

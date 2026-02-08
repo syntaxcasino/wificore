@@ -16,25 +16,36 @@ class SystemAdminSeeder extends Seeder
      */
     public function run(): void
     {
-        // Check if system admin already exists
-        $systemAdmin = User::withoutGlobalScope(\App\Models\Scopes\TenantScope::class)
-            ->where('role', User::ROLE_SYSTEM_ADMIN)
-            ->first();
-        
-        if ($systemAdmin) {
-            $this->command->info('System admin already exists: ' . $systemAdmin->username);
-            return;
-        }
-        
-        // Create default system admin (landlord/system administrator)
         $username = 'sysadmin';
         $password = 'Admin@123!'; // Change this in production!
+        $fixedUuid = '00000000-0000-0000-0000-000000000001'; // Fixed UUID — matches dairycore pattern
+
+        // Check if system admin already exists (by username OR fixed UUID)
+        $existingAdmin = User::withoutGlobalScope(\App\Models\Scopes\TenantScope::class)
+            ->where('username', $username)
+            ->orWhere('email', 'sysadmin@system.local')
+            ->first();
+
+        if ($existingAdmin) {
+            $this->command->info('System admin already exists: ' . $existingAdmin->username);
+            // Ensure role and active status are correct
+            $existingAdmin->update([
+                'role' => User::ROLE_SYSTEM_ADMIN,
+                'is_active' => true,
+                'tenant_id' => null,
+            ]);
+
+            // Ensure RADIUS entries exist (idempotent)
+            $this->ensureRadiusEntries($username, $password);
+            return;
+        }
         
         DB::beginTransaction();
         
         try {
             $systemAdmin = User::withoutGlobalScope(\App\Models\Scopes\TenantScope::class)
                 ->create([
+                    'id' => $fixedUuid,
                     'tenant_id' => null, // System admin has no tenant
                     'name' => 'System Administrator',
                     'username' => $username,
@@ -46,24 +57,7 @@ class SystemAdminSeeder extends Seeder
                     'account_number' => 'SYS-ADMIN-001',
                 ]);
             
-            // Add to RADIUS (public schema)
-            DB::table('radcheck')->insert([
-                'username' => $username,
-                'attribute' => 'Cleartext-Password',
-                'op' => ':=',
-                'value' => $password,
-            ]);
-            
-            // Add to radius_user_schema_mapping (use public schema for system admin)
-            DB::table('radius_user_schema_mapping')->insert([
-                'username' => $username,
-                'schema_name' => 'public',
-                'tenant_id' => null,
-                'user_role' => User::ROLE_SYSTEM_ADMIN,
-                'is_active' => true,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
+            $this->ensureRadiusEntries($username, $password);
             
             DB::commit();
             
@@ -78,5 +72,37 @@ class SystemAdminSeeder extends Seeder
             $this->command->error('Failed to create system admin: ' . $e->getMessage());
             throw $e;
         }
+    }
+
+    /**
+     * Ensure RADIUS and schema mapping entries exist (idempotent).
+     * Uses updateOrInsert to avoid duplicate key errors on re-seed.
+     */
+    private function ensureRadiusEntries(string $username, string $password): void
+    {
+        // Add to RADIUS (public schema) — idempotent
+        DB::table('radcheck')->updateOrInsert(
+            [
+                'username' => $username,
+                'attribute' => 'Cleartext-Password',
+            ],
+            [
+                'op' => ':=',
+                'value' => $password,
+            ]
+        );
+
+        // Add to radius_user_schema_mapping (use public schema for system admin) — idempotent
+        DB::table('radius_user_schema_mapping')->updateOrInsert(
+            ['username' => $username],
+            [
+                'schema_name' => 'public',
+                'tenant_id' => null,
+                'user_role' => User::ROLE_SYSTEM_ADMIN,
+                'is_active' => true,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]
+        );
     }
 }

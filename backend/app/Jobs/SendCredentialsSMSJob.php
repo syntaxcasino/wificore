@@ -111,39 +111,30 @@ class SendCredentialsSMSJob implements ShouldQueue
     }
     
     /**
-     * Send SMS via gateway
+     * Send SMS via tenant's configured communication channel.
      */
     private function sendSMS(string $phoneNumber, string $message): string
     {
-        // TODO: Implement actual SMS gateway integration
-        // Options: Africa's Talking, Twilio, etc.
-        
-        // For now, log the message
-        Log::info('SMS to be sent', [
+        $service = new \App\Services\MessagingService();
+        $result = $service->sendViaDefaultChannel('sms', $phoneNumber, $message);
+
+        if ($result['success']) {
+            Log::info('SMS sent via MessagingService', [
+                'phone' => $phoneNumber,
+                'tenant_id' => $this->tenantId,
+                'result' => $result['message'],
+            ]);
+            return $result['message'];
+        }
+
+        // If no SMS channel configured, log and return gracefully
+        Log::warning('SMS sending failed or no channel configured', [
             'phone' => $phoneNumber,
-            'message' => $message,
-            'tenant_id' => $this->tenantId
+            'tenant_id' => $this->tenantId,
+            'reason' => $result['message'],
         ]);
-        
-        // Simulate SMS sending
-        // In production, replace with actual SMS gateway call:
-        /*
-        $africastalking = new \AfricasTalking\SDK\AfricasTalking(
-            config('services.africastalking.username'),
-            config('services.africastalking.api_key')
-        );
-        
-        $sms = $africastalking->sms();
-        $result = $sms->send([
-            'to' => $phoneNumber,
-            'message' => $message,
-            'from' => config('services.africastalking.sender_id')
-        ]);
-        
-        return $result['SMSMessageData']['Recipients'][0]['messageId'];
-        */
-        
-        return 'mock_message_id_' . time();
+
+        return 'no_channel_' . time();
     }
 
     /**
