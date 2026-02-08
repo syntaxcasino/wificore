@@ -3,9 +3,8 @@
 namespace App\Events;
 
 use App\Models\RadiusSession;
-use Illuminate\Broadcasting\Channel;
+use App\Traits\BroadcastsToTenant;
 use Illuminate\Broadcasting\InteractsWithSockets;
-use Illuminate\Broadcasting\PresenceChannel;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
@@ -14,9 +13,11 @@ use Illuminate\Queue\SerializesModels;
 class SessionExpired implements ShouldBroadcast
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
+    use BroadcastsToTenant;
 
     public $session;
     public $reason;
+    public $tenantId;
 
     /**
      * Create a new event instance.
@@ -25,6 +26,7 @@ class SessionExpired implements ShouldBroadcast
     {
         $this->session = $session;
         $this->reason = $reason;
+        $this->tenantId = $session->tenant_id ?? null;
     }
 
     /**
@@ -32,10 +34,15 @@ class SessionExpired implements ShouldBroadcast
      */
     public function broadcastOn(): array
     {
-        return [
-            new PrivateChannel('dashboard-stats'),
+        $channels = [
             new PrivateChannel('user.' . $this->session->hotspot_user_id),
         ];
+
+        if ($this->tenantId) {
+            $channels[] = new PrivateChannel("tenant.{$this->tenantId}.dashboard-stats");
+        }
+
+        return $channels;
     }
 
     /**

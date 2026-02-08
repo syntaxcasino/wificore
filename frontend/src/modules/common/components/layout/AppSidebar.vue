@@ -39,11 +39,11 @@
           <span v-if="todosCount > 0" class="px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-green-500 text-white min-w-[18px] text-center">{{ todosCount }}</span>
         </router-link>
 
-        <!-- Divider -->
-        <div class="h-px bg-gray-800/50 my-2"></div>
+        <!-- Divider (before tenant menus) -->
+        <div class="h-px bg-gray-800/50 my-2" v-if="!isSystemAdmin"></div>
 
-        <!-- Hotspot -->
-        <div>
+        <!-- Hotspot (tenant-only) -->
+        <div v-if="!isSystemAdmin">
           <button
             @click="toggleMenu('hotspot')"
             class="w-full flex items-center justify-between py-2 px-3 rounded-md hover:bg-gray-800/60 transition-all duration-150"
@@ -105,10 +105,10 @@
         </div>
 
         <!-- Divider -->
-        <div class="h-px bg-gray-800/50 my-2"></div>
+        <div class="h-px bg-gray-800/50 my-2" v-if="!isSystemAdmin"></div>
 
-        <!-- PPPoE -->
-        <div>
+        <!-- PPPoE (tenant-only) -->
+        <div v-if="!isSystemAdmin">
           <button
             @click="toggleMenu('pppoe')"
             class="w-full flex items-center justify-between py-2 px-3 rounded-md hover:bg-gray-800/60 transition-all duration-150"
@@ -146,10 +146,10 @@
         </div>
 
         <!-- Divider -->
-        <div class="h-px bg-gray-800/50 my-2"></div>
+        <div class="h-px bg-gray-800/50 my-2" v-if="!isSystemAdmin"></div>
 
-        <!-- Packages -->
-        <div v-if="!isOnSystemAdminRoute">
+        <!-- Packages (tenant-only) -->
+        <div v-if="!isSystemAdmin">
           <button
             @click="toggleMenu('packages')"
             class="w-full flex items-center justify-between py-2 px-3 rounded-md hover:bg-gray-800/60 transition-all duration-150"
@@ -182,10 +182,10 @@
         </div>
 
         <!-- Divider -->
-        <div class="h-px bg-gray-800/50 my-2" v-if="!isOnSystemAdminRoute"></div>
+        <div class="h-px bg-gray-800/50 my-2" v-if="!isSystemAdmin"></div>
 
-        <!-- Network -->
-        <div v-if="!isOnSystemAdminRoute">
+        <!-- Network (tenant-only) -->
+        <div v-if="!isSystemAdmin">
           <button
             @click="toggleMenu('network')"
             class="w-full flex items-center justify-between py-2 px-3 rounded-md hover:bg-gray-800/60 transition-all duration-150"
@@ -386,8 +386,9 @@
           </div>
         </div>
 
-        <!-- Branding -->
+        <!-- Branding (tenant-only) -->
         <router-link
+          v-if="!isSystemAdmin"
           to="/dashboard/hotspot/login-page"
           class="w-full flex items-center gap-2.5 py-2 px-3 rounded-md hover:bg-gray-800/60 transition-all duration-150"
           :class="route.path.includes('/hotspot/login-page') ? 'bg-gray-800/80 text-white font-medium' : 'text-gray-400'"
@@ -464,12 +465,12 @@
               System Updates
             </router-link>
             <router-link
-              to="/dashboard/settings/email-sms"
+              to="/dashboard/settings/communication-channels"
               class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
-              :class="route.path === '/dashboard/settings/email-sms' ? 'text-white font-medium' : 'text-gray-500'"
+              :class="route.path === '/dashboard/settings/communication-channels' ? 'text-white font-medium' : 'text-gray-500'"
               @click="isMobile && $emit('close-sidebar')"
             >
-              Email & SMS
+              Communication Channels
             </router-link>
             <router-link
               to="/dashboard/settings/mpesa-api"

@@ -3,9 +3,8 @@
 namespace App\Events;
 
 use App\Models\HotspotCredential;
-use Illuminate\Broadcasting\Channel;
+use App\Traits\BroadcastsToTenant;
 use Illuminate\Broadcasting\InteractsWithSockets;
-use Illuminate\Broadcasting\PresenceChannel;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
@@ -14,8 +13,10 @@ use Illuminate\Queue\SerializesModels;
 class CredentialsSent implements ShouldBroadcast
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
+    use BroadcastsToTenant;
 
     public $credential;
+    public $tenantId;
 
     /**
      * Create a new event instance.
@@ -23,6 +24,7 @@ class CredentialsSent implements ShouldBroadcast
     public function __construct(HotspotCredential $credential)
     {
         $this->credential = $credential;
+        $this->tenantId = $credential->tenant_id ?? null;
     }
 
     /**
@@ -30,9 +32,10 @@ class CredentialsSent implements ShouldBroadcast
      */
     public function broadcastOn(): array
     {
-        return [
-            new PrivateChannel('dashboard-stats'),
-        ];
+        if ($this->tenantId) {
+            return $this->getTenantChannels(['dashboard-stats']);
+        }
+        return [new PrivateChannel('dashboard-stats')];
     }
 
     /**

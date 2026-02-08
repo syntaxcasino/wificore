@@ -4,6 +4,7 @@ namespace App\Events;
 
 use App\Models\UserSubscription;
 use App\Models\Router;
+use App\Traits\BroadcastsToTenant;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
@@ -13,9 +14,11 @@ use Illuminate\Queue\SerializesModels;
 class UserProvisioned implements ShouldBroadcast
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
+    use BroadcastsToTenant;
 
     public $subscription;
     public $router;
+    public $tenantId;
 
     /**
      * Create a new event instance.
@@ -24,6 +27,7 @@ class UserProvisioned implements ShouldBroadcast
     {
         $this->subscription = $subscription;
         $this->router = $router;
+        $this->tenantId = $router->tenant_id ?? null;
     }
 
     /**
@@ -31,9 +35,10 @@ class UserProvisioned implements ShouldBroadcast
      */
     public function broadcastOn(): array
     {
-        return [
-            new PrivateChannel('admin-notifications'),
-        ];
+        if ($this->tenantId) {
+            return $this->getTenantChannels(['admin-notifications', 'dashboard-stats']);
+        }
+        return [new PrivateChannel('admin-notifications')];
     }
 
     /**

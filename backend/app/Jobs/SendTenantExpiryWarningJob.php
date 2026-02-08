@@ -53,7 +53,11 @@ class SendTenantExpiryWarningJob implements ShouldQueue
         $errors = [];
 
         // Get tenants expiring within the warning period who haven't been warned yet
+        // Exclude landlord and default tenants (exempt from subscription payment)
         $expiringTenants = Tenant::where('is_landlord', false)
+            ->where(function ($q) {
+                $q->where('is_default', false)->orWhereNull('is_default');
+            })
             ->where('is_active', true)
             ->whereNull('suspended_at')
             ->whereNotNull('subscription_ends_at')

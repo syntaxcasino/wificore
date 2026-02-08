@@ -247,14 +247,9 @@ import SystemHealthWidget from '@/modules/system-admin/components/dashboard/Syst
 import QueueStatsWidget from '@/modules/system-admin/components/dashboard/QueueStatsWidget.vue'
 import PerformanceMetricsWidget from '@/modules/system-admin/components/dashboard/PerformanceMetricsWidget.vue'
 
-const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
-  withCredentials: true,
-  headers: {
-    'Content-Type': 'application/json',
-    'Accept': 'application/json'
-  }
-})
+// Use global axios instance (has auth interceptor with Bearer token)
+// Do NOT create a standalone instance — it won't have the Authorization header
+const api = axios
 
 const authStore = useAuthStore()
 const user = computed(() => authStore.user)
@@ -333,20 +328,9 @@ const fetchStats = async (isInitial = false) => {
   } catch (err) {
     console.error('Failed to fetch system stats:', err)
     
-    // Check if it's an authentication error (401, 403) or server unreachable
-    if (err.response?.status === 401 || err.response?.status === 403) {
-      // SECURITY: Auto-logout on authentication failure
-      console.warn('Authentication failed - logging out user')
-      authStore.logout()
-      window.location.href = '/login'
-      return
-    }
-    
-    // Check if server is completely unreachable
-    if (!err.response || err.code === 'ERR_NETWORK' || err.code === 'ECONNREFUSED') {
-      console.error('Server unreachable - logging out for security')
-      authStore.logout()
-      window.location.href = '/login'
+    // 401 is handled by the global axios interceptor in main.js (auto-logout + redirect)
+    // Do NOT duplicate logout logic here — it causes redirect loops
+    if (err.response?.status === 401) {
       return
     }
     

@@ -2,6 +2,7 @@
 
 namespace App\Events;
 
+use App\Traits\BroadcastsToTenant;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
@@ -11,11 +12,13 @@ use Illuminate\Queue\SerializesModels;
 class ProvisioningFailed implements ShouldBroadcast
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
+    use BroadcastsToTenant;
 
     public $routerId;
     public $stage;
     public $message;
     public $data;
+    public $tenantId;
 
     /**
      * Create a new event instance.
@@ -26,6 +29,7 @@ class ProvisioningFailed implements ShouldBroadcast
         $this->stage = $stage;
         $this->message = $message;
         $this->data = $data;
+        $this->tenantId = $data['tenant_id'] ?? null;
     }
 
     /**
@@ -33,10 +37,15 @@ class ProvisioningFailed implements ShouldBroadcast
      */
     public function broadcastOn(): array
     {
-        return [
+        $channels = [
             new PrivateChannel('router-provisioning.' . $this->routerId),
-            new PrivateChannel('admin-notifications'),
         ];
+
+        if ($this->tenantId) {
+            $channels[] = new PrivateChannel("tenant.{$this->tenantId}.admin-notifications");
+        }
+
+        return $channels;
     }
 
     /**

@@ -66,6 +66,101 @@ def run_command(cmd, check=True):
             'returncode': e.returncode
         }
 
+def add_peer_to_config(interface, public_key, preshared_key, allowed_ips, persistent_keepalive=25, endpoint=None):
+    """Manually add peer to WireGuard config file for persistence"""
+    config_path = f"/etc/wireguard/{interface}.conf"
+    
+    if not os.path.exists(config_path):
+        logger.error(f"Config file not found: {config_path}")
+        return False
+    
+    try:
+        # Read existing config
+        with open(config_path, 'r') as f:
+            config_lines = f.readlines()
+        
+        # Check if peer already exists
+        peer_exists = False
+        for line in config_lines:
+            if f"PublicKey = {public_key}" in line:
+                peer_exists = True
+                logger.info(f"Peer {public_key[:16]}... already exists in config")
+                break
+        
+        if not peer_exists:
+            # Append peer section
+            peer_section = ["\n[Peer]\n"]
+            peer_section.append(f"PublicKey = {public_key}\n")
+            if preshared_key:
+                peer_section.append(f"PresharedKey = {preshared_key}\n")
+            peer_section.append(f"AllowedIPs = {allowed_ips}\n")
+            if endpoint:
+                peer_section.append(f"Endpoint = {endpoint}\n")
+            peer_section.append(f"PersistentKeepalive = {persistent_keepalive}\n")
+            
+            # Write updated config
+            with open(config_path, 'a') as f:
+                f.writelines(peer_section)
+            
+            logger.info(f"Peer {public_key[:16]}... added to config file {config_path}")
+        
+        return True
+    except Exception as e:
+        logger.error(f"Failed to add peer to config file: {str(e)}")
+        return False
+
+def remove_peer_from_config(interface, public_key):
+    """Manually remove peer from WireGuard config file"""
+    config_path = f"/etc/wireguard/{interface}.conf"
+    
+    if not os.path.exists(config_path):
+        logger.error(f"Config file not found: {config_path}")
+        return False
+    
+    try:
+        # Read existing config
+        with open(config_path, 'r') as f:
+            lines = f.readlines()
+        
+        # Find and remove peer section
+        new_lines = []
+        skip_peer = False
+        peer_found = False
+        
+        for line in lines:
+            if line.strip().startswith('[Peer]'):
+                skip_peer = False
+            elif f"PublicKey = {public_key}" in line:
+                skip_peer = True
+                peer_found = True
+                # Remove the [Peer] line that was just added
+                if new_lines and new_lines[-1].strip() == '[Peer]':
+                    new_lines.pop()
+                # Also remove preceding blank line if exists
+                if new_lines and new_lines[-1].strip() == '':
+                    new_lines.pop()
+                continue
+            
+            if not skip_peer:
+                new_lines.append(line)
+            elif line.strip().startswith('['):
+                # New section started, stop skipping
+                skip_peer = False
+                new_lines.append(line)
+        
+        if peer_found:
+            # Write updated config
+            with open(config_path, 'w') as f:
+                f.writelines(new_lines)
+            logger.info(f"Peer {public_key[:16]}... removed from config file {config_path}")
+            return True
+        else:
+            logger.warning(f"Peer {public_key[:16]}... not found in config file")
+            return False
+    except Exception as e:
+        logger.error(f"Failed to remove peer from config file: {str(e)}")
+        return False
+
 @app.route('/health', methods=['GET'])
 def health_check():
     """Health check endpoint"""
@@ -385,16 +480,20 @@ def add_peer():
         if not result['success']:
             raise Exception(f"Failed to add peer: {result['stderr']}")
         
-        # Save config
-        run_command(f"wg-quick save {interface}", check=False)
+        # Persist peer to config file (critical for reboot persistence)
+        config_updated = add_peer_to_config(interface, public_key, preshared_key, allowed_ips, persistent_keepalive, endpoint)
         
-        logger.info(f"Peer added to {interface}: {public_key[:16]}... (with preshared key: {bool(preshared_key)})")
+        if not config_updated:
+            logger.warning(f"Peer added to running config but failed to persist to file")
+        
+        logger.info(f"Peer added to {interface}: {public_key[:16]}... (with preshared key: {bool(preshared_key)}, persisted: {config_updated})")
         
         return jsonify({
             'status': 'success',
             'interface': interface,
             'peer': public_key,
-            'action': 'added'
+            'action': 'added',
+            'persisted': config_updated
         })
         
     except Exception as e:
@@ -421,16 +520,20 @@ def remove_peer():
         if not result['success']:
             raise Exception(f"Failed to remove peer: {result['stderr']}")
         
-        # Save config
-        run_command(f"wg-quick save {interface}", check=False)
+        # Remove peer from config file (critical for reboot persistence)
+        config_updated = remove_peer_from_config(interface, public_key)
         
-        logger.info(f"Peer removed from {interface}: {public_key}")
+        if not config_updated:
+            logger.warning(f"Peer removed from running config but failed to remove from file")
+        
+        logger.info(f"Peer removed from {interface}: {public_key} (persisted: {config_updated})")
         
         return jsonify({
             'status': 'success',
             'interface': interface,
             'peer': public_key,
-            'action': 'removed'
+            'action': 'removed',
+            'persisted': config_updated
         })
         
     except Exception as e:

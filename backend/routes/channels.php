@@ -132,6 +132,12 @@ Broadcast::channel('tenant.{tenantId}.settings', function ($user, $tenantId) {
     return $user->isAdmin() && (string) $user->tenant_id === (string) $tenantId;
 });
 
+// Tenant-specific users channel (admin user management events)
+Broadcast::channel('tenant.{tenantId}.users', function ($user, $tenantId) {
+    // SECURITY: Only tenant admins can access user management events
+    return $user->isAdmin() && (string) $user->tenant_id === (string) $tenantId;
+});
+
 // Tenant-specific packages channel
 Broadcast::channel('tenant.{tenantId}.packages', function ($user, $tenantId) {
     // SECURITY: System admins should NOT access tenant channels (data isolation)

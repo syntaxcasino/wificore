@@ -22,6 +22,10 @@ class UpdatePasswordJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable;
 
+    public int $tries = 3;
+    public int $maxExceptions = 3;
+    public array $backoff = [10, 30, 60];
+
     public string $userId;
     public string $tenantId;
     public string $newPassword;
@@ -93,7 +97,16 @@ class UpdatePasswordJob implements ShouldQueue
                 'job' => 'UpdatePasswordJob',
             ]);
             
-            $this->release(30);
+            throw $e;
         }
+    }
+
+    public function failed(?\Throwable $exception): void
+    {
+        Log::critical('UpdatePasswordJob permanently failed', [
+            'user_id' => $this->userId,
+            'tenant_id' => $this->tenantId,
+            'error' => $exception?->getMessage(),
+        ]);
     }
 }

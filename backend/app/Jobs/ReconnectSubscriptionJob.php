@@ -22,6 +22,10 @@ class ReconnectSubscriptionJob implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
     use TenantAwareJob;
 
+    public int $tries = 3;
+    public int $maxExceptions = 3;
+    public array $backoff = [15, 60, 120];
+
     public $paymentId;
     public $subscriptionId;
 
@@ -75,9 +79,18 @@ class ReconnectSubscriptionJob implements ShouldQueue
                     'tenant_id' => $this->tenantId
                 ]);
                 
-                // Retry the job
-                $this->release(60);
+                throw $e;
             }
         });
+    }
+
+    public function failed(?\Throwable $exception): void
+    {
+        Log::critical('ReconnectSubscriptionJob permanently failed', [
+            'payment_id' => $this->paymentId,
+            'subscription_id' => $this->subscriptionId,
+            'tenant_id' => $this->tenantId,
+            'error' => $exception?->getMessage(),
+        ]);
     }
 }

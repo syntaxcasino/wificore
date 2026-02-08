@@ -5,6 +5,8 @@ namespace App\Services;
 use App\Models\Tenant;
 use App\Models\PppoeUser;
 use App\Models\PppoePayment;
+use App\Models\TenantPaybillSetting;
+use App\Jobs\ReconnectPppoeUserJob;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -33,21 +35,31 @@ class MpesaC2BService
 
     /**
      * Get M-Pesa configuration for a tenant
+     * Uses tenant_paybill_settings table with landlord fallback
      */
     protected function getTenantMpesaConfig(Tenant $tenant): array
     {
-        $settings = $tenant->settings ?? [];
-        $mpesa = $settings['mpesa'] ?? [];
+        // Switch to tenant schema to read tenant_paybill_settings
+        $this->setTenantSchema();
 
-        return [
-            'env' => $mpesa['env'] ?? config('mpesa.env', 'sandbox'),
-            'consumer_key' => $mpesa['consumer_key'] ?? config('mpesa.consumer_key'),
-            'consumer_secret' => $mpesa['consumer_secret'] ?? config('mpesa.consumer_secret'),
-            'shortcode' => $mpesa['shortcode'] ?? config('mpesa.shortcode'),
-            'passkey' => $mpesa['passkey'] ?? config('mpesa.passkey'),
-            'validation_url' => $mpesa['validation_url'] ?? null,
-            'confirmation_url' => $mpesa['confirmation_url'] ?? null,
-        ];
+        $settings = TenantPaybillSetting::first();
+
+        if ($settings && $settings->hasOwnPaybill()) {
+            return [
+                'env' => $settings->environment,
+                'consumer_key' => $settings->consumer_key,
+                'consumer_secret' => $settings->consumer_secret,
+                'shortcode' => $settings->business_shortcode,
+                'passkey' => $settings->passkey,
+                'validation_url' => $settings->validation_url,
+                'confirmation_url' => $settings->confirmation_url,
+            ];
+        }
+
+        // Fallback to landlord config via PaymentConfigService
+        $configService = app(\App\Services\PaymentConfigService::class);
+        $configService->setTenantId($tenant->id);
+        return $configService->resolve();
     }
 
     /**
@@ -323,8 +335,15 @@ class MpesaC2BService
                 'previous_status' => $user->getOriginal('status'),
             ]);
 
-            // Dispatch reconnection job if needed
-            // ReconnectUserJob::dispatch($user->id, $this->tenant->id);
+            // Remove Auth-Type Reject from RADIUS to allow reconnection
+            DB::table('radcheck')
+                ->where('username', $user->username)
+                ->where('attribute', 'Auth-Type')
+                ->where('value', 'Reject')
+                ->delete();
+
+            // Dispatch reconnection job
+            ReconnectPppoeUserJob::dispatch($user->id, $this->tenant->id);
         }
     }
 
@@ -377,26 +396,43 @@ class MpesaC2BService
     }
 
     /**
-     * Set tenant database schema
+     * Set tenant database schema (include public for shared tables)
      */
     protected function setTenantSchema(): void
     {
         if ($this->tenant && $this->tenant->schema_name) {
-            DB::statement("SET search_path TO {$this->tenant->schema_name}");
+            DB::statement("SET search_path TO {$this->tenant->schema_name}, public");
         }
     }
 
     /**
-     * Find tenant by shortcode
+     * Find tenant by shortcode using tenant_paybill_settings table
      */
     public static function findTenantByShortcode(string $shortcode): ?Tenant
     {
-        return Tenant::where('is_active', true)
-            ->get()
-            ->first(function ($tenant) use ($shortcode) {
-                $settings = $tenant->settings ?? [];
-                $mpesaShortcode = $settings['mpesa']['shortcode'] ?? null;
-                return $mpesaShortcode === $shortcode;
-            });
+        $tenants = Tenant::where('is_active', true)
+            ->where('schema_created', true)
+            ->get();
+
+        foreach ($tenants as $tenant) {
+            try {
+                DB::statement("SET search_path TO {$tenant->schema_name}, public");
+                $settings = TenantPaybillSetting::where('business_shortcode', $shortcode)
+                    ->where('is_active', true)
+                    ->first();
+                if ($settings) {
+                    return $tenant;
+                }
+            } catch (\Exception $e) {
+                Log::warning('MpesaC2BService: Failed to check shortcode for tenant', [
+                    'tenant_id' => $tenant->id,
+                    'error' => $e->getMessage(),
+                ]);
+            } finally {
+                DB::statement("SET search_path TO public");
+            }
+        }
+
+        return null;
     }
 }

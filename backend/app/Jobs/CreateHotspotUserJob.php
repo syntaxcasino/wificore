@@ -28,6 +28,10 @@ class CreateHotspotUserJob implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
     use TenantAwareJob;
 
+    public int $tries = 3;
+    public int $maxExceptions = 3;
+    public array $backoff = [10, 30, 60];
+
     public $paymentId;
     public $packageId;
 
@@ -161,9 +165,9 @@ class CreateHotspotUserJob implements ShouldQueue
                     'expires_at' => $hotspotUser->subscription_expires_at->toIso8601String(),
                 ];
                 
-                // Cache credentials for 5 minutes for auto-login
+                // Cache credentials for 5 minutes for auto-login (tenant-scoped key)
                 Cache::put(
-                    "payment_credentials_{$payment->id}", 
+                    "tenant_{$this->tenantId}_payment_credentials_{$payment->id}", 
                     $credentials, 
                     now()->addMinutes(5)
                 );
@@ -193,9 +197,18 @@ class CreateHotspotUserJob implements ShouldQueue
                     'tenant_id' => $this->tenantId
                 ]);
                 
-                // Retry the job
-                $this->release(30);
+                throw $e;
             }
         });
+    }
+
+    public function failed(?\Throwable $exception): void
+    {
+        Log::critical('CreateHotspotUserJob permanently failed', [
+            'payment_id' => $this->paymentId,
+            'package_id' => $this->packageId,
+            'tenant_id' => $this->tenantId,
+            'error' => $exception?->getMessage(),
+        ]);
     }
 }

@@ -21,6 +21,10 @@ class CreateUserJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
+    public int $tries = 3;
+    public int $maxExceptions = 3;
+    public array $backoff = [10, 30, 60];
+
     public array $userData;
     public string $plainPassword;
     public ?int $tenantId;
@@ -69,8 +73,6 @@ class CreateUserJob implements ShouldQueue
                     'attribute' => 'Cleartext-Password',
                     'op' => ':=',
                     'value' => $this->plainPassword,
-                    'created_at' => now(),
-                    'updated_at' => now(),
                 ]);
                 
                 Log::info('System admin RADIUS entry created in public schema', [
@@ -141,8 +143,17 @@ class CreateUserJob implements ShouldQueue
                 'job' => 'CreateUserJob',
             ]);
             
-            $this->release(30);
+            throw $e;
         }
+    }
+
+    public function failed(?\Throwable $exception): void
+    {
+        Log::critical('CreateUserJob permanently failed', [
+            'username' => $this->userData['username'] ?? 'unknown',
+            'tenant_id' => $this->tenantId,
+            'error' => $exception?->getMessage(),
+        ]);
     }
     
     private function generateAccountNumber(string $role): string

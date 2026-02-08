@@ -296,6 +296,11 @@ import { useFilters } from '@/modules/common/composables/utils/useFilters'
 import { usePagination } from '@/modules/common/composables/utils/usePagination'
 import { usePackages } from '@/modules/tenant/composables/data/usePackages'
 import { useHotspot } from '@/modules/tenant/composables/useHotspot'
+import { useBroadcasting } from '@/modules/common/composables/websocket/useBroadcasting'
+import { useAuthStore } from '@/stores/auth'
+
+const authStore = useAuthStore()
+const { subscribeToPrivateChannel } = useBroadcasting()
 
 // Use the WebSocket-enabled hotspot composable
 const {
@@ -420,9 +425,20 @@ const handleRefresh = () => {
   fetchUsers()
 }
 
-// Lifecycle - fetch initial data (WebSocket handles updates)
+// Lifecycle - fetch initial data + subscribe to WebSocket events
 onMounted(() => {
   fetchUsers()
   fetchPackages()
+
+  // Subscribe to tenant-scoped hotspot events
+  const tenantId = authStore.tenantId
+  if (tenantId) {
+    subscribeToPrivateChannel(`tenant.${tenantId}.hotspot`, {
+      '.HotspotUserCreated': () => fetchUsers(),
+      '.hotspot.access.granted': () => fetchUsers(),
+      '.hotspot.access.revoked': () => fetchUsers(),
+      '.hotspot.package.expired': () => fetchUsers(),
+    })
+  }
 })
 </script>

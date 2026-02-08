@@ -158,7 +158,8 @@
                         <!-- Dropdown Menu -->
                         <div 
                           v-if="activeMenuId === user.id" 
-                          class="absolute right-0 top-full mt-1 w-44 bg-white border border-slate-200 rounded-lg shadow-lg z-50"
+                          class="absolute right-0 top-full mt-1 w-44 bg-white border border-slate-200 rounded-lg shadow-xl z-[100]"
+                          style="position: absolute;"
                         >
                           <div class="py-1">
                             <button 
@@ -940,8 +941,10 @@ const handleUpdateUser = async () => {
     }
 
     await updateUser(editingUser.value.id, payload)
+    editSubmitting.value = false
+    showEditUserOverlay.value = false
+    // List refresh handled by WebSocket PppoeUserUpdated event
     closeEditUser()
-    await fetchUsers()
   } catch (err) {
     const status = err.response?.status
     const message = err.response?.data?.message || err.response?.data?.error || 'Failed to update PPPoE user'
@@ -956,7 +959,6 @@ const handleUpdateUser = async () => {
     } else {
       editFormError.value = message
     }
-  } finally {
     editSubmitting.value = false
   }
 }
@@ -974,7 +976,7 @@ const handleToggleStatus = async (user) => {
   if (confirmed) {
     try {
       await toggleUserStatus(user.id, user.status !== 'blocked')
-      await fetchUsers()
+      // List refresh handled by WebSocket PppoeUserUpdated event
     } catch (err) {
       console.error(`Failed to ${action} user:`, err)
     }
@@ -1003,7 +1005,7 @@ const handleActivate = async (user) => {
   if (confirmed) {
     try {
       await axios.post(`pppoe/users/${user.id}/activate`)
-      await fetchUsers()
+      // List refresh handled by WebSocket PppoeUserUpdated event
     } catch (err) {
       console.error('Failed to activate user:', err)
     }
@@ -1022,7 +1024,7 @@ const handleDeactivate = async (user) => {
   if (confirmed) {
     try {
       await axios.post(`pppoe/users/${user.id}/deactivate`)
-      await fetchUsers()
+      // List refresh handled by WebSocket PppoeUserUpdated event
     } catch (err) {
       console.error('Failed to deactivate user:', err)
     }

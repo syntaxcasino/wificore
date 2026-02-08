@@ -161,4 +161,61 @@ class RadiusService extends TenantAwareService
             return false;
         }
     }
+
+    /**
+     * Enforce PPPoE authentication and update RADIUS auth type
+     */
+    public function enforceAuthentication(string $username): bool
+    {
+        if (!$this->authenticate($username, '')) {
+            \Log::warning("RADIUS: User {$username} failed authentication, blocking access.");
+            $this->updateRADIUSAuth($username, 'Reject');
+            return false;
+        }
+        \Log::info("RADIUS: User {$username} authenticated successfully, allowing access.");
+        $this->updateRADIUSAuth($username, 'Accept');
+        return true;
+    }
+
+    /**
+     * Update RADIUS auth type
+     */
+    private function updateRADIUSAuth(string $username, string $authType): bool
+    {
+        try {
+            $exists = \DB::table('radcheck')
+                ->where('username', $username)
+                ->where('attribute', 'Auth-Type')
+                ->exists();
+
+            if ($exists) {
+                \DB::table('radcheck')
+                    ->where('username', $username)
+                    ->where('attribute', 'Auth-Type')
+                    ->update(['value' => $authType]);
+            } else {
+                \DB::table('radcheck')->insert([
+                    'username' => $username,
+                    'attribute' => 'Auth-Type',
+                    'op' => ':=',
+                    'value' => $authType,
+                ]);
+            }
+
+            \Log::info("RADIUS auth updated", [
+                'username' => $username,
+                'auth_type' => $authType,
+            ]);
+
+            return true;
+        } catch (\Exception $e) {
+            \Log::error("Failed to update RADIUS auth", [
+                'username' => $username,
+                'auth_type' => $authType,
+                'error' => $e->getMessage(),
+            ]);
+
+            throw $e;
+        }
+    }
 }

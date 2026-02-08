@@ -21,6 +21,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
+use App\Services\RadiusService;
 
 /**
  * PPPoE User Controller
@@ -501,6 +502,13 @@ class PppoeUserController extends Controller
             ], 404);
         }
 
+        if (!$this->enforcePppoeAuthentication($pppoeUser)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'User authentication failed. Access denied.',
+            ], 403);
+        }
+
         $validator = Validator::make($request->all(), [
             'package_id' => 'sometimes|required|uuid',
             'router_id' => 'sometimes|required|uuid',
@@ -628,6 +636,11 @@ class PppoeUserController extends Controller
                 'message' => 'Failed to update PPPoE user: ' . $e->getMessage(),
             ], 500);
         }
+    }
+
+    private function enforcePppoeAuthentication(PppoeUser $pppoeUser): bool {
+        $radiusService = app(RadiusService::class);
+        return $radiusService->enforceAuthentication($pppoeUser->username);
     }
 
     public function destroy(Request $request, string $id)
@@ -776,7 +789,8 @@ class PppoeUserController extends Controller
                 $pppoeUser->suspension_reason = null;
                 $pppoeUser->save();
 
-                // Remove Auth-Type Reject to allow authentication
+                // Block authentication WITHOUT deleting Cleartext-Password
+                // This preserves password visibility while still rejecting auth.
                 DB::table('radcheck')
                     ->where('username', $pppoeUser->username)
                     ->where('attribute', 'Auth-Type')

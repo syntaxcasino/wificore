@@ -17,6 +17,10 @@ class UpdateLoginStatsJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable;
 
+    public int $tries = 3;
+    public int $maxExceptions = 3;
+    public array $backoff = [10, 30, 60];
+
     public string $userId;
     public string $ipAddress;
 
@@ -64,7 +68,15 @@ class UpdateLoginStatsJob implements ShouldQueue
                 'job' => 'UpdateLoginStatsJob',
             ]);
             
-            $this->release(30);
+            throw $e;
         }
+    }
+
+    public function failed(?\Throwable $exception): void
+    {
+        Log::critical('UpdateLoginStatsJob permanently failed', [
+            'user_id' => $this->userId,
+            'error' => $exception?->getMessage(),
+        ]);
     }
 }

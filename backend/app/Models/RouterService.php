@@ -12,6 +12,15 @@ class RouterService extends Model
 {
     use HasFactory, HasUuid;
 
+    /**
+     * Boot the model
+     * Note: No TenantScope needed - this table is in tenant schema (schema-based isolation)
+     */
+    protected static function booted()
+    {
+        // Schema-based isolation - no global scope needed
+    }
+
     protected $fillable = [
         'router_id',
         'interface_name',

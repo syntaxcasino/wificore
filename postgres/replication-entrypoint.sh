@@ -72,8 +72,18 @@ done
 app_db="${POSTGRES_DB:-postgres}"
 if [ -n "${app_db}" ] && [ "${app_db}" != "postgres" ]; then
   export PGPASSWORD="${POSTGRES_PASSWORD:-}"
-  if ! psql -v ON_ERROR_STOP=1 --username "${POSTGRES_USER:-postgres}" --dbname postgres -tAc "SELECT 1 FROM pg_database WHERE datname='${app_db}';" | grep -q 1; then
-    createdb --username "${POSTGRES_USER:-postgres}" "${app_db}" >/dev/null
+  # Wait up to 30s for the official entrypoint to finish init (it creates the DB too)
+  for i in $(seq 1 15); do
+    if psql --username "${POSTGRES_USER:-postgres}" --dbname postgres -tAc "SELECT 1 FROM pg_database WHERE datname='${app_db}';" 2>/dev/null | grep -q 1; then
+      break
+    fi
+    sleep 2
+  done
+  # Idempotent: only create if still missing after waiting
+  if ! psql --username "${POSTGRES_USER:-postgres}" --dbname postgres -tAc "SELECT 1 FROM pg_database WHERE datname='${app_db}';" 2>/dev/null | grep -q 1; then
+    echo "Database '${app_db}' not found after init wait — creating..."
+    createdb --username "${POSTGRES_USER:-postgres}" "${app_db}" 2>/dev/null || \
+      echo "Database '${app_db}' already exists or creation handled by entrypoint, skipping."
   fi
 fi
 

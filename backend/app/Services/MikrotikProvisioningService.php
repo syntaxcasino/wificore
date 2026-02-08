@@ -3,10 +3,12 @@
 namespace App\Services;
 
 use App\Events\ProvisioningFailed;
+use App\Events\RouterConnected;
 use App\Events\RouterProvisioningProgress;
 use App\Models\Router;
 use App\Models\RouterConfig;
 use App\Services\MikroTik\ConfigurationService;
+use App\Services\MikroTik\RscFileCleanupService;
 use App\Services\MikroTik\SshExecutor;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Facades\Cache;
@@ -855,7 +857,30 @@ SCRIPT;
                 throw new \Exception($errorMsg, 503, $e);
             }
 
-            // 4. Apply configuration directly via SSH commands (no file upload/import)
+            // 4. Check VPN/WireGuard status BEFORE deployment (baseline)
+            $vpnIp = $router->vpn_ip ? explode('/', $router->vpn_ip)[0] : null;
+            $preDeployVpnStatus = null;
+            if ($vpnIp) {
+                try {
+                    $wgOutput = $ssh->exec('/interface wireguard peers print detail without-paging');
+                    $preDeployVpnStatus = [
+                        'has_wireguard' => !empty(trim($wgOutput)),
+                        'output_preview' => substr(trim($wgOutput), 0, 200),
+                    ];
+                    Log::info('Pre-deployment VPN status captured', [
+                        'router_id' => $router->id,
+                        'vpn_ip' => $vpnIp,
+                        'has_wireguard' => $preDeployVpnStatus['has_wireguard'],
+                    ]);
+                } catch (\Exception $e) {
+                    Log::debug('Could not check pre-deployment VPN status (non-fatal)', [
+                        'router_id' => $router->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+
+            // 5. Apply configuration via SSH file upload/import
             $scriptName = "svc_deploy_" . $router->id . "_" . time();
             
             if ($broadcast) {
@@ -944,6 +969,21 @@ SCRIPT;
                                     return [
                                         'valid' => false,
                                         'error' => 'Hotspot deployment validation failed (bridge not ready: ' . $expectedHotspotBridge . ', ports: ' . $bridgePortCount . ')'
+                                    ];
+                                }
+
+                                // Count expected bridge ports from the script (each "bridge port add" line)
+                                $expectedBridgePorts = preg_match_all('/bridge port add.*bridge="' . preg_quote($expectedHotspotBridge, '/') . '"/', $serviceScript);
+                                if ($expectedBridgePorts > 0 && $bridgePortCount < $expectedBridgePorts) {
+                                    Log::warning('Bridge port count mismatch', [
+                                        'router_id' => $router->id,
+                                        'bridge' => $expectedHotspotBridge,
+                                        'expected_ports' => $expectedBridgePorts,
+                                        'actual_ports' => $bridgePortCount,
+                                    ]);
+                                    return [
+                                        'valid' => false,
+                                        'error' => 'Hotspot bridge port count mismatch (expected ' . $expectedBridgePorts . ', got ' . $bridgePortCount . ' for bridge ' . $expectedHotspotBridge . ')'
                                     ];
                                 }
                             }
@@ -1111,6 +1151,86 @@ SCRIPT;
 
                 // Brief wait for router to stabilize
                 sleep(1);
+
+                // 6. VPN HEALTH CHECK: Verify WireGuard connectivity after deployment
+                if ($vpnIp && $preDeployVpnStatus && $preDeployVpnStatus['has_wireguard']) {
+                    $vpnHealthy = false;
+                    $vpnRetries = 3;
+                    
+                    for ($vpnAttempt = 1; $vpnAttempt <= $vpnRetries; $vpnAttempt++) {
+                        try {
+                            // Check if WireGuard peer still has a recent handshake
+                            $postWgOutput = $ssh->exec('/interface wireguard peers print detail without-paging');
+                            
+                            if (!empty(trim($postWgOutput))) {
+                                // WireGuard peers still exist — check for handshake
+                                $hasHandshake = str_contains($postWgOutput, 'last-handshake');
+                                
+                                Log::info('Post-deployment VPN health check', [
+                                    'router_id' => $router->id,
+                                    'vpn_attempt' => $vpnAttempt,
+                                    'peers_exist' => true,
+                                    'has_handshake' => $hasHandshake,
+                                ]);
+                                
+                                $vpnHealthy = true;
+                                break;
+                            }
+                            
+                            Log::warning('Post-deployment VPN check: no WireGuard peers found', [
+                                'router_id' => $router->id,
+                                'vpn_attempt' => $vpnAttempt,
+                            ]);
+                            
+                        } catch (\Exception $vpnCheckError) {
+                            Log::warning('Post-deployment VPN health check failed', [
+                                'router_id' => $router->id,
+                                'vpn_attempt' => $vpnAttempt,
+                                'error' => $vpnCheckError->getMessage(),
+                            ]);
+                            
+                            // If SSH itself failed, VPN may be down — try reconnecting
+                            if ($vpnAttempt < $vpnRetries) {
+                                sleep(3 * $vpnAttempt);
+                                try {
+                                    $ssh->disconnect(false);
+                                    sleep(2);
+                                    $ssh->connect();
+                                } catch (\Exception $reconnectError) {
+                                    Log::error('VPN reconnection attempt failed', [
+                                        'router_id' => $router->id,
+                                        'vpn_attempt' => $vpnAttempt,
+                                        'error' => $reconnectError->getMessage(),
+                                    ]);
+                                }
+                            }
+                        }
+                    }
+                    
+                    if (!$vpnHealthy) {
+                        Log::error('VPN CONNECTIVITY LOST after deployment', [
+                            'router_id' => $router->id,
+                            'vpn_ip' => $vpnIp,
+                            'retries_exhausted' => $vpnRetries,
+                            'action' => 'Deployment succeeded but VPN may need manual recovery',
+                        ]);
+                        
+                        if ($broadcast) {
+                            RouterProvisioningProgress::dispatch(
+                                $router->id,
+                                'vpn_warning',
+                                90,
+                                'WARNING: VPN connectivity may be degraded after deployment. Check WireGuard handshake.',
+                                ['vpn_ip' => $vpnIp, 'vpn_healthy' => false]
+                            );
+                        }
+                    } else {
+                        Log::info('VPN health check passed after deployment', [
+                            'router_id' => $router->id,
+                            'vpn_ip' => $vpnIp,
+                        ]);
+                    }
+                }
 
                 // Final verification
                 if ($broadcast) {

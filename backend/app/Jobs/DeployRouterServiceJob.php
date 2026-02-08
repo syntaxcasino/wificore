@@ -7,11 +7,13 @@ use App\Services\MikroTik\ZeroConfigHotspotGenerator;
 use App\Services\MikroTik\ZeroConfigPPPoEGenerator;
 use App\Services\MikroTik\ZeroConfigHybridGenerator;
 use App\Services\MikrotikProvisioningService;
+use App\Events\RouterProvisioningProgress;
 use App\Traits\TenantAwareJob;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 class DeployRouterServiceJob implements ShouldQueue
@@ -19,6 +21,10 @@ class DeployRouterServiceJob implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, TenantAwareJob;
 
     protected string $serviceId;
+
+    public $tries = 3;
+    public $timeout = 300;
+    public $backoff = [15, 30, 60];
 
     public function __construct(string $serviceId, string $tenantId)
     {
@@ -34,33 +40,58 @@ class DeployRouterServiceJob implements ShouldQueue
             $service = RouterService::with(['router', 'ipPool', 'vlans'])->find($this->serviceId);
 
             if (!$service) {
-                Log::error('Service not found for deployment', ['service_id' => $this->serviceId]);
+                Log::error('DeployRouterServiceJob: Service not found', ['service_id' => $this->serviceId]);
+                return;
+            }
+
+            if (!$service->router) {
+                Log::error('DeployRouterServiceJob: Router not found for service', [
+                    'service_id' => $service->id,
+                ]);
+                $service->update([
+                    'deployment_status' => RouterService::DEPLOYMENT_FAILED,
+                    'status' => RouterService::STATUS_INACTIVE,
+                ]);
                 return;
             }
 
             // Skip if already deployed (prevent re-deployment of working config)
             if ($service->deployment_status === RouterService::DEPLOYMENT_DEPLOYED) {
-                Log::info('Service already deployed, skipping', [
+                Log::info('DeployRouterServiceJob: Already deployed, skipping', [
                     'service_id' => $service->id,
                     'router_id' => $service->router_id,
                 ]);
                 return;
             }
 
-            // Mark as in progress (controller may have already set this)
-            if ($service->deployment_status !== RouterService::DEPLOYMENT_IN_PROGRESS) {
-                $service->update(['deployment_status' => RouterService::DEPLOYMENT_IN_PROGRESS]);
+            // Idempotency lock - prevent concurrent deployments of same service
+            $lock = Cache::lock('deploy_service_' . $this->serviceId, 300);
+            if (!$lock->get()) {
+                Log::warning('DeployRouterServiceJob: Deployment already in progress (lock held)', [
+                    'service_id' => $this->serviceId,
+                ]);
+                $this->release(15);
+                return;
             }
 
             try {
-                Log::info('Starting service deployment', [
+                // Mark as in progress
+                $service->update(['deployment_status' => RouterService::DEPLOYMENT_IN_PROGRESS]);
+
+                Log::info('DeployRouterServiceJob: Starting deployment', [
                     'service_id' => $service->id,
                     'router_id' => $service->router_id,
                     'service_type' => $service->service_type,
+                    'attempt' => $this->attempts(),
                 ]);
+
+                // Broadcast progress
+                $this->broadcastServiceProgress($service, 'deploying', 30, 'Generating configuration...');
 
                 // Generate configuration based on service type
                 $config = $this->generateConfiguration($service);
+
+                $this->broadcastServiceProgress($service, 'applying', 50, 'Applying configuration to router...');
 
                 // Deploy to router via provisioning service
                 $provisioningService = app(MikrotikProvisioningService::class);
@@ -73,9 +104,12 @@ class DeployRouterServiceJob implements ShouldQueue
                         'deployed_at' => now(),
                     ]);
 
-                    Log::info('Service deployed successfully', [
+                    $this->broadcastServiceProgress($service, 'completed', 100, 'Service deployed successfully');
+
+                    Log::info('DeployRouterServiceJob: Deployed successfully', [
                         'service_id' => $service->id,
                         'router_id' => $service->router_id,
+                        'attempt' => $this->attempts(),
                     ]);
                 } else {
                     throw new \Exception($result['message'] ?? 'Deployment failed');
@@ -83,7 +117,7 @@ class DeployRouterServiceJob implements ShouldQueue
 
             } catch (\Exception $e) {
                 if ((int) $e->getCode() === 503) {
-                    Log::warning('Service deployment deferred (router busy)', [
+                    Log::warning('DeployRouterServiceJob: Deferred (router busy)', [
                         'service_id' => $service->id,
                         'router_id' => $service->router_id,
                         'error' => $e->getMessage(),
@@ -98,10 +132,11 @@ class DeployRouterServiceJob implements ShouldQueue
                     return;
                 }
 
-                Log::error('Service deployment failed', [
+                Log::error('DeployRouterServiceJob: Failed', [
                     'service_id' => $service->id,
                     'router_id' => $service->router_id,
                     'error' => $e->getMessage(),
+                    'attempt' => $this->attempts(),
                 ]);
 
                 $service->update([
@@ -109,9 +144,69 @@ class DeployRouterServiceJob implements ShouldQueue
                     'status' => RouterService::STATUS_INACTIVE,
                 ]);
 
+                $this->broadcastServiceProgress($service, 'failed', 0, 'Deployment failed: ' . $e->getMessage());
+
                 throw $e;
+            } finally {
+                $lock->release();
             }
         });
+    }
+
+    /**
+     * Handle permanent job failure (all retries exhausted)
+     */
+    public function failed(\Throwable $exception): void
+    {
+        Log::critical('DeployRouterServiceJob: Permanently failed', [
+            'service_id' => $this->serviceId,
+            'tenant_id' => $this->tenantId,
+            'error' => $exception->getMessage(),
+        ]);
+
+        try {
+            $this->executeInTenantContext(function () use ($exception) {
+                $service = RouterService::with('router')->find($this->serviceId);
+                if ($service) {
+                    $service->update([
+                        'deployment_status' => RouterService::DEPLOYMENT_FAILED,
+                        'status' => RouterService::STATUS_INACTIVE,
+                    ]);
+
+                    $this->broadcastServiceProgress($service, 'failed', 0, 'Deployment failed permanently: ' . $exception->getMessage());
+                }
+            });
+        } catch (\Exception $e) {
+            Log::error('DeployRouterServiceJob: Could not update status in failed()', [
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Broadcast deployment progress for UI updates
+     */
+    private function broadcastServiceProgress(RouterService $service, string $stage, float $progress, string $message): void
+    {
+        try {
+            if ($service->router) {
+                broadcast(new RouterProvisioningProgress(
+                    $service->router_id,
+                    'service_deploy_' . $stage,
+                    $progress,
+                    $message,
+                    [
+                        'service_id' => $service->id,
+                        'service_type' => $service->service_type,
+                        'deployment_status' => $service->deployment_status,
+                    ]
+                ))->toOthers();
+            }
+        } catch (\Exception $e) {
+            Log::debug('DeployRouterServiceJob: Broadcast failed (non-critical)', [
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**

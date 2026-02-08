@@ -132,6 +132,9 @@ class SendPaymentRemindersJob implements ShouldQueue
         // Send notification (will handle email, WhatsApp, and database)
         $user->notify(new PaymentDueReminderNotification($subscription, $daysUntilDue));
 
+        // Send SMS via tenant's configured communication channel
+        $this->sendReminderSms($user, $subscription, $daysUntilDue);
+
         // Create reminder record for tracking
         PaymentReminder::create([
             'user_id' => $user->id,
@@ -142,6 +145,31 @@ class SendPaymentRemindersJob implements ShouldQueue
             'channel' => PaymentReminder::CHANNEL_EMAIL, // Primary channel
             'status' => PaymentReminder::STATUS_SENT,
         ]);
+    }
+
+    /**
+     * Send SMS reminder via tenant's configured communication channel.
+     */
+    protected function sendReminderSms($user, $subscription, int $daysUntilDue): void
+    {
+        try {
+            $phone = $user->phone ?? $user->phone_number ?? null;
+            if (!$phone) return;
+
+            $message = match(true) {
+                $daysUntilDue >= 3 => "Hi {$user->name}, your subscription expires in {$daysUntilDue} days. Please renew to avoid disconnection. - WifiCore",
+                $daysUntilDue >= 1 => "URGENT: {$user->name}, your subscription expires tomorrow. Renew now to stay connected. - WifiCore",
+                default => "NOTICE: {$user->name}, your subscription has expired. Renew immediately to restore service. - WifiCore",
+            };
+
+            $service = new \App\Services\MessagingService();
+            $service->sendViaDefaultChannel('sms', $phone, $message);
+        } catch (\Exception $e) {
+            Log::warning('Failed to send SMS reminder', [
+                'user_id' => $user->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**

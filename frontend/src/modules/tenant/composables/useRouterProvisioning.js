@@ -1,6 +1,6 @@
 import { ref, reactive, computed, watch, onMounted, onUnmounted } from 'vue'
-import axios from '@/services/api/axios'
-import { usePusher } from '@/composables/usePusher'
+import axios from '@/modules/common/services/api/axios'
+import { usePusher } from '@/modules/common/composables/usePusher'
 
 export function useRouterProvisioning(props, emit) {
   // Get Pusher instance for WebSocket events
@@ -788,10 +788,11 @@ export function useRouterProvisioning(props, emit) {
 
   const retryDeployment = () => {
     addLog('info', 'Retrying deployment...')
+    const wasTimedOut = deploymentTimedOut.value
     deploymentFailed.value = false
     deploymentTimedOut.value = false
     
-    if (deploymentTimedOut.value) {
+    if (wasTimedOut) {
       // If timed out, just retry the status check
       pollProvisioningStatus()
     } else {

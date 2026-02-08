@@ -189,24 +189,19 @@ if [ "$NEEDS_RECREATION" = true ]; then
     iptables -D INPUT -i "${VPN_INTERFACE_NAME}" -j ACCEPT 2>/dev/null || true
     iptables -I INPUT 1 -i "${VPN_INTERFACE_NAME}" -j ACCEPT
 
-    if [ -f "$CONFIG_FILE" ]; then
-        STRIP_TMP="/tmp/${VPN_INTERFACE_NAME}.stripped.conf"
-        if command -v wg-quick >/dev/null 2>&1; then
-            wg-quick strip "${VPN_INTERFACE_NAME}" > "$STRIP_TMP" 2>/dev/null || true
-        fi
-
-        if [ -s "$STRIP_TMP" ]; then
-            wg setconf "${VPN_INTERFACE_NAME}" "$STRIP_TMP" 2>/dev/null || echo "Failed to restore peers from ${CONFIG_FILE}"
-        fi
-
-        rm -f "$STRIP_TMP" 2>/dev/null || true
-        wg set "${VPN_INTERFACE_NAME}" listen-port "${VPN_LISTEN_PORT}" 2>/dev/null || true
-    fi
-
     echo "✓ iptables rules configured"
     echo "✓ ${VPN_INTERFACE_NAME} interface is up with port ${VPN_LISTEN_PORT}"
 else
     echo "✓ ${VPN_INTERFACE_NAME} interface is already correctly configured"
+fi
+
+# Load peers from config file (always run this, regardless of interface creation)
+if [ -f "$CONFIG_FILE" ]; then
+    echo "Loading peers from ${CONFIG_FILE}..."
+    python3 /app/load-peers.py "$CONFIG_FILE" "${VPN_INTERFACE_NAME}"
+    
+    # Ensure listen port is set correctly after loading peers
+    wg set "${VPN_INTERFACE_NAME}" listen-port "${VPN_LISTEN_PORT}" 2>/dev/null || true
 fi
 
 echo "WireGuard Controller initialization complete"

@@ -28,16 +28,25 @@ class ZeroConfigHotspotGenerator
         // Hotspot multi-interface mode A: single Hotspot instance on a shared bridge
         $bridgeName = "br-hotspot-{$router->id}";
 
-        $radiusServer = env('VPN_SERVER_IP', env('RADIUS_SERVER_IP', env('RADIUS_SERVER_HOST', 'wificore-freeradius')));
+        $radiusServer = config('radius.server_ip', config('services.radius.host', 'wificore-freeradius'));
         $resolvedRadiusServer = $radiusServer;
         if (filter_var($resolvedRadiusServer, FILTER_VALIDATE_IP) === false) {
             $resolvedRadiusServer = gethostbyname((string) $resolvedRadiusServer);
         }
-        $radiusSecret = env('RADIUS_SECRET', 'testing123');
+        $radiusSecret = config('radius.secret', 'testing123');
 
+        // CAPTIVE PORTAL: Generate tenant-specific portal URL
+        // Format: https://<tenant_slug>.wificore.traidsolutions.com/api/portal/config
         $tenant = $router->tenant;
-        $baseUrl = parse_url(config('app.url'), PHP_URL_HOST);
-        $captivePortalUrl = $tenant ? "https://{$tenant->subdomain}.{$baseUrl}/portal" : null;
+        $baseHost = config('app.base_domain', parse_url(config('app.url'), PHP_URL_HOST));
+        $captivePortalUrl = null;
+        $portalHost = null;
+        
+        if ($tenant && $tenant->subdomain) {
+            // Portal URL for login redirect
+            $captivePortalUrl = "https://{$tenant->subdomain}.{$baseHost}/api/portal/config?router_id={$router->id}";
+            $portalHost = "{$tenant->subdomain}.{$baseHost}";
+        }
 
         $script = [
             "/log info \"=== ISP-Grade Multi-Interface Hotspot Deployment ===\"",
@@ -118,6 +127,37 @@ class ZeroConfigHotspotGenerator
             throw new \RuntimeException('No hotspot access interfaces provided');
         }
 
+        // CRITICAL: Filter out WireGuard/VPN interfaces to prevent VPN disconnection
+        // Adding a WireGuard interface to a bridge kills the VPN tunnel
+        $vpnExcludePatterns = ['wireguard', 'wg', 'vpn', 'wg0', 'wg1'];
+        $originalCount = count($accessIfaces);
+        $accessIfaces = array_values(array_filter($accessIfaces, function ($iface) use ($vpnExcludePatterns, $router) {
+            $lower = strtolower($iface);
+            foreach ($vpnExcludePatterns as $pattern) {
+                if (str_contains($lower, $pattern)) {
+                    Log::warning('Hotspot generator: Excluded VPN/WireGuard interface from bridge', [
+                        'router_id' => $router->id,
+                        'excluded_interface' => $iface,
+                        'reason' => 'Adding VPN interface to bridge would kill VPN connectivity',
+                    ]);
+                    return false;
+                }
+            }
+            return true;
+        }));
+
+        if (empty($accessIfaces)) {
+            throw new \RuntimeException('No valid hotspot access interfaces remaining after excluding VPN interfaces. Original interfaces were all VPN-related.');
+        }
+
+        if (count($accessIfaces) < $originalCount) {
+            Log::info('Hotspot generator: VPN interfaces excluded from bridge', [
+                'router_id' => $router->id,
+                'original_count' => $originalCount,
+                'remaining_count' => count($accessIfaces),
+            ]);
+        }
+
         // Create shared bridge and attach all access interfaces
         $script = array_merge($script, [
             "# Hotspot Access Bridge (Mode A)",
@@ -127,10 +167,17 @@ class ZeroConfigHotspotGenerator
 
         foreach ($accessIfaces as $iface) {
             $script[] = ":if ([:len [/interface find name=\"{$iface}\"]] = 0) do={ :error \"Hotspot: interface not found ({$iface})\" }";
+            // CRITICAL: Verify interface is not a WireGuard type before adding to bridge
+            $script[] = ":if ([:len [/interface wireguard find name=\"{$iface}\"]] > 0) do={ /log error \"Hotspot: REFUSING to add WireGuard interface to bridge ({$iface})\"; :error \"Cannot add WireGuard interface to hotspot bridge\" }";
             $script[] = ":do { /interface bridge port remove [find bridge=\"{$bridgeName}\" interface=\"{$iface}\"] } on-error={}";
             $script[] = ":do { /interface bridge port add bridge=\"{$bridgeName}\" interface=\"{$iface}\" comment=\"Hotspot Access Port ({$router->id})\" } on-error={ :error \"Hotspot: bridge port add failed ({$iface})\" }";
         }
 
+        // Verify ALL expected bridge ports were added
+        $expectedPortCount = count($accessIfaces);
+        $script[] = ":local actualPorts [:len [/interface bridge port find bridge=\"{$bridgeName}\" comment~\"Hotspot Access Port\"]]";
+        $script[] = ":if (\$actualPorts < {$expectedPortCount}) do={ /log error \"Hotspot: Bridge port count mismatch (expected {$expectedPortCount}, got \$actualPorts)\"; :error \"Hotspot bridge port count mismatch\" }";
+        $script[] = "/log info \"Hotspot: Bridge {$bridgeName} has \$actualPorts ports (expected {$expectedPortCount})\"";
         $script[] = "";
 
         $params = [
@@ -150,6 +197,7 @@ class ZeroConfigHotspotGenerator
             'radius_secret' => $radiusSecret,
             'tenant_id' => $router->tenant_id,
             'captive_portal_url' => $captivePortalUrl,
+            'portal_host' => $portalHost,
             'interface_index' => 0,
             'bridge_name' => null,
         ];
@@ -223,6 +271,7 @@ class ZeroConfigHotspotGenerator
             $this->generateDhcpSetup($params),
             $this->generateHotspotSetup($params),
             $this->generateRadiusSetup($params),
+            $this->generateWalledGarden($params),
             $this->generateFirewallRules($params),
             $this->generateNatRules($params)
         );
@@ -299,18 +348,20 @@ class ZeroConfigHotspotGenerator
         $poolName = "pool-{$params['router_id']}-{$params['interface_index']}";
         $iface = $params['bridge_name'] ?? $params['interface'];
 
+        // CAPTIVE PORTAL: Escape URL for MikroTik script
         $portalUrl = $params['captive_portal_url']
             ? str_replace(['\\', '"'], ['\\\\', '\\"'], (string) $params['captive_portal_url'])
             : null;
 
         return array_values(array_filter([
-            "# Hotspot Profile - ISP & hAP Lite Optimized",
+            "# Hotspot Profile - ISP & hAP Lite Optimized with Captive Portal",
             ":do { /ip hotspot profile remove [find name=\"{$profile}\"] } on-error={}",
-            ":do { /ip hotspot profile add name=\"{$profile}\" hotspot-address={$params['gateway_ip']} login-by=http-chap,http-pap use-radius=yes html-directory=hotspot dns-name=hotspot.local } on-error={}",
-            ($portalUrl ? ":do { /file set hotspot/login.html contents=\"<html><head><meta http-equiv=refresh content=0;url={$portalUrl}></head><body></body></html>\" } on-error={}" : null),
+            ":do { /ip hotspot profile add name=\"{$profile}\" hotspot-address={$params['gateway_ip']} login-by=http-chap,http-pap use-radius=yes html-directory=hotspot dns-name=hotspot.local http-cookie-lifetime=1d } on-error={}",
+            // CAPTIVE PORTAL: Redirect to tenant-specific portal for package selection and payment
+            ($portalUrl ? ":do { /file set hotspot/login.html contents=\"<html><head><meta http-equiv='refresh' content='0;url={$portalUrl}'></head><body>Redirecting to portal...</body></html>\" } on-error={}" : null),
             "# Hotspot Server - CPU Optimized for hAP Lite",
             ":do { /ip hotspot remove [find name=\"{$server}\"] } on-error={}",
-            ":do { /ip hotspot add name=\"{$server}\" interface=\"{$iface}\" profile=\"{$profile}\" address-pool={$poolName} disabled=no } on-error={}",
+            ":do { /ip hotspot add name=\"{$server}\" interface=\"{$iface}\" profile=\"{$profile}\" address-pool={$poolName} addresses-per-mac=2 idle-timeout=5m keepalive-timeout=2m disabled=no } on-error={}",
             "# User Profile - Default CPU-Friendly",
             ":do { /ip hotspot user profile remove [find name=\"default-hotspot-{$params['router_id']}-{$params['interface_index']}\"] } on-error={}",
             ":do { /ip hotspot user profile add name=\"default-hotspot-{$params['router_id']}-{$params['interface_index']}\" add-mac-cookie=yes shared-users=1 session-timeout=6h } on-error={}",
@@ -333,15 +384,21 @@ class ZeroConfigHotspotGenerator
     private function generateFirewallRules(array $params): array
     {
         $iface = $params['bridge_name'] ?? $params['interface'];
+        $networkCidr = $params['network_cidr'];
+        $routerId = $params['router_id'];
 
         return [
-            "# Firewall Rules",
-            ":do { /ip firewall filter remove [find comment=\"Hotspot: Allow Established\"] } on-error={}",
-            ":do { /ip firewall filter add chain=forward action=accept connection-state=established,related comment=\"Hotspot: Allow Established\" } on-error={}",
-            ":do { /ip firewall filter remove [find comment=\"Hotspot: Drop Invalid\"] } on-error={}",
-            ":do { /ip firewall filter add chain=forward action=drop connection-state=invalid comment=\"Hotspot: Drop Invalid\" } on-error={}",
-            ":do { /ip firewall filter remove [find comment=\"Hotspot: Allow to WAN\"] } on-error={}",
-            ":do { /ip firewall filter add chain=forward action=accept in-interface={$iface} out-interface=!{$iface} comment=\"Hotspot: Allow to WAN\" } on-error={}",
+            "# Firewall Rules - Authentication Enforcement",
+            "# Rule order: established → invalid drop → authenticated subnet → DROP unauthenticated",
+            ":do { /ip firewall filter remove [find comment~\"Hotspot-{$routerId}-FW\"] } on-error={}",
+            ":do { /ip firewall filter add chain=forward connection-state=established,related action=accept comment=\"Hotspot-{$routerId}-FW-EST\" } on-error={}",
+            ":do { /ip firewall filter add chain=forward connection-state=invalid action=drop comment=\"Hotspot-{$routerId}-FW-INV\" } on-error={}",
+            // Allow traffic from the hotspot subnet (Hotspot system assigns IPs only to authenticated users)
+            ":do { /ip firewall filter add chain=forward src-address={$networkCidr} out-interface=!{$iface} action=accept comment=\"Hotspot-{$routerId}-FW-INET\" } on-error={}",
+            // Allow local traffic within hotspot subnet
+            ":do { /ip firewall filter add chain=forward src-address={$networkCidr} dst-address={$networkCidr} action=accept comment=\"Hotspot-{$routerId}-FW-LOCAL\" } on-error={}",
+            // CRITICAL: Block ALL other traffic from the hotspot bridge (unauthenticated devices)
+            ":do { /ip firewall filter add chain=forward in-interface={$iface} action=drop comment=\"Hotspot-{$routerId}-FW-DROP\" } on-error={}",
             ""
         ];
     }
@@ -360,6 +417,32 @@ class ZeroConfigHotspotGenerator
             ":do { /ip firewall nat add chain=dstnat action=redirect to-ports=64872 protocol=tcp dst-port=80 in-interface={$iface} comment=\"Hotspot: HTTP Redirect\" } on-error={}",
             ":do { /ip firewall nat remove [find comment=\"Hotspot: HTTPS Redirect\"] } on-error={}",
             ":do { /ip firewall nat add chain=dstnat action=redirect to-ports=64875 protocol=tcp dst-port=443 in-interface={$iface} comment=\"Hotspot: HTTPS Redirect\" } on-error={}",
+            ""
+        ];
+    }
+
+    /**
+     * CAPTIVE PORTAL: Generate walled garden configuration
+     * Allows access to portal domain without authentication for package selection and payment
+     */
+    private function generateWalledGarden(array $params): array
+    {
+        $portalHost = $params['portal_host'] ?? null;
+        
+        if (!$portalHost) {
+            return [
+                "# Walled Garden - No portal configured",
+                ""
+            ];
+        }
+
+        return [
+            "# Walled Garden - Allow Portal Access Without Authentication",
+            "# CRITICAL: Users must access portal to view packages and make payments",
+            ":do { /ip hotspot walled-garden remove [find comment=\"WiFiCore Portal\"] } on-error={}",
+            ":do { /ip hotspot walled-garden add dst-host={$portalHost} action=allow comment=\"WiFiCore Portal\" } on-error={}",
+            "# Allow API endpoints for package loading and payment",
+            ":do { /ip hotspot walled-garden ip remove [find comment=\"WiFiCore API\"] } on-error={}",
             ""
         ];
     }

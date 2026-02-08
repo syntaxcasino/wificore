@@ -8,25 +8,64 @@ use Illuminate\Support\Facades\Http;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
 use App\Models\SystemLog;
+use App\Services\PaymentConfigService;
 
 class MpesaService extends TenantAwareService
 {
     protected $client;
     protected $config;
+    protected ?PaymentConfigService $paymentConfigService = null;
+    protected bool $configResolved = false;
 
     public function __construct()
     {
+        // Load base config for timeout/SSL settings
         $this->config = config('mpesa');
+    }
+
+    /**
+     * Set tenant context for credential resolution
+     */
+    public function setTenantPaymentContext(string $tenantId): self
+    {
+        $this->paymentConfigService = app(PaymentConfigService::class);
+        $this->paymentConfigService->setTenantId($tenantId);
+        $this->configResolved = false;
+        return $this;
+    }
+
+    /**
+     * Resolve credentials and build HTTP client lazily
+     */
+    protected function resolveConfig(): void
+    {
+        if ($this->configResolved) {
+            return;
+        }
+
+        // If PaymentConfigService is set, use DB-driven credentials
+        if ($this->paymentConfigService) {
+            $resolved = $this->paymentConfigService->resolve();
+            $this->config['consumer_key'] = $resolved['consumer_key'] ?? $this->config['consumer_key'];
+            $this->config['consumer_secret'] = $resolved['consumer_secret'] ?? $this->config['consumer_secret'];
+            $this->config['shortcode'] = $resolved['shortcode'] ?? $this->config['shortcode'];
+            $this->config['passkey'] = $resolved['passkey'] ?? $this->config['passkey'];
+            $this->config['base_url'] = $this->paymentConfigService->getBaseUrl();
+        }
+
         $this->client = new Client([
             'base_uri' => $this->config['base_url'],
             'timeout' => $this->config['timeout'] ?? 30,
             'verify' => $this->config['verify_ssl'] ?? true,
         ]);
+
+        $this->configResolved = true;
     }
 
     public function initiateSTKPush(string $phoneNumber, float $amount): array
     {
         try {
+            $this->resolveConfig();
             $accessToken = $this->getAccessToken();
             $timestamp = now()->format('YmdHis');
             $shortcode = $this->config['shortcode'];
@@ -122,6 +161,7 @@ class MpesaService extends TenantAwareService
     public function getAccessToken(): string
     {
         try {
+            $this->resolveConfig();
             $response = $this->client->get('oauth/v1/generate', [
                 'query' => ['grant_type' => 'client_credentials'],
                 'auth' => [
@@ -141,6 +181,7 @@ class MpesaService extends TenantAwareService
 
     public function queryTransactionStatus(string $checkoutRequestId): array
     {
+        $this->resolveConfig();
         $accessToken = $this->getAccessToken();
 
         $payload = [

@@ -48,44 +48,50 @@ class PaymentController extends Controller
         try {
             $validated = $request->validate([
                 'phone_number' => ['required', 'regex:/^\+254[0-9]{9}$/'],
-                'package_id' => 'required|exists:packages,id',
+                'package_id' => 'required|string',
                 'mac_address' => ['required', 'regex:/^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$/'],
-                'router_id' => 'nullable|exists:routers,id',
+                'router_id' => 'nullable|string',
             ]);
 
-            // 1. Fetch Package (Ignore TenantScope to allow public access if needed)
+            // 1. Fetch Package - use withoutGlobalScope only to identify the tenant
             $package = \App\Models\Package::withoutGlobalScope(\App\Models\Scopes\TenantScope::class)
                 ->findOrFail($validated['package_id']);
             
             $amount = $package->price;
             $tenantId = $package->tenant_id;
 
-            // 2. Identify Tenant and Switch Context
+            // 2. Identify Tenant and validate it's active
             $tenant = \App\Models\Tenant::find($tenantId);
-            if (!$tenant) {
-                throw new \Exception('Tenant not found for this package');
+            if (!$tenant || !$tenant->is_active) {
+                throw new \Exception('Tenant not found or inactive');
             }
 
-            // Switch to tenant schema to create Payment record
-            // We include 'public' in search_path to allow access to shared tables if necessary
+            // Check tenant subscription is valid before processing payment
+            if ($tenant->isSubscriptionExpired() && !$tenant->isOnTrial()) {
+                throw new \Exception('Service temporarily unavailable. Please contact your provider.');
+            }
+
+            // Switch to tenant schema (include public for shared tables like mpesa_transaction_maps)
             DB::statement("SET search_path TO {$tenant->schema_name}, public");
 
             // Auto-detect router_id if not provided
-            // Note: router_id validation above might fail if router is in tenant schema and we are in public
-            // But we just validated against public.routers? No, routers table is dropped from public.
-            // So the validation rule 'exists:routers,id' might fail if it looks in public.
-            // We should probably remove the router validation or defer it until we switch context.
-            // For now, let's assume validation passes or we handle it manually.
-            
-            // Actually, if 'routers' table is gone from public, 'exists:routers,id' WILL FAIL.
-            // We should remove 'exists:routers,id' from validation or handle it manually.
-            
             $routerId = $validated['router_id'] ?? null;
             if (!$routerId) {
                 $routerId = $this->detectRouterFromRequest($request);
             }
 
-            // 3. Initiate STK Push
+            // Validate router exists in tenant schema (manual check after schema switch)
+            if ($routerId) {
+                $routerExists = \App\Models\Router::find($routerId);
+                if (!$routerExists) {
+                    $routerId = null; // Silently clear invalid router
+                }
+            }
+
+            // 3. Set tenant payment context for correct Paybill credentials
+            $this->mpesaService->setTenantPaymentContext($tenantId);
+
+            // 4. Initiate STK Push with tenant-resolved credentials
             $stkResponse = $this->mpesaService->initiateSTKPush(
                 $validated['phone_number'],
                 $amount
@@ -182,20 +188,14 @@ class PaymentController extends Controller
                 return response()->json(['success' => false, 'message' => 'Transaction not found']);
             }
 
-            // 2. Switch to Tenant Context
+            // 2. Switch to Tenant Context (include public for shared tables)
             $tenant = \App\Models\Tenant::find($mapping->tenant_id);
-            if ($tenant) {
-                // Configure tenant database connection/schema
-                // This assumes we have a service to switch tenant context
-                // For now, let's manually force the schema if possible or assume the global scope works if we set it?
-                // Actually, standard way is to use TenantScope/Manager. 
-                // But here we might just need to set the search path.
-                
-                DB::statement("SET search_path TO {$tenant->schema_name}");
-            } else {
-                 Log::error("M-Pesa Callback: Tenant not found for ID: {$mapping->tenant_id}");
-                 return response()->json(['success' => false, 'message' => 'Tenant not found']);
+            if (!$tenant || !$tenant->is_active) {
+                Log::error("M-Pesa Callback: Tenant not found or inactive for ID: {$mapping->tenant_id}");
+                return response()->json(['success' => false, 'message' => 'Tenant not found or inactive']);
             }
+
+            DB::statement("SET search_path TO {$tenant->schema_name}, public");
 
             $this->logToSystemAndFile('M-Pesa Callback Received', ['raw_callback_data' => $callbackData, 'tenant' => $tenant->slug], 'info');
 
@@ -207,6 +207,16 @@ class PaymentController extends Controller
             $payment = Payment::with('package')->where('transaction_id', $checkoutRequestId)->first();
 
             if ($payment) {
+                // IDEMPOTENCY GUARD: Skip if already processed
+                if (in_array($payment->status, ['completed', 'failed'])) {
+                    Log::info('M-Pesa Callback: Payment already processed (duplicate callback)', [
+                        'transaction_id' => $checkoutRequestId,
+                        'existing_status' => $payment->status,
+                        'tenant' => $tenant->slug,
+                    ]);
+                    return response()->json(['success' => true, 'message' => 'Already processed']);
+                }
+
                 $payment->update([
                     'status' => $status,
                     'callback_response' => $callbackData,
@@ -224,9 +234,7 @@ class PaymentController extends Controller
                         ->onQueue('hotspot-provisioning');
                     
                     // EVENT-BASED: Handle subscription reconnection
-                    $subscription = $payment->subscription; // This might be null if not loaded or exists
-                    // Note: subscription relation on Payment model looks for UserSubscription
-                    // Since we are in tenant schema, UserSubscription query should work
+                    $subscription = $payment->subscription;
                     
                     if ($subscription && $subscription->isDisconnected()) {
                         ReconnectSubscriptionJob::dispatch($payment->id, $subscription->id, $tenant->id)
@@ -347,11 +355,19 @@ class PaymentController extends Controller
     /**
      * Check payment status and get credentials for auto-login
      */
-    public function checkStatus(Payment $payment)
+    public function checkStatus(Request $request, Payment $payment)
     {
         try {
-            // Get credentials from cache if available
-            $credentials = Cache::get("payment_credentials_{$payment->id}");
+            // Get credentials from cache (tenant-scoped key, with legacy fallback)
+            $tenantId = $request->user()?->tenant_id ?? null;
+            $credentials = null;
+            if ($tenantId) {
+                $credentials = Cache::get("tenant_{$tenantId}_payment_credentials_{$payment->id}");
+            }
+            // Legacy fallback for old cache keys
+            if (!$credentials) {
+                $credentials = Cache::get("payment_credentials_{$payment->id}");
+            }
             
             return response()->json([
                 'success' => true,

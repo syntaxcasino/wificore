@@ -4,32 +4,41 @@ namespace App\Services;
 
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 class VictoriaMetricsClient
 {
     public function queryInstant(string $promql, ?int $time = null): array
     {
         $baseUrl = $this->getBaseUrl();
+        $endpoint = rtrim($baseUrl, '/') . '/api/v1/query';
         $params = ['query' => $promql];
 
         if ($time !== null) {
             $params['time'] = $time;
         }
 
-        $response = $this->http()
-            ->get(rtrim($baseUrl, '/') . '/api/v1/query', $params);
+        Log::debug('VictoriaMetrics instant query', [
+            'endpoint' => $endpoint,
+            'query' => $promql,
+        ]);
+
+        $response = $this->http()->get($endpoint, $params);
 
         if (!$response->successful()) {
-            $body = $response->body();
-            $bodySnippet = $body;
-            if (is_string($bodySnippet) && strlen($bodySnippet) > 800) {
-                $bodySnippet = substr($bodySnippet, 0, 800) . '...';
-            }
+            $bodySnippet = $this->truncateBody($response->body());
+
+            Log::error('VictoriaMetrics instant query failed', [
+                'status' => $response->status(),
+                'query' => $promql,
+                'endpoint' => $endpoint,
+                'body' => $bodySnippet,
+            ]);
 
             throw new \RuntimeException(
                 'VictoriaMetrics instant query failed: ' . $response->status() .
                 ' query=' . $promql .
-                ' body=' . (string) $bodySnippet
+                ' body=' . $bodySnippet
             );
         }
 
@@ -39,9 +48,18 @@ class VictoriaMetricsClient
     public function queryRange(string $promql, int $start, int $end, string $step): array
     {
         $baseUrl = $this->getBaseUrl();
+        $endpoint = rtrim($baseUrl, '/') . '/api/v1/query_range';
+
+        Log::debug('VictoriaMetrics range query', [
+            'endpoint' => $endpoint,
+            'query' => $promql,
+            'start' => $start,
+            'end' => $end,
+            'step' => $step,
+        ]);
 
         $response = $this->http()
-            ->get(rtrim($baseUrl, '/') . '/api/v1/query_range', [
+            ->get($endpoint, [
                 'query' => $promql,
                 'start' => $start,
                 'end' => $end,
@@ -49,16 +67,19 @@ class VictoriaMetricsClient
             ]);
 
         if (!$response->successful()) {
-            $body = $response->body();
-            $bodySnippet = $body;
-            if (is_string($bodySnippet) && strlen($bodySnippet) > 800) {
-                $bodySnippet = substr($bodySnippet, 0, 800) . '...';
-            }
+            $bodySnippet = $this->truncateBody($response->body());
+
+            Log::error('VictoriaMetrics range query failed', [
+                'status' => $response->status(),
+                'query' => $promql,
+                'endpoint' => $endpoint,
+                'body' => $bodySnippet,
+            ]);
 
             throw new \RuntimeException(
                 'VictoriaMetrics range query failed: ' . $response->status() .
                 ' query=' . $promql .
-                ' body=' . (string) $bodySnippet
+                ' body=' . $bodySnippet
             );
         }
 
@@ -67,17 +88,17 @@ class VictoriaMetricsClient
 
     private function http(): PendingRequest
     {
-        return Http::timeout((float) env('VICTORIA_METRICS_HTTP_TIMEOUT', 5));
+        return Http::timeout(config('victoriametrics.http_timeout', 5));
     }
 
     private function getBaseUrl(): string
     {
-        $explicit = (string) env('VICTORIA_METRICS_QUERY_URL', '');
+        $explicit = (string) config('victoriametrics.query_url', '');
         if ($explicit !== '') {
             return $explicit;
         }
 
-        $writeUrl = (string) env('VICTORIA_METRICS_WRITE_URL', 'http://wificore-nginx/internal/vm/api/v1/write');
+        $writeUrl = (string) config('victoriametrics.write_url', 'http://wificore-nginx/internal/vm/api/v1/write');
         $parts = parse_url($writeUrl);
 
         if (!is_array($parts)) {
@@ -95,5 +116,13 @@ class VictoriaMetricsClient
         }
 
         return rtrim($scheme . '://' . $host . $port . $basePath, '/');
+    }
+
+    private function truncateBody(string $body): string
+    {
+        if (strlen($body) > 800) {
+            return substr($body, 0, 800) . '...';
+        }
+        return $body;
     }
 }

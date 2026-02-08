@@ -24,41 +24,15 @@ return new class extends Migration
     public function up(): void
     {
         // Step 1: Drop ALL existing RADIUS functions to ensure clean slate
-        // Using DO block to handle functions that may or may not exist
-        DB::statement(<<<'SQL'
-DO $$
-DECLARE
-    r record;
-BEGIN
-    -- Drop all versions of get_user_schema
-    FOR r IN (
-        SELECT n.nspname, p.proname, pg_get_function_identity_arguments(p.oid) as args
-        FROM pg_proc p
-        JOIN pg_namespace n ON n.oid = p.pronamespace
-        WHERE p.proname = 'get_user_schema'
-    ) LOOP
-        EXECUTE format('DROP FUNCTION IF EXISTS %I.%I(%s) CASCADE', r.nspname, r.proname, r.args);
-    END LOOP;
-
-    -- Drop all versions of RADIUS functions
-    FOR r IN (
-        SELECT n.nspname, p.proname, pg_get_function_identity_arguments(p.oid) as args
-        FROM pg_proc p
-        JOIN pg_namespace n ON n.oid = p.pronamespace
-        WHERE p.proname IN (
-            'radius_authorize_check',
-            'radius_authorize_reply', 
-            'radius_post_auth_insert',
-            'radius_accounting_start',
-            'radius_accounting_update',
-            'radius_accounting_stop',
-            'radius_accounting_onoff'
-        )
-    ) LOOP
-        EXECUTE format('DROP FUNCTION IF EXISTS %I.%I(%s) CASCADE', r.nspname, r.proname, r.args);
-    END LOOP;
-END $$;
-SQL);
+        // Using explicit DROP statements with CASCADE to handle all dependencies
+        DB::statement('DROP FUNCTION IF EXISTS public.get_user_schema(VARCHAR) CASCADE');
+        DB::statement('DROP FUNCTION IF EXISTS public.radius_authorize_check(VARCHAR) CASCADE');
+        DB::statement('DROP FUNCTION IF EXISTS public.radius_authorize_reply(VARCHAR) CASCADE');
+        DB::statement('DROP FUNCTION IF EXISTS public.radius_post_auth_insert(VARCHAR, VARCHAR, VARCHAR) CASCADE');
+        DB::statement('DROP FUNCTION IF EXISTS public.radius_accounting_onoff(VARCHAR, INTEGER, VARCHAR, INTEGER) CASCADE');
+        DB::statement('DROP FUNCTION IF EXISTS public.radius_accounting_start(VARCHAR, VARCHAR, VARCHAR, VARCHAR, VARCHAR, VARCHAR, INTEGER, VARCHAR, VARCHAR, VARCHAR, VARCHAR, VARCHAR, VARCHAR, VARCHAR) CASCADE');
+        DB::statement('DROP FUNCTION IF EXISTS public.radius_accounting_update(VARCHAR, VARCHAR, VARCHAR, INTEGER, BIGINT, BIGINT) CASCADE');
+        DB::statement('DROP FUNCTION IF EXISTS public.radius_accounting_stop(VARCHAR, VARCHAR, INTEGER, INTEGER, BIGINT, BIGINT, VARCHAR, VARCHAR) CASCADE');
 
         // Step 2: Create get_user_schema - THE CORE FUNCTION
         // This function determines which tenant schema a user belongs to

@@ -236,7 +236,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useToast } from 'vue-toastification'
-import api from '@/services/api'
+import api from '@/modules/common/services/api/axios'
 
 const props = defineProps({
   router: {
@@ -366,8 +366,9 @@ async function deploySelectedService(iface) {
       )
 
       if (deployResponse.data.success) {
-        toast.success('Service deployment started')
-        await loadServices()
+        toast.info('Service deployment started...')
+        // Poll for actual deployment completion instead of assuming success
+        await pollDeploymentStatus(iface, iface.currentService.id)
       }
     }
   } catch (err) {
@@ -376,6 +377,56 @@ async function deploySelectedService(iface) {
   } finally {
     iface.deploying = false
   }
+}
+
+async function pollDeploymentStatus(iface, serviceId) {
+  const maxAttempts = 60
+  let attempts = 0
+
+  return new Promise((resolve) => {
+    const interval = setInterval(async () => {
+      attempts++
+      try {
+        const resp = await api.get(`/routers/${props.router.id}/services/${serviceId}`)
+        const svc = resp.data?.service || resp.data?.data
+        if (!svc) {
+          if (attempts >= maxAttempts) {
+            clearInterval(interval)
+            toast.warning('Deployment status check timed out')
+            await loadServices()
+            resolve()
+          }
+          return
+        }
+
+        if (svc.deployment_status === 'deployed') {
+          clearInterval(interval)
+          toast.success('Service deployed successfully')
+          iface.currentService = svc
+          await loadServices()
+          resolve()
+        } else if (svc.deployment_status === 'failed') {
+          clearInterval(interval)
+          toast.error('Service deployment failed')
+          iface.currentService = svc
+          await loadServices()
+          resolve()
+        } else if (attempts >= maxAttempts) {
+          clearInterval(interval)
+          toast.warning('Deployment is still in progress. Check status later.')
+          await loadServices()
+          resolve()
+        }
+      } catch (e) {
+        if (attempts >= maxAttempts) {
+          clearInterval(interval)
+          toast.warning('Could not verify deployment status')
+          await loadServices()
+          resolve()
+        }
+      }
+    }, 3000)
+  })
 }
 
 async function removeService(iface) {

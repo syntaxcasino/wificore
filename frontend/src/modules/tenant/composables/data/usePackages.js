@@ -65,19 +65,19 @@ export function usePackages() {
     formSubmitting.value = true
     formMessage.value = { text: '', type: '' }
     try {
-      // Use authenticated API endpoint - tenant_id auto-assigned by backend
       const response = await axios.post('/packages', formData.value)
-      formMessage.value = { text: 'Package created successfully', type: 'success' }
+      const msg = response.data?.message || 'Package created successfully'
+      formMessage.value = { text: msg, type: 'success' }
       formSubmitted.value = true
       setTimeout(() => {
         showFormOverlay.value = false
         formSubmitted.value = false
         resetFormData()
-        fetchPackages()
+        // List refresh is handled by WebSocket PackageCreated event
       }, 1500)
     } catch (err) {
       formMessage.value = {
-        text: err.response?.data?.error || 'Failed to create package',
+        text: err.response?.data?.error || err.response?.data?.message || 'Failed to create package',
         type: 'error'
       }
       console.error('addPackage error:', err.message, err.response?.data)
@@ -97,21 +97,14 @@ export function usePackages() {
     formSubmitting.value = true
     formMessage.value = { text: '', type: '' }
     try {
-      // Use authenticated API endpoint - backend verifies ownership
       const response = await axios.put(`/packages/${selectedPackage.value.id}`, formData.value)
-      const updatedPackage = response.data
-      
-      // Update local state instead of refetching
-      const index = packages.value.findIndex(p => p.id === selectedPackage.value.id)
-      if (index !== -1) {
-        packages.value[index] = updatedPackage
-      }
-      
-      formMessage.value = { text: 'Package updated successfully', type: 'success' }
+      const msg = response.data?.message || 'Package updated successfully'
+      formMessage.value = { text: msg, type: 'success' }
       showUpdateOverlay.value = false
+      // List refresh is handled by WebSocket PackageUpdated event
     } catch (err) {
       formMessage.value = {
-        text: err.response?.data?.error || 'Failed to update package',
+        text: err.response?.data?.error || err.response?.data?.message || 'Failed to update package',
         type: 'error'
       }
       console.error('updatePackage error:', err.message, err.response?.data)
@@ -122,11 +115,8 @@ export function usePackages() {
 
   const deletePackage = async (id) => {
     try {
-      // Use authenticated API endpoint - backend verifies ownership
       await axios.delete(`/packages/${id}`)
-      
-      // Remove from local state instead of refetching
-      packages.value = packages.value.filter(p => p.id !== id)
+      // List refresh is handled by WebSocket PackageDeleted event
     } catch (err) {
       console.error('deletePackage error:', err.message, err.response?.data)
       throw err
@@ -146,22 +136,14 @@ export function usePackages() {
   const toggleStatus = async (pkg) => {
     try {
       const newStatus = pkg.status === 'active' ? 'inactive' : 'active'
-      const newIsActive = pkg.is_active ? false : true
+      const newIsActive = !pkg.is_active
       
-      // Use authenticated API endpoint - backend verifies ownership
-      const response = await axios.put(`/packages/${pkg.id}`, {
+      await axios.put(`/packages/${pkg.id}`, {
         ...pkg,
         status: newStatus,
         is_active: newIsActive
       })
-      
-      const updatedPackage = response.data
-      
-      // Update local state instead of refetching
-      const index = packages.value.findIndex(p => p.id === pkg.id)
-      if (index !== -1) {
-        packages.value[index] = updatedPackage
-      }
+      // UI update is handled by WebSocket PackageUpdated event
     } catch (err) {
       console.error('toggleStatus error:', err.message, err.response?.data)
       throw err

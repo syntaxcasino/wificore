@@ -145,9 +145,26 @@ class PPPoEService extends BaseMikroTikService
             $script[] = '';
         }
         
-        // Firewall and NAT
+        // ============ FIREWALL - FORWARD CHAIN (CRITICAL SECURITY) ============
+        // Rule order matters! MikroTik processes top-to-bottom.
+        // 1. Accept established/related (keeps existing authenticated sessions working)
+        // 2. Drop invalid connections
+        // 3. Allow authenticated PPPoE subnet traffic to WAN (only IPs from pool = authenticated)
+        // 4. DROP everything else from bridge (catches unauthenticated devices)
+        $script[] = "# Forward chain - authentication enforcement";
+        $script[] = ":do { /ip firewall filter remove [find comment~\"WiFiCore PPPoE FW\"]; } on-error={}";
+        $script[] = ":do { /ip firewall filter add chain=forward connection-state=established,related action=accept comment=\"WiFiCore PPPoE FW-EST ({$routerId})\"; } on-error={}";
+        $script[] = ":do { /ip firewall filter add chain=forward connection-state=invalid action=drop comment=\"WiFiCore PPPoE FW-INV ({$routerId})\"; } on-error={}";
+        $script[] = ":do { /ip firewall filter add chain=forward src-address={$gateway}/24 out-interface-list=WAN action=accept comment=\"WiFiCore PPPoE FW-INET ({$routerId})\"; } on-error={}";
+        // CRITICAL: Block ALL other traffic from the PPPoE bridge (unauthenticated devices)
+        $script[] = ":do { /ip firewall filter add chain=forward in-interface=\"{$bridgeName}\" action=drop comment=\"WiFiCore PPPoE FW-DROP ({$routerId})\"; } on-error={}";
+        $script[] = '';
+        
+        // ============ NAT - SCOPED MASQUERADE (SECURITY) ============
+        // Only masquerade traffic from the PPPoE subnet (authenticated users)
+        // Do NOT masquerade all WAN traffic — that would allow unauthenticated bypass
         $script[] = ':do { /ip firewall nat remove [find comment="WiFiCore PPPoE NAT"]; } on-error={}';
-        $script[] = ':do { /ip firewall nat add chain=srcnat action=masquerade out-interface-list=WAN comment="WiFiCore PPPoE NAT"; } on-error={ :error "PPPoE: NAT add failed" }';
+        $script[] = ":do { /ip firewall nat add chain=srcnat src-address={$gateway}/24 out-interface-list=WAN action=masquerade comment=\"WiFiCore PPPoE NAT\"; } on-error={ :error \"PPPoE: NAT add failed\" }";
         $script[] = '';
         
         // DNS

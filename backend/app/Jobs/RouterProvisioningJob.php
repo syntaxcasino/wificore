@@ -10,6 +10,7 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 class RouterProvisioningJob implements ShouldQueue
@@ -48,6 +49,16 @@ class RouterProvisioningJob implements ShouldQueue
                     'router_id' => $this->routerId,
                     'tenant_id' => $this->tenantId
                 ]);
+                return;
+            }
+
+            // Idempotency lock - prevent concurrent provisioning of same router
+            $lock = Cache::lock('provision_router_' . $this->routerId, 600);
+            if (!$lock->get()) {
+                Log::warning('RouterProvisioningJob: Provisioning already in progress (lock held)', [
+                    'router_id' => $this->routerId,
+                ]);
+                $this->release(30);
                 return;
             }
 
@@ -135,6 +146,8 @@ class RouterProvisioningJob implements ShouldQueue
                 ]);
 
                 throw $e;
+            } finally {
+                $lock->release();
             }
         });
     }

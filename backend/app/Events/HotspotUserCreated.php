@@ -4,9 +4,8 @@ namespace App\Events;
 
 use App\Models\HotspotUser;
 use App\Models\Payment;
-use Illuminate\Broadcasting\Channel;
+use App\Traits\BroadcastsToTenant;
 use Illuminate\Broadcasting\InteractsWithSockets;
-use Illuminate\Broadcasting\PresenceChannel;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
@@ -15,10 +14,12 @@ use Illuminate\Queue\SerializesModels;
 class HotspotUserCreated implements ShouldBroadcast
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
+    use BroadcastsToTenant;
 
     public $hotspotUser;
     public $payment;
     public $credentials;
+    public $tenantId;
 
     /**
      * Create a new event instance.
@@ -28,6 +29,7 @@ class HotspotUserCreated implements ShouldBroadcast
         $this->hotspotUser = $hotspotUser;
         $this->payment = $payment;
         $this->credentials = $credentials;
+        $this->tenantId = $payment->tenant_id ?? $hotspotUser->tenant_id ?? null;
     }
 
     /**
@@ -35,10 +37,10 @@ class HotspotUserCreated implements ShouldBroadcast
      */
     public function broadcastOn(): array
     {
-        return [
-            new PrivateChannel('dashboard-stats'),
-            new PrivateChannel('hotspot-users'),
-        ];
+        if ($this->tenantId) {
+            return $this->getTenantChannels(['hotspot', 'hotspot-users', 'dashboard-stats']);
+        }
+        return [new PrivateChannel('hotspot-users')];
     }
 
     /**

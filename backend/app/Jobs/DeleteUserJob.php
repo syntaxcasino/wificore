@@ -20,6 +20,10 @@ class DeleteUserJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
+    public int $tries = 3;
+    public int $maxExceptions = 3;
+    public array $backoff = [10, 30, 60];
+
     public int $userId;
     public string $deletedBy;
 
@@ -80,7 +84,15 @@ class DeleteUserJob implements ShouldQueue
                 'job' => 'DeleteUserJob',
             ]);
             
-            $this->release(30);
+            throw $e;
         }
+    }
+
+    public function failed(?\Throwable $exception): void
+    {
+        Log::critical('DeleteUserJob permanently failed', [
+            'user_id' => $this->userId,
+            'error' => $exception?->getMessage(),
+        ]);
     }
 }

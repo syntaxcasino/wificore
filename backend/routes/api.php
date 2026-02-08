@@ -547,6 +547,17 @@ Route::middleware(['auth:sanctum', 'role:admin', 'user.active', 'tenant.context'
         Route::post('/check-payments', [\App\Http\Controllers\Api\TenantPaybillController::class, 'triggerPaymentCheck']);
     });
 
+    // Communication Channels (SMS, WhatsApp, Email)
+    Route::prefix('communication-channels')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Api\CommunicationChannelController::class, 'index']);
+        Route::get('/providers', [\App\Http\Controllers\Api\CommunicationChannelController::class, 'providers']);
+        Route::get('/{id}', [\App\Http\Controllers\Api\CommunicationChannelController::class, 'show']);
+        Route::post('/', [\App\Http\Controllers\Api\CommunicationChannelController::class, 'store']);
+        Route::put('/{id}', [\App\Http\Controllers\Api\CommunicationChannelController::class, 'update']);
+        Route::delete('/{id}', [\App\Http\Controllers\Api\CommunicationChannelController::class, 'destroy']);
+        Route::post('/{id}/test', [\App\Http\Controllers\Api\CommunicationChannelController::class, 'sendTest']);
+    });
+
     Route::prefix('pppoe')->group(function () {
         Route::get('/users', [PppoeUserController::class, 'index']);
         Route::get('/users/{id}', [PppoeUserController::class, 'show']);

@@ -76,8 +76,8 @@ class ZeroConfigPPPoEGenerator
             'range_end'     => $pool->range_end,
             'dns_primary'   => $pool->dns_primary ?? '8.8.8.8',
             'dns_secondary' => $pool->dns_secondary ?? '8.8.4.4',
-            'radius_server' => env('VPN_SERVER_IP', env('RADIUS_SERVER_IP', env('RADIUS_SERVER_HOST', 'wificore-freeradius'))),
-            'radius_secret' => env('RADIUS_SECRET', 'testing123'),
+            'radius_server' => config('radius.server_ip', config('services.radius.host', 'wificore-freeradius')),
+            'radius_secret' => config('radius.secret', 'testing123'),
         ]);
     }
 
@@ -160,15 +160,29 @@ class ZeroConfigPPPoEGenerator
         $s[] = ":do { :if ([:len [/ip firewall filter find comment=\"PPPoE-$id-DROP-IN\"]] = 0) do={ /ip firewall filter add chain=input in-interface={$bridge} action=drop comment=\"PPPoE-$id-DROP-IN\" } } on-error={}";
 
         // FORWARD chain - control client traffic
-        $s[] = ":do { :if ([:len [/ip firewall filter find comment=\"PPPoE-$id-BLOCK-UNAUTH\"]] = 0) do={ /ip firewall filter add chain=forward in-interface={$bridge} action=drop comment=\"PPPoE-$id-BLOCK-UNAUTH\" } } on-error={}";
-        $s[] = ":do { :if ([:len [/ip firewall filter find comment=\"PPPoE-$id-EST\"]] = 0) do={ /ip firewall filter add chain=forward connection-state=established,related action=accept comment=\"PPPoE-$id-EST\" } } on-error={}";
-        $s[] = ":do { :if ([:len [/ip firewall filter find comment=\"PPPoE-$id-INV\"]] = 0) do={ /ip firewall filter add chain=forward connection-state=invalid action=drop comment=\"PPPoE-$id-INV\" } } on-error={}";
-        $s[] = ":do { :if ([:len [/ip firewall filter find comment=\"PPPoE-$id-INET\"]] = 0) do={ /ip firewall filter add chain=forward src-address={$p['network_cidr']} out-interface-list={$p['wan_list']} action=accept comment=\"PPPoE-$id-INET\" } } on-error={}";
-        $s[] = ":do { :if ([:len [/ip firewall filter find comment=\"PPPoE-$id-LOCAL\"]] = 0) do={ /ip firewall filter add chain=forward src-address={$p['network_cidr']} dst-address={$p['network_cidr']} action=accept comment=\"PPPoE-$id-LOCAL\" } } on-error={}";
+        // CRITICAL: Rule order matters! MikroTik processes top-to-bottom.
+        // 1. Allow established/related (keeps existing authenticated sessions working)
+        // 2. Drop invalid connections
+        // 3. Allow authenticated PPPoE subnet traffic to WAN (only IPs from pool = authenticated)
+        // 4. Allow local traffic within PPPoE subnet
+        // 5. DROP everything else from bridge (catches unauthenticated devices)
+
+        // Remove existing rules first for idempotent re-ordering
+        $s[] = ":do { /ip firewall filter remove [find comment~\"PPPoE-$id-(EST|INV|INET|LOCAL|BLOCK-UNAUTH)\"]; } on-error={}";
+
+        $s[] = "/ip firewall filter add chain=forward connection-state=established,related action=accept comment=\"PPPoE-$id-EST\"";
+        $s[] = "/ip firewall filter add chain=forward connection-state=invalid action=drop comment=\"PPPoE-$id-INV\"";
+        // Only traffic from the PPPoE IP pool (authenticated users get IPs from this range)
+        $s[] = "/ip firewall filter add chain=forward src-address={$p['network_cidr']} out-interface-list={$p['wan_list']} action=accept comment=\"PPPoE-$id-INET\"";
+        $s[] = "/ip firewall filter add chain=forward src-address={$p['network_cidr']} dst-address={$p['network_cidr']} action=accept comment=\"PPPoE-$id-LOCAL\"";
+        // CRITICAL: Block ALL other traffic from the PPPoE bridge (unauthenticated devices)
+        $s[] = "/ip firewall filter add chain=forward in-interface={$bridge} action=drop comment=\"PPPoE-$id-BLOCK-UNAUTH\"";
 
         // ============ NAT CONFIGURATION ============
-        // Idempotent: only add NAT rule if not present
-        $s[] = ":do { :if ([:len [/ip firewall nat find comment=\"PPPoE-$id\"]] = 0) do={ /ip firewall nat add chain=srcnat src-address={$p['network_cidr']} out-interface-list={$p['wan_list']} action=masquerade comment=\"PPPoE-$id\" } } on-error={}";
+        // Scope masquerade to ONLY the PPPoE subnet (authenticated users)
+        // Do NOT masquerade all traffic — only traffic from the assigned IP pool
+        $s[] = ":do { /ip firewall nat remove [find comment=\"PPPoE-$id\"]; } on-error={}";
+        $s[] = "/ip firewall nat add chain=srcnat src-address={$p['network_cidr']} out-interface-list={$p['wan_list']} action=masquerade comment=\"PPPoE-$id\"";
 
         // ============ CONNECTION TRACKING OPTIMIZATION ============
         // Reduce memory usage on low-end devices

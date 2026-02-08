@@ -3,9 +3,8 @@
 namespace App\Events;
 
 use App\Models\Package;
-use Illuminate\Broadcasting\Channel;
+use App\Traits\BroadcastsToTenant;
 use Illuminate\Broadcasting\InteractsWithSockets;
-use Illuminate\Broadcasting\PresenceChannel;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
@@ -14,11 +13,13 @@ use Illuminate\Queue\SerializesModels;
 class PackageStatusChanged implements ShouldBroadcast
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
+    use BroadcastsToTenant;
 
     public $package;
     public $oldStatus;
     public $newStatus;
     public $timestamp;
+    public $tenantId;
 
     /**
      * Create a new event instance.
@@ -28,6 +29,7 @@ class PackageStatusChanged implements ShouldBroadcast
         $this->package = $package;
         $this->oldStatus = $oldStatus;
         $this->newStatus = $newStatus;
+        $this->tenantId = $package->tenant_id;
         $this->timestamp = now()->toIso8601String();
     }
 
@@ -38,10 +40,7 @@ class PackageStatusChanged implements ShouldBroadcast
      */
     public function broadcastOn(): array
     {
-        return [
-            new PrivateChannel('packages'),
-            new PrivateChannel('admin-notifications'),
-        ];
+        return $this->getTenantChannels(['packages', 'dashboard-stats']);
     }
 
     /**

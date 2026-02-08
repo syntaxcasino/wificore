@@ -36,7 +36,13 @@ class CheckExpiredSubscriptionsJob implements ShouldQueue
         // If no tenant ID is set, this is the main scheduler job.
         // We need to dispatch a job for each active tenant.
         if (!$this->tenantId) {
-            $tenants = Tenant::where('is_active', true)->get();
+            // Exclude default and landlord tenants — they are exempt from subscription payment
+            $tenants = Tenant::where('is_active', true)
+                ->where('is_landlord', false)
+                ->where(function ($q) {
+                    $q->where('is_default', false)->orWhereNull('is_default');
+                })
+                ->get();
             
             foreach ($tenants as $tenant) {
                 self::dispatch($tenant->id);

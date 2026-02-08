@@ -7,7 +7,8 @@
       @click="closeSidebar"
     ></div>
 
-    <Sidebar 
+    <component
+      :is="isSystemAdmin ? AdminSidebar : AppSidebar"
       :isSidebarOpen="isSidebarOpen" 
       :isMobile="isMobile"
       @toggle-sidebar="toggleSidebar"
@@ -26,9 +27,14 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
-import Sidebar from '@/modules/common/components/layout/AppSidebar.vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useAuthStore } from '@/stores/auth'
+import AppSidebar from '@/modules/common/components/layout/AppSidebar.vue'
+import AdminSidebar from '@/modules/common/components/layout/AdminSidebar.vue'
 import AppHeader from '@/modules/common/components/layout/AppTopbar.vue'
+
+const authStore = useAuthStore()
+const isSystemAdmin = computed(() => authStore.isSystemAdmin)
 
 // Mobile detection
 const isMobile = ref(window.innerWidth < 768)
