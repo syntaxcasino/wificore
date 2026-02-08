@@ -41,6 +41,9 @@ const PaymentMethods = () => import('@/modules/tenant/views/dashboard/billing/Pa
 // Packages
 const PackagesLayout = () => import('@/modules/tenant/views/dashboard/packages/PackagesLayout.vue')
 const AllPackages = () => import('@/modules/tenant/views/dashboard/packages/AllPackagesNew.vue')
+const AddPackage = () => import('@/modules/tenant/views/dashboard/packages/AddPackageNew.vue')
+const PackageGroups = () => import('@/modules/tenant/views/dashboard/packages/PackageGroupsNew.vue')
+const BandwidthLimitRules = () => import('@/modules/tenant/views/dashboard/packages/BandwidthLimitRules.vue')
 
 // Routers
 const RoutersLayout = () => import('@/modules/tenant/views/dashboard/routers/RoutersLayout.vue')
