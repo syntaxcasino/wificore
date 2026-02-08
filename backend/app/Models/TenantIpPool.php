@@ -69,6 +69,15 @@ class TenantIpPool extends Model
         return $this->hasMany(RouterService::class, 'ip_pool_id');
     }
 
+    /**
+     * Get individual IP allocations from this pool (tenant schema).
+     * Cross-schema: pool in public, allocations in tenant schema.
+     */
+    public function allocations(): HasMany
+    {
+        return $this->hasMany(IpAllocation::class, 'ip_pool_id');
+    }
+
     public function scopeActive($query)
     {
         return $query->where('status', 'active');
