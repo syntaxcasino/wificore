@@ -23,21 +23,31 @@ class TenantIpPoolController extends Controller
     }
 
     /**
-     * List all IP pools for tenant
-     * GET /api/tenant/ip-pools
+     * List all IP pools
+     * System admins see all pools (optionally filtered by tenant_id).
+     * Tenant users see only their own pools (via TenantScope).
+     * GET /api/system/tenant/ip-pools or GET /api/tenant/ip-pools
      */
     public function index(Request $request)
     {
-        $pools = TenantIpPool::with('routerServices')
-            ->when($request->service_type, function ($query, $serviceType) {
-                $query->forService($serviceType);
+        $query = TenantIpPool::query();
+
+        // System admin can filter by tenant_id
+        if ($request->tenant_id && auth()->user()->role === 'system_admin') {
+            $query->where('tenant_id', $request->tenant_id);
+        }
+
+        $pools = $query
+            ->when($request->service_type, function ($q, $serviceType) {
+                $q->forService($serviceType);
             })
-            ->when($request->status === 'active', function ($query) {
-                $query->active();
+            ->when($request->status === 'active', function ($q) {
+                $q->active();
             })
-            ->when($request->status === 'available', function ($query) {
-                $query->available();
+            ->when($request->status === 'available', function ($q) {
+                $q->available();
             })
+            ->with('tenant:id,name,slug')
             ->orderBy('service_type')
             ->orderBy('created_at')
             ->get();
@@ -50,12 +60,35 @@ class TenantIpPoolController extends Controller
 
     /**
      * Get pool statistics
-     * GET /api/tenant/ip-pools/stats
+     * GET /api/system/tenant/ip-pools/stats or GET /api/tenant/ip-pools/stats
      */
-    public function stats()
+    public function stats(Request $request)
     {
-        $tenant = auth()->user()->tenant;
-        $stats = $this->ipamService->getPoolStats($tenant);
+        $user = auth()->user();
+
+        // System admin can get stats for a specific tenant or all tenants
+        if ($user->role === 'system_admin') {
+            if ($request->tenant_id) {
+                $tenant = \App\Models\Tenant::findOrFail($request->tenant_id);
+                $stats = $this->ipamService->getPoolStats($tenant);
+            } else {
+                // Aggregate stats across all tenants
+                $pools = TenantIpPool::withoutGlobalScopes()->get();
+                $stats = [
+                    'total_pools' => $pools->count(),
+                    'total_ips' => $pools->sum('total_ips'),
+                    'allocated_ips' => $pools->sum('allocated_ips'),
+                    'available_ips' => $pools->sum('available_ips'),
+                    'utilization_percentage' => $pools->sum('total_ips') > 0
+                        ? round(($pools->sum('allocated_ips') / $pools->sum('total_ips')) * 100, 2)
+                        : 0,
+                    'pools_by_tenant' => $pools->groupBy('tenant_id')->map(fn($tp) => $tp->count()),
+                ];
+            }
+        } else {
+            $tenant = $user->tenant;
+            $stats = $this->ipamService->getPoolStats($tenant);
+        }
 
         return response()->json([
             'success' => true,
@@ -69,7 +102,7 @@ class TenantIpPoolController extends Controller
      */
     public function show(TenantIpPool $pool)
     {
-        $pool->load('routerServices');
+        $pool->load('tenant:id,name,slug');
 
         return response()->json([
             'success' => true,
@@ -85,7 +118,7 @@ class TenantIpPoolController extends Controller
      */
     public function store(Request $request)
     {
-        $validated = Validator::make($request->all(), [
+        $rules = [
             'service_type' => 'required|in:hotspot,pppoe,management',
             'network_cidr' => 'required|string',
             'gateway_ip' => 'required|ip',
@@ -93,13 +126,24 @@ class TenantIpPoolController extends Controller
             'range_end' => 'required|ip',
             'dns_primary' => 'nullable|ip',
             'dns_secondary' => 'nullable|ip',
-        ])->validate();
+        ];
+
+        // System admin must specify which tenant the pool belongs to
+        $user = auth()->user();
+        if ($user->role === 'system_admin') {
+            $rules['tenant_id'] = 'required|uuid|exists:tenants,id';
+        }
+
+        $validated = Validator::make($request->all(), $rules)->validate();
 
         try {
-            $tenant = auth()->user()->tenant;
+            $tenantId = ($user->role === 'system_admin')
+                ? $validated['tenant_id']
+                : $user->tenant_id;
 
-            // Validate network doesn't overlap with existing pools
-            $overlapping = TenantIpPool::where('tenant_id', $tenant->id)
+            // Validate network doesn't overlap with existing pools for this tenant
+            $overlapping = TenantIpPool::withoutGlobalScopes()
+                ->where('tenant_id', $tenantId)
                 ->where('network_cidr', $validated['network_cidr'])
                 ->exists();
 
@@ -111,9 +155,10 @@ class TenantIpPoolController extends Controller
             }
 
             $pool = TenantIpPool::create(array_merge($validated, [
-                'tenant_id' => $tenant->id,
+                'tenant_id' => $tenantId,
                 'total_ips' => $this->calculateTotalIps($validated['range_start'], $validated['range_end']),
                 'allocated_ips' => 0,
+                'available_ips' => $this->calculateTotalIps($validated['range_start'], $validated['range_end']),
             ]));
 
             return response()->json([

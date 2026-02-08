@@ -42,8 +42,8 @@ class ZeroConfigHybridGenerator
         }
 
         // Get IP pools
-        $hotspotPool = TenantIpPool::find($advancedConfig['hotspot_pool_id']);
-        $pppoePool = TenantIpPool::find($advancedConfig['pppoe_pool_id']);
+        $hotspotPool = TenantIpPool::withoutGlobalScopes()->find($advancedConfig['hotspot_pool_id']);
+        $pppoePool = TenantIpPool::withoutGlobalScopes()->find($advancedConfig['pppoe_pool_id']);
         
         if (!$hotspotPool || !$pppoePool) {
             throw new \Exception('Hybrid service requires both hotspot and pppoe IP pools');

@@ -117,7 +117,8 @@ class RouterServiceManager extends TenantAwareService
         
         // Get or create IP pool for this service type (tenant-scoped)
         if (!empty($advancedOptions['ip_pool_id'])) {
-            $ipPool = TenantIpPool::where('id', $advancedOptions['ip_pool_id'])
+            $ipPool = TenantIpPool::withoutGlobalScopes()
+                ->where('id', $advancedOptions['ip_pool_id'])
                 ->firstOrFail();
         } else {
             $ipPool = $this->ipamService->getOrCreateServicePool($tenant, $serviceType);
@@ -195,14 +196,16 @@ class RouterServiceManager extends TenantAwareService
 
         // Get IP pools for both services
         if (!empty($advancedOptions['hotspot_pool_id'])) {
-            $hotspotPool = TenantIpPool::where('id', $advancedOptions['hotspot_pool_id'])
+            $hotspotPool = TenantIpPool::withoutGlobalScopes()
+                ->where('id', $advancedOptions['hotspot_pool_id'])
                 ->firstOrFail();
         } else {
             $hotspotPool = $this->ipamService->getOrCreateServicePool($tenant, 'hotspot');
         }
             
         if (!empty($advancedOptions['pppoe_pool_id'])) {
-            $pppoePool = TenantIpPool::where('id', $advancedOptions['pppoe_pool_id'])
+            $pppoePool = TenantIpPool::withoutGlobalScopes()
+                ->where('id', $advancedOptions['pppoe_pool_id'])
                 ->firstOrFail();
         } else {
             $pppoePool = $this->ipamService->getOrCreateServicePool($tenant, 'pppoe');

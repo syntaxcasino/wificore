@@ -28,7 +28,8 @@ class TenantIpamService extends TenantAwareService
     public function getOrCreateServicePool(Tenant $tenant, string $serviceType): TenantIpPool
     {
         // Try to find existing active pool
-        $pool = TenantIpPool::where('tenant_id', $tenant->id)
+        $pool = TenantIpPool::withoutGlobalScopes()
+            ->where('tenant_id', $tenant->id)
             ->forService($serviceType)
             ->available()
             ->first();
@@ -102,7 +103,8 @@ class TenantIpamService extends TenantAwareService
         $baseParts = explode('.', $baseNetwork);
         
         // Get existing pools for this service type
-        $existingPools = TenantIpPool::where('tenant_id', $tenant->id)
+        $existingPools = TenantIpPool::withoutGlobalScopes()
+            ->where('tenant_id', $tenant->id)
             ->forService($serviceType)
             ->pluck('network_cidr')
             ->toArray();
@@ -210,7 +212,8 @@ class TenantIpamService extends TenantAwareService
      */
     public function getPoolStats(Tenant $tenant): array
     {
-        $pools = TenantIpPool::where('tenant_id', $tenant->id)->get();
+        $pools = TenantIpPool::withoutGlobalScopes()
+            ->where('tenant_id', $tenant->id)->get();
 
         return [
             'total_pools' => $pools->count(),
@@ -236,7 +239,8 @@ class TenantIpamService extends TenantAwareService
      */
     private function generatePoolName(Tenant $tenant, string $serviceType): string
     {
-        $count = TenantIpPool::where('tenant_id', $tenant->id)
+        $count = TenantIpPool::withoutGlobalScopes()
+            ->where('tenant_id', $tenant->id)
             ->forService($serviceType)
             ->count();
 
