@@ -332,6 +332,32 @@ import BasePagination from '@/modules/common/components/base/BasePagination.vue'
 import BaseLoading from '@/modules/common/components/base/BaseLoading.vue'
 import BaseEmpty from '@/modules/common/components/base/BaseEmpty.vue'
 import BaseAlert from '@/modules/common/components/base/BaseAlert.vue'
+import { usePackages } from '@/modules/tenant/composables/data/usePackages'
+
+const {
+  packages,
+  loading,
+  fetchPackages,
+  editPackage: composableEditPackage,
+  deletePackage: composableDeletePackage,
+  toggleStatus: composableToggleStatus,
+  openDetails,
+  showDetailsOverlay,
+  currentPackage,
+  closeDetails,
+  showFormOverlay,
+  showUpdateOverlay,
+  formData,
+  formSubmitting,
+  formMessage,
+  addPackage,
+  updatePackage,
+  openCreateOverlay,
+  openEditOverlay,
+  closeFormOverlay,
+  closeUpdateOverlay,
+  listError
+} = usePackages()
 
 // Breadcrumbs
 const breadcrumbs = [
@@ -340,11 +366,9 @@ const breadcrumbs = [
   { label: 'All Packages' }
 ]
 
-// State
-const loading = ref(false)
+// Local state
 const refreshing = ref(false)
-const error = ref(null)
-const packages = ref([])
+const error = computed(() => listError.value)
 const searchQuery = ref('')
 const currentPage = ref(1)
 const itemsPerPage = ref(9)
@@ -355,87 +379,11 @@ const filters = ref({
   status: ''
 })
 
-// Mock data
-const mockPackages = [
-  {
-    id: 1,
-    name: '1 Hour - 5GB',
-    description: 'Perfect for quick browsing',
-    type: 'hotspot',
-    price: 50,
-    speed: '10 Mbps',
-    data_limit: '5 GB',
-    validity: '1 hour',
-    status: 'active',
-    users_count: 45
-  },
-  {
-    id: 2,
-    name: '1 Day - 20GB',
-    description: 'Full day unlimited access',
-    type: 'hotspot',
-    price: 200,
-    speed: '10 Mbps',
-    data_limit: '20 GB',
-    validity: '24 hours',
-    status: 'active',
-    users_count: 120
-  },
-  {
-    id: 3,
-    name: 'Home Basic - 10 Mbps',
-    description: 'Residential internet package',
-    type: 'pppoe',
-    price: 2000,
-    speed: '10 Mbps',
-    data_limit: null,
-    validity: '30 days',
-    status: 'active',
-    users_count: 35
-  },
-  {
-    id: 4,
-    name: 'Home Premium - 20 Mbps',
-    description: 'Fast home internet',
-    type: 'pppoe',
-    price: 3500,
-    speed: '20 Mbps',
-    data_limit: null,
-    validity: '30 days',
-    status: 'active',
-    users_count: 28
-  },
-  {
-    id: 5,
-    name: '1 Week - 50GB',
-    description: 'Weekly hotspot package',
-    type: 'hotspot',
-    price: 500,
-    speed: '10 Mbps',
-    data_limit: '50 GB',
-    validity: '7 days',
-    status: 'active',
-    users_count: 67
-  },
-  {
-    id: 6,
-    name: 'Business - 50 Mbps',
-    description: 'For small businesses',
-    type: 'pppoe',
-    price: 7500,
-    speed: '50 Mbps',
-    data_limit: null,
-    validity: '30 days',
-    status: 'inactive',
-    users_count: 0
-  }
-]
-
 // Computed
 const stats = computed(() => {
   return {
     total: packages.value.length,
-    active: packages.value.filter(p => p.status === 'active').length,
+    active: packages.value.filter(p => p.status === 'active' || p.is_active).length,
     hotspot: packages.value.filter(p => p.type === 'hotspot').length,
     pppoe: packages.value.filter(p => p.type === 'pppoe').length
   }
@@ -444,23 +392,23 @@ const stats = computed(() => {
 const filteredData = computed(() => {
   let data = packages.value
 
-  // Search filter
   if (searchQuery.value) {
     const query = searchQuery.value.toLowerCase()
     data = data.filter(p =>
-      p.name.toLowerCase().includes(query) ||
-      p.description.toLowerCase().includes(query)
+      (p.name || '').toLowerCase().includes(query) ||
+      (p.description || '').toLowerCase().includes(query)
     )
   }
 
-  // Type filter
   if (filters.value.type) {
     data = data.filter(p => p.type === filters.value.type)
   }
 
-  // Status filter
   if (filters.value.status) {
-    data = data.filter(p => p.status === filters.value.status)
+    data = data.filter(p => {
+      if (filters.value.status === 'active') return p.status === 'active' || p.is_active
+      return p.status === 'inactive' || !p.is_active
+    })
   }
 
   return data
@@ -475,7 +423,7 @@ const paginatedData = computed(() => {
 })
 
 const paginationInfo = computed(() => {
-  const start = (currentPage.value - 1) * itemsPerPage.value + 1
+  const start = filteredData.value.length > 0 ? (currentPage.value - 1) * itemsPerPage.value + 1 : 0
   const end = Math.min(start + itemsPerPage.value - 1, filteredData.value.length)
   return {
     start,
@@ -489,42 +437,17 @@ const hasActiveFilters = computed(() => {
 })
 
 // Methods
-const fetchPackages = async () => {
-  loading.value = true
-  error.value = null
-  
-  try {
-    // TODO: Replace with actual API call
-    await new Promise(resolve => setTimeout(resolve, 500))
-    packages.value = mockPackages
-  } catch (err) {
-    error.value = 'Failed to load packages. Please try again.'
-    console.error('Error fetching packages:', err)
-  } finally {
-    loading.value = false
-  }
-}
-
 const refreshPackages = async () => {
   refreshing.value = true
-  error.value = null
-  
   try {
-    await new Promise(resolve => setTimeout(resolve, 500))
-    packages.value = mockPackages
-  } catch (err) {
-    error.value = 'Failed to refresh packages.'
-    console.error('Error refreshing packages:', err)
+    await fetchPackages()
   } finally {
     refreshing.value = false
   }
 }
 
 const clearFilters = () => {
-  filters.value = {
-    type: '',
-    status: ''
-  }
+  filters.value = { type: '', status: '' }
   searchQuery.value = ''
 }
 
@@ -551,29 +474,26 @@ const getTypeVariant = (type) => {
 }
 
 const formatMoney = (amount) => {
-  return new Intl.NumberFormat('en-KE').format(amount)
+  return new Intl.NumberFormat('en-KE').format(amount || 0)
 }
 
 const viewPackage = (pkg) => {
-  console.log('View package:', pkg)
-  // TODO: Implement package details view
+  openDetails(pkg)
 }
 
 const editPackage = (pkg) => {
-  console.log('Edit package:', pkg)
-  // TODO: Navigate to edit page
+  openEditOverlay(pkg)
 }
 
 const toggleStatus = async (pkg) => {
-  const action = pkg.status === 'active' ? 'deactivate' : 'activate'
+  const action = (pkg.status === 'active' || pkg.is_active) ? 'deactivate' : 'activate'
   if (!confirm(`Are you sure you want to ${action} ${pkg.name}?`)) return
   
   try {
-    // TODO: Implement API call
-    await new Promise(resolve => setTimeout(resolve, 500))
-    pkg.status = pkg.status === 'active' ? 'inactive' : 'active'
+    await composableToggleStatus(pkg)
   } catch (err) {
     console.error(`Failed to ${action} package:`, err)
+    alert(`Failed to ${action} package: ${err.response?.data?.error || err.message}`)
   }
 }
 
@@ -581,11 +501,10 @@ const deletePackage = async (pkg) => {
   if (!confirm(`Are you sure you want to delete ${pkg.name}? This action cannot be undone.`)) return
   
   try {
-    // TODO: Implement API call
-    await new Promise(resolve => setTimeout(resolve, 500))
-    packages.value = packages.value.filter(p => p.id !== pkg.id)
+    await composableDeletePackage(pkg.id)
   } catch (err) {
     console.error('Failed to delete package:', err)
+    alert(`Failed to delete package: ${err.response?.data?.error || err.message}`)
   }
 }
 
