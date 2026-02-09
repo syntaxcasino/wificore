@@ -150,11 +150,8 @@ Route::middleware('throttle:3,1')->post('/email/resend', [LoginController::class
 // RATE-LIMITED PUBLIC ROUTES
 // =============================================================================
 
-// Packages - Public viewing for hotspot users (uses PublicPackageController for proper tenant detection)
-// This route is for unauthenticated hotspot users, NOT for tenant dashboard
-// Tenant dashboard should use /api/packages (authenticated route)
-Route::middleware('throttle:60,1')->get('/packages', [PublicPackageController::class, 'getPublicPackages'])
-    ->name('api.public.packages.list');
+// NOTE: Public packages are served via /api/public/packages (see above).
+// The authenticated /api/packages route is inside the auth middleware group below.
 
 // Payment Initiation - Rate limited to prevent payment spam
 Route::middleware('throttle:10,1')->post('/payments/initiate', [PaymentController::class, 'initiateSTK'])

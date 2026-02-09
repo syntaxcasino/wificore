@@ -18,6 +18,11 @@
     <!-- Content -->
     <PageContent>
       <div class="max-w-4xl mx-auto">
+        <!-- Error Message -->
+        <div v-if="errorMessage" class="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+          {{ errorMessage }}
+        </div>
+
         <form @submit.prevent="handleSubmit" class="space-y-6">
           <!-- Basic Information -->
           <BaseCard>
@@ -389,6 +394,7 @@ import {
   Package, ArrowLeft, Save, Wifi, Network, CheckCircle,
   Zap, HardDrive, Clock
 } from 'lucide-vue-next'
+import axios from 'axios'
 import PageContainer from '@/modules/common/components/layout/templates/PageContainer.vue'
 import PageHeader from '@/modules/common/components/layout/templates/PageHeader.vue'
 import PageContent from '@/modules/common/components/layout/templates/PageContent.vue'
@@ -408,6 +414,7 @@ const breadcrumbs = [
 
 // State
 const saving = ref(false)
+const errorMessage = ref('')
 
 const formData = ref({
   name: '',
@@ -442,19 +449,58 @@ const formatMoney = (amount) => {
   return new Intl.NumberFormat('en-KE').format(amount)
 }
 
+const buildPayload = () => {
+  const f = formData.value
+  const dataLimit = f.unlimited_data ? 'Unlimited' : (f.data_limit_value ? `${f.data_limit_value} ${f.data_limit_unit}` : null)
+  const speed = (f.download_speed || f.upload_speed) ? `${f.download_speed || 0}/${f.upload_speed || 0} Mbps` : null
+  return {
+    name: f.name,
+    description: f.description,
+    type: f.type,
+    price: f.price,
+    duration: f.validity,
+    validity: f.validity,
+    download_speed: f.download_speed ? `${f.download_speed}M` : '0M',
+    upload_speed: f.upload_speed ? `${f.upload_speed}M` : '0M',
+    speed: speed,
+    data_limit: dataLimit,
+    devices: 1,
+    status: f.is_active ? 'active' : 'inactive',
+    is_active: f.is_active,
+  }
+}
+
+const resetForm = () => {
+  formData.value = {
+    name: '',
+    description: '',
+    type: 'hotspot',
+    price: null,
+    validity: '',
+    download_speed: null,
+    upload_speed: null,
+    data_limit_value: null,
+    data_limit_unit: 'GB',
+    unlimited_data: false,
+    burst_download: null,
+    burst_upload: null,
+    is_active: true,
+    is_featured: false,
+    display_order: 0
+  }
+  errorMessage.value = ''
+}
+
 const handleSubmit = async () => {
   saving.value = true
+  errorMessage.value = ''
   
   try {
-    // TODO: Replace with actual API call
-    await new Promise(resolve => setTimeout(resolve, 1000))
-    
-    console.log('Creating package:', formData.value)
-    alert('Package created successfully!')
-    router.push('/dashboard/packages')
+    await axios.post('/packages', buildPayload())
+    router.push('/dashboard/packages/all')
   } catch (err) {
     console.error('Error creating package:', err)
-    alert('Failed to create package')
+    errorMessage.value = err.response?.data?.error || err.response?.data?.message || 'Failed to create package'
   } finally {
     saving.value = false
   }
@@ -462,34 +508,14 @@ const handleSubmit = async () => {
 
 const handleSaveAndNew = async () => {
   saving.value = true
+  errorMessage.value = ''
   
   try {
-    await new Promise(resolve => setTimeout(resolve, 1000))
-    
-    console.log('Creating package:', formData.value)
-    alert('Package created! Add another one.')
-    
-    // Reset form
-    formData.value = {
-      name: '',
-      description: '',
-      type: 'hotspot',
-      price: null,
-      validity: '',
-      download_speed: null,
-      upload_speed: null,
-      data_limit_value: null,
-      data_limit_unit: 'GB',
-      unlimited_data: false,
-      burst_download: null,
-      burst_upload: null,
-      is_active: true,
-      is_featured: false,
-      display_order: 0
-    }
+    await axios.post('/packages', buildPayload())
+    resetForm()
   } catch (err) {
     console.error('Error creating package:', err)
-    alert('Failed to create package')
+    errorMessage.value = err.response?.data?.error || err.response?.data?.message || 'Failed to create package'
   } finally {
     saving.value = false
   }

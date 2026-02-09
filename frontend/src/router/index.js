@@ -267,9 +267,9 @@ const routes = [
         path: 'packages',
         component: PackagesLayout,
         children: [
-          // { path: '', redirect: 'all' },
+          { path: '', redirect: 'all' },
           { path: 'all', name: 'packages.all', component: AllPackages },
-          //{ path: 'add', name: 'packages.add', component: AddPackage },
+          { path: 'add', name: 'packages.add', component: AddPackage },
           { path: 'groups', name: 'packages.groups', component: PackageGroups },
 /*           {
             path: 'bandwidth-limits',
