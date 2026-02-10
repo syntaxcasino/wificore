@@ -24,11 +24,11 @@ class GenerateTelegrafConfig extends Command
         $shardIndex = null;
         if ($shardIndexOption !== null && $shardIndexOption !== '') {
             $shardIndex = (int) $shardIndexOption;
-        } elseif (env('TELEGRAF_SHARD_INDEX') !== null && env('TELEGRAF_SHARD_INDEX') !== '') {
-            $shardIndex = (int) env('TELEGRAF_SHARD_INDEX');
+        } elseif (config('telegraf.shard_index') !== null && config('telegraf.shard_index') !== '') {
+            $shardIndex = (int) config('telegraf.shard_index');
         }
 
-        $shardCount = (int) ($this->option('shard-count') ?: env('TELEGRAF_SHARD_COUNT', 1));
+        $shardCount = (int) ($this->option('shard-count') ?: config('telegraf.shard_count', 1));
         if ($shardCount < 1) {
             $shardCount = 1;
         }
@@ -56,16 +56,16 @@ class GenerateTelegrafConfig extends Command
         for ($currentShardIndex = $startShard; $currentShardIndex < $endShard; $currentShardIndex++) {
             $lines = [];
 
-            $fastInterval = (string) env('TELEGRAF_FAST_INTERVAL', '3s');
-            $slowInterval = (string) env('TELEGRAF_SLOW_INTERVAL', '30s');
+            $fastInterval = (string) config('telegraf.fast_interval', '3s');
+            $slowInterval = (string) config('telegraf.slow_interval', '30s');
             
-            // SNMPv3 credentials from environment
-            $snmpV3User = (string) env('TELEGRAF_SNMPV3_USER', 'snmpmonitor');
-            $snmpV3AuthPassword = (string) env('TELEGRAF_SNMPV3_AUTH_PASSWORD', '');
-            $snmpV3PrivPassword = (string) env('TELEGRAF_SNMPV3_PRIV_PASSWORD', '');
-            $snmpCommunity = (string) env('TELEGRAF_SNMP_COMMUNITY', 'public');
+            // SNMPv3 credentials from config
+            $snmpV3User = (string) config('telegraf.snmpv3_user', 'snmpmonitor');
+            $snmpV3AuthPassword = (string) config('telegraf.snmpv3_auth_password', '');
+            $snmpV3PrivPassword = (string) config('telegraf.snmpv3_priv_password', '');
+            $snmpCommunity = (string) config('telegraf.snmp_community', 'public');
 
-            $vmWriteUrl = (string) env('VICTORIA_METRICS_WRITE_URL', 'http://wificore-nginx/internal/vm/api/v1/write');
+            $vmWriteUrl = (string) config('victoriametrics.write_url', 'http://wificore-nginx/internal/vm/api/v1/write');
 
             $lines[] = '[agent]';
             $lines[] = "interval = \"{$fastInterval}\"";
@@ -109,6 +109,7 @@ class GenerateTelegrafConfig extends Command
                             'device_type',
                             'snmp_enabled',
                             'snmp_version',
+                            'snmp_community',
                             'snmp_v3_user',
                             'snmp_v3_auth_protocol',
                             'snmp_v3_auth_password',
@@ -139,6 +140,10 @@ class GenerateTelegrafConfig extends Command
                         $versionRaw = strtolower((string) ($router->snmp_version ?? '2c'));
                         $requestedVersion = ($versionRaw === '3' || $versionRaw === 'v3' || $versionRaw === 'snmpv3') ? 3 : (($versionRaw === '1' || $versionRaw === 'v1') ? 1 : 2);
 
+                        // Per-router community string with env fallback
+                        $routerCommunity = (string) ($router->snmp_community ?? '');
+                        $effectiveCommunity = $routerCommunity !== '' ? $routerCommunity : $snmpCommunity;
+
                         // Check if SNMPv3 credentials are actually available
                         $v3User = (string) ($router->snmp_v3_user ?? $snmpV3User);
                         $authPass = (string) ($router->snmp_v3_auth_password ?? $snmpV3AuthPassword);
@@ -148,13 +153,13 @@ class GenerateTelegrafConfig extends Command
                         // If SNMPv3 is requested but credentials are missing, fall back to SNMPv2c
                         if ($requestedVersion === 3 && !$hasV3Credentials) {
                             $version = 2;
-                            $community = $snmpCommunity;
+                            $community = $effectiveCommunity;
                         } elseif ($requestedVersion === 3 && $hasV3Credentials) {
                             $version = 3;
                             $community = '';
                         } else {
                             $version = $requestedVersion;
-                            $community = $snmpCommunity;
+                            $community = $effectiveCommunity;
                         }
 
                         $lines[] = '[[inputs.snmp]]';
@@ -170,18 +175,13 @@ class GenerateTelegrafConfig extends Command
                         if ($version !== 3) {
                             $lines[] = "community = \"{$this->escapeTelegrafString($community)}\"";
                         }
-                        
-                        $lines[] = "[inputs.snmp.tags]";
-                        $lines[] = "tenant_id = \"{$tenant->id}\"";
-                        $lines[] = "router_id = \"{$routerId}\"";
-                        $lines[] = "device_type = \"{$deviceType}\"";
-                        $lines[] = '';
 
-                        // Add SNMPv3 credentials if available
+                        // Resolve SNMPv3 protocol settings (used by both health and interface blocks)
+                        $authProto = (string) ($router->snmp_v3_auth_protocol ?? 'SHA');
+                        $privProto = (string) ($router->snmp_v3_priv_protocol ?? 'AES');
+
+                        // SNMPv3 credentials must come before [tags] section in TOML
                         if ($version === 3 && $hasV3Credentials) {
-                            $authProto = (string) ($router->snmp_v3_auth_protocol ?? 'SHA');
-                            $privProto = (string) ($router->snmp_v3_priv_protocol ?? 'AES');
-                            
                             $lines[] = "sec_name = \"{$this->escapeTelegrafString($v3User)}\"";
                             $lines[] = "sec_level = \"authPriv\"";
                             $lines[] = "auth_protocol = \"{$this->escapeTelegrafString($authProto)}\"";
@@ -189,6 +189,12 @@ class GenerateTelegrafConfig extends Command
                             $lines[] = "priv_protocol = \"{$this->escapeTelegrafString($privProto)}\"";
                             $lines[] = "priv_password = \"{$this->escapeTelegrafString($privPass)}\"";
                         }
+
+                        $lines[] = "[inputs.snmp.tags]";
+                        $lines[] = "tenant_id = \"{$tenant->id}\"";
+                        $lines[] = "router_id = \"{$routerId}\"";
+                        $lines[] = "device_type = \"{$deviceType}\"";
+                        $lines[] = '';
 
                         $lines[] = '[[inputs.snmp.field]]';
                         $lines[] = 'name = "identity"';
@@ -228,9 +234,67 @@ class GenerateTelegrafConfig extends Command
                         $lines[] = 'oid = "1.3.6.1.4.1.14988.1.1.5.4.0"';
                         $lines[] = '';
 
-                        // Note: Storage and interface table queries removed due to MIB dependency issues
-                        // These require MIB files not present in standard Telegraf image
-                        // Interface metrics can be added later with MIB-enabled Telegraf image if needed
+                        // Interface traffic counters (IF-MIB, numeric OIDs — no MIB files needed)
+                        // Uses SNMPv2c table walk for 64-bit high-capacity counters
+                        $lines[] = '[[inputs.snmp]]';
+                        $lines[] = "interval = \"{$fastInterval}\"";
+                        $lines[] = "agents = [\"udp://{$ip}:161\"]";
+                        $lines[] = "version = {$version}";
+                        $lines[] = 'timeout = "3s"';
+                        $lines[] = 'retries = 1';
+                        $lines[] = 'max_repetitions = 25';
+                        $lines[] = 'name = "interface_counters"';
+
+                        if ($version !== 3) {
+                            $lines[] = "community = \"{$this->escapeTelegrafString($community)}\"";
+                        }
+
+                        // SNMPv3 credentials must come before [tags] section in TOML
+                        if ($version === 3 && $hasV3Credentials) {
+                            $lines[] = "sec_name = \"{$this->escapeTelegrafString($v3User)}\"";
+                            $lines[] = "sec_level = \"authPriv\"";
+                            $lines[] = "auth_protocol = \"{$this->escapeTelegrafString($authProto)}\"";
+                            $lines[] = "auth_password = \"{$this->escapeTelegrafString($authPass)}\"";
+                            $lines[] = "priv_protocol = \"{$this->escapeTelegrafString($privProto)}\"";
+                            $lines[] = "priv_password = \"{$this->escapeTelegrafString($privPass)}\"";
+                        }
+
+                        $lines[] = "[inputs.snmp.tags]";
+                        $lines[] = "tenant_id = \"{$tenant->id}\"";
+                        $lines[] = "router_id = \"{$routerId}\"";
+                        $lines[] = "device_type = \"{$deviceType}\"";
+                        $lines[] = '';
+
+                        // Interface table: name, status, speed, traffic counters
+                        $lines[] = '[[inputs.snmp.table]]';
+                        $lines[] = 'name = "interface"';
+                        $lines[] = 'inherit_tags = ["tenant_id", "router_id", "device_type"]';
+                        $lines[] = '';
+
+                        // ifDescr — interface name/description
+                        $lines[] = '[[inputs.snmp.table.field]]';
+                        $lines[] = 'name = "ifDescr"';
+                        $lines[] = 'oid = "1.3.6.1.2.1.2.2.1.2"';
+                        $lines[] = 'is_tag = true';
+                        $lines[] = '';
+
+                        // ifOperStatus — 1=up, 2=down
+                        $lines[] = '[[inputs.snmp.table.field]]';
+                        $lines[] = 'name = "ifOperStatus"';
+                        $lines[] = 'oid = "1.3.6.1.2.1.2.2.1.8"';
+                        $lines[] = '';
+
+                        // ifHCInOctets — 64-bit inbound byte counter
+                        $lines[] = '[[inputs.snmp.table.field]]';
+                        $lines[] = 'name = "ifHCInOctets"';
+                        $lines[] = 'oid = "1.3.6.1.2.1.31.1.1.1.6"';
+                        $lines[] = '';
+
+                        // ifHCOutOctets — 64-bit outbound byte counter
+                        $lines[] = '[[inputs.snmp.table.field]]';
+                        $lines[] = 'name = "ifHCOutOctets"';
+                        $lines[] = 'oid = "1.3.6.1.2.1.31.1.1.1.10"';
+                        $lines[] = '';
                     }
                 } catch (\Throwable $e) {
                     Log::warning('Telegraf config generation skipped tenant due to error', [

@@ -1021,9 +1021,12 @@ export default {
               }
             });
 
-          // Also subscribe to tenant-specific routers channel for status updates
+          // Also subscribe to tenant-specific routers channel for status updates and new routers
           const statusChannel = window.Echo.private(`tenant.${user.tenant_id}.routers`);
           statusChannel
+            .listen('.RouterCreated', () => {
+              fetchRouters();
+            })
             .listen('.router.status.changed', (e) => {
               const idx = routers.value.findIndex((r) => r.id === e.router_id);
               if (idx !== -1) {

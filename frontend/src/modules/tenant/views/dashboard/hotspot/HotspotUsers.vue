@@ -47,9 +47,9 @@
             <BaseButton @click="handleRefresh" variant="ghost" size="sm" :disabled="loading">
               <RefreshCw class="w-4 h-4" :class="{ 'animate-spin': loading }" />
             </BaseButton>
-            <BaseButton @click="$router.push('/dashboard/hotspot/vouchers/generate')" variant="primary">
+            <BaseButton @click="$router.push('/dashboard/hotspot/vouchers')" variant="primary">
               <Ticket class="w-4 h-4 mr-1" />
-              Generate Vouchers
+              Create Voucher
             </BaseButton>
           </div>
         </div>
@@ -86,7 +86,7 @@
           icon="Wifi"
           actionText="View Vouchers"
           actionIcon="Ticket"
-          @action="$router.push('/dashboard/hotspot/vouchers/generate')"
+          @action="$router.push('/dashboard/hotspot/vouchers')"
         />
       </div>
 
@@ -438,6 +438,9 @@ onMounted(() => {
       '.hotspot.access.granted': () => fetchUsers(),
       '.hotspot.access.revoked': () => fetchUsers(),
       '.hotspot.package.expired': () => fetchUsers(),
+      '.hotspot.provisioned': () => fetchUsers(),
+      '.hotspot.login.attempted': () => fetchUsers(),
+      HotspotUserCreated: () => fetchUsers(),
     })
   }
 })

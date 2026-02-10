@@ -215,12 +215,37 @@ onMounted(() => {
     'DashboardStatsUpdated': (event) => {
       if (event.stats) updateStatsFromEvent(event.stats)
     },
+    '.DashboardStatsUpdated': (event) => {
+      if (event.stats) updateStatsFromEvent(event.stats)
+    },
+    'PackageCreated': () => fetchDashboardStats(),
+    'PackageDeleted': () => fetchDashboardStats(),
+    'PppoeUserCreated': () => fetchDashboardStats(),
+    'PppoeUserDeleted': () => fetchDashboardStats(),
+    'PppoeSessionStarted': () => fetchDashboardStats(),
+    'PppoeSessionEnded': () => fetchDashboardStats(),
+    'HotspotUserCreated': () => fetchDashboardStats(),
+    'RouterCreated': () => fetchDashboardStats(),
+    'PaymentCompleted': () => fetchDashboardStats(),
+    'UserCreated': () => fetchDashboardStats(),
+    '.PackageCreated': () => fetchDashboardStats(),
+    '.PppoeUserCreated': () => fetchDashboardStats(),
+    '.PppoeSessionStarted': () => fetchDashboardStats(),
+    '.PppoeSessionEnded': () => fetchDashboardStats(),
+    '.HotspotUserCreated': () => fetchDashboardStats(),
+    '.RouterCreated': () => fetchDashboardStats(),
+    '.PaymentCompleted': () => fetchDashboardStats(),
+    '.UserCreated': () => fetchDashboardStats(),
   })
 
   subscribeToPrivateChannel(`tenant.${tenantId}.routers`, {
     'RouterStatusUpdated': (event) => {
       if (event.stats) updateStatsFromEvent(event.stats)
     },
+    '.RouterStatusUpdated': (event) => {
+      if (event.stats) updateStatsFromEvent(event.stats)
+    },
+    '.RouterCreated': () => fetchDashboardStats(),
   })
 })
 </script>
