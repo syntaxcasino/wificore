@@ -126,6 +126,11 @@ Broadcast::channel('tenant.{tenantId}.pppoe-users', function ($user, $tenantId) 
     return $user->isAdmin() && (string) $user->tenant_id === (string) $tenantId;
 });
 
+// Tenant-specific PPPoE sessions channel
+Broadcast::channel('tenant.{tenantId}.pppoe-sessions', function ($user, $tenantId) {
+    return $user->isAdmin() && (string) $user->tenant_id === (string) $tenantId;
+});
+
 // Tenant-specific settings channel (Paybill config changes)
 Broadcast::channel('tenant.{tenantId}.settings', function ($user, $tenantId) {
     // SECURITY: Only tenant admins can receive settings updates

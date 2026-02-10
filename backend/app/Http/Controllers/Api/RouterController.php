@@ -194,6 +194,9 @@ class RouterController extends Controller
                 'status' => 'pending',
                 'vpn_enabled' => true, // Always enabled
                 'vpn_status' => 'pending',
+                'snmp_enabled' => true,
+                'snmp_version' => '2c',
+                'snmp_community' => config('telegraf.snmp_community', 'public'),
             ]);
 
             $connectivityScript = $this->generateConnectivityScript($router);
@@ -222,15 +225,20 @@ class RouterController extends Controller
         // Use the authoritative script from VpnService
         $vpnScript = $vpnConfig->mikrotik_script;
 
-        // Generate complete configuration script (basic setup + VPN)
+        // Generate complete configuration script (basic setup + VPN + SNMP)
         // This is what will be in the .rsc file that MikroTik downloads
         $decryptedPassword = Crypt::decrypt($router->password);
+        $snmpCommunity = config('telegraf.snmp_community', 'public');
         $completeScript = <<<EOT
 /ip service set api disabled=no port={$router->port}
 /ip service set ssh disabled=no port=22 address=""
 /user add name={$router->username} password="$decryptedPassword" group=full
 /system identity set name="{$router->name}"
 /system note set note="Managed by Traidnet Solution LTD"
+/snmp set enabled=yes contact="Network Admin" location="Managed by WifiCore"
+:do { /snmp community set [find default=yes] name={$snmpCommunity} } on-error={}
+:do { /snmp community remove [find name=public] } on-error={}
+:do { /snmp community add name={$snmpCommunity} addresses=0.0.0.0/0 security=none } on-error={}
 $vpnScript
 /ip firewall filter add chain=input protocol=tcp dst-port=22 action=accept comment="Allow SSH access"
 /ip firewall filter add chain=input protocol=udp dst-port=161 action=accept comment="Allow SNMP monitoring"
