@@ -146,18 +146,27 @@ class PPPoEService extends BaseMikroTikService
         }
         
         // ============ FIREWALL - FORWARD CHAIN (CRITICAL SECURITY) ============
-        // Rule order matters! MikroTik processes top-to-bottom.
-        // 1. Accept established/related (keeps existing authenticated sessions working)
-        // 2. Drop invalid connections
-        // 3. Allow authenticated PPPoE subnet traffic to WAN (only IPs from pool = authenticated)
-        // 4. DROP everything else from bridge (catches unauthenticated devices)
+        // CRITICAL: ALL rules MUST be scoped to in-interface to avoid affecting other router traffic.
+        // Without in-interface scoping, established/related accept matches ALL traffic on the router,
+        // letting any connected device access the internet.
+        // PPPoE auth is L2 (PADI/PADO) — clients don't need DNS before authentication.
+        // Rule order:
+        // 1. Accept established/related FROM PPPoE bridge
+        // 2. Drop invalid FROM PPPoE bridge
+        // 3. Allow authenticated PPPoE subnet traffic to WAN
+        // 4. DROP everything else from bridge (unauthenticated devices)
+        // Forward chain - authentication enforcement
+        // CRITICAL: Insert rules in REVERSE order with place-before=0 so they end up
+        // at the TOP of the filter list in the CORRECT order.
+        // Without place-before=0, rules go to the END — after default RouterOS defconf
+        // rules that have blanket accept established,related WITHOUT interface scoping,
+        // which lets unauthenticated devices access the internet.
         $script[] = "# Forward chain - authentication enforcement";
         $script[] = ":do { /ip firewall filter remove [find comment~\"WiFiCore PPPoE FW\"]; } on-error={}";
-        $script[] = ":do { /ip firewall filter add chain=forward connection-state=established,related action=accept comment=\"WiFiCore PPPoE FW-EST ({$routerId})\"; } on-error={}";
-        $script[] = ":do { /ip firewall filter add chain=forward connection-state=invalid action=drop comment=\"WiFiCore PPPoE FW-INV ({$routerId})\"; } on-error={}";
-        $script[] = ":do { /ip firewall filter add chain=forward src-address={$gateway}/24 out-interface-list=WAN action=accept comment=\"WiFiCore PPPoE FW-INET ({$routerId})\"; } on-error={}";
-        // CRITICAL: Block ALL other traffic from the PPPoE bridge (unauthenticated devices)
-        $script[] = ":do { /ip firewall filter add chain=forward in-interface=\"{$bridgeName}\" action=drop comment=\"WiFiCore PPPoE FW-DROP ({$routerId})\"; } on-error={}";
+        $script[] = ":do { /ip firewall filter add chain=forward in-interface=\"{$bridgeName}\" action=drop place-before=0 comment=\"WiFiCore PPPoE FW-DROP ({$routerId})\"; } on-error={}";
+        $script[] = ":do { /ip firewall filter add chain=forward src-address={$gateway}/24 in-interface=\"{$bridgeName}\" out-interface-list=WAN action=accept place-before=0 comment=\"WiFiCore PPPoE FW-INET ({$routerId})\"; } on-error={}";
+        $script[] = ":do { /ip firewall filter add chain=forward in-interface=\"{$bridgeName}\" connection-state=invalid action=drop place-before=0 comment=\"WiFiCore PPPoE FW-INV ({$routerId})\"; } on-error={}";
+        $script[] = ":do { /ip firewall filter add chain=forward in-interface=\"{$bridgeName}\" connection-state=established,related action=accept place-before=0 comment=\"WiFiCore PPPoE FW-EST ({$routerId})\"; } on-error={}";
         $script[] = '';
         
         // ============ NAT - SCOPED MASQUERADE (SECURITY) ============

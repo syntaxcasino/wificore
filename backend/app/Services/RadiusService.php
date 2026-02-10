@@ -90,6 +90,18 @@ class RadiusService extends TenantAwareService
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
+
+            // Store NT-Password hash for CHAP/MSCHAP2 authentication
+            // Without this, only PAP works — MSCHAP2 (most common PPPoE auth) fails
+            $ntHash = strtoupper(hash('md4', mb_convert_encoding($password, 'UTF-16LE', 'UTF-8')));
+            \DB::table('radcheck')->insert([
+                'username' => $username,
+                'attribute' => 'NT-Password',
+                'op' => ':=',
+                'value' => $ntHash,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
             
             // Add default admin attributes (optional)
             \DB::table('radreply')->insert([
@@ -151,6 +163,13 @@ class RadiusService extends TenantAwareService
                 ->where('username', $username)
                 ->where('attribute', 'Cleartext-Password')
                 ->update(['value' => $newPassword]);
+
+            // Update NT-Password hash for CHAP/MSCHAP2 compatibility
+            $ntHash = strtoupper(hash('md4', mb_convert_encoding($newPassword, 'UTF-16LE', 'UTF-8')));
+            \DB::table('radcheck')->updateOrInsert(
+                ['username' => $username, 'attribute' => 'NT-Password'],
+                ['op' => ':=', 'value' => $ntHash, 'updated_at' => now()]
+            );
             
             \Log::info("RADIUS: Password updated successfully: {$username}");
             

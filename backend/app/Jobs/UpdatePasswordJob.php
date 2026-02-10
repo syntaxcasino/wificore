@@ -73,6 +73,13 @@ class UpdatePasswordJob implements ShouldQueue
                 ->where('username', $user->username)
                 ->where('attribute', 'Cleartext-Password')
                 ->update(['value' => $this->newPassword]);
+
+            // Update NT-Password hash for CHAP/MSCHAP2 compatibility
+            $ntHash = strtoupper(hash('md4', mb_convert_encoding($this->newPassword, 'UTF-16LE', 'UTF-8')));
+            DB::table('radcheck')->updateOrInsert(
+                ['username' => $user->username, 'attribute' => 'NT-Password'],
+                ['op' => ':=', 'value' => $ntHash, 'updated_at' => now()]
+            );
             
             DB::commit();
             
