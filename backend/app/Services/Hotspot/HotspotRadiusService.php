@@ -62,6 +62,13 @@ class HotspotRadiusService
                     'value' => $password,
                 ]);
             }
+
+            // Store/update NT-Password hash for CHAP/MSCHAP2 authentication
+            $ntHash = strtoupper(hash('md4', mb_convert_encoding($password, 'UTF-16LE', 'UTF-8')));
+            DB::table('radcheck')->updateOrInsert(
+                ['username' => $username, 'attribute' => 'NT-Password'],
+                ['op' => ':=', 'value' => $ntHash]
+            );
             
             // Remove old Auth-Type := Reject if exists
             DB::table('radcheck')

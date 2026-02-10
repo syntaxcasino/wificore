@@ -150,33 +150,46 @@ class ZeroConfigPPPoEGenerator
         // Idempotent: only add rules if not present (check by comment)
 
         // INPUT chain - protect the router itself
-        // Allow PPPoE discovery on bridge (PADI/PADO/PADR/PADS)
-        $s[] = ":do { :if ([:len [/ip firewall filter find comment=\"PPPoE-$id-DISC\"]] = 0) do={ /ip firewall filter add chain=input in-interface={$bridge} protocol=udp dst-port=8863-8864 action=accept comment=\"PPPoE-$id-DISC\" } } on-error={}";
-        // Allow established connections to router
-        $s[] = ":do { :if ([:len [/ip firewall filter find comment=\"PPPoE-$id-EST-IN\"]] = 0) do={ /ip firewall filter add chain=input connection-state=established,related action=accept comment=\"PPPoE-$id-EST-IN\" } } on-error={}";
-        // Drop invalid
-        $s[] = ":do { :if ([:len [/ip firewall filter find comment=\"PPPoE-$id-INV-IN\"]] = 0) do={ /ip firewall filter add chain=input connection-state=invalid action=drop comment=\"PPPoE-$id-INV-IN\" } } on-error={}";
-        // CRITICAL: Block all other direct access from PPPoE bridge
-        $s[] = ":do { :if ([:len [/ip firewall filter find comment=\"PPPoE-$id-DROP-IN\"]] = 0) do={ /ip firewall filter add chain=input in-interface={$bridge} action=drop comment=\"PPPoE-$id-DROP-IN\" } } on-error={}";
+        // Remove existing input rules for idempotent re-ordering
+        $s[] = ":do { /ip firewall filter remove [find comment~\"PPPoE-$id-(DISC|EST-IN|INV-IN|DROP-IN)\"]; } on-error={}";
+        // Insert in REVERSE order with place-before=0 for correct ordering at top:
+        //   1. DISC (PPPoE discovery)
+        //   2. EST-IN (established/related)
+        //   3. INV-IN (invalid drop)
+        //   4. DROP-IN (block all other)
+        $s[] = "/ip firewall filter add chain=input in-interface={$bridge} action=drop place-before=0 comment=\"PPPoE-$id-DROP-IN\"";
+        $s[] = "/ip firewall filter add chain=input in-interface={$bridge} connection-state=invalid action=drop place-before=0 comment=\"PPPoE-$id-INV-IN\"";
+        $s[] = "/ip firewall filter add chain=input in-interface={$bridge} connection-state=established,related action=accept place-before=0 comment=\"PPPoE-$id-EST-IN\"";
+        $s[] = "/ip firewall filter add chain=input in-interface={$bridge} protocol=udp dst-port=8863-8864 action=accept place-before=0 comment=\"PPPoE-$id-DISC\"";
 
-        // FORWARD chain - control client traffic
-        // CRITICAL: Rule order matters! MikroTik processes top-to-bottom.
-        // 1. Allow established/related (keeps existing authenticated sessions working)
-        // 2. Drop invalid connections
-        // 3. Allow authenticated PPPoE subnet traffic to WAN (only IPs from pool = authenticated)
+        // FORWARD chain - control PPPoE client traffic
+        // CRITICAL: ALL rules MUST be scoped to in-interface={bridge} to avoid affecting other router traffic.
+        // Without in-interface scoping, established/related accept would match ALL traffic on the router,
+        // letting any connected device (not just PPPoE) access the internet.
+        // PPPoE auth is L2 (PADI/PADO/PADR/PADS) — clients don't need DNS before authentication.
+        // Rule order:
+        // 1. Allow established/related FROM PPPoE bridge (keeps authenticated sessions working)
+        // 2. Drop invalid FROM PPPoE bridge
+        // 3. Allow authenticated PPPoE subnet to WAN
         // 4. Allow local traffic within PPPoE subnet
-        // 5. DROP everything else from bridge (catches unauthenticated devices)
+        // 5. DROP everything else from bridge (unauthenticated devices)
 
-        // Remove existing rules first for idempotent re-ordering
-        $s[] = ":do { /ip firewall filter remove [find comment~\"PPPoE-$id-(EST|INV|INET|LOCAL|BLOCK-UNAUTH)\"]; } on-error={}";
+        // Remove existing forward rules for idempotent re-ordering (only our PPPoE service rules)
+        $s[] = ":do { /ip firewall filter remove [find comment~\"PPPoE-$id-(EST|INV|DNS|INET|LOCAL|BLOCK-UNAUTH)\"]; } on-error={}";
 
-        $s[] = "/ip firewall filter add chain=forward connection-state=established,related action=accept comment=\"PPPoE-$id-EST\"";
-        $s[] = "/ip firewall filter add chain=forward connection-state=invalid action=drop comment=\"PPPoE-$id-INV\"";
-        // Only traffic from the PPPoE IP pool (authenticated users get IPs from this range)
-        $s[] = "/ip firewall filter add chain=forward src-address={$p['network_cidr']} out-interface-list={$p['wan_list']} action=accept comment=\"PPPoE-$id-INET\"";
-        $s[] = "/ip firewall filter add chain=forward src-address={$p['network_cidr']} dst-address={$p['network_cidr']} action=accept comment=\"PPPoE-$id-LOCAL\"";
-        // CRITICAL: Block ALL other traffic from the PPPoE bridge (unauthenticated devices)
-        $s[] = "/ip firewall filter add chain=forward in-interface={$bridge} action=drop comment=\"PPPoE-$id-BLOCK-UNAUTH\"";
+        // CRITICAL: Insert rules in REVERSE order with place-before=0 so they end up
+        // at the TOP of the filter list in the CORRECT order:
+        //   1. EST (established/related accept)
+        //   2. INV (invalid drop)
+        //   3. INET (authenticated subnet to WAN)
+        //   4. LOCAL (authenticated subnet local traffic)
+        //   5. BLOCK-UNAUTH (drop everything else from bridge)
+        // Since place-before=0 inserts at position 0, we add LAST rule first.
+        $s[] = "/ip firewall filter add chain=forward in-interface={$bridge} action=drop place-before=0 comment=\"PPPoE-$id-BLOCK-UNAUTH\"";
+        $s[] = "/ip firewall filter add chain=forward src-address={$p['network_cidr']} in-interface={$bridge} dst-address={$p['network_cidr']} action=accept place-before=0 comment=\"PPPoE-$id-LOCAL\"";
+        $s[] = "/ip firewall filter add chain=forward src-address={$p['network_cidr']} in-interface={$bridge} out-interface-list={$p['wan_list']} action=accept place-before=0 comment=\"PPPoE-$id-INET\"";
+        $s[] = "/ip firewall filter add chain=forward in-interface={$bridge} connection-state=invalid action=drop place-before=0 comment=\"PPPoE-$id-INV\"";
+        $s[] = "/ip firewall filter add chain=forward in-interface={$bridge} connection-state=established,related action=accept place-before=0 comment=\"PPPoE-$id-EST\"";
 
         // ============ NAT CONFIGURATION ============
         // Scope masquerade to ONLY the PPPoE subnet (authenticated users)
