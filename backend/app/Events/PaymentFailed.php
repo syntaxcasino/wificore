@@ -8,23 +8,32 @@ use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
-use Illuminate\Queue\SerializesModels;
 
 class PaymentFailed implements ShouldBroadcast
 {
-    use Dispatchable, InteractsWithSockets, SerializesModels;
+    use Dispatchable, InteractsWithSockets;
     use BroadcastsToTenant;
 
-    public $payment;
-    public $error;
+    public array $paymentData;
+    public string $error;
+    public ?string $tenantId;
 
     /**
      * Create a new event instance.
      */
-    public function __construct(Payment $payment, string $error)
+    public function __construct(Payment $payment, string $error, ?string $tenantId = null)
     {
-        $this->payment = $payment;
+        // Extract data instead of serializing the model
+        // Payment is in tenant schema; SerializesModels fails on deserialization
+        $this->paymentData = [
+            'id' => $payment->id,
+            'amount' => $payment->amount,
+            'phone_number' => $payment->phone_number,
+            'transaction_id' => $payment->transaction_id,
+            'package_name' => $payment->package?->name ?? 'Unknown',
+        ];
         $this->error = $error;
+        $this->tenantId = $tenantId ?? (auth()->user()?->tenant_id);
     }
 
     /**
@@ -47,15 +56,20 @@ class PaymentFailed implements ShouldBroadcast
         return [
             'type' => 'payment_failed',
             'payment' => [
-                'id' => $this->payment->id,
-                'amount' => $this->payment->amount,
-                'phone_number' => $this->maskPhoneNumber($this->payment->phone_number),
-                'transaction_id' => substr($this->payment->transaction_id, 0, 8) . '...',
-                'package' => $this->payment->package->name ?? 'Unknown',
+                'id' => $this->paymentData['id'],
+                'amount' => $this->paymentData['amount'],
+                'phone_number' => $this->maskPhoneNumber($this->paymentData['phone_number'] ?? ''),
+                'transaction_id' => substr($this->paymentData['transaction_id'] ?? '', 0, 8) . '...',
+                'package' => $this->paymentData['package_name'],
             ],
             'error' => $this->error,
             'timestamp' => now()->toIso8601String(),
         ];
+    }
+
+    protected function getTenantId(): string
+    {
+        return (string) $this->tenantId;
     }
 
     /**

@@ -57,15 +57,16 @@ class DiagnoseTelegrafMetrics extends Command
         $this->info('📋 Environment Variables:');
         
         $vars = [
-            'ROUTER_POLLING_MODE' => env('ROUTER_POLLING_MODE', 'NOT SET'),
-            'TELEGRAF_SHARD_INDEX' => env('TELEGRAF_SHARD_INDEX', 'NOT SET'),
-            'TELEGRAF_SHARD_COUNT' => env('TELEGRAF_SHARD_COUNT', 'NOT SET'),
-            'TELEGRAF_FAST_INTERVAL' => env('TELEGRAF_FAST_INTERVAL', 'NOT SET'),
-            'TELEGRAF_SLOW_INTERVAL' => env('TELEGRAF_SLOW_INTERVAL', 'NOT SET'),
-            'TELEGRAF_SNMPV3_USER' => env('TELEGRAF_SNMPV3_USER', 'NOT SET'),
-            'TELEGRAF_SNMPV3_AUTH_PASSWORD' => env('TELEGRAF_SNMPV3_AUTH_PASSWORD') ? '***SET***' : 'NOT SET',
-            'TELEGRAF_SNMPV3_PRIV_PASSWORD' => env('TELEGRAF_SNMPV3_PRIV_PASSWORD') ? '***SET***' : 'NOT SET',
-            'VICTORIA_METRICS_WRITE_URL' => env('VICTORIA_METRICS_WRITE_URL', 'NOT SET'),
+            'ROUTER_POLLING_MODE' => config('app.router_polling_mode', env('ROUTER_POLLING_MODE', 'NOT SET')),
+            'TELEGRAF_SHARD_INDEX' => config('telegraf.shard_index', 'NOT SET'),
+            'TELEGRAF_SHARD_COUNT' => config('telegraf.shard_count', 'NOT SET'),
+            'TELEGRAF_FAST_INTERVAL' => config('telegraf.fast_interval', 'NOT SET'),
+            'TELEGRAF_SLOW_INTERVAL' => config('telegraf.slow_interval', 'NOT SET'),
+            'TELEGRAF_SNMP_COMMUNITY' => config('telegraf.snmp_community', 'NOT SET'),
+            'TELEGRAF_SNMPV3_USER' => config('telegraf.snmpv3_user', 'NOT SET'),
+            'TELEGRAF_SNMPV3_AUTH_PASSWORD' => config('telegraf.snmpv3_auth_password') ? '***SET***' : 'NOT SET',
+            'TELEGRAF_SNMPV3_PRIV_PASSWORD' => config('telegraf.snmpv3_priv_password') ? '***SET***' : 'NOT SET',
+            'VICTORIA_METRICS_WRITE_URL' => config('victoriametrics.write_url', 'NOT SET'),
         ];
 
         foreach ($vars as $key => $value) {
@@ -126,7 +127,7 @@ class DiagnoseTelegrafMetrics extends Command
     {
         $this->info('📁 Telegraf Configuration Files:');
 
-        $shardIndex = (int) env('TELEGRAF_SHARD_INDEX', 0);
+        $shardIndex = (int) config('telegraf.shard_index', 0);
         $configPath = storage_path("app/telegraf/shards/{$shardIndex}.conf");
 
         if (file_exists($configPath)) {
@@ -156,8 +157,8 @@ class DiagnoseTelegrafMetrics extends Command
     {
         $this->info('📊 VictoriaMetrics Status:');
 
-        $vmUrl = env('VICTORIA_METRICS_WRITE_URL', 'http://wificore-nginx/internal/vm/api/v1/write');
-        $vmQueryUrl = str_replace('/api/v1/write', '/api/v1/query', $vmUrl);
+        $vmBaseUrl = rtrim((string) config('victoriametrics.write_url', 'http://wificore-victoriametrics:8428'), '/');
+        $vmQueryUrl = $vmBaseUrl . '/api/v1/query';
 
         try {
             // Try to query recent metrics
@@ -241,6 +242,11 @@ class DiagnoseTelegrafMetrics extends Command
         $this->line('');
         $this->line('  docker exec -it wificore-telegraf sh');
         $this->line('  apk add net-snmp net-snmp-tools');
+        $this->line('');
+        $this->line('  # SNMPv2c test (default):');
+        $this->line('  snmpwalk -v2c -c public ROUTER_IP:161 1.3.6.1.2.1.1.5.0');
+        $this->line('');
+        $this->line('  # SNMPv3 test (if configured):');
         $this->line('  snmpwalk -v3 -l authPriv -u snmpmonitor -a SHA -A "AUTH_PASSWORD" -x AES -X "PRIV_PASSWORD" ROUTER_IP:161');
         $this->newLine();
     }

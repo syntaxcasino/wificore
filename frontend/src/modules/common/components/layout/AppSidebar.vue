@@ -10,8 +10,16 @@
       'top-16 h-[calc(100vh-4rem)]': !isMobile,
     }"
   >
+    <!-- Mobile header with close button -->
+    <div v-if="isMobile" class="flex items-center justify-between px-4 py-3 border-b border-gray-800/50">
+      <span class="text-sm font-semibold text-gray-200">Menu</span>
+      <button @click="$emit('close-sidebar')" class="p-1.5 rounded-md hover:bg-gray-800 transition-colors">
+        <X class="w-5 h-5 text-gray-400" />
+      </button>
+    </div>
+
     <div
-      class="overflow-y-auto scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-transparent hover:scrollbar-thumb-gray-600"
+      class="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-transparent hover:scrollbar-thumb-gray-600"
     >
       <nav class="p-3 space-y-1">
         <!-- Dashboard -->
@@ -65,7 +73,7 @@
               :class="route.path === '/dashboard/hotspot/users' ? 'text-white font-medium' : 'text-gray-500'"
               @click="isMobile && $emit('close-sidebar')"
             >
-              <span>Users</span>
+              <span>All Users</span>
               <span v-if="hotspotUsersCount > 0" class="px-1.5 py-0.5 text-[9px] font-bold rounded-full bg-blue-500 text-white min-w-[16px] text-center">{{ hotspotUsersCount }}</span>
             </router-link>
             <router-link
@@ -78,28 +86,12 @@
               <span v-if="hotspotSessionsCount > 0" class="px-1.5 py-0.5 text-[9px] font-bold rounded-full bg-green-500 text-white min-w-[16px] text-center">{{ hotspotSessionsCount }}</span>
             </router-link>
             <router-link
-              to="/dashboard/hotspot/vouchers/generate"
+              to="/dashboard/hotspot/vouchers"
               class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
-              :class="route.path === '/dashboard/hotspot/vouchers/generate' ? 'text-white font-medium' : 'text-gray-500'"
+              :class="route.path === '/dashboard/hotspot/vouchers' ? 'text-white font-medium' : 'text-gray-500'"
               @click="isMobile && $emit('close-sidebar')"
             >
-              Generate Vouchers
-            </router-link>
-            <router-link
-              to="/dashboard/hotspot/vouchers/bulk"
-              class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
-              :class="route.path === '/dashboard/hotspot/vouchers/bulk' ? 'text-white font-medium' : 'text-gray-500'"
-              @click="isMobile && $emit('close-sidebar')"
-            >
-              Bulk Vouchers
-            </router-link>
-            <router-link
-              to="/dashboard/hotspot/voucher-templates"
-              class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
-              :class="route.path === '/dashboard/hotspot/voucher-templates' ? 'text-white font-medium' : 'text-gray-500'"
-              @click="isMobile && $emit('close-sidebar')"
-            >
-              Voucher Templates
+              Create Voucher
             </router-link>
           </div>
         </div>
@@ -116,8 +108,8 @@
           >
             <span class="flex items-center gap-2.5">
               <Cable class="w-4 h-4 flex-shrink-0" />
-              <span class="text-sm">PPPoE</span>
-            </span>
+              <span class="text-sm">PPP</span>
+            </span>    
             <div class="flex items-center gap-2">
               <span v-if="pppoeUsersCount > 0" class="px-1.5 py-0.5 text-[9px] font-bold rounded-full bg-purple-500 text-white min-w-[16px] text-center">{{ pppoeUsersCount }}</span>
               <ChevronDown class="w-3 h-3 transition-transform" :class="activeMenu === 'pppoe' ? 'rotate-180' : ''" />
@@ -130,7 +122,7 @@
               :class="route.path === '/dashboard/pppoe/users' ? 'text-white font-medium' : 'text-gray-500'"
               @click="isMobile && $emit('close-sidebar')"
             >
-              <span>Users</span>
+              <span>PPPoE Users</span>
               <span v-if="pppoeUsersCount > 0" class="px-1.5 py-0.5 text-[9px] font-bold rounded-full bg-purple-500 text-white min-w-[16px] text-center">{{ pppoeUsersCount }}</span>
             </router-link>
             <router-link
@@ -561,7 +553,8 @@ import {
   LifeBuoy,
   Settings,
   Shield,
-  ChevronDown
+  ChevronDown,
+  X
 } from 'lucide-vue-next'
 
 const props = defineProps({

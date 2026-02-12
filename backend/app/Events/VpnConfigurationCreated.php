@@ -9,14 +9,14 @@ use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
-use Illuminate\Queue\SerializesModels;
 
 class VpnConfigurationCreated implements ShouldBroadcast
 {
-    use Dispatchable, InteractsWithSockets, SerializesModels;
+    use Dispatchable, InteractsWithSockets;
     use BroadcastsToTenant;
 
-    public VpnConfiguration $vpnConfig;
+    public array $vpnConfigData;
+    public ?array $routerData;
     public ?string $tenantId;
 
     /**
@@ -24,7 +24,24 @@ class VpnConfigurationCreated implements ShouldBroadcast
      */
     public function __construct(VpnConfiguration $vpnConfig, ?string $tenantId = null)
     {
-        $this->vpnConfig = $vpnConfig;
+        // Extract data instead of serializing the model
+        // VpnConfiguration is in tenant schema; SerializesModels fails on deserialization
+        $this->vpnConfigData = [
+            'id' => $vpnConfig->id,
+            'router_id' => $vpnConfig->router_id,
+            'vpn_type' => $vpnConfig->vpn_type,
+            'client_ip' => $vpnConfig->client_ip,
+            'server_ip' => $vpnConfig->server_ip,
+            'subnet_cidr' => $vpnConfig->subnet_cidr,
+            'status' => $vpnConfig->status,
+            'interface_name' => $vpnConfig->interface_name,
+            'created_at' => $vpnConfig->created_at?->toIso8601String(),
+        ];
+        $this->routerData = $vpnConfig->router ? [
+            'id' => $vpnConfig->router->id,
+            'name' => $vpnConfig->router->name,
+            'vpn_ip' => $vpnConfig->client_ip,
+        ] : null;
         $this->tenantId = $tenantId ?? (auth()->user()?->tenant_id);
     }
 
@@ -53,22 +70,8 @@ class VpnConfigurationCreated implements ShouldBroadcast
     public function broadcastWith(): array
     {
         return [
-            'vpn_config' => [
-                'id' => $this->vpnConfig->id,
-                'router_id' => $this->vpnConfig->router_id,
-                'vpn_type' => $this->vpnConfig->vpn_type,
-                'client_ip' => $this->vpnConfig->client_ip,
-                'server_ip' => $this->vpnConfig->server_ip,
-                'subnet_cidr' => $this->vpnConfig->subnet_cidr,
-                'status' => $this->vpnConfig->status,
-                'interface_name' => $this->vpnConfig->interface_name,
-                'created_at' => $this->vpnConfig->created_at->toIso8601String(),
-            ],
-            'router' => $this->vpnConfig->router ? [
-                'id' => $this->vpnConfig->router->id,
-                'name' => $this->vpnConfig->router->name,
-                'vpn_ip' => $this->vpnConfig->client_ip,
-            ] : null,
+            'vpn_config' => $this->vpnConfigData,
+            'router' => $this->routerData,
             'message' => 'VPN configuration created successfully',
             'timestamp' => now()->toIso8601String(),
         ];

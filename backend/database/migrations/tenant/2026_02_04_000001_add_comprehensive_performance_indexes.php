@@ -14,6 +14,13 @@ return new class extends Migration
      */
     public function up(): void
     {
+        // Enable pg_trgm extension FIRST — required for gin_trgm_ops indexes below
+        try {
+            DB::statement('CREATE EXTENSION IF NOT EXISTS pg_trgm');
+        } catch (\Exception $e) {
+            // Extension may already exist or require superuser
+        }
+
         // =========================================================
         // PPPoE Users - High priority for PPPoE management UI
         // =========================================================
@@ -24,8 +31,12 @@ return new class extends Migration
             DB::statement('CREATE INDEX IF NOT EXISTS pppoe_users_payment_status_expires_idx ON pppoe_users (payment_status, expires_at)');
             // For sorting by creation date
             DB::statement('CREATE INDEX IF NOT EXISTS pppoe_users_created_at_idx ON pppoe_users (created_at DESC)');
-            // For username search (partial/prefix matching)
-            DB::statement('CREATE INDEX IF NOT EXISTS pppoe_users_username_trgm_idx ON pppoe_users USING gin (username gin_trgm_ops)');
+            // For username search (partial/prefix matching) — requires pg_trgm extension
+            try {
+                DB::statement('CREATE INDEX IF NOT EXISTS pppoe_users_username_trgm_idx ON pppoe_users USING gin (username gin_trgm_ops)');
+            } catch (\Exception $e) {
+                \Log::warning('Could not create trigram index pppoe_users_username_trgm_idx: ' . $e->getMessage());
+            }
             // Soft deletes filtering
             DB::statement('CREATE INDEX IF NOT EXISTS pppoe_users_deleted_at_idx ON pppoe_users (deleted_at) WHERE deleted_at IS NULL');
         }
@@ -179,14 +190,7 @@ return new class extends Migration
             DB::statement('CREATE INDEX IF NOT EXISTS pppoe_payments_payment_date_idx ON pppoe_payments (payment_date DESC)');
         }
 
-        // =========================================================
-        // Enable pg_trgm extension for text search (if not exists)
-        // =========================================================
-        try {
-            DB::statement('CREATE EXTENSION IF NOT EXISTS pg_trgm');
-        } catch (\Exception $e) {
-            // Extension may already exist or require superuser
-        }
+        // pg_trgm extension was already created at the top of this migration
     }
 
     public function down(): void

@@ -50,21 +50,27 @@ return new class extends Migration
         });
         
         // Add foreign keys and indexes using raw SQL checks (Laravel 11+ compatible)
-        Schema::table('router_services', function (Blueprint $table) {
-            // Check if foreign key exists using PostgreSQL system catalogs
+        // Note: tenant_ip_pools lives in the PUBLIC schema, so use raw SQL with
+        // fully-qualified table name to avoid search_path resolution issues.
+        if (Schema::hasColumn('router_services', 'ip_pool_id')) {
             $hasFkToIpPools = \DB::select("
                 SELECT 1 FROM pg_constraint 
                 WHERE conname LIKE '%router_services_ip_pool_id_foreign%'
                 LIMIT 1
             ");
             
-            if (empty($hasFkToIpPools) && Schema::hasColumn('router_services', 'ip_pool_id')) {
-                $table->foreign('ip_pool_id')
-                    ->references('id')
-                    ->on('tenant_ip_pools')
-                    ->onDelete('set null');
+            if (empty($hasFkToIpPools)) {
+                try {
+                    \DB::statement('
+                        ALTER TABLE router_services
+                        ADD CONSTRAINT router_services_ip_pool_id_foreign
+                        FOREIGN KEY (ip_pool_id) REFERENCES public.tenant_ip_pools(id) ON DELETE SET NULL
+                    ');
+                } catch (\Exception $e) {
+                    \Log::warning('Could not create FK to public.tenant_ip_pools: ' . $e->getMessage());
+                }
             }
-        });
+        }
         
         // Add indexes separately to avoid conflicts
         Schema::table('router_services', function (Blueprint $table) {

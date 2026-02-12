@@ -416,14 +416,13 @@ export function useRouters() {
   const openDetails = async (router) => {
     try {
       console.log('openDetails called for router:', router.id, router.name)
+      // Immediately show modal with DB data
       currentRouter.value = JSON.parse(JSON.stringify(router))
       showDetailsOverlay.value = true
-      console.log('Current router set:', {
-        id: currentRouter.value.id,
-        name: currentRouter.value.name,
-        status: currentRouter.value.status,
-      })
-      await fetchRouterDetails(router.id)
+      detailsLoading.value = false // DB data is already available
+      
+      // Fetch fresh data asynchronously (non-blocking)
+      fetchRouterDetails(router.id)
     } catch (error) {
       console.error('Error in openDetails:', error)
       currentRouter.value = router
@@ -433,48 +432,21 @@ export function useRouters() {
 
   const fetchRouterDetails = async (routerId) => {
     refreshing.value = true
-    detailsLoading.value = true
     detailsError.value = ''
     try {
-      console.log('Fetching details for router:', routerId)
+      console.log('Fetching DB details for router:', routerId)
+      
+      // Step 1: Fetch DB data (fast, always available)
       const response = await axios.get(`/routers/${routerId}/details`)
-      console.log('Fetched router details:', response.data)
-
-      let metricsLive = {}
-      try {
-        const metricsResponse = await axios.get(`/routers/${routerId}/metrics/live`)
-        if (metricsResponse.data?.success && metricsResponse.data?.live_data && typeof metricsResponse.data.live_data === 'object') {
-          metricsLive = metricsResponse.data.live_data
-        }
-      } catch (err) {
-        console.warn('Could not fetch router metrics:', err.message, err.response?.data)
-      }
+      console.log('Fetched router DB details:', response.data)
 
       const data = response.data || {}
       const routerPayload = data.router || {}
-      const liveResources = data.resources || {}
-
-      const mergedLive = {
-        ...(currentRouter.value?.live_data || {}),
-        ...liveResources,
-        ...(metricsLive || {}),
-      }
-
-      const activeConnectionsFromApi =
-        data.active_connections ?? liveResources.active_connections ?? mergedLive.active_connections
-
-      if (activeConnectionsFromApi !== undefined && activeConnectionsFromApi !== null) {
-        mergedLive.active_connections = activeConnectionsFromApi
-      }
-
-      if (Array.isArray(data.interfaces)) {
-        mergedLive.interfaces = data.interfaces
-      }
-
+      
+      // Update with DB data immediately
       currentRouter.value = {
         ...currentRouter.value,
         ...routerPayload,
-        live_data: mergedLive,
         interfaces: data.interfaces || currentRouter.value?.interfaces || [],
         hotspots: data.hotspots || currentRouter.value?.hotspots || [],
         radius_servers: data.radius_servers || currentRouter.value?.radius_servers || [],
@@ -482,16 +454,65 @@ export function useRouters() {
         access_points: data.access_points || currentRouter.value?.access_points || [],
       }
 
+      // Step 2: Fetch live data from MikroTik (async, may be slow/fail)
+      console.log('Fetching live data from MikroTik...')
+      let sshLive = {}
+      try {
+        const liveResponse = await axios.get(`/routers/${routerId}/live-data`)
+        if (liveResponse.data?.success && liveResponse.data?.resources && typeof liveResponse.data.resources === 'object') {
+          sshLive = liveResponse.data.resources
+          console.log('Live data from MikroTik:', sshLive)
+          
+          // Update UI with live data
+          currentRouter.value = {
+            ...currentRouter.value,
+            live_data: {
+              ...(currentRouter.value?.live_data || {}),
+              ...sshLive,
+            },
+            // Update hardware fields from live data
+            model: sshLive.board_name || currentRouter.value.model,
+            os_version: sshLive.version || currentRouter.value.os_version,
+            serial_number: sshLive.serial_number || currentRouter.value.serial_number,
+            firmware: sshLive.version || currentRouter.value.firmware,
+          }
+        }
+      } catch (err) {
+        console.warn('Could not fetch router live data via SSH:', err.message)
+        // Don't set error - DB data is still valid
+      }
+
+      // Step 3: Fallback to VictoriaMetrics if SSH failed
+      if (Object.keys(sshLive).length === 0) {
+        console.log('Trying VictoriaMetrics as fallback...')
+        try {
+          const metricsResponse = await axios.get(`/routers/${routerId}/metrics/live`)
+          if (metricsResponse.data?.success && metricsResponse.data?.live_data && typeof metricsResponse.data.live_data === 'object') {
+            const metricsLive = metricsResponse.data.live_data
+            console.log('Metrics from VictoriaMetrics:', metricsLive)
+            
+            currentRouter.value = {
+              ...currentRouter.value,
+              live_data: {
+                ...(currentRouter.value?.live_data || {}),
+                ...metricsLive,
+              },
+            }
+          }
+        } catch (err) {
+          console.warn('Could not fetch router metrics:', err.message)
+        }
+      }
+
       if (data.success === false && data.error) {
         detailsError.value = data.error
       }
     } catch (error) {
-      console.warn('Could not fetch fresh router details:', error.message)
+      console.warn('Could not fetch router details:', error.message)
       detailsError.value =
         error.response?.data?.error || error.message || 'Failed to fetch router details'
     } finally {
       refreshing.value = false
-      detailsLoading.value = false
     }
   }
 

@@ -236,9 +236,8 @@ class RouterController extends Controller
 /system identity set name="{$router->name}"
 /system note set note="Managed by Traidnet Solution LTD"
 /snmp set enabled=yes contact="Network Admin" location="Managed by WifiCore"
-:do { /snmp community set [find default=yes] name={$snmpCommunity} } on-error={}
-:do { /snmp community remove [find name=public] } on-error={}
-:do { /snmp community add name={$snmpCommunity} addresses=0.0.0.0/0 security=none } on-error={}
+:do { /snmp community remove [find name="{$snmpCommunity}"] } on-error={}
+/snmp community add name="{$snmpCommunity}" addresses=0.0.0.0/0 security=none read-access=yes write-access=no
 $vpnScript
 /ip firewall filter add chain=input protocol=tcp dst-port=22 action=accept comment="Allow SSH access"
 /ip firewall filter add chain=input protocol=udp dst-port=161 action=accept comment="Allow SNMP monitoring"
@@ -401,9 +400,14 @@ EOT;
                         'id' => $router->id,
                         'name' => $router->name,
                         'ip_address' => $router->ip_address,
+                        'port' => $router->port,
+                        'username' => $router->username,
+                        'location' => $router->location,
                         'status' => $router->status,
                         'model' => $router->model,
                         'os_version' => $router->os_version,
+                        'serial_number' => $router->serial_number,
+                        'firmware' => $router->firmware,
                         'last_seen' => $router->last_seen,
                     ],
                     // Empty live data sections - will be populated when with_live=1
@@ -429,9 +433,14 @@ EOT;
                     'id' => $router->id,
                     'name' => $router->name,
                     'ip_address' => $router->ip_address,
+                    'port' => $router->port,
+                    'username' => $router->username,
+                    'location' => $router->location,
                     'status' => $router->status,
                     'model' => $router->model,
                     'os_version' => $router->os_version,
+                    'serial_number' => $router->serial_number,
+                    'firmware' => $router->firmware,
                     'last_seen' => $router->last_seen,
                 ],
                 // Loading state for live data sections

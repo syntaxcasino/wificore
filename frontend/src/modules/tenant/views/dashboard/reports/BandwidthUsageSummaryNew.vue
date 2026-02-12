@@ -13,8 +13,8 @@
       </template>
     </PageHeader>
 
-    <div class="px-6 py-4 bg-white border-b border-slate-200">
-      <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+    <div class="px-3 py-3 sm:px-6 sm:py-4 bg-white border-b border-slate-200">
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
         <div class="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200">
           <div class="flex items-center justify-between">
             <div>
@@ -57,9 +57,9 @@
       </div>
     </div>
 
-    <div class="px-6 py-4 bg-white border-b border-slate-200">
-      <div class="flex items-center gap-3">
-        <BaseSelect v-model="filters.period" class="w-40">
+    <div class="px-3 py-3 sm:px-6 sm:py-4 bg-white border-b border-slate-200">
+      <div class="flex items-center gap-3 flex-wrap">
+        <BaseSelect v-model="filters.period" class="w-36 sm:w-40">
           <option value="today">Today</option>
           <option value="week">This Week</option>
           <option value="month">This Month</option>
@@ -123,14 +123,16 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { Activity, RefreshCw, Download, ArrowDown, ArrowUp, Users } from 'lucide-vue-next'
+import axios from 'axios'
 import PageContainer from '@/modules/common/components/layout/templates/PageContainer.vue'
 import PageHeader from '@/modules/common/components/layout/templates/PageHeader.vue'
 import PageContent from '@/modules/common/components/layout/templates/PageContent.vue'
 import BaseButton from '@/modules/common/components/base/BaseButton.vue'
 import BaseCard from '@/modules/common/components/base/BaseCard.vue'
 import BaseSelect from '@/modules/common/components/base/BaseSelect.vue'
+import BaseLoading from '@/modules/common/components/base/BaseLoading.vue'
 
 const breadcrumbs = [
   { label: 'Dashboard', to: '/dashboard' },
@@ -138,33 +140,59 @@ const breadcrumbs = [
   { label: 'Bandwidth Usage' }
 ]
 
+const loading = ref(false)
 const refreshing = ref(false)
+const sessions = ref([])
 const filters = ref({ period: 'week', type: '' })
 
-const stats = ref({
-  totalUsage: 524288000000,
-  download: 419430400000,
-  upload: 104857600000,
-  avgPerUser: 5242880000
+const stats = computed(() => {
+  let totalDown = 0, totalUp = 0
+  const userSet = new Set()
+  sessions.value.forEach(s => {
+    totalDown += Number(s.bytes_in || s.download || 0)
+    totalUp += Number(s.bytes_out || s.upload || 0)
+    userSet.add(s.username || s.user_id)
+  })
+  const total = totalDown + totalUp
+  return {
+    totalUsage: total,
+    download: totalDown,
+    upload: totalUp,
+    avgPerUser: userSet.size > 0 ? Math.round(total / userSet.size) : 0
+  }
 })
 
-const topUsers = ref(Array.from({ length: 10 }, (_, i) => ({
-  id: i + 1,
-  username: `user${i + 1}`,
-  total: Math.floor(Math.random() * 10000000000) + 5000000000,
-  download: Math.floor(Math.random() * 8000000000) + 4000000000,
-  upload: Math.floor(Math.random() * 2000000000) + 1000000000,
-  sessions: Math.floor(Math.random() * 50) + 10
-})))
+const topUsers = computed(() => {
+  const grouped = {}
+  sessions.value.forEach(s => {
+    const user = s.username || s.user_id || 'unknown'
+    if (!grouped[user]) grouped[user] = { id: user, username: user, download: 0, upload: 0, sessions: 0 }
+    grouped[user].download += Number(s.bytes_in || s.download || 0)
+    grouped[user].upload += Number(s.bytes_out || s.upload || 0)
+    grouped[user].sessions++
+  })
+  return Object.values(grouped)
+    .map(u => ({ ...u, total: u.download + u.upload }))
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 10)
+})
 
-const dailyTrend = ref(Array.from({ length: 7 }, (_, i) => ({
-  date: new Date(Date.now() - i * 86400000).toISOString(),
-  download: Math.floor(Math.random() * 50000000000) + 30000000000,
-  upload: Math.floor(Math.random() * 15000000000) + 10000000000,
-  total: 0
-})).map(d => ({ ...d, total: d.download + d.upload })))
+const dailyTrend = computed(() => {
+  const grouped = {}
+  sessions.value.forEach(s => {
+    const date = (s.start_time || s.created_at || '').slice(0, 10)
+    if (!date) return
+    if (!grouped[date]) grouped[date] = { date, download: 0, upload: 0 }
+    grouped[date].download += Number(s.bytes_in || s.download || 0)
+    grouped[date].upload += Number(s.bytes_out || s.upload || 0)
+  })
+  return Object.values(grouped)
+    .map(d => ({ ...d, total: d.download + d.upload }))
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .slice(-7)
+})
 
-const maxDaily = computed(() => Math.max(...dailyTrend.value.map(d => d.total)))
+const maxDaily = computed(() => Math.max(...dailyTrend.value.map(d => d.total), 1))
 
 const formatBytes = (bytes) => {
   if (!bytes) return '0 B'
@@ -176,11 +204,52 @@ const formatBytes = (bytes) => {
 
 const formatDate = (date) => new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 
+const fetchSessions = async () => {
+  const isInitial = sessions.value.length === 0
+  if (isInitial) loading.value = true
+  try {
+    const results = []
+    if (!filters.value.type || filters.value.type === 'hotspot') {
+      const res = await axios.get('/hotspot/sessions')
+      const data = res.data?.sessions || res.data?.data || []
+      results.push(...data.map(s => ({ ...s, type: 'hotspot', start_time: s.start_time || s.created_at })))
+    }
+    if (!filters.value.type || filters.value.type === 'pppoe') {
+      const res = await axios.get('/pppoe/sessions/live')
+      const data = res.data?.sessions || res.data?.data || []
+      results.push(...data.map(s => ({ ...s, type: 'pppoe', start_time: s.start_time || s.created_at })))
+    }
+    sessions.value = results
+  } catch (err) {
+    console.error('fetchSessions error:', err)
+  } finally {
+    loading.value = false
+  }
+}
+
 const refreshData = async () => {
   refreshing.value = true
-  await new Promise(resolve => setTimeout(resolve, 500))
+  await fetchSessions()
   refreshing.value = false
 }
 
-const exportReport = () => alert('Export feature coming soon!')
+const exportReport = () => {
+  const csv = [
+    ['User', 'Total', 'Download', 'Upload', 'Sessions'].join(','),
+    ...topUsers.value.map(u => [u.username, u.total, u.download, u.upload, u.sessions].join(','))
+  ].join('\n')
+  const blob = new Blob([csv], { type: 'text/csv' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `bandwidth-report-${new Date().toISOString().slice(0,10)}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+watch(() => [filters.value.period, filters.value.type], () => fetchSessions())
+
+onMounted(() => {
+  fetchSessions()
+})
 </script>

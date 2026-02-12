@@ -78,6 +78,13 @@ class TenantController extends Controller
         }
         
         $tenant = Tenant::create($validated);
+
+        // Schema setup is no longer auto-triggered by Tenant::created boot event.
+        // Run it explicitly (DDL, outside any transaction).
+        $migrationManager = app(\App\Services\TenantMigrationManager::class);
+        if (!$migrationManager->setupTenantSchema($tenant)) {
+            \Log::error('TenantController: Schema setup failed for tenant', ['tenant_id' => $tenant->id]);
+        }
         
         return response()->json([
             'success' => true,

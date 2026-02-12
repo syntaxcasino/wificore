@@ -98,11 +98,11 @@ class VictoriaMetricsClient
             return $explicit;
         }
 
-        $writeUrl = (string) config('victoriametrics.write_url', 'http://wificore-nginx/internal/vm/api/v1/write');
+        $writeUrl = (string) config('victoriametrics.write_url', 'http://wificore-victoriametrics:8428');
         $parts = parse_url($writeUrl);
 
         if (!is_array($parts)) {
-            return 'http://wificore-nginx/internal/vm';
+            return 'http://wificore-victoriametrics:8428';
         }
 
         $scheme = $parts['scheme'] ?? 'http';

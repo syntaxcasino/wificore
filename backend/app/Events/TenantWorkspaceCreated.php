@@ -7,20 +7,24 @@ use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
-use Illuminate\Queue\SerializesModels;
 
 class TenantWorkspaceCreated implements ShouldBroadcast
 {
-    use Dispatchable, InteractsWithSockets, SerializesModels;
+    use Dispatchable, InteractsWithSockets;
 
-    public $registration;
+    public array $registrationData;
 
     /**
      * Create a new event instance.
      */
     public function __construct(TenantRegistration $registration)
     {
-        $this->registration = $registration;
+        $this->registrationData = [
+            'token' => $registration->token,
+            'tenant_id' => $registration->tenant_id,
+            'tenant_slug' => $registration->tenant_slug,
+            'email_verified' => $registration->email_verified,
+        ];
     }
 
     /**
@@ -28,7 +32,7 @@ class TenantWorkspaceCreated implements ShouldBroadcast
      */
     public function broadcastOn(): Channel
     {
-        return new Channel('tenant-registration.' . $this->registration->token);
+        return new Channel('tenant-registration.' . $this->registrationData['token']);
     }
 
     /**
@@ -47,12 +51,7 @@ class TenantWorkspaceCreated implements ShouldBroadcast
         return [
             'status' => 'workspace_created',
             'message' => 'Workspace created successfully!',
-            'registration' => [
-                'token' => $this->registration->token,
-                'tenant_id' => $this->registration->tenant_id,
-                'tenant_slug' => $this->registration->tenant_slug,
-                'email_verified' => $this->registration->email_verified,
-            ],
+            'registration' => $this->registrationData,
         ];
     }
 }

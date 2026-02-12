@@ -72,8 +72,9 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { Router, Zap, Save, CheckCircle, XCircle } from 'lucide-vue-next'
+import axios from 'axios'
 import PageContainer from '@/modules/common/components/layout/templates/PageContainer.vue'
 import PageHeader from '@/modules/common/components/layout/templates/PageHeader.vue'
 import PageContent from '@/modules/common/components/layout/templates/PageContent.vue'
@@ -86,25 +87,61 @@ const saving = ref(false)
 const testing = ref(false)
 const connectionStatus = ref(null)
 
-const formData = ref({
-  router_ip: '192.168.88.1',
+const defaults = {
+  router_ip: '',
   api_port: 8728,
   username: 'admin',
   password: '',
   use_ssl: false
-})
+}
+
+const formData = ref({ ...defaults })
+
+const fetchSettings = async () => {
+  try {
+    const response = await axios.get('/settings/mikrotik')
+    const data = response.data?.settings || response.data?.data || response.data || {}
+    formData.value = { ...defaults, ...data, password: '' }
+  } catch (err) {
+    console.error('fetchMikrotikSettings error:', err)
+  }
+}
 
 const saveSettings = async () => {
   saving.value = true
-  await new Promise(resolve => setTimeout(resolve, 1000))
-  alert('Settings saved!')
-  saving.value = false
+  try {
+    await axios.post('/settings/mikrotik', formData.value)
+    alert('Settings saved!')
+  } catch (err) {
+    console.error('saveSettings error:', err)
+    alert(err.response?.data?.message || 'Failed to save settings')
+  } finally {
+    saving.value = false
+  }
 }
 
 const testConnection = async () => {
   testing.value = true
-  await new Promise(resolve => setTimeout(resolve, 2000))
-  connectionStatus.value = { success: true, message: 'Connection Successful', details: 'Mikrotik API is reachable' }
-  testing.value = false
+  connectionStatus.value = null
+  try {
+    const response = await axios.post('/settings/mikrotik/test', formData.value)
+    connectionStatus.value = {
+      success: response.data?.success ?? true,
+      message: response.data?.message || 'Connection Successful',
+      details: response.data?.details || 'Mikrotik API is reachable'
+    }
+  } catch (err) {
+    connectionStatus.value = {
+      success: false,
+      message: 'Connection Failed',
+      details: err.response?.data?.message || 'Please check your credentials and network'
+    }
+  } finally {
+    testing.value = false
+  }
 }
+
+onMounted(() => {
+  fetchSettings()
+})
 </script>

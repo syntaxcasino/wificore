@@ -13,8 +13,8 @@
       </template>
     </PageHeader>
 
-    <div class="px-6 py-4 bg-white border-b border-slate-200">
-      <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+    <div class="px-3 py-3 sm:px-6 sm:py-4 bg-white border-b border-slate-200">
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
         <div class="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200">
           <div class="flex items-center justify-between">
             <div>
@@ -57,9 +57,9 @@
       </div>
     </div>
 
-    <div class="px-6 py-4 bg-white border-b border-slate-200">
-      <div class="flex items-center gap-3 flex-wrap">
-        <div class="flex-1 min-w-[300px] max-w-md">
+    <div class="px-3 py-3 sm:px-6 sm:py-4 bg-white border-b border-slate-200">
+      <div class="flex flex-col sm:flex-row sm:items-center gap-3 flex-wrap">
+        <div class="flex-1 min-w-0 sm:min-w-[250px] max-w-md">
           <BaseSearch v-model="searchQuery" placeholder="Search sessions..." />
         </div>
         <BaseSelect v-model="filters.period" class="w-40">
@@ -122,8 +122,9 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { History, RefreshCw, Download, Clock, HardDrive, Users } from 'lucide-vue-next'
+import axios from 'axios'
 import PageContainer from '@/modules/common/components/layout/templates/PageContainer.vue'
 import PageHeader from '@/modules/common/components/layout/templates/PageHeader.vue'
 import PageContent from '@/modules/common/components/layout/templates/PageContent.vue'
@@ -150,22 +151,21 @@ const itemsPerPage = ref(15)
 
 const filters = ref({ period: 'week', type: '' })
 
-const stats = ref({
-  total: 1247,
-  avgDuration: 2.5,
-  totalData: 524288000000,
-  uniqueUsers: 456
-})
+const sessions = ref([])
 
-const sessions = ref(Array.from({ length: 50 }, (_, i) => ({
-  id: i + 1,
-  username: `user${Math.floor(Math.random() * 100) + 1}`,
-  type: Math.random() > 0.5 ? 'hotspot' : 'pppoe',
-  start_time: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString(),
-  duration: Math.floor(Math.random() * 7200) + 300,
-  data_used: Math.floor(Math.random() * 5000000000) + 1000000000,
-  ip_address: `192.168.1.${Math.floor(Math.random() * 255)}`
-})))
+const stats = computed(() => {
+  const total = sessions.value.length
+  const uniqueSet = new Set(sessions.value.map(s => s.username))
+  const durations = sessions.value.map(s => Number(s.duration || 0)).filter(d => d > 0)
+  const avgSec = durations.length > 0 ? durations.reduce((a, b) => a + b, 0) / durations.length : 0
+  const totalData = sessions.value.reduce((sum, s) => sum + Number(s.data_used || 0), 0)
+  return {
+    total,
+    avgDuration: (avgSec / 3600).toFixed(1),
+    totalData,
+    uniqueUsers: uniqueSet.size
+  }
+})
 
 const filteredData = computed(() => {
   let data = sessions.value
@@ -206,11 +206,68 @@ const formatDuration = (seconds) => {
 
 const formatDateTime = (date) => new Date(date).toLocaleString()
 
+const fetchSessions = async () => {
+  const isInitial = sessions.value.length === 0
+  if (isInitial) loading.value = true
+  try {
+    const results = []
+    if (!filters.value.type || filters.value.type === 'hotspot') {
+      const res = await axios.get('/hotspot/sessions')
+      const data = res.data?.sessions || res.data?.data || []
+      results.push(...data.map(s => ({
+        id: s.id || s.session_id,
+        username: s.username || s.user?.name || 'Unknown',
+        type: 'hotspot',
+        start_time: s.start_time || s.created_at,
+        duration: Number(s.duration || s.session_time || 0),
+        data_used: Number(s.bytes_in || 0) + Number(s.bytes_out || 0),
+        ip_address: s.ip_address || s.framed_ip_address || '-'
+      })))
+    }
+    if (!filters.value.type || filters.value.type === 'pppoe') {
+      const res = await axios.get('/pppoe/sessions/live')
+      const data = res.data?.sessions || res.data?.data || []
+      results.push(...data.map(s => ({
+        id: s.id || s.session_id,
+        username: s.username || s.user?.name || 'Unknown',
+        type: 'pppoe',
+        start_time: s.start_time || s.created_at,
+        duration: Number(s.duration || s.session_time || 0),
+        data_used: Number(s.bytes_in || 0) + Number(s.bytes_out || 0),
+        ip_address: s.ip_address || s.framed_ip_address || '-'
+      })))
+    }
+    sessions.value = results
+  } catch (err) {
+    console.error('fetchSessions error:', err)
+  } finally {
+    loading.value = false
+  }
+}
+
 const refreshData = async () => {
   refreshing.value = true
-  await new Promise(resolve => setTimeout(resolve, 500))
+  await fetchSessions()
   refreshing.value = false
 }
 
-const exportReport = () => alert('Export feature coming soon!')
+const exportReport = () => {
+  const csv = [
+    ['User', 'Type', 'Start Time', 'Duration (s)', 'Data Used', 'IP Address'].join(','),
+    ...filteredData.value.map(s => [s.username, s.type, s.start_time, s.duration, s.data_used, s.ip_address].join(','))
+  ].join('\n')
+  const blob = new Blob([csv], { type: 'text/csv' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `session-history-${new Date().toISOString().slice(0,10)}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+watch(() => [filters.value.period, filters.value.type], () => fetchSessions())
+
+onMounted(() => {
+  fetchSessions()
+})
 </script>

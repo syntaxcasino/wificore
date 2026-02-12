@@ -95,7 +95,6 @@ class RouterAnalyticsController extends Controller
         }
 
         $router = Router::where('id', $routerId)
-            ->where('tenant_id', $tenantId)
             ->firstOrFail();
 
         $cacheKey = "router_details_{$routerId}";
@@ -215,7 +214,6 @@ class RouterAnalyticsController extends Controller
 
         foreach ($routerIds as $routerId) {
             $router = Router::where('id', $routerId)
-                ->where('tenant_id', $tenantId)
                 ->first();
 
             if (!$router) {

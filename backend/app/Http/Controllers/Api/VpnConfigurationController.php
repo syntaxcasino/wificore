@@ -133,7 +133,6 @@ class VpnConfigurationController extends Controller
         // Verify router belongs to tenant if specified
         if ($request->router_id) {
             $router = Router::where('id', $request->router_id)
-                ->where('tenant_id', $tenantId)
                 ->first();
 
             if (!$router) {

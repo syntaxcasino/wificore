@@ -20,13 +20,13 @@
     </PageHeader>
 
     <!-- Stats Cards -->
-    <div class="px-6 py-4 bg-white border-b border-slate-200">
-      <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div class="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200">
+    <div class="px-3 py-3 sm:px-6 sm:py-4 bg-white border-b border-slate-200">
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+        <div class="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg p-3 sm:p-4 border border-blue-200">
           <div class="flex items-center justify-between">
             <div>
               <div class="text-xs text-blue-600 font-medium mb-1">Total Invoices</div>
-              <div class="text-2xl font-bold text-blue-900">{{ stats.total }}</div>
+              <div class="text-xl sm:text-2xl font-bold text-blue-900">{{ stats.total }}</div>
             </div>
             <div class="p-3 bg-blue-100 rounded-lg">
               <FileText class="w-6 h-6 text-blue-600" />
@@ -73,10 +73,10 @@
     </div>
 
     <!-- Search and Filters Bar -->
-    <div class="px-6 py-4 bg-white border-b border-slate-200">
-      <div class="flex items-center gap-3 flex-wrap">
+    <div class="px-3 py-3 sm:px-6 sm:py-4 bg-white border-b border-slate-200">
+      <div class="flex flex-col sm:flex-row sm:items-center gap-3 flex-wrap">
         <!-- Search Box -->
-        <div class="flex-1 min-w-[300px] max-w-md">
+        <div class="flex-1 min-w-0 sm:min-w-[250px] max-w-md">
           <BaseSearch v-model="searchQuery" placeholder="Search invoices by number, customer..." />
         </div>
         
@@ -245,6 +245,62 @@
         :total-items="filteredData.length"
       />
     </PageFooter>
+
+    <!-- View Invoice Overlay -->
+    <SlideOverlay v-model="showViewOverlay" title="Invoice Details" :subtitle="selectedInvoice?.invoice_number" icon="FileText" width="lg">
+      <div v-if="selectedInvoice" class="p-6 space-y-6">
+        <div class="flex items-center gap-2">
+          <BaseBadge :variant="getStatusVariant(selectedInvoice.status)">{{ selectedInvoice.status }}</BaseBadge>
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+          <div><span class="text-xs text-slate-500">Invoice Number</span><div class="text-sm font-semibold text-slate-900">{{ selectedInvoice.invoice_number }}</div></div>
+          <div><span class="text-xs text-slate-500">Customer</span><div class="text-sm font-medium text-slate-900">{{ selectedInvoice.customer_name }}</div></div>
+          <div><span class="text-xs text-slate-500">Email</span><div class="text-sm text-slate-900">{{ selectedInvoice.customer_email }}</div></div>
+          <div><span class="text-xs text-slate-500">Total Amount</span><div class="text-sm font-bold text-slate-900">KES {{ formatMoney(selectedInvoice.total_amount) }}</div></div>
+          <div><span class="text-xs text-slate-500">Paid Amount</span><div class="text-sm font-medium text-green-600">KES {{ formatMoney(selectedInvoice.paid_amount) }}</div></div>
+          <div><span class="text-xs text-slate-500">Due Date</span><div class="text-sm text-slate-900">{{ formatDate(selectedInvoice.due_date) }}</div></div>
+          <div><span class="text-xs text-slate-500">Created</span><div class="text-sm text-slate-900">{{ formatDateTime(selectedInvoice.created_at) }}</div></div>
+        </div>
+      </div>
+      <template #footer>
+        <div class="flex items-center gap-2">
+          <BaseButton v-if="selectedInvoice?.status === 'pending' || selectedInvoice?.status === 'overdue'" @click="markAsPaid(selectedInvoice)" variant="success" size="sm">Mark Paid</BaseButton>
+          <BaseButton @click="showViewOverlay = false" variant="ghost" size="sm">Close</BaseButton>
+        </div>
+      </template>
+    </SlideOverlay>
+
+    <!-- Create Invoice Overlay -->
+    <SlideOverlay v-model="showCreateOverlay" title="Create Invoice" subtitle="Generate a new customer invoice" icon="Plus" width="lg">
+      <div class="p-6 space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">Customer Name</label>
+          <input v-model="newInvoice.customer_name" type="text" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="Customer name" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">Customer Email</label>
+          <input v-model="newInvoice.customer_email" type="email" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="customer@example.com" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">Amount (KES)</label>
+          <input v-model.number="newInvoice.total_amount" type="number" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="0" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">Due Date</label>
+          <input v-model="newInvoice.due_date" type="date" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">Description</label>
+          <textarea v-model="newInvoice.description" rows="3" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="Invoice description..."></textarea>
+        </div>
+      </div>
+      <template #footer>
+        <div class="flex items-center gap-2">
+          <BaseButton @click="submitInvoice" variant="primary" :loading="submitting">Create Invoice</BaseButton>
+          <BaseButton @click="showCreateOverlay = false" variant="ghost">Cancel</BaseButton>
+        </div>
+      </template>
+    </SlideOverlay>
   </PageContainer>
 </template>
 
@@ -254,6 +310,7 @@ import {
   FileText, Plus, Download, RefreshCw, X, Eye, Send,
   CheckCircle, Clock, AlertCircle
 } from 'lucide-vue-next'
+import axios from 'axios'
 import PageContainer from '@/modules/common/components/layout/templates/PageContainer.vue'
 import PageHeader from '@/modules/common/components/layout/templates/PageHeader.vue'
 import PageContent from '@/modules/common/components/layout/templates/PageContent.vue'
@@ -267,6 +324,7 @@ import BasePagination from '@/modules/common/components/base/BasePagination.vue'
 import BaseLoading from '@/modules/common/components/base/BaseLoading.vue'
 import BaseEmpty from '@/modules/common/components/base/BaseEmpty.vue'
 import BaseAlert from '@/modules/common/components/base/BaseAlert.vue'
+import SlideOverlay from '@/modules/common/components/base/SlideOverlay.vue'
 
 // Breadcrumbs
 const breadcrumbs = [
@@ -282,70 +340,23 @@ const invoices = ref([])
 const searchQuery = ref('')
 const currentPage = ref(1)
 const itemsPerPage = ref(10)
+const showViewOverlay = ref(false)
+const showCreateOverlay = ref(false)
+const selectedInvoice = ref(null)
+const submitting = ref(false)
+
+const newInvoice = ref({
+  customer_name: '',
+  customer_email: '',
+  total_amount: 0,
+  due_date: '',
+  description: ''
+})
 
 const filters = ref({
   status: '',
   period: ''
 })
-
-// Mock data
-const mockInvoices = [
-  {
-    id: 1,
-    invoice_number: 'INV-2025-001',
-    customer_name: 'John Doe',
-    customer_email: 'john@example.com',
-    total_amount: 5000,
-    paid_amount: 5000,
-    status: 'paid',
-    due_date: new Date(Date.now() + 7 * 86400000).toISOString(),
-    created_at: new Date().toISOString()
-  },
-  {
-    id: 2,
-    invoice_number: 'INV-2025-002',
-    customer_name: 'Jane Smith',
-    customer_email: 'jane@example.com',
-    total_amount: 3500,
-    paid_amount: 0,
-    status: 'pending',
-    due_date: new Date(Date.now() + 14 * 86400000).toISOString(),
-    created_at: new Date(Date.now() - 86400000).toISOString()
-  },
-  {
-    id: 3,
-    invoice_number: 'INV-2025-003',
-    customer_name: 'Bob Johnson',
-    customer_email: 'bob@example.com',
-    total_amount: 7500,
-    paid_amount: 0,
-    status: 'overdue',
-    due_date: new Date(Date.now() - 5 * 86400000).toISOString(),
-    created_at: new Date(Date.now() - 20 * 86400000).toISOString()
-  },
-  {
-    id: 4,
-    invoice_number: 'INV-2025-004',
-    customer_name: 'Alice Williams',
-    customer_email: 'alice@example.com',
-    total_amount: 2000,
-    paid_amount: 2000,
-    status: 'paid',
-    due_date: new Date(Date.now() - 2 * 86400000).toISOString(),
-    created_at: new Date(Date.now() - 10 * 86400000).toISOString()
-  },
-  {
-    id: 5,
-    invoice_number: 'INV-2025-005',
-    customer_name: 'Charlie Brown',
-    customer_email: 'charlie@example.com',
-    total_amount: 4200,
-    paid_amount: 0,
-    status: 'pending',
-    due_date: new Date(Date.now() + 3 * 86400000).toISOString(),
-    created_at: new Date(Date.now() - 2 * 86400000).toISOString()
-  }
-]
 
 // Computed
 const stats = computed(() => {
@@ -435,16 +446,31 @@ const hasActiveFilters = computed(() => {
 
 // Methods
 const fetchInvoices = async () => {
-  loading.value = true
-  error.value = null
+  const isInitial = invoices.value.length === 0
+  if (isInitial) {
+    loading.value = true
+    error.value = null
+  }
   
   try {
-    // TODO: Replace with actual API call
-    await new Promise(resolve => setTimeout(resolve, 500))
-    invoices.value = mockInvoices
+    const response = await axios.get('/billing/invoices')
+    const data = response.data?.invoices?.data || response.data?.invoices || response.data?.data || []
+    invoices.value = data.map(inv => ({
+      id: inv.id,
+      invoice_number: inv.invoice_number || inv.number || `INV-${inv.id}`,
+      customer_name: inv.customer_name || inv.user?.name || 'Unknown',
+      customer_email: inv.customer_email || inv.user?.email || '',
+      total_amount: Number(inv.total_amount || inv.amount || 0),
+      paid_amount: Number(inv.paid_amount || 0),
+      status: inv.status || 'pending',
+      due_date: inv.due_date || inv.due_at || '',
+      created_at: inv.created_at || new Date().toISOString()
+    }))
   } catch (err) {
-    error.value = 'Failed to load invoices. Please try again.'
-    console.error('Error fetching invoices:', err)
+    if (isInitial) {
+      error.value = err.response?.data?.message || 'Failed to load invoices.'
+    }
+    console.error('fetchInvoices error:', err)
   } finally {
     loading.value = false
   }
@@ -500,54 +526,93 @@ const getDaysOverdue = (dueDate) => {
 }
 
 const viewInvoice = (invoice) => {
-  console.log('View invoice:', invoice)
-  // TODO: Implement invoice details view/modal
+  selectedInvoice.value = invoice
+  showViewOverlay.value = true
 }
 
-const downloadInvoice = (invoice) => {
-  console.log('Download invoice:', invoice)
-  // TODO: Implement PDF download
-  alert('PDF download feature coming soon!')
+const downloadInvoice = async (invoice) => {
+  try {
+    const response = await axios.get(`/billing/invoices/${invoice.id}/download`, { responseType: 'blob' })
+    const url = URL.createObjectURL(response.data)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${invoice.invoice_number}.pdf`
+    a.click()
+    URL.revokeObjectURL(url)
+  } catch (err) {
+    console.error('Download error:', err)
+    alert(err.response?.data?.message || 'Failed to download invoice')
+  }
 }
 
 const sendReminder = async (invoice) => {
   if (!confirm(`Send payment reminder to ${invoice.customer_name}?`)) return
-  
   try {
-    // TODO: Implement send reminder API call
-    await new Promise(resolve => setTimeout(resolve, 500))
+    await axios.post(`/billing/invoices/${invoice.id}/remind`)
     alert('Reminder sent successfully!')
   } catch (err) {
-    console.error('Error sending reminder:', err)
-    alert('Failed to send reminder')
+    console.error('Send reminder error:', err)
+    alert(err.response?.data?.message || 'Failed to send reminder')
   }
 }
 
 const markAsPaid = async (invoice) => {
-  if (!confirm(`Mark invoice ${invoice.invoice_number} as paid?`)) return
-  
+  if (!invoice || !confirm(`Mark invoice ${invoice.invoice_number} as paid?`)) return
   try {
-    // TODO: Implement mark as paid API call
-    await new Promise(resolve => setTimeout(resolve, 500))
-    invoice.status = 'paid'
-    invoice.paid_amount = invoice.total_amount
-    alert('Invoice marked as paid!')
+    await axios.patch(`/billing/invoices/${invoice.id}`, { status: 'paid', paid_amount: invoice.total_amount })
+    const idx = invoices.value.findIndex(i => i.id === invoice.id)
+    if (idx !== -1) {
+      invoices.value[idx].status = 'paid'
+      invoices.value[idx].paid_amount = invoice.total_amount
+    }
+    if (selectedInvoice.value?.id === invoice.id) {
+      selectedInvoice.value.status = 'paid'
+      selectedInvoice.value.paid_amount = invoice.total_amount
+    }
   } catch (err) {
-    console.error('Error marking as paid:', err)
-    alert('Failed to update invoice')
+    console.error('Mark paid error:', err)
+    alert(err.response?.data?.message || 'Failed to update invoice')
   }
 }
 
 const openCreateInvoice = () => {
-  console.log('Open create invoice modal')
-  // TODO: Implement create invoice modal/page
-  alert('Create invoice feature coming soon!')
+  newInvoice.value = { customer_name: '', customer_email: '', total_amount: 0, due_date: '', description: '' }
+  showCreateOverlay.value = true
+}
+
+const submitInvoice = async () => {
+  if (!newInvoice.value.customer_name || !newInvoice.value.total_amount) {
+    alert('Customer name and amount are required.')
+    return
+  }
+  submitting.value = true
+  try {
+    await axios.post('/billing/invoices', newInvoice.value)
+    showCreateOverlay.value = false
+    await fetchInvoices()
+  } catch (err) {
+    console.error('Create invoice error:', err)
+    alert(err.response?.data?.message || 'Failed to create invoice')
+  } finally {
+    submitting.value = false
+  }
 }
 
 const exportInvoices = () => {
-  console.log('Export invoices')
-  // TODO: Implement export functionality
-  alert('Export feature coming soon!')
+  const csv = [
+    ['Invoice #', 'Customer', 'Email', 'Amount', 'Paid', 'Status', 'Due Date', 'Created'].join(','),
+    ...filteredData.value.map(inv => [
+      inv.invoice_number, inv.customer_name, inv.customer_email,
+      inv.total_amount, inv.paid_amount, inv.status, inv.due_date, inv.created_at
+    ].join(','))
+  ].join('\n')
+  const blob = new Blob([csv], { type: 'text/csv' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `invoices-${new Date().toISOString().slice(0,10)}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
 }
 
 // Lifecycle

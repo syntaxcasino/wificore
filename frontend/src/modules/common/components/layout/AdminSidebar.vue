@@ -10,8 +10,16 @@
       'top-16 h-[calc(100vh-4rem)]': !isMobile,
     }"
   >
+    <!-- Mobile header with close button -->
+    <div v-if="isMobile" class="flex items-center justify-between px-4 py-3 border-b border-gray-800/50">
+      <span class="text-sm font-semibold text-gray-200">Admin Menu</span>
+      <button @click="$emit('close-sidebar')" class="p-1.5 rounded-md hover:bg-gray-800 transition-colors">
+        <X class="w-5 h-5 text-gray-400" />
+      </button>
+    </div>
+
     <div
-      class="overflow-y-auto scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-transparent hover:scrollbar-thumb-gray-600"
+      class="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-transparent hover:scrollbar-thumb-gray-600"
     >
       <nav class="p-3 space-y-1">
         <!-- Dashboard — /api/system/dashboard/stats -->
@@ -162,7 +170,8 @@ import {
   HeartPulse,
   TrendingUp,
   ScrollText,
-  ChevronDown
+  ChevronDown,
+  X
 } from 'lucide-vue-next'
 
 const props = defineProps({

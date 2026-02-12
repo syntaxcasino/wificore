@@ -10,11 +10,10 @@ use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Events\Dispatchable;
-use Illuminate\Queue\SerializesModels;
 
 class AccountUnsuspended implements ShouldBroadcastNow, ShouldQueue
 {
-    use Dispatchable, InteractsWithSockets, SerializesModels;
+    use Dispatchable, InteractsWithSockets;
     use BroadcastsToTenant;
     
     /**
@@ -27,17 +26,24 @@ class AccountUnsuspended implements ShouldBroadcastNow, ShouldQueue
      */
     public $queue = 'broadcasts';
 
-    public $user;
-    public $tenantId;
-    public $wasSuspendedUntil;
-    public $suspensionReason;
+    public array $userData;
+    public ?string $tenantId;
+    public ?string $wasSuspendedUntil;
+    public ?string $suspensionReason;
 
     /**
      * Create a new event instance.
      */
     public function __construct(User $user, ?string $wasSuspendedUntil, ?string $suspensionReason)
     {
-        $this->user = $user;
+        $this->userData = [
+            'id' => $user->id,
+            'username' => $user->username,
+            'name' => $user->name,
+            'email' => $user->email,
+            'role' => $user->role,
+            'tenant_id' => $user->tenant_id,
+        ];
         $this->tenantId = $user->tenant_id;
         $this->wasSuspendedUntil = $wasSuspendedUntil;
         $this->suspensionReason = $suspensionReason;
@@ -78,19 +84,12 @@ class AccountUnsuspended implements ShouldBroadcastNow, ShouldQueue
     public function broadcastWith(): array
     {
         return [
-            'user' => [
-                'id' => $this->user->id,
-                'username' => $this->user->username,
-                'name' => $this->user->name,
-                'email' => $this->user->email,
-                'role' => $this->user->role,
-                'tenant_id' => $this->user->tenant_id,
-            ],
+            'user' => $this->userData,
             'was_suspended_until' => $this->wasSuspendedUntil,
             'suspension_reason' => $this->suspensionReason,
             'timestamp' => now()->toIso8601String(),
             'severity' => 'info',
-            'message' => "Account '{$this->user->username}' has been unsuspended and can now login.",
+            'message' => "Account '{$this->userData['username']}' has been unsuspended and can now login.",
         ];
     }
 }

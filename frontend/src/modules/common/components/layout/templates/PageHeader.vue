@@ -1,20 +1,20 @@
 <template>
   <div class="flex-shrink-0 bg-white border-b border-slate-200 shadow-sm relative z-10">
-    <div class="px-6 py-5">
-      <div class="flex items-center justify-between gap-6">
+    <div class="px-3 py-3 sm:px-6 sm:py-5">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-6">
         <!-- Left: Title & Icon -->
-        <div class="flex items-center gap-3">
-          <div v-if="icon" class="w-11 h-11 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg">
-            <component :is="iconComponent" class="h-6 w-6 text-white" stroke-width="2" />
+        <div class="flex items-center gap-2.5 sm:gap-3 min-w-0">
+          <div v-if="icon" class="w-9 h-9 sm:w-11 sm:h-11 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg flex-shrink-0">
+            <component :is="iconComponent" class="h-5 w-5 sm:h-6 sm:w-6 text-white" stroke-width="2" />
           </div>
-          <div>
-            <h2 class="text-xl font-bold text-slate-900">{{ title }}</h2>
-            <p v-if="subtitle" class="text-xs text-slate-500 mt-0.5">{{ subtitle }}</p>
+          <div class="min-w-0">
+            <h2 class="text-lg sm:text-xl font-bold text-slate-900 truncate">{{ title }}</h2>
+            <p v-if="subtitle" class="text-xs text-slate-500 mt-0.5 truncate">{{ subtitle }}</p>
           </div>
         </div>
         
         <!-- Right: Actions -->
-        <div class="flex items-center gap-3">
+        <div class="flex items-center gap-2 sm:gap-3 flex-shrink-0">
           <slot name="actions" />
         </div>
       </div>

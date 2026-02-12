@@ -389,14 +389,13 @@ class ZeroConfigHotspotGenerator
 
         return [
             "# Firewall Rules - Authentication Enforcement",
-            "# Rule order: established → invalid drop → authenticated subnet → DROP unauthenticated",
+            "# CRITICAL: ALL rules scoped to in-interface={$iface} to avoid affecting other router traffic",
+            "# Without in-interface scoping, established/related accept matches ALL traffic on the router",
             ":do { /ip firewall filter remove [find comment~\"Hotspot-{$routerId}-FW\"] } on-error={}",
-            ":do { /ip firewall filter add chain=forward connection-state=established,related action=accept comment=\"Hotspot-{$routerId}-FW-EST\" } on-error={}",
-            ":do { /ip firewall filter add chain=forward connection-state=invalid action=drop comment=\"Hotspot-{$routerId}-FW-INV\" } on-error={}",
+            ":do { /ip firewall filter add chain=forward in-interface={$iface} connection-state=established,related action=accept comment=\"Hotspot-{$routerId}-FW-EST\" } on-error={}",
+            ":do { /ip firewall filter add chain=forward in-interface={$iface} connection-state=invalid action=drop comment=\"Hotspot-{$routerId}-FW-INV\" } on-error={}",
             // Allow traffic from the hotspot subnet (Hotspot system assigns IPs only to authenticated users)
-            ":do { /ip firewall filter add chain=forward src-address={$networkCidr} out-interface=!{$iface} action=accept comment=\"Hotspot-{$routerId}-FW-INET\" } on-error={}",
-            // Allow local traffic within hotspot subnet
-            ":do { /ip firewall filter add chain=forward src-address={$networkCidr} dst-address={$networkCidr} action=accept comment=\"Hotspot-{$routerId}-FW-LOCAL\" } on-error={}",
+            ":do { /ip firewall filter add chain=forward src-address={$networkCidr} in-interface={$iface} action=accept comment=\"Hotspot-{$routerId}-FW-INET\" } on-error={}",
             // CRITICAL: Block ALL other traffic from the hotspot bridge (unauthenticated devices)
             ":do { /ip firewall filter add chain=forward in-interface={$iface} action=drop comment=\"Hotspot-{$routerId}-FW-DROP\" } on-error={}",
             ""

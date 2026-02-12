@@ -1,49 +1,13 @@
 <template>
-  <transition
-    v-if="showUpdateOverlay"
-    enter-active-class="transition-transform duration-300 ease-out"
-    enter-from-class="translate-x-full"
-    enter-to-class="translate-x-0"
-    leave-active-class="transition-transform duration-300 ease-in"
-    leave-from-class="translate-x-0"
-    leave-to-class="translate-x-full"
+  <SlideOverlay
+    :model-value="showUpdateOverlay"
+    title="Edit Router"
+    :subtitle="selectedRouter?.name || 'Update router configuration'"
+    icon="Edit"
+    width="50%"
+    @update:model-value="val => { if (!val) $emit('close-update') }"
+    @close="$emit('close-update')"
   >
-    <div
-      class="fixed inset-y-0 right-0 z-[9999] w-full sm:w-2/3 lg:w-1/2 xl:w-2/5 bg-white shadow-2xl flex flex-col"
-    >
-      <!-- Header -->
-      <div class="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50 flex-shrink-0">
-        <div class="flex items-center gap-2">
-          <div class="p-1.5 bg-blue-100 rounded-lg">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-            </svg>
-          </div>
-          <div>
-            <h3 class="text-base font-semibold text-gray-800">Edit Router</h3>
-            <p class="text-xs text-gray-500">{{ selectedRouter?.name || 'Update router configuration' }}</p>
-          </div>
-        </div>
-        <button
-          type="button"
-          @click="$emit('close-update')"
-          class="p-1.5 rounded-lg hover:bg-white transition-colors text-gray-500 hover:text-gray-700"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            class="w-4 h-4"
-            viewBox="0 0 20 20"
-            fill="currentColor"
-          >
-            <path
-              fill-rule="evenodd"
-              d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
-              clip-rule="evenodd"
-            />
-          </svg>
-        </button>
-      </div>
-
       <!-- Loading State -->
       <div v-if="formSubmitting" class="flex flex-col items-center justify-center flex-1 gap-4 p-8">
         <div
@@ -244,8 +208,8 @@
         </form>
       </div>
 
-      <!-- Footer Buttons -->
-      <div class="border-t border-gray-200 bg-white px-4 py-2.5 flex justify-between gap-3 flex-shrink-0">
+    <template #footer>
+      <div class="flex justify-between gap-3">
         <button
           type="button"
           @click="$emit('close-update')"
@@ -266,12 +230,15 @@
           Update Router
         </button>
       </div>
-    </div>
-  </transition>
+    </template>
+  </SlideOverlay>
 </template>
 
 <script>
+import SlideOverlay from '@/modules/common/components/base/SlideOverlay.vue'
+
 export default {
+  components: { SlideOverlay },
   props: {
     showUpdateOverlay: Boolean,
     selectedRouter: Object,

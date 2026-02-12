@@ -8,7 +8,7 @@
       :breadcrumbs="breadcrumbs"
     >
       <template #actions>
-        <BaseButton @click="$router.push('/dashboard/pppoe/add-user')" variant="primary">
+        <BaseButton @click="openAddUser" variant="primary">
           <Plus class="w-4 h-4 mr-1" />
           Add PPPoE User
         </BaseButton>
@@ -16,10 +16,10 @@
     </PageHeader>
 
     <!-- Search and Filters Bar -->
-    <div class="px-6 py-4 bg-white border-b border-slate-200">
-      <div class="flex items-center gap-3 flex-wrap">
+    <div class="px-3 py-3 sm:px-6 sm:py-4 bg-white border-b border-slate-200">
+      <div class="flex flex-col sm:flex-row sm:items-center gap-3 flex-wrap">
         <!-- Search Box -->
-        <div class="flex-1 min-w-[300px] max-w-md">
+        <div class="flex-1 min-w-0 sm:min-w-[250px] max-w-md">
           <BaseSearch v-model="searchQuery" placeholder="Search PPPoE users..." />
         </div>
         
@@ -80,7 +80,7 @@
           icon="Network"
           actionText="Add PPPoE User"
           actionIcon="Plus"
-          @action="$router.push('/dashboard/pppoe/add-user')"
+          @action="openAddUser"
         />
       </div>
 
@@ -401,7 +401,15 @@
       </template>
     </SlideOverlay>
 
-    <BaseModal v-model="showPasswordModal" title="PPPoE User Created" :closeOnBackdrop="false">
+    <SlideOverlay
+      v-model="showPasswordModal"
+      title="PPPoE User Created"
+      subtitle="Account credentials generated successfully"
+      icon="Key"
+      width="40%"
+      :closeOnBackdrop="false"
+      :closeOnEscape="false"
+    >
       <div class="space-y-4">
         <div>
           <div class="text-sm font-medium text-slate-700">Username</div>
@@ -420,14 +428,16 @@
           </div>
           <div class="mt-2 text-xs text-slate-500">This password is shown only once. Store it securely.</div>
         </div>
+      </div>
 
+      <template #footer>
         <div class="flex items-center justify-end gap-3">
           <BaseButton variant="primary" @click="finishCreateUser">
             Done
           </BaseButton>
         </div>
-      </div>
-    </BaseModal>
+      </template>
+    </SlideOverlay>
 
   <SlideOverlay
     v-model="showUserDetailsModal"
@@ -591,7 +601,6 @@ import BaseLoading from '@/modules/common/components/base/BaseLoading.vue'
 import BaseEmpty from '@/modules/common/components/base/BaseEmpty.vue'
 import BaseAlert from '@/modules/common/components/base/BaseAlert.vue'
 import BaseInput from '@/modules/common/components/base/BaseInput.vue'
-import BaseModal from '@/modules/common/components/base/BaseModal.vue'
 import SlideOverlay from '@/modules/common/components/base/SlideOverlay.vue'
 import axios from 'axios'
 
@@ -943,8 +952,8 @@ const handleUpdateUser = async () => {
     await updateUser(editingUser.value.id, payload)
     editSubmitting.value = false
     showEditUserOverlay.value = false
-    // List refresh handled by WebSocket PppoeUserUpdated event
     closeEditUser()
+    await fetchUsers()
   } catch (err) {
     const status = err.response?.status
     const message = err.response?.data?.message || err.response?.data?.error || 'Failed to update PPPoE user'
@@ -976,7 +985,7 @@ const handleToggleStatus = async (user) => {
   if (confirmed) {
     try {
       await toggleUserStatus(user.id, user.status !== 'blocked')
-      // List refresh handled by WebSocket PppoeUserUpdated event
+      await fetchUsers()
     } catch (err) {
       console.error(`Failed to ${action} user:`, err)
     }
@@ -1005,7 +1014,7 @@ const handleActivate = async (user) => {
   if (confirmed) {
     try {
       await axios.post(`pppoe/users/${user.id}/activate`)
-      // List refresh handled by WebSocket PppoeUserUpdated event
+      await fetchUsers()
     } catch (err) {
       console.error('Failed to activate user:', err)
     }
@@ -1024,7 +1033,7 @@ const handleDeactivate = async (user) => {
   if (confirmed) {
     try {
       await axios.post(`pppoe/users/${user.id}/deactivate`)
-      // List refresh handled by WebSocket PppoeUserUpdated event
+      await fetchUsers()
     } catch (err) {
       console.error('Failed to deactivate user:', err)
     }

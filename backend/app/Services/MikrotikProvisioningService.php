@@ -538,6 +538,35 @@ SCRIPT;
     {
         try {
             $live = $this->fetchLiveRouterData($router, 'details', false);
+            
+            // Update database with live hardware information
+            if (!empty($live)) {
+                $updates = [];
+                
+                if (isset($live['board_name']) && $live['board_name'] !== $router->model) {
+                    $updates['model'] = $live['board_name'];
+                }
+                
+                if (isset($live['version']) && $live['version'] !== $router->os_version) {
+                    $updates['os_version'] = $live['version'];
+                }
+                
+                if (isset($live['serial_number']) && $live['serial_number'] !== $router->serial_number) {
+                    $updates['serial_number'] = $live['serial_number'];
+                }
+                
+                if (isset($live['version']) && $live['version'] !== $router->firmware) {
+                    $updates['firmware'] = $live['version'];
+                }
+                
+                if (!empty($updates)) {
+                    $router->update($updates);
+                    Log::info('Updated router hardware info from live data', [
+                        'router_id' => $router->id,
+                        'updates' => array_keys($updates),
+                    ]);
+                }
+            }
         } catch (\Exception $e) {
             // If live fetch fails, return DB-only info with error
             Log::warning('getRouterDetails: live fetch failed, returning DB info only', [
@@ -557,6 +586,8 @@ SCRIPT;
             'status' => $router->status,
             'model' => $live['board_name'] ?? $router->model,
             'os_version' => $live['version'] ?? $router->os_version,
+            'serial_number' => $live['serial_number'] ?? $router->serial_number,
+            'firmware' => $live['version'] ?? $router->firmware,
             'last_seen' => $router->last_seen,
             'live' => $live,
         ];

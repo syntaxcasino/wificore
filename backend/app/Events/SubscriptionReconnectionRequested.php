@@ -6,7 +6,6 @@ use App\Models\Payment;
 use App\Models\UserSubscription;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Foundation\Events\Dispatchable;
-use Illuminate\Queue\SerializesModels;
 
 /**
  * Event fired when a subscription needs to be reconnected after payment
@@ -14,17 +13,17 @@ use Illuminate\Queue\SerializesModels;
  */
 class SubscriptionReconnectionRequested
 {
-    use Dispatchable, InteractsWithSockets, SerializesModels;
+    use Dispatchable, InteractsWithSockets;
 
-    public Payment $payment;
-    public UserSubscription $subscription;
+    public string $paymentId;
+    public string $subscriptionId;
 
     /**
      * Create a new event instance.
      */
     public function __construct(Payment $payment, UserSubscription $subscription)
     {
-        $this->payment = $payment;
-        $this->subscription = $subscription;
+        $this->paymentId = (string) $payment->id;
+        $this->subscriptionId = (string) $subscription->id;
     }
 }

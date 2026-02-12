@@ -13,8 +13,8 @@
       </template>
     </PageHeader>
 
-    <div class="px-6 py-4 bg-white border-b border-slate-200">
-      <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+    <div class="px-3 py-3 sm:px-6 sm:py-4 bg-white border-b border-slate-200">
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
         <div class="bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg p-4 border border-green-200">
           <div class="flex items-center justify-between">
             <div>
@@ -57,9 +57,9 @@
       </div>
     </div>
 
-    <div class="px-6 py-4 bg-white border-b border-slate-200">
-      <div class="flex items-center gap-3 flex-wrap">
-        <div class="flex-1 min-w-[300px] max-w-md">
+    <div class="px-3 py-3 sm:px-6 sm:py-4 bg-white border-b border-slate-200">
+      <div class="flex flex-col sm:flex-row sm:items-center gap-3 flex-wrap">
+        <div class="flex-1 min-w-0 sm:min-w-[250px] max-w-md">
           <BaseSearch v-model="searchQuery" placeholder="Search by user..." />
         </div>
         
@@ -159,12 +159,61 @@
       </div>
       <BasePagination v-model="currentPage" :total-pages="totalPages" :total-items="filteredData.length" />
     </PageFooter>
+
+    <!-- View History Overlay -->
+    <SlideOverlay v-model="showHistoryOverlay" title="Wallet History" :subtitle="selectedWallet?.username" icon="Wallet" width="lg">
+      <div v-if="selectedWallet" class="p-6 space-y-4">
+        <div class="grid grid-cols-2 gap-4">
+          <div><span class="text-xs text-slate-500">Username</span><div class="text-sm font-semibold text-slate-900">{{ selectedWallet.username }}</div></div>
+          <div><span class="text-xs text-slate-500">Email</span><div class="text-sm text-slate-900">{{ selectedWallet.email }}</div></div>
+          <div><span class="text-xs text-slate-500">Current Balance</span><div class="text-lg font-bold" :class="getBalanceColor(selectedWallet.balance)">KES {{ formatMoney(selectedWallet.balance) }}</div></div>
+          <div><span class="text-xs text-slate-500">Total Topups</span><div class="text-sm font-medium text-slate-900">KES {{ formatMoney(selectedWallet.total_topups) }}</div></div>
+        </div>
+        <div v-if="walletHistory.length" class="mt-4">
+          <h4 class="text-sm font-semibold text-slate-700 mb-2">Recent Transactions</h4>
+          <div class="space-y-2">
+            <div v-for="tx in walletHistory" :key="tx.id" class="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+              <div>
+                <div class="text-sm font-medium text-slate-900">{{ tx.description || tx.type }}</div>
+                <div class="text-xs text-slate-500">{{ formatDateTime(tx.created_at) }}</div>
+              </div>
+              <div class="text-sm font-bold" :class="tx.amount > 0 ? 'text-green-600' : 'text-red-600'">{{ tx.amount > 0 ? '+' : '' }}KES {{ formatMoney(Math.abs(tx.amount)) }}</div>
+            </div>
+          </div>
+        </div>
+        <div v-else class="text-sm text-slate-500 text-center py-4">No transaction history available.</div>
+      </div>
+      <template #footer>
+        <BaseButton @click="showHistoryOverlay = false" variant="ghost">Close</BaseButton>
+      </template>
+    </SlideOverlay>
+
+    <!-- Add Balance Overlay -->
+    <SlideOverlay v-model="showAddBalanceOverlay" title="Add Balance" :subtitle="balanceTarget?.username || 'Select a user'" icon="Plus" width="md">
+      <div class="p-6 space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">Amount (KES)</label>
+          <input v-model.number="balanceAmount" type="number" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="0" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">Description</label>
+          <input v-model="balanceDescription" type="text" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="Reason for adjustment" />
+        </div>
+      </div>
+      <template #footer>
+        <div class="flex items-center gap-2">
+          <BaseButton @click="submitBalance('credit')" variant="success" :loading="submitting">Add Balance</BaseButton>
+          <BaseButton @click="showAddBalanceOverlay = false" variant="ghost">Cancel</BaseButton>
+        </div>
+      </template>
+    </SlideOverlay>
   </PageContainer>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { Wallet, RefreshCw, Plus, X, Users, TrendingUp, DollarSign, Eye, Minus } from 'lucide-vue-next'
+import axios from 'axios'
 import PageContainer from '@/modules/common/components/layout/templates/PageContainer.vue'
 import PageHeader from '@/modules/common/components/layout/templates/PageHeader.vue'
 import PageContent from '@/modules/common/components/layout/templates/PageContent.vue'
@@ -176,6 +225,7 @@ import BaseSearch from '@/modules/common/components/base/BaseSearch.vue'
 import BaseSelect from '@/modules/common/components/base/BaseSelect.vue'
 import BasePagination from '@/modules/common/components/base/BasePagination.vue'
 import BaseLoading from '@/modules/common/components/base/BaseLoading.vue'
+import SlideOverlay from '@/modules/common/components/base/SlideOverlay.vue'
 
 const breadcrumbs = [
   { label: 'Dashboard', to: '/dashboard' },
@@ -188,25 +238,29 @@ const refreshing = ref(false)
 const searchQuery = ref('')
 const currentPage = ref(1)
 const itemsPerPage = ref(15)
+const showHistoryOverlay = ref(false)
+const showAddBalanceOverlay = ref(false)
+const selectedWallet = ref(null)
+const balanceTarget = ref(null)
+const balanceAmount = ref(0)
+const balanceDescription = ref('')
+const balanceAction = ref('credit')
+const submitting = ref(false)
+const walletHistory = ref([])
 
 const filters = ref({ status: '' })
 
-const wallets = ref(Array.from({ length: 30 }, (_, i) => ({
-  id: i + 1,
-  username: `user${i + 1}`,
-  email: `user${i + 1}@example.com`,
-  balance: Math.floor(Math.random() * 10000),
-  last_topup: Math.floor(Math.random() * 5000) + 500,
-  last_topup_date: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString(),
-  total_topups: Math.floor(Math.random() * 50000) + 10000
-})))
+const wallets = ref([])
 
-const stats = computed(() => ({
-  totalBalance: wallets.value.reduce((sum, w) => sum + w.balance, 0),
-  activeWallets: wallets.value.filter(w => w.balance > 0).length,
-  todayTopups: Math.floor(Math.random() * 50000) + 20000,
-  avgBalance: Math.floor(wallets.value.reduce((sum, w) => sum + w.balance, 0) / wallets.value.length)
-}))
+const stats = computed(() => {
+  const total = wallets.value.reduce((sum, w) => sum + (w.balance || 0), 0)
+  return {
+    totalBalance: total,
+    activeWallets: wallets.value.filter(w => w.balance > 0).length,
+    todayTopups: wallets.value.reduce((sum, w) => sum + (w.today_topups || 0), 0),
+    avgBalance: wallets.value.length ? Math.floor(total / wallets.value.length) : 0
+  }
+})
 
 const filteredData = computed(() => {
   let data = wallets.value
@@ -264,16 +318,94 @@ const clearFilters = () => {
   searchQuery.value = ''
 }
 
+const fetchWallets = async () => {
+  const isInitial = wallets.value.length === 0
+  if (isInitial) loading.value = true
+  try {
+    const response = await axios.get('/billing/wallets')
+    const data = response.data?.wallets || response.data?.data || []
+    wallets.value = data.map(w => ({
+      id: w.id,
+      username: w.username || w.user?.name || `User ${w.user_id || w.id}`,
+      email: w.email || w.user?.email || '',
+      balance: Number(w.balance || 0),
+      last_topup: Number(w.last_topup_amount || w.last_topup || 0),
+      last_topup_date: w.last_topup_date || w.last_topup_at || '',
+      total_topups: Number(w.total_topups || w.total_credits || 0),
+      today_topups: Number(w.today_topups || 0),
+      user_id: w.user_id || w.id
+    }))
+  } catch (err) {
+    console.error('fetchWallets error:', err)
+  } finally {
+    loading.value = false
+  }
+}
+
 const refreshData = async () => {
   refreshing.value = true
-  await new Promise(resolve => setTimeout(resolve, 500))
+  await fetchWallets()
   refreshing.value = false
 }
 
-const openAddBalanceModal = () => alert('Add balance modal coming soon!')
-const viewHistory = (wallet) => console.log('View history:', wallet)
-const addBalance = (wallet) => alert(`Add balance for ${wallet.username}`)
-const deductBalance = (wallet) => alert(`Deduct balance for ${wallet.username}`)
+const viewHistory = async (wallet) => {
+  selectedWallet.value = wallet
+  walletHistory.value = []
+  showHistoryOverlay.value = true
+  try {
+    const response = await axios.get(`/billing/wallets/${wallet.id}/history`)
+    walletHistory.value = response.data?.transactions || response.data?.data || []
+  } catch (err) {
+    console.error('fetchHistory error:', err)
+  }
+}
 
-onMounted(() => { loading.value = false })
+const openAddBalanceModal = () => {
+  balanceTarget.value = null
+  balanceAmount.value = 0
+  balanceDescription.value = ''
+  showAddBalanceOverlay.value = true
+}
+
+const addBalance = (wallet) => {
+  balanceTarget.value = wallet
+  balanceAction.value = 'credit'
+  balanceAmount.value = 0
+  balanceDescription.value = ''
+  showAddBalanceOverlay.value = true
+}
+
+const deductBalance = (wallet) => {
+  balanceTarget.value = wallet
+  balanceAction.value = 'debit'
+  balanceAmount.value = 0
+  balanceDescription.value = ''
+  showAddBalanceOverlay.value = true
+}
+
+const submitBalance = async (type) => {
+  if (!balanceTarget.value || !balanceAmount.value) {
+    alert('Please select a user and enter an amount.')
+    return
+  }
+  submitting.value = true
+  try {
+    await axios.post(`/billing/wallets/${balanceTarget.value.id}/adjust`, {
+      type: type || balanceAction.value,
+      amount: balanceAmount.value,
+      description: balanceDescription.value
+    })
+    showAddBalanceOverlay.value = false
+    await fetchWallets()
+  } catch (err) {
+    console.error('submitBalance error:', err)
+    alert(err.response?.data?.message || 'Failed to adjust balance')
+  } finally {
+    submitting.value = false
+  }
+}
+
+onMounted(() => {
+  fetchWallets()
+})
 </script>

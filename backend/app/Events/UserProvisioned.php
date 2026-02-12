@@ -9,15 +9,14 @@ use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
-use Illuminate\Queue\SerializesModels;
 
 class UserProvisioned implements ShouldBroadcast
 {
-    use Dispatchable, InteractsWithSockets, SerializesModels;
+    use Dispatchable, InteractsWithSockets;
     use BroadcastsToTenant;
 
-    public $subscription;
-    public $router;
+    public array $subscriptionData;
+    public array $routerData;
     public $tenantId;
 
     /**
@@ -25,8 +24,20 @@ class UserProvisioned implements ShouldBroadcast
      */
     public function __construct(UserSubscription $subscription, Router $router, ?string $tenantId = null)
     {
-        $this->subscription = $subscription;
-        $this->router = $router;
+        // Extract data instead of serializing models
+        // Both models are tenant-scoped; SerializesModels fails on deserialization
+        $this->subscriptionData = [
+            'id' => $subscription->id,
+            'user_id' => $subscription->user_id,
+            'username' => $subscription->mikrotik_username,
+            'package_name' => $subscription->package?->name,
+            'end_time' => $subscription->end_time,
+        ];
+        $this->routerData = [
+            'id' => $router->id,
+            'name' => $router->name,
+            'ip_address' => $router->ip_address,
+        ];
         $this->tenantId = $tenantId ?? (auth()->user()?->tenant_id);
     }
 
@@ -48,18 +59,8 @@ class UserProvisioned implements ShouldBroadcast
     {
         return [
             'type' => 'user_provisioned',
-            'subscription' => [
-                'id' => $this->subscription->id,
-                'user_id' => $this->subscription->user_id,
-                'username' => $this->subscription->mikrotik_username,
-                'package' => $this->subscription->package->name,
-                'end_time' => $this->subscription->end_time,
-            ],
-            'router' => [
-                'id' => $this->router->id,
-                'name' => $this->router->name,
-                'ip_address' => $this->router->ip_address,
-            ],
+            'subscription' => $this->subscriptionData,
+            'router' => $this->routerData,
             'timestamp' => now()->toIso8601String(),
         ];
     }

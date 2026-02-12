@@ -19,8 +19,6 @@ const UserGroups = () => import('@/modules/tenant/views/dashboard/users/UserGrou
 // Hotspot
 const HotspotLayout = () => import('@/modules/tenant/views/dashboard/hotspot/HotspotLayout.vue')
 const VouchersGenerate = () => import('@/modules/tenant/views/dashboard/hotspot/VouchersGenerateNew.vue')
-const VouchersBulk = () => import('@/modules/tenant/views/dashboard/hotspot/VouchersBulk.vue')
-const VoucherTemplates = () => import('@/modules/tenant/views/dashboard/hotspot/VoucherTemplates.vue')
 const HotspotProfiles = () => import('@/modules/tenant/views/dashboard/hotspot/HotspotProfiles.vue')
 const LoginPageCustomization = () => import('@/modules/tenant/views/dashboard/hotspot/LoginPageCustomization.vue')
 
@@ -218,15 +216,9 @@ const routes = [
           { path: 'users', name: 'hotspot.users', component: () => import('@/modules/tenant/views/dashboard/hotspot/HotspotUsers.vue') },
           { path: 'sessions', name: 'hotspot.sessions', component: () => import('@/modules/tenant/views/dashboard/hotspot/ActiveSessionsNew.vue') },
           {
-            path: 'vouchers/generate',
-            name: 'hotspot.vouchers.generate',
+            path: 'vouchers',
+            name: 'hotspot.vouchers',
             component: VouchersGenerate,
-          },
-          { path: 'vouchers/bulk', name: 'hotspot.vouchers.bulk', component: VouchersBulk },
-          {
-            path: 'voucher-templates',
-            name: 'hotspot.voucher-templates',
-            component: VoucherTemplates,
           },
           { path: 'profiles', name: 'hotspot.profiles', component: HotspotProfiles },
           { path: 'login-page', name: 'hotspot.login-page', component: LoginPageCustomization },

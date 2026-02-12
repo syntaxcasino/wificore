@@ -2,35 +2,36 @@
   <div class="flex-1 overflow-hidden relative">
     <div v-if="routers.length" class="h-full flex flex-col">
       <div class="flex-1 overflow-hidden flex flex-col">
+        <div class="overflow-x-auto">
         <div class="border-b border-gray-200 bg-gray-50">
-          <div class="px-6 py-3 grid grid-cols-12 gap-4">
+          <div class="px-3 sm:px-6 py-3 grid grid-cols-12 gap-2 sm:gap-4 min-w-[540px]">
             <div
-              class="col-span-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+              class="col-span-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden sm:block"
             >
               ID
             </div>
             <div
-              class="col-span-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+              class="col-span-3 sm:col-span-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
             >
               Name
             </div>
             <div
-              class="col-span-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+              class="col-span-3 sm:col-span-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
             >
               IP Address
             </div>
             <div
-              class="col-span-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+              class="col-span-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:block"
             >
               Model
             </div>
             <div
-              class="col-span-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+              class="col-span-3 sm:col-span-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
             >
               Status
             </div>
             <div
-              class="col-span-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"
+              class="col-span-3 sm:col-span-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"
             >
               Actions
             </div>
@@ -41,21 +42,21 @@
             <div
               v-for="router in routers"
               :key="router.id"
-              class="px-6 py-4 grid grid-cols-12 gap-4 hover:bg-gray-50 transition-colors"
+              class="px-3 sm:px-6 py-3 sm:py-4 grid grid-cols-12 gap-2 sm:gap-4 hover:bg-gray-50 transition-colors min-w-[540px]"
             >
-              <div class="col-span-2 font-mono text-sm text-gray-900">
+              <div class="col-span-2 font-mono text-sm text-gray-900 hidden sm:block">
                 {{ router.id }}
               </div>
-              <div class="col-span-2 text-sm text-gray-900">
+              <div class="col-span-3 sm:col-span-2 text-sm text-gray-900">
                 {{ router.name }}
               </div>
-              <div class="col-span-2 text-sm text-gray-900">
+              <div class="col-span-3 sm:col-span-2 text-sm text-gray-900">
                 {{ router.ip_address || 'N/A' }}
               </div>
-              <div class="col-span-2 text-sm text-gray-900">
+              <div class="col-span-2 text-sm text-gray-900 hidden md:block">
                 {{ router.model || 'N/A' }}
               </div>
-              <div class="col-span-2">
+              <div class="col-span-3 sm:col-span-2">
                 <span
                   :class="statusBadgeClass(router.status)"
                   class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
@@ -63,7 +64,7 @@
                   {{ router.status }}
                 </span>
               </div>
-              <div class="col-span-2 flex justify-end space-x-2">
+              <div class="col-span-3 sm:col-span-2 flex justify-end space-x-1 sm:space-x-2">
                 <button
                   @click="$emit('view-details', router)"
                   class="inline-flex items-center px-3 py-1 border border-gray-300 shadow-sm text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
@@ -134,8 +135,9 @@
             </div>
           </div>
         </div>
+        </div>
       </div>
-      <div class="border-t border-gray-200 px-6 py-3 flex items-center justify-between">
+      <div class="border-t border-gray-200 px-3 sm:px-6 py-3 flex items-center justify-between">
         <div class="text-sm text-gray-500">
           Showing <span class="font-medium">{{ routers.length }}</span> routers
         </div>

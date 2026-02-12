@@ -20,8 +20,8 @@
     </PageHeader>
 
     <!-- Real-time Stats -->
-    <div class="px-6 py-4 bg-white border-b border-slate-200">
-      <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+    <div class="px-3 py-3 sm:px-6 sm:py-4 bg-white border-b border-slate-200">
+      <div class="grid grid-cols-2 md:grid-cols-5 gap-3 sm:gap-4">
         <div class="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200">
           <div class="flex items-center justify-between">
             <div>
@@ -85,9 +85,9 @@
     </div>
 
     <!-- Filters -->
-    <div class="px-6 py-4 bg-white border-b border-slate-200">
-      <div class="flex items-center gap-3 flex-wrap">
-        <div class="flex-1 min-w-[300px] max-w-md">
+    <div class="px-3 py-3 sm:px-6 sm:py-4 bg-white border-b border-slate-200">
+      <div class="flex flex-col sm:flex-row sm:items-center gap-3 flex-wrap">
+        <div class="flex-1 min-w-0 sm:min-w-[250px] max-w-md">
           <BaseSearch v-model="searchQuery" placeholder="Search by IP, MAC, user..." />
         </div>
         
@@ -231,6 +231,76 @@
         :total-items="filteredData.length"
       />
     </PageFooter>
+
+    <!-- Connection Details Overlay -->
+    <SlideOverlay v-model="showDetailsOverlay" title="Connection Details" :subtitle="selectedConnection?.username" icon="Activity" width="lg">
+      <div v-if="selectedConnection" class="space-y-6 p-6">
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <div class="text-xs text-slate-500 mb-1">Username</div>
+            <div class="text-sm font-medium text-slate-900">{{ selectedConnection.username }}</div>
+          </div>
+          <div>
+            <div class="text-xs text-slate-500 mb-1">Type</div>
+            <BaseBadge :variant="selectedConnection.type === 'hotspot' ? 'purple' : 'info'">{{ selectedConnection.type }}</BaseBadge>
+          </div>
+          <div>
+            <div class="text-xs text-slate-500 mb-1">IP Address</div>
+            <div class="text-sm font-mono text-slate-900">{{ selectedConnection.ip_address }}</div>
+          </div>
+          <div>
+            <div class="text-xs text-slate-500 mb-1">MAC Address</div>
+            <div class="text-sm font-mono text-slate-900">{{ selectedConnection.mac_address }}</div>
+          </div>
+          <div>
+            <div class="text-xs text-slate-500 mb-1">Router</div>
+            <div class="text-sm text-slate-900">{{ selectedConnection.router_name }}</div>
+          </div>
+          <div>
+            <div class="text-xs text-slate-500 mb-1">Connected At</div>
+            <div class="text-sm text-slate-900">{{ formatDateTime(selectedConnection.connected_at) }}</div>
+          </div>
+          <div>
+            <div class="text-xs text-slate-500 mb-1">Duration</div>
+            <div class="text-sm text-slate-900">{{ formatDuration(selectedConnection.uptime) }}</div>
+          </div>
+          <div>
+            <div class="text-xs text-slate-500 mb-1">Service</div>
+            <div class="text-sm text-slate-900">{{ selectedConnection.service || selectedConnection.type }}</div>
+          </div>
+        </div>
+
+        <div class="border-t border-slate-200 pt-4">
+          <h4 class="text-sm font-semibold text-slate-700 mb-3">Bandwidth Usage</h4>
+          <div class="grid grid-cols-2 gap-4">
+            <div class="bg-green-50 rounded-lg p-3 border border-green-200">
+              <div class="flex items-center gap-2 mb-1">
+                <ArrowDown class="w-4 h-4 text-green-600" />
+                <span class="text-xs text-green-600 font-medium">Download</span>
+              </div>
+              <div class="text-lg font-bold text-green-900">{{ formatBytes(selectedConnection.download_rate) }}/s</div>
+            </div>
+            <div class="bg-blue-50 rounded-lg p-3 border border-blue-200">
+              <div class="flex items-center gap-2 mb-1">
+                <ArrowUp class="w-4 h-4 text-blue-600" />
+                <span class="text-xs text-blue-600 font-medium">Upload</span>
+              </div>
+              <div class="text-lg font-bold text-blue-900">{{ formatBytes(selectedConnection.upload_rate) }}/s</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <template #footer>
+        <div class="flex items-center justify-between w-full">
+          <BaseButton @click="closeDetails" variant="ghost">Close</BaseButton>
+          <BaseButton @click="disconnectUser(selectedConnection); closeDetails()" variant="danger">
+            <Power class="w-4 h-4 mr-1" />
+            Disconnect
+          </BaseButton>
+        </div>
+      </template>
+    </SlideOverlay>
   </PageContainer>
 </template>
 
@@ -240,6 +310,7 @@ import {
   Activity, RefreshCw, Download, X, Eye, Power,
   Wifi, Zap, ArrowDown, ArrowUp
 } from 'lucide-vue-next'
+import axios from 'axios'
 import PageContainer from '@/modules/common/components/layout/templates/PageContainer.vue'
 import PageHeader from '@/modules/common/components/layout/templates/PageHeader.vue'
 import PageContent from '@/modules/common/components/layout/templates/PageContent.vue'
@@ -253,6 +324,7 @@ import BasePagination from '@/modules/common/components/base/BasePagination.vue'
 import BaseLoading from '@/modules/common/components/base/BaseLoading.vue'
 import BaseEmpty from '@/modules/common/components/base/BaseEmpty.vue'
 import BaseAlert from '@/modules/common/components/base/BaseAlert.vue'
+import SlideOverlay from '@/modules/common/components/base/SlideOverlay.vue'
 
 const breadcrumbs = [
   { label: 'Dashboard', to: '/dashboard' },
@@ -267,31 +339,15 @@ const connections = ref([])
 const searchQuery = ref('')
 const currentPage = ref(1)
 const itemsPerPage = ref(10)
+const showDetailsOverlay = ref(false)
+const selectedConnection = ref(null)
 
 const filters = ref({
   type: '',
   router: ''
 })
 
-const routers = ref([
-  { id: 1, name: 'Router-01' },
-  { id: 2, name: 'Router-02' },
-  { id: 3, name: 'Router-03' }
-])
-
-const mockConnections = Array.from({ length: 25 }, (_, i) => ({
-  id: i + 1,
-  username: `user${i + 1}`,
-  user_name: `User ${i + 1}`,
-  ip_address: `192.168.1.${100 + i}`,
-  mac_address: `00:11:22:33:44:${(i + 10).toString(16).padStart(2, '0')}`,
-  type: i % 3 === 0 ? 'pppoe' : 'hotspot',
-  router_name: `Router-0${(i % 3) + 1}`,
-  download_rate: Math.floor(Math.random() * 5000000),
-  upload_rate: Math.floor(Math.random() * 2000000),
-  uptime: Math.floor(Math.random() * 7200),
-  connected_at: new Date(Date.now() - Math.random() * 7200000).toISOString()
-}))
+const routers = ref([])
 
 const stats = computed(() => {
   const total = connections.value.length
@@ -341,29 +397,96 @@ const paginationInfo = computed(() => {
 
 const hasActiveFilters = computed(() => filters.value.type || filters.value.router || searchQuery.value)
 
+const fetchRouters = async () => {
+  try {
+    const response = await axios.get('/routers')
+    const data = Array.isArray(response.data) ? response.data : (response.data?.data || [])
+    routers.value = data.map(r => ({ id: r.id, name: r.name }))
+  } catch (err) {
+    console.warn('Failed to fetch routers for filter:', err.message)
+  }
+}
+
 const fetchConnections = async () => {
-  loading.value = true
-  error.value = null
+  const isInitial = connections.value.length === 0
+  if (isInitial) {
+    loading.value = true
+    error.value = null
+  } else {
+    refreshing.value = true
+  }
   
   try {
-    await new Promise(resolve => setTimeout(resolve, 500))
-    connections.value = mockConnections
+    const [pppoeRes, hotspotRes] = await Promise.allSettled([
+      axios.get('/pppoe/sessions/live'),
+      axios.get('/hotspot/sessions')
+    ])
+
+    const merged = []
+
+    if (pppoeRes.status === 'fulfilled') {
+      const pppoeData = pppoeRes.value.data?.sessions || pppoeRes.value.data?.data || []
+      pppoeData.forEach((s, i) => {
+        merged.push({
+          id: `pppoe-${s.id || i}`,
+          username: s.username || s.name || 'Unknown',
+          user_name: s.caller_id || s.name || '',
+          ip_address: s.address || s.ip_address || '',
+          mac_address: s.caller_id || s.mac_address || '',
+          type: 'pppoe',
+          router_name: s.router?.name || s.router_name || 'Unknown',
+          router_id: s.router?.id || s.router_id || null,
+          download_rate: s.tx_byte ? Number(s.tx_byte) : (s.download_rate || 0),
+          upload_rate: s.rx_byte ? Number(s.rx_byte) : (s.upload_rate || 0),
+          uptime: s.uptime_seconds || s.uptime || 0,
+          connected_at: s.started_at || s.created_at || new Date().toISOString(),
+          service: s.service || '',
+          _raw: s
+        })
+      })
+    }
+
+    if (hotspotRes.status === 'fulfilled') {
+      const hotspotData = hotspotRes.value.data?.sessions || hotspotRes.value.data?.data || []
+      hotspotData.forEach((s, i) => {
+        merged.push({
+          id: `hotspot-${s.id || i}`,
+          username: s.username || s.user || 'Unknown',
+          user_name: s.name || s.user_name || '',
+          ip_address: s.address || s.ip_address || '',
+          mac_address: s.mac_address || '',
+          type: 'hotspot',
+          router_name: s.router?.name || s.router_name || 'Unknown',
+          router_id: s.router?.id || s.router_id || null,
+          download_rate: s.bytes_out ? Number(s.bytes_out) : (s.download_rate || 0),
+          upload_rate: s.bytes_in ? Number(s.bytes_in) : (s.upload_rate || 0),
+          uptime: s.uptime_seconds || s.uptime || 0,
+          connected_at: s.started_at || s.created_at || new Date().toISOString(),
+          _raw: s
+        })
+      })
+    }
+
+    connections.value = merged
+
+    if (pppoeRes.status === 'rejected' && hotspotRes.status === 'rejected') {
+      if (isInitial) {
+        error.value = 'Failed to load live connections. Please check your network.'
+      }
+    }
   } catch (err) {
-    error.value = 'Failed to load connections.'
-    console.error(err)
+    if (isInitial) {
+      error.value = err.response?.data?.message || 'Failed to load connections.'
+    }
+    console.error('fetchConnections error:', err)
   } finally {
     loading.value = false
+    refreshing.value = false
   }
 }
 
 const refreshConnections = async () => {
-  refreshing.value = true
-  try {
-    await new Promise(resolve => setTimeout(resolve, 500))
-    connections.value = mockConnections
-  } finally {
-    refreshing.value = false
-  }
+  await fetchConnections()
 }
 
 const clearFilters = () => {
@@ -395,29 +518,56 @@ const getUserInitials = (conn) => {
 }
 
 const viewDetails = (conn) => {
-  console.log('View details:', conn)
+  selectedConnection.value = conn
+  showDetailsOverlay.value = true
+}
+
+const closeDetails = () => {
+  showDetailsOverlay.value = false
+  selectedConnection.value = null
 }
 
 const disconnectUser = async (conn) => {
   if (!confirm(`Disconnect ${conn.username}?`)) return
   
   try {
-    await new Promise(resolve => setTimeout(resolve, 500))
+    if (conn.type === 'pppoe') {
+      await axios.post('/pppoe/sessions/disconnect', { session_id: conn._raw?.id, username: conn.username })
+    } else {
+      const userId = conn._raw?.user_id || conn._raw?.id
+      if (userId) {
+        await axios.post(`/hotspot/users/${userId}/disconnect`)
+      }
+    }
     connections.value = connections.value.filter(c => c.id !== conn.id)
   } catch (err) {
-    console.error(err)
+    console.error('Disconnect error:', err)
+    alert(err.response?.data?.message || 'Failed to disconnect user')
   }
 }
 
 const exportData = () => {
-  alert('Export feature coming soon!')
+  const csv = [
+    ['Username', 'IP Address', 'MAC Address', 'Type', 'Router', 'Connected At'].join(','),
+    ...filteredData.value.map(c => [
+      c.username, c.ip_address, c.mac_address, c.type, c.router_name, c.connected_at
+    ].join(','))
+  ].join('\n')
+  const blob = new Blob([csv], { type: 'text/csv' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `live-connections-${new Date().toISOString().slice(0,10)}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
 }
 
 let refreshInterval
 
 onMounted(() => {
+  fetchRouters()
   fetchConnections()
-  refreshInterval = setInterval(refreshConnections, 10000)
+  refreshInterval = setInterval(fetchConnections, 15000)
 })
 
 onUnmounted(() => {

@@ -1,23 +1,23 @@
 <template>
-  <div class="min-h-screen bg-gray-50 -mx-6 -my-6 px-6 py-6">
+  <div class="min-h-screen bg-gray-50 -mx-2 -my-2 px-2 py-4 sm:-mx-6 sm:-my-6 sm:px-6 sm:py-6">
     <!-- Simple Header -->
-    <div class="mb-6">
-      <div class="flex items-center justify-between">
+    <div class="mb-4 sm:mb-6">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 class="text-2xl font-bold text-gray-900">Dashboard</h1>
-          <p class="text-sm text-gray-600 mt-1">Monitor your network performance</p>
+          <h1 class="text-xl sm:text-2xl font-bold text-gray-900">Dashboard</h1>
+          <p class="text-xs sm:text-sm text-gray-600 mt-1">Monitor your network performance</p>
         </div>
-        <div class="flex items-center gap-3">
+        <div class="flex items-center gap-2 sm:gap-3">
           <button
             @click="refreshStats"
-            class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            class="px-3 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
           >
-            <svg class="w-4 h-4 inline-block mr-2" :class="{ 'animate-spin': loading }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg class="w-4 h-4 inline-block mr-1 sm:mr-2" :class="{ 'animate-spin': loading }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
             Refresh
           </button>
-          <div class="flex items-center gap-2 px-3 py-2 rounded-lg" :class="isConnected ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'">
+          <div class="flex items-center gap-2 px-3 py-1.5 sm:py-2 rounded-lg" :class="isConnected ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'">
             <span class="relative flex h-2 w-2">
               <span v-if="isConnected" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
               <span class="relative inline-flex rounded-full h-2 w-2" :class="isConnected ? 'bg-green-500' : 'bg-red-500'"></span>
@@ -37,12 +37,12 @@
     </div>
 
     <!-- Dashboard Content -->
-    <div v-else class="space-y-6">
+    <div v-else class="space-y-4 sm:space-y-6">
       
       <!-- KEY METRICS - Top Row -->
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <!-- Total Revenue -->
-        <div class="bg-white rounded-lg border border-gray-200 p-5">
+        <div class="bg-white rounded-lg border border-gray-200 p-3 sm:p-5">
           <div class="flex items-center justify-between mb-3">
             <div class="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
               <svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -53,12 +53,12 @@
               {{ revenueGrowth.isPositive ? '+' : '' }}{{ revenueGrowth.value }}%
             </span>
           </div>
-          <p class="text-sm font-medium text-gray-600 mb-1">Total Revenue</p>
-          <h3 class="text-2xl font-bold text-gray-900">{{ formatCurrency(stats.totalRevenue) }}</h3>
+          <p class="text-xs sm:text-sm font-medium text-gray-600 mb-1">Total Revenue</p>
+          <h3 class="text-lg sm:text-2xl font-bold text-gray-900">{{ formatCurrency(stats.totalRevenue) }}</h3>
         </div>
 
         <!-- Active Users -->
-        <div class="bg-white rounded-lg border border-gray-200 p-5">
+        <div class="bg-white rounded-lg border border-gray-200 p-3 sm:p-5">
           <div class="flex items-center justify-between mb-3">
             <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
               <svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -67,13 +67,13 @@
             </div>
             <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
           </div>
-          <p class="text-sm font-medium text-gray-600 mb-1">Active Sessions</p>
-          <h3 class="text-2xl font-bold text-gray-900">{{ stats.activeSessions || 0 }}</h3>
+          <p class="text-xs sm:text-sm font-medium text-gray-600 mb-1">Active Sessions</p>
+          <h3 class="text-lg sm:text-2xl font-bold text-gray-900">{{ stats.activeSessions || 0 }}</h3>
           <p class="text-xs text-gray-500 mt-1">{{ stats.totalUsers || 0 }} total users</p>
         </div>
 
         <!-- Network Health -->
-        <div class="bg-white rounded-lg border border-gray-200 p-5">
+        <div class="bg-white rounded-lg border border-gray-200 p-3 sm:p-5">
           <div class="flex items-center justify-between mb-3">
             <div class="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center">
               <svg class="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -84,13 +84,13 @@
               {{ routerHealthStatus?.label }}
             </span>
           </div>
-          <p class="text-sm font-medium text-gray-600 mb-1">Network Health</p>
-          <h3 class="text-2xl font-bold text-gray-900">{{ stats.onlineRouters || 0 }}/{{ stats.totalRouters || 0 }}</h3>
+          <p class="text-xs sm:text-sm font-medium text-gray-600 mb-1">Network Health</p>
+          <h3 class="text-lg sm:text-2xl font-bold text-gray-900">{{ stats.onlineRouters || 0 }}/{{ stats.totalRouters || 0 }}</h3>
           <p class="text-xs text-gray-500 mt-1">Routers online</p>
         </div>
 
         <!-- Data Usage -->
-        <div class="bg-white rounded-lg border border-gray-200 p-5">
+        <div class="bg-white rounded-lg border border-gray-200 p-3 sm:p-5">
           <div class="flex items-center justify-between mb-3">
             <div class="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
               <svg class="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -98,8 +98,8 @@
               </svg>
             </div>
           </div>
-          <p class="text-sm font-medium text-gray-600 mb-1">Data Usage</p>
-          <h3 class="text-2xl font-bold text-gray-900">{{ formatDataSize(stats.dataUsage) }}</h3>
+          <p class="text-xs sm:text-sm font-medium text-gray-600 mb-1">Data Usage</p>
+          <h3 class="text-lg sm:text-2xl font-bold text-gray-900">{{ formatDataSize(stats.dataUsage) }}</h3>
           <p class="text-xs text-gray-500 mt-1">Total transferred</p>
         </div>
       </div>
@@ -117,9 +117,9 @@
       </div>
 
       <!-- QUICK ACTIONS -->
-      <div class="bg-white rounded-lg border border-gray-200 p-6">
-        <h3 class="text-base font-semibold text-gray-900 mb-4">Quick Actions</h3>
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div class="bg-white rounded-lg border border-gray-200 p-4 sm:p-6">
+        <h3 class="text-sm sm:text-base font-semibold text-gray-900 mb-3 sm:mb-4">Quick Actions</h3>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
           <router-link 
             to="/dashboard/hotspot/users"
             class="flex flex-col items-center gap-3 p-4 rounded-lg border-2 border-gray-200 hover:border-blue-500 hover:bg-blue-50 transition-all group"

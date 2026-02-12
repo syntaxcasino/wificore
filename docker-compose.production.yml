@@ -159,7 +159,7 @@ services:
       - TELEGRAF_FAST_INTERVAL=${TELEGRAF_FAST_INTERVAL:-3s}
       - TELEGRAF_SLOW_INTERVAL=${TELEGRAF_SLOW_INTERVAL:-30s}
       - TELEGRAF_SNMP_COMMUNITY=${TELEGRAF_SNMP_COMMUNITY:-public}
-      - VICTORIA_METRICS_WRITE_URL=${VICTORIA_METRICS_WRITE_URL:-http://wificore-nginx/internal/vm/api/v1/write}
+      - VICTORIA_METRICS_WRITE_URL=${VICTORIA_METRICS_WRITE_URL:-http://wificore-victoriametrics:8428}
       # Automatic Database Setup
       - AUTO_MIGRATE=${AUTO_MIGRATE:-true}
       - AUTO_SEED=${AUTO_SEED:-true}
@@ -245,7 +245,7 @@ services:
       - TELEGRAF_FAST_INTERVAL=${TELEGRAF_FAST_INTERVAL:-3s}
       - TELEGRAF_SLOW_INTERVAL=${TELEGRAF_SLOW_INTERVAL:-30s}
       - TELEGRAF_SNMP_COMMUNITY=${TELEGRAF_SNMP_COMMUNITY:-public}
-      - VICTORIA_METRICS_WRITE_URL=${VICTORIA_METRICS_WRITE_URL:-http://wificore-nginx/internal/vm/api/v1/write}
+      - VICTORIA_METRICS_WRITE_URL=${VICTORIA_METRICS_WRITE_URL:-http://wificore-victoriametrics:8428}
     entrypoint: ["/telegraf-config-entrypoint.sh"]
     depends_on:
       wificore-postgres:
@@ -277,21 +277,26 @@ services:
       - -lc
     command:
       - |
-        echo "[telegraf] starting";
         set -e;
         CONF="/var/www/html/storage/app/telegraf/shards/$${TELEGRAF_SHARD_INDEX:-0}.conf";
-        echo "[telegraf] waiting for config: $$CONF";
-        i=0; while [ ! -f "$$CONF" ]; do i=$$((i+1)); if [ $$i -ge 60 ]; then echo "[telegraf] config still missing after 120s"; fi; sleep 2; done;
-        ls -al "$(dirname "$$CONF")" || true;
         SANITIZED="/tmp/telegraf.conf";
-        cp "$$CONF" "$$SANITIZED" || true;
-        if command -v sed >/dev/null 2>&1; then
-          (sed -E 's#udp://([0-9.]+)/[0-9]+:#udp://\1:#g' "$$CONF" > "$$SANITIZED" 2>/dev/null) \
-            || (sed -r 's#udp://([0-9.]+)/[0-9]+:#udp://\1:#g' "$$CONF" > "$$SANITIZED" 2>/dev/null) \
-            || true;
-        fi;
+        echo "[telegraf] waiting for config: $$CONF";
+        while [ ! -f "$$CONF" ]; do sleep 2; done;
+        cp "$$CONF" "$$SANITIZED";
+        LAST_HASH=$(md5sum "$$CONF" 2>/dev/null | cut -d' ' -f1 || echo "");
         echo "[telegraf] launching";
-        exec telegraf --debug --config "$$SANITIZED"
+        telegraf --config "$$SANITIZED" &
+        TPID=$$!;
+        while kill -0 $$TPID 2>/dev/null; do
+          sleep 30;
+          NEW_HASH=$(md5sum "$$CONF" 2>/dev/null | cut -d' ' -f1 || echo "");
+          if [ "$$NEW_HASH" != "$$LAST_HASH" ] && [ -n "$$NEW_HASH" ]; then
+            echo "[telegraf] config changed, reloading...";
+            cp "$$CONF" "$$SANITIZED";
+            kill -HUP $$TPID 2>/dev/null || true;
+            LAST_HASH="$$NEW_HASH";
+          fi;
+        done
     depends_on:
       wificore-telegraf-config:
         condition: service_healthy

@@ -4,6 +4,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Broadcast;
 use App\Http\Controllers\Api\PackageController;
+use App\Http\Controllers\Api\VoucherController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\LogController;
 use App\Http\Controllers\Api\RouterController;
@@ -521,6 +522,24 @@ Route::middleware(['auth:sanctum', 'role:admin', 'user.active', 'tenant.context'
         ->name('api.packages.update');
     Route::delete('/packages/{package}', [PackageController::class, 'destroy'])
         ->name('api.packages.destroy');
+
+    // -------------------------------------------------------------------------
+    // Voucher Management
+    // -------------------------------------------------------------------------
+    Route::get('/vouchers', [VoucherController::class, 'index'])
+        ->name('api.vouchers.index');
+    Route::get('/vouchers/stats', [VoucherController::class, 'stats'])
+        ->name('api.vouchers.stats');
+    Route::get('/vouchers/recent-batches', [VoucherController::class, 'recentBatches'])
+        ->name('api.vouchers.recent-batches');
+    Route::get('/vouchers/{voucher}', [VoucherController::class, 'show'])
+        ->name('api.vouchers.show');
+    Route::post('/vouchers/generate', [VoucherController::class, 'generate'])
+        ->name('api.vouchers.generate');
+    Route::post('/vouchers/{voucher}/revoke', [VoucherController::class, 'revoke'])
+        ->name('api.vouchers.revoke');
+    Route::delete('/vouchers/{voucher}', [VoucherController::class, 'destroy'])
+        ->name('api.vouchers.destroy');
 
     // M-Pesa Settings Management (Paybill configuration) - Legacy
     Route::prefix('mpesa')->group(function () {

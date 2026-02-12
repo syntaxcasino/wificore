@@ -1,401 +1,417 @@
 <template>
-  <PageContainer>
+  <div class="space-y-6">
     <!-- Header -->
-    <PageHeader
-      title="Generate Vouchers"
-      subtitle="Create hotspot vouchers for customers"
-      icon="Ticket"
-      :breadcrumbs="breadcrumbs"
-    >
-      <template #actions>
-        <BaseButton @click="$router.push('/dashboard/hotspot/users')" variant="ghost">
-          <Users class="w-4 h-4 mr-1" />
-          View Users
-        </BaseButton>
-      </template>
-    </PageHeader>
-
-    <!-- Content -->
-    <PageContent>
-      <div class="max-w-4xl mx-auto space-y-6">
-        <!-- Generation Form -->
-        <BaseCard>
-          <div class="p-6">
-            <h3 class="text-lg font-semibold text-slate-900 mb-4">Voucher Configuration</h3>
-            
-            <form @submit.prevent="generateVouchers" class="space-y-6">
-              <!-- Package Selection -->
-              <div>
-                <label class="block text-sm font-medium text-slate-700 mb-2">
-                  Select Package *
-                </label>
-                <BaseSelect v-model="formData.package_id" required class="w-full">
-                  <option value="">Choose a package...</option>
-                  <option v-for="pkg in packages" :key="pkg.id" :value="pkg.id">
-                    {{ pkg.name }} - {{ pkg.speed }} ({{ pkg.validity }})
-                  </option>
-                </BaseSelect>
-                <p v-if="selectedPackage" class="mt-2 text-sm text-slate-600">
-                  Price: KES {{ selectedPackage.price }} | Speed: {{ selectedPackage.speed }} | Validity: {{ selectedPackage.validity }}
-                </p>
-              </div>
-
-              <!-- Quantity -->
-              <div>
-                <label class="block text-sm font-medium text-slate-700 mb-2">
-                  Number of Vouchers *
-                </label>
-                <input
-                  v-model.number="formData.quantity"
-                  type="number"
-                  min="1"
-                  max="100"
-                  required
-                  class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Enter quantity (1-100)"
-                />
-                <p class="mt-1 text-xs text-slate-500">Maximum 100 vouchers per generation</p>
-              </div>
-
-              <!-- Prefix (Optional) -->
-              <div>
-                <label class="block text-sm font-medium text-slate-700 mb-2">
-                  Voucher Prefix (Optional)
-                </label>
-                <input
-                  v-model="formData.prefix"
-                  type="text"
-                  maxlength="10"
-                  class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="e.g., WIFI, HOT, etc."
-                />
-                <p class="mt-1 text-xs text-slate-500">Add a custom prefix to voucher codes (optional)</p>
-              </div>
-
-              <!-- Expiry Date (Optional) -->
-              <div>
-                <label class="block text-sm font-medium text-slate-700 mb-2">
-                  Expiry Date (Optional)
-                </label>
-                <input
-                  v-model="formData.expiry_date"
-                  type="date"
-                  :min="minDate"
-                  class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
-                <p class="mt-1 text-xs text-slate-500">Leave empty for no expiry date</p>
-              </div>
-
-              <!-- Notes (Optional) -->
-              <div>
-                <label class="block text-sm font-medium text-slate-700 mb-2">
-                  Notes (Optional)
-                </label>
-                <textarea
-                  v-model="formData.notes"
-                  rows="3"
-                  class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Add any notes or comments..."
-                ></textarea>
-              </div>
-
-              <!-- Summary -->
-              <div v-if="formData.package_id && formData.quantity" class="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <h4 class="text-sm font-semibold text-blue-900 mb-2">Generation Summary</h4>
-                <div class="grid grid-cols-2 gap-3 text-sm">
-                  <div>
-                    <span class="text-blue-600">Package:</span>
-                    <span class="ml-2 font-medium text-blue-900">{{ selectedPackage?.name }}</span>
-                  </div>
-                  <div>
-                    <span class="text-blue-600">Quantity:</span>
-                    <span class="ml-2 font-medium text-blue-900">{{ formData.quantity }} vouchers</span>
-                  </div>
-                  <div>
-                    <span class="text-blue-600">Total Value:</span>
-                    <span class="ml-2 font-medium text-blue-900">KES {{ totalValue }}</span>
-                  </div>
-                  <div>
-                    <span class="text-blue-600">Prefix:</span>
-                    <span class="ml-2 font-medium text-blue-900">{{ formData.prefix || 'None' }}</span>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Action Buttons -->
-              <div class="flex items-center justify-end gap-3 pt-4 border-t border-slate-200">
-                <BaseButton @click="resetForm" variant="ghost" type="button">
-                  <X class="w-4 h-4 mr-1" />
-                  Reset
-                </BaseButton>
-                <BaseButton 
-                  type="submit" 
-                  variant="primary" 
-                  :loading="generating"
-                  :disabled="!formData.package_id || !formData.quantity"
-                >
-                  <Ticket class="w-4 h-4 mr-1" />
-                  Generate {{ formData.quantity || 0 }} Voucher{{ formData.quantity !== 1 ? 's' : '' }}
-                </BaseButton>
-              </div>
-            </form>
-          </div>
-        </BaseCard>
-
-        <!-- Success Message -->
-        <BaseAlert v-if="successMessage" variant="success" :title="successMessage" dismissible @dismiss="successMessage = null">
-          <div class="mt-2 flex items-center gap-2">
-            <BaseButton @click="downloadVouchers" variant="success" size="sm">
-              <Download class="w-4 h-4 mr-1" />
-              Download PDF
-            </BaseButton>
-            <BaseButton @click="printVouchers" variant="ghost" size="sm">
-              <Printer class="w-4 h-4 mr-1" />
-              Print
-            </BaseButton>
-          </div>
-        </BaseAlert>
-
-        <!-- Generated Vouchers Preview -->
-        <BaseCard v-if="generatedVouchers.length">
-          <div class="p-6">
-            <div class="flex items-center justify-between mb-4">
-              <h3 class="text-lg font-semibold text-slate-900">Generated Vouchers</h3>
-              <div class="flex items-center gap-2">
-                <BaseButton @click="downloadVouchers" variant="ghost" size="sm">
-                  <Download class="w-4 h-4 mr-1" />
-                  Download
-                </BaseButton>
-                <BaseButton @click="printVouchers" variant="ghost" size="sm">
-                  <Printer class="w-4 h-4 mr-1" />
-                  Print
-                </BaseButton>
-              </div>
-            </div>
-
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              <div 
-                v-for="voucher in generatedVouchers" 
-                :key="voucher.code"
-                class="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-4"
-              >
-                <div class="flex items-center justify-between mb-2">
-                  <Ticket class="w-5 h-5 text-blue-600" />
-                  <BaseBadge variant="success" size="sm">New</BaseBadge>
-                </div>
-                <div class="font-mono text-lg font-bold text-blue-900 mb-1">{{ voucher.code }}</div>
-                <div class="text-sm text-blue-700">{{ voucher.package }}</div>
-                <div class="text-xs text-blue-600 mt-2">Valid until: {{ voucher.expiry || 'No expiry' }}</div>
-              </div>
-            </div>
-          </div>
-        </BaseCard>
-
-        <!-- Recent Generations -->
-        <BaseCard>
-          <div class="p-6">
-            <h3 class="text-lg font-semibold text-slate-900 mb-4">Recent Generations</h3>
-            
-            <div v-if="recentGenerations.length" class="space-y-3">
-              <div 
-                v-for="gen in recentGenerations" 
-                :key="gen.id"
-                class="flex items-center justify-between p-3 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors"
-              >
-                <div class="flex items-center gap-3">
-                  <div class="p-2 bg-blue-100 rounded-lg">
-                    <Ticket class="w-4 h-4 text-blue-600" />
-                  </div>
-                  <div>
-                    <div class="font-medium text-slate-900">{{ gen.quantity }} vouchers - {{ gen.package }}</div>
-                    <div class="text-sm text-slate-600">{{ formatDateTime(gen.created_at) }}</div>
-                  </div>
-                </div>
-                <div class="flex items-center gap-2">
-                  <BaseBadge :variant="gen.status === 'active' ? 'success' : 'secondary'">
-                    {{ gen.status }}
-                  </BaseBadge>
-                  <BaseButton @click="viewGeneration(gen)" variant="ghost" size="sm">
-                    <Eye class="w-4 h-4" />
-                  </BaseButton>
-                </div>
-              </div>
-            </div>
-
-            <BaseEmpty 
-              v-else
-              title="No recent generations"
-              description="Your voucher generation history will appear here"
-              icon="Ticket"
-              :compact="true"
-            />
-          </div>
-        </BaseCard>
+    <div class="flex items-center justify-between">
+      <div>
+        <h1 class="text-2xl font-bold text-gray-900">Create Voucher</h1>
+        <p class="text-sm text-gray-500 mt-1">Generate and manage hotspot vouchers</p>
       </div>
-    </PageContent>
-  </PageContainer>
+      <div class="flex items-center gap-2">
+        <button @click="fetchVouchers" :disabled="loading" class="inline-flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50">
+          <RefreshCw class="w-4 h-4" :class="loading ? 'animate-spin' : ''" />
+          Refresh
+        </button>
+        <button @click="openCreateOverlay" class="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors">
+          <Plus class="w-4 h-4" />
+          Create Voucher
+        </button>
+      </div>
+    </div>
+
+    <!-- Stats Summary -->
+    <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+      <div class="bg-white rounded-xl border border-gray-200 p-4 text-center">
+        <div class="text-2xl font-bold text-gray-900">{{ stats.total || 0 }}</div>
+        <div class="text-xs text-gray-500 mt-1">Total</div>
+      </div>
+      <div class="bg-white rounded-xl border border-gray-200 p-4 text-center">
+        <div class="text-2xl font-bold text-green-600">{{ stats.unused || 0 }}</div>
+        <div class="text-xs text-gray-500 mt-1">Unused</div>
+      </div>
+      <div class="bg-white rounded-xl border border-gray-200 p-4 text-center">
+        <div class="text-2xl font-bold text-blue-600">{{ stats.used || 0 }}</div>
+        <div class="text-xs text-gray-500 mt-1">Used</div>
+      </div>
+      <div class="bg-white rounded-xl border border-gray-200 p-4 text-center">
+        <div class="text-2xl font-bold text-yellow-600">{{ stats.expired || 0 }}</div>
+        <div class="text-xs text-gray-500 mt-1">Expired</div>
+      </div>
+      <div class="bg-white rounded-xl border border-gray-200 p-4 text-center">
+        <div class="text-2xl font-bold text-red-600">{{ stats.revoked || 0 }}</div>
+        <div class="text-xs text-gray-500 mt-1">Revoked</div>
+      </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="bg-white rounded-xl border border-gray-200 p-4">
+      <div class="flex flex-wrap items-center gap-3">
+        <input v-model="searchQuery" type="text" placeholder="Search by code..." class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-64" @input="debouncedFetch" />
+        <select v-model="filterStatus" class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" @change="fetchVouchers">
+          <option value="">All Statuses</option>
+          <option value="unused">Unused</option>
+          <option value="used">Used</option>
+          <option value="expired">Expired</option>
+          <option value="revoked">Revoked</option>
+        </select>
+        <select v-model="filterPackage" class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" @change="fetchVouchers">
+          <option value="">All Packages</option>
+          <option v-for="pkg in packages" :key="pkg.id" :value="pkg.id">{{ pkg.name }}</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Loading -->
+    <div v-if="loading && !vouchers.length" class="bg-white rounded-xl border border-gray-200 p-8 text-center text-gray-500">
+      <div class="animate-spin w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full mx-auto mb-3"></div>
+      Loading vouchers...
+    </div>
+
+    <!-- Error -->
+    <div v-else-if="error" class="bg-white rounded-xl border border-gray-200 p-8 text-center text-red-500">
+      {{ error }}
+      <button @click="fetchVouchers" class="block mx-auto mt-2 text-blue-600 hover:underline text-sm">Retry</button>
+    </div>
+
+    <!-- Vouchers Table -->
+    <div v-else class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <table class="w-full">
+        <thead class="bg-gray-50 border-b border-gray-200">
+          <tr>
+            <th class="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">Code</th>
+            <th class="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">Package</th>
+            <th class="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">Status</th>
+            <th class="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">Expires</th>
+            <th class="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">Created</th>
+            <th class="text-right px-6 py-3 text-xs font-medium text-gray-500 uppercase">Actions</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+          <tr v-for="voucher in vouchers" :key="voucher.id" class="hover:bg-gray-50 transition-colors cursor-pointer" @click="openDetailOverlay(voucher)">
+            <td class="px-6 py-4 text-sm font-mono font-semibold text-blue-700">{{ voucher.code }}</td>
+            <td class="px-6 py-4 text-sm text-gray-900">{{ voucher.package?.name || '-' }}</td>
+            <td class="px-6 py-4">
+              <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium" :class="statusClass(voucher.status)">{{ voucher.status }}</span>
+            </td>
+            <td class="px-6 py-4 text-xs text-gray-500">{{ voucher.expires_at ? formatDate(voucher.expires_at) : 'No expiry' }}</td>
+            <td class="px-6 py-4 text-xs text-gray-500">{{ formatDate(voucher.created_at) }}</td>
+            <td class="px-6 py-4 text-right">
+              <div class="flex items-center justify-end gap-1">
+                <button @click.stop="openDetailOverlay(voucher)" class="p-1.5 text-blue-500 hover:bg-blue-50 rounded-md transition-colors"><Eye class="w-4 h-4" /></button>
+                <button v-if="voucher.status === 'unused'" @click.stop="revokeVoucher(voucher)" class="p-1.5 text-red-500 hover:bg-red-50 rounded-md transition-colors"><Ban class="w-4 h-4" /></button>
+              </div>
+            </td>
+          </tr>
+          <tr v-if="!vouchers.length">
+            <td colspan="6" class="px-6 py-8 text-center text-gray-400 text-sm">No vouchers found. Click "Create Voucher" to generate some.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- Pagination -->
+      <div v-if="pagination.lastPage > 1" class="flex items-center justify-between px-6 py-3 border-t border-gray-200 bg-gray-50">
+        <span class="text-xs text-gray-500">Showing {{ pagination.from }}-{{ pagination.to }} of {{ pagination.total }}</span>
+        <div class="flex items-center gap-1">
+          <button @click="goToPage(pagination.currentPage - 1)" :disabled="pagination.currentPage <= 1" class="px-3 py-1 text-xs rounded border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed">Prev</button>
+          <button @click="goToPage(pagination.currentPage + 1)" :disabled="pagination.currentPage >= pagination.lastPage" class="px-3 py-1 text-xs rounded border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed">Next</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Create Voucher Overlay -->
+    <SlideOverlay v-model="showCreateOverlay" title="Create Voucher" subtitle="Generate new hotspot vouchers" icon="Ticket" width="40%" @close="showCreateOverlay = false">
+      <form @submit.prevent="generateVouchers" class="space-y-5">
+        <!-- Package Selection -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Select Package *</label>
+          <select v-model="formData.package_id" required class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+            <option value="">Choose a package...</option>
+            <option v-for="pkg in packages" :key="pkg.id" :value="pkg.id">{{ pkg.name }}</option>
+          </select>
+          <p v-if="selectedPackage" class="mt-1.5 text-xs text-gray-500">
+            Price: KES {{ selectedPackage.price }} | Speed: {{ selectedPackage.download_speed || '-' }} | Validity: {{ selectedPackage.validity || '-' }}
+          </p>
+        </div>
+
+        <!-- Quantity -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Number of Vouchers *</label>
+          <input v-model.number="formData.quantity" type="number" min="1" max="100" required class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="1-100" />
+          <p class="mt-1 text-xs text-gray-400">Maximum 100 vouchers per batch</p>
+        </div>
+
+        <!-- Prefix -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Voucher Prefix (Optional)</label>
+          <input v-model="formData.prefix" type="text" maxlength="10" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="e.g., WIFI, HOT" />
+        </div>
+
+        <!-- Expiry Date -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Expiry Date (Optional)</label>
+          <input v-model="formData.expires_at" type="date" :min="minDate" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+        </div>
+
+        <!-- Notes -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Notes (Optional)</label>
+          <textarea v-model="formData.notes" rows="2" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="Any notes..."></textarea>
+        </div>
+
+        <!-- Summary -->
+        <div v-if="formData.package_id && formData.quantity" class="bg-blue-50 border border-blue-200 rounded-lg p-3">
+          <h4 class="text-xs font-semibold text-blue-900 mb-2">Summary</h4>
+          <div class="grid grid-cols-2 gap-2 text-xs">
+            <div><span class="text-blue-600">Package:</span> <span class="font-medium text-blue-900">{{ selectedPackage?.name }}</span></div>
+            <div><span class="text-blue-600">Quantity:</span> <span class="font-medium text-blue-900">{{ formData.quantity }}</span></div>
+            <div><span class="text-blue-600">Total Value:</span> <span class="font-medium text-blue-900">KES {{ totalValue }}</span></div>
+            <div><span class="text-blue-600">Prefix:</span> <span class="font-medium text-blue-900">{{ formData.prefix || 'None' }}</span></div>
+          </div>
+        </div>
+
+        <!-- Error -->
+        <div v-if="generateError" class="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">{{ generateError }}</div>
+      </form>
+
+      <template #footer>
+        <div class="flex items-center justify-end gap-3">
+          <button type="button" @click="showCreateOverlay = false" class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">Cancel</button>
+          <button @click="generateVouchers" :disabled="generating || !formData.package_id || !formData.quantity" class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50">
+            <Ticket class="w-4 h-4" />
+            {{ generating ? 'Generating...' : `Generate ${formData.quantity || 0} Voucher${formData.quantity !== 1 ? 's' : ''}` }}
+          </button>
+        </div>
+      </template>
+    </SlideOverlay>
+
+    <!-- Voucher Detail Overlay -->
+    <SlideOverlay v-model="showDetailOverlay" title="Voucher Details" subtitle="View voucher information" icon="Ticket" width="40%" @close="showDetailOverlay = false">
+      <div v-if="selectedVoucher" class="space-y-3">
+        <div class="flex items-center justify-center p-4 bg-blue-50 rounded-lg">
+          <span class="font-mono text-xl font-bold text-blue-700">{{ selectedVoucher.code }}</span>
+        </div>
+        <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+          <span class="text-sm font-medium text-gray-600">Status</span>
+          <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium" :class="statusClass(selectedVoucher.status)">{{ selectedVoucher.status }}</span>
+        </div>
+        <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+          <span class="text-sm font-medium text-gray-600">Package</span>
+          <span class="text-sm font-semibold text-gray-900">{{ selectedVoucher.package?.name || '-' }}</span>
+        </div>
+        <div v-if="selectedVoucher.package?.price" class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+          <span class="text-sm font-medium text-gray-600">Price</span>
+          <span class="text-sm font-semibold text-gray-900">KES {{ selectedVoucher.package.price }}</span>
+        </div>
+        <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+          <span class="text-sm font-medium text-gray-600">Router</span>
+          <span class="text-sm text-gray-900">{{ selectedVoucher.router?.name || 'Any' }}</span>
+        </div>
+        <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+          <span class="text-sm font-medium text-gray-600">Expires</span>
+          <span class="text-sm text-gray-900">{{ selectedVoucher.expires_at ? formatDate(selectedVoucher.expires_at) : 'No expiry' }}</span>
+        </div>
+        <div v-if="selectedVoucher.used_at" class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+          <span class="text-sm font-medium text-gray-600">Used At</span>
+          <span class="text-sm text-gray-900">{{ formatDate(selectedVoucher.used_at) }}</span>
+        </div>
+        <div v-if="selectedVoucher.notes" class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+          <span class="text-sm font-medium text-gray-600">Notes</span>
+          <span class="text-sm text-gray-900 text-right max-w-[60%]">{{ selectedVoucher.notes }}</span>
+        </div>
+        <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+          <span class="text-sm font-medium text-gray-600">Created</span>
+          <span class="text-sm text-gray-900">{{ formatDate(selectedVoucher.created_at) }}</span>
+        </div>
+        <div v-if="selectedVoucher.batch_id" class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+          <span class="text-sm font-medium text-gray-600">Batch ID</span>
+          <span class="text-xs font-mono text-gray-500">{{ selectedVoucher.batch_id }}</span>
+        </div>
+      </div>
+      <template #footer>
+        <div class="flex items-center justify-between">
+          <button v-if="selectedVoucher?.status === 'unused'" @click="revokeVoucher(selectedVoucher)" class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-colors">
+            <Ban class="w-4 h-4" />
+            Revoke
+          </button>
+          <div v-else></div>
+          <button type="button" @click="showDetailOverlay = false" class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">Close</button>
+        </div>
+      </template>
+    </SlideOverlay>
+  </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { Ticket, Users, X, Download, Printer, Eye } from 'lucide-vue-next'
-import PageContainer from '@/modules/common/components/layout/templates/PageContainer.vue'
-import PageHeader from '@/modules/common/components/layout/templates/PageHeader.vue'
-import PageContent from '@/modules/common/components/layout/templates/PageContent.vue'
-import BaseButton from '@/modules/common/components/base/BaseButton.vue'
-import BaseCard from '@/modules/common/components/base/BaseCard.vue'
-import BaseSelect from '@/modules/common/components/base/BaseSelect.vue'
-import BaseAlert from '@/modules/common/components/base/BaseAlert.vue'
-import BaseBadge from '@/modules/common/components/base/BaseBadge.vue'
-import BaseEmpty from '@/modules/common/components/base/BaseEmpty.vue'
-
-// Breadcrumbs
-const breadcrumbs = [
-  { label: 'Dashboard', to: '/dashboard' },
-  { label: 'Hotspot', to: '/dashboard/hotspot' },
-  { label: 'Generate Vouchers' }
-]
+import axios from 'axios'
+import { RefreshCw, Plus, Eye, Ban, Ticket } from 'lucide-vue-next'
+import SlideOverlay from '@/modules/common/components/base/SlideOverlay.vue'
 
 // State
+const loading = ref(false)
+const error = ref(null)
+const vouchers = ref([])
+const packages = ref([])
+const stats = ref({})
 const generating = ref(false)
-const successMessage = ref(null)
-const generatedVouchers = ref([])
-const recentGenerations = ref([])
+const generateError = ref(null)
+const searchQuery = ref('')
+const filterStatus = ref('')
+const filterPackage = ref('')
 
+// Pagination
+const pagination = ref({ currentPage: 1, lastPage: 1, from: 0, to: 0, total: 0 })
+
+// Overlays
+const showCreateOverlay = ref(false)
+const showDetailOverlay = ref(false)
+const selectedVoucher = ref(null)
+
+// Form
 const formData = ref({
   package_id: '',
   quantity: 10,
   prefix: '',
-  expiry_date: '',
+  expires_at: '',
   notes: ''
 })
 
-// Mock packages data
-const packages = ref([
-  { id: 1, name: '1 Hour - 5GB', speed: '10 Mbps', validity: '1 hour', price: 50 },
-  { id: 2, name: '3 Hours - 10GB', speed: '10 Mbps', validity: '3 hours', price: 100 },
-  { id: 3, name: '1 Day - 20GB', speed: '10 Mbps', validity: '24 hours', price: 200 },
-  { id: 4, name: '1 Week - 50GB', speed: '10 Mbps', validity: '7 days', price: 500 },
-  { id: 5, name: '1 Month - 100GB', speed: '10 Mbps', validity: '30 days', price: 1000 }
-])
-
-// Mock recent generations
-const mockRecentGenerations = [
-  { id: 1, quantity: 50, package: '1 Hour - 5GB', status: 'active', created_at: new Date().toISOString() },
-  { id: 2, quantity: 25, package: '1 Day - 20GB', status: 'active', created_at: new Date(Date.now() - 86400000).toISOString() },
-  { id: 3, quantity: 10, package: '1 Week - 50GB', status: 'used', created_at: new Date(Date.now() - 172800000).toISOString() }
-]
-
 // Computed
-const selectedPackage = computed(() => {
-  return packages.value.find(p => p.id === formData.value.package_id)
-})
-
+const selectedPackage = computed(() => packages.value.find(p => p.id === formData.value.package_id))
 const totalValue = computed(() => {
   if (!selectedPackage.value || !formData.value.quantity) return 0
-  return selectedPackage.value.price * formData.value.quantity
+  return (selectedPackage.value.price || 0) * formData.value.quantity
 })
+const minDate = computed(() => new Date().toISOString().split('T')[0])
 
-const minDate = computed(() => {
-  const today = new Date()
-  return today.toISOString().split('T')[0]
-})
+// Status badge classes
+const statusClass = (status) => {
+  const map = {
+    unused: 'bg-green-100 text-green-700',
+    used: 'bg-blue-100 text-blue-700',
+    expired: 'bg-yellow-100 text-yellow-700',
+    revoked: 'bg-red-100 text-red-700',
+  }
+  return map[status] || 'bg-gray-100 text-gray-700'
+}
 
-// Methods
-const generateVouchers = async () => {
-  generating.value = true
-  
+const formatDate = (d) => d ? new Date(d).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''
+
+// Debounce search
+let searchTimeout = null
+const debouncedFetch = () => {
+  clearTimeout(searchTimeout)
+  searchTimeout = setTimeout(() => fetchVouchers(), 400)
+}
+
+// API calls
+const fetchPackages = async () => {
   try {
-    // TODO: Replace with actual API call
-    await new Promise(resolve => setTimeout(resolve, 1500))
-    
-    // Generate mock vouchers
-    const vouchers = []
-    for (let i = 0; i < formData.value.quantity; i++) {
-      const code = generateVoucherCode(formData.value.prefix)
-      vouchers.push({
-        code,
-        package: selectedPackage.value.name,
-        expiry: formData.value.expiry_date || null
-      })
-    }
-    
-    generatedVouchers.value = vouchers
-    successMessage.value = `Successfully generated ${formData.value.quantity} voucher${formData.value.quantity !== 1 ? 's' : ''}!`
-    
-    // Add to recent generations
-    recentGenerations.value.unshift({
-      id: Date.now(),
-      quantity: formData.value.quantity,
-      package: selectedPackage.value.name,
-      status: 'active',
-      created_at: new Date().toISOString()
-    })
-    
+    const res = await axios.get('/packages')
+    const data = res.data.data || res.data
+    packages.value = Array.isArray(data) ? data : (data.data || [])
   } catch (err) {
-    console.error('Error generating vouchers:', err)
-    alert('Failed to generate vouchers. Please try again.')
+    console.error('Failed to fetch packages:', err)
+  }
+}
+
+const fetchStats = async () => {
+  try {
+    const res = await axios.get('/vouchers/stats')
+    stats.value = res.data.data || {}
+  } catch (err) {
+    console.error('Failed to fetch voucher stats:', err)
+  }
+}
+
+const fetchVouchers = async (page = 1) => {
+  try {
+    loading.value = true
+    error.value = null
+    const params = { page, per_page: 25 }
+    if (searchQuery.value) params.search = searchQuery.value
+    if (filterStatus.value) params.status = filterStatus.value
+    if (filterPackage.value) params.package_id = filterPackage.value
+
+    const res = await axios.get('/vouchers', { params })
+    const data = res.data.data || res.data
+
+    if (data.data) {
+      vouchers.value = data.data
+      pagination.value = {
+        currentPage: data.current_page || 1,
+        lastPage: data.last_page || 1,
+        from: data.from || 0,
+        to: data.to || 0,
+        total: data.total || 0,
+      }
+    } else if (Array.isArray(data)) {
+      vouchers.value = data
+    }
+  } catch (err) {
+    if (err.response?.status === 401) return
+    error.value = err.response?.data?.message || 'Failed to load vouchers'
+  } finally {
+    loading.value = false
+  }
+}
+
+const goToPage = (page) => {
+  if (page < 1 || page > pagination.value.lastPage) return
+  fetchVouchers(page)
+}
+
+const openCreateOverlay = () => {
+  formData.value = { package_id: '', quantity: 10, prefix: '', expires_at: '', notes: '' }
+  generateError.value = null
+  showCreateOverlay.value = true
+}
+
+const openDetailOverlay = (voucher) => {
+  selectedVoucher.value = voucher
+  showDetailOverlay.value = true
+}
+
+const generateVouchers = async () => {
+  if (!formData.value.package_id || !formData.value.quantity) return
+  generating.value = true
+  generateError.value = null
+
+  try {
+    const payload = {
+      package_id: formData.value.package_id,
+      quantity: formData.value.quantity,
+    }
+    if (formData.value.prefix) payload.prefix = formData.value.prefix
+    if (formData.value.expires_at) payload.expires_at = formData.value.expires_at
+    if (formData.value.notes) payload.notes = formData.value.notes
+
+    await axios.post('/vouchers/generate', payload)
+    showCreateOverlay.value = false
+    fetchVouchers()
+    fetchStats()
+  } catch (err) {
+    generateError.value = err.response?.data?.message || 'Failed to generate vouchers'
   } finally {
     generating.value = false
   }
 }
 
-const generateVoucherCode = (prefix = '') => {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
-  let code = prefix ? `${prefix}-` : ''
-  for (let i = 0; i < 12; i++) {
-    if (i > 0 && i % 4 === 0) code += '-'
-    code += chars.charAt(Math.floor(Math.random() * chars.length))
-  }
-  return code
-}
-
-const resetForm = () => {
-  formData.value = {
-    package_id: '',
-    quantity: 10,
-    prefix: '',
-    expiry_date: '',
-    notes: ''
-  }
-  generatedVouchers.value = []
-  successMessage.value = null
-}
-
-const downloadVouchers = () => {
-  console.log('Downloading vouchers as PDF...')
-  // TODO: Implement PDF download
-  alert('PDF download feature coming soon!')
-}
-
-const printVouchers = () => {
-  console.log('Printing vouchers...')
-  // TODO: Implement print functionality
-  window.print()
-}
-
-const viewGeneration = (generation) => {
-  console.log('Viewing generation:', generation)
-  // TODO: Implement view generation details
-}
-
-const formatDateTime = (date) => {
-  if (!date) return 'N/A'
-  return new Date(date).toLocaleString()
-}
-
-const fetchRecentGenerations = async () => {
+const revokeVoucher = async (voucher) => {
+  if (!confirm(`Revoke voucher ${voucher.code}?`)) return
   try {
-    // TODO: Replace with actual API call
-    await new Promise(resolve => setTimeout(resolve, 500))
-    recentGenerations.value = mockRecentGenerations
+    await axios.post(`/vouchers/${voucher.id}/revoke`)
+    fetchVouchers(pagination.value.currentPage)
+    fetchStats()
+    if (showDetailOverlay.value) showDetailOverlay.value = false
   } catch (err) {
-    console.error('Error fetching recent generations:', err)
+    alert(err.response?.data?.message || 'Failed to revoke voucher')
   }
 }
 
 // Lifecycle
 onMounted(() => {
-  fetchRecentGenerations()
+  fetchPackages()
+  fetchVouchers()
+  fetchStats()
 })
 </script>

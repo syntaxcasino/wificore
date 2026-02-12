@@ -352,7 +352,6 @@ class PppoeUserController extends Controller
         $simultaneousUse = (int) ($request->simultaneous_use ?? 1);
 
         $package = Package::where('id', $request->package_id)
-            ->where('tenant_id', $tenantId)
             ->where('type', 'pppoe')
             ->first();
 
@@ -502,13 +501,6 @@ class PppoeUserController extends Controller
             ], 404);
         }
 
-        if (!$this->enforcePppoeAuthentication($pppoeUser)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'User authentication failed. Access denied.',
-            ], 403);
-        }
-
         $validator = Validator::make($request->all(), [
             'package_id' => 'sometimes|required|uuid',
             'router_id' => 'sometimes|required|uuid',
@@ -531,7 +523,6 @@ class PppoeUserController extends Controller
         $package = null;
         if ($request->has('package_id')) {
             $package = Package::where('id', $request->package_id)
-                ->where('tenant_id', $tenant->id)
                 ->where('type', 'pppoe')
                 ->first();
 
@@ -638,10 +629,6 @@ class PppoeUserController extends Controller
         }
     }
 
-    private function enforcePppoeAuthentication(PppoeUser $pppoeUser): bool {
-        $radiusService = app(RadiusService::class);
-        return $radiusService->enforceAuthentication($pppoeUser->username);
-    }
 
     public function destroy(Request $request, string $id)
     {
@@ -1062,7 +1049,7 @@ class PppoeUserController extends Controller
                 'username' => $username,
                 'attribute' => 'Expiration',
                 'op' => ':=',
-                'value' => $expiresAt ? $expiresAt->timestamp : '',
+                'value' => $expiresAt ? $expiresAt->format('F d Y H:i:s') : '',
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
@@ -1131,7 +1118,7 @@ class PppoeUserController extends Controller
         } else {
             $utf16le = iconv('UTF-8', 'UTF-16LE', $plainPassword);
         }
-        return hash('md4', $utf16le);
+        return strtoupper(hash('md4', $utf16le));
     }
 
     private function ensureRadiusSchemaMapping(string $username, string $schemaName, string $tenantId): void
@@ -1189,7 +1176,7 @@ class PppoeUserController extends Controller
         if ($expiresAt) {
             DB::table('radcheck')->updateOrInsert(
                 ['username' => $username, 'attribute' => 'Expiration'],
-                ['op' => ':=', 'value' => $expiresAt->timestamp, 'updated_at' => now(), 'created_at' => now()]
+                ['op' => ':=', 'value' => $expiresAt->format('F d Y H:i:s'), 'updated_at' => now(), 'created_at' => now()]
             );
 
             $sessionTimeout = max(60, (int) now()->diffInSeconds($expiresAt, false));

@@ -20,10 +20,10 @@
     </PageHeader>
 
     <!-- Search and Filters Bar -->
-    <div class="px-6 py-4 bg-white border-b border-slate-200">
-      <div class="flex items-center gap-3 flex-wrap">
+    <div class="px-3 py-3 sm:px-6 sm:py-4 bg-white border-b border-slate-200">
+      <div class="flex flex-col sm:flex-row sm:items-center gap-3 flex-wrap">
         <!-- Search Box -->
-        <div class="flex-1 min-w-[300px] max-w-md">
+        <div class="flex-1 min-w-0 sm:min-w-[250px] max-w-md">
           <BaseSearch v-model="searchQuery" placeholder="Search by username, IP, phone..." />
         </div>
         
@@ -196,6 +196,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { 
   RefreshCw, Power, Eye, X, Users, Download, Wifi, Network
 } from 'lucide-vue-next'
+import axios from 'axios'
 import PageContainer from '@/modules/common/components/layout/templates/PageContainer.vue'
 import PageHeader from '@/modules/common/components/layout/templates/PageHeader.vue'
 import PageContent from '@/modules/common/components/layout/templates/PageContent.vue'
@@ -233,70 +234,7 @@ const filters = ref({
   package: ''
 })
 
-const packages = ref([
-  { id: 1, name: '1 Hour - 5GB' },
-  { id: 2, name: '24 Hours - 20GB' },
-  { id: 3, name: '5 Mbps Monthly' },
-  { id: 4, name: '10 Mbps Monthly' }
-])
-
-// Mock data
-const mockUsers = [
-  {
-    id: 1,
-    type: 'hotspot',
-    username: 'hotspot_user001',
-    name: 'John Doe',
-    phone: '+254712345678',
-    ip_address: '10.0.0.101',
-    mac_address: '00:1A:2B:3C:4D:5E',
-    session_id: 'sess_hot_001',
-    nas_ip: '192.168.1.1',
-    package: { name: '1 Hour - 5GB', speed: '10 Mbps' },
-    login_time: new Date(Date.now() - 1800000),
-    session_duration: 1800,
-    bytes_in: 524288000,
-    bytes_out: 104857600,
-    total_bytes: 629145600,
-    current_speed: 2097152
-  },
-  {
-    id: 2,
-    type: 'pppoe',
-    username: 'pppoe_user001',
-    name: 'Jane Smith',
-    phone: '+254723456789',
-    ip_address: '100.64.0.101',
-    calling_station: 'pppoe-client-001',
-    session_id: 'sess_ppp_001',
-    nas_ip: '192.168.1.1',
-    package: { name: '10 Mbps Monthly', speed: '10/5 Mbps' },
-    login_time: new Date(Date.now() - 7200000),
-    session_duration: 7200,
-    bytes_in: 2147483648,
-    bytes_out: 536870912,
-    total_bytes: 2684354560,
-    current_speed: 8388608
-  },
-  {
-    id: 3,
-    type: 'hotspot',
-    username: 'hotspot_user002',
-    name: 'Mike Johnson',
-    phone: '+254734567890',
-    ip_address: '10.0.0.102',
-    mac_address: '00:1A:2B:3C:4D:5F',
-    session_id: 'sess_hot_002',
-    nas_ip: '192.168.1.1',
-    package: { name: '24 Hours - 20GB', speed: '20 Mbps' },
-    login_time: new Date(Date.now() - 3600000),
-    session_duration: 3600,
-    bytes_in: 1073741824,
-    bytes_out: 209715200,
-    total_bytes: 1283457024,
-    current_speed: 4194304
-  }
-]
+const packages = ref([])
 
 // Computed
 const filteredData = computed(() => {
@@ -344,16 +282,70 @@ const pppoeCount = computed(() => users.value.filter(u => u.type === 'pppoe').le
 
 // Methods
 const fetchUsers = async () => {
-  loading.value = true
-  error.value = null
+  const isInitial = users.value.length === 0
+  if (isInitial) {
+    loading.value = true
+    error.value = null
+  }
   
   try {
-    // TODO: Replace with actual API call
-    await new Promise(resolve => setTimeout(resolve, 500))
-    users.value = mockUsers
+    const [hotspotRes, pppoeRes] = await Promise.allSettled([
+      axios.get('/hotspot/sessions'),
+      axios.get('/pppoe/sessions/live')
+    ])
+    
+    const hotspotSessions = (hotspotRes.status === 'fulfilled'
+      ? (hotspotRes.value.data?.sessions || hotspotRes.value.data?.data || [])
+      : []
+    ).map(s => ({
+      id: `hs_${s.id}`,
+      type: 'hotspot',
+      username: s.username || s.user?.name || 'Unknown',
+      name: s.user?.name || s.username || 'Unknown',
+      phone: s.user?.phone_number || s.phone_number || '',
+      ip_address: s.framed_ip_address || s.ip_address || s.address || '',
+      mac_address: s.calling_station_id || s.mac_address || '',
+      session_id: s.session_id || s.acct_session_id || '',
+      nas_ip: s.nas_ip_address || s.nas_ip || '',
+      package: s.package ? { name: s.package.name, speed: s.package.download_speed || '' } : { name: 'N/A', speed: '' },
+      login_time: s.acct_start_time || s.started_at || s.created_at || '',
+      session_duration: s.session_time || s.duration || 0,
+      bytes_in: Number(s.acct_input_octets || s.bytes_in || 0),
+      bytes_out: Number(s.acct_output_octets || s.bytes_out || 0),
+      total_bytes: Number(s.acct_input_octets || s.bytes_in || 0) + Number(s.acct_output_octets || s.bytes_out || 0),
+      current_speed: Number(s.current_bandwidth || 0),
+      _raw: s
+    }))
+    
+    const pppoeSessions = (pppoeRes.status === 'fulfilled'
+      ? (pppoeRes.value.data?.sessions || pppoeRes.value.data?.data || [])
+      : []
+    ).map(s => ({
+      id: `pp_${s.id || s.name}`,
+      type: 'pppoe',
+      username: s.name || s.username || 'Unknown',
+      name: s.user?.name || s.name || 'Unknown',
+      phone: s.user?.phone_number || '',
+      ip_address: s.address || s.caller_id || '',
+      calling_station: s.calling_station || s.caller_id || '',
+      session_id: s.session_id || '',
+      nas_ip: s.nas_ip || '',
+      package: s.profile ? { name: s.profile, speed: '' } : { name: 'N/A', speed: '' },
+      login_time: s.uptime_started || s.login_time || '',
+      session_duration: s.uptime_seconds || s.session_time || 0,
+      bytes_in: Number(s.bytes_in || 0),
+      bytes_out: Number(s.bytes_out || 0),
+      total_bytes: Number(s.bytes_in || 0) + Number(s.bytes_out || 0),
+      current_speed: Number(s.current_bandwidth || 0),
+      _raw: s
+    }))
+    
+    users.value = [...hotspotSessions, ...pppoeSessions]
   } catch (err) {
-    error.value = 'Failed to load online users. Please try again.'
-    console.error('Error fetching users:', err)
+    if (isInitial) {
+      error.value = err.response?.data?.message || 'Failed to load online users.'
+    }
+    console.error('fetchUsers error:', err)
   } finally {
     loading.value = false
   }
@@ -415,47 +407,46 @@ const disconnectUser = async (user) => {
   if (!confirm(`Disconnect ${user.name || user.username}?`)) return
   
   try {
-    console.log('Disconnecting user:', user.id)
-    await new Promise(resolve => setTimeout(resolve, 500))
+    if (user.type === 'hotspot') {
+      const userId = user._raw?.user_id || user._raw?.id || user.id.replace('hs_', '')
+      await axios.post(`/hotspot/users/${userId}/disconnect`)
+    } else {
+      const userId = user._raw?.user_id || user._raw?.id || user.id.replace('pp_', '')
+      await axios.post(`/pppoe/users/${userId}/disconnect`)
+    }
     users.value = users.value.filter(u => u.id !== user.id)
     showDetailsOverlay.value = false
   } catch (err) {
-    console.error('Error disconnecting user:', err)
+    console.error('Disconnect error:', err)
+    alert(err.response?.data?.message || 'Failed to disconnect user')
   }
 }
 
 const exportData = () => {
-  console.log('Exporting data...')
-  // TODO: Implement export functionality
+  const csv = [
+    ['Username', 'Name', 'Type', 'IP', 'Package', 'Duration', 'Data In', 'Data Out'].join(','),
+    ...filteredData.value.map(u => [
+      u.username, u.name, u.type, u.ip_address,
+      u.package?.name || '', u.session_duration, u.bytes_in, u.bytes_out
+    ].join(','))
+  ].join('\n')
+  const blob = new Blob([csv], { type: 'text/csv' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `online-users-${new Date().toISOString().slice(0,10)}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
 }
 
-// EVENT-BASED: Subscribe to WebSocket for real-time updates (NO POLLING)
+let refreshInterval
+
 onMounted(() => {
-  console.log('🚀 OnlineUsers mounted - EVENT-BASED mode')
-  
-  // Fetch initial users ONCE
   fetchUsers()
-  
-  // TODO: Subscribe to WebSocket events for online users
-  // Example:
-  // subscribeToPrivateChannel('online-users', {
-  //   'UserConnected': (event) => {
-  //     console.log('✨ User connected:', event)
-  //     users.value.push(event.user)
-  //   },
-  //   'UserDisconnected': (event) => {
-  //     console.log('👋 User disconnected:', event)
-  //     users.value = users.value.filter(u => u.id !== event.user.id)
-  //   },
-  //   'SessionUpdated': (event) => {
-  //     console.log('🔄 Session updated:', event)
-  //     const index = users.value.findIndex(u => u.id === event.user.id)
-  //     if (index !== -1) {
-  //       users.value[index] = { ...users.value[index], ...event.user }
-  //     }
-  //   }
-  // })
-  
-  console.log('✅ WebSocket subscriptions active - NO POLLING!')
+  refreshInterval = setInterval(fetchUsers, 15000)
+})
+
+onUnmounted(() => {
+  if (refreshInterval) clearInterval(refreshInterval)
 })
 </script>

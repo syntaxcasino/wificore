@@ -1,14 +1,14 @@
 <template>
   <div class="space-y-6">
     <!-- Header -->
-    <div class="flex items-center justify-between">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
       <div>
-        <h1 class="text-2xl font-bold text-gray-900">Tenant Management</h1>
-        <p class="text-sm text-gray-500 mt-1">Manage all tenants on the platform</p>
+        <h1 class="text-xl sm:text-2xl font-bold text-gray-900">Tenant Management</h1>
+        <p class="text-xs sm:text-sm text-gray-500 mt-1">Manage all tenants on the platform</p>
       </div>
       <button
         @click="showCreateModal = true"
-        class="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
+        class="inline-flex items-center gap-2 px-3 py-1.5 sm:px-4 sm:py-2 bg-blue-600 text-white text-xs sm:text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors self-start sm:self-auto"
       >
         <Plus class="w-4 h-4" />
         Add Tenant
@@ -16,7 +16,7 @@
     </div>
 
     <!-- Stats Cards -->
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
       <div class="bg-white rounded-xl border border-gray-200 p-4">
         <div class="text-sm text-gray-500">Total Tenants</div>
         <div class="text-2xl font-bold text-gray-900 mt-1">{{ stats.total }}</div>
@@ -62,7 +62,7 @@
     </div>
 
     <!-- Table -->
-    <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+    <div class="bg-white rounded-xl border border-gray-200 overflow-hidden overflow-x-auto">
       <div v-if="loading" class="p-8 text-center text-gray-500">
         <div class="animate-spin w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full mx-auto mb-3"></div>
         Loading tenants...
@@ -71,27 +71,27 @@
         {{ error }}
         <button @click="fetchTenants" class="block mx-auto mt-2 text-blue-600 hover:underline text-sm">Retry</button>
       </div>
-      <table v-else class="w-full">
+      <table v-else class="w-full min-w-[580px]">
         <thead class="bg-gray-50 border-b border-gray-200">
           <tr>
-            <th class="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Tenant</th>
-            <th class="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Domain</th>
-            <th class="text-center px-4 py-3 text-xs font-medium text-gray-500 uppercase">Users</th>
-            <th class="text-center px-4 py-3 text-xs font-medium text-gray-500 uppercase">Routers</th>
-            <th class="text-center px-4 py-3 text-xs font-medium text-gray-500 uppercase">Status</th>
-            <th class="text-right px-4 py-3 text-xs font-medium text-gray-500 uppercase">Actions</th>
+            <th class="text-left px-3 sm:px-4 py-3 text-xs font-medium text-gray-500 uppercase">Tenant</th>
+            <th class="text-left px-3 sm:px-4 py-3 text-xs font-medium text-gray-500 uppercase hidden sm:table-cell">Domain</th>
+            <th class="text-center px-3 sm:px-4 py-3 text-xs font-medium text-gray-500 uppercase">Users</th>
+            <th class="text-center px-3 sm:px-4 py-3 text-xs font-medium text-gray-500 uppercase">Routers</th>
+            <th class="text-center px-3 sm:px-4 py-3 text-xs font-medium text-gray-500 uppercase">Status</th>
+            <th class="text-right px-3 sm:px-4 py-3 text-xs font-medium text-gray-500 uppercase">Actions</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-gray-100">
           <tr v-for="tenant in tenants" :key="tenant.id" class="hover:bg-gray-50 transition-colors">
-            <td class="px-4 py-3">
+            <td class="px-3 sm:px-4 py-3">
               <div class="font-medium text-gray-900 text-sm">{{ tenant.name }}</div>
               <div class="text-xs text-gray-500">{{ tenant.slug }}</div>
             </td>
-            <td class="px-4 py-3 text-sm text-gray-600">{{ tenant.domain || '-' }}</td>
-            <td class="px-4 py-3 text-sm text-center text-gray-600">{{ tenant.users_count ?? 0 }}</td>
-            <td class="px-4 py-3 text-sm text-center text-gray-600">{{ tenant.routers_count ?? 0 }}</td>
-            <td class="px-4 py-3 text-center">
+            <td class="px-3 sm:px-4 py-3 text-sm text-gray-600 hidden sm:table-cell">{{ tenant.domain || '-' }}</td>
+            <td class="px-3 sm:px-4 py-3 text-sm text-center text-gray-600">{{ tenant.users_count ?? 0 }}</td>
+            <td class="px-3 sm:px-4 py-3 text-sm text-center text-gray-600">{{ tenant.routers_count ?? 0 }}</td>
+            <td class="px-3 sm:px-4 py-3 text-center">
               <span
                 class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium"
                 :class="tenant.suspended_at ? 'bg-red-100 text-red-700' : tenant.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'"
@@ -99,7 +99,7 @@
                 {{ tenant.suspended_at ? 'Suspended' : tenant.is_active ? 'Active' : 'Inactive' }}
               </span>
             </td>
-            <td class="px-4 py-3 text-right">
+            <td class="px-3 sm:px-4 py-3 text-right">
               <div class="flex items-center justify-end gap-1">
                 <button
                   v-if="!tenant.suspended_at && tenant.is_active"
@@ -127,11 +127,11 @@
       </table>
 
       <!-- Pagination -->
-      <div v-if="pagination.lastPage > 1" class="flex items-center justify-between px-4 py-3 border-t border-gray-200 bg-gray-50">
+      <div v-if="pagination.lastPage > 1" class="flex flex-col sm:flex-row items-center justify-between gap-2 px-3 sm:px-4 py-3 border-t border-gray-200 bg-gray-50">
         <div class="text-xs text-gray-500">
           Showing {{ pagination.from }}-{{ pagination.to }} of {{ pagination.total }}
         </div>
-        <div class="flex gap-1">
+        <div class="flex flex-wrap gap-1">
           <button
             v-for="page in pagination.lastPage"
             :key="page"
@@ -145,37 +145,44 @@
       </div>
     </div>
 
-    <!-- Create Modal -->
-    <div v-if="showCreateModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" @click.self="showCreateModal = false">
-      <div class="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
-        <h2 class="text-lg font-bold text-gray-900 mb-4">Add New Tenant</h2>
-        <form @submit.prevent="createTenant" class="space-y-4">
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Name *</label>
-            <input v-model="form.name" type="text" required class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" />
-          </div>
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Domain</label>
-            <input v-model="form.domain" type="text" placeholder="e.g. client.wificore.com" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" />
-          </div>
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
-            <input v-model="form.email" type="email" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" />
-          </div>
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Phone</label>
-            <input v-model="form.phone" type="text" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" />
-          </div>
-          <div v-if="formError" class="text-sm text-red-600">{{ formError }}</div>
-          <div class="flex justify-end gap-3 pt-2">
-            <button type="button" @click="showCreateModal = false" class="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">Cancel</button>
-            <button type="submit" :disabled="creating" class="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50">
-              {{ creating ? 'Creating...' : 'Create Tenant' }}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+    <!-- Create Tenant Overlay -->
+    <SlideOverlay
+      v-model="showCreateModal"
+      title="Add New Tenant"
+      subtitle="Create a new tenant on the platform"
+      icon="Building2"
+      width="40%"
+      @close="showCreateModal = false"
+    >
+      <form @submit.prevent="createTenant" class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Name *</label>
+          <input v-model="form.name" type="text" required class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Domain</label>
+          <input v-model="form.domain" type="text" placeholder="e.g. client.wificore.com" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+          <input v-model="form.email" type="email" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+          <input v-model="form.phone" type="text" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" />
+        </div>
+        <div v-if="formError" class="text-sm text-red-600">{{ formError }}</div>
+      </form>
+
+      <template #footer>
+        <div class="flex justify-end gap-3">
+          <button type="button" @click="showCreateModal = false" class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">Cancel</button>
+          <button @click="createTenant" :disabled="creating" class="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors">
+            {{ creating ? 'Creating...' : 'Create Tenant' }}
+          </button>
+        </div>
+      </template>
+    </SlideOverlay>
   </div>
 </template>
 
@@ -183,6 +190,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import axios from 'axios'
 import { Plus, Search, Ban, CheckCircle } from 'lucide-vue-next'
+import SlideOverlay from '@/modules/common/components/base/SlideOverlay.vue'
 
 const tenants = ref([])
 const loading = ref(true)

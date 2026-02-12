@@ -224,17 +224,24 @@ class ZeroConfigHybridGenerator
         $gateway = $this->getSafeGatewayIp($pool->network_cidr, $pool->gateway_ip);
         $dns = "{$pool->dns_primary},{$pool->dns_secondary}";
 
+        $pppoeActiveList = "PPPOE-ACTIVE-HYB-" . substr(str_replace('-', '', $routerId), 0, 8);
+
         return [
             "# PPPoE Configuration on VLAN {$vlanId}",
+            "",
+            "# PPPOE-ACTIVE interface list: authenticated dynamic <pppoe-*> interfaces auto-join",
+            ":do { :if ([:len [/interface list find name={$pppoeActiveList}]] = 0) do={ /interface list add name={$pppoeActiveList} } } on-error={}",
             "",
             "# IP Pool",
             ":do { /ip pool remove [find name=\"{$poolName}\"]; } on-error={}",
             ":do { /ip pool add name={$poolName} ranges={$pool->range_start}-{$pool->range_end} comment=\"PPPoE Pool (Hybrid)\"; } on-error={ /log error \"Hybrid: PPPoE pool add failed\"; :error \"Hybrid: PPPoE pool add failed\" }",
             ":if ([:len [/ip pool find name=\"{$poolName}\"]] = 0) do={ /log error \"Hybrid: PPPoE pool missing\"; :error \"Hybrid: PPPoE pool missing\" }",
             "",
-            "# PPP Profile",
-            ":do { /ppp profile remove [find name=\"{$profile}\"]; /ppp profile add name=\"{$profile}\" use-radius=yes local-address={$gateway} remote-address=\"{$poolName}\" dns-server=\"{$dns}\"; } on-error={ /log error \"Hybrid: PPP profile create failed\"; :error \"Hybrid: PPP profile create failed\" }",
+            "# PPP Profile - interface-list assigns dynamic PPPoE interfaces to PPPOE-ACTIVE on auth",
+            ":do { /ppp profile remove [find name=\"{$profile}\"]; /ppp profile add name=\"{$profile}\" use-radius=yes local-address={$gateway} remote-address=\"{$poolName}\" dns-server=\"{$dns}\" interface-list={$pppoeActiveList}; } on-error={ /log error \"Hybrid: PPP profile create failed\"; :error \"Hybrid: PPP profile create failed\" }",
             ":if ([:len [/ppp profile find name=\"{$profile}\"]] = 0) do={ /log error \"Hybrid: PPP profile missing\"; :error \"Hybrid: PPP profile missing\" }",
+            "# Ensure existing profile gets interface-list updated",
+            ":do { /ppp profile set [find name=\"{$profile}\"] interface-list={$pppoeActiveList} } on-error={}",
             "",
             "# PPPoE Server",
             ":do { /interface pppoe-server server remove [find service-name=\"{$serviceName}\"]; /interface pppoe-server server add service-name=\"{$serviceName}\" interface=\"{$interface}\" default-profile=\"{$profile}\" authentication=pap,chap,mschap2 keepalive-timeout=10 max-mtu=1480 max-mru=1480 disabled=no; } on-error={ /log error \"Hybrid: PPPoE server create failed\"; :error \"Hybrid: PPPoE server create failed\" }",
@@ -284,28 +291,45 @@ class ZeroConfigHybridGenerator
         $pppoeInterface = "vlan-pppoe-{$pppoeVlan}";
         $routerId = $params['router_id'];
         $hotspotCidr = $params['hotspot_pool']->network_cidr;
-        $pppoeCidr = $params['pppoe_pool']->network_cidr;
+        $pppoeActiveList = "PPPOE-ACTIVE-HYB-" . substr(str_replace('-', '', $routerId), 0, 8);
+
+        // SECURITY PRINCIPLE for PPPoE:
+        // Never allow traffic based on src-address subnet from the PPPoE VLAN.
+        // Allow ONLY traffic from PPPoE dynamic interfaces (PPPOE-ACTIVE list).
+        // Unauthorized clients can spoof src-address but CANNOT create a PPPoE session.
+        //
+        // For Hotspot: src-address is acceptable because the hotspot system itself
+        // controls which IPs get internet (walled garden + auth). The hotspot
+        // firewall is managed by RouterOS hotspot system.
+        //
+        // Rules inserted in REVERSE order with place-before=0 for correct top-of-chain ordering.
 
         return [
             "# Firewall Rules - VLAN Separation + Authentication Enforcement",
-            "# Rule order: cross-VLAN block → established → invalid drop → authenticated subnets → DROP unauthenticated",
+            "# PPPoE: interface-list based (PPPOE-ACTIVE) | Hotspot: managed by RouterOS hotspot system",
             "",
             // Remove existing Hybrid firewall rules for idempotent re-ordering
             ":do { /ip firewall filter remove [find comment~\"Hybrid-{$routerId}-FW\"]; } on-error={}",
+            //
+            // Insert in REVERSE order (last rule first) with place-before=0:
+            //
+            // 7. DROP all other traffic from PPPoE VLAN (unauthenticated devices)
+            "/ip firewall filter add chain=forward in-interface={$pppoeInterface} action=drop place-before=0 comment=\"Hybrid-{$routerId}-FW-PP-DROP\"",
+            // 6. DROP all other traffic from Hotspot VLAN (unauthenticated devices)
+            "/ip firewall filter add chain=forward in-interface={$hotspotInterface} action=drop place-before=0 comment=\"Hybrid-{$routerId}-FW-HS-DROP\"",
+            // 5. Allow authenticated Hotspot subnet traffic to WAN (hotspot system manages auth)
+            "/ip firewall filter add chain=forward src-address={$hotspotCidr} in-interface={$hotspotInterface} action=accept place-before=0 comment=\"Hybrid-{$routerId}-FW-HS-INET\"",
+            // 4. Allow ONLY authenticated PPPoE sessions to WAN (interface-list, NOT src-address)
+            "/ip firewall filter add chain=forward in-interface-list={$pppoeActiveList} out-interface-list=WAN action=accept place-before=0 comment=\"Hybrid-{$routerId}-FW-PP-INET\"",
+            // 3. Drop invalid — scoped per service
+            "/ip firewall filter add chain=forward in-interface-list={$pppoeActiveList} connection-state=invalid action=drop place-before=0 comment=\"Hybrid-{$routerId}-FW-PP-INV\"",
+            "/ip firewall filter add chain=forward in-interface={$hotspotInterface} connection-state=invalid action=drop place-before=0 comment=\"Hybrid-{$routerId}-FW-HS-INV\"",
+            // 2. Accept established/related — scoped per service
+            "/ip firewall filter add chain=forward in-interface-list={$pppoeActiveList} connection-state=established,related action=accept place-before=0 comment=\"Hybrid-{$routerId}-FW-PP-EST\"",
+            "/ip firewall filter add chain=forward in-interface={$hotspotInterface} connection-state=established,related action=accept place-before=0 comment=\"Hybrid-{$routerId}-FW-HS-EST\"",
             // 1. Block cross-VLAN traffic (isolation between Hotspot and PPPoE)
-            "/ip firewall filter add chain=forward in-interface={$hotspotInterface} out-interface={$pppoeInterface} action=drop comment=\"Hybrid-{$routerId}-FW-XVLAN-HS\"",
-            "/ip firewall filter add chain=forward in-interface={$pppoeInterface} out-interface={$hotspotInterface} action=drop comment=\"Hybrid-{$routerId}-FW-XVLAN-PP\"",
-            // 2. Accept established/related connections
-            "/ip firewall filter add chain=forward connection-state=established,related action=accept comment=\"Hybrid-{$routerId}-FW-EST\"",
-            // 3. Drop invalid connections
-            "/ip firewall filter add chain=forward connection-state=invalid action=drop comment=\"Hybrid-{$routerId}-FW-INV\"",
-            // 4. Allow authenticated Hotspot subnet traffic to WAN
-            "/ip firewall filter add chain=forward src-address={$hotspotCidr} out-interface=!{$hotspotInterface} action=accept comment=\"Hybrid-{$routerId}-FW-HS-INET\"",
-            // 5. Allow authenticated PPPoE subnet traffic to WAN
-            "/ip firewall filter add chain=forward src-address={$pppoeCidr} out-interface=!{$pppoeInterface} action=accept comment=\"Hybrid-{$routerId}-FW-PP-INET\"",
-            // 6. CRITICAL: Block ALL other traffic from both VLANs (unauthenticated devices)
-            "/ip firewall filter add chain=forward in-interface={$hotspotInterface} action=drop comment=\"Hybrid-{$routerId}-FW-HS-DROP\"",
-            "/ip firewall filter add chain=forward in-interface={$pppoeInterface} action=drop comment=\"Hybrid-{$routerId}-FW-PP-DROP\"",
+            "/ip firewall filter add chain=forward in-interface={$pppoeInterface} out-interface={$hotspotInterface} action=drop place-before=0 comment=\"Hybrid-{$routerId}-FW-XVLAN-PP\"",
+            "/ip firewall filter add chain=forward in-interface={$hotspotInterface} out-interface={$pppoeInterface} action=drop place-before=0 comment=\"Hybrid-{$routerId}-FW-XVLAN-HS\"",
             "",
         ];
     }
@@ -316,27 +340,24 @@ class ZeroConfigHybridGenerator
     private function generateNatRules(array $params): array
     {
         $hotspotPool = $params['hotspot_pool'];
-        $pppoePool = $params['pppoe_pool'];
         $hotspotVlan = $params['hotspot_vlan_id'];
-        $pppoeVlan = $params['pppoe_vlan_id'];
         $hotspotInterface = "vlan-hotspot-{$hotspotVlan}";
-        $pppoeInterface = "vlan-pppoe-{$pppoeVlan}";
+        $routerId = $params['router_id'];
+        $pppoeActiveList = "PPPOE-ACTIVE-HYB-" . substr(str_replace('-', '', $routerId), 0, 8);
         
         $hotspotParts = explode('/', $hotspotPool->network_cidr);
-        $pppoeParts = explode('/', $pppoePool->network_cidr);
         $hotspotNetwork = $hotspotParts[0];
         $hotspotCidr = $hotspotParts[1] ?? '24';
-        $pppoeNetwork = $pppoeParts[0];
-        $pppoeCidr = $pppoeParts[1] ?? '24';
 
         return [
-            "# NAT Rules - Separate NAT for Each VLAN",
+            "# NAT Rules - Separate NAT per service",
             // Remove existing Hybrid NAT rules for idempotency
             ":do { /ip firewall nat remove [find comment=\"Hybrid: Hotspot NAT\"]; } on-error={}",
             ":do { /ip firewall nat remove [find comment=\"Hybrid: PPPoE NAT\"]; } on-error={}",
-            // Re-add with correct CIDR
+            // Hotspot: src-address based NAT is acceptable (hotspot system controls auth)
             ":do { /ip firewall nat add chain=srcnat action=masquerade src-address={$hotspotNetwork}/{$hotspotCidr} out-interface=!{$hotspotInterface} comment=\"Hybrid: Hotspot NAT\"; } on-error={ /log error \"Hybrid: NAT add failed (Hotspot NAT)\"; :error \"Hybrid: NAT add failed\" }",
-            ":do { /ip firewall nat add chain=srcnat action=masquerade src-address={$pppoeNetwork}/{$pppoeCidr} out-interface=!{$pppoeInterface} comment=\"Hybrid: PPPoE NAT\"; } on-error={ /log error \"Hybrid: NAT add failed (PPPoE NAT)\"; :error \"Hybrid: NAT add failed\" }",
+            // PPPoE: interface-list based NAT (NOT subnet) — prevents unauthorized bypass
+            ":do { /ip firewall nat add chain=srcnat action=masquerade in-interface-list={$pppoeActiveList} out-interface-list=WAN comment=\"Hybrid: PPPoE NAT\"; } on-error={ /log error \"Hybrid: NAT add failed (PPPoE NAT)\"; :error \"Hybrid: NAT add failed\" }",
             ":do { /ip firewall nat add chain=dstnat action=redirect to-ports=64872 protocol=tcp dst-port=80 in-interface={$hotspotInterface} comment=\"Hybrid: Hotspot HTTP\"; } on-error={ /log error \"Hybrid: NAT redirect failed (HTTP)\"; :error \"Hybrid: NAT redirect failed\" }",
             ":do { /ip firewall nat add chain=dstnat action=redirect to-ports=64875 protocol=tcp dst-port=443 in-interface={$hotspotInterface} comment=\"Hybrid: Hotspot HTTPS\"; } on-error={ /log error \"Hybrid: NAT redirect failed (HTTPS)\"; :error \"Hybrid: NAT redirect failed\" }",
             "",

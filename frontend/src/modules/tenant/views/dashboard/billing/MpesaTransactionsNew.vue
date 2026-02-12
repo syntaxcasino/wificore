@@ -20,8 +20,8 @@
     </PageHeader>
 
     <!-- Stats Cards -->
-    <div class="px-6 py-4 bg-white border-b border-slate-200">
-      <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+    <div class="px-3 py-3 sm:px-6 sm:py-4 bg-white border-b border-slate-200">
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
         <div class="bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg p-4 border border-green-200">
           <div class="flex items-center justify-between">
             <div>
@@ -77,10 +77,10 @@
     </div>
 
     <!-- Search and Filters Bar -->
-    <div class="px-6 py-4 bg-white border-b border-slate-200">
-      <div class="flex items-center gap-3 flex-wrap">
+    <div class="px-3 py-3 sm:px-6 sm:py-4 bg-white border-b border-slate-200">
+      <div class="flex flex-col sm:flex-row sm:items-center gap-3 flex-wrap">
         <!-- Search Box -->
-        <div class="flex-1 min-w-[300px] max-w-md">
+        <div class="flex-1 min-w-0 sm:min-w-[250px] max-w-md">
           <BaseSearch v-model="searchQuery" placeholder="Search by phone, reference, transaction ID..." />
         </div>
         
@@ -243,8 +243,14 @@
       />
     </PageFooter>
 
-    <!-- Transaction Details Modal -->
-    <BaseModal v-model="showDetailsModal" title="Transaction Details" size="lg">
+    <!-- Transaction Details Overlay -->
+    <SlideOverlay
+      v-model="showDetailsModal"
+      title="Transaction Details"
+      subtitle="View M-Pesa payment information"
+      icon="Smartphone"
+      width="40%"
+    >
       <div v-if="selectedTransaction" class="space-y-4">
         <!-- Status Banner -->
         <div class="rounded-lg p-4" :class="getStatusBanner(selectedTransaction.status)">
@@ -311,17 +317,19 @@
       </div>
 
       <template #footer>
-        <BaseButton @click="showDetailsModal = false" variant="ghost">Close</BaseButton>
-        <BaseButton 
-          v-if="selectedTransaction?.status === 'pending'"
-          @click="checkStatus(selectedTransaction)" 
-          variant="primary"
-        >
-          <RefreshCw class="w-4 h-4 mr-1" />
-          Check Status
-        </BaseButton>
+        <div class="flex items-center justify-end gap-3">
+          <BaseButton @click="showDetailsModal = false" variant="ghost">Close</BaseButton>
+          <BaseButton 
+            v-if="selectedTransaction?.status === 'pending'"
+            @click="checkStatus(selectedTransaction)" 
+            variant="primary"
+          >
+            <RefreshCw class="w-4 h-4 mr-1" />
+            Check Status
+          </BaseButton>
+        </div>
       </template>
-    </BaseModal>
+    </SlideOverlay>
   </PageContainer>
 </template>
 
@@ -331,6 +339,7 @@ import {
   Smartphone, RefreshCw, Download, X, Eye,
   CheckCircle, Clock, XCircle, TrendingUp
 } from 'lucide-vue-next'
+import axios from 'axios'
 import PageContainer from '@/modules/common/components/layout/templates/PageContainer.vue'
 import PageHeader from '@/modules/common/components/layout/templates/PageHeader.vue'
 import PageContent from '@/modules/common/components/layout/templates/PageContent.vue'
@@ -344,7 +353,7 @@ import BasePagination from '@/modules/common/components/base/BasePagination.vue'
 import BaseLoading from '@/modules/common/components/base/BaseLoading.vue'
 import BaseEmpty from '@/modules/common/components/base/BaseEmpty.vue'
 import BaseAlert from '@/modules/common/components/base/BaseAlert.vue'
-import BaseModal from '@/modules/common/components/base/BaseModal.vue'
+import SlideOverlay from '@/modules/common/components/base/SlideOverlay.vue'
 
 // Breadcrumbs
 const breadcrumbs = [
@@ -369,48 +378,6 @@ const filters = ref({
   period: ''
 })
 
-// Mock data
-const mockTransactions = [
-  {
-    id: 1,
-    mpesa_receipt: 'QGH7KLM9XY',
-    transaction_id: 'ws_CO_12102025120145',
-    customer_name: 'John Doe',
-    phone_number: '254712345678',
-    amount: 1000,
-    status: 'completed',
-    account_reference: 'ACC001',
-    business_short_code: '174379',
-    transaction_date: new Date().toISOString(),
-    description: 'Package payment'
-  },
-  {
-    id: 2,
-    mpesa_receipt: 'QGH7KLM9XZ',
-    transaction_id: 'ws_CO_12102025120246',
-    customer_name: 'Jane Smith',
-    phone_number: '254723456789',
-    amount: 500,
-    status: 'pending',
-    account_reference: 'ACC002',
-    business_short_code: '174379',
-    transaction_date: new Date(Date.now() - 300000).toISOString(),
-    description: 'Top-up payment'
-  },
-  {
-    id: 3,
-    mpesa_receipt: 'QGH7KLM9YA',
-    transaction_id: 'ws_CO_12102025120347',
-    customer_name: 'Bob Johnson',
-    phone_number: '254734567890',
-    amount: 2000,
-    status: 'failed',
-    account_reference: 'ACC003',
-    business_short_code: '174379',
-    transaction_date: new Date(Date.now() - 600000).toISOString(),
-    description: 'Insufficient funds'
-  }
-]
 
 // Computed
 const stats = computed(() => {
@@ -508,34 +475,47 @@ const hasActiveFilters = computed(() => {
 
 // Methods
 const fetchTransactions = async () => {
-  loading.value = true
-  error.value = null
+  const isInitial = transactions.value.length === 0
+  if (isInitial) {
+    loading.value = true
+    error.value = null
+  } else {
+    refreshing.value = true
+  }
   
   try {
-    // TODO: Replace with actual API call
-    await new Promise(resolve => setTimeout(resolve, 500))
-    transactions.value = mockTransactions
+    const response = await axios.get('/billing/paybill/transactions', {
+      params: { per_page: 100 }
+    })
+    const data = response.data?.transactions?.data || response.data?.transactions || response.data?.data || []
+    
+    transactions.value = data.map(t => ({
+      id: t.id,
+      mpesa_receipt: t.mpesa_receipt || t.receipt_number || t.transaction_id || '',
+      transaction_id: t.transaction_id || t.checkout_request_id || '',
+      customer_name: t.customer_name || t.first_name || t.phone_number || 'Unknown',
+      phone_number: t.phone_number || t.msisdn || '',
+      amount: Number(t.amount) || 0,
+      status: t.status || 'pending',
+      account_reference: t.account_reference || t.bill_ref_number || '',
+      business_short_code: t.business_short_code || t.paybill_number || '',
+      transaction_date: t.transaction_date || t.created_at || new Date().toISOString(),
+      description: t.description || t.transaction_desc || '',
+      _raw: t
+    }))
   } catch (err) {
-    error.value = 'Failed to load transactions. Please try again.'
-    console.error('Error fetching transactions:', err)
+    if (isInitial) {
+      error.value = err.response?.data?.message || 'Failed to load transactions.'
+    }
+    console.error('fetchTransactions error:', err)
   } finally {
     loading.value = false
+    refreshing.value = false
   }
 }
 
 const refreshTransactions = async () => {
-  refreshing.value = true
-  error.value = null
-  
-  try {
-    await new Promise(resolve => setTimeout(resolve, 500))
-    transactions.value = mockTransactions
-  } catch (err) {
-    error.value = 'Failed to refresh transactions.'
-    console.error('Error refreshing transactions:', err)
-  } finally {
-    refreshing.value = false
-  }
+  await fetchTransactions()
 }
 
 const clearFilters = () => {
@@ -650,23 +630,49 @@ const viewTransaction = (transaction) => {
 }
 
 const checkStatus = async (transaction) => {
-  console.log('Check status:', transaction)
-  // TODO: Implement status check API call
-  alert('Checking transaction status...')
+  try {
+    const response = await axios.get(`/billing/paybill/transactions/${transaction.id}/status`)
+    const updated = response.data?.transaction || response.data
+    if (updated?.status) {
+      const idx = transactions.value.findIndex(t => t.id === transaction.id)
+      if (idx !== -1) {
+        transactions.value[idx].status = updated.status
+      }
+      if (selectedTransaction.value?.id === transaction.id) {
+        selectedTransaction.value.status = updated.status
+      }
+    }
+  } catch (err) {
+    console.error('Check status error:', err)
+    alert(err.response?.data?.message || 'Failed to check transaction status')
+  }
 }
 
 const retryTransaction = async (transaction) => {
   if (!confirm(`Retry transaction for ${transaction.customer_name}?`)) return
-  
-  console.log('Retry transaction:', transaction)
-  // TODO: Implement retry logic
-  alert('Retry feature coming soon!')
+  try {
+    await axios.post(`/billing/paybill/transactions/${transaction.id}/retry`)
+    await fetchTransactions()
+  } catch (err) {
+    console.error('Retry error:', err)
+    alert(err.response?.data?.message || 'Failed to retry transaction')
+  }
 }
 
 const exportTransactions = () => {
-  console.log('Export transactions')
-  // TODO: Implement export functionality
-  alert('Export feature coming soon!')
+  const csv = [
+    ['Receipt', 'Customer', 'Phone', 'Amount', 'Status', 'Date'].join(','),
+    ...filteredData.value.map(t => [
+      t.mpesa_receipt, t.customer_name, t.phone_number, t.amount, t.status, t.transaction_date
+    ].join(','))
+  ].join('\n')
+  const blob = new Blob([csv], { type: 'text/csv' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `mpesa-transactions-${new Date().toISOString().slice(0,10)}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
 }
 
 // Auto-refresh every 30 seconds

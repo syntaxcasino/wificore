@@ -1,37 +1,37 @@
 <template>
   <header
-    class="fixed top-0 left-0 right-0 h-16 bg-white shadow z-50 flex items-center justify-between px-4"
+    class="fixed top-0 left-0 right-0 h-14 sm:h-16 bg-white shadow z-50 flex items-center justify-between px-2 sm:px-4"
   >
-    <div class="flex items-center gap-3">
+    <div class="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
       <button
         @click="$emit('toggle-sidebar')"
-        class="p-2 rounded-md hover:bg-gray-100 active:bg-gray-200 transition-colors duration-150"
+        class="p-2 rounded-md hover:bg-gray-100 active:bg-gray-200 transition-colors duration-150 flex-shrink-0"
       >
-        <Menu class="w-6 h-6 text-gray-800" />
+        <Menu class="w-5 h-5 sm:w-6 sm:h-6 text-gray-800" />
       </button>
       
       <!-- Company Name -->
-      <h1 class="text-xl font-bold text-gray-800">{{ tenantName }}</h1>
+      <h1 class="text-sm sm:text-xl font-bold text-gray-800 truncate">{{ tenantName }}</h1>
       
-      <!-- Divider -->
-      <div class="h-6 w-px bg-gray-300"></div>
+      <!-- Divider (hidden on mobile) -->
+      <div class="hidden sm:block h-6 w-px bg-gray-300 flex-shrink-0"></div>
       
-      <!-- Page Icon and Breadcrumbs -->
-      <div class="flex items-center gap-3">
+      <!-- Page Icon and Breadcrumbs (hidden on mobile) -->
+      <div class="hidden sm:flex items-center gap-3 min-w-0">
         <component 
           v-if="pageIcon" 
           :is="pageIcon" 
-          class="w-5 h-5 text-blue-600"
+          class="w-5 h-5 text-blue-600 flex-shrink-0"
         />
-        <nav class="flex items-center gap-2 text-sm">
+        <nav class="flex items-center gap-2 text-sm min-w-0">
           <router-link 
             v-for="(crumb, index) in breadcrumbs" 
             :key="index"
             :to="crumb.to || '#'"
-            class="hover:text-blue-600 transition-colors"
+            class="hover:text-blue-600 transition-colors whitespace-nowrap"
             :class="[
               index === breadcrumbs.length - 1 
-                ? 'text-gray-900 font-semibold' 
+                ? 'text-gray-900 font-semibold truncate' 
                 : 'text-gray-600'
             ]"
           >
@@ -43,20 +43,20 @@
     </div>
 
     <!-- User Menu -->
-    <div class="flex items-center gap-3" v-if="user">
+    <div class="flex items-center gap-2 sm:gap-3 flex-shrink-0" v-if="user">
       <div class="relative">
         <button
           @click="toggleUserMenu"
           class="flex items-center gap-2 p-2 rounded-md hover:bg-gray-100 active:bg-gray-200 transition-colors duration-150"
         >
-          <div class="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white font-semibold text-sm">
+          <div class="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white font-semibold text-xs sm:text-sm">
             {{ userInitials }}
           </div>
           <div class="hidden md:block text-left">
             <div class="text-sm font-medium text-gray-800">{{ user.name || user.username || 'User' }}</div>
             <div class="text-xs text-gray-500">{{ user.email || 'No email' }}</div>
           </div>
-          <ChevronDown class="w-4 h-4 text-gray-500" :class="{ 'rotate-180': isUserMenuOpen }" />
+          <ChevronDown class="w-4 h-4 text-gray-500 hidden sm:block" :class="{ 'rotate-180': isUserMenuOpen }" />
         </button>
 
         <!-- Dropdown Menu -->

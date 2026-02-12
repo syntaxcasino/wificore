@@ -7,20 +7,23 @@ use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
-use Illuminate\Queue\SerializesModels;
 
 class TenantRegistrationCompleted implements ShouldBroadcast
 {
-    use Dispatchable, InteractsWithSockets, SerializesModels;
+    use Dispatchable, InteractsWithSockets;
 
-    public $registration;
+    public array $registrationData;
 
     /**
      * Create a new event instance.
      */
     public function __construct(TenantRegistration $registration)
     {
-        $this->registration = $registration;
+        $this->registrationData = [
+            'token' => $registration->token,
+            'tenant_slug' => $registration->tenant_slug,
+            'tenant_email' => $registration->tenant_email,
+        ];
     }
 
     /**
@@ -28,7 +31,7 @@ class TenantRegistrationCompleted implements ShouldBroadcast
      */
     public function broadcastOn(): Channel
     {
-        return new Channel('tenant-registration.' . $this->registration->token);
+        return new Channel('tenant-registration.' . $this->registrationData['token']);
     }
 
     /**
@@ -47,12 +50,7 @@ class TenantRegistrationCompleted implements ShouldBroadcast
         return [
             'status' => 'completed',
             'message' => 'Registration completed successfully!',
-            'registration' => [
-                'token' => $this->registration->token,
-                'tenant_slug' => $this->registration->tenant_slug,
-                'tenant_email' => $this->registration->tenant_email,
-                'status' => 'completed',
-            ],
+            'registration' => array_merge($this->registrationData, ['status' => 'completed']),
         ];
     }
 }

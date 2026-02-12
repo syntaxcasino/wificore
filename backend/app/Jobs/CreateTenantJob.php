@@ -48,21 +48,29 @@ class CreateTenantJob implements ShouldQueue
 
     /**
      * Execute the job.
+     *
+     * Architecture note: Schema creation and migrations (DDL) run OUTSIDE any
+     * DB::beginTransaction() because PostgreSQL aborts the entire transaction
+     * on any DDL error, making subsequent DML impossible.  The job is split
+     * into phases:
+     *   Phase 1 – Create Tenant + User records (DML, transactional)
+     *   Phase 2 – Create schema & run migrations (DDL, non-transactional)
+     *   Phase 3 – Seed RADIUS credentials & VPN tunnel (DML, transactional)
      */
-    public function handle(TenantVpnTunnelService $vpnService): void
+    public function handle(TenantVpnTunnelService $vpnService, \App\Services\TenantMigrationManager $migrationManager): void
     {
+        $tenant = null;
+        $adminUser = null;
+
         try {
             Log::info('CreateTenantJob started', [
                 'tenant_slug' => $this->tenantData['slug'],
                 'admin_username' => $this->adminData['username'],
             ]);
 
+            // ── Phase 1: Create Tenant + User (DML only, safe to transact) ──
             DB::beginTransaction();
             
-            // Create tenant - Tenant model boot event will:
-            // 1. Generate secure schema name (ts_xxxxxxxxxxxx)
-            // 2. Create schema and run migrations
-            // 3. Set schema_created = true
             $tenant = Tenant::create([
                 'name' => $this->tenantData['name'],
                 'slug' => $this->tenantData['slug'],
@@ -96,26 +104,6 @@ class CreateTenantJob implements ShouldQueue
                 ],
             ]);
             
-            Log::info('Tenant created with schema', [
-                'tenant_id' => $tenant->id,
-                'schema_name' => $tenant->schema_name,
-                'schema_created' => $tenant->schema_created,
-            ]);
-            
-            // Wait a moment for schema creation to complete
-            sleep(2);
-
-            // Initialize VPN Tunnel for the tenant - STRICT: Fail job if VPN creation fails
-            $tunnel = $vpnService->getOrCreateTenantTunnel($tenant->id);
-            Log::info('Tenant VPN tunnel initialized', [
-                'tenant_id' => $tenant->id,
-                'interface' => $tunnel->interface_name,
-                'subnet' => $tunnel->subnet_cidr,
-            ]);
-
-            DB::commit();
-
-            // Create admin user
             $adminUser = User::create([
                 'tenant_id' => $tenant->id,
                 'name' => $this->adminData['name'],
@@ -128,8 +116,66 @@ class CreateTenantJob implements ShouldQueue
                 'email_verified_at' => now(),
                 'account_number' => 'TNT-' . strtoupper(Str::random(8)),
             ]);
-            
-            Log::info('Admin user created, adding RADIUS credentials', [
+
+            DB::commit();
+
+            Log::info('Phase 1 complete: Tenant and User created', [
+                'tenant_id' => $tenant->id,
+                'schema_name' => $tenant->schema_name,
+                'admin_user_id' => $adminUser->id,
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Phase 1 failed: Could not create tenant/user', [
+                'error' => $e->getMessage(),
+                'tenant_slug' => $this->tenantData['slug'],
+            ]);
+            throw $e;
+        }
+
+        try {
+            // ── Phase 2: Schema creation + migrations (DDL — NO transaction) ──
+            Log::info('Phase 2: Setting up tenant schema and running migrations', [
+                'tenant_id' => $tenant->id,
+                'schema_name' => $tenant->schema_name,
+            ]);
+
+            if (!$migrationManager->setupTenantSchema($tenant)) {
+                throw new \Exception("Failed to setup tenant schema for {$tenant->slug}");
+            }
+
+            Log::info('Phase 2 complete: Schema and migrations ready', [
+                'tenant_id' => $tenant->id,
+                'schema_name' => $tenant->schema_name,
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Phase 2 failed: Schema setup error', [
+                'tenant_id' => $tenant->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            // Clean up Phase 1 records
+            try {
+                $adminUser?->forceDelete();
+                $tenant?->forceDelete();
+            } catch (\Exception $cleanupError) {
+                Log::error('Cleanup after Phase 2 failure also failed', [
+                    'error' => $cleanupError->getMessage(),
+                ]);
+            }
+
+            throw $e;
+        }
+
+        try {
+            // ── Phase 3: RADIUS credentials, VPN tunnel, finalize (DML) ──
+            DB::beginTransaction();
+
+            DB::statement("SET search_path TO public");
+
+            Log::info('Phase 3: Adding RADIUS credentials', [
                 'username' => $this->adminData['username'],
                 'tenant_schema' => $tenant->schema_name,
             ]);
@@ -137,7 +183,6 @@ class CreateTenantJob implements ShouldQueue
             // Add RADIUS credentials to TENANT schema
             DB::statement("SET search_path TO {$tenant->schema_name}, public");
             
-            // Add to tenant's radcheck table
             DB::table('radcheck')->insert([
                 'username' => $this->adminData['username'],
                 'attribute' => 'Cleartext-Password',
@@ -147,7 +192,6 @@ class CreateTenantJob implements ShouldQueue
                 'updated_at' => now(),
             ]);
             
-            // Add to tenant's radreply table
             DB::table('radreply')->insert([
                 [
                     'username' => $this->adminData['username'],
@@ -167,10 +211,8 @@ class CreateTenantJob implements ShouldQueue
                 ],
             ]);
             
-            // Switch back to public schema
             DB::statement("SET search_path TO public");
             
-            // Add schema mapping in public schema
             DB::table('public.radius_user_schema_mapping')->insert([
                 'username' => $this->adminData['username'],
                 'schema_name' => $tenant->schema_name,
@@ -180,14 +222,24 @@ class CreateTenantJob implements ShouldQueue
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
-            
-            Log::info('RADIUS credentials added successfully', [
-                'username' => $this->adminData['username'],
-                'tenant_schema' => $tenant->schema_name,
+
+            // Initialize VPN Tunnel for the tenant
+            $tunnel = $vpnService->getOrCreateTenantTunnel($tenant->id);
+            Log::info('Tenant VPN tunnel initialized', [
+                'tenant_id' => $tenant->id,
+                'interface' => $tunnel->interface_name,
+                'subnet' => $tunnel->subnet_cidr,
             ]);
 
             DB::commit();
             
+            Log::info('Tenant created successfully', [
+                'tenant_id' => $tenant->id,
+                'tenant_slug' => $tenant->slug,
+                'admin_user_id' => $adminUser->id,
+                'job' => 'CreateTenantJob',
+            ]);
+
             // Broadcast event
             broadcast(new TenantCreated($tenant, $adminUser))->toOthers();
             
@@ -202,22 +254,18 @@ class CreateTenantJob implements ShouldQueue
                 $this->plainPassword
             )->onQueue('emails');
             
-            Log::info('Tenant created successfully - IP allocation and credentials email jobs dispatched', [
-                'tenant_id' => $tenant->id,
-                'tenant_slug' => $tenant->slug,
-                'admin_user_id' => $adminUser->id,
-                'job' => 'CreateTenantJob',
-            ]);
-            
         } catch (\Exception $e) {
             DB::rollBack();
+
+            try {
+                DB::statement("SET search_path TO public");
+            } catch (\Exception $ignored) {
+                DB::reconnect();
+            }
             
-            Log::error('Failed to create tenant (async)', [
+            Log::error('Phase 3 failed: RADIUS/VPN setup error', [
                 'error' => $e->getMessage(),
                 'tenant_slug' => $this->tenantData['slug'],
-                'attempt' => $this->attempts(),
-                'max_tries' => $this->tries,
-                'trace' => $e->getTraceAsString(),
                 'job' => 'CreateTenantJob',
             ]);
             

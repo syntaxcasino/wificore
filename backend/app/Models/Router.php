@@ -112,6 +112,8 @@ class Router extends Model
         'vpn_last_handshake',
         'model',
         'os_version',
+        'serial_number',
+        'firmware',
         'last_seen',
         'port',
         'username',
@@ -133,6 +135,7 @@ class Router extends Model
 
         'snmp_enabled',
         'snmp_version',
+        'snmp_community',
         'snmp_v3_user',
         'snmp_v3_auth_protocol',
         'snmp_v3_auth_password',

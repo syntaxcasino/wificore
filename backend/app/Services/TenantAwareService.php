@@ -193,7 +193,6 @@ abstract class TenantAwareService
         $tenantId = $tenantId ?? $this->getTenantId();
         
         $router = Router::where('id', $routerId)
-            ->where('tenant_id', $tenantId)
             ->first();
             
         if (!$router) {
@@ -218,7 +217,6 @@ abstract class TenantAwareService
         $tenantId = $tenantId ?? $this->getTenantId();
         
         $package = Package::where('id', $packageId)
-            ->where('tenant_id', $tenantId)
             ->first();
             
         if (!$package) {

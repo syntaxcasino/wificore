@@ -1,5 +1,12 @@
 <template>
-  <BaseModal v-model="isOpen" title="User Details" size="lg" @close="handleClose">
+  <SlideOverlay
+    v-model="isOpen"
+    title="User Details"
+    subtitle="View user account information"
+    icon="User"
+    width="40%"
+    @close="handleClose"
+  >
     <div v-if="user" class="space-y-6">
       <!-- User Header -->
       <div class="flex items-center gap-4 pb-4 border-b border-slate-200">
@@ -97,19 +104,21 @@
     </div>
 
     <template #footer>
-      <BaseButton @click="handleClose" variant="secondary">
-        Close
-      </BaseButton>
-      <BaseButton @click="handleEdit" variant="primary">
-        Edit User
-      </BaseButton>
+      <div class="flex items-center justify-end gap-3">
+        <BaseButton @click="handleClose" variant="secondary">
+          Close
+        </BaseButton>
+        <BaseButton @click="handleEdit" variant="primary">
+          Edit User
+        </BaseButton>
+      </div>
     </template>
-  </BaseModal>
+  </SlideOverlay>
 </template>
 
 <script setup>
 import { computed } from 'vue'
-import BaseModal from '@/modules/common/components/base/BaseModal.vue'
+import SlideOverlay from '@/modules/common/components/base/SlideOverlay.vue'
 import BaseButton from '@/modules/common/components/base/BaseButton.vue'
 import BaseCard from '@/modules/common/components/base/BaseCard.vue'
 import BaseBadge from '@/modules/common/components/base/BaseBadge.vue'
