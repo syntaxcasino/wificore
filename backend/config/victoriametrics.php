@@ -20,9 +20,10 @@ return [
     |
     | URL used by Telegraf to push metrics into VictoriaMetrics.
     | Points directly to the VM container (bypasses Nginx).
+    | Note: Telegraf's InfluxDB output automatically appends /write to this URL.
     |
     */
-    'write_url' => env('VICTORIA_METRICS_WRITE_URL', 'http://wificore-victoriametrics:8428'),
+    'write_url' => env('VICTORIA_METRICS_WRITE_URL', 'http://wificore-victoriametrics:8428/api/v1'),
 
     /*
     |--------------------------------------------------------------------------

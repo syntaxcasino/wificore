@@ -152,7 +152,7 @@
               :class="route.path === '/dashboard/packages/all' ? 'text-white font-medium' : 'text-gray-500'"
               @click="isMobile && $emit('close-sidebar')"
             >
-              All Packages
+              Packages
             </router-link>
             <router-link
               to="/dashboard/packages/groups"
@@ -168,7 +168,7 @@
               :class="route.path === '/dashboard/hotspot/vouchers' ? 'text-white font-medium' : 'text-gray-500'"
               @click="isMobile && $emit('close-sidebar')"
             >
-              Create Voucher
+              Vouchers
             </router-link>
           </div>
         </div>
