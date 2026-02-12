@@ -111,6 +111,7 @@ class Router extends Model
         'vpn_enabled',
         'vpn_last_handshake',
         'model',
+        'router_type',
         'os_version',
         'serial_number',
         'firmware',
