@@ -59,13 +59,16 @@ class GenerateTelegrafConfig extends Command
             $fastInterval = (string) config('telegraf.fast_interval', '3s');
             $slowInterval = (string) config('telegraf.slow_interval', '30s');
             
-            // SNMPv3 credentials from config
+            // Global SNMPv2c community from config (default for all routers)
+            $snmpCommunity = (string) config('telegraf.snmp_community', 'public');
+
+            // SNMPv3 credentials from config (fallback if router has no per-router v3 creds)
             $snmpV3User = (string) config('telegraf.snmpv3_user', 'snmpmonitor');
             $snmpV3AuthPassword = (string) config('telegraf.snmpv3_auth_password', '');
             $snmpV3PrivPassword = (string) config('telegraf.snmpv3_priv_password', '');
-            $snmpCommunity = (string) config('telegraf.snmp_community', 'public');
 
-            $vmWriteUrl = (string) config('victoriametrics.write_url', 'http://wificore-nginx/internal/vm/api/v1/write');
+            // Write directly to VictoriaMetrics — bypass Nginx to avoid circular dependency
+            $vmWriteUrl = (string) config('victoriametrics.write_url', 'http://wificore-victoriametrics:8428/api/v1/write');
 
             $lines[] = '[agent]';
             $lines[] = "interval = \"{$fastInterval}\"";
@@ -81,11 +84,7 @@ class GenerateTelegrafConfig extends Command
             $lines[] = '';
 
             $lines[] = '[[inputs.internal]]';
-            $lines[] = "interval = \"{$fastInterval}\"";
-            $lines[] = '';
-
-            $lines[] = '[[inputs.snmp_trap]]';
-            $lines[] = 'service_address = "udp://:162"';
+            $lines[] = "interval = \"{$slowInterval}\"";
             $lines[] = '';
 
             foreach ($tenants as $tenant) {
@@ -137,65 +136,30 @@ class GenerateTelegrafConfig extends Command
                         $routerCountByShard[$currentShardIndex]++;
 
                         $deviceType = (string) ($router->device_type ?? 'router');
-                        $versionRaw = strtolower((string) ($router->snmp_version ?? '2c'));
-                        $requestedVersion = ($versionRaw === '3' || $versionRaw === 'v3' || $versionRaw === 'snmpv3') ? 3 : (($versionRaw === '1' || $versionRaw === 'v1') ? 1 : 2);
 
-                        // Per-router community string with env fallback
-                        $routerCommunity = (string) ($router->snmp_community ?? '');
-                        $effectiveCommunity = $routerCommunity !== '' ? $routerCommunity : $snmpCommunity;
-
-                        // Check if SNMPv3 credentials are actually available
-                        $v3User = (string) ($router->snmp_v3_user ?? $snmpV3User);
-                        $authPass = (string) ($router->snmp_v3_auth_password ?? $snmpV3AuthPassword);
-                        $privPass = (string) ($router->snmp_v3_priv_password ?? $snmpV3PrivPassword);
-                        $hasV3Credentials = ($v3User !== '' && $authPass !== '' && $privPass !== '');
-
-                        // If SNMPv3 is requested but credentials are missing, fall back to SNMPv2c
-                        if ($requestedVersion === 3 && !$hasV3Credentials) {
-                            $version = 2;
-                            $community = $effectiveCommunity;
-                        } elseif ($requestedVersion === 3 && $hasV3Credentials) {
-                            $version = 3;
-                            $community = '';
-                        } else {
-                            $version = $requestedVersion;
-                            $community = $effectiveCommunity;
-                        }
-
-                        $lines[] = '[[inputs.snmp]]';
-                        $lines[] = "interval = \"{$slowInterval}\"";
-                        $lines[] = "agents = [\"udp://{$ip}:161\"]";
-                        $lines[] = "version = {$version}";
-                        $lines[] = 'timeout = "2s"';
-                        $lines[] = 'retries = 1';
-                        $lines[] = 'max_repetitions = 10';
-                        $lines[] = 'name = "router_health"';
+                        // Always use SNMPv2c
+                        $version = 2;
                         
-                        // Add community string for SNMPv1/v2c
-                        if ($version !== 3) {
-                            $lines[] = "community = \"{$this->escapeTelegrafString($community)}\"";
-                        }
+                        // Per-router community string with global fallback
+                        $routerCommunity = (string) ($router->snmp_community ?? '');
+                        $community = $routerCommunity !== '' ? $routerCommunity : $snmpCommunity;
 
-                        // Resolve SNMPv3 protocol settings (used by both health and interface blocks)
-                        $authProto = (string) ($router->snmp_v3_auth_protocol ?? 'SHA');
-                        $privProto = (string) ($router->snmp_v3_priv_protocol ?? 'AES');
+                        // === Block 1: Router Health (slow interval) ===
+                        $this->addSnmpBlock($lines, [
+                            'interval' => $slowInterval,
+                            'ip' => $ip,
+                            'version' => $version,
+                            'timeout' => '3s',
+                            'retries' => 1,
+                            'max_repetitions' => 10,
+                            'name' => 'router_health',
+                            'community' => $community,
+                            'tenant_id' => $tenant->id,
+                            'router_id' => $routerId,
+                            'device_type' => $deviceType,
+                        ]);
 
-                        // SNMPv3 credentials must come before [tags] section in TOML
-                        if ($version === 3 && $hasV3Credentials) {
-                            $lines[] = "sec_name = \"{$this->escapeTelegrafString($v3User)}\"";
-                            $lines[] = "sec_level = \"authPriv\"";
-                            $lines[] = "auth_protocol = \"{$this->escapeTelegrafString($authProto)}\"";
-                            $lines[] = "auth_password = \"{$this->escapeTelegrafString($authPass)}\"";
-                            $lines[] = "priv_protocol = \"{$this->escapeTelegrafString($privProto)}\"";
-                            $lines[] = "priv_password = \"{$this->escapeTelegrafString($privPass)}\"";
-                        }
-
-                        $lines[] = "[inputs.snmp.tags]";
-                        $lines[] = "tenant_id = \"{$tenant->id}\"";
-                        $lines[] = "router_id = \"{$routerId}\"";
-                        $lines[] = "device_type = \"{$deviceType}\"";
-                        $lines[] = '';
-
+                        // Scalar fields for router health
                         $lines[] = '[[inputs.snmp.field]]';
                         $lines[] = 'name = "identity"';
                         $lines[] = 'oid = "1.3.6.1.2.1.1.5.0"';
@@ -234,38 +198,82 @@ class GenerateTelegrafConfig extends Command
                         $lines[] = 'oid = "1.3.6.1.4.1.14988.1.1.5.4.0"';
                         $lines[] = '';
 
-                        // Interface traffic counters (IF-MIB, numeric OIDs — no MIB files needed)
-                        // Uses SNMPv2c table walk for 64-bit high-capacity counters
-                        $lines[] = '[[inputs.snmp]]';
-                        $lines[] = "interval = \"{$fastInterval}\"";
-                        $lines[] = "agents = [\"udp://{$ip}:161\"]";
-                        $lines[] = "version = {$version}";
-                        $lines[] = 'timeout = "3s"';
-                        $lines[] = 'retries = 1';
-                        $lines[] = 'max_repetitions = 25';
-                        $lines[] = 'name = "interface_counters"';
+                        // === Block 2: Storage / Disk (HOST-RESOURCES-MIB hrStorage table) ===
+                        $this->addSnmpBlock($lines, [
+                            'interval' => $slowInterval,
+                            'ip' => $ip,
+                            'version' => $version,
+                            'timeout' => '3s',
+                            'retries' => 1,
+                            'max_repetitions' => 10,
+                            'name' => 'router_storage',
+                            'community' => $community,
+                            'tenant_id' => $tenant->id,
+                            'router_id' => $routerId,
+                            'device_type' => $deviceType,
+                        ]);
 
-                        if ($version !== 3) {
-                            $lines[] = "community = \"{$this->escapeTelegrafString($community)}\"";
-                        }
-
-                        // SNMPv3 credentials must come before [tags] section in TOML
-                        if ($version === 3 && $hasV3Credentials) {
-                            $lines[] = "sec_name = \"{$this->escapeTelegrafString($v3User)}\"";
-                            $lines[] = "sec_level = \"authPriv\"";
-                            $lines[] = "auth_protocol = \"{$this->escapeTelegrafString($authProto)}\"";
-                            $lines[] = "auth_password = \"{$this->escapeTelegrafString($authPass)}\"";
-                            $lines[] = "priv_protocol = \"{$this->escapeTelegrafString($privProto)}\"";
-                            $lines[] = "priv_password = \"{$this->escapeTelegrafString($privPass)}\"";
-                        }
-
-                        $lines[] = "[inputs.snmp.tags]";
-                        $lines[] = "tenant_id = \"{$tenant->id}\"";
-                        $lines[] = "router_id = \"{$routerId}\"";
-                        $lines[] = "device_type = \"{$deviceType}\"";
+                        // hrStorage table walk
+                        $lines[] = '[[inputs.snmp.table]]';
+                        $lines[] = 'name = "storage"';
+                        $lines[] = 'inherit_tags = ["tenant_id", "router_id", "device_type"]';
                         $lines[] = '';
 
-                        // Interface table: name, status, speed, traffic counters
+                        // hrStorageIndex
+                        $lines[] = '[[inputs.snmp.table.field]]';
+                        $lines[] = 'name = "hrStorageIndex"';
+                        $lines[] = 'oid = "1.3.6.1.2.1.25.2.3.1.1"';
+                        $lines[] = 'is_tag = true';
+                        $lines[] = '';
+
+                        // hrStorageType (OID value — used to filter for fixed disk)
+                        $lines[] = '[[inputs.snmp.table.field]]';
+                        $lines[] = 'name = "hrStorageType"';
+                        $lines[] = 'oid = "1.3.6.1.2.1.25.2.3.1.2"';
+                        $lines[] = 'is_tag = true';
+                        $lines[] = '';
+
+                        // hrStorageDescr
+                        $lines[] = '[[inputs.snmp.table.field]]';
+                        $lines[] = 'name = "hrStorageDescr"';
+                        $lines[] = 'oid = "1.3.6.1.2.1.25.2.3.1.3"';
+                        $lines[] = 'is_tag = true';
+                        $lines[] = '';
+
+                        // hrStorageAllocationUnits (bytes per unit)
+                        $lines[] = '[[inputs.snmp.table.field]]';
+                        $lines[] = 'name = "hrStorageAllocationUnits"';
+                        $lines[] = 'oid = "1.3.6.1.2.1.25.2.3.1.4"';
+                        $lines[] = '';
+
+                        // hrStorageSize (total units)
+                        $lines[] = '[[inputs.snmp.table.field]]';
+                        $lines[] = 'name = "hrStorageSize"';
+                        $lines[] = 'oid = "1.3.6.1.2.1.25.2.3.1.5"';
+                        $lines[] = '';
+
+                        // hrStorageUsed (used units)
+                        $lines[] = '[[inputs.snmp.table.field]]';
+                        $lines[] = 'name = "hrStorageUsed"';
+                        $lines[] = 'oid = "1.3.6.1.2.1.25.2.3.1.6"';
+                        $lines[] = '';
+
+                        // === Block 3: Interface traffic counters (fast interval) ===
+                        $this->addSnmpBlock($lines, [
+                            'interval' => $fastInterval,
+                            'ip' => $ip,
+                            'version' => $version,
+                            'timeout' => '3s',
+                            'retries' => 1,
+                            'max_repetitions' => 25,
+                            'name' => 'interface_counters',
+                            'community' => $community,
+                            'tenant_id' => $tenant->id,
+                            'router_id' => $routerId,
+                            'device_type' => $deviceType,
+                        ]);
+
+                        // Interface table
                         $lines[] = '[[inputs.snmp.table]]';
                         $lines[] = 'name = "interface"';
                         $lines[] = 'inherit_tags = ["tenant_id", "router_id", "device_type"]';
@@ -310,16 +318,13 @@ class GenerateTelegrafConfig extends Command
                 }
             }
 
-            $lines[] = '[[outputs.http]]';
-            $lines[] = "url = \"{$this->escapeTelegrafString($vmWriteUrl)}\"";
+            // Output: write to VictoriaMetrics via Influx line protocol
+            $lines[] = '[[outputs.influxdb]]';
+            $lines[] = "urls = [\"{$this->esc($vmWriteUrl)}\"]";
+            $lines[] = 'database = "telegraf"';
+            $lines[] = 'skip_database_creation = true';
             $lines[] = 'timeout = "5s"';
-            $lines[] = 'method = "POST"';
-            $lines[] = 'data_format = "prometheusremotewrite"';
-            $lines[] = '';
-            $lines[] = '[outputs.http.headers]';
-            $lines[] = 'Content-Type = "application/x-protobuf"';
-            $lines[] = 'Content-Encoding = "snappy"';
-            $lines[] = 'X-Prometheus-Remote-Write-Version = "0.1.0"';
+            $lines[] = 'content_encoding = "gzip"';
             $lines[] = '';
 
             $path = rtrim($outputDir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $currentShardIndex . '.conf';
@@ -337,7 +342,29 @@ class GenerateTelegrafConfig extends Command
         return Command::SUCCESS;
     }
 
-    private function escapeTelegrafString(string $value): string
+    /**
+     * Add an [[inputs.snmp]] block header with SNMPv2c auth and tags.
+     */
+    private function addSnmpBlock(array &$lines, array $opts): void
+    {
+        $lines[] = '[[inputs.snmp]]';
+        $lines[] = "interval = \"{$opts['interval']}\"";
+        $lines[] = "agents = [\"udp://{$opts['ip']}:161\"]";
+        $lines[] = "version = {$opts['version']}";
+        $lines[] = "timeout = \"{$opts['timeout']}\"";
+        $lines[] = "retries = {$opts['retries']}";
+        $lines[] = "max_repetitions = {$opts['max_repetitions']}";
+        $lines[] = "name = \"{$opts['name']}\"";
+        $lines[] = "community = \"{$this->esc($opts['community'])}\"";
+
+        $lines[] = '[inputs.snmp.tags]';
+        $lines[] = "tenant_id = \"{$opts['tenant_id']}\"";
+        $lines[] = "router_id = \"{$opts['router_id']}\"";
+        $lines[] = "device_type = \"{$opts['device_type']}\"";
+        $lines[] = '';
+    }
+
+    private function esc(string $value): string
     {
         $value = str_replace("\\", "\\\\", $value);
         $value = str_replace("\"", "\\\"", $value);
