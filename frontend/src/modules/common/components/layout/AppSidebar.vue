@@ -154,14 +154,14 @@
             >
               Packages
             </router-link>
-            <router-link
+<!--             <router-link
               to="/dashboard/packages/groups"
               class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
               :class="route.path === '/dashboard/packages/groups' ? 'text-white font-medium' : 'text-gray-500'"
               @click="isMobile && $emit('close-sidebar')"
             >
               Package Groups
-            </router-link>
+            </router-link> -->
             <router-link
               to="/dashboard/hotspot/vouchers"
               class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
