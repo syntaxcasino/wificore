@@ -69,6 +69,7 @@ class CleanupOldData extends Command
             
             // Log cleanup
             DB::table('system_logs')->insert([
+                'id' => (string) \Illuminate\Support\Str::uuid(),
                 'tenant_id' => null,
                 'user_id' => null,
                 'category' => 'maintenance',
