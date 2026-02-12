@@ -493,30 +493,24 @@ class MikrotikProvisioningService extends TenantAwareService
 
 
     /**
-     * Get SNMP configuration script (SNMPv3)
+     * Get SNMP configuration script (SNMPv2c)
      */
     protected function getSnmpConfigScript(Router $router): string
     {
-        // Use router-specific credentials if already set, otherwise generate new ones
-        $user = $router->snmp_v3_user ?: env('TELEGRAF_SNMPV3_USER', 'snmpmonitor');
-        $authPassword = $router->snmp_v3_auth_password ?: bin2hex(random_bytes(16));
-        $privPassword = $router->snmp_v3_priv_password ?: bin2hex(random_bytes(16));
+        // Use simple SNMPv2c community string (same for all routers)
+        $community = env('SNMP_COMMUNITY', 'wificore_monitor');
         
-        // Save credentials to database for Telegraf to use
+        // Save SNMP configuration to database
         $router->update([
             'snmp_enabled' => true,
-            'snmp_version' => 'v3',
-            'snmp_v3_user' => $user,
-            'snmp_v3_auth_protocol' => 'SHA',
-            'snmp_v3_auth_password' => $authPassword,
-            'snmp_v3_priv_protocol' => 'AES',
-            'snmp_v3_priv_password' => $privPassword,
+            'snmp_version' => 'v2c',
+            'snmp_community' => $community,
         ]);
         
-        Log::info('SNMP credentials saved to database', [
+        Log::info('SNMPv2c configured on router', [
             'router_id' => $router->id,
             'router_name' => $router->name,
-            'snmp_user' => $user,
+            'community' => $community,
         ]);
         
         // Regenerate Telegraf config to include this router
@@ -532,8 +526,8 @@ class MikrotikProvisioningService extends TenantAwareService
 /snmp set contact="Network Admin"
 /snmp set location="Managed by WifiCore"
 :do { /snmp community remove [find name=public] } on-error={}
-:do { /snmp community remove [find name={$user}] } on-error={}
-/snmp community add name={$user} addresses=0.0.0.0/0 security=private authentication-protocol=SHA authentication-password="{$authPassword}" encryption-protocol=AES encryption-password="{$privPassword}"
+:do { /snmp community remove [find name=wificore_monitor] } on-error={}
+/snmp community add name={$community} addresses=0.0.0.0/0
 SCRIPT;
     }
 
@@ -1285,7 +1279,7 @@ SCRIPT;
 
             // Schedule cleanup of orphaned RSC files
             try {
-                $cleanupService = new RscFileCleanupService();
+                $cleanupService = app(RscFileCleanupService::class);
                 $cleanupService->scheduleCleanup($router, $remoteScriptFile);
                 Log::debug('Scheduled RSC file cleanup', [
                     'router_id' => $router->id,
