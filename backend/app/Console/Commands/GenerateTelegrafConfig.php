@@ -107,6 +107,7 @@ class GenerateTelegrafConfig extends Command
                             'vpn_ip',
                             'ip_address',
                             'device_type',
+                            'router_type',
                             'snmp_enabled',
                             'snmp_version',
                             'snmp_community',
@@ -137,6 +138,7 @@ class GenerateTelegrafConfig extends Command
                         $routerCountByShard[$currentShardIndex]++;
 
                         $deviceType = (string) ($router->device_type ?? 'router');
+                        $routerType = (string) ($router->router_type ?? 'physical');
 
                         // Always use SNMPv2c
                         $version = 2;
@@ -172,39 +174,39 @@ class GenerateTelegrafConfig extends Command
                         $lines[] = 'oid = "1.3.6.1.2.1.1.3.0"';
                         $lines[] = '';
 
-                        // CPU load - MikroTik enterprise OID (physical routers)
-                        $lines[] = '[[inputs.snmp.field]]';
-                        $lines[] = 'name = "cpu_load"';
-                        $lines[] = 'oid = "1.3.6.1.4.1.14988.1.1.3.14.0"';
-                        $lines[] = '';
+                        // Add OIDs based on router type
+                        if ($routerType === 'chr') {
+                            // CHR uses HOST-RESOURCES-MIB
+                            $lines[] = '[[inputs.snmp.table]]';
+                            $lines[] = 'name = "cpu"';
+                            $lines[] = 'inherit_tags = ["tenant_id", "router_id", "device_type"]';
+                            $lines[] = '';
+                            $lines[] = '[[inputs.snmp.table.field]]';
+                            $lines[] = 'name = "hrProcessorLoad"';
+                            $lines[] = 'oid = "1.3.6.1.2.1.25.3.3.1.2"';
+                            $lines[] = '';
 
-                        // CPU load - HOST-RESOURCES-MIB (CHR and some physical)
-                        $lines[] = '[[inputs.snmp.table]]';
-                        $lines[] = 'name = "cpu"';
-                        $lines[] = 'inherit_tags = ["tenant_id", "router_id", "device_type"]';
-                        $lines[] = '';
-                        $lines[] = '[[inputs.snmp.table.field]]';
-                        $lines[] = 'name = "hrProcessorLoad"';
-                        $lines[] = 'oid = "1.3.6.1.2.1.25.3.3.1.2"';
-                        $lines[] = '';
+                            $lines[] = '[[inputs.snmp.field]]';
+                            $lines[] = 'name = "total_memory_kb"';
+                            $lines[] = 'oid = "1.3.6.1.2.1.25.2.2.0"';
+                            $lines[] = '';
+                        } else {
+                            // Physical MikroTik uses enterprise OIDs
+                            $lines[] = '[[inputs.snmp.field]]';
+                            $lines[] = 'name = "cpu_load"';
+                            $lines[] = 'oid = "1.3.6.1.4.1.14988.1.1.3.14.0"';
+                            $lines[] = '';
 
-                        // Total memory - MikroTik enterprise OID (physical routers, in bytes)
-                        $lines[] = '[[inputs.snmp.field]]';
-                        $lines[] = 'name = "total_memory"';
-                        $lines[] = 'oid = "1.3.6.1.4.1.14988.1.1.3.1.0"';
-                        $lines[] = '';
+                            $lines[] = '[[inputs.snmp.field]]';
+                            $lines[] = 'name = "total_memory"';
+                            $lines[] = 'oid = "1.3.6.1.4.1.14988.1.1.3.1.0"';
+                            $lines[] = '';
 
-                        // Free memory - MikroTik enterprise OID (physical routers, in bytes)
-                        $lines[] = '[[inputs.snmp.field]]';
-                        $lines[] = 'name = "free_memory"';
-                        $lines[] = 'oid = "1.3.6.1.4.1.14988.1.1.3.2.0"';
-                        $lines[] = '';
-
-                        // Physical memory - HOST-RESOURCES-MIB (CHR, in KB)
-                        $lines[] = '[[inputs.snmp.field]]';
-                        $lines[] = 'name = "total_memory_kb"';
-                        $lines[] = 'oid = "1.3.6.1.2.1.25.2.2.0"';
-                        $lines[] = '';
+                            $lines[] = '[[inputs.snmp.field]]';
+                            $lines[] = 'name = "free_memory"';
+                            $lines[] = 'oid = "1.3.6.1.4.1.14988.1.1.3.2.0"';
+                            $lines[] = '';
+                        }
 
                         // Temperature (MikroTik specific)
                         $lines[] = '[[inputs.snmp.field]]';
