@@ -106,8 +106,11 @@ class PPPoEService extends BaseMikroTikService
         $script[] = '';
 
         // PPP Profile (single-line) - rate-limit empty to allow RADIUS override
-        $script[] = ":do { /ppp profile remove [find name=\"{$profileName}\"]; /ppp profile add name=\"{$profileName}\" use-radius=yes local-address={$gateway} remote-address=\"{$poolName}\" dns-server=\"{$dnsServers}\" use-compression=no use-encryption=no only-one=no change-tcp-mss=yes rate-limit=\"\"; } on-error={ :error \"PPPoE: PPP profile create failed ({$profileName})\" }";
+        // interface-list=PPPOE-ACTIVE: dynamic <pppoe-*> interfaces auto-join on auth
+        $script[] = ":do { /ppp profile remove [find name=\"{$profileName}\"]; /ppp profile add name=\"{$profileName}\" use-radius=yes local-address={$gateway} remote-address=\"{$poolName}\" dns-server=\"{$dnsServers}\" interface-list=PPPOE-ACTIVE use-compression=no use-encryption=no only-one=no change-tcp-mss=yes rate-limit=\"\"; } on-error={ :error \"PPPoE: PPP profile create failed ({$profileName})\" }";
         $script[] = ":if ([:len [/ppp profile find name=\"{$profileName}\"]] = 0) do={ :error \"PPPoE: PPP profile missing ({$profileName})\" }";
+        // Ensure existing profile gets interface-list updated
+        $script[] = ":do { /ppp profile set [find name=\"{$profileName}\"] interface-list=PPPOE-ACTIVE } on-error={}";
         $script[] = '';
 
         // PPPoE Server on bridge (RouterOS 7 property names)
@@ -123,6 +126,11 @@ class PPPoEService extends BaseMikroTikService
         // Add PPPoE bridge to PPPOE interface list so we can safely exclude it from FastTrack rules
         $script[] = ':do { /interface list add name=PPPOE; } on-error={}';
         $script[] = ":do { :if ([/interface list member find list=PPPOE interface=\"{$bridgeName}\"] = \"\") do={ /interface list member add list=PPPOE interface=\"{$bridgeName}\" comment=\"WiFiCore PPPoE list\" } } on-error={}";
+        $script[] = '';
+
+        // PPPOE-ACTIVE list: authenticated dynamic <pppoe-*> interfaces auto-join via PPP profile
+        // CRITICAL for security: firewall/NAT rules match on this list, NOT src-address subnet
+        $script[] = ':do { /interface list add name=PPPOE-ACTIVE; } on-error={}';
         $script[] = '';
 
         // Ensure PPPoE traffic is not FastTracked (FastTrack bypasses queues and breaks Mikrotik-Rate-Limit)
@@ -146,34 +154,34 @@ class PPPoEService extends BaseMikroTikService
         }
         
         // ============ FIREWALL - FORWARD CHAIN (CRITICAL SECURITY) ============
-        // CRITICAL: ALL rules MUST be scoped to in-interface to avoid affecting other router traffic.
-        // Without in-interface scoping, established/related accept matches ALL traffic on the router,
-        // letting any connected device access the internet.
-        // PPPoE auth is L2 (PADI/PADO) — clients don't need DNS before authentication.
-        // Rule order:
-        // 1. Accept established/related FROM PPPoE bridge
-        // 2. Drop invalid FROM PPPoE bridge
-        // 3. Allow authenticated PPPoE subnet traffic to WAN
-        // 4. DROP everything else from bridge (unauthenticated devices)
-        // Forward chain - authentication enforcement
-        // CRITICAL: Insert rules in REVERSE order with place-before=0 so they end up
-        // at the TOP of the filter list in the CORRECT order.
-        // Without place-before=0, rules go to the END — after default RouterOS defconf
-        // rules that have blanket accept established,related WITHOUT interface scoping,
-        // which lets unauthenticated devices access the internet.
+        // SECURITY PRINCIPLE: Never allow traffic from the bridge directly.
+        // Allow ONLY traffic from PPPoE dynamic interfaces (authenticated sessions).
+        // The PPP profile sets interface-list=PPPOE-ACTIVE, so when a user authenticates,
+        // their dynamic <pppoe-*> interface auto-joins that list.
+        // An unauthorized client on the bridge can spoof src-address but CANNOT create a PPPoE session.
+        //
+        // Rule order (inserted in REVERSE with place-before=0):
+        // 1. Accept established/related FROM authenticated PPPoE interfaces
+        // 2. Drop invalid FROM authenticated PPPoE interfaces
+        // 3. Allow authenticated PPPoE interfaces to WAN
+        // 4. DROP everything from bridge (unauthenticated devices)
         $script[] = "# Forward chain - authentication enforcement";
         $script[] = ":do { /ip firewall filter remove [find comment~\"WiFiCore PPPoE FW\"]; } on-error={}";
+        // 4. DROP all traffic from bridge (unauthenticated devices cannot pass)
         $script[] = ":do { /ip firewall filter add chain=forward in-interface=\"{$bridgeName}\" action=drop place-before=0 comment=\"WiFiCore PPPoE FW-DROP ({$routerId})\"; } on-error={}";
-        $script[] = ":do { /ip firewall filter add chain=forward src-address={$gateway}/24 in-interface=\"{$bridgeName}\" out-interface-list=WAN action=accept place-before=0 comment=\"WiFiCore PPPoE FW-INET ({$routerId})\"; } on-error={}";
-        $script[] = ":do { /ip firewall filter add chain=forward in-interface=\"{$bridgeName}\" connection-state=invalid action=drop place-before=0 comment=\"WiFiCore PPPoE FW-INV ({$routerId})\"; } on-error={}";
-        $script[] = ":do { /ip firewall filter add chain=forward in-interface=\"{$bridgeName}\" connection-state=established,related action=accept place-before=0 comment=\"WiFiCore PPPoE FW-EST ({$routerId})\"; } on-error={}";
+        // 3. Allow ONLY authenticated PPPoE sessions to WAN (interface-list, NOT src-address)
+        $script[] = ":do { /ip firewall filter add chain=forward in-interface-list=PPPOE-ACTIVE out-interface-list=WAN action=accept place-before=0 comment=\"WiFiCore PPPoE FW-INET ({$routerId})\"; } on-error={}";
+        // 2. Drop invalid from authenticated PPPoE interfaces
+        $script[] = ":do { /ip firewall filter add chain=forward in-interface-list=PPPOE-ACTIVE connection-state=invalid action=drop place-before=0 comment=\"WiFiCore PPPoE FW-INV ({$routerId})\"; } on-error={}";
+        // 1. Accept established/related from authenticated PPPoE interfaces
+        $script[] = ":do { /ip firewall filter add chain=forward in-interface-list=PPPOE-ACTIVE connection-state=established,related action=accept place-before=0 comment=\"WiFiCore PPPoE FW-EST ({$routerId})\"; } on-error={}";
         $script[] = '';
         
         // ============ NAT - SCOPED MASQUERADE (SECURITY) ============
-        // Only masquerade traffic from the PPPoE subnet (authenticated users)
-        // Do NOT masquerade all WAN traffic — that would allow unauthenticated bypass
+        // Masquerade ONLY traffic from authenticated PPPoE interfaces (not subnet-based)
+        // Subnet-based NAT is a security bypass: unauthorized clients can spoof src-address
         $script[] = ':do { /ip firewall nat remove [find comment="WiFiCore PPPoE NAT"]; } on-error={}';
-        $script[] = ":do { /ip firewall nat add chain=srcnat src-address={$gateway}/24 out-interface-list=WAN action=masquerade comment=\"WiFiCore PPPoE NAT\"; } on-error={ :error \"PPPoE: NAT add failed\" }";
+        $script[] = ":do { /ip firewall nat add chain=srcnat in-interface-list=PPPOE-ACTIVE out-interface-list=WAN action=masquerade comment=\"WiFiCore PPPoE NAT\"; } on-error={ :error \"PPPoE: NAT add failed\" }";
         $script[] = '';
         
         // DNS

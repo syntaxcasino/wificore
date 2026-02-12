@@ -9,9 +9,13 @@ return new class extends Migration
     public function up(): void
     {
         // Increase interface_name column from varchar(100) to TEXT to handle JSON arrays
-        Schema::table('router_services', function (Blueprint $table) {
-            $table->text('interface_name')->nullable()->change();
-        });
+        // Guard: only alter if the column exists (it may not on very fresh schemas
+        // where the base migration already defines it correctly)
+        if (Schema::hasColumn('router_services', 'interface_name')) {
+            Schema::table('router_services', function (Blueprint $table) {
+                $table->text('interface_name')->nullable()->change();
+            });
+        }
     }
 
     public function down(): void

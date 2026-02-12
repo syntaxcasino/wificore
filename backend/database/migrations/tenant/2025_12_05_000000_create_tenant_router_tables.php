@@ -56,7 +56,8 @@ return new class extends Migration
 
                 // SNMP columns for Telegraf/monitoring
                 $table->boolean('snmp_enabled')->default(false);
-                $table->string('snmp_version', 10)->nullable();
+                $table->string('snmp_version', 10)->default('2c');
+                $table->string('snmp_community', 64)->default('public');
                 $table->string('snmp_v3_user')->nullable();
                 $table->string('snmp_v3_auth_protocol', 10)->nullable();
                 $table->text('snmp_v3_auth_password')->nullable();

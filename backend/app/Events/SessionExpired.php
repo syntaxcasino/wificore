@@ -8,25 +8,31 @@ use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
-use Illuminate\Queue\SerializesModels;
 
 class SessionExpired implements ShouldBroadcast
 {
-    use Dispatchable, InteractsWithSockets, SerializesModels;
+    use Dispatchable, InteractsWithSockets;
     use BroadcastsToTenant;
 
-    public $session;
-    public $reason;
-    public $tenantId;
+    public array $sessionData;
+    public string $reason;
+    public ?string $tenantId;
 
     /**
      * Create a new event instance.
      */
     public function __construct(RadiusSession $session, string $reason = 'Session expired', ?string $tenantId = null)
     {
-        $this->session = $session;
+        // Extract data instead of serializing the model
+        // RadiusSession is in tenant schema; SerializesModels fails on deserialization
+        $this->sessionData = [
+            'id' => $session->id,
+            'username' => $session->username,
+            'duration_seconds' => $session->duration_seconds,
+            'total_bytes' => $session->total_bytes,
+            'hotspot_user_id' => $session->hotspot_user_id,
+        ];
         $this->reason = $reason;
-        // RadiusSession is in tenant schema - no tenant_id column
         $this->tenantId = $tenantId ?? (auth()->user()?->tenant_id);
     }
 
@@ -36,7 +42,7 @@ class SessionExpired implements ShouldBroadcast
     public function broadcastOn(): array
     {
         $channels = [
-            new PrivateChannel('user.' . $this->session->hotspot_user_id),
+            new PrivateChannel('user.' . $this->sessionData['hotspot_user_id']),
         ];
 
         if ($this->tenantId) {
@@ -61,10 +67,10 @@ class SessionExpired implements ShouldBroadcast
     {
         return [
             'session' => [
-                'id' => $this->session->id,
-                'username' => $this->session->username,
-                'duration' => $this->session->duration_seconds,
-                'data_used' => $this->session->total_bytes,
+                'id' => $this->sessionData['id'],
+                'username' => $this->sessionData['username'],
+                'duration' => $this->sessionData['duration_seconds'],
+                'data_used' => $this->sessionData['total_bytes'],
             ],
             'reason' => $this->reason,
             'message' => 'Session expired and user disconnected',

@@ -60,8 +60,9 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { Shield, Zap, Save, CheckCircle, XCircle } from 'lucide-vue-next'
+import axios from 'axios'
 import PageContainer from '@/modules/common/components/layout/templates/PageContainer.vue'
 import PageHeader from '@/modules/common/components/layout/templates/PageHeader.vue'
 import PageContent from '@/modules/common/components/layout/templates/PageContent.vue'
@@ -74,24 +75,58 @@ const saving = ref(false)
 const testing = ref(false)
 const connectionStatus = ref(null)
 
-const formData = ref({
+const defaults = {
   server_ip: '127.0.0.1',
   auth_port: 1812,
   acct_port: 1813,
   secret: ''
-})
+}
+
+const formData = ref({ ...defaults })
+
+const fetchSettings = async () => {
+  try {
+    const response = await axios.get('/settings/radius')
+    const data = response.data?.settings || response.data?.data || response.data || {}
+    formData.value = { ...defaults, ...data, secret: '' }
+  } catch (err) {
+    console.error('fetchRadiusSettings error:', err)
+  }
+}
 
 const saveSettings = async () => {
   saving.value = true
-  await new Promise(resolve => setTimeout(resolve, 1000))
-  alert('Settings saved!')
-  saving.value = false
+  try {
+    await axios.post('/settings/radius', formData.value)
+    alert('Settings saved!')
+  } catch (err) {
+    console.error('saveSettings error:', err)
+    alert(err.response?.data?.message || 'Failed to save settings')
+  } finally {
+    saving.value = false
+  }
 }
 
 const testConnection = async () => {
   testing.value = true
-  await new Promise(resolve => setTimeout(resolve, 2000))
-  connectionStatus.value = { success: true, message: 'RADIUS Server Connected' }
-  testing.value = false
+  connectionStatus.value = null
+  try {
+    const response = await axios.post('/settings/radius/test', formData.value)
+    connectionStatus.value = {
+      success: response.data?.success ?? true,
+      message: response.data?.message || 'RADIUS Server Connected'
+    }
+  } catch (err) {
+    connectionStatus.value = {
+      success: false,
+      message: err.response?.data?.message || 'Connection Failed - check server IP and credentials'
+    }
+  } finally {
+    testing.value = false
+  }
 }
+
+onMounted(() => {
+  fetchSettings()
+})
 </script>

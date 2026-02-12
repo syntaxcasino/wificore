@@ -3,7 +3,7 @@
     <div class="bg-white rounded-2xl shadow-xl w-full max-w-6xl border border-gray-200">
       <div class="grid grid-cols-1 md:grid-cols-2 gap-0">
         <!-- Left: Branding + Features -->
-        <div class="p-8 md:p-12">
+        <div class="p-5 sm:p-8 md:p-12">
       <!-- Header -->
       <div class="text-center" :class="isSignup ? 'mb-6' : 'mb-8'">
         <!-- Logo -->
@@ -49,7 +49,7 @@
         </div>
         </div>
         <!-- Right: Forms -->
-        <div class="p-8 md:p-12 md:border-l border-gray-100">
+        <div class="p-5 sm:p-8 md:p-12 md:border-l border-gray-100">
 
       <!-- Error/Success Messages -->
       <div v-if="error" class="mb-4 p-4 bg-red-50 border-l-4 border-red-500 rounded-r-lg text-red-700 text-sm flex items-start gap-3 animate-shake">

@@ -1,5 +1,12 @@
 <template>
-  <BaseModal v-model="isOpen" title="Create New User" size="lg" @close="handleClose">
+  <SlideOverlay
+    v-model="isOpen"
+    title="Create New User"
+    subtitle="Add a new administrator or staff account"
+    icon="UserPlus"
+    width="40%"
+    @close="handleClose"
+  >
     <form @submit.prevent="handleSubmit">
       <div class="space-y-4">
         <!-- User Type -->
@@ -107,19 +114,21 @@
     </form>
 
     <template #footer>
-      <BaseButton @click="handleClose" variant="secondary" :disabled="submitting">
-        Cancel
-      </BaseButton>
-      <BaseButton @click="handleSubmit" variant="primary" :loading="submitting">
-        Create User
-      </BaseButton>
+      <div class="flex items-center justify-end gap-3">
+        <BaseButton @click="handleClose" variant="secondary" :disabled="submitting">
+          Cancel
+        </BaseButton>
+        <BaseButton @click="handleSubmit" variant="primary" :loading="submitting">
+          Create User
+        </BaseButton>
+      </div>
     </template>
-  </BaseModal>
+  </SlideOverlay>
 </template>
 
 <script setup>
 import { ref, computed, watch } from 'vue'
-import BaseModal from '@/modules/common/components/base/BaseModal.vue'
+import SlideOverlay from '@/modules/common/components/base/SlideOverlay.vue'
 import BaseButton from '@/modules/common/components/base/BaseButton.vue'
 import BaseInput from '@/modules/common/components/base/BaseInput.vue'
 import BaseSelect from '@/modules/common/components/base/BaseSelect.vue'

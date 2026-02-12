@@ -24,7 +24,7 @@
             @click.stop
           >
             <!-- Header -->
-            <div class="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50">
+            <div class="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-slate-200 bg-slate-50">
               <div class="flex items-center gap-3">
                 <component
                   v-if="icon"
@@ -46,12 +46,12 @@
             </div>
 
             <!-- Content -->
-            <div class="flex-1 overflow-y-auto p-6">
+            <div class="flex-1 overflow-y-auto p-4 sm:p-6">
               <slot />
             </div>
 
             <!-- Footer (optional) -->
-            <div v-if="$slots.footer" class="px-6 py-4 border-t border-slate-200 bg-slate-50">
+            <div v-if="$slots.footer" class="px-4 sm:px-6 py-3 sm:py-4 border-t border-slate-200 bg-slate-50">
               <slot name="footer" />
             </div>
           </div>
@@ -106,13 +106,13 @@ const iconComponent = computed(() => {
 
 const widthClass = computed(() => {
   const widthMap = {
-    '30%': 'w-full sm:w-[30%] sm:min-w-[400px]',
-    '40%': 'w-full sm:w-[40%] sm:min-w-[500px]',
-    '50%': 'w-full sm:w-[50%] sm:min-w-[600px]',
-    '60%': 'w-full sm:w-[60%] sm:min-w-[700px]',
-    '70%': 'w-full sm:w-[70%] sm:min-w-[800px]',
-    '80%': 'w-full sm:w-[80%] sm:min-w-[900px]',
-    '90%': 'w-full sm:w-[90%] sm:min-w-[1000px]',
+    '30%': 'w-full sm:w-[30%] md:min-w-[400px]',
+    '40%': 'w-full sm:w-[40%] md:min-w-[500px]',
+    '50%': 'w-full sm:w-[50%] md:min-w-[600px]',
+    '60%': 'w-full sm:w-[60%] md:min-w-[700px]',
+    '70%': 'w-full sm:w-[70%] md:min-w-[800px]',
+    '80%': 'w-full sm:w-[80%] md:min-w-[900px]',
+    '90%': 'w-full sm:w-[90%] md:min-w-[1000px]',
     'full': 'w-full'
   }
   return widthMap[props.width] || widthMap['50%']

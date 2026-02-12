@@ -24,8 +24,8 @@
     </PageHeader>
 
     <!-- Stats Cards -->
-    <div class="px-6 py-4 bg-white border-b border-slate-200">
-      <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+    <div class="px-3 py-3 sm:px-6 sm:py-4 bg-white border-b border-slate-200">
+      <div class="grid grid-cols-2 md:grid-cols-5 gap-3 sm:gap-4">
         <div class="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200">
           <div class="flex items-center justify-between">
             <div>
@@ -89,10 +89,10 @@
     </div>
 
     <!-- Search and Filters Bar -->
-    <div class="px-6 py-4 bg-white border-b border-slate-200">
-      <div class="flex items-center gap-3 flex-wrap">
+    <div class="px-3 py-3 sm:px-6 sm:py-4 bg-white border-b border-slate-200">
+      <div class="flex flex-col sm:flex-row sm:items-center gap-3 flex-wrap">
         <!-- Search Box -->
-        <div class="flex-1 min-w-[300px] max-w-md">
+        <div class="flex-1 min-w-0 sm:min-w-[250px] max-w-md">
           <BaseSearch v-model="searchQuery" placeholder="Search by customer, reference, invoice..." />
         </div>
         
@@ -245,6 +245,88 @@
         :total-items="filteredData.length"
       />
     </PageFooter>
+    <!-- Payment Details Overlay -->
+    <SlideOverlay v-model="showDetailsOverlay" title="Payment Details" :subtitle="selectedPayment?.reference || selectedPayment?.transaction_id" icon="CreditCard" width="lg">
+      <div v-if="selectedPayment" class="space-y-6 p-6">
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <div class="text-xs text-slate-500 mb-1">Reference</div>
+            <div class="text-sm font-medium text-slate-900">{{ selectedPayment.reference || selectedPayment.transaction_id || 'N/A' }}</div>
+          </div>
+          <div>
+            <div class="text-xs text-slate-500 mb-1">Transaction ID</div>
+            <div class="text-sm font-mono text-slate-900">{{ selectedPayment.transaction_id || 'N/A' }}</div>
+          </div>
+          <div>
+            <div class="text-xs text-slate-500 mb-1">Customer</div>
+            <div class="text-sm font-medium text-slate-900">{{ selectedPayment.customer_name || selectedPayment.user?.name || 'N/A' }}</div>
+          </div>
+          <div>
+            <div class="text-xs text-slate-500 mb-1">Phone</div>
+            <div class="text-sm text-slate-900">{{ selectedPayment.phone_number || selectedPayment.user?.phone_number || 'N/A' }}</div>
+          </div>
+          <div>
+            <div class="text-xs text-slate-500 mb-1">Amount</div>
+            <div class="text-lg font-bold text-green-600">KES {{ formatMoney(selectedPayment.amount) }}</div>
+          </div>
+          <div>
+            <div class="text-xs text-slate-500 mb-1">Method</div>
+            <BaseBadge :variant="getMethodVariant(selectedPayment.method || selectedPayment.payment_method)">{{ selectedPayment.method || selectedPayment.payment_method || 'N/A' }}</BaseBadge>
+          </div>
+          <div>
+            <div class="text-xs text-slate-500 mb-1">Status</div>
+            <BaseBadge :variant="selectedPayment.status === 'completed' ? 'success' : selectedPayment.status === 'pending' ? 'warning' : 'danger'">{{ selectedPayment.status || 'N/A' }}</BaseBadge>
+          </div>
+          <div>
+            <div class="text-xs text-slate-500 mb-1">Date</div>
+            <div class="text-sm text-slate-900">{{ formatDate(selectedPayment.payment_date || selectedPayment.created_at) }}</div>
+          </div>
+          <div v-if="selectedPayment.package">
+            <div class="text-xs text-slate-500 mb-1">Package</div>
+            <div class="text-sm text-slate-900">{{ selectedPayment.package?.name || 'N/A' }}</div>
+          </div>
+          <div v-if="selectedPayment.invoice_number">
+            <div class="text-xs text-slate-500 mb-1">Invoice</div>
+            <div class="text-sm text-slate-900">{{ selectedPayment.invoice_number }}</div>
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <BaseButton @click="showDetailsOverlay = false" variant="ghost">Close</BaseButton>
+      </template>
+    </SlideOverlay>
+
+    <!-- Record Payment Overlay -->
+    <SlideOverlay v-model="showRecordOverlay" title="Record Payment" subtitle="Manually record a customer payment" icon="Plus" width="lg">
+      <div class="space-y-4 p-6">
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">Customer Phone</label>
+          <input v-model="recordForm.phone_number" type="text" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="e.g. 254712345678" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">Amount (KES)</label>
+          <input v-model.number="recordForm.amount" type="number" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="0" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">Payment Method</label>
+          <select v-model="recordForm.payment_method" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+            <option value="cash">Cash</option>
+            <option value="mpesa">M-Pesa</option>
+            <option value="bank">Bank Transfer</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">Transaction ID (optional)</label>
+          <input v-model="recordForm.transaction_id" type="text" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="e.g. TXN123" />
+        </div>
+      </div>
+      <template #footer>
+        <div class="flex items-center justify-between w-full">
+          <BaseButton @click="showRecordOverlay = false" variant="ghost">Cancel</BaseButton>
+          <BaseButton @click="submitRecordPayment" variant="primary" :loading="recordSubmitting">Record Payment</BaseButton>
+        </div>
+      </template>
+    </SlideOverlay>
   </PageContainer>
 </template>
 
@@ -254,6 +336,7 @@ import {
   CreditCard, RefreshCw, Download, Plus, X, Eye, Send,
   Smartphone, Banknote, Building, TrendingUp
 } from 'lucide-vue-next'
+import axios from 'axios'
 import PageContainer from '@/modules/common/components/layout/templates/PageContainer.vue'
 import PageHeader from '@/modules/common/components/layout/templates/PageHeader.vue'
 import PageContent from '@/modules/common/components/layout/templates/PageContent.vue'
@@ -267,6 +350,7 @@ import BasePagination from '@/modules/common/components/base/BasePagination.vue'
 import BaseLoading from '@/modules/common/components/base/BaseLoading.vue'
 import BaseEmpty from '@/modules/common/components/base/BaseEmpty.vue'
 import BaseAlert from '@/modules/common/components/base/BaseAlert.vue'
+import SlideOverlay from '@/modules/common/components/base/SlideOverlay.vue'
 
 // Breadcrumbs
 const breadcrumbs = [
@@ -283,59 +367,21 @@ const payments = ref([])
 const searchQuery = ref('')
 const currentPage = ref(1)
 const itemsPerPage = ref(10)
+const showDetailsOverlay = ref(false)
+const selectedPayment = ref(null)
+const showRecordOverlay = ref(false)
+const recordSubmitting = ref(false)
+const recordForm = ref({
+  phone_number: '',
+  amount: 0,
+  payment_method: 'cash',
+  transaction_id: ''
+})
 
 const filters = ref({
   method: '',
   period: ''
 })
-
-// Mock data
-const mockPayments = [
-  {
-    id: 1,
-    reference: 'PAY-2025-001',
-    transaction_id: 'TXN001',
-    customer_name: 'John Doe',
-    customer_email: 'john@example.com',
-    amount: 5000,
-    method: 'mpesa',
-    invoice_number: 'INV-2025-001',
-    payment_date: new Date().toISOString()
-  },
-  {
-    id: 2,
-    reference: 'PAY-2025-002',
-    transaction_id: 'TXN002',
-    customer_name: 'Jane Smith',
-    customer_email: 'jane@example.com',
-    amount: 3500,
-    method: 'cash',
-    invoice_number: 'INV-2025-002',
-    payment_date: new Date(Date.now() - 86400000).toISOString()
-  },
-  {
-    id: 3,
-    reference: 'PAY-2025-003',
-    transaction_id: 'TXN003',
-    customer_name: 'Bob Johnson',
-    customer_email: 'bob@example.com',
-    amount: 7500,
-    method: 'bank',
-    invoice_number: 'INV-2025-003',
-    payment_date: new Date(Date.now() - 172800000).toISOString()
-  },
-  {
-    id: 4,
-    reference: 'PAY-2025-004',
-    transaction_id: 'TXN004',
-    customer_name: 'Alice Williams',
-    customer_email: 'alice@example.com',
-    amount: 2000,
-    method: 'mpesa',
-    invoice_number: null,
-    payment_date: new Date(Date.now() - 259200000).toISOString()
-  }
-]
 
 // Computed
 const stats = computed(() => {
@@ -421,34 +467,52 @@ const hasActiveFilters = computed(() => {
 
 // Methods
 const fetchPayments = async () => {
-  loading.value = true
-  error.value = null
+  const isInitial = payments.value.length === 0
+  if (isInitial) {
+    loading.value = true
+    error.value = null
+  } else {
+    refreshing.value = true
+  }
   
   try {
-    // TODO: Replace with actual API call
-    await new Promise(resolve => setTimeout(resolve, 500))
-    payments.value = mockPayments
+    const params = {}
+    if (searchQuery.value) params.search = searchQuery.value
+    if (filters.value.method) params.payment_method = filters.value.method
+    params.per_page = 100
+
+    const response = await axios.get('/payments', { params })
+    const data = response.data?.payments?.data || response.data?.payments || response.data?.data || []
+    
+    payments.value = data.map(p => ({
+      id: p.id,
+      reference: p.reference || `PAY-${p.id}`,
+      transaction_id: p.transaction_id || p.mpesa_receipt || '',
+      customer_name: p.user?.name || p.phone_number || 'Unknown',
+      customer_email: p.user?.email || '',
+      phone_number: p.phone_number || p.user?.phone_number || '',
+      amount: Number(p.amount) || 0,
+      method: p.payment_method || 'mpesa',
+      status: p.status || 'completed',
+      invoice_number: p.invoice_number || null,
+      payment_date: p.created_at || p.paid_at || new Date().toISOString(),
+      package: p.package || null,
+      user: p.user || null,
+      _raw: p
+    }))
   } catch (err) {
-    error.value = 'Failed to load payments. Please try again.'
-    console.error('Error fetching payments:', err)
+    if (isInitial) {
+      error.value = err.response?.data?.message || 'Failed to load payments.'
+    }
+    console.error('fetchPayments error:', err)
   } finally {
     loading.value = false
+    refreshing.value = false
   }
 }
 
 const refreshPayments = async () => {
-  refreshing.value = true
-  error.value = null
-  
-  try {
-    await new Promise(resolve => setTimeout(resolve, 500))
-    payments.value = mockPayments
-  } catch (err) {
-    error.value = 'Failed to refresh payments.'
-    console.error('Error refreshing payments:', err)
-  } finally {
-    refreshing.value = false
-  }
+  await fetchPayments()
 }
 
 const clearFilters = () => {
@@ -501,39 +565,66 @@ const formatTime = (date) => {
 }
 
 const viewPayment = (payment) => {
-  console.log('View payment:', payment)
-  // TODO: Implement payment details modal
+  selectedPayment.value = payment
+  showDetailsOverlay.value = true
 }
 
 const downloadReceipt = (payment) => {
-  console.log('Download receipt:', payment)
-  // TODO: Implement PDF download
-  alert('Receipt download feature coming soon!')
+  const csv = [
+    'Reference,Customer,Amount,Method,Date',
+    `${payment.reference},${payment.customer_name},${payment.amount},${payment.method},${payment.payment_date}`
+  ].join('\n')
+  const blob = new Blob([csv], { type: 'text/csv' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `receipt-${payment.reference || payment.id}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
 }
 
 const sendReceipt = async (payment) => {
-  if (!confirm(`Send receipt to ${payment.customer_email}?`)) return
-  
-  try {
-    // TODO: Implement send receipt API call
-    await new Promise(resolve => setTimeout(resolve, 500))
-    alert('Receipt sent successfully!')
-  } catch (err) {
-    console.error('Error sending receipt:', err)
-    alert('Failed to send receipt')
-  }
+  if (!confirm(`Send receipt to ${payment.customer_email || payment.phone_number}?`)) return
+  alert('Receipt sending is not yet configured.')
 }
 
 const recordPayment = () => {
-  console.log('Record payment')
-  // TODO: Implement record payment modal/page
-  alert('Record payment feature coming soon!')
+  recordForm.value = { phone_number: '', amount: 0, payment_method: 'cash', transaction_id: '' }
+  showRecordOverlay.value = true
+}
+
+const submitRecordPayment = async () => {
+  if (!recordForm.value.phone_number || !recordForm.value.amount) {
+    alert('Phone number and amount are required.')
+    return
+  }
+  recordSubmitting.value = true
+  try {
+    await axios.post('/pppoe/payments', recordForm.value)
+    showRecordOverlay.value = false
+    await fetchPayments()
+  } catch (err) {
+    console.error('Record payment error:', err)
+    alert(err.response?.data?.message || 'Failed to record payment')
+  } finally {
+    recordSubmitting.value = false
+  }
 }
 
 const exportPayments = () => {
-  console.log('Export payments')
-  // TODO: Implement export functionality
-  alert('Export feature coming soon!')
+  const csv = [
+    ['Reference', 'Customer', 'Amount', 'Method', 'Status', 'Date'].join(','),
+    ...filteredData.value.map(p => [
+      p.reference, p.customer_name, p.amount, p.method, p.status, p.payment_date
+    ].join(','))
+  ].join('\n')
+  const blob = new Blob([csv], { type: 'text/csv' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `payments-${new Date().toISOString().slice(0,10)}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
 }
 
 // Lifecycle

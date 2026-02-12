@@ -57,8 +57,14 @@ class TenantMigrationManager
         } catch (\Exception $e) {
             Log::error("Failed to run tenant migrations for {$tenant->name}: " . $e->getMessage());
             
-            // Reset search path on error
-            DB::statement("SET search_path TO public");
+            // Reset search path on error — the connection may be in a
+            // PostgreSQL "aborted transaction" state (25P02) where no SQL
+            // except ROLLBACK is accepted.  Reconnect to get a clean state.
+            try {
+                DB::statement("SET search_path TO public");
+            } catch (\Exception $ignored) {
+                DB::reconnect();
+            }
             
             return false;
         }

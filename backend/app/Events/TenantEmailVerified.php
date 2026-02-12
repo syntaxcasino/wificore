@@ -7,20 +7,22 @@ use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
-use Illuminate\Queue\SerializesModels;
 
 class TenantEmailVerified implements ShouldBroadcast
 {
-    use Dispatchable, InteractsWithSockets, SerializesModels;
+    use Dispatchable, InteractsWithSockets;
 
-    public $registration;
+    public array $registrationData;
 
     /**
      * Create a new event instance.
      */
     public function __construct(TenantRegistration $registration)
     {
-        $this->registration = $registration;
+        $this->registrationData = [
+            'token' => $registration->token,
+            'tenant_slug' => $registration->tenant_slug,
+        ];
     }
 
     /**
@@ -28,7 +30,7 @@ class TenantEmailVerified implements ShouldBroadcast
      */
     public function broadcastOn(): Channel
     {
-        return new Channel('tenant-registration.' . $this->registration->token);
+        return new Channel('tenant-registration.' . $this->registrationData['token']);
     }
 
     /**
@@ -47,11 +49,7 @@ class TenantEmailVerified implements ShouldBroadcast
         return [
             'status' => 'email_verified',
             'message' => 'Email verified successfully!',
-            'registration' => [
-                'token' => $this->registration->token,
-                'tenant_slug' => $this->registration->tenant_slug,
-                'email_verified' => true,
-            ],
+            'registration' => array_merge($this->registrationData, ['email_verified' => true]),
         ];
     }
 }

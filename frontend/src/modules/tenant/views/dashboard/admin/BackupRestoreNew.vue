@@ -9,8 +9,8 @@
       </template>
     </PageHeader>
 
-    <div class="px-6 py-4 bg-white border-b border-slate-200">
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+    <div class="px-3 py-3 sm:px-6 sm:py-4 bg-white border-b border-slate-200">
+      <div class="grid grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
         <div class="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200">
           <div class="flex items-center justify-between">
             <div>

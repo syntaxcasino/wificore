@@ -8,20 +8,29 @@ use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
-use Illuminate\Queue\SerializesModels;
 
 class RouterConnected implements ShouldBroadcast
 {
-    use Dispatchable, InteractsWithSockets, SerializesModels;
+    use Dispatchable, InteractsWithSockets;
 
-    public $router;
+    public array $routerData;
 
     /**
      * Create a new event instance.
      */
     public function __construct(Router $router)
     {
-        $this->router = $router;
+        // Extract data instead of serializing the model
+        // Router is tenant-scoped; SerializesModels would fail on deserialization
+        // because the queue worker has no tenant search_path set
+        $this->routerData = [
+            'id' => $router->id,
+            'name' => $router->name,
+            'status' => $router->status,
+            'model' => $router->model,
+            'os_version' => $router->os_version,
+            'last_seen' => $router->last_seen,
+        ];
     }
 
     /**
@@ -30,7 +39,7 @@ class RouterConnected implements ShouldBroadcast
     public function broadcastOn(): array
     {
         return [
-            new PrivateChannel('router-provisioning.' . $this->router->id),
+            new PrivateChannel('router-provisioning.' . $this->routerData['id']),
         ];
     }
 
@@ -40,12 +49,12 @@ class RouterConnected implements ShouldBroadcast
     public function broadcastWith(): array
     {
         return [
-            'router_id' => $this->router->id,
-            'name' => $this->router->name,
-            'status' => $this->router->status,
-            'model' => $this->router->model,
-            'os_version' => $this->router->os_version,
-            'last_seen' => $this->router->last_seen,
+            'router_id' => $this->routerData['id'],
+            'name' => $this->routerData['name'],
+            'status' => $this->routerData['status'],
+            'model' => $this->routerData['model'],
+            'os_version' => $this->routerData['os_version'],
+            'last_seen' => $this->routerData['last_seen'],
             'stage' => 3, // Connected stage
             'message' => 'Router connected successfully!',
             'timestamp' => now()->toIso8601String(),

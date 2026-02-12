@@ -1,14 +1,14 @@
 <template>
   <div class="space-y-6">
     <!-- Header -->
-    <div class="flex items-center justify-between">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
       <div>
-        <h1 class="text-2xl font-bold text-gray-900">System Administrators</h1>
-        <p class="text-sm text-gray-500 mt-1">Manage platform-level administrator accounts</p>
+        <h1 class="text-xl sm:text-2xl font-bold text-gray-900">System Administrators</h1>
+        <p class="text-xs sm:text-sm text-gray-500 mt-1">Manage platform-level administrator accounts</p>
       </div>
       <button
         @click="showCreateModal = true"
-        class="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
+        class="inline-flex items-center gap-2 px-3 py-1.5 sm:px-4 sm:py-2 bg-blue-600 text-white text-xs sm:text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors self-start sm:self-auto"
       >
         <Plus class="w-4 h-4" />
         Add Admin
@@ -16,7 +16,7 @@
     </div>
 
     <!-- Table -->
-    <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+    <div class="bg-white rounded-xl border border-gray-200 overflow-hidden overflow-x-auto">
       <div v-if="loading" class="p-8 text-center text-gray-500">
         <div class="animate-spin w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full mx-auto mb-3"></div>
         Loading administrators...
@@ -25,26 +25,26 @@
         {{ error }}
         <button @click="fetchAdmins" class="block mx-auto mt-2 text-blue-600 hover:underline text-sm">Retry</button>
       </div>
-      <table v-else class="w-full">
+      <table v-else class="w-full min-w-[560px]">
         <thead class="bg-gray-50 border-b border-gray-200">
           <tr>
-            <th class="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Name</th>
-            <th class="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Username</th>
-            <th class="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Email</th>
-            <th class="text-center px-4 py-3 text-xs font-medium text-gray-500 uppercase">Status</th>
-            <th class="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Last Login</th>
-            <th class="text-right px-4 py-3 text-xs font-medium text-gray-500 uppercase">Actions</th>
+            <th class="text-left px-3 sm:px-4 py-3 text-xs font-medium text-gray-500 uppercase">Name</th>
+            <th class="text-left px-3 sm:px-4 py-3 text-xs font-medium text-gray-500 uppercase hidden sm:table-cell">Username</th>
+            <th class="text-left px-3 sm:px-4 py-3 text-xs font-medium text-gray-500 uppercase">Email</th>
+            <th class="text-center px-3 sm:px-4 py-3 text-xs font-medium text-gray-500 uppercase">Status</th>
+            <th class="text-left px-3 sm:px-4 py-3 text-xs font-medium text-gray-500 uppercase hidden md:table-cell">Last Login</th>
+            <th class="text-right px-3 sm:px-4 py-3 text-xs font-medium text-gray-500 uppercase">Actions</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-gray-100">
           <tr v-for="admin in admins" :key="admin.id" class="hover:bg-gray-50 transition-colors">
-            <td class="px-4 py-3">
+            <td class="px-3 sm:px-4 py-3">
               <div class="font-medium text-gray-900 text-sm">{{ admin.name }}</div>
               <div v-if="admin.phone_number" class="text-xs text-gray-500">{{ admin.phone_number }}</div>
             </td>
-            <td class="px-4 py-3 text-sm text-gray-600 font-mono">{{ admin.username }}</td>
-            <td class="px-4 py-3 text-sm text-gray-600">{{ admin.email }}</td>
-            <td class="px-4 py-3 text-center">
+            <td class="px-3 sm:px-4 py-3 text-sm text-gray-600 font-mono hidden sm:table-cell">{{ admin.username }}</td>
+            <td class="px-3 sm:px-4 py-3 text-sm text-gray-600">{{ admin.email }}</td>
+            <td class="px-3 sm:px-4 py-3 text-center">
               <span
                 class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium"
                 :class="admin.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'"
@@ -52,10 +52,10 @@
                 {{ admin.is_active ? 'Active' : 'Inactive' }}
               </span>
             </td>
-            <td class="px-4 py-3 text-sm text-gray-500">
+            <td class="px-3 sm:px-4 py-3 text-sm text-gray-500 hidden md:table-cell">
               {{ admin.last_login_at ? formatDate(admin.last_login_at) : 'Never' }}
             </td>
-            <td class="px-4 py-3 text-right">
+            <td class="px-3 sm:px-4 py-3 text-right">
               <div class="flex items-center justify-end gap-1">
                 <button
                   v-if="!isDefaultAdmin(admin)"
@@ -84,46 +84,53 @@
       </table>
     </div>
 
-    <!-- Create Modal -->
-    <div v-if="showCreateModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" @click.self="showCreateModal = false">
-      <div class="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
-        <h2 class="text-lg font-bold text-gray-900 mb-4">Add System Administrator</h2>
-        <form @submit.prevent="createAdmin" class="space-y-4">
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Full Name *</label>
-            <input v-model="form.name" type="text" required class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" />
-          </div>
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Username *</label>
-            <input v-model="form.username" type="text" required pattern="[a-z0-9_]+" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 font-mono" placeholder="lowercase, numbers, underscores" />
-          </div>
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Email *</label>
-            <input v-model="form.email" type="email" required class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" />
-          </div>
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Phone</label>
-            <input v-model="form.phone_number" type="text" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" />
-          </div>
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Password *</label>
-            <input v-model="form.password" type="password" required minlength="8" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" />
-            <p class="text-xs text-gray-400 mt-1">Min 8 chars, uppercase, lowercase, number, special char</p>
-          </div>
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Confirm Password *</label>
-            <input v-model="form.password_confirmation" type="password" required class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" />
-          </div>
-          <div v-if="formError" class="text-sm text-red-600">{{ formError }}</div>
-          <div class="flex justify-end gap-3 pt-2">
-            <button type="button" @click="showCreateModal = false" class="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">Cancel</button>
-            <button type="submit" :disabled="creating" class="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50">
-              {{ creating ? 'Creating...' : 'Create Admin' }}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+    <!-- Create Admin Overlay -->
+    <SlideOverlay
+      v-model="showCreateModal"
+      title="Add System Administrator"
+      subtitle="Create a new platform-level admin account"
+      icon="UserPlus"
+      width="40%"
+      @close="showCreateModal = false"
+    >
+      <form @submit.prevent="createAdmin" class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Full Name *</label>
+          <input v-model="form.name" type="text" required class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Username *</label>
+          <input v-model="form.username" type="text" required pattern="[a-z0-9_]+" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 font-mono" placeholder="lowercase, numbers, underscores" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Email *</label>
+          <input v-model="form.email" type="email" required class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+          <input v-model="form.phone_number" type="text" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Password *</label>
+          <input v-model="form.password" type="password" required minlength="8" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" />
+          <p class="text-xs text-gray-400 mt-1">Min 8 chars, uppercase, lowercase, number, special char</p>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Confirm Password *</label>
+          <input v-model="form.password_confirmation" type="password" required class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" />
+        </div>
+        <div v-if="formError" class="text-sm text-red-600">{{ formError }}</div>
+      </form>
+
+      <template #footer>
+        <div class="flex justify-end gap-3">
+          <button type="button" @click="showCreateModal = false" class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">Cancel</button>
+          <button @click="createAdmin" :disabled="creating" class="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors">
+            {{ creating ? 'Creating...' : 'Create Admin' }}
+          </button>
+        </div>
+      </template>
+    </SlideOverlay>
   </div>
 </template>
 
@@ -131,6 +138,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import axios from 'axios'
 import { Plus, ShieldCheck, ShieldOff, Trash2 } from 'lucide-vue-next'
+import SlideOverlay from '@/modules/common/components/base/SlideOverlay.vue'
 
 const admins = ref([])
 const loading = ref(true)

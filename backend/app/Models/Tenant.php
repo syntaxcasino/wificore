@@ -332,21 +332,10 @@ class Tenant extends Model
             }
         });
 
-        static::created(function ($tenant) {
-            // Auto-create tenant schema and run migrations
-            $migrationManager = app(\App\Services\TenantMigrationManager::class);
-
-            if ($migrationManager->setupTenantSchema($tenant)) {
-                $shouldAutoSeed = config('multitenancy.auto_seed_schema', false);
-
-                if ($shouldAutoSeed) {
-                    $seedWithTestData = config('multitenancy.seed_with_test_data')
-                        ?? app()->environment(['local', 'development', 'testing']);
-
-                    $migrationManager->seedTenantSchema($tenant, (bool) $seedWithTestData);
-                }
-            }
-        });
+        // Schema setup is handled explicitly by CreateTenantWorkspaceJob.
+        // Do NOT auto-run setupTenantSchema here — it runs DDL (migrations)
+        // which cannot safely execute inside a caller's DB::beginTransaction()
+        // because PostgreSQL aborts the entire transaction on any DDL error.
 
         static::deleting(function ($tenant) {
             // Clean up tenant schema when tenant is deleted

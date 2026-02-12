@@ -7,12 +7,11 @@ use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
-use Illuminate\Queue\SerializesModels;
 use Illuminate\Contracts\Queue\ShouldQueue;
 
 class ExpenseUpdated implements ShouldBroadcast, ShouldQueue
 {
-    use Dispatchable, InteractsWithSockets, SerializesModels;
+    use Dispatchable, InteractsWithSockets;
 
     public $connection = 'database';
     public $queue = 'broadcasts';
@@ -21,15 +20,15 @@ class ExpenseUpdated implements ShouldBroadcast, ShouldQueue
     public $changes;
     public $tenantId;
 
-    public function __construct(Expense ${strtolower(Expense)}, array $changes = [], ?string $tenantId = null)
+    public function __construct(Expense $expense, array $changes = [], ?string $tenantId = null)
     {
         $this->tenantId = $tenantId;
         $this->changes = $changes;
         
         $this->data = [
-            'id' => ${strtolower(Expense)}->id,
-            'created_at' => ${strtolower(Expense)}->created_at?->toIso8601String(),
-            'updated_at' => ${strtolower(Expense)}->updated_at?->toIso8601String(),
+            'id' => $expense->id,
+            'created_at' => $expense->created_at?->toIso8601String(),
+            'updated_at' => $expense->updated_at?->toIso8601String(),
         ];
     }
 

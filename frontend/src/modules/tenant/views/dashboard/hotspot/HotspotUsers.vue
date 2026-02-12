@@ -3,28 +3,37 @@
     <!-- Header with Filters -->
     <div class="bg-white border-b border-slate-200">
       <!-- Title, Filters and Actions -->
-      <div class="px-6 py-4">
-        <div class="flex items-center gap-4 flex-wrap">
-          <!-- Title -->
-          <div>
-            <h1 class="text-2xl font-bold text-slate-900">Hotspot Users</h1>
+      <div class="px-3 py-3 sm:px-6 sm:py-4">
+        <div class="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 flex-wrap">
+          <!-- Title + Action row -->
+          <div class="flex items-center justify-between sm:justify-start gap-3">
+            <h1 class="text-lg sm:text-2xl font-bold text-slate-900">Hotspot Users</h1>
+            <div class="flex sm:hidden items-center gap-2">
+              <BaseButton @click="handleRefresh" variant="ghost" size="sm" :disabled="loading">
+                <RefreshCw class="w-4 h-4" :class="{ 'animate-spin': loading }" />
+              </BaseButton>
+              <BaseButton @click="$router.push('/dashboard/hotspot/vouchers')" variant="primary" size="sm">
+                <Ticket class="w-4 h-4 mr-1" />
+                Voucher
+              </BaseButton>
+            </div>
           </div>
           
           <!-- Search Box -->
-          <div class="flex-1 min-w-[250px] max-w-md">
+          <div class="flex-1 min-w-0 sm:min-w-[250px] max-w-md">
             <BaseSearch v-model="searchQuery" placeholder="Search hotspot users..." />
           </div>
           
           <!-- Filters Group -->
-          <div class="flex items-center gap-2">
-            <BaseSelect v-model="filters.status" placeholder="All Status" class="w-36">
+          <div class="flex items-center gap-2 flex-wrap">
+            <BaseSelect v-model="filters.status" placeholder="All Status" class="w-28 sm:w-36">
               <option value="">All Status</option>
               <option value="active">Active</option>
               <option value="inactive">Inactive</option>
               <option value="expired">Expired</option>
             </BaseSelect>
             
-            <BaseSelect v-model="filters.package" placeholder="All Packages" class="w-40">
+            <BaseSelect v-model="filters.package" placeholder="All Packages" class="w-32 sm:w-40">
               <option value="">All Packages</option>
               <option v-for="pkg in packages" :key="pkg.id" :value="pkg.id">{{ pkg.name }}</option>
             </BaseSelect>
@@ -36,14 +45,14 @@
           </div>
           
           <!-- Stats Badges -->
-          <div class="flex items-center gap-2">
+          <div class="flex items-center gap-2 flex-wrap">
             <BaseBadge variant="info">{{ totalUsers }} Total</BaseBadge>
             <BaseBadge variant="success" dot pulse>{{ activeUsers.length }} Active</BaseBadge>
             <BaseBadge variant="warning">{{ expiredUsers.length }} Expired</BaseBadge>
           </div>
           
-          <!-- Action Buttons -->
-          <div class="ml-auto flex items-center gap-2">
+          <!-- Action Buttons (desktop) -->
+          <div class="hidden sm:flex ml-auto items-center gap-2">
             <BaseButton @click="handleRefresh" variant="ghost" size="sm" :disabled="loading">
               <RefreshCw class="w-4 h-4" :class="{ 'animate-spin': loading }" />
             </BaseButton>
@@ -55,7 +64,7 @@
         </div>
         
         <!-- Subtitle -->
-        <p class="text-sm text-slate-600 mt-2">View and manage hotspot customer accounts (auto-created on payment)</p>
+        <p class="text-xs sm:text-sm text-slate-600 mt-2">View and manage hotspot customer accounts (auto-created on payment)</p>
       </div>
     </div>
 

@@ -140,8 +140,15 @@ onUnmounted(() => {
   }
 
   .content-area {
-    padding: 12px;
-    padding-top: 72px;
+    padding: 10px;
+    padding-top: 66px; /* h-14 (56px) + 10px spacing */
+  }
+}
+
+@media (max-width: 480px) {
+  .content-area {
+    padding: 8px;
+    padding-top: 62px;
   }
 }
 </style>

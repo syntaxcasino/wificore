@@ -8,21 +8,30 @@ use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
-use Illuminate\Queue\SerializesModels;
 
 class UserCreated implements ShouldBroadcast
 {
-    use Dispatchable, InteractsWithSockets, SerializesModels;
+    use Dispatchable, InteractsWithSockets;
     use BroadcastsToTenant;
 
-    public User $user;
+    public array $userData;
+    public ?string $tenantId;
 
     /**
      * Create a new event instance.
      */
     public function __construct(User $user)
     {
-        $this->user = $user;
+        // Extract data instead of serializing the model
+        $this->userData = [
+            'id' => $user->id,
+            'name' => $user->name,
+            'username' => $user->username,
+            'email' => $user->email,
+            'role' => $user->role,
+            'tenant_id' => $user->tenant_id,
+        ];
+        $this->tenantId = $user->tenant_id;
     }
 
     /**
@@ -30,7 +39,7 @@ class UserCreated implements ShouldBroadcast
      */
     public function broadcastOn(): array
     {
-        if ($this->user->tenant_id) {
+        if ($this->tenantId) {
             return $this->getTenantChannels(['users', 'dashboard-stats']);
         }
         
@@ -54,16 +63,17 @@ class UserCreated implements ShouldBroadcast
     public function broadcastWith(): array
     {
         return [
-            'user' => [
-                'id' => $this->user->id,
-                'name' => $this->user->name,
-                'username' => $this->user->username,
-                'email' => $this->user->email,
-                'role' => $this->user->role,
-                'tenant_id' => $this->user->tenant_id,
-            ],
+            'user' => $this->userData,
             'message' => 'New user created',
             'timestamp' => now()->toIso8601String(),
         ];
+    }
+
+    /**
+     * Determine tenant ID for broadcasting
+     */
+    protected function getTenantId(): string
+    {
+        return (string) $this->tenantId;
     }
 }

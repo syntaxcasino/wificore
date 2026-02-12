@@ -91,7 +91,15 @@
       </div>
     </PageContent>
 
-    <BaseModal v-model="showPasswordModal" title="PPPoE User Created" :closeOnBackdrop="false">
+    <SlideOverlay
+      v-model="showPasswordModal"
+      title="PPPoE User Created"
+      subtitle="Account credentials generated successfully"
+      icon="Key"
+      width="40%"
+      :closeOnBackdrop="false"
+      :closeOnEscape="false"
+    >
       <div class="space-y-4">
         <div>
           <div class="text-sm font-medium text-slate-700">Username</div>
@@ -110,14 +118,16 @@
           </div>
           <div class="mt-2 text-xs text-slate-500">This password is shown only once. Store it securely.</div>
         </div>
+      </div>
 
+      <template #footer>
         <div class="flex items-center justify-end gap-3">
           <BaseButton variant="primary" @click="finish">
             Done
           </BaseButton>
         </div>
-      </div>
-    </BaseModal>
+      </template>
+    </SlideOverlay>
   </PageContainer>
 </template>
 
@@ -131,7 +141,7 @@ import BaseCard from '@/modules/common/components/base/BaseCard.vue'
 import BaseInput from '@/modules/common/components/base/BaseInput.vue'
 import BaseSelect from '@/modules/common/components/base/BaseSelect.vue'
 import BaseAlert from '@/modules/common/components/base/BaseAlert.vue'
-import BaseModal from '@/modules/common/components/base/BaseModal.vue'
+import SlideOverlay from '@/modules/common/components/base/SlideOverlay.vue'
 
 import { usePppoeUsers } from '@/modules/tenant/composables/data/usePppoeUsers'
 import { usePackages } from '@/modules/tenant/composables/data/usePackages'

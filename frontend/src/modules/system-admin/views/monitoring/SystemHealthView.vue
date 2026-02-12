@@ -1,18 +1,17 @@
 <template>
   <div class="space-y-6">
-    <div class="flex items-center justify-between">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
       <div>
-        <h1 class="text-2xl font-bold text-gray-900">System Health</h1>
-        <p class="text-sm text-gray-500 mt-1">Real-time health monitoring of platform infrastructure</p>
+        <h1 class="text-xl sm:text-2xl font-bold text-gray-900">System Health</h1>
+        <p class="text-xs sm:text-sm text-gray-500 mt-1">Real-time health monitoring of platform infrastructure</p>
       </div>
-      <button
-        @click="fetchAll"
-        :disabled="loading"
-        class="inline-flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50"
-      >
-        <RefreshCw class="w-4 h-4" :class="loading ? 'animate-spin' : ''" />
-        Refresh
-      </button>
+      <div class="flex items-center gap-2 sm:gap-3">
+        <span v-if="lastUpdated" class="text-xs text-gray-400 hidden sm:inline">Updated: {{ formatTime(lastUpdated) }}</span>
+        <button @click="fetchAll" :disabled="loading" class="inline-flex items-center gap-2 px-3 py-1.5 sm:px-4 sm:py-2 bg-gray-100 text-gray-700 text-xs sm:text-sm font-medium rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50">
+          <RefreshCw class="w-4 h-4" :class="loading ? 'animate-spin' : ''" />
+          Refresh
+        </button>
+      </div>
     </div>
 
     <div v-if="loading && !health" class="bg-white rounded-xl border border-gray-200 p-8 text-center text-gray-500">
@@ -24,73 +23,102 @@
       <button @click="fetchAll" class="block mx-auto mt-2 text-blue-600 hover:underline text-sm">Retry</button>
     </div>
     <template v-else>
-      <!-- Overall Status -->
-      <div class="bg-white rounded-xl border border-gray-200 p-6">
+      <!-- Overall Status Banner -->
+      <div class="bg-white rounded-xl border border-gray-200 p-4">
         <div class="flex items-center gap-3">
-          <div
-            class="w-4 h-4 rounded-full"
-            :class="overallStatus === 'healthy' ? 'bg-green-500' : overallStatus === 'degraded' ? 'bg-yellow-500' : 'bg-red-500'"
-          ></div>
+          <div class="w-3 h-3 rounded-full" :class="overallStatus === 'healthy' ? 'bg-green-500' : overallStatus === 'degraded' ? 'bg-yellow-500' : 'bg-red-500'"></div>
           <span class="text-lg font-semibold capitalize" :class="overallStatus === 'healthy' ? 'text-green-700' : overallStatus === 'degraded' ? 'text-yellow-700' : 'text-red-700'">
             System {{ overallStatus }}
           </span>
-          <span v-if="lastUpdated" class="text-xs text-gray-400 ml-auto">Updated: {{ formatTime(lastUpdated) }}</span>
         </div>
       </div>
 
-      <!-- Health Cards -->
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        <!-- Database -->
-        <div class="bg-white rounded-xl border border-gray-200 p-5">
-          <div class="flex items-center justify-between mb-3">
-            <h3 class="text-sm font-semibold text-gray-900">Database</h3>
-            <span class="text-xs px-2 py-0.5 rounded-full" :class="statusClass(database.status)">{{ database.status || 'unknown' }}</span>
-          </div>
-          <div class="space-y-2 text-sm text-gray-600">
-            <div class="flex justify-between"><span>Connections</span><span class="font-mono">{{ database.connections ?? '-' }} / {{ database.max_connections ?? '-' }}</span></div>
-            <div class="flex justify-between"><span>Response Time</span><span class="font-mono">{{ database.response_time ?? '-' }}ms</span></div>
-          </div>
+      <!-- Services Health Table -->
+      <div class="bg-white rounded-xl border border-gray-200 overflow-hidden overflow-x-auto">
+        <div class="px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-200">
+          <h2 class="text-base sm:text-lg font-semibold text-gray-900">Service Status</h2>
         </div>
-
-        <!-- Redis -->
-        <div class="bg-white rounded-xl border border-gray-200 p-5">
-          <div class="flex items-center justify-between mb-3">
-            <h3 class="text-sm font-semibold text-gray-900">Redis Cache</h3>
-            <span class="text-xs px-2 py-0.5 rounded-full" :class="statusClass(cache.status)">{{ cache.status || 'unknown' }}</span>
-          </div>
-          <div class="space-y-2 text-sm text-gray-600">
-            <div class="flex justify-between"><span>Hit Rate</span><span class="font-mono">{{ cache.hit_rate ?? '-' }}%</span></div>
-            <div class="flex justify-between"><span>Memory Used</span><span class="font-mono">{{ cache.memory_used ?? '-' }}</span></div>
-          </div>
-        </div>
-
-        <!-- Performance -->
-        <div class="bg-white rounded-xl border border-gray-200 p-5">
-          <div class="flex items-center justify-between mb-3">
-            <h3 class="text-sm font-semibold text-gray-900">Performance</h3>
-            <span class="text-xs px-2 py-0.5 rounded-full" :class="statusClass(performance.status)">{{ performance.status || 'unknown' }}</span>
-          </div>
-          <div class="space-y-2 text-sm text-gray-600">
-            <div class="flex justify-between"><span>Avg Response</span><span class="font-mono">{{ performance.avg_response_time ?? '-' }}ms</span></div>
-            <div class="flex justify-between"><span>CPU</span><span class="font-mono">{{ performance.cpu ?? '-' }}%</span></div>
-            <div class="flex justify-between"><span>Memory</span><span class="font-mono">{{ performance.memory ?? '-' }}%</span></div>
-          </div>
-        </div>
+        <table class="w-full min-w-[520px]">
+          <thead class="bg-gray-50 border-b border-gray-200">
+            <tr>
+              <th class="text-left px-3 sm:px-6 py-3 text-xs font-medium text-gray-500 uppercase">Service</th>
+              <th class="text-left px-3 sm:px-6 py-3 text-xs font-medium text-gray-500 uppercase">Status</th>
+              <th class="text-left px-3 sm:px-6 py-3 text-xs font-medium text-gray-500 uppercase">Key Metric</th>
+              <th class="text-left px-3 sm:px-6 py-3 text-xs font-medium text-gray-500 uppercase hidden sm:table-cell">Secondary</th>
+              <th class="text-right px-3 sm:px-6 py-3 text-xs font-medium text-gray-500 uppercase">Details</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100">
+            <tr class="hover:bg-gray-50 transition-colors cursor-pointer" @click="openServiceDetail('database')">
+              <td class="px-6 py-4 text-sm font-medium text-gray-900">Database</td>
+              <td class="px-6 py-4"><span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium" :class="statusClass(database.status)">{{ database.status || 'unknown' }}</span></td>
+              <td class="px-6 py-4 text-sm text-gray-600 font-mono">{{ database.connections ?? '-' }} / {{ database.max_connections ?? '-' }} conn</td>
+              <td class="px-6 py-4 text-sm text-gray-600 font-mono">{{ database.response_time ?? '-' }}ms</td>
+              <td class="px-6 py-4 text-right"><button @click.stop="openServiceDetail('database')" class="p-1.5 text-blue-500 hover:bg-blue-50 rounded-md transition-colors"><Eye class="w-4 h-4" /></button></td>
+            </tr>
+            <tr class="hover:bg-gray-50 transition-colors cursor-pointer" @click="openServiceDetail('cache')">
+              <td class="px-6 py-4 text-sm font-medium text-gray-900">Redis Cache</td>
+              <td class="px-6 py-4"><span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium" :class="statusClass(cache.status)">{{ cache.status || 'unknown' }}</span></td>
+              <td class="px-6 py-4 text-sm text-gray-600 font-mono">{{ cache.hit_rate ?? '-' }}% hit rate</td>
+              <td class="px-6 py-4 text-sm text-gray-600 font-mono">{{ cache.memory_used ?? '-' }} used</td>
+              <td class="px-6 py-4 text-right"><button @click.stop="openServiceDetail('cache')" class="p-1.5 text-blue-500 hover:bg-blue-50 rounded-md transition-colors"><Eye class="w-4 h-4" /></button></td>
+            </tr>
+            <tr class="hover:bg-gray-50 transition-colors cursor-pointer" @click="openServiceDetail('performance')">
+              <td class="px-6 py-4 text-sm font-medium text-gray-900">Performance</td>
+              <td class="px-6 py-4"><span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium" :class="statusClass(performance.status)">{{ performance.status || 'unknown' }}</span></td>
+              <td class="px-6 py-4 text-sm text-gray-600 font-mono">{{ performance.cpu ?? '-' }}% CPU</td>
+              <td class="px-6 py-4 text-sm text-gray-600 font-mono">{{ performance.memory ?? '-' }}% mem</td>
+              <td class="px-6 py-4 text-right"><button @click.stop="openServiceDetail('performance')" class="p-1.5 text-blue-500 hover:bg-blue-50 rounded-md transition-colors"><Eye class="w-4 h-4" /></button></td>
+            </tr>
+          </tbody>
+        </table>
       </div>
 
       <!-- Raw Health Data -->
-      <div class="bg-white rounded-xl border border-gray-200 p-6">
-        <h2 class="text-lg font-semibold text-gray-900 mb-3">Raw Health Data</h2>
-        <pre class="text-xs bg-gray-50 p-4 rounded-lg overflow-auto max-h-96 text-gray-700">{{ JSON.stringify(health, null, 2) }}</pre>
+      <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+          <h2 class="text-lg font-semibold text-gray-900">Raw Health Data</h2>
+          <button @click="showRawOverlay = true" class="p-1.5 text-blue-500 hover:bg-blue-50 rounded-md transition-colors" title="Expand"><Eye class="w-4 h-4" /></button>
+        </div>
+        <div class="px-6 py-4">
+          <pre class="text-xs bg-gray-50 p-4 rounded-lg overflow-auto max-h-48 text-gray-700">{{ JSON.stringify(health, null, 2) }}</pre>
+        </div>
       </div>
     </template>
+
+    <!-- Service Detail Overlay -->
+    <SlideOverlay v-model="showServiceOverlay" :title="serviceOverlayTitle" subtitle="Detailed service health information" icon="Activity" width="40%" @close="showServiceOverlay = false">
+      <div v-if="selectedService" class="space-y-3">
+        <div v-for="(val, key) in selectedServiceData" :key="key" class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+          <span class="text-sm font-medium text-gray-600 capitalize">{{ String(key).replace(/_/g, ' ') }}</span>
+          <span class="text-sm font-semibold text-gray-900">{{ val }}</span>
+        </div>
+        <div v-if="!Object.keys(selectedServiceData).length" class="p-3 bg-gray-50 rounded-lg text-sm text-gray-400 text-center">No data available</div>
+      </div>
+      <template #footer>
+        <div class="flex justify-end">
+          <button type="button" @click="showServiceOverlay = false" class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">Close</button>
+        </div>
+      </template>
+    </SlideOverlay>
+
+    <!-- Raw Data Overlay -->
+    <SlideOverlay v-model="showRawOverlay" title="Raw Health Data" subtitle="Complete health check response" icon="FileText" width="50%" @close="showRawOverlay = false">
+      <pre class="text-xs bg-gray-50 p-4 rounded-lg overflow-auto text-gray-700 whitespace-pre-wrap">{{ JSON.stringify(health, null, 2) }}</pre>
+      <template #footer>
+        <div class="flex justify-end">
+          <button type="button" @click="showRawOverlay = false" class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">Close</button>
+        </div>
+      </template>
+    </SlideOverlay>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import axios from 'axios'
-import { RefreshCw } from 'lucide-vue-next'
+import { RefreshCw, Eye } from 'lucide-vue-next'
+import SlideOverlay from '@/modules/common/components/base/SlideOverlay.vue'
 
 const health = ref(null)
 const database = ref({})
@@ -99,6 +127,40 @@ const performance = ref({})
 const loading = ref(true)
 const error = ref(null)
 const lastUpdated = ref(null)
+const showServiceOverlay = ref(false)
+const showRawOverlay = ref(false)
+const selectedService = ref(null)
+const serviceOverlayTitle = ref('')
+
+const selectedServiceData = computed(() => {
+  if (!selectedService.value) return {}
+  const svc = selectedService.value
+  if (svc === 'database') return flattenObj(database.value)
+  if (svc === 'cache') return flattenObj(cache.value)
+  if (svc === 'performance') return flattenObj(performance.value)
+  return {}
+})
+
+const flattenObj = (obj) => {
+  const result = {}
+  for (const [k, v] of Object.entries(obj || {})) {
+    if (v && typeof v === 'object' && !Array.isArray(v)) {
+      for (const [k2, v2] of Object.entries(v)) {
+        result[`${k}_${k2}`] = v2
+      }
+    } else {
+      result[k] = v
+    }
+  }
+  return result
+}
+
+const openServiceDetail = (service) => {
+  selectedService.value = service
+  const titles = { database: 'Database Health', cache: 'Redis Cache Health', performance: 'Performance Metrics' }
+  serviceOverlayTitle.value = titles[service] || 'Service Details'
+  showServiceOverlay.value = true
+}
 
 const overallStatus = computed(() => {
   if (!health.value) return 'unknown'

@@ -20,8 +20,8 @@
     </PageHeader>
 
     <!-- Stats Cards -->
-    <div class="px-6 py-4 bg-white border-b border-slate-200">
-      <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+    <div class="px-3 py-3 sm:px-6 sm:py-4 bg-white border-b border-slate-200">
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
         <div class="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200">
           <div class="flex items-center justify-between">
             <div>
@@ -73,10 +73,10 @@
     </div>
 
     <!-- Search and Filters Bar -->
-    <div class="px-6 py-4 bg-white border-b border-slate-200">
-      <div class="flex items-center gap-3 flex-wrap">
+    <div class="px-3 py-3 sm:px-6 sm:py-4 bg-white border-b border-slate-200">
+      <div class="flex flex-col sm:flex-row sm:items-center gap-3 flex-wrap">
         <!-- Search Box -->
-        <div class="flex-1 min-w-[300px] max-w-md">
+        <div class="flex-1 min-w-0 sm:min-w-[250px] max-w-md">
           <BaseSearch v-model="searchQuery" placeholder="Search groups..." />
         </div>
         
@@ -218,8 +218,14 @@
       </div>
     </PageContent>
 
-    <!-- Create/Edit Modal -->
-    <BaseModal v-model="showModal" :title="editingGroup ? 'Edit Group' : 'Create Group'" size="lg">
+    <!-- Create/Edit Overlay -->
+    <SlideOverlay
+      v-model="showModal"
+      :title="editingGroup ? 'Edit Group' : 'Create Group'"
+      :subtitle="editingGroup ? 'Update group details' : 'Add a new package group'"
+      icon="Layers"
+      width="40%"
+    >
       <form @submit.prevent="handleSubmit" class="space-y-4">
         <!-- Group Name -->
         <div>
@@ -315,12 +321,14 @@
       </form>
 
       <template #footer>
-        <BaseButton @click="showModal = false" variant="ghost">Cancel</BaseButton>
-        <BaseButton @click="handleSubmit" variant="primary" :loading="saving">
-          {{ editingGroup ? 'Update' : 'Create' }} Group
-        </BaseButton>
+        <div class="flex items-center justify-end gap-3">
+          <BaseButton @click="showModal = false" variant="ghost">Cancel</BaseButton>
+          <BaseButton @click="handleSubmit" variant="primary" :loading="saving">
+            {{ editingGroup ? 'Update' : 'Create' }} Group
+          </BaseButton>
+        </div>
       </template>
-    </BaseModal>
+    </SlideOverlay>
   </PageContainer>
 </template>
 
@@ -341,7 +349,7 @@ import BaseSelect from '@/modules/common/components/base/BaseSelect.vue'
 import BaseLoading from '@/modules/common/components/base/BaseLoading.vue'
 import BaseEmpty from '@/modules/common/components/base/BaseEmpty.vue'
 import BaseAlert from '@/modules/common/components/base/BaseAlert.vue'
-import BaseModal from '@/modules/common/components/base/BaseModal.vue'
+import SlideOverlay from '@/modules/common/components/base/SlideOverlay.vue'
 
 // Breadcrumbs
 const breadcrumbs = [

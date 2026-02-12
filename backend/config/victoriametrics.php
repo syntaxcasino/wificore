@@ -18,11 +18,11 @@ return [
     | VictoriaMetrics Write URL
     |--------------------------------------------------------------------------
     |
-    | URL used by Telegraf (and any future Laravel-side writers) to push
-    | metrics into VictoriaMetrics via Prometheus remote-write protocol.
+    | URL used by Telegraf to push metrics into VictoriaMetrics.
+    | Points directly to the VM container (bypasses Nginx).
     |
     */
-    'write_url' => env('VICTORIA_METRICS_WRITE_URL', 'http://wificore-nginx/internal/vm/api/v1/write'),
+    'write_url' => env('VICTORIA_METRICS_WRITE_URL', 'http://wificore-victoriametrics:8428'),
 
     /*
     |--------------------------------------------------------------------------

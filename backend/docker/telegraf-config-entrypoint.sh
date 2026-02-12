@@ -24,18 +24,14 @@ hostname = ""
 omit_hostname = true
 
 [[inputs.internal]]
-interval = "${TELEGRAF_FAST_INTERVAL:-3s}"
+interval = "${TELEGRAF_SLOW_INTERVAL:-30s}"
 
-[[outputs.http]]
-url = "${VICTORIA_METRICS_WRITE_URL:-http://wificore-nginx/internal/vm/api/v1/write}"
+[[outputs.influxdb]]
+urls = ["${VICTORIA_METRICS_WRITE_URL:-http://wificore-victoriametrics:8428}"]
+database = "telegraf"
+skip_database_creation = true
 timeout = "5s"
-method = "POST"
-data_format = "prometheusremotewrite"
-
-[outputs.http.headers]
-Content-Type = "application/x-protobuf"
-Content-Encoding = "snappy"
-X-Prometheus-Remote-Write-Version = "0.1.0"
+content_encoding = "gzip"
 EOF
 fi
 
@@ -44,7 +40,7 @@ if ! grep -q '^\[\[inputs\.' "$OUT_FILE" 2>/dev/null; then
   cat >> "$OUT_FILE" <<EOF
 
 [[inputs.internal]]
-interval = "${TELEGRAF_FAST_INTERVAL:-3s}"
+interval = "${TELEGRAF_SLOW_INTERVAL:-30s}"
 EOF
 fi
 

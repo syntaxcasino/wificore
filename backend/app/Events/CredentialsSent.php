@@ -8,14 +8,13 @@ use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
-use Illuminate\Queue\SerializesModels;
 
 class CredentialsSent implements ShouldBroadcast
 {
-    use Dispatchable, InteractsWithSockets, SerializesModels;
+    use Dispatchable, InteractsWithSockets;
     use BroadcastsToTenant;
 
-    public $credential;
+    public array $credentialData;
     public $tenantId;
 
     /**
@@ -23,8 +22,13 @@ class CredentialsSent implements ShouldBroadcast
      */
     public function __construct(HotspotCredential $credential, ?string $tenantId = null)
     {
-        $this->credential = $credential;
-        // HotspotCredential is in tenant schema - no tenant_id column
+        // Extract data instead of serializing the model
+        // HotspotCredential is in tenant schema; SerializesModels fails on deserialization
+        $this->credentialData = [
+            'phone_number' => $credential->phone_number,
+            'sms_status' => $credential->sms_status,
+            'sms_sent_at' => $credential->sms_sent_at,
+        ];
         $this->tenantId = $tenantId ?? (auth()->user()?->tenant_id);
     }
 
@@ -54,9 +58,9 @@ class CredentialsSent implements ShouldBroadcast
     {
         return [
             'credential' => [
-                'phone_number' => $this->credential->phone_number,
-                'sms_status' => $this->credential->sms_status,
-                'sent_at' => $this->credential->sms_sent_at,
+                'phone_number' => $this->credentialData['phone_number'],
+                'sms_status' => $this->credentialData['sms_status'],
+                'sent_at' => $this->credentialData['sms_sent_at'],
             ],
             'message' => 'Credentials sent via SMS',
             'timestamp' => now()->toIso8601String(),

@@ -16,35 +16,38 @@ class SnmpConfigurationService
     }
 
     /**
-     * Enable and configure SNMPv3 on a MikroTik router (default method)
+     * Enable SNMP on a MikroTik router (defaults to SNMPv2c).
+     *
+     * If SNMPv3 credentials are provided in $options, configures v3.
+     * Otherwise, enables SNMPv2c with the community string.
      */
     public function enableSnmp(Router $router, array $options = []): array
     {
-        // Default to SNMPv3 for security
-        $user = $options['user'] ?? env('TELEGRAF_SNMPV3_USER', 'snmpmonitor');
-        $authProtocol = $options['auth_protocol'] ?? 'SHA256';
-        $authPassword = $options['auth_password'] ?? env('TELEGRAF_SNMPV3_AUTH_PASSWORD', bin2hex(random_bytes(16)));
-        $privProtocol = $options['priv_protocol'] ?? 'AES';
-        $privPassword = $options['priv_password'] ?? env('TELEGRAF_SNMPV3_PRIV_PASSWORD', bin2hex(random_bytes(16)));
+        $version = $options['version'] ?? '2c';
+
+        if ($version === '3' || $version === 'v3') {
+            return $this->enableSnmpV3($router, $options);
+        }
+
+        return $this->enableSnmpV2c($router, $options);
+    }
+
+    /**
+     * Enable SNMPv2c on a MikroTik router (preserves public community).
+     */
+    public function enableSnmpV2c(Router $router, array $options = []): array
+    {
+        $community = $options['community'] ?? config('telegraf.snmp_community', 'public');
         $contact = $options['contact'] ?? 'Network Admin';
         $location = $options['location'] ?? $router->location ?? 'Unknown';
-        
+
         $commands = [
-            // Enable SNMP
             '/snmp set enabled=yes',
             "/snmp set contact=\"{$contact}\"",
             "/snmp set location=\"{$location}\"",
-            
-            // Remove default public community for security (idempotent)
-            ':do { /snmp community remove [find name=public]; } on-error={}',
-            
-            // Remove existing user before adding (idempotent)
-            ":do { /snmp community remove [find name={$user}]; } on-error={}",
-            
-            // Add SNMPv3 user
-            "/snmp community add name={$user} addresses=0.0.0.0/0 security=private " .
-            "authentication-protocol={$authProtocol} authentication-password=\"{$authPassword}\" " .
-            "encryption-protocol={$privProtocol} encryption-password=\"{$privPassword}\"",
+            // Ensure community exists (idempotent: remove then re-add)
+            ":do { /snmp community remove [find name=\"{$community}\"]; } on-error={}",
+            "/snmp community add name=\"{$community}\" addresses=0.0.0.0/0 security=none read-access=yes write-access=no",
         ];
 
         try {
@@ -57,30 +60,25 @@ class SnmpConfigurationService
                 ];
             }
 
-            // Update router SNMP settings in database
             $router->update([
                 'snmp_enabled' => true,
-                'snmp_version' => 'v3',
-                'snmp_v3_user' => $user,
-                'snmp_v3_auth_protocol' => strtoupper($authProtocol),
-                'snmp_v3_auth_password' => $authPassword,
-                'snmp_v3_priv_protocol' => strtoupper($privProtocol),
-                'snmp_v3_priv_password' => $privPassword,
+                'snmp_version' => '2c',
+                'snmp_community' => $community,
             ]);
 
-            Log::info('SNMPv3 enabled successfully', [
+            Log::info('SNMPv2c enabled successfully', [
                 'router_id' => $router->id,
                 'router_name' => $router->name,
-                'user' => $user,
+                'community' => $community,
             ]);
 
             return [
                 'success' => true,
-                'message' => 'SNMPv3 enabled successfully',
+                'message' => 'SNMPv2c enabled successfully',
                 'results' => $results,
             ];
         } catch (\Exception $e) {
-            Log::error('Failed to enable SNMPv3', [
+            Log::error('Failed to enable SNMPv2c', [
                 'router_id' => $router->id,
                 'error' => $e->getMessage(),
             ]);
@@ -94,11 +92,11 @@ class SnmpConfigurationService
      */
     public function enableSnmpV3(Router $router, array $credentials): array
     {
-        $user = $credentials['user'] ?? 'snmpuser';
-        $authProtocol = strtolower($credentials['auth_protocol'] ?? 'SHA1');
-        $authPassword = $credentials['auth_password'] ?? '';
+        $user = $credentials['user'] ?? config('telegraf.snmpv3_user', 'snmpmonitor');
+        $authProtocol = strtolower($credentials['auth_protocol'] ?? 'SHA256');
+        $authPassword = $credentials['auth_password'] ?? config('telegraf.snmpv3_auth_password', '');
         $privProtocol = strtolower($credentials['priv_protocol'] ?? 'AES');
-        $privPassword = $credentials['priv_password'] ?? '';
+        $privPassword = $credentials['priv_password'] ?? config('telegraf.snmpv3_priv_password', '');
         $contact = $credentials['contact'] ?? 'Network Admin';
         $location = $credentials['location'] ?? $router->location ?? 'Unknown';
 
@@ -107,17 +105,11 @@ class SnmpConfigurationService
         }
 
         $commands = [
-            // Enable SNMP
             '/snmp set enabled=yes',
             "/snmp set contact=\"{$contact}\"",
             "/snmp set location=\"{$location}\"",
-            
-            // Remove default public community for security (idempotent)
-            ':do { /snmp community remove [find name=public]; } on-error={}',
-            
-            // Remove existing user before adding (idempotent)
+            // Remove existing v3 user before adding (idempotent)
             ":do { /snmp community remove [find name={$user}]; } on-error={}",
-            
             // Add SNMPv3 user
             "/snmp community add name={$user} addresses=0.0.0.0/0 security=private " .
             "authentication-protocol={$authProtocol} authentication-password=\"{$authPassword}\" " .
@@ -134,7 +126,6 @@ class SnmpConfigurationService
                 ];
             }
 
-            // Update router SNMP settings in database
             $router->update([
                 'snmp_enabled' => true,
                 'snmp_version' => 'v3',
@@ -191,24 +182,21 @@ class SnmpConfigurationService
     }
 
     /**
-     * Get SNMPv3 configuration script for manual application
+     * Get SNMPv2c configuration script for manual application on MikroTik.
      */
     public function getSnmpConfigScript(array $options = []): string
     {
-        $user = $options['user'] ?? env('TELEGRAF_SNMPV3_USER', 'snmpmonitor');
-        $authPassword = $options['auth_password'] ?? env('TELEGRAF_SNMPV3_AUTH_PASSWORD', bin2hex(random_bytes(16)));
-        $privPassword = $options['priv_password'] ?? env('TELEGRAF_SNMPV3_PRIV_PASSWORD', bin2hex(random_bytes(16)));
+        $community = $options['community'] ?? config('telegraf.snmp_community', 'public');
         $contact = $options['contact'] ?? 'Network Admin';
         $location = $options['location'] ?? 'Unknown';
 
         return <<<SCRIPT
-# Enable SNMPv3 for monitoring
+# Enable SNMPv2c for monitoring
 /snmp set enabled=yes
 /snmp set contact="{$contact}"
 /snmp set location="{$location}"
-:do { /snmp community remove [find name=public]; } on-error={}
-:do { /snmp community remove [find name={$user}]; } on-error={}
-/snmp community add name={$user} addresses=0.0.0.0/0 security=private authentication-protocol=SHA256 authentication-password="{$authPassword}" encryption-protocol=aes encryption-password="{$privPassword}"
+:do { /snmp community remove [find name="{$community}"]; } on-error={}
+/snmp community add name="{$community}" addresses=0.0.0.0/0 security=none read-access=yes write-access=no
 SCRIPT;
     }
 }

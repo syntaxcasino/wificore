@@ -6,7 +6,6 @@ use App\Models\Payment;
 use App\Models\Package;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Foundation\Events\Dispatchable;
-use Illuminate\Queue\SerializesModels;
 
 /**
  * Event fired when a hotspot user needs to be provisioned
@@ -14,17 +13,17 @@ use Illuminate\Queue\SerializesModels;
  */
 class HotspotUserProvisionRequested
 {
-    use Dispatchable, InteractsWithSockets, SerializesModels;
+    use Dispatchable, InteractsWithSockets;
 
-    public Payment $payment;
-    public Package $package;
+    public string $paymentId;
+    public string $packageId;
 
     /**
      * Create a new event instance.
      */
     public function __construct(Payment $payment, Package $package)
     {
-        $this->payment = $payment;
-        $this->package = $package;
+        $this->paymentId = (string) $payment->id;
+        $this->packageId = (string) $package->id;
     }
 }

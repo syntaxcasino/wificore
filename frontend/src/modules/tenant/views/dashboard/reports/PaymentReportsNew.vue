@@ -19,8 +19,8 @@
     </PageHeader>
 
     <!-- Stats -->
-    <div class="px-6 py-4 bg-white border-b border-slate-200">
-      <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+    <div class="px-3 py-3 sm:px-6 sm:py-4 bg-white border-b border-slate-200">
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
         <div class="bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg p-4 border border-green-200">
           <div class="flex items-center justify-between">
             <div>
@@ -64,9 +64,9 @@
     </div>
 
     <!-- Filters -->
-    <div class="px-6 py-4 bg-white border-b border-slate-200">
+    <div class="px-3 py-3 sm:px-6 sm:py-4 bg-white border-b border-slate-200">
       <div class="flex items-center gap-3 flex-wrap">
-        <BaseSelect v-model="filters.period" class="w-40">
+        <BaseSelect v-model="filters.period" class="w-36 sm:w-40">
           <option value="today">Today</option>
           <option value="week">This Week</option>
           <option value="month">This Month</option>
@@ -145,8 +145,9 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { DollarSign, RefreshCw, Download, CreditCard, TrendingUp, Smartphone } from 'lucide-vue-next'
+import axios from 'axios'
 import PageContainer from '@/modules/common/components/layout/templates/PageContainer.vue'
 import PageHeader from '@/modules/common/components/layout/templates/PageHeader.vue'
 import PageContent from '@/modules/common/components/layout/templates/PageContent.vue'
@@ -163,32 +164,57 @@ const breadcrumbs = [
 
 const loading = ref(false)
 const refreshing = ref(false)
+const payments = ref([])
 
 const filters = ref({
   period: 'month',
   method: ''
 })
 
-const stats = ref({
-  totalRevenue: 450000,
-  totalPayments: 234,
-  avgPayment: 1923,
-  mpesaPercentage: 75
+const stats = computed(() => {
+  const total = payments.value.reduce((sum, p) => sum + Number(p.amount || 0), 0)
+  const count = payments.value.length
+  const mpesaCount = payments.value.filter(p => (p.payment_method || '').toLowerCase().includes('mpesa') || (p.payment_method || '').toLowerCase().includes('m-pesa')).length
+  return {
+    totalRevenue: total,
+    totalPayments: count,
+    avgPayment: count > 0 ? Math.round(total / count) : 0,
+    mpesaPercentage: count > 0 ? Math.round((mpesaCount / count) * 100) : 0
+  }
 })
 
-const paymentMethods = ref([
-  { name: 'M-Pesa', amount: 337500, percentage: 75, color: 'bg-green-500' },
-  { name: 'Cash', amount: 67500, percentage: 15, color: 'bg-amber-500' },
-  { name: 'Bank Transfer', amount: 45000, percentage: 10, color: 'bg-blue-500' }
-])
+const methodColors = { 'M-Pesa': 'bg-green-500', 'Cash': 'bg-amber-500', 'Bank Transfer': 'bg-blue-500' }
 
-const dailyRevenue = ref(Array.from({ length: 7 }, (_, i) => ({
-  date: new Date(Date.now() - i * 86400000).toISOString(),
-  count: Math.floor(Math.random() * 50) + 20,
-  total: Math.floor(Math.random() * 100000) + 50000,
-  mpesa: Math.floor(Math.random() * 75000) + 37500,
-  cash: Math.floor(Math.random() * 15000) + 7500
-})))
+const paymentMethods = computed(() => {
+  const grouped = {}
+  payments.value.forEach(p => {
+    const method = p.payment_method || 'Other'
+    if (!grouped[method]) grouped[method] = 0
+    grouped[method] += Number(p.amount || 0)
+  })
+  const total = Object.values(grouped).reduce((s, v) => s + v, 0)
+  return Object.entries(grouped).map(([name, amount]) => ({
+    name,
+    amount,
+    percentage: total > 0 ? Math.round((amount / total) * 100) : 0,
+    color: methodColors[name] || 'bg-slate-500'
+  })).sort((a, b) => b.amount - a.amount)
+})
+
+const dailyRevenue = computed(() => {
+  const grouped = {}
+  payments.value.forEach(p => {
+    const date = (p.created_at || '').slice(0, 10)
+    if (!date) return
+    if (!grouped[date]) grouped[date] = { date, count: 0, total: 0, mpesa: 0, cash: 0 }
+    grouped[date].count++
+    grouped[date].total += Number(p.amount || 0)
+    const method = (p.payment_method || '').toLowerCase()
+    if (method.includes('mpesa') || method.includes('m-pesa')) grouped[date].mpesa += Number(p.amount || 0)
+    if (method.includes('cash')) grouped[date].cash += Number(p.amount || 0)
+  })
+  return Object.values(grouped).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 30)
+})
 
 const formatMoney = (amount) => {
   return new Intl.NumberFormat('en-KE').format(amount)
@@ -198,17 +224,46 @@ const formatDate = (date) => {
   return new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
+const fetchPayments = async () => {
+  const isInitial = payments.value.length === 0
+  if (isInitial) loading.value = true
+  try {
+    const params = {}
+    if (filters.value.method) params.payment_method = filters.value.method
+    if (filters.value.period) params.period = filters.value.period
+    const response = await axios.get('/payments', { params })
+    const data = response.data?.data || response.data?.payments || []
+    payments.value = Array.isArray(data) ? data : []
+  } catch (err) {
+    console.error('fetchPayments error:', err)
+  } finally {
+    loading.value = false
+  }
+}
+
 const refreshData = async () => {
   refreshing.value = true
-  await new Promise(resolve => setTimeout(resolve, 500))
+  await fetchPayments()
   refreshing.value = false
 }
 
 const exportReport = () => {
-  alert('Export feature coming soon!')
+  const csv = [
+    ['Date', 'Payments', 'Total Revenue', 'M-Pesa', 'Cash'].join(','),
+    ...dailyRevenue.value.map(d => [d.date, d.count, d.total, d.mpesa, d.cash].join(','))
+  ].join('\n')
+  const blob = new Blob([csv], { type: 'text/csv' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `payment-report-${new Date().toISOString().slice(0,10)}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
 }
 
+watch(() => [filters.value.period, filters.value.method], () => fetchPayments())
+
 onMounted(() => {
-  loading.value = false
+  fetchPayments()
 })
 </script>

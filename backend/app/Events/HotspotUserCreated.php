@@ -9,16 +9,15 @@ use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
-use Illuminate\Queue\SerializesModels;
 
 class HotspotUserCreated implements ShouldBroadcast
 {
-    use Dispatchable, InteractsWithSockets, SerializesModels;
+    use Dispatchable, InteractsWithSockets;
     use BroadcastsToTenant;
 
-    public $hotspotUser;
-    public $payment;
-    public $credentials;
+    public array $hotspotUserData;
+    public array $paymentData;
+    public array $credentials;
     public $tenantId;
 
     /**
@@ -26,10 +25,20 @@ class HotspotUserCreated implements ShouldBroadcast
      */
     public function __construct(HotspotUser $hotspotUser, Payment $payment, array $credentials, ?string $tenantId = null)
     {
-        $this->hotspotUser = $hotspotUser;
-        $this->payment = $payment;
+        // Extract data instead of serializing models
+        // Both models are in tenant schema; SerializesModels fails on deserialization
+        $this->hotspotUserData = [
+            'id' => $hotspotUser->id,
+            'username' => $hotspotUser->username,
+            'phone_number' => $hotspotUser->phone_number,
+            'package_name' => $hotspotUser->package_name,
+            'subscription_expires_at' => $hotspotUser->subscription_expires_at,
+        ];
+        $this->paymentData = [
+            'id' => $payment->id,
+            'amount' => $payment->amount,
+        ];
         $this->credentials = $credentials;
-        // Payment and HotspotUser are in tenant schema - no tenant_id column
         $this->tenantId = $tenantId ?? (auth()->user()?->tenant_id);
     }
 
@@ -59,16 +68,13 @@ class HotspotUserCreated implements ShouldBroadcast
     {
         return [
             'user' => [
-                'id' => $this->hotspotUser->id,
-                'username' => $this->hotspotUser->username,
-                'phone_number' => $this->hotspotUser->phone_number,
-                'package_name' => $this->hotspotUser->package_name,
-                'expires_at' => $this->hotspotUser->subscription_expires_at,
+                'id' => $this->hotspotUserData['id'],
+                'username' => $this->hotspotUserData['username'],
+                'phone_number' => $this->hotspotUserData['phone_number'],
+                'package_name' => $this->hotspotUserData['package_name'],
+                'expires_at' => $this->hotspotUserData['subscription_expires_at'],
             ],
-            'payment' => [
-                'id' => $this->payment->id,
-                'amount' => $this->payment->amount,
-            ],
+            'payment' => $this->paymentData,
             'message' => 'New hotspot user created',
             'timestamp' => now()->toIso8601String(),
         ];

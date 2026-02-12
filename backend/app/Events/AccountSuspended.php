@@ -10,11 +10,10 @@ use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Events\Dispatchable;
-use Illuminate\Queue\SerializesModels;
 
 class AccountSuspended implements ShouldBroadcastNow, ShouldQueue
 {
-    use Dispatchable, InteractsWithSockets, SerializesModels;
+    use Dispatchable, InteractsWithSockets;
     use BroadcastsToTenant;
     
     /**
@@ -27,18 +26,25 @@ class AccountSuspended implements ShouldBroadcastNow, ShouldQueue
      */
     public $queue = 'broadcasts';
 
-    public $user;
-    public $tenantId;
-    public $suspendedUntil;
-    public $reason;
-    public $ipAddress;
+    public array $userData;
+    public ?string $tenantId;
+    public string $suspendedUntil;
+    public string $reason;
+    public string $ipAddress;
 
     /**
      * Create a new event instance.
      */
     public function __construct(User $user, string $suspendedUntil, string $reason, string $ipAddress)
     {
-        $this->user = $user;
+        $this->userData = [
+            'id' => $user->id,
+            'username' => $user->username,
+            'name' => $user->name,
+            'email' => $user->email,
+            'role' => $user->role,
+            'tenant_id' => $user->tenant_id,
+        ];
         $this->tenantId = $user->tenant_id;
         $this->suspendedUntil = $suspendedUntil;
         $this->reason = $reason;
@@ -80,20 +86,13 @@ class AccountSuspended implements ShouldBroadcastNow, ShouldQueue
     public function broadcastWith(): array
     {
         return [
-            'user' => [
-                'id' => $this->user->id,
-                'username' => $this->user->username,
-                'name' => $this->user->name,
-                'email' => $this->user->email,
-                'role' => $this->user->role,
-                'tenant_id' => $this->user->tenant_id,
-            ],
+            'user' => $this->userData,
             'suspended_until' => $this->suspendedUntil,
             'reason' => $this->reason,
             'ip_address' => $this->ipAddress,
             'timestamp' => now()->toIso8601String(),
             'severity' => 'warning',
-            'message' => "Account '{$this->user->username}' has been suspended until {$this->suspendedUntil}. Reason: {$this->reason}",
+            'message' => "Account '{$this->userData['username']}' has been suspended until {$this->suspendedUntil}. Reason: {$this->reason}",
         ];
     }
 }

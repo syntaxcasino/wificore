@@ -13,8 +13,8 @@
       </template>
     </PageHeader>
 
-    <div class="px-6 py-4 bg-white border-b border-slate-200">
-      <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+    <div class="px-3 py-3 sm:px-6 sm:py-4 bg-white border-b border-slate-200">
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
         <div class="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200">
           <div class="flex items-center justify-between">
             <div>
@@ -57,9 +57,9 @@
       </div>
     </div>
 
-    <div class="px-6 py-4 bg-white border-b border-slate-200">
-      <div class="flex items-center gap-3 flex-wrap">
-        <div class="flex-1 min-w-[300px] max-w-md">
+    <div class="px-3 py-3 sm:px-6 sm:py-4 bg-white border-b border-slate-200">
+      <div class="flex flex-col sm:flex-row sm:items-center gap-3 flex-wrap">
+        <div class="flex-1 min-w-0 sm:min-w-[250px] max-w-md">
           <BaseSearch v-model="searchQuery" placeholder="Search tickets..." />
         </div>
         
@@ -145,12 +145,81 @@
       </div>
       <BasePagination v-model="currentPage" :total-pages="totalPages" :total-items="filteredData.length" />
     </PageFooter>
+
+    <!-- View Ticket Overlay -->
+    <SlideOverlay v-model="showViewOverlay" title="Ticket Details" :subtitle="selectedTicket ? `#${selectedTicket.id}` : ''" icon="MessageSquare" width="lg">
+      <div v-if="selectedTicket" class="p-6 space-y-6">
+        <div class="flex items-center gap-2 mb-4">
+          <BaseBadge :variant="getStatusVariant(selectedTicket.status)" size="sm">{{ selectedTicket.status }}</BaseBadge>
+          <BaseBadge :variant="getPriorityVariant(selectedTicket.priority)" size="sm">{{ selectedTicket.priority }}</BaseBadge>
+        </div>
+        <div>
+          <h3 class="text-lg font-semibold text-slate-900 mb-2">{{ selectedTicket.subject }}</h3>
+          <p class="text-sm text-slate-600">{{ selectedTicket.description }}</p>
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+          <div><span class="text-xs text-slate-500">Customer</span><div class="text-sm font-medium text-slate-900">{{ selectedTicket.customer_name }}</div></div>
+          <div><span class="text-xs text-slate-500">Category</span><div class="text-sm font-medium text-slate-900">{{ selectedTicket.category }}</div></div>
+          <div><span class="text-xs text-slate-500">Assigned To</span><div class="text-sm font-medium text-slate-900">{{ selectedTicket.assigned_to || 'Unassigned' }}</div></div>
+          <div><span class="text-xs text-slate-500">Created</span><div class="text-sm font-medium text-slate-900">{{ formatDateTime(selectedTicket.created_at) }}</div></div>
+        </div>
+      </div>
+      <template #footer>
+        <div class="flex items-center gap-2">
+          <BaseButton v-if="selectedTicket?.status !== 'closed'" @click="closeTicket(selectedTicket)" variant="success" size="sm">Close Ticket</BaseButton>
+          <BaseButton @click="showViewOverlay = false" variant="ghost" size="sm">Dismiss</BaseButton>
+        </div>
+      </template>
+    </SlideOverlay>
+
+    <!-- Create Ticket Overlay -->
+    <SlideOverlay v-model="showCreateOverlay" title="New Ticket" subtitle="Create a new support ticket" icon="Plus" width="lg">
+      <div class="p-6 space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">Subject</label>
+          <input v-model="newTicket.subject" type="text" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="Brief description of the issue" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">Customer Name</label>
+          <input v-model="newTicket.customer_name" type="text" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="Customer name" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">Category</label>
+          <select v-model="newTicket.category" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+            <option value="">Select category</option>
+            <option value="Technical">Technical</option>
+            <option value="Billing">Billing</option>
+            <option value="General">General</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">Priority</label>
+          <select v-model="newTicket.priority" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+            <option value="urgent">Urgent</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">Description</label>
+          <textarea v-model="newTicket.description" rows="4" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="Describe the issue in detail..."></textarea>
+        </div>
+      </div>
+      <template #footer>
+        <div class="flex items-center gap-2">
+          <BaseButton @click="submitTicket" variant="primary" :loading="submitting">Create Ticket</BaseButton>
+          <BaseButton @click="showCreateOverlay = false" variant="ghost">Cancel</BaseButton>
+        </div>
+      </template>
+    </SlideOverlay>
   </PageContainer>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { MessageSquare, RefreshCw, Plus, X, AlertCircle, Clock, CheckCircle, MessageCircle } from 'lucide-vue-next'
+import axios from 'axios'
 import PageContainer from '@/modules/common/components/layout/templates/PageContainer.vue'
 import PageHeader from '@/modules/common/components/layout/templates/PageHeader.vue'
 import PageContent from '@/modules/common/components/layout/templates/PageContent.vue'
@@ -163,6 +232,7 @@ import BaseSelect from '@/modules/common/components/base/BaseSelect.vue'
 import BasePagination from '@/modules/common/components/base/BasePagination.vue'
 import BaseLoading from '@/modules/common/components/base/BaseLoading.vue'
 import BaseEmpty from '@/modules/common/components/base/BaseEmpty.vue'
+import SlideOverlay from '@/modules/common/components/base/SlideOverlay.vue'
 
 const breadcrumbs = [
   { label: 'Dashboard', to: '/dashboard' },
@@ -176,23 +246,23 @@ const tickets = ref([])
 const searchQuery = ref('')
 const currentPage = ref(1)
 const itemsPerPage = ref(10)
+const showViewOverlay = ref(false)
+const showCreateOverlay = ref(false)
+const selectedTicket = ref(null)
+const submitting = ref(false)
+
+const newTicket = ref({
+  subject: '',
+  customer_name: '',
+  category: '',
+  priority: 'medium',
+  description: ''
+})
 
 const filters = ref({
   status: '',
   priority: ''
 })
-
-const mockTickets = Array.from({ length: 20 }, (_, i) => ({
-  id: 1000 + i,
-  subject: ['Connection Issue', 'Payment Problem', 'Speed Complaint', 'Account Access'][Math.floor(Math.random() * 4)],
-  description: 'Customer reported an issue with their service...',
-  customer_name: `Customer ${i + 1}`,
-  category: ['Technical', 'Billing', 'General'][Math.floor(Math.random() * 3)],
-  status: ['open', 'in_progress', 'resolved', 'closed'][Math.floor(Math.random() * 4)],
-  priority: ['low', 'medium', 'high', 'urgent'][Math.floor(Math.random() * 4)],
-  assigned_to: Math.random() > 0.5 ? 'Admin User' : null,
-  created_at: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString()
-}))
 
 const stats = computed(() => ({
   total: tickets.value.length,
@@ -243,17 +313,37 @@ const getPriorityVariant = (priority) => {
 const formatDateTime = (date) => new Date(date).toLocaleString()
 
 const fetchTickets = async () => {
-  loading.value = true
-  await new Promise(resolve => setTimeout(resolve, 500))
-  tickets.value = mockTickets
-  loading.value = false
+  const isInitial = tickets.value.length === 0
+  if (isInitial) {
+    loading.value = true
+  } else {
+    refreshing.value = true
+  }
+  
+  try {
+    const response = await axios.get('/support/tickets')
+    const data = response.data?.tickets?.data || response.data?.tickets || response.data?.data || []
+    tickets.value = data.map(t => ({
+      id: t.id,
+      subject: t.subject || t.title || '',
+      description: t.description || t.body || '',
+      customer_name: t.customer_name || t.user?.name || 'Unknown',
+      category: t.category || 'General',
+      status: t.status || 'open',
+      priority: t.priority || 'medium',
+      assigned_to: t.assigned_to || t.assignee?.name || null,
+      created_at: t.created_at || new Date().toISOString()
+    }))
+  } catch (err) {
+    console.error('fetchTickets error:', err)
+  } finally {
+    loading.value = false
+    refreshing.value = false
+  }
 }
 
 const refreshTickets = async () => {
-  refreshing.value = true
-  await new Promise(resolve => setTimeout(resolve, 500))
-  tickets.value = mockTickets
-  refreshing.value = false
+  await fetchTickets()
 }
 
 const clearFilters = () => {
@@ -261,12 +351,49 @@ const clearFilters = () => {
   searchQuery.value = ''
 }
 
-const openCreateModal = () => alert('Create ticket modal coming soon!')
-const viewTicket = (ticket) => console.log('View ticket:', ticket)
-const replyTicket = (ticket) => alert('Reply feature coming soon!')
+const openCreateModal = () => {
+  newTicket.value = { subject: '', customer_name: '', category: '', priority: 'medium', description: '' }
+  showCreateOverlay.value = true
+}
+
+const viewTicket = (ticket) => {
+  selectedTicket.value = ticket
+  showViewOverlay.value = true
+}
+
+const replyTicket = (ticket) => {
+  selectedTicket.value = ticket
+  showViewOverlay.value = true
+}
+
+const submitTicket = async () => {
+  if (!newTicket.value.subject || !newTicket.value.description) {
+    alert('Subject and description are required.')
+    return
+  }
+  submitting.value = true
+  try {
+    await axios.post('/support/tickets', newTicket.value)
+    showCreateOverlay.value = false
+    await fetchTickets()
+  } catch (err) {
+    console.error('submitTicket error:', err)
+    alert(err.response?.data?.message || 'Failed to create ticket')
+  } finally {
+    submitting.value = false
+  }
+}
+
 const closeTicket = async (ticket) => {
-  if (confirm(`Close ticket #${ticket.id}?`)) {
-    ticket.status = 'closed'
+  if (!ticket || !confirm(`Close ticket #${ticket.id}?`)) return
+  try {
+    await axios.patch(`/support/tickets/${ticket.id}`, { status: 'closed' })
+    const idx = tickets.value.findIndex(t => t.id === ticket.id)
+    if (idx !== -1) tickets.value[idx].status = 'closed'
+    if (selectedTicket.value?.id === ticket.id) selectedTicket.value.status = 'closed'
+  } catch (err) {
+    console.error('closeTicket error:', err)
+    alert(err.response?.data?.message || 'Failed to close ticket')
   }
 }
 

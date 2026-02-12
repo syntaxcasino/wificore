@@ -91,6 +91,7 @@ class ZeroConfigPPPoEGenerator
             'profile'    => "pppoe-prof-$id",
             'service'    => "pppoe-svc-$id",
             'pppoe_list' => "PPPOE-$id",
+            'pppoe_active_list' => "PPPOE-ACTIVE-$id",
             'wan_list'   => "WAN",
         ];
 
@@ -116,11 +117,17 @@ class ZeroConfigPPPoEGenerator
         // ============ PPP PROFILE (ISP-GRADE) ============
         // No static rate-limit - RADIUS sets Mikrotik-Rate-Limit dynamically
         // Idempotent: only create if missing
-        $s[] = ":do { :if ([:len [/ppp profile find name=\"{$p['profile']}\"]] = 0) do={ /ppp profile add name=\"{$p['profile']}\" local-address={$p['gateway_ip']} remote-address={$p['pool']} dns-server={$p['dns_primary']},{$p['dns_secondary']} only-one=yes change-tcp-mss=yes use-compression=no use-encryption=no comment=\"PPPoE-$id\" } } on-error={}";
+        // interface-list=PPPOE-ACTIVE: dynamic <pppoe-*> interfaces auto-join this list on auth
+        // This is CRITICAL for security: firewall rules match on this list, not src-address
+        $s[] = ":do { :if ([:len [/ppp profile find name=\"{$p['profile']}\"]] = 0) do={ /ppp profile add name=\"{$p['profile']}\" local-address={$p['gateway_ip']} remote-address={$p['pool']} dns-server={$p['dns_primary']},{$p['dns_secondary']} interface-list={$p['pppoe_active_list']} only-one=yes change-tcp-mss=yes use-compression=no use-encryption=no comment=\"PPPoE-$id\" } } on-error={}";
+        // Update existing profile to add interface-list if it was created without it
+        $s[] = ":do { /ppp profile set [find name=\"{$p['profile']}\"] interface-list={$p['pppoe_active_list']} } on-error={}";
 
         // ============ INTERFACE LISTS ============
         $s[] = ":do { :if ([:len [/interface list find name={$p['wan_list']}]] = 0) do={ /interface list add name={$p['wan_list']} } } on-error={}";
         $s[] = ":do { :if ([:len [/interface list find name={$p['pppoe_list']}]] = 0) do={ /interface list add name={$p['pppoe_list']} } } on-error={}";
+        // PPPOE-ACTIVE list: PPP profile assigns authenticated dynamic interfaces here
+        $s[] = ":do { :if ([:len [/interface list find name={$p['pppoe_active_list']}]] = 0) do={ /interface list add name={$p['pppoe_active_list']} } } on-error={}";
 
         // ============ PPPoE BRIDGE SETUP ============
         // Bridge isolates PPPoE discovery/session traffic from other networks
@@ -163,39 +170,39 @@ class ZeroConfigPPPoEGenerator
         $s[] = "/ip firewall filter add chain=input in-interface={$bridge} protocol=udp dst-port=8863-8864 action=accept place-before=0 comment=\"PPPoE-$id-DISC\"";
 
         // FORWARD chain - control PPPoE client traffic
-        // CRITICAL: ALL rules MUST be scoped to in-interface={bridge} to avoid affecting other router traffic.
-        // Without in-interface scoping, established/related accept would match ALL traffic on the router,
-        // letting any connected device (not just PPPoE) access the internet.
-        // PPPoE auth is L2 (PADI/PADO/PADR/PADS) — clients don't need DNS before authentication.
+        // SECURITY PRINCIPLE: Never allow traffic from the bridge directly.
+        // Allow ONLY traffic from PPPoE dynamic interfaces (authenticated sessions).
+        // The PPP profile sets interface-list=PPPOE-ACTIVE-{id}, so when a user authenticates,
+        // their dynamic <pppoe-*> interface auto-joins that list.
+        // An unauthorized client on the bridge can spoof src-address but CANNOT create a PPPoE session.
+        //
         // Rule order:
-        // 1. Allow established/related FROM PPPoE bridge (keeps authenticated sessions working)
-        // 2. Drop invalid FROM PPPoE bridge
-        // 3. Allow authenticated PPPoE subnet to WAN
-        // 4. Allow local traffic within PPPoE subnet
-        // 5. DROP everything else from bridge (unauthenticated devices)
+        // 1. Accept established/related FROM authenticated PPPoE interfaces
+        // 2. Drop invalid FROM authenticated PPPoE interfaces
+        // 3. Allow authenticated PPPoE interfaces to WAN
+        // 4. DROP everything from the bridge (unauthenticated devices)
 
         // Remove existing forward rules for idempotent re-ordering (only our PPPoE service rules)
         $s[] = ":do { /ip firewall filter remove [find comment~\"PPPoE-$id-(EST|INV|DNS|INET|LOCAL|BLOCK-UNAUTH)\"]; } on-error={}";
 
         // CRITICAL: Insert rules in REVERSE order with place-before=0 so they end up
-        // at the TOP of the filter list in the CORRECT order:
-        //   1. EST (established/related accept)
-        //   2. INV (invalid drop)
-        //   3. INET (authenticated subnet to WAN)
-        //   4. LOCAL (authenticated subnet local traffic)
-        //   5. BLOCK-UNAUTH (drop everything else from bridge)
+        // at the TOP of the filter list in the CORRECT order.
         // Since place-before=0 inserts at position 0, we add LAST rule first.
+        //
+        // 4. DROP all traffic from bridge (unauthenticated devices cannot pass)
         $s[] = "/ip firewall filter add chain=forward in-interface={$bridge} action=drop place-before=0 comment=\"PPPoE-$id-BLOCK-UNAUTH\"";
-        $s[] = "/ip firewall filter add chain=forward src-address={$p['network_cidr']} in-interface={$bridge} dst-address={$p['network_cidr']} action=accept place-before=0 comment=\"PPPoE-$id-LOCAL\"";
-        $s[] = "/ip firewall filter add chain=forward src-address={$p['network_cidr']} in-interface={$bridge} out-interface-list={$p['wan_list']} action=accept place-before=0 comment=\"PPPoE-$id-INET\"";
-        $s[] = "/ip firewall filter add chain=forward in-interface={$bridge} connection-state=invalid action=drop place-before=0 comment=\"PPPoE-$id-INV\"";
-        $s[] = "/ip firewall filter add chain=forward in-interface={$bridge} connection-state=established,related action=accept place-before=0 comment=\"PPPoE-$id-EST\"";
+        // 3. Allow ONLY authenticated PPPoE sessions to WAN (interface-list, NOT src-address)
+        $s[] = "/ip firewall filter add chain=forward in-interface-list={$p['pppoe_active_list']} out-interface-list={$p['wan_list']} action=accept place-before=0 comment=\"PPPoE-$id-INET\"";
+        // 2. Drop invalid from authenticated PPPoE interfaces
+        $s[] = "/ip firewall filter add chain=forward in-interface-list={$p['pppoe_active_list']} connection-state=invalid action=drop place-before=0 comment=\"PPPoE-$id-INV\"";
+        // 1. Accept established/related from authenticated PPPoE interfaces
+        $s[] = "/ip firewall filter add chain=forward in-interface-list={$p['pppoe_active_list']} connection-state=established,related action=accept place-before=0 comment=\"PPPoE-$id-EST\"";
 
         // ============ NAT CONFIGURATION ============
-        // Scope masquerade to ONLY the PPPoE subnet (authenticated users)
-        // Do NOT masquerade all traffic — only traffic from the assigned IP pool
+        // Masquerade ONLY traffic from authenticated PPPoE interfaces (not subnet-based)
+        // Subnet-based NAT is a security bypass: unauthorized clients can spoof src-address
         $s[] = ":do { /ip firewall nat remove [find comment=\"PPPoE-$id\"]; } on-error={}";
-        $s[] = "/ip firewall nat add chain=srcnat src-address={$p['network_cidr']} out-interface-list={$p['wan_list']} action=masquerade comment=\"PPPoE-$id\"";
+        $s[] = "/ip firewall nat add chain=srcnat in-interface-list={$p['pppoe_active_list']} out-interface-list={$p['wan_list']} action=masquerade comment=\"PPPoE-$id\"";
 
         // ============ CONNECTION TRACKING OPTIMIZATION ============
         // Reduce memory usage on low-end devices

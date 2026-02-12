@@ -64,35 +64,17 @@
       </div>
     </div>
 
-    <!-- Slide-in Overlay Panel (Right to Left) -->
-    <div v-if="showFormOverlay" class="fixed inset-y-0 right-0 z-[9999] w-full sm:w-2/3 lg:w-1/2 xl:w-2/5 bg-white shadow-2xl flex flex-col transition-transform duration-300 ease-out"
-         :class="showFormOverlay ? 'translate-x-0' : 'translate-x-full'">
-        <!-- Header -->
-        <div class="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50 flex-shrink-0">
-          <div class="flex items-center gap-2">
-            <div class="p-1.5 bg-blue-100 rounded-lg">
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904 3.905 10.236 3.905 14.142 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0" />
-              </svg>
-            </div>
-            <div>
-              <h3 class="text-base font-semibold text-gray-800">Router Provisioning</h3>
-              <p v-if="provisioningRouter" class="text-xs text-gray-500">{{ provisioningRouter.name }}</p>
-              <p v-else class="text-xs text-gray-500">Configure your MikroTik router</p>
-            </div>
-          </div>
-          <button
-            type="button"
-            @click="$emit('close-form')"
-            :disabled="waitingForJobCompletion"
-            class="p-1.5 rounded-lg hover:bg-white transition-colors text-gray-500 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
-              <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
-            </svg>
-          </button>
-        </div>
-
+    <!-- Slide-in Overlay Panel -->
+    <SlideOverlay
+      :model-value="showFormOverlay"
+      title="Router Provisioning"
+      :subtitle="provisioningRouter ? provisioningRouter.name : 'Configure your MikroTik router'"
+      icon="Wifi"
+      width="50%"
+      :close-on-backdrop="!waitingForJobCompletion"
+      @update:model-value="val => { if (!val) $emit('close-form') }"
+      @close="$emit('close-form')"
+    >
         <!-- Progress Bar - Compact -->
         <div class="px-4 py-2 border-b border-gray-200 bg-white flex-shrink-0">
           <div class="flex items-center justify-between mb-1.5">
@@ -515,8 +497,8 @@
           </div>
         </div>
 
-        <!-- Action Buttons - Compact -->
-        <div class="border-t border-gray-200 bg-white px-4 py-2.5 flex justify-end items-center flex-shrink-0 space-x-2">
+      <template #footer>
+        <div class="flex justify-end items-center space-x-2">
             <button
               v-if="currentStage === 1 && !initialConfig"
               @click="createRouterWithConfig"
@@ -554,11 +536,13 @@
             >
               <span>Done - View Dashboard</span>
             </button>
-          </div>
         </div>
+      </template>
+    </SlideOverlay>
 </template>
 
 <script setup>
+import SlideOverlay from '@/modules/common/components/base/SlideOverlay.vue'
 import { useRouterProvisioning } from '@/modules/tenant/composables/useRouterProvisioning'
 
 const props = defineProps({

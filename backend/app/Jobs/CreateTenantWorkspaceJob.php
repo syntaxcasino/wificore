@@ -39,6 +39,14 @@ class CreateTenantWorkspaceJob implements ShouldQueue
 
     /**
      * Execute the job.
+     *
+     * Architecture note: Schema creation and migrations (DDL) run OUTSIDE any
+     * DB::beginTransaction() because PostgreSQL aborts the entire transaction
+     * on any DDL error, making subsequent DML impossible.  The job is split
+     * into phases:
+     *   Phase 1 – Create Tenant + User records (DML, transactional)
+     *   Phase 2 – Create schema & run migrations (DDL, non-transactional)
+     *   Phase 3 – Seed RADIUS credentials & VPN tunnel (DML, transactional)
      */
     public function handle(TenantVpnTunnelService $vpnService, \App\Services\TenantMigrationManager $migrationManager): void
     {
@@ -57,7 +65,13 @@ class CreateTenantWorkspaceJob implements ShouldQueue
             'attempt' => $this->attempts()
         ]);
 
+        $tenant = null;
+        $user = null;
+        $username = null;
+        $password = null;
+
         try {
+            // ── Phase 1: Create Tenant + User (DML only, safe to transact) ──
             DB::beginTransaction();
 
             Log::info('Creating tenant workspace', [
@@ -108,7 +122,7 @@ class CreateTenantWorkspaceJob implements ShouldQueue
                 'trial_ends_at' => now()->addDays(30),
             ]);
 
-            // Create admin user
+            // Create admin user (public schema — users table has tenant_id)
             $user = User::create([
                 'tenant_id' => $tenant->id,
                 'name' => $registration->tenant_name . ' Admin',
@@ -119,15 +133,77 @@ class CreateTenantWorkspaceJob implements ShouldQueue
                 'is_active' => true,
             ]);
 
-            // CRITICAL: Setup Tenant Schema immediately after creating tenant record
-            // This creates the schema and runs migrations so tables exist for subsequent steps
-            Log::info('Setting up tenant schema and running migrations', ['tenant_id' => $tenant->id]);
+            DB::commit();
+
+            Log::info('Phase 1 complete: Tenant and User created', [
+                'tenant_id' => $tenant->id,
+                'user_id' => $user->id,
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+
+            Log::error('Phase 1 failed: Could not create tenant/user', [
+                'registration_id' => $registration->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            $registration->update([
+                'status' => 'failed',
+                'error_message' => 'Failed to create tenant record: ' . $e->getMessage()
+            ]);
+
+            throw $e;
+        }
+
+        try {
+            // ── Phase 2: Schema creation + migrations (DDL — NO transaction) ──
+            Log::info('Phase 2: Setting up tenant schema and running migrations', [
+                'tenant_id' => $tenant->id,
+                'schema_name' => $tenant->schema_name,
+            ]);
+
             if (!$migrationManager->setupTenantSchema($tenant)) {
                 throw new \Exception("Failed to setup tenant schema for {$tenant->slug}");
             }
 
-            // CRITICAL: Create RADIUS credentials in tenant schema
-            Log::info('Adding RADIUS credentials for admin user', [
+            Log::info('Phase 2 complete: Schema and migrations ready', [
+                'tenant_id' => $tenant->id,
+                'schema_name' => $tenant->schema_name,
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Phase 2 failed: Schema setup error', [
+                'tenant_id' => $tenant->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            // Clean up: remove tenant + user created in Phase 1
+            try {
+                $user?->forceDelete();
+                $tenant?->forceDelete();
+            } catch (\Exception $cleanupError) {
+                Log::error('Cleanup after Phase 2 failure also failed', [
+                    'error' => $cleanupError->getMessage(),
+                ]);
+            }
+
+            $registration->update([
+                'status' => 'failed',
+                'error_message' => 'Failed to setup tenant schema: ' . $e->getMessage()
+            ]);
+
+            throw $e;
+        }
+
+        try {
+            // ── Phase 3: RADIUS credentials, VPN tunnel, finalize (DML) ──
+            DB::beginTransaction();
+
+            // Ensure search_path is clean before starting
+            DB::statement("SET search_path TO public");
+
+            Log::info('Phase 3: Adding RADIUS credentials for admin user', [
                 'username' => $username,
                 'tenant_schema' => $tenant->schema_name,
             ]);
@@ -193,8 +269,7 @@ class CreateTenantWorkspaceJob implements ShouldQueue
                 'status' => 'verified'
             ]);
 
-            // Initialize VPN Tunnel for the tenant - STRICT: Fail job if VPN creation fails
-            // We use a fresh instance or the injected service
+            // Initialize VPN Tunnel for the tenant
             $tunnel = $vpnService->getOrCreateTenantTunnel($tenant->id);
             Log::info('Tenant VPN tunnel initialized', [
                 'tenant_id' => $tenant->id,
@@ -204,7 +279,7 @@ class CreateTenantWorkspaceJob implements ShouldQueue
 
             DB::commit();
 
-            Log::info('Tenant workspace created', [
+            Log::info('Tenant workspace created successfully', [
                 'tenant_id' => $tenant->id,
                 'user_id' => $user->id,
                 'username' => $username
@@ -226,15 +301,22 @@ class CreateTenantWorkspaceJob implements ShouldQueue
         } catch (\Exception $e) {
             DB::rollBack();
 
-            Log::error('Failed to create tenant workspace', [
-                'registration_id' => $registration->id,
+            // Reset search path so subsequent queries work
+            try {
+                DB::statement("SET search_path TO public");
+            } catch (\Exception $ignored) {
+                // Connection may be in aborted state; reconnect
+                DB::reconnect();
+            }
+
+            Log::error('Phase 3 failed: RADIUS/VPN setup error', [
+                'tenant_id' => $tenant->id,
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
             ]);
 
             $registration->update([
                 'status' => 'failed',
-                'error_message' => 'Failed to create workspace: ' . $e->getMessage()
+                'error_message' => 'Failed to setup RADIUS/VPN: ' . $e->getMessage()
             ]);
 
             throw $e;

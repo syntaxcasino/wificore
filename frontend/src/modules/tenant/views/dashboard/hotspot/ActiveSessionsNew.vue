@@ -20,21 +20,21 @@
     </PageHeader>
 
     <!-- Search and Filters Bar -->
-    <div class="px-6 py-4 bg-white border-b border-slate-200">
-      <div class="flex items-center gap-3 flex-wrap">
+    <div class="px-3 py-3 sm:px-6 sm:py-4 bg-white border-b border-slate-200">
+      <div class="flex flex-col sm:flex-row sm:items-center gap-3 flex-wrap">
         <!-- Search Box -->
-        <div class="flex-1 min-w-[300px] max-w-md">
+        <div class="flex-1 min-w-0 sm:min-w-[250px] max-w-md">
           <BaseSearch v-model="searchQuery" placeholder="Search sessions by user, IP, MAC..." />
         </div>
         
         <!-- Filters Group -->
-        <div class="flex items-center gap-2">
-          <BaseSelect v-model="filters.package" placeholder="All Packages" class="w-40">
+        <div class="flex items-center gap-2 flex-wrap">
+          <BaseSelect v-model="filters.package" placeholder="All Packages" class="w-32 sm:w-40">
             <option value="">All Packages</option>
             <option v-for="pkg in packages" :key="pkg.id" :value="pkg.id">{{ pkg.name }}</option>
           </BaseSelect>
           
-          <BaseSelect v-model="filters.duration" placeholder="Session Duration" class="w-44">
+          <BaseSelect v-model="filters.duration" placeholder="Session Duration" class="w-36 sm:w-44">
             <option value="">All Durations</option>
             <option value="short">< 5 minutes</option>
             <option value="medium">5-30 minutes</option>
@@ -48,7 +48,7 @@
         </div>
         
         <!-- Stats Badges -->
-        <div class="ml-auto flex items-center gap-2">
+        <div class="sm:ml-auto flex items-center gap-2 flex-wrap">
           <BaseBadge variant="success" dot pulse>{{ totalSessions }} Active</BaseBadge>
           <BaseBadge variant="info">{{ formatBytes(totalBandwidth) }}/s</BaseBadge>
           <BaseBadge variant="warning">{{ totalUsers }} Users</BaseBadge>
@@ -199,6 +199,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { 
   RefreshCw, Power, Eye, X, Activity
 } from 'lucide-vue-next'
+import axios from 'axios'
 import PageContainer from '@/modules/common/components/layout/templates/PageContainer.vue'
 import PageHeader from '@/modules/common/components/layout/templates/PageHeader.vue'
 import PageContent from '@/modules/common/components/layout/templates/PageContent.vue'
@@ -237,46 +238,17 @@ const filters = ref({
   duration: ''
 })
 
-const packages = ref([
-  { id: 1, name: '1 Hour - 5GB' },
-  { id: 2, name: '24 Hours - 20GB' },
-  { id: 3, name: '7 Days - 50GB' },
-  { id: 4, name: '30 Days - 100GB' }
-])
+const packages = ref([])
 
-// Mock data (replace with actual API call)
-const mockSessions = [
-  {
-    id: 1,
-    session_id: 'sess_1234567890',
-    username: 'user001',
-    user: { name: 'John Doe', phone: '+254712345678' },
-    ip_address: '10.0.0.101',
-    mac_address: '00:1A:2B:3C:4D:5E',
-    nas_ip: '192.168.1.1',
-    package: { name: '1 Hour - 5GB', speed: '10 Mbps' },
-    start_time: new Date(Date.now() - 1800000),
-    duration: 1800,
-    bytes_in: 524288000,
-    bytes_out: 104857600,
-    current_bandwidth: 2097152
-  },
-  {
-    id: 2,
-    session_id: 'sess_0987654321',
-    username: 'user002',
-    user: { name: 'Jane Smith', phone: '+254723456789' },
-    ip_address: '10.0.0.102',
-    mac_address: '00:1A:2B:3C:4D:5F',
-    nas_ip: '192.168.1.1',
-    package: { name: '24 Hours - 20GB', speed: '20 Mbps' },
-    start_time: new Date(Date.now() - 3600000),
-    duration: 3600,
-    bytes_in: 1073741824,
-    bytes_out: 209715200,
-    current_bandwidth: 4194304
+const fetchPackages = async () => {
+  try {
+    const response = await axios.get('/packages')
+    const data = Array.isArray(response.data) ? response.data : (response.data?.data || [])
+    packages.value = data.map(p => ({ id: p.id, name: p.name }))
+  } catch (err) {
+    console.warn('Failed to fetch packages for filter:', err.message)
   }
-]
+}
 
 // Computed
 const filteredData = computed(() => {
@@ -330,39 +302,50 @@ const totalBandwidth = computed(() => sessions.value.reduce((sum, s) => sum + (s
 
 // Methods
 const fetchSessions = async () => {
-  loading.value = true
-  error.value = null
+  const isInitial = sessions.value.length === 0
+  if (isInitial) {
+    loading.value = true
+    error.value = null
+  } else {
+    refreshing.value = true
+  }
   
   try {
-    // TODO: Replace with actual API call
-    // const response = await fetch('/api/hotspot/sessions')
-    // sessions.value = await response.json()
+    const response = await axios.get('/hotspot/sessions')
+    const data = response.data?.sessions || response.data?.data || []
     
-    // Mock delay
-    await new Promise(resolve => setTimeout(resolve, 500))
-    sessions.value = mockSessions
+    sessions.value = data.map(s => ({
+      id: s.id,
+      session_id: s.session_id || s.acct_session_id || `sess_${s.id}`,
+      username: s.username || s.user?.name || 'Unknown',
+      user: {
+        name: s.user?.name || s.username || 'Unknown',
+        phone: s.user?.phone_number || s.phone_number || ''
+      },
+      ip_address: s.framed_ip_address || s.ip_address || s.address || '',
+      mac_address: s.calling_station_id || s.mac_address || '',
+      nas_ip: s.nas_ip_address || s.nas_ip || '',
+      package: s.package ? { name: s.package.name, speed: s.package.download_speed || '' } : { name: 'N/A', speed: '' },
+      start_time: s.acct_start_time || s.started_at || s.created_at || new Date().toISOString(),
+      duration: s.session_time || s.duration || s.uptime_seconds || 0,
+      bytes_in: Number(s.acct_input_octets || s.bytes_in || 0),
+      bytes_out: Number(s.acct_output_octets || s.bytes_out || 0),
+      current_bandwidth: Number(s.current_bandwidth || 0),
+      _raw: s
+    }))
   } catch (err) {
-    error.value = 'Failed to load active sessions. Please try again.'
-    console.error('Error fetching sessions:', err)
+    if (isInitial) {
+      error.value = err.response?.data?.message || 'Failed to load active sessions.'
+    }
+    console.error('fetchSessions error:', err)
   } finally {
     loading.value = false
+    refreshing.value = false
   }
 }
 
 const refreshSessions = async () => {
-  refreshing.value = true
-  error.value = null
-  
-  try {
-    // TODO: Replace with actual API call
-    await new Promise(resolve => setTimeout(resolve, 500))
-    sessions.value = mockSessions
-  } catch (err) {
-    error.value = 'Failed to load active sessions. Please try again.'
-    console.error('Error fetching sessions:', err)
-  } finally {
-    refreshing.value = false
-  }
+  await fetchSessions()
 }
 
 const clearFilters = () => {
@@ -424,15 +407,13 @@ const disconnectSession = async (session) => {
   if (!confirm(`Disconnect ${session.user?.name || session.username}?`)) return
   
   try {
-    // TODO: Implement actual disconnect API call
-    console.log('Disconnecting session:', session.id)
-    await new Promise(resolve => setTimeout(resolve, 500))
-    
-    // Remove from list
+    const userId = session._raw?.user_id || session._raw?.id || session.id
+    await axios.post(`/hotspot/users/${userId}/disconnect`)
     sessions.value = sessions.value.filter(s => s.id !== session.id)
     showDetailsOverlay.value = false
   } catch (err) {
-    console.error('Error disconnecting session:', err)
+    console.error('Disconnect error:', err)
+    alert(err.response?.data?.message || 'Failed to disconnect session')
   }
 }
 
@@ -440,23 +421,28 @@ const disconnectAll = async () => {
   if (!confirm(`Disconnect all ${totalSessions.value} active sessions?`)) return
   
   try {
-    // TODO: Implement actual disconnect all API call
-    console.log('Disconnecting all sessions')
-    await new Promise(resolve => setTimeout(resolve, 500))
-    sessions.value = []
+    const promises = sessions.value.map(s => {
+      const userId = s._raw?.user_id || s._raw?.id || s.id
+      return axios.post(`/hotspot/users/${userId}/disconnect`).catch(() => null)
+    })
+    await Promise.allSettled(promises)
+    await fetchSessions()
   } catch (err) {
-    console.error('Error disconnecting all sessions:', err)
+    console.error('Disconnect all error:', err)
+    alert(err.response?.data?.message || 'Failed to disconnect all sessions')
   }
 }
 
 // Lifecycle
+let refreshInterval
+
 onMounted(() => {
+  fetchPackages()
   fetchSessions()
-  
-  // Set up real-time updates (every 5 seconds)
-  const interval = setInterval(refreshSessions, 5000)
-  
-  // Cleanup on unmount
-  onUnmounted(() => clearInterval(interval))
+  refreshInterval = setInterval(fetchSessions, 15000)
+})
+
+onUnmounted(() => {
+  if (refreshInterval) clearInterval(refreshInterval)
 })
 </script>

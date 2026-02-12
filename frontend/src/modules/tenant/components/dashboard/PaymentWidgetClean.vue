@@ -65,133 +65,121 @@
       </button>
     </div>
 
-    <!-- Sliding Overlay Panel -->
-    <Transition name="slide">
-      <div v-if="showDetails" class="overlay-panel" @click.self="closeDetails">
-        <div class="panel-content">
-          <!-- Panel Header -->
-          <div class="panel-header">
-            <div>
-              <h3 class="text-xl font-bold text-gray-900">{{ detailsTitle }}</h3>
-              <p class="text-sm text-gray-600 mt-1">{{ detailsSubtitle }}</p>
+    <!-- Payment Details Overlay -->
+    <SlideOverlay
+      v-model="showDetails"
+      :title="detailsTitle"
+      :subtitle="detailsSubtitle"
+      icon="CreditCard"
+      width="50%"
+      @close="closeDetails"
+    >
+      <!-- Daily Details -->
+      <div v-if="activePanel === 'daily'" class="details-content">
+        <div class="stat-card">
+          <div class="stat-label">Total Amount</div>
+          <div class="stat-value">{{ formatCurrency(paymentData.daily.amount) }}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Total Payments</div>
+          <div class="stat-value">{{ paymentData.daily.count }}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Date</div>
+          <div class="stat-value text-lg">{{ paymentData.daily.date }}</div>
+        </div>
+        
+        <div class="section-title">Payment Methods</div>
+        <div class="method-list">
+          <div class="method-item">
+            <div class="method-info">
+              <span class="method-name">M-Pesa</span>
+              <span class="method-count">45 transactions</span>
             </div>
-            <button @click="closeDetails" class="close-btn">
-              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
+            <span class="method-amount">{{ formatCurrency(paymentData.daily.amount * 0.6) }}</span>
           </div>
+          <div class="method-item">
+            <div class="method-info">
+              <span class="method-name">Cash</span>
+              <span class="method-count">12 transactions</span>
+            </div>
+            <span class="method-amount">{{ formatCurrency(paymentData.daily.amount * 0.3) }}</span>
+          </div>
+          <div class="method-item">
+            <div class="method-info">
+              <span class="method-name">Bank Transfer</span>
+              <span class="method-count">5 transactions</span>
+            </div>
+            <span class="method-amount">{{ formatCurrency(paymentData.daily.amount * 0.1) }}</span>
+          </div>
+        </div>
+      </div>
 
-          <!-- Panel Body -->
-          <div class="panel-body">
-            <!-- Daily Details -->
-            <div v-if="activePanel === 'daily'" class="details-content">
-              <div class="stat-card">
-                <div class="stat-label">Total Amount</div>
-                <div class="stat-value">{{ formatCurrency(paymentData.daily.amount) }}</div>
-              </div>
-              <div class="stat-card">
-                <div class="stat-label">Total Payments</div>
-                <div class="stat-value">{{ paymentData.daily.count }}</div>
-              </div>
-              <div class="stat-card">
-                <div class="stat-label">Date</div>
-                <div class="stat-value text-lg">{{ paymentData.daily.date }}</div>
-              </div>
-              
-              <div class="section-title">Payment Methods</div>
-              <div class="method-list">
-                <div class="method-item">
-                  <div class="method-info">
-                    <span class="method-name">M-Pesa</span>
-                    <span class="method-count">45 transactions</span>
-                  </div>
-                  <span class="method-amount">{{ formatCurrency(paymentData.daily.amount * 0.6) }}</span>
-                </div>
-                <div class="method-item">
-                  <div class="method-info">
-                    <span class="method-name">Cash</span>
-                    <span class="method-count">12 transactions</span>
-                  </div>
-                  <span class="method-amount">{{ formatCurrency(paymentData.daily.amount * 0.3) }}</span>
-                </div>
-                <div class="method-item">
-                  <div class="method-info">
-                    <span class="method-name">Bank Transfer</span>
-                    <span class="method-count">5 transactions</span>
-                  </div>
-                  <span class="method-amount">{{ formatCurrency(paymentData.daily.amount * 0.1) }}</span>
-                </div>
+      <!-- Weekly Details -->
+      <div v-if="activePanel === 'weekly'" class="details-content">
+        <div class="stat-card">
+          <div class="stat-label">Total Amount</div>
+          <div class="stat-value">{{ formatCurrency(paymentData.weekly.amount) }}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Total Payments</div>
+          <div class="stat-value">{{ paymentData.weekly.count }}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Average per Day</div>
+          <div class="stat-value">{{ formatCurrency(paymentData.weekly.amount / 7) }}</div>
+        </div>
+        
+        <div class="section-title">Daily Breakdown</div>
+        <div class="breakdown-chart">
+          <div v-for="day in paymentData.weekly.dailyBreakdown" :key="day.date" class="chart-bar">
+            <div class="bar-container">
+              <div class="bar-fill" :style="{ height: day.percentage + '%' }">
+                <div class="bar-tooltip">{{ formatCurrency(day.amount) }}</div>
               </div>
             </div>
+            <div class="bar-label">{{ day.day }}</div>
+            <div class="bar-value">{{ formatCurrency(day.amount) }}</div>
+          </div>
+        </div>
+      </div>
 
-            <!-- Weekly Details -->
-            <div v-if="activePanel === 'weekly'" class="details-content">
-              <div class="stat-card">
-                <div class="stat-label">Total Amount</div>
-                <div class="stat-value">{{ formatCurrency(paymentData.weekly.amount) }}</div>
-              </div>
-              <div class="stat-card">
-                <div class="stat-label">Total Payments</div>
-                <div class="stat-value">{{ paymentData.weekly.count }}</div>
-              </div>
-              <div class="stat-card">
-                <div class="stat-label">Average per Day</div>
-                <div class="stat-value">{{ formatCurrency(paymentData.weekly.amount / 7) }}</div>
-              </div>
-              
-              <div class="section-title">Daily Breakdown</div>
-              <div class="breakdown-chart">
-                <div v-for="day in paymentData.weekly.dailyBreakdown" :key="day.date" class="chart-bar">
-                  <div class="bar-container">
-                    <div class="bar-fill" :style="{ height: day.percentage + '%' }">
-                      <div class="bar-tooltip">{{ formatCurrency(day.amount) }}</div>
-                    </div>
-                  </div>
-                  <div class="bar-label">{{ day.day }}</div>
-                  <div class="bar-value">{{ formatCurrency(day.amount) }}</div>
-                </div>
-              </div>
+      <!-- Monthly Details -->
+      <div v-if="activePanel === 'monthly'" class="details-content">
+        <div class="stat-card">
+          <div class="stat-label">Total Amount</div>
+          <div class="stat-value">{{ formatCurrency(paymentData.monthly.amount) }}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Total Payments</div>
+          <div class="stat-value">{{ paymentData.monthly.count }}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Period</div>
+          <div class="stat-value text-lg">{{ paymentData.monthly.month }} {{ paymentData.monthly.year }}</div>
+        </div>
+        
+        <div class="section-title">Weekly Breakdown</div>
+        <div class="week-breakdown">
+          <div v-for="week in paymentData.monthly.weeklyBreakdown" :key="week.week" class="week-card">
+            <div class="week-header">
+              <span class="week-label">Week {{ week.week }}</span>
+              <span class="week-amount">{{ formatCurrency(week.amount) }}</span>
             </div>
-
-            <!-- Monthly Details -->
-            <div v-if="activePanel === 'monthly'" class="details-content">
-              <div class="stat-card">
-                <div class="stat-label">Total Amount</div>
-                <div class="stat-value">{{ formatCurrency(paymentData.monthly.amount) }}</div>
-              </div>
-              <div class="stat-card">
-                <div class="stat-label">Total Payments</div>
-                <div class="stat-value">{{ paymentData.monthly.count }}</div>
-              </div>
-              <div class="stat-card">
-                <div class="stat-label">Period</div>
-                <div class="stat-value text-lg">{{ paymentData.monthly.month }} {{ paymentData.monthly.year }}</div>
-              </div>
-              
-              <div class="section-title">Weekly Breakdown</div>
-              <div class="week-breakdown">
-                <div v-for="week in paymentData.monthly.weeklyBreakdown" :key="week.week" class="week-card">
-                  <div class="week-header">
-                    <span class="week-label">Week {{ week.week }}</span>
-                    <span class="week-amount">{{ formatCurrency(week.amount) }}</span>
-                  </div>
-                  <div class="week-dates">{{ week.startDate }} - {{ week.endDate }}</div>
-                  <div class="week-progress">
-                    <div class="progress-bar" :style="{ width: week.percentage + '%' }"></div>
-                  </div>
-                </div>
-              </div>
+            <div class="week-dates">{{ week.startDate }} - {{ week.endDate }}</div>
+            <div class="week-progress">
+              <div class="progress-bar" :style="{ width: week.percentage + '%' }"></div>
             </div>
           </div>
         </div>
       </div>
-    </Transition>
+    </SlideOverlay>
   </div>
 </template>
 
 <script setup>
 import { ref, computed } from 'vue'
+import SlideOverlay from '@/modules/common/components/base/SlideOverlay.vue'
 
 const props = defineProps({
   paymentData: {
@@ -229,12 +217,10 @@ const detailsSubtitle = computed(() => {
 const openDetails = (panel) => {
   activePanel.value = panel
   showDetails.value = true
-  document.body.style.overflow = 'hidden'
 }
 
 const closeDetails = () => {
   showDetails.value = false
-  document.body.style.overflow = ''
 }
 
 const formatCurrency = (value) => {
@@ -361,56 +347,6 @@ const formatCurrency = (value) => {
   font-size: 13px;
   color: #6b7280;
   margin: 0;
-}
-
-/* Overlay Panel Styles */
-.overlay-panel {
-  position: fixed;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  background: rgba(0, 0, 0, 0.5);
-  z-index: 1000;
-  display: flex;
-  justify-content: flex-end;
-}
-
-.panel-content {
-  width: 50%;
-  max-width: 800px;
-  background: white;
-  height: 100%;
-  overflow-y: auto;
-  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.2);
-}
-
-.panel-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: start;
-  padding: 24px;
-  border-bottom: 1px solid #e5e7eb;
-  position: sticky;
-  top: 0;
-  background: white;
-  z-index: 10;
-}
-
-.close-btn {
-  padding: 8px;
-  border-radius: 8px;
-  transition: all 0.2s;
-  color: #6b7280;
-}
-
-.close-btn:hover {
-  background: #f3f4f6;
-  color: #111827;
-}
-
-.panel-body {
-  padding: 24px;
 }
 
 .details-content {
@@ -614,46 +550,9 @@ const formatCurrency = (value) => {
   transition: width 0.5s ease;
 }
 
-/* Slide Animation */
-.slide-enter-active,
-.slide-leave-active {
-  transition: all 0.3s ease;
-}
-
-.slide-enter-from {
-  opacity: 0;
-}
-
-.slide-leave-to {
-  opacity: 0;
-}
-
-.slide-enter-active .panel-content,
-.slide-leave-active .panel-content {
-  transition: transform 0.3s ease;
-}
-
-.slide-enter-from .panel-content {
-  transform: translateX(100%);
-}
-
-.slide-leave-to .panel-content {
-  transform: translateX(100%);
-}
-
-@media (max-width: 1024px) {
-  .panel-content {
-    width: 70%;
-  }
-}
-
 @media (max-width: 768px) {
   .cards-grid {
     grid-template-columns: 1fr;
-  }
-  
-  .panel-content {
-    width: 100%;
   }
 }
 </style>

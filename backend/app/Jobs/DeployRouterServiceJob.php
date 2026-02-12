@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Models\Tenant;
 use App\Models\RouterService;
 use App\Services\MikroTik\ZeroConfigHotspotGenerator;
 use App\Services\MikroTik\ZeroConfigPPPoEGenerator;
@@ -14,6 +15,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class DeployRouterServiceJob implements ShouldQueue
@@ -22,9 +24,10 @@ class DeployRouterServiceJob implements ShouldQueue
 
     protected string $serviceId;
 
-    public $tries = 3;
+    public $tries = 0; // Disabled — using retryUntil() instead
     public $timeout = 300;
     public $backoff = [15, 30, 60];
+    public $maxExceptions = 3; // Fail permanently after 3 real exceptions (not lock releases)
 
     public function __construct(string $serviceId, string $tenantId)
     {
@@ -32,6 +35,15 @@ class DeployRouterServiceJob implements ShouldQueue
         $this->tenantId = $tenantId;
 
         $this->onQueue('router-provisioning');
+    }
+
+    /**
+     * Determine the time at which the job should timeout.
+     * Using time-based retry so release() for lock contention doesn't burn attempts.
+     */
+    public function retryUntil(): \DateTime
+    {
+        return now()->addMinutes(15);
     }
 
     public function handle(): void
@@ -64,13 +76,18 @@ class DeployRouterServiceJob implements ShouldQueue
                 return;
             }
 
-            // Idempotency lock - prevent concurrent deployments of same service
-            $lock = Cache::lock('deploy_service_' . $this->serviceId, 300);
+            // Idempotency lock - prevent concurrent deployments on same router
+            // Uses router_id (not service_id) because multiple services share the same SSH connection
+            $lockKey = 'deploy_router_' . $service->router_id;
+            $lock = Cache::lock($lockKey, 300);
             if (!$lock->get()) {
-                Log::warning('DeployRouterServiceJob: Deployment already in progress (lock held)', [
+                Log::warning('DeployRouterServiceJob: Deployment already in progress on this router (lock held)', [
                     'service_id' => $this->serviceId,
+                    'router_id' => $service->router_id,
+                    'attempt' => $this->attempts(),
                 ]);
-                $this->release(15);
+                // Release back to queue — does NOT count toward maxExceptions
+                $this->release(30);
                 return;
             }
 
@@ -98,6 +115,7 @@ class DeployRouterServiceJob implements ShouldQueue
                 $result = $provisioningService->applyConfigs($service->router, $config, false);
 
                 if ($result['success']) {
+                    $this->ensureTenantSearchPath();
                     $service->update([
                         'deployment_status' => RouterService::DEPLOYMENT_DEPLOYED,
                         'status' => RouterService::STATUS_ACTIVE,
@@ -123,6 +141,7 @@ class DeployRouterServiceJob implements ShouldQueue
                         'error' => $e->getMessage(),
                     ]);
 
+                    $this->ensureTenantSearchPath();
                     $service->update([
                         'deployment_status' => RouterService::DEPLOYMENT_PENDING,
                         'status' => RouterService::STATUS_INACTIVE,
@@ -139,6 +158,7 @@ class DeployRouterServiceJob implements ShouldQueue
                     'attempt' => $this->attempts(),
                 ]);
 
+                $this->ensureTenantSearchPath();
                 $service->update([
                     'deployment_status' => RouterService::DEPLOYMENT_FAILED,
                     'status' => RouterService::STATUS_INACTIVE,
@@ -310,5 +330,20 @@ class DeployRouterServiceJob implements ShouldQueue
         if (!empty($trimmed) && preg_match('/^[a-zA-Z0-9_\-\.]+$/', $trimmed)) {
             $interfaces[] = $trimmed;
         }
+    }
+
+    private function ensureTenantSearchPath(): void
+    {
+        if (!$this->tenantId) {
+            return;
+        }
+
+        $tenant = Tenant::find($this->tenantId);
+
+        if (!$tenant || !$tenant->schema_created || empty($tenant->schema_name)) {
+            return;
+        }
+
+        DB::statement("SET search_path TO {$tenant->schema_name}, public");
     }
 }

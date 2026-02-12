@@ -11,17 +11,17 @@ use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
-use Illuminate\Queue\SerializesModels;
 
 class PaymentProcessed implements ShouldBroadcast
 {
-    use Dispatchable, InteractsWithSockets, SerializesModels;
+    use Dispatchable, InteractsWithSockets;
     use BroadcastsToTenant;
 
-    public $payment;
-    public $user;
-    public $subscription;
-    public $credentials;
+    public array $paymentData;
+    public array $userData;
+    public array $subscriptionData;
+    public array $credentials;
+    public ?string $tenantId;
 
     /**
      * Create a new event instance.
@@ -32,10 +32,30 @@ class PaymentProcessed implements ShouldBroadcast
         UserSubscription $subscription,
         array $credentials
     ) {
-        $this->payment = $payment;
-        $this->user = $user;
-        $this->subscription = $subscription;
+        // Extract data instead of serializing models
+        // Payment and UserSubscription are tenant-scoped
+        $this->paymentData = [
+            'id' => $payment->id,
+            'amount' => $payment->amount,
+            'phone_number' => $payment->phone_number,
+            'transaction_id' => $payment->transaction_id,
+            'package_name' => $payment->package?->name,
+        ];
+        $this->userData = [
+            'id' => $user->id,
+            'username' => $user->username,
+            'phone_number' => $user->phone_number,
+            'is_new' => $user->wasRecentlyCreated,
+            'tenant_id' => $user->tenant_id,
+        ];
+        $this->subscriptionData = [
+            'id' => $subscription->id,
+            'start_time' => $subscription->start_time?->toIso8601String(),
+            'end_time' => $subscription->end_time?->toIso8601String(),
+            'status' => $subscription->status,
+        ];
         $this->credentials = $credentials;
+        $this->tenantId = $user->tenant_id;
     }
 
     /**
@@ -58,27 +78,27 @@ class PaymentProcessed implements ShouldBroadcast
         return [
             'type' => 'payment_processed',
             'payment' => [
-                'id' => $this->payment->id,
-                'amount' => $this->payment->amount,
-                'phone_number' => $this->maskPhoneNumber($this->payment->phone_number),
-                'transaction_id' => substr($this->payment->transaction_id, 0, 8) . '...',
-                'package' => $this->payment->package->name,
+                'id' => $this->paymentData['id'],
+                'amount' => $this->paymentData['amount'],
+                'phone_number' => $this->maskPhoneNumber($this->paymentData['phone_number'] ?? ''),
+                'transaction_id' => substr($this->paymentData['transaction_id'] ?? '', 0, 8) . '...',
+                'package' => $this->paymentData['package_name'],
             ],
             'user' => [
-                'id' => $this->user->id,
-                'username' => $this->user->username,
-                'phone_number' => $this->maskPhoneNumber($this->user->phone_number ?? ''),
-                'is_new' => $this->user->wasRecentlyCreated,
+                'id' => $this->userData['id'],
+                'username' => $this->userData['username'],
+                'phone_number' => $this->maskPhoneNumber($this->userData['phone_number'] ?? ''),
+                'is_new' => $this->userData['is_new'],
             ],
-            'subscription' => [
-                'id' => $this->subscription->id,
-                'start_time' => $this->subscription->start_time->toIso8601String(),
-                'end_time' => $this->subscription->end_time->toIso8601String(),
-                'status' => $this->subscription->status,
-            ],
+            'subscription' => $this->subscriptionData,
             // Credentials NOT broadcast for security
             'timestamp' => now()->toIso8601String(),
         ];
+    }
+
+    protected function getTenantId(): string
+    {
+        return (string) $this->tenantId;
     }
 
     /**

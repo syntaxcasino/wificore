@@ -10,21 +10,14 @@ return new class extends Migration
      */
     public function up(): void
     {
-        // Enable SNMPv3 on all existing routers that don't have it explicitly configured
-        // Generate secure credentials for each router
-        $defaultUser = env('TELEGRAF_SNMPV3_USER', 'snmpmonitor');
-        $defaultAuthPassword = env('TELEGRAF_SNMPV3_AUTH_PASSWORD', bin2hex(random_bytes(16)));
-        $defaultPrivPassword = env('TELEGRAF_SNMPV3_PRIV_PASSWORD', bin2hex(random_bytes(16)));
-        
+        // Enable SNMPv2c on all existing routers that don't have SNMP enabled.
+        // Uses v2c with community 'public' as the safe default — no encrypted
+        // columns are touched, avoiding plaintext-in-encrypted-column bugs.
         DB::statement("
             UPDATE routers 
             SET snmp_enabled = true, 
-                snmp_version = 'v3',
-                snmp_v3_user = '{$defaultUser}',
-                snmp_v3_auth_protocol = 'SHA256',
-                snmp_v3_auth_password = '{$defaultAuthPassword}',
-                snmp_v3_priv_protocol = 'AES',
-                snmp_v3_priv_password = '{$defaultPrivPassword}'
+                snmp_version = '2c',
+                snmp_community = COALESCE(NULLIF(snmp_community, ''), 'public')
             WHERE snmp_enabled IS NULL 
                OR snmp_enabled = false
         ");

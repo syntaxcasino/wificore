@@ -8,22 +8,31 @@ use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
-use Illuminate\Queue\SerializesModels;
 
 class TenantCreated implements ShouldBroadcast
 {
-    use Dispatchable, InteractsWithSockets, SerializesModels;
+    use Dispatchable, InteractsWithSockets;
 
-    public Tenant $tenant;
-    public User $adminUser;
+    public array $tenantData;
+    public array $adminData;
 
     /**
      * Create a new event instance.
      */
     public function __construct(Tenant $tenant, User $adminUser)
     {
-        $this->tenant = $tenant;
-        $this->adminUser = $adminUser;
+        $this->tenantData = [
+            'id' => $tenant->id,
+            'name' => $tenant->name,
+            'slug' => $tenant->slug,
+            'email' => $tenant->email,
+            'trial_ends_at' => $tenant->trial_ends_at?->toIso8601String(),
+        ];
+        $this->adminData = [
+            'id' => $adminUser->id,
+            'name' => $adminUser->name,
+            'email' => $adminUser->email,
+        ];
     }
 
     /**
@@ -51,18 +60,8 @@ class TenantCreated implements ShouldBroadcast
     public function broadcastWith(): array
     {
         return [
-            'tenant' => [
-                'id' => $this->tenant->id,
-                'name' => $this->tenant->name,
-                'slug' => $this->tenant->slug,
-                'email' => $this->tenant->email,
-                'trial_ends_at' => $this->tenant->trial_ends_at?->toIso8601String(),
-            ],
-            'admin' => [
-                'id' => $this->adminUser->id,
-                'name' => $this->adminUser->name,
-                'email' => $this->adminUser->email,
-            ],
+            'tenant' => $this->tenantData,
+            'admin' => $this->adminData,
             'message' => 'New tenant registered',
             'timestamp' => now()->toIso8601String(),
         ];
