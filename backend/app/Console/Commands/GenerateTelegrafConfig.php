@@ -69,7 +69,7 @@ class GenerateTelegrafConfig extends Command
 
             // Write directly to VictoriaMetrics — bypass Nginx to avoid circular dependency
             // Note: Telegraf's InfluxDB output plugin automatically appends /write to this URL
-            $vmWriteUrl = (string) config('victoriametrics.write_url', 'http://wificore-victoriametrics:8428/api/v1');
+            $vmWriteUrl = (string) config('victoriametrics.write_url', 'http://wificore-victoriametrics:8428');
 
             $lines[] = '[agent]';
             $lines[] = "interval = \"{$fastInterval}\"";

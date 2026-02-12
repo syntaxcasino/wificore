@@ -27,7 +27,7 @@ omit_hostname = true
 interval = "${TELEGRAF_SLOW_INTERVAL:-30s}"
 
 [[outputs.influxdb]]
-urls = ["${VICTORIA_METRICS_WRITE_URL:-http://wificore-victoriametrics:8428}/api/v1"]
+urls = ["${VICTORIA_METRICS_WRITE_URL:-http://wificore-victoriametrics:8428}"]
 database = "telegraf"
 skip_database_creation = true
 timeout = "5s"
