@@ -325,7 +325,6 @@ class GenerateTelegrafConfig extends Command
             $lines[] = 'database = "telegraf"';
             $lines[] = 'skip_database_creation = true';
             $lines[] = 'timeout = "5s"';
-            $lines[] = 'content_encoding = "gzip"';
             $lines[] = '';
 
             $path = rtrim($outputDir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $currentShardIndex . '.conf';

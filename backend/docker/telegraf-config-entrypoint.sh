@@ -31,7 +31,6 @@ urls = ["${VICTORIA_METRICS_WRITE_URL:-http://wificore-victoriametrics:8428}/api
 database = "telegraf"
 skip_database_creation = true
 timeout = "5s"
-content_encoding = "gzip"
 EOF
 fi
 
