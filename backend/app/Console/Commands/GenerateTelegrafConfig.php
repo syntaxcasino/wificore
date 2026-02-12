@@ -172,20 +172,24 @@ class GenerateTelegrafConfig extends Command
                         $lines[] = 'oid = "1.3.6.1.2.1.1.3.0"';
                         $lines[] = '';
 
-                        $lines[] = '[[inputs.snmp.field]]';
-                        $lines[] = 'name = "cpu_load"';
-                        $lines[] = 'oid = "1.3.6.1.4.1.14988.1.1.3.10.0"';
+                        // CPU load from HOST-RESOURCES-MIB (works on CHR)
+                        $lines[] = '[[inputs.snmp.table]]';
+                        $lines[] = 'name = "cpu"';
+                        $lines[] = 'inherit_tags = ["tenant_id", "router_id", "device_type"]';
+                        $lines[] = '';
+                        $lines[] = '[[inputs.snmp.table.field]]';
+                        $lines[] = 'name = "hrProcessorLoad"';
+                        $lines[] = 'oid = "1.3.6.1.2.1.25.3.3.1.2"';
                         $lines[] = '';
 
+                        // Physical memory from HOST-RESOURCES-MIB (in KB)
                         $lines[] = '[[inputs.snmp.field]]';
                         $lines[] = 'name = "total_memory"';
-                        $lines[] = 'oid = "1.3.6.1.4.1.14988.1.1.3.7.0"';
+                        $lines[] = 'oid = "1.3.6.1.2.1.25.2.2.0"';
                         $lines[] = '';
 
-                        $lines[] = '[[inputs.snmp.field]]';
-                        $lines[] = 'name = "free_memory"';
-                        $lines[] = 'oid = "1.3.6.1.4.1.14988.1.1.3.8.0"';
-                        $lines[] = '';
+                        // Memory will be calculated from hrStorage table in Block 2
+                        // (free_memory removed as it's not directly available in HOST-RESOURCES-MIB)
 
                         // Temperature (MikroTik specific)
                         $lines[] = '[[inputs.snmp.field]]';
