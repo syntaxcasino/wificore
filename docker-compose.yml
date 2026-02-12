@@ -641,7 +641,6 @@ services:
     command:
       - '-storageDataPath=/victoria-metrics-data'
       - '-retentionPeriod=12'
-      - '-influxListenAddr=:8428'
     networks:
       wificore-network:
         ipv4_address: 172.70.0.21
