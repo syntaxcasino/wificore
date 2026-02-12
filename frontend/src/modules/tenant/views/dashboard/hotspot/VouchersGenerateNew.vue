@@ -1,118 +1,143 @@
 <template>
-  <div class="space-y-6">
+  <div class="flex flex-col h-full bg-gradient-to-br from-slate-50 via-gray-50 to-blue-50/30 rounded-lg shadow-lg overflow-hidden">
     <!-- Header -->
-    <div class="flex items-center justify-between">
-      <div>
-        <h1 class="text-2xl font-bold text-gray-900">Create Voucher</h1>
-        <p class="text-sm text-gray-500 mt-1">Generate and manage hotspot vouchers</p>
-      </div>
-      <div class="flex items-center gap-2">
-        <button @click="fetchVouchers" :disabled="loading" class="inline-flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50">
-          <RefreshCw class="w-4 h-4" :class="loading ? 'animate-spin' : ''" />
-          Refresh
-        </button>
-        <button @click="openCreateOverlay" class="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors">
-          <Plus class="w-4 h-4" />
-          Create Voucher
-        </button>
-      </div>
-    </div>
-
-    <!-- Stats Summary -->
-    <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
-      <div class="bg-white rounded-xl border border-gray-200 p-4 text-center">
-        <div class="text-2xl font-bold text-gray-900">{{ stats.total || 0 }}</div>
-        <div class="text-xs text-gray-500 mt-1">Total</div>
-      </div>
-      <div class="bg-white rounded-xl border border-gray-200 p-4 text-center">
-        <div class="text-2xl font-bold text-green-600">{{ stats.unused || 0 }}</div>
-        <div class="text-xs text-gray-500 mt-1">Unused</div>
-      </div>
-      <div class="bg-white rounded-xl border border-gray-200 p-4 text-center">
-        <div class="text-2xl font-bold text-blue-600">{{ stats.used || 0 }}</div>
-        <div class="text-xs text-gray-500 mt-1">Used</div>
-      </div>
-      <div class="bg-white rounded-xl border border-gray-200 p-4 text-center">
-        <div class="text-2xl font-bold text-yellow-600">{{ stats.expired || 0 }}</div>
-        <div class="text-xs text-gray-500 mt-1">Expired</div>
-      </div>
-      <div class="bg-white rounded-xl border border-gray-200 p-4 text-center">
-        <div class="text-2xl font-bold text-red-600">{{ stats.revoked || 0 }}</div>
-        <div class="text-xs text-gray-500 mt-1">Revoked</div>
+    <div class="flex-shrink-0 bg-white border-b border-slate-200 shadow-sm">
+      <div class="px-4 md:px-6 py-3 md:py-5">
+        <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 md:gap-6">
+          <!-- Left: Title & Icon -->
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 md:w-11 md:h-11 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg">
+              <Ticket class="h-5 w-5 md:h-6 md:w-6 text-white" />
+            </div>
+            <div>
+              <h2 class="text-lg md:text-xl font-bold text-slate-900">Create Voucher</h2>
+              <p class="text-xs text-slate-500 mt-0.5 hidden md:block">Generate and manage hotspot vouchers</p>
+            </div>
+          </div>
+          
+          <!-- Right: Actions -->
+          <div class="flex items-center gap-2 md:gap-3">
+            <button @click="fetchVouchers" :disabled="loading" class="inline-flex items-center gap-1.5 px-2 md:px-3 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 hover:border-slate-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all">
+              <RefreshCw class="w-4 h-4" :class="loading ? 'animate-spin' : ''" />
+              <span class="hidden md:inline">Refresh</span>
+            </button>
+            <button @click="openCreateOverlay" class="inline-flex items-center gap-1.5 px-3 md:px-4 py-2 text-xs font-semibold text-white bg-gradient-to-r from-blue-600 to-indigo-600 rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all shadow-md hover:shadow-lg">
+              <Plus class="w-4 h-4" />
+              <span class="hidden sm:inline">Create Voucher</span>
+              <span class="sm:hidden">Create</span>
+            </button>
+          </div>
+        </div>
       </div>
     </div>
 
-    <!-- Filters -->
-    <div class="bg-white rounded-xl border border-gray-200 p-4">
-      <div class="flex flex-wrap items-center gap-3">
-        <input v-model="searchQuery" type="text" placeholder="Search by code..." class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-64" @input="debouncedFetch" />
-        <select v-model="filterStatus" class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" @change="fetchVouchers">
-          <option value="">All Statuses</option>
-          <option value="unused">Unused</option>
-          <option value="used">Used</option>
-          <option value="expired">Expired</option>
-          <option value="revoked">Revoked</option>
-        </select>
-        <select v-model="filterPackage" class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" @change="fetchVouchers">
-          <option value="">All Packages</option>
-          <option v-for="pkg in packages" :key="pkg.id" :value="pkg.id">{{ pkg.name }}</option>
-        </select>
-      </div>
-    </div>
+    <!-- Main Content Area - Scrollable -->
+    <div class="flex-1 min-h-0 overflow-y-auto">
+      <div class="p-4 md:p-6 space-y-4">
+        <!-- Stats Summary -->
+        <div class="grid grid-cols-2 md:grid-cols-5 gap-3 md:gap-4">
+          <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-3 md:p-4 text-center">
+            <div class="text-xl md:text-2xl font-bold text-slate-900">{{ stats.total || 0 }}</div>
+            <div class="text-xs text-slate-500 mt-1">Total</div>
+          </div>
+          <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-3 md:p-4 text-center">
+            <div class="text-xl md:text-2xl font-bold text-green-600">{{ stats.unused || 0 }}</div>
+            <div class="text-xs text-slate-500 mt-1">Unused</div>
+          </div>
+          <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-3 md:p-4 text-center">
+            <div class="text-xl md:text-2xl font-bold text-blue-600">{{ stats.used || 0 }}</div>
+            <div class="text-xs text-slate-500 mt-1">Used</div>
+          </div>
+          <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-3 md:p-4 text-center">
+            <div class="text-xl md:text-2xl font-bold text-yellow-600">{{ stats.expired || 0 }}</div>
+            <div class="text-xs text-slate-500 mt-1">Expired</div>
+          </div>
+          <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-3 md:p-4 text-center">
+            <div class="text-xl md:text-2xl font-bold text-red-600">{{ stats.revoked || 0 }}</div>
+            <div class="text-xs text-slate-500 mt-1">Revoked</div>
+          </div>
+        </div>
 
-    <!-- Loading -->
-    <div v-if="loading && !vouchers.length" class="bg-white rounded-xl border border-gray-200 p-8 text-center text-gray-500">
-      <div class="animate-spin w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full mx-auto mb-3"></div>
-      Loading vouchers...
-    </div>
+        <!-- Filters -->
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-3 md:p-4">
+          <div class="flex flex-wrap items-center gap-2 md:gap-3">
+            <input v-model="searchQuery" type="text" placeholder="Search by code..." class="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-full md:w-64" @input="debouncedFetch" />
+            <select v-model="filterStatus" class="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 flex-1 md:flex-initial" @change="fetchVouchers">
+              <option value="">All Statuses</option>
+              <option value="unused">Unused</option>
+              <option value="used">Used</option>
+              <option value="expired">Expired</option>
+              <option value="revoked">Revoked</option>
+            </select>
+            <select v-model="filterPackage" class="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 flex-1 md:flex-initial" @change="fetchVouchers">
+              <option value="">All Packages</option>
+              <option v-for="pkg in packages" :key="pkg.id" :value="pkg.id">{{ pkg.name }}</option>
+            </select>
+          </div>
+        </div>
 
-    <!-- Error -->
-    <div v-else-if="error" class="bg-white rounded-xl border border-gray-200 p-8 text-center text-red-500">
-      {{ error }}
-      <button @click="fetchVouchers" class="block mx-auto mt-2 text-blue-600 hover:underline text-sm">Retry</button>
-    </div>
+        <!-- Loading -->
+        <div v-if="loading && !vouchers.length" class="bg-white rounded-xl border border-slate-200 shadow-sm p-8 text-center text-slate-500">
+          <div class="animate-spin w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full mx-auto mb-3"></div>
+          Loading vouchers...
+        </div>
 
-    <!-- Vouchers Table -->
-    <div v-else class="bg-white rounded-xl border border-gray-200 overflow-hidden">
-      <table class="w-full">
-        <thead class="bg-gray-50 border-b border-gray-200">
-          <tr>
-            <th class="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">Code</th>
-            <th class="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">Package</th>
-            <th class="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">Status</th>
-            <th class="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">Expires</th>
-            <th class="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">Created</th>
-            <th class="text-right px-6 py-3 text-xs font-medium text-gray-500 uppercase">Actions</th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-gray-100">
-          <tr v-for="voucher in vouchers" :key="voucher.id" class="hover:bg-gray-50 transition-colors cursor-pointer" @click="openDetailOverlay(voucher)">
-            <td class="px-6 py-4 text-sm font-mono font-semibold text-blue-700">{{ voucher.code }}</td>
-            <td class="px-6 py-4 text-sm text-gray-900">{{ voucher.package?.name || '-' }}</td>
-            <td class="px-6 py-4">
-              <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium" :class="statusClass(voucher.status)">{{ voucher.status }}</span>
-            </td>
-            <td class="px-6 py-4 text-xs text-gray-500">{{ voucher.expires_at ? formatDate(voucher.expires_at) : 'No expiry' }}</td>
-            <td class="px-6 py-4 text-xs text-gray-500">{{ formatDate(voucher.created_at) }}</td>
-            <td class="px-6 py-4 text-right">
-              <div class="flex items-center justify-end gap-1">
-                <button @click.stop="openDetailOverlay(voucher)" class="p-1.5 text-blue-500 hover:bg-blue-50 rounded-md transition-colors"><Eye class="w-4 h-4" /></button>
-                <button v-if="voucher.status === 'unused'" @click.stop="revokeVoucher(voucher)" class="p-1.5 text-red-500 hover:bg-red-50 rounded-md transition-colors"><Ban class="w-4 h-4" /></button>
-              </div>
-            </td>
-          </tr>
-          <tr v-if="!vouchers.length">
-            <td colspan="6" class="px-6 py-8 text-center text-gray-400 text-sm">No vouchers found. Click "Create Voucher" to generate some.</td>
-          </tr>
-        </tbody>
-      </table>
+        <!-- Error -->
+        <div v-else-if="error" class="bg-white rounded-xl border border-slate-200 shadow-sm p-8 text-center text-red-500">
+          {{ error }}
+          <button @click="fetchVouchers" class="block mx-auto mt-2 text-blue-600 hover:underline text-sm">Retry</button>
+        </div>
 
-      <!-- Pagination -->
-      <div v-if="pagination.lastPage > 1" class="flex items-center justify-between px-6 py-3 border-t border-gray-200 bg-gray-50">
-        <span class="text-xs text-gray-500">Showing {{ pagination.from }}-{{ pagination.to }} of {{ pagination.total }}</span>
-        <div class="flex items-center gap-1">
-          <button @click="goToPage(pagination.currentPage - 1)" :disabled="pagination.currentPage <= 1" class="px-3 py-1 text-xs rounded border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed">Prev</button>
-          <button @click="goToPage(pagination.currentPage + 1)" :disabled="pagination.currentPage >= pagination.lastPage" class="px-3 py-1 text-xs rounded border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed">Next</button>
+        <!-- Vouchers Table -->
+        <div v-else class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="w-full">
+              <thead class="bg-slate-50 border-b border-slate-200 sticky top-0 z-[5]">
+                <tr>
+                  <th class="text-left px-6 py-3 text-xs font-semibold text-slate-700 uppercase tracking-wider">Code</th>
+                  <th class="text-left px-6 py-3 text-xs font-semibold text-slate-700 uppercase tracking-wider hidden md:table-cell">Package</th>
+                  <th class="text-left px-6 py-3 text-xs font-semibold text-slate-700 uppercase tracking-wider">Status</th>
+                  <th class="text-left px-6 py-3 text-xs font-semibold text-slate-700 uppercase tracking-wider hidden lg:table-cell">Expires</th>
+                  <th class="text-left px-6 py-3 text-xs font-semibold text-slate-700 uppercase tracking-wider hidden lg:table-cell">Created</th>
+                  <th class="text-right px-6 py-3 text-xs font-semibold text-slate-700 uppercase tracking-wider">Actions</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100">
+                <tr v-for="voucher in vouchers" :key="voucher.id" class="hover:bg-blue-50/50 transition-colors cursor-pointer group" @click="openDetailOverlay(voucher)">
+                  <td class="px-6 py-4 text-sm font-mono font-semibold text-blue-700">{{ voucher.code }}</td>
+                  <td class="px-6 py-4 text-sm text-slate-900 hidden md:table-cell">{{ voucher.package?.name || '-' }}</td>
+                  <td class="px-6 py-4">
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium capitalize" :class="statusClass(voucher.status)">{{ voucher.status }}</span>
+                  </td>
+                  <td class="px-6 py-4 text-xs text-slate-500 hidden lg:table-cell">{{ voucher.expires_at ? formatDate(voucher.expires_at) : 'No expiry' }}</td>
+                  <td class="px-6 py-4 text-xs text-slate-500 hidden lg:table-cell">{{ formatDate(voucher.created_at) }}</td>
+                  <td class="px-6 py-4 text-right" @click.stop>
+                    <div class="flex items-center justify-end gap-1 relative">
+                      <button @click.stop="openDetailOverlay(voucher)" class="p-1.5 text-blue-500 hover:bg-blue-50 rounded-md transition-colors" title="View Details">
+                        <Eye class="w-4 h-4" />
+                      </button>
+                      <button v-if="voucher.status === 'unused'" @click.stop="revokeVoucher(voucher)" class="p-1.5 text-red-500 hover:bg-red-50 rounded-md transition-colors" title="Revoke Voucher">
+                        <Ban class="w-4 h-4" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+                <tr v-if="!vouchers.length">
+                  <td colspan="6" class="px-6 py-8 text-center text-slate-400 text-sm">No vouchers found. Click "Create Voucher" to generate some.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Pagination -->
+          <div v-if="pagination.lastPage > 1" class="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 md:px-6 py-3 border-t border-slate-200 bg-slate-50">
+            <span class="text-xs text-slate-600">Showing {{ pagination.from }}-{{ pagination.to }} of {{ pagination.total }}</span>
+            <div class="flex items-center gap-1">
+              <button @click="goToPage(pagination.currentPage - 1)" :disabled="pagination.currentPage <= 1" class="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-300 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">Prev</button>
+              <span class="px-2 text-xs text-slate-600">Page {{ pagination.currentPage }} of {{ pagination.lastPage }}</span>
+              <button @click="goToPage(pagination.currentPage + 1)" :disabled="pagination.currentPage >= pagination.lastPage" class="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-300 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">Next</button>
+            </div>
+          </div>
         </div>
       </div>
     </div>

@@ -78,20 +78,12 @@
             </router-link>
             <router-link
               to="/dashboard/hotspot/sessions"
-              class="flex items-center justify-between py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
+              class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
               :class="route.path === '/dashboard/hotspot/sessions' ? 'text-white font-medium' : 'text-gray-500'"
               @click="isMobile && $emit('close-sidebar')"
             >
               <span>Active Sessions</span>
               <span v-if="hotspotSessionsCount > 0" class="px-1.5 py-0.5 text-[9px] font-bold rounded-full bg-green-500 text-white min-w-[16px] text-center">{{ hotspotSessionsCount }}</span>
-            </router-link>
-            <router-link
-              to="/dashboard/hotspot/vouchers"
-              class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
-              :class="route.path === '/dashboard/hotspot/vouchers' ? 'text-white font-medium' : 'text-gray-500'"
-              @click="isMobile && $emit('close-sidebar')"
-            >
-              Create Voucher
             </router-link>
           </div>
         </div>
@@ -169,6 +161,14 @@
               @click="isMobile && $emit('close-sidebar')"
             >
               Package Groups
+            </router-link>
+            <router-link
+              to="/dashboard/hotspot/vouchers"
+              class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
+              :class="route.path === '/dashboard/hotspot/vouchers' ? 'text-white font-medium' : 'text-gray-500'"
+              @click="isMobile && $emit('close-sidebar')"
+            >
+              Create Voucher
             </router-link>
           </div>
         </div>
