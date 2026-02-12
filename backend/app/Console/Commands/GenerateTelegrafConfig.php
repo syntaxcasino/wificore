@@ -68,7 +68,8 @@ class GenerateTelegrafConfig extends Command
             $snmpV3PrivPassword = (string) config('telegraf.snmpv3_priv_password', '');
 
             // Write directly to VictoriaMetrics — bypass Nginx to avoid circular dependency
-            $vmWriteUrl = (string) config('victoriametrics.write_url', 'http://wificore-victoriametrics:8428/api/v1/write');
+            // Note: Telegraf's InfluxDB output plugin automatically appends /write to this URL
+            $vmWriteUrl = (string) config('victoriametrics.write_url', 'http://wificore-victoriametrics:8428/api/v1');
 
             $lines[] = '[agent]';
             $lines[] = "interval = \"{$fastInterval}\"";
