@@ -9,43 +9,68 @@ class VpnConnectivityService
 {
     /**
      * Verify VPN connectivity to a router
-     * Tests if the server can ping the router's VPN IP
+     * Tests if the server can open a TCP connection to the router's SSH port
      * 
      * @param VpnConfiguration $config
-     * @param int $maxAttempts Maximum number of ping attempts
-     * @param int $timeout Timeout per ping attempt in seconds
+     * @param int $maxAttempts Maximum number of TCP attempts
+     * @param int $timeout Timeout per TCP attempt in seconds
      * @return array ['success' => bool, 'latency' => float|null, 'packet_loss' => int, 'message' => string]
      */
     public function verifyConnectivity(VpnConfiguration $config, int $maxAttempts = 4, int $timeout = 5): array
     {
-        $clientIp = $config->client_ip;
+        $clientIp = explode('/', $config->client_ip ?? '')[0];
+        $port = $this->resolveSshPort($config);
         
-        Log::info('Starting VPN connectivity verification', [
+        Log::info('Starting VPN connectivity verification (TCP probe)', [
             'router_id' => $config->router_id,
             'client_ip' => $clientIp,
+            'port' => $port,
             'max_attempts' => $maxAttempts,
         ]);
 
-        // Execute ping command
-        $command = sprintf(
-            'ping -c %d -W %d %s 2>&1',
-            $maxAttempts,
-            $timeout,
-            escapeshellarg($clientIp)
-        );
+        if (empty($clientIp)) {
+            return [
+                'success' => false,
+                'latency' => null,
+                'packet_loss' => 100,
+                'message' => 'TCP probe failed: missing VPN client IP',
+                'raw_output' => 'missing client_ip',
+            ];
+        }
 
-        $output = [];
-        $returnCode = 0;
-        exec($command, $output, $returnCode);
+        $success = false;
+        $latency = null;
+        $lastError = null;
+
+        $attempts = max(1, $maxAttempts);
+        $probeTimeout = max(1, $timeout);
+
+        for ($attempt = 1; $attempt <= $attempts; $attempt++) {
+            $probe = $this->tcpProbe($clientIp, $port, $probeTimeout);
+            $latency = $probe['latency'];
+
+            if ($probe['success']) {
+                $success = true;
+                break;
+            }
+
+            $lastError = $probe['error'];
+        }
+
+        $result = [
+            'success' => $success,
+            'latency' => $latency,
+            'packet_loss' => $success ? 0 : 100,
+            'message' => $success
+                ? 'VPN connectivity verified via TCP probe'
+                : ('TCP probe failed' . ($lastError ? ': ' . $lastError : '')),
+            'raw_output' => $lastError,
+        ];
         
-        $outputString = implode("\n", $output);
-        
-        // Parse ping results
-        $result = $this->parsePingOutput($outputString, $returnCode);
-        
-        Log::info('VPN connectivity verification completed', [
+        Log::info('VPN connectivity verification completed (TCP probe)', [
             'router_id' => $config->router_id,
             'client_ip' => $clientIp,
+            'port' => $port,
             'success' => $result['success'],
             'packet_loss' => $result['packet_loss'],
             'latency' => $result['latency'],
@@ -54,43 +79,51 @@ class VpnConnectivityService
         return $result;
     }
 
-    /**
-     * Parse ping command output
-     */
-    protected function parsePingOutput(string $output, int $returnCode): array
+    protected function resolveSshPort(VpnConfiguration $config): int
     {
-        $result = [
+        $router = $config->router;
+        $port = (int) ($router?->ssh_port ?? 0);
+
+        if ($port > 0) {
+            return $port;
+        }
+
+        $candidate = (int) ($router?->port ?? 22);
+        if (in_array($candidate, [8720, 8728, 8729], true)) {
+            return 22;
+        }
+
+        return $candidate > 0 ? $candidate : 22;
+    }
+
+    protected function tcpProbe(string $host, int $port, int $timeout): array
+    {
+        $start = microtime(true);
+        $errno = 0;
+        $errstr = '';
+
+        $socket = @fsockopen($host, $port, $errno, $errstr, $timeout);
+
+        if ($socket !== false) {
+            fclose($socket);
+
+            return [
+                'success' => true,
+                'latency' => round((microtime(true) - $start) * 1000, 2),
+                'error' => null,
+            ];
+        }
+
+        $error = trim($errstr);
+        if ($error === '') {
+            $error = "Connection failed (errno {$errno})";
+        }
+
+        return [
             'success' => false,
             'latency' => null,
-            'packet_loss' => 100,
-            'message' => 'Ping failed',
-            'raw_output' => $output,
+            'error' => $error,
         ];
-
-        // Check if ping was successful (return code 0 means at least one packet received)
-        if ($returnCode === 0) {
-            $result['success'] = true;
-            $result['message'] = 'VPN connectivity verified';
-        }
-
-        // Extract packet loss percentage
-        if (preg_match('/(\d+)% packet loss/', $output, $matches)) {
-            $result['packet_loss'] = (int)$matches[1];
-            
-            // If packet loss is 0%, connectivity is excellent
-            if ($result['packet_loss'] === 0) {
-                $result['success'] = true;
-            }
-        }
-
-        // Extract average latency - support both Linux (rtt) and Alpine (round-trip) formats
-        // Alpine: round-trip min/avg/max = 231.665/233.759/235.853 ms
-        // Linux: rtt min/avg/max/mdev = 1.234/2.345/3.456/0.123 ms
-        if (preg_match('/(?:rtt|round-trip) min\/avg\/max(?:\/mdev)? = [\d.]+\/([\d.]+)\/[\d.]+/', $output, $matches)) {
-            $result['latency'] = (float)$matches[1];
-        }
-
-        return $result;
     }
 
     /**

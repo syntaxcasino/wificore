@@ -195,6 +195,38 @@ class SshExecutor
     }
 
     /**
+     * Upload a local file to the router (alias for uploadRsc).
+     */
+    public function uploadFile(string $localPath, string $remotePath): bool
+    {
+        return $this->uploadRsc($localPath, $remotePath);
+    }
+
+    /**
+     * Import a router file using RouterOS /import.
+     */
+    public function importFile(string $remotePath): string
+    {
+        if (trim($remotePath) === '') {
+            throw new \InvalidArgumentException('Remote path is required for import');
+        }
+
+        return $this->exec("/import file-name={$remotePath}");
+    }
+
+    /**
+     * Delete a file on the router.
+     */
+    public function deleteFile(string $remotePath): void
+    {
+        if (trim($remotePath) === '') {
+            throw new \InvalidArgumentException('Remote path is required for delete');
+        }
+
+        $this->exec('/file remove [find name="' . addslashes($remotePath) . '"]');
+    }
+
+    /**
      * Reconnect SSH session safely.
      */
     private function reconnect(): void
@@ -256,7 +288,7 @@ class SshExecutor
     /**
      * Disconnect SSH and SFTP cleanly.
      */
-    public function disconnect(): void
+    public function disconnect(bool $log = true): void
     {
         $this->destroyPassword();
 
@@ -269,6 +301,8 @@ class SshExecutor
             $this->connection->disconnect();
         }
 
-        Log::info("SSH session disconnected", ['router' => explode('/', $this->router->vpn_ip ?? $this->router->ip_address ?? '')[0]]);
+        if ($log) {
+            Log::info("SSH session disconnected", ['router' => explode('/', $this->router->vpn_ip ?? $this->router->ip_address ?? '')[0]]);
+        }
     }
 }

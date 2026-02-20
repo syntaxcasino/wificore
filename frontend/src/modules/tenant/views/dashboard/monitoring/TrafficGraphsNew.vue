@@ -219,7 +219,7 @@ const refreshData = async () => {
 const exportData = () => alert('Export feature coming soon!')
 
 const parseVmSeriesValues = (vmResponse) => {
-  const result = vmResponse?.data?.result
+  const result = vmResponse?.data?.result ?? vmResponse?.result
   if (!Array.isArray(result) || !result.length) return []
 
   const values = result[0]?.values
@@ -237,7 +237,7 @@ const parseVmSeriesValues = (vmResponse) => {
 }
 
 const parseVmMatrixByRouter = (vmResponse) => {
-  const result = vmResponse?.data?.result
+  const result = vmResponse?.data?.result ?? vmResponse?.result
   if (!Array.isArray(result) || !result.length) return {}
 
   const out = {}
@@ -297,8 +297,8 @@ const loadTraffic = async () => {
     }
 
     if (routerId) {
-      const inSeries = parseVmSeriesValues(data.in?.data)
-      const outSeries = parseVmSeriesValues(data.out?.data)
+      const inSeries = parseVmSeriesValues(data.in)
+      const outSeries = parseVmSeriesValues(data.out)
       const maxLen = Math.max(inSeries.length, outSeries.length)
       const points = []
 
@@ -323,8 +323,8 @@ const loadTraffic = async () => {
       return
     }
 
-    const totalIn = parseVmSeriesValues(data.total_in?.data)
-    const totalOut = parseVmSeriesValues(data.total_out?.data)
+    const totalIn = parseVmSeriesValues(data.total_in)
+    const totalOut = parseVmSeriesValues(data.total_out)
     const maxLen = Math.max(totalIn.length, totalOut.length)
     const points = []
 
@@ -343,8 +343,8 @@ const loadTraffic = async () => {
     stats.value.current = currentIn + currentOut
     stats.value.peak = points.reduce((m, p) => Math.max(m, (p.download || 0) + (p.upload || 0)), 0)
 
-    const byRouterIn = parseVmMatrixByRouter(data.by_router_in?.data)
-    const byRouterOut = parseVmMatrixByRouter(data.by_router_out?.data)
+    const byRouterIn = parseVmMatrixByRouter(data.by_router_in)
+    const byRouterOut = parseVmMatrixByRouter(data.by_router_out)
     const totals = {}
 
     for (const rid of Object.keys({ ...byRouterIn, ...byRouterOut })) {

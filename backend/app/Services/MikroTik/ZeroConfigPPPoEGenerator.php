@@ -129,6 +129,7 @@ class ZeroConfigPPPoEGenerator
         $s[] = ":do { :if ([:len [/interface list find name={$p['pppoe_list']}]] = 0) do={ /interface list add name={$p['pppoe_list']} } } on-error={}";
         // PPPOE-ACTIVE list: PPP profile assigns authenticated dynamic interfaces here
         $s[] = ":do { :if ([:len [/interface list find name={$p['pppoe_active_list']}]] = 0) do={ /interface list add name={$p['pppoe_active_list']} } } on-error={}";
+        $s[] = ":do { :if ([:len [/interface find name=\"ether1\"]] > 0) do={ :if ([:len [/interface list member find list={$p['wan_list']} interface=\"ether1\"]] = 0) do={ /interface list member add list={$p['wan_list']} interface=\"ether1\" } } } on-error={}";
 
         // ============ PPPoE BRIDGE SETUP ============
         // Bridge isolates PPPoE discovery/session traffic from other networks
@@ -166,6 +167,9 @@ class ZeroConfigPPPoEGenerator
         $s[] = "/ip firewall filter add chain=input protocol=tcp dst-port={$managementPorts} action=drop place-before=0 comment=\"PPPoE-$id-MGMT-DROP\"";
         $s[] = "/ip firewall filter add chain=input protocol=tcp dst-port={$managementPorts} src-address={$p['management_subnet']} action=accept place-before=0 comment=\"PPPoE-$id-MGMT-ALLOW\"";
         $s[] = "/ip firewall filter add chain=input connection-state=established,related action=accept place-before=0 comment=\"PPPoE-$id-MGMT-EST\"";
+        $s[] = ":do { /ip firewall filter move [find comment=\"PPPoE-$id-MGMT-EST\"] destination=0; } on-error={}";
+        $s[] = ":do { /ip firewall filter move [find comment=\"PPPoE-$id-MGMT-ALLOW\"] destination=1; } on-error={}";
+        $s[] = ":do { /ip firewall filter move [find comment=\"PPPoE-$id-MGMT-DROP\"] destination=2; } on-error={}";
 
         // INPUT chain - protect the router itself
         // Remove existing input rules for idempotent re-ordering
@@ -208,6 +212,11 @@ class ZeroConfigPPPoEGenerator
         $s[] = "/ip firewall filter add chain=forward in-interface-list={$p['pppoe_active_list']} connection-state=invalid action=drop place-before=0 comment=\"PPPoE-$id-INV\"";
         // 1. Accept established/related from authenticated PPPoE interfaces
         $s[] = "/ip firewall filter add chain=forward in-interface-list={$p['pppoe_active_list']} connection-state=established,related action=accept place-before=0 comment=\"PPPoE-$id-EST\"";
+
+        // GLOBAL DEFAULT DROP (input + forward)
+        $s[] = ":do { /ip firewall filter remove [find comment~\"GLOBAL-DEFAULT-DROP-\"]; } on-error={}";
+        $s[] = "/ip firewall filter add chain=input action=drop comment=\"GLOBAL-DEFAULT-DROP-IN\"";
+        $s[] = "/ip firewall filter add chain=forward action=drop comment=\"GLOBAL-DEFAULT-DROP-FWD\"";
 
         // ============ NAT CONFIGURATION ============
         // Masquerade ONLY traffic from authenticated PPPoE interfaces (not subnet-based)

@@ -283,6 +283,7 @@ class ZeroConfigHotspotGenerator
             $this->generateWalledGarden($params),
             $this->generateManagementInputRules($params),
             $this->generateFirewallRules($params),
+            $this->generateGlobalDefaultDropRules(),
             $this->generateNatRules($params)
         );
 
@@ -299,6 +300,17 @@ class ZeroConfigHotspotGenerator
             ":do { /interface bridge add name=\"{$bridge}\" comment=\"Hotspot Bridge\" } on-error={}",
             ":do { /interface bridge port remove [find bridge=\"{$bridge}\" interface=\"{$iface}\"] } on-error={}",
             ":do { /interface bridge port add bridge=\"{$bridge}\" interface=\"{$iface}\" comment=\"Hotspot Access Port\" } on-error={}",
+            ""
+        ];
+    }
+
+    private function generateGlobalDefaultDropRules(): array
+    {
+        return [
+            "# Global Default Drop",
+            ":do { /ip firewall filter remove [find comment~\"GLOBAL-DEFAULT-DROP-\"]; } on-error={}",
+            "/ip firewall filter add chain=input action=drop comment=\"GLOBAL-DEFAULT-DROP-IN\"",
+            "/ip firewall filter add chain=forward action=drop comment=\"GLOBAL-DEFAULT-DROP-FWD\"",
             ""
         ];
     }

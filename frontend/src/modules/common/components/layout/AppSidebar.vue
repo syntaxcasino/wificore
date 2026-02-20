@@ -237,7 +237,7 @@
           >
             <span class="flex items-center gap-2.5">
               <Wallet class="w-4 h-4 flex-shrink-0" />
-              <span class="text-sm">Billing</span>
+              <span class="text-sm">Finance</span>
             </span>
             <ChevronDown class="w-3 h-3 transition-transform" :class="activeMenu === 'billing' ? 'rotate-180' : ''" />
           </button>

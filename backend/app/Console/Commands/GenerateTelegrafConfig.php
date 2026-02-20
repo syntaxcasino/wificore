@@ -174,18 +174,19 @@ class GenerateTelegrafConfig extends Command
                         $lines[] = 'oid = "1.3.6.1.2.1.1.3.0"';
                         $lines[] = '';
 
+                        // CPU load fallback (HOST-RESOURCES-MIB) for all router types
+                        $lines[] = '[[inputs.snmp.table]]';
+                        $lines[] = 'name = "cpu"';
+                        $lines[] = 'inherit_tags = ["tenant_id", "router_id", "device_type"]';
+                        $lines[] = '';
+                        $lines[] = '[[inputs.snmp.table.field]]';
+                        $lines[] = 'name = "hrProcessorLoad"';
+                        $lines[] = 'oid = "1.3.6.1.2.1.25.3.3.1.2"';
+                        $lines[] = '';
+
                         // Add OIDs based on router type
                         if ($routerType === 'chr') {
-                            // CHR uses HOST-RESOURCES-MIB
-                            $lines[] = '[[inputs.snmp.table]]';
-                            $lines[] = 'name = "cpu"';
-                            $lines[] = 'inherit_tags = ["tenant_id", "router_id", "device_type"]';
-                            $lines[] = '';
-                            $lines[] = '[[inputs.snmp.table.field]]';
-                            $lines[] = 'name = "hrProcessorLoad"';
-                            $lines[] = 'oid = "1.3.6.1.2.1.25.3.3.1.2"';
-                            $lines[] = '';
-
+                            // CHR uses HOST-RESOURCES-MIB for memory
                             $lines[] = '[[inputs.snmp.field]]';
                             $lines[] = 'name = "total_memory_kb"';
                             $lines[] = 'oid = "1.3.6.1.2.1.25.2.2.0"';
@@ -194,7 +195,7 @@ class GenerateTelegrafConfig extends Command
                             // Physical MikroTik uses enterprise OIDs
                             $lines[] = '[[inputs.snmp.field]]';
                             $lines[] = 'name = "cpu_load"';
-                            $lines[] = 'oid = "1.3.6.1.4.1.14988.1.1.3.14.0"';
+                            $lines[] = 'oid = "1.3.6.1.4.1.14988.1.1.3.10.0"';
                             $lines[] = '';
 
                             $lines[] = '[[inputs.snmp.field]]';
