@@ -131,6 +131,7 @@ class ZeroConfigHybridGenerator
         
         // Firewall Rules - VLAN Separation Enforcement
         $script = array_merge($script, $this->generateFirewallRules($params));
+        $script = array_merge($script, $this->generateGlobalDefaultDropRules());
         
         // NAT Rules
         $script = array_merge($script, $this->generateNatRules($params));
@@ -167,6 +168,7 @@ class ZeroConfigHybridGenerator
         $script = array_merge($script, $this->generateRadiusSetup($params));
         $script = array_merge($script, $this->generateManagementInputRules($params));
         $script = array_merge($script, $this->generateBridgeFirewallRules($params));
+        $script = array_merge($script, $this->generateGlobalDefaultDropRules());
         $script = array_merge($script, $this->generateBridgeNatRules($params));
 
         $script[] = "";
@@ -546,6 +548,17 @@ class ZeroConfigHybridGenerator
             // 2. Accept established/related
             "/ip firewall filter add chain=forward in-interface-list={$pppoeActiveList} connection-state=established,related action=accept place-before=0 comment=\"Hybrid-{$routerId}-FW-PP-EST\"",
             "/ip firewall filter add chain=forward in-interface=\"{$bridge}\" connection-state=established,related action=accept place-before=0 comment=\"Hybrid-{$routerId}-FW-HS-EST\"",
+            "",
+        ];
+    }
+
+    private function generateGlobalDefaultDropRules(): array
+    {
+        return [
+            "# Global Default Drop",
+            ":do { /ip firewall filter remove [find comment~\"GLOBAL-DEFAULT-DROP-\"]; } on-error={}",
+            "/ip firewall filter add chain=input action=drop comment=\"GLOBAL-DEFAULT-DROP-IN\"",
+            "/ip firewall filter add chain=forward action=drop comment=\"GLOBAL-DEFAULT-DROP-FWD\"",
             "",
         ];
     }

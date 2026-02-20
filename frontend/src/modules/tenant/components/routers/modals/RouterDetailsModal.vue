@@ -881,7 +881,7 @@ export default {
       return used < 0 ? 0 : used
     },
     parseVmSeriesValues(vmResponse) {
-      const result = vmResponse?.data?.result
+      const result = vmResponse?.data?.result ?? vmResponse?.result
       if (!Array.isArray(result) || !result.length) return []
       const values = result[0]?.values
       if (!Array.isArray(values)) return []

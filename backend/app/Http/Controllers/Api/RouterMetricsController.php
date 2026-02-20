@@ -99,11 +99,13 @@ class RouterMetricsController extends Controller
 
         $selector = sprintf('tenant_id="%s",router_id="%s"', $this->escapeLabelValue((string) $tenantId), $this->escapeLabelValue($routerId));
 
-        $inQuery = sprintf('sum by (router_id) (rate(interface_counters_ifHCInOctets{%s}[1m]))', $selector);
-        $outQuery = sprintf('sum by (router_id) (rate(interface_counters_ifHCOutOctets{%s}[1m]))', $selector);
+        $inPrimary = sprintf('sum by (router_id) (rate(interface_ifHCInOctets{%s}[1m]))', $selector);
+        $inFallback = sprintf('sum by (router_id) (rate(interface_counters_ifHCInOctets{%s}[1m]))', $selector);
+        $outPrimary = sprintf('sum by (router_id) (rate(interface_ifHCOutOctets{%s}[1m]))', $selector);
+        $outFallback = sprintf('sum by (router_id) (rate(interface_counters_ifHCOutOctets{%s}[1m]))', $selector);
 
-        $in = $vm->queryRange($inQuery, $start, $now, $step);
-        $out = $vm->queryRange($outQuery, $start, $now, $step);
+        $in = $this->queryRangeWithFallback($vm, $inPrimary, $inFallback, $start, $now, $step);
+        $out = $this->queryRangeWithFallback($vm, $outPrimary, $outFallback, $start, $now, $step);
 
         return response()->json([
             'success' => true,
@@ -133,15 +135,19 @@ class RouterMetricsController extends Controller
 
         $selector = sprintf('tenant_id="%s"', $this->escapeLabelValue((string) $tenantId));
 
-        $totalInQuery = sprintf('sum(rate(interface_counters_ifHCInOctets{%s}[1m]))', $selector);
-        $totalOutQuery = sprintf('sum(rate(interface_counters_ifHCOutOctets{%s}[1m]))', $selector);
-        $byRouterInQuery = sprintf('sum by (router_id) (rate(interface_counters_ifHCInOctets{%s}[1m]))', $selector);
-        $byRouterOutQuery = sprintf('sum by (router_id) (rate(interface_counters_ifHCOutOctets{%s}[1m]))', $selector);
+        $totalInPrimary = sprintf('sum(rate(interface_ifHCInOctets{%s}[1m]))', $selector);
+        $totalInFallback = sprintf('sum(rate(interface_counters_ifHCInOctets{%s}[1m]))', $selector);
+        $totalOutPrimary = sprintf('sum(rate(interface_ifHCOutOctets{%s}[1m]))', $selector);
+        $totalOutFallback = sprintf('sum(rate(interface_counters_ifHCOutOctets{%s}[1m]))', $selector);
+        $byRouterInPrimary = sprintf('sum by (router_id) (rate(interface_ifHCInOctets{%s}[1m]))', $selector);
+        $byRouterInFallback = sprintf('sum by (router_id) (rate(interface_counters_ifHCInOctets{%s}[1m]))', $selector);
+        $byRouterOutPrimary = sprintf('sum by (router_id) (rate(interface_ifHCOutOctets{%s}[1m]))', $selector);
+        $byRouterOutFallback = sprintf('sum by (router_id) (rate(interface_counters_ifHCOutOctets{%s}[1m]))', $selector);
 
-        $totalIn = $vm->queryRange($totalInQuery, $start, $now, $step);
-        $totalOut = $vm->queryRange($totalOutQuery, $start, $now, $step);
-        $byRouterIn = $vm->queryRange($byRouterInQuery, $start, $now, $step);
-        $byRouterOut = $vm->queryRange($byRouterOutQuery, $start, $now, $step);
+        $totalIn = $this->queryRangeWithFallback($vm, $totalInPrimary, $totalInFallback, $start, $now, $step);
+        $totalOut = $this->queryRangeWithFallback($vm, $totalOutPrimary, $totalOutFallback, $start, $now, $step);
+        $byRouterIn = $this->queryRangeWithFallback($vm, $byRouterInPrimary, $byRouterInFallback, $start, $now, $step);
+        $byRouterOut = $this->queryRangeWithFallback($vm, $byRouterOutPrimary, $byRouterOutFallback, $start, $now, $step);
 
         return response()->json([
             'success' => true,
@@ -172,13 +178,33 @@ class RouterMetricsController extends Controller
             );
         }
 
+        $diskType = '(^[.]?1[.]3[.]6[.]1[.]2[.]1[.]25[.]2[.]1[.]4$|hrStorageFixedDisk|HOST-RESOURCES-MIB::hrStorageFixedDisk)';
+        $ramType = '(^[.]?1[.]3[.]6[.]1[.]2[.]1[.]25[.]2[.]1[.]2$|hrStorageRam|HOST-RESOURCES-MIB::hrStorageRam)';
+
         $queries = [
-            'cpu_load' => sprintf('router_health_cpu_load{%s}', $selector),
+            'cpu_load' => [
+                'primary' => sprintf('router_health_cpu_load{%s}', $selector),
+                'fallback' => sprintf('avg by (router_id) (cpu_hrProcessorLoad{%s})', $selector),
+            ],
             'total_memory' => sprintf('router_health_total_memory{%s}', $selector),
             'free_memory' => sprintf('router_health_free_memory{%s}', $selector),
             'uptime_ticks' => sprintf('router_health_uptime_ticks{%s}', $selector),
-            'disk_total_bytes' => sprintf('max by (tenant_id, router_id) (router_storage_hrStorageAllocationUnits{%s,hrStorageType=~"^[.]?1[.]3[.]6[.]1[.]2[.]1[.]25[.]2[.]1[.]4$"} * on (tenant_id, router_id, hrStorageIndex) group_left router_storage_hrStorageSize{%s,hrStorageType=~"^[.]?1[.]3[.]6[.]1[.]2[.]1[.]25[.]2[.]1[.]4$"})', $selector, $selector),
-            'disk_used_bytes' => sprintf('max by (tenant_id, router_id) (router_storage_hrStorageAllocationUnits{%s,hrStorageType=~"^[.]?1[.]3[.]6[.]1[.]2[.]1[.]25[.]2[.]1[.]4$"} * on (tenant_id, router_id, hrStorageIndex) group_left router_storage_hrStorageUsed{%s,hrStorageType=~"^[.]?1[.]3[.]6[.]1[.]2[.]1[.]25[.]2[.]1[.]4$"})', $selector, $selector),
+            'disk_total_bytes' => [
+                'primary' => $this->buildStorageBytesQuery('storage', 'hrStorageSize', $selector, $diskType),
+                'fallback' => $this->buildStorageBytesQuery('router_storage', 'hrStorageSize', $selector, $diskType),
+            ],
+            'disk_used_bytes' => [
+                'primary' => $this->buildStorageBytesQuery('storage', 'hrStorageUsed', $selector, $diskType),
+                'fallback' => $this->buildStorageBytesQuery('router_storage', 'hrStorageUsed', $selector, $diskType),
+            ],
+            'memory_total_bytes' => [
+                'primary' => $this->buildStorageBytesQuery('storage', 'hrStorageSize', $selector, $ramType),
+                'fallback' => $this->buildStorageBytesQuery('router_storage', 'hrStorageSize', $selector, $ramType),
+            ],
+            'memory_used_bytes' => [
+                'primary' => $this->buildStorageBytesQuery('storage', 'hrStorageUsed', $selector, $ramType),
+                'fallback' => $this->buildStorageBytesQuery('router_storage', 'hrStorageUsed', $selector, $ramType),
+            ],
         ];
 
         $live = [];
@@ -187,22 +213,16 @@ class RouterMetricsController extends Controller
         }
 
         foreach ($queries as $field => $promql) {
-            $response = $vm->queryInstant($promql);
-            $result = (array) (($response['data']['result'] ?? []) ?: []);
+            $primary = is_array($promql) ? $promql['primary'] : $promql;
+            $fallback = is_array($promql) ? ($promql['fallback'] ?? null) : null;
 
-            foreach ($result as $series) {
-                $labels = (array) ($series['metric'] ?? []);
-                $routerId = (string) ($labels['router_id'] ?? '');
-                if ($routerId === '' || !array_key_exists($routerId, $live)) {
-                    continue;
-                }
+            $missing = array_fill_keys($routerIds, true);
+            $response = $vm->queryInstant($primary);
+            $missing = $this->applyInstantResult($response, $live, $field, $missing);
 
-                $value = $this->extractPrometheusValue($series);
-                if ($value === null) {
-                    continue;
-                }
-
-                $live[$routerId][$field] = $value;
+            if ($fallback && count($missing) > 0) {
+                $fallbackResponse = $vm->queryInstant($fallback);
+                $this->applyInstantResult($fallbackResponse, $live, $field, $missing);
             }
         }
 
@@ -223,6 +243,27 @@ class RouterMetricsController extends Controller
 
             unset($live[$rid]['disk_total_bytes']);
             unset($live[$rid]['disk_used_bytes']);
+
+            $memoryTotal = $live[$rid]['total_memory'] ?? null;
+            $memoryFree = $live[$rid]['free_memory'] ?? null;
+            $memoryTotalBytes = $live[$rid]['memory_total_bytes'] ?? null;
+            $memoryUsedBytes = $live[$rid]['memory_used_bytes'] ?? null;
+
+            if ($memoryTotal === null && is_int($memoryTotalBytes) && $memoryTotalBytes >= 0) {
+                $memoryTotal = $memoryTotalBytes;
+                $live[$rid]['total_memory'] = $memoryTotalBytes;
+            }
+
+            if ($memoryFree === null && is_int($memoryTotalBytes) && is_int($memoryUsedBytes)) {
+                $free = $memoryTotalBytes - $memoryUsedBytes;
+                if ($free < 0) {
+                    $free = 0;
+                }
+                $live[$rid]['free_memory'] = $free;
+            }
+
+            unset($live[$rid]['memory_total_bytes']);
+            unset($live[$rid]['memory_used_bytes']);
         }
 
         return $live;
@@ -257,6 +298,65 @@ class RouterMetricsController extends Controller
         }
 
         return (int) round((float) $raw);
+    }
+
+    private function applyInstantResult(array $response, array &$live, string $field, array $missing): array
+    {
+        $result = (array) (($response['data']['result'] ?? []) ?: []);
+
+        foreach ($result as $series) {
+            $labels = (array) ($series['metric'] ?? []);
+            $routerId = (string) ($labels['router_id'] ?? '');
+            if ($routerId === '' || !array_key_exists($routerId, $live)) {
+                continue;
+            }
+
+            if (!array_key_exists($routerId, $missing)) {
+                continue;
+            }
+
+            $value = $this->extractPrometheusValue($series);
+            if ($value === null) {
+                continue;
+            }
+
+            $live[$routerId][$field] = $value;
+            unset($missing[$routerId]);
+        }
+
+        return $missing;
+    }
+
+    private function buildStorageBytesQuery(string $prefix, string $valueField, string $selector, string $storageTypePattern): string
+    {
+        $allocUnits = sprintf('%s_hrStorageAllocationUnits', $prefix);
+        $values = sprintf('%s_%s', $prefix, $valueField);
+
+        return sprintf(
+            'max by (tenant_id, router_id) (%s{%s,hrStorageType=~"%s"} * on (tenant_id, router_id, hrStorageIndex) group_left %s{%s,hrStorageType=~"%s"})',
+            $allocUnits,
+            $selector,
+            $storageTypePattern,
+            $values,
+            $selector,
+            $storageTypePattern
+        );
+    }
+
+    private function queryRangeWithFallback(VictoriaMetricsClient $vm, string $primary, ?string $fallback, int $start, int $end, string $step): array
+    {
+        $response = $vm->queryRange($primary, $start, $end, $step);
+        if ($fallback === null || $this->hasSeries($response)) {
+            return $response;
+        }
+
+        return $vm->queryRange($fallback, $start, $end, $step);
+    }
+
+    private function hasSeries(array $response): bool
+    {
+        $result = $response['data']['result'] ?? null;
+        return is_array($result) && count($result) > 0;
     }
 
     private function escapeLabelValue(string $value): string
