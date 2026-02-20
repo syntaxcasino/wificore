@@ -180,6 +180,16 @@ class RouterServiceManager extends TenantAwareService
         string $interface,
         array $advancedOptions = []
     ): RouterService {
+        $bridgeMode = (bool) ($advancedOptions['bridge_mode'] ?? $advancedOptions['no_vlan'] ?? false);
+        $interfaces = $advancedOptions['interfaces'] ?? [$interface];
+        if (is_string($interfaces)) {
+            $interfaces = array_filter(array_map('trim', explode(',', $interfaces)));
+        }
+        if (!is_array($interfaces) || empty($interfaces)) {
+            $interfaces = [$interface];
+        }
+        $interfaces = array_values(array_unique(array_filter($interfaces, fn ($iface) => is_string($iface) && trim($iface) !== '')));
+
         // Get tenant from context (schema-based multi-tenancy)
         $tenant = $this->tenantContext->getTenant();
         if (!$tenant) {
@@ -211,44 +221,52 @@ class RouterServiceManager extends TenantAwareService
             $pppoePool = $this->ipamService->getOrCreateServicePool($tenant, 'pppoe');
         }
         
-        // Allocate VLANs (auto or manual)
-        $hotspotVlan = !empty($advancedOptions['hotspot_vlan'])
-            ? (int) $advancedOptions['hotspot_vlan']
-            : $this->vlanManager->allocateVlanForService($router, 'hotspot');
-            
-        $pppoeVlan = !empty($advancedOptions['pppoe_vlan'])
-            ? (int) $advancedOptions['pppoe_vlan']
-            : $this->vlanManager->allocateVlanForService($router, 'pppoe');
+        $hotspotVlan = null;
+        $pppoeVlan = null;
 
-        if ($hotspotVlan === $pppoeVlan) {
-            throw new \Exception('Hybrid service requires different VLAN IDs for Hotspot and PPPoE');
+        if (!$bridgeMode) {
+            // Allocate VLANs (auto or manual)
+            $hotspotVlan = !empty($advancedOptions['hotspot_vlan'])
+                ? (int) $advancedOptions['hotspot_vlan']
+                : $this->vlanManager->allocateVlanForService($router, 'hotspot');
+
+            $pppoeVlan = !empty($advancedOptions['pppoe_vlan'])
+                ? (int) $advancedOptions['pppoe_vlan']
+                : $this->vlanManager->allocateVlanForService($router, 'pppoe');
+
+            if ($hotspotVlan === $pppoeVlan) {
+                throw new \Exception('Hybrid service requires different VLAN IDs for Hotspot and PPPoE');
+            }
         }
         
         // Create hybrid service record
         $service = RouterService::create([
             'router_id' => $router->id,
             'interface_name' => $interface,
-            'interfaces' => [$interface],
+            'interfaces' => $interfaces,
             'service_type' => RouterService::TYPE_HYBRID,
             'service_name' => $advancedOptions['service_name'] ?? 'Hybrid Service',
             'ip_pool_id' => null, // Hybrid uses multiple pools
             'vlan_id' => null, // Hybrid uses multiple VLANs
-            'vlan_required' => true,
+            'vlan_required' => !$bridgeMode,
             'radius_profile' => "hybrid-{$tenant->id}",
-            'advanced_config' => array_merge($advancedOptions, [
+            'advanced_config' => array_merge($advancedOptions, array_filter([
+                'bridge_mode' => $bridgeMode,
                 'hotspot_pool_id' => $hotspotPool->id,
                 'pppoe_pool_id' => $pppoePool->id,
                 'hotspot_vlan' => $hotspotVlan,
                 'pppoe_vlan' => $pppoeVlan,
-            ]),
+            ], fn ($value) => $value !== null)),
             'deployment_status' => RouterService::DEPLOYMENT_PENDING,
             'status' => RouterService::STATUS_INACTIVE,
             'enabled' => true,
         ]);
         
-        // Create VLAN records
-        $this->vlanManager->createServiceVlan($service, $hotspotVlan, $interface, 'hotspot');
-        $this->vlanManager->createServiceVlan($service, $pppoeVlan, $interface, 'pppoe');
+        if (!$bridgeMode) {
+            // Create VLAN records
+            $this->vlanManager->createServiceVlan($service, $hotspotVlan, $interface, 'hotspot');
+            $this->vlanManager->createServiceVlan($service, $pppoeVlan, $interface, 'pppoe');
+        }
         
         Log::info('Hybrid service configured with VLAN separation', [
             'router_id' => $router->id,
@@ -256,6 +274,7 @@ class RouterServiceManager extends TenantAwareService
             'interface' => $interface,
             'hotspot_vlan' => $hotspotVlan,
             'pppoe_vlan' => $pppoeVlan,
+            'bridge_mode' => $bridgeMode,
         ]);
         
         DB::commit();

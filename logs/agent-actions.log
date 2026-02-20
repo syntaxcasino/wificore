@@ -349,6 +349,8 @@ Impact:
 2026-01-18T00:00:00Z | CHANGE | backend/app/Services/MikrotikProvisioningService.php | Live-data: fix RouterOS parsing for hyphenated keys; include full interface list when fetching router details context.
 2026-01-18T00:00:00Z | CHANGE | backend/app/Services/MikrotikSshService.php | Live-data: add includeInterfaces flag to optionally fetch and return interface list for details view.
 2026-01-18T00:00:00Z | CHANGE | backend/app/Services/RouterServiceManager.php | Persist RouterService.interfaces array when configuring services so UI can display assigned interfaces reliably.
+2026-02-16T00:00:00Z | CHANGE | docs/notes/pre-change-check-2026-02-16-hybrid-zero-leak.md | Documented pre-change audit for hybrid zero-leak firewall/NAT/input hardening.
+2026-02-16T00:00:00Z | CHANGE | backend/app/Services/MikroTik/ZeroConfigHybridGenerator.php | Hardened hybrid input/forward/NAT rules to enforce hotspot=auth and PPPOE-ACTIVE-only internet access with WAN scoping, removed fasttrack forward rules, and added final drop rules.
 2026-01-18T00:00:00Z | CHANGE | backend/app/Services/MikroTik/ZeroConfigPPPoEGenerator.php | Production hardening: removed unrelated PPTP/GRE allowances from PPPoE firewall rules; allow only PPPoE discovery/session + established/invalid + client subnet forward.
 
 2026-01-18T00:00:00Z | CHANGE | backend/app/Services/MikroTik/PPPoEService.php | Fix PPPoE multi-interface selection: create PPPoE bridge, add all selected interfaces as bridge ports, and bind a single PPPoE server to the bridge (prevents service-name overwrite).
@@ -595,3 +597,57 @@ Impact:
 2026-02-09T11:01:00Z | CHANGE | frontend/src/modules/tenant/views/dashboard/billing/MpesaTransactionsNew.vue | Converted transaction details BaseModal to SlideOverlay.
 2026-02-09T11:02:00Z | CHANGE | frontend/src/modules/tenant/views/dashboard/pppoe/PPPoEUsers.vue | Converted password BaseModal to SlideOverlay. Replaced $router.push('/dashboard/pppoe/add-user') with openAddUser() to use inline SlideOverlay.
 2026-02-09T11:02:00Z | CHANGE | frontend/src/modules/tenant/views/dashboard/pppoe/AddPPPoEUser.vue | Converted password BaseModal to SlideOverlay.
+
+2026-02-14T12:00:00Z | CHANGE | backend/app/Services/MikroTik/ZeroConfigHotspotGenerator.php | Enforced authenticated-only hotspot forwarding (hotspot=auth), added top-ordered drop rule, and scoped NAT to WAN interface list with interface list initialization.
+2026-02-14T12:00:00Z | CHANGE | backend/app/Services/RouterServiceManager.php | Added hybrid bridge-mode support (no VLAN) with interface list handling and optional VLAN allocation.
+2026-02-14T12:00:00Z | CREATE | docs/notes/mikrotik-zero-touch-review-2026-02-14.md | Documented end-to-end review findings and next steps for zero-touch generator updates.
+2026-02-14T12:15:00Z | CHANGE | backend/app/Services/MikroTik/ZeroConfigHybridGenerator.php | Route bridge-mode hybrid services through shared-bridge configuration path before VLAN enforcement.
+2026-02-14T12:15:00Z | CHANGE | backend/app/Services/MikroTik/ZeroConfigPPPoEGenerator.php | Remove DHCP servers bound to PPPoE bridge so PPPoE-only deployments don't offer DHCP.
+2026-02-14T12:15:00Z | CHANGE | docs/notes/mikrotik-zero-touch-review-2026-02-14.md | Noted hybrid bridge mode, hotspot auth-only forwarding, and PPPoE DHCP removal implementation updates.
+2026-02-14T13:46:00Z | CREATE | docs/notes/end-to-end-review-2026-02-14-metrics-ui.md | Documented end-to-end review findings for metrics, provisioning UI, and plans views prior to fixes.
+2026-02-14T14:02:00Z | CHANGE | frontend/src/modules/tenant/views/dashboard/pppoe/PPPoEUsers.vue | PPPoE Users: moved 3-dot action menu into body-level portal with fixed positioning and improved click-outside handling to prevent clipping.
+2026-02-14T14:02:00Z | CHANGE | frontend/src/modules/tenant/views/dashboard/packages/AllPackagesNew.vue | Plans/Packages: constrained scrolling to data area and anchored footer with flex layout adjustments.
+2026-02-14T14:02:00Z | CHANGE | frontend/src/modules/tenant/views/dashboard/hotspot/VouchersGenerateNew.vue | Plans/Vouchers: constrained scrolling to table area and kept pagination footer pinned.
+2026-02-14T14:02:00Z | CREATE | docs/notes/ui-fixes-2026-02-14.md | Documented PPPoE menu and Plans scroll UI fixes.
+2026-02-14T15:25:00Z | CHANGE | backend/app/Http/Controllers/Api/RouterMetricsController.php | VictoriaMetrics: aligned traffic/storage queries to Telegraf table-prefixed metric names; added temperature and PPPoE session live queries.
+2026-02-14T15:25:00Z | CHANGE | frontend/src/modules/tenant/views/dashboard/monitoring/TrafficGraphsNew.vue | Metrics UI: fixed VM response parsing and added traffic trend line visualization.
+2026-02-14T15:25:00Z | CHANGE | frontend/src/modules/common/components/base/SlideOverlay.vue | SlideOverlay: added configurable content padding and scroll control props for provisioning layout.
+2026-02-14T15:25:00Z | CHANGE | frontend/src/modules/tenant/components/routers/modals/CreateRouterModal.vue | Provisioning UI: stabilized scrolling, fixed log panel, and reduced config script height.
+2026-02-14T15:25:00Z | CHANGE | frontend/src/modules/tenant/components/routers/modals/RouterDetailsModal.vue | Router details: display MikroTik temperature and PPPoE session metrics.
+2026-02-14T15:25:00Z | CREATE | docs/notes/metrics-provisioning-fixes-2026-02-14.md | Documented metrics and provisioning UI fixes.
+2026-02-14T18:12:00Z | CREATE | docs/notes/end-to-end-review-2026-02-14-ssh-timeout.md | Documented end-to-end review notes for SSH timeout and deployment lock investigation.
+2026-02-14T18:30:00Z | CHANGE | backend/app/Services/MikroTik/SshExecutor.php | Short-circuit SSH auth retries on connection-level failures to reduce timeouts and lock contention.
+2026-02-14T18:30:00Z | CHANGE | docs/notes/end-to-end-review-2026-02-14-ssh-timeout.md | Added connection handling update and verification steps for SSH timeout investigation.
+2026-02-14T18:45:00Z | CREATE | docs/notes/end-to-end-review-2026-02-14-mikrotik-generator.md | Documented review findings for MikroTik script generators and timeout risks.
+2026-02-14T19:00:00Z | CHANGE | backend/app/Services/MikroTik/ZeroConfigPPPoEGenerator.php | Filtered VPN/WireGuard interfaces from PPPoE bridges, ensured WAN list membership for ether1, and restricted management access to VPN interface list.
+2026-02-14T19:00:00Z | CHANGE | docs/notes/end-to-end-review-2026-02-14-mikrotik-generator.md | Documented PPPoE generator fixes to keep management traffic on VPN and prevent bridge loops.
+2026-02-15T00:40:00Z | CHANGE | backend/app/Services/MikroTik/ZeroConfigPPPoEGenerator.php | Fixed RouterOS foreach line quoting to avoid PHP variable interpolation error during PPPoE deployment.
+2026-02-15T00:40:00Z | CHANGE | docs/notes/end-to-end-review-2026-02-14-mikrotik-generator.md | Noted PPPoE foreach quoting fix after deployment failure.
+2026-02-15T08:55:00Z | CHANGE | backend/app/Services/MikroTik/ZeroConfigPPPoEGenerator.php | Enforced management firewall rule ordering so MGMT-VPN allow precedes drop.
+2026-02-15T08:55:00Z | CHANGE | docs/notes/end-to-end-review-2026-02-14-mikrotik-generator.md | Documented MGMT drop/allow ordering issue from live export.
+2026-02-15T14:00:00Z | CREATE | docs/notes/pre-change-check-2026-02-15-hotspot-hybrid-mgmt.md | Logged pre-change end-to-end check for Hotspot/Hybrid MGMT-VPN alignment.
+2026-02-15T14:05:00Z | CHANGE | backend/app/Services/MikroTik/ZeroConfigHotspotGenerator.php | Aligned management access rules to MGMT-VPN interface list and enforced allow-before-drop ordering.
+2026-02-15T14:05:00Z | CHANGE | backend/app/Services/MikroTik/ZeroConfigHybridGenerator.php | Aligned management access rules to MGMT-VPN interface list and enforced allow-before-drop ordering.
+2026-02-15T14:05:00Z | CHANGE | docs/notes/end-to-end-review-2026-02-14-mikrotik-generator.md | Documented Hotspot/Hybrid MGMT-VPN alignment changes.
+2026-02-15T15:10:00Z | CREATE | docs/notes/pre-change-check-2026-02-15-auth-bypass.md | Logged pre-change end-to-end check for unauthenticated access bypass.
+2026-02-15T15:12:00Z | CHANGE | backend/app/Services/MikroTik/ZeroConfigPPPoEGenerator.php | Reverted management rule placement to place-before=0 to avoid script aborts that removed forward drop rules.
+2026-02-15T15:12:00Z | CHANGE | backend/app/Services/MikroTik/ZeroConfigHotspotGenerator.php | Reverted management rule placement to place-before=0 to avoid script aborts that removed forward drop rules.
+2026-02-15T15:12:00Z | CHANGE | backend/app/Services/MikroTik/ZeroConfigHybridGenerator.php | Reverted management rule placement to place-before=0 to avoid script aborts that removed forward drop rules.
+2026-02-15T15:12:00Z | CHANGE | docs/notes/end-to-end-review-2026-02-14-mikrotik-generator.md | Documented auth bypass root cause and fix.
+2026-02-15T15:45:00Z | CREATE | docs/notes/pre-change-check-2026-02-15-sidebar-menu.md | Logged pre-change end-to-end check for sidebar submenu toggle behavior.
+2026-02-15T15:46:00Z | CHANGE | frontend/src/modules/common/components/layout/AppSidebar.vue | Kept submenu open when re-clicking same menu; only switch on different menu selection.
+2026-02-15T15:46:00Z | CHANGE | frontend/src/modules/common/components/layout/AdminSidebar.vue | Kept submenu open when re-clicking same menu; only switch on different menu selection.
+2026-02-15T16:20:00Z | CREATE | docs/notes/pre-change-check-2026-02-15-deploy-status.md | Logged pre-change check for provisioning status mismatch.
+2026-02-15T16:21:00Z | CHANGE | backend/app/Http/Controllers/Api/RouterController.php | Provisioning status now considers service deployment states before reporting completed.
+2026-02-15T16:30:00Z | CREATE | docs/notes/pre-change-check-2026-02-15-ssh-mgmt-order.md | Logged pre-change check for MGMT rule ordering and SSH timeouts.
+2026-02-15T16:32:00Z | CHANGE | backend/app/Services/MikroTik/ZeroConfigPPPoEGenerator.php | Enforced MGMT-VPN allow ordering using guarded filter move operations.
+2026-02-15T16:32:00Z | CHANGE | backend/app/Services/MikroTik/ZeroConfigHotspotGenerator.php | Enforced MGMT-VPN allow ordering using guarded filter move operations.
+2026-02-15T16:32:00Z | CHANGE | backend/app/Services/MikroTik/ZeroConfigHybridGenerator.php | Enforced MGMT-VPN allow ordering using guarded filter move operations.
+2026-02-15T16:32:00Z | CHANGE | docs/notes/end-to-end-review-2026-02-14-mikrotik-generator.md | Documented SSH timeout root cause and MGMT rule ordering fix.
+2026-02-15T16:55:00Z | CREATE | docs/notes/pre-change-check-2026-02-15-ssh-executor-lock.md | Logged pre-change check for SSH executor lock to reduce concurrent session timeouts.
+2026-02-15T16:56:00Z | CHANGE | backend/app/Services/MikroTik/SshExecutor.php | Added per-router SSH connection lock with configurable TTL/wait to serialize SSH sessions.
+2026-02-17T10:25:00Z | CREATE | docs/notes/pre-change-check-2026-02-17-ssh-connectivity.md | Logged pre-change check for SSH connectivity failures and retry/keepalive gaps.
+2026-02-17T10:30:00Z | CHANGE | backend/app/Services/MikroTik/SshExecutor.php | Added keepalive/timeout configuration and expanded connection error detection for SSH retries.
+2026-02-20T06:35:00Z | FIX | backend/app/Services/MikrotikSshService.php | Fixed FatalError: Cannot redeclare class.
+2026-02-20T06:50:00Z | FIX | backend/app/Services/MikroTik/SshExecutor.php | Fixed TypeError on line 52: PasswordEncryptionService::safeDecrypt() expects Router object, was being passed raw encrypted password string. Changed safeDecrypt($this->router->password) to safeDecrypt($this->router).
+2026-02-20T07:25:00Z | FIX | backend/app/Services/MikroTik/SshExecutor.php | Fixed wrong Router field names causing "Cannot connect to :. Error 0. Failed to parse address empty string": (1) host→vpn_ip??ip_address (explode CIDR), (2) ssh_port→port, (3) ssh_private_key→ssh_key with Crypt::decrypt() blob, (4) removed ssh_key_passphrase (no such field), (5) added timeout parameter to constructor (default 30s), (6) added Crypt facade import. Root cause: SshExecutor was using non-existent Router model fields. Root cause: namespace was App\Services\MikroTik but file lives in app/Services/ causing double autoload. Fixed: (1) namespace corrected to App\Services, (2) class renamed from MikroTikSshService to MikrotikSshService to match filename and all callers, (3) connect() updated to use correct Router model fields (vpn_ip/ip_address instead of host, ssh_key blob instead of ssh_private_key_path, PasswordEncryptionService::safeDecrypt for password), (4) added fetchInterfaces/fetchLiveData/executeCommand methods required by MikrotikProvisioningService and RouterController, (5) added parseInterfaces/parseSystemInfo/isConfigurableInterface helpers, (6) added Crypt facade import.

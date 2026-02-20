@@ -78,6 +78,7 @@ class ZeroConfigPPPoEGenerator
             'dns_secondary' => $pool->dns_secondary ?? '8.8.4.4',
             'radius_server' => config('radius.server_ip', config('services.radius.host', 'wificore-freeradius')),
             'radius_secret' => config('radius.secret', 'testing123'),
+            'management_subnet' => config('vpn.subnet.base', '10.0.0.0/8'),
         ]);
     }
 
@@ -147,6 +148,9 @@ class ZeroConfigPPPoEGenerator
             $s[] = ":do { :if ([:len [/interface bridge port find bridge=\"{$bridge}\" interface=\"{$access}\"]] = 0) do={ /interface bridge port add bridge=\"{$bridge}\" interface=\"{$access}\" comment=\"PPPoE-$id\" } } on-error={}";
         }
 
+        // Ensure DHCP is disabled on the PPPoE bridge (PPPoE handles auth/IP assignment)
+        $s[] = ":do { /ip dhcp-server remove [find interface=\"{$bridge}\"]; } on-error={}";
+
         // ============ PPPoE SERVER ============
         // ISP-grade settings: MSS clamping, keepalive, proper MTU
         // Idempotent: only create if missing
@@ -155,6 +159,13 @@ class ZeroConfigPPPoEGenerator
 
         // ============ FIREWALL CONFIGURATION ============
         // Idempotent: only add rules if not present (check by comment)
+
+        // Management access - allow VPN subnet only to management ports
+        $managementPorts = '22,8291,8728,8729';
+        $s[] = ":do { /ip firewall filter remove [find comment~\"PPPoE-$id-MGMT\"]; } on-error={}";
+        $s[] = "/ip firewall filter add chain=input protocol=tcp dst-port={$managementPorts} action=drop place-before=0 comment=\"PPPoE-$id-MGMT-DROP\"";
+        $s[] = "/ip firewall filter add chain=input protocol=tcp dst-port={$managementPorts} src-address={$p['management_subnet']} action=accept place-before=0 comment=\"PPPoE-$id-MGMT-ALLOW\"";
+        $s[] = "/ip firewall filter add chain=input connection-state=established,related action=accept place-before=0 comment=\"PPPoE-$id-MGMT-EST\"";
 
         // INPUT chain - protect the router itself
         // Remove existing input rules for idempotent re-ordering

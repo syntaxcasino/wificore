@@ -54,6 +54,14 @@ class ZeroConfigHotspotGenerator
             ""
         ];
 
+        $script = array_merge($script, [
+            "# Interface Lists",
+            ":if ([:len [/interface list find name=\"LAN\"]] = 0) do={ /interface list add name=LAN comment=\"Local Area Network\" }",
+            ":if ([:len [/interface list find name=\"WAN\"]] = 0) do={ /interface list add name=WAN comment=\"Wide Area Network\" }",
+            ":if ([:len [/interface list member find list=WAN interface=ether1]] = 0) do={ /interface list member add list=WAN interface=ether1 }",
+            ""
+        ]);
+
         // Shared pool/gateway settings come from the service IP pool
         $pool = $service->ipPool;
         if (!$pool) {
@@ -195,6 +203,7 @@ class ZeroConfigHotspotGenerator
             'radius_profile' => $service->radius_profile,
             'radius_server' => $resolvedRadiusServer,
             'radius_secret' => $radiusSecret,
+            'management_subnet' => config('vpn.subnet.base', '10.0.0.0/8'),
             'tenant_id' => $router->tenant_id,
             'captive_portal_url' => $captivePortalUrl,
             'portal_host' => $portalHost,
@@ -272,6 +281,7 @@ class ZeroConfigHotspotGenerator
             $this->generateHotspotSetup($params),
             $this->generateRadiusSetup($params),
             $this->generateWalledGarden($params),
+            $this->generateManagementInputRules($params),
             $this->generateFirewallRules($params),
             $this->generateNatRules($params)
         );
@@ -392,12 +402,32 @@ class ZeroConfigHotspotGenerator
             "# CRITICAL: ALL rules scoped to in-interface={$iface} to avoid affecting other router traffic",
             "# Without in-interface scoping, established/related accept matches ALL traffic on the router",
             ":do { /ip firewall filter remove [find comment~\"Hotspot-{$routerId}-FW\"] } on-error={}",
-            ":do { /ip firewall filter add chain=forward in-interface={$iface} connection-state=established,related action=accept comment=\"Hotspot-{$routerId}-FW-EST\" } on-error={}",
-            ":do { /ip firewall filter add chain=forward in-interface={$iface} connection-state=invalid action=drop comment=\"Hotspot-{$routerId}-FW-INV\" } on-error={}",
-            // Allow traffic from the hotspot subnet (Hotspot system assigns IPs only to authenticated users)
-            ":do { /ip firewall filter add chain=forward src-address={$networkCidr} in-interface={$iface} action=accept comment=\"Hotspot-{$routerId}-FW-INET\" } on-error={}",
-            // CRITICAL: Block ALL other traffic from the hotspot bridge (unauthenticated devices)
-            ":do { /ip firewall filter add chain=forward in-interface={$iface} action=drop comment=\"Hotspot-{$routerId}-FW-DROP\" } on-error={}",
+            // Insert in reverse order with place-before=0 so rules end up in the correct order at the top
+            // 4. DROP all traffic from bridge (unauthenticated devices cannot pass)
+            ":do { /ip firewall filter add chain=forward in-interface={$iface} action=drop place-before=0 comment=\"Hotspot-{$routerId}-FW-DROP\" } on-error={}",
+            // 3. Allow ONLY authenticated hotspot users to reach WAN
+            ":do { /ip firewall filter add chain=forward in-interface={$iface} hotspot=auth out-interface=!{$iface} action=accept place-before=0 comment=\"Hotspot-{$routerId}-FW-INET\" } on-error={}",
+            // 2. Drop invalid
+            ":do { /ip firewall filter add chain=forward in-interface={$iface} connection-state=invalid action=drop place-before=0 comment=\"Hotspot-{$routerId}-FW-INV\" } on-error={}",
+            // 1. Accept established/related
+            ":do { /ip firewall filter add chain=forward in-interface={$iface} connection-state=established,related action=accept place-before=0 comment=\"Hotspot-{$routerId}-FW-EST\" } on-error={}",
+            ""
+        ];
+    }
+
+    private function generateManagementInputRules(array $params): array
+    {
+        $routerId = $params['router_id'];
+        $managementSubnet = $params['management_subnet'] ?? '10.0.0.0/8';
+        $managementPorts = '22,8291,8728,8729';
+
+        return [
+            "# Management Access - VPN/Management Subnet Only",
+            ":do { /ip firewall filter remove [find comment~\"Hotspot-{$routerId}-MGMT\"]; } on-error={} ",
+            // Insert in reverse order with place-before=0 for correct ordering at the top
+            ":do { /ip firewall filter add chain=input protocol=tcp dst-port={$managementPorts} action=drop place-before=0 comment=\"Hotspot-{$routerId}-MGMT-DROP\" } on-error={}",
+            ":do { /ip firewall filter add chain=input protocol=tcp dst-port={$managementPorts} src-address={$managementSubnet} action=accept place-before=0 comment=\"Hotspot-{$routerId}-MGMT-ALLOW\" } on-error={}",
+            ":do { /ip firewall filter add chain=input connection-state=established,related action=accept place-before=0 comment=\"Hotspot-{$routerId}-MGMT-EST\" } on-error={}",
             ""
         ];
     }
@@ -411,7 +441,7 @@ class ZeroConfigHotspotGenerator
         return [
             "# NAT Rules",
             ":do { /ip firewall nat remove [find comment=\"Hotspot: Internet Access\"] } on-error={}",
-            ":do { /ip firewall nat add chain=srcnat action=masquerade src-address={$network}/{$cidr} out-interface=!{$iface} comment=\"Hotspot: Internet Access\" } on-error={}",
+            ":do { /ip firewall nat add chain=srcnat action=masquerade src-address={$network}/{$cidr} out-interface-list=WAN comment=\"Hotspot: Internet Access\" } on-error={}",
             ":do { /ip firewall nat remove [find comment=\"Hotspot: HTTP Redirect\"] } on-error={}",
             ":do { /ip firewall nat add chain=dstnat action=redirect to-ports=64872 protocol=tcp dst-port=80 in-interface={$iface} comment=\"Hotspot: HTTP Redirect\" } on-error={}",
             ":do { /ip firewall nat remove [find comment=\"Hotspot: HTTPS Redirect\"] } on-error={}",
