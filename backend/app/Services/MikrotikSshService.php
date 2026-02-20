@@ -61,8 +61,9 @@ class MikrotikSshService
 
         $this->retry(function () use ($poolKey) {
 
-            $host = explode('/', $this->router->vpn_ip ?? $this->router->ip_address)[0];
-            $ssh  = new SSH2($host, 22);
+            $host = explode('/', $this->router->vpn_ip ?? $this->router->ip_address ?? '')[0];
+            $port = $this->resolveSshPort();
+            $ssh  = new SSH2($host, $port);
             $ssh->setTimeout($this->timeout);
 
             $username = $this->router->username;
@@ -104,8 +105,24 @@ class MikrotikSshService
                 throw new \RuntimeException("SSH authentication failed");
             }
 
-            $sftp = new SFTP($host, 22);
-            if ($password !== null && !$sftp->login($username, $password)) {
+            $sftp = new SFTP($host, $port);
+            $sftpLoggedIn = false;
+
+            if (!empty($this->router->ssh_key)) {
+                try {
+                    $rawKey = Crypt::decrypt($this->router->ssh_key);
+                    $key = PublicKeyLoader::load($rawKey);
+                    $sftpLoggedIn = $sftp->login($username, $key);
+                } catch (Throwable $e) {
+                    $this->log('warning', 'SFTP key login failed', ['error' => $e->getMessage()]);
+                }
+            }
+
+            if (!$sftpLoggedIn && $password !== null) {
+                $sftpLoggedIn = $sftp->login($username, $password);
+            }
+
+            if (!$sftpLoggedIn) {
                 // SFTP login failure is non-fatal for command-only operations
                 $this->log('warning', 'SFTP login failed (file upload will not work)');
             }
@@ -350,7 +367,7 @@ class MikrotikSshService
         if (!$value) return null;
 
         try {
-            return PasswordEncryptionService::safeDecrypt((object)['password' => $value]) ?? $value;
+            return Crypt::decrypt($value) ?? $value;
         } catch (Throwable) {
             return $value;
         }
@@ -358,9 +375,10 @@ class MikrotikSshService
 
     protected function log(string $level, string $message, array $context = []): void
     {
+        $host = $this->router->vpn_ip ?? $this->router->ip_address;
         $context = array_merge($context, [
             'router_id' => $this->router->id,
-            'host' => $this->router->host ?? $this->router->vpn_ip ?? $this->router->ip_address ?? 'unknown',
+            'host' => $host ? explode('/', $host)[0] : 'unknown',
         ]);
 
         Log::{$level}("[MikroTik SSH] {$message}", $context);
@@ -369,6 +387,25 @@ class MikrotikSshService
     /* =====================================================
      * High-level API used by provisioning and controllers
      * ===================================================== */
+
+    protected function resolveSshPort(): int
+    {
+        $routerPort = $this->router->ssh_port ?? null;
+        if ($routerPort !== null && (int) $routerPort > 0) {
+            return (int) $routerPort;
+        }
+
+        $legacyPort = $this->router->port ?? null;
+        if ($legacyPort !== null) {
+            $legacyPort = (int) $legacyPort;
+            if ($legacyPort > 0 && $legacyPort !== 8728) {
+                return $legacyPort;
+            }
+        }
+
+        $envPort = (int) env('MIKROTIK_SSH_PORT', 22);
+        return $envPort > 0 ? $envPort : 22;
+    }
 
     /**
      * Execute a single command on the router (used by SnmpConfigurationService etc.)
