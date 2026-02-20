@@ -33,7 +33,7 @@ class SshExecutor
     public function connect(): bool
     {
         $host = explode('/', $this->router->vpn_ip ?? $this->router->ip_address ?? '')[0];
-        $port = $this->router->port ?? 22;
+        $port = $this->resolveSshPort();
 
         $this->connection = new SSH2($host, $port, $this->timeout);
 
@@ -75,7 +75,7 @@ class SshExecutor
         }
 
         $host = explode('/', $this->router->vpn_ip ?? $this->router->ip_address ?? '')[0];
-        $this->sftp = new SFTP($host, $this->router->port ?? 22);
+        $this->sftp = new SFTP($host, $this->resolveSshPort());
 
         $loginSuccess = false;
         if (!empty($this->router->ssh_key)) {
@@ -216,6 +216,25 @@ class SshExecutor
             $this->decryptedPassword = str_repeat("\0", $len);
             $this->decryptedPassword = null;
         }
+    }
+
+    private function resolveSshPort(): int
+    {
+        $routerPort = $this->router->ssh_port ?? null;
+        if ($routerPort !== null && (int) $routerPort > 0) {
+            return (int) $routerPort;
+        }
+
+        $legacyPort = $this->router->port ?? null;
+        if ($legacyPort !== null) {
+            $legacyPort = (int) $legacyPort;
+            if ($legacyPort > 0 && $legacyPort !== 8728) {
+                return $legacyPort;
+            }
+        }
+
+        $envPort = (int) env('MIKROTIK_SSH_PORT', 22);
+        return $envPort > 0 ? $envPort : 22;
     }
 
     /**
