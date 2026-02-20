@@ -141,7 +141,7 @@
           >
             <span class="flex items-center gap-2.5">
               <Box class="w-4 h-4 flex-shrink-0" />
-              <span class="text-sm">Packages</span>
+              <span class="text-sm">Plans</span>
             </span>
             <ChevronDown class="w-3 h-3 transition-transform" :class="activeMenu === 'packages' ? 'rotate-180' : ''" />
           </button>

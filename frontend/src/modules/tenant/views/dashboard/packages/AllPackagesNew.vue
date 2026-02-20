@@ -100,7 +100,7 @@
     </div>
 
     <!-- Main Content Area -->
-    <div class="flex-1 min-h-0 overflow-y-auto md:overflow-hidden">
+    <div class="flex-1 min-h-0 overflow-hidden">
       <!-- Overlays -->
       <ViewPackageOverlay
         :show-details-overlay="showDetailsOverlay"
@@ -158,168 +158,170 @@
         </button>
       </div>
 
-      <div v-else class="flex flex-col min-h-0">
-        <div v-if="paginatedPackages.length" class="px-4 md:px-6 pt-4 md:pt-6 pb-2 flex flex-col min-h-0">
-          <!-- Mobile Cards -->
-          <div class="md:hidden space-y-3">
-            <div
-              v-for="pkg in paginatedPackages"
-              :key="pkg.id"
-              class="bg-white rounded-lg border border-slate-200 shadow-sm p-4 cursor-pointer active:scale-[0.99] transition-transform"
-              @click="openDetails(pkg)"
-            >
-              <div class="flex items-start justify-between gap-3">
-                <div class="min-w-0">
-                  <div class="flex items-center gap-2 min-w-0">
-                    <div class="w-2 h-2 rounded-full flex-shrink-0" :class="pkg.status === 'active' ? 'bg-emerald-500' : 'bg-slate-400'"></div>
-                    <div class="text-sm font-semibold text-slate-900 truncate">{{ pkg.name }}</div>
+      <div v-else class="flex flex-col min-h-0 flex-1">
+        <div v-if="paginatedPackages.length" class="px-4 md:px-6 pt-4 md:pt-6 pb-2 flex flex-col min-h-0 flex-1">
+          <div class="flex-1 min-h-0 overflow-y-auto">
+            <!-- Mobile Cards -->
+            <div class="md:hidden space-y-3">
+              <div
+                v-for="pkg in paginatedPackages"
+                :key="pkg.id"
+                class="bg-white rounded-lg border border-slate-200 shadow-sm p-4 cursor-pointer active:scale-[0.99] transition-transform"
+                @click="openDetails(pkg)"
+              >
+                <div class="flex items-start justify-between gap-3">
+                  <div class="min-w-0">
+                    <div class="flex items-center gap-2 min-w-0">
+                      <div class="w-2 h-2 rounded-full flex-shrink-0" :class="pkg.status === 'active' ? 'bg-emerald-500' : 'bg-slate-400'"></div>
+                      <div class="text-sm font-semibold text-slate-900 truncate">{{ pkg.name }}</div>
+                    </div>
+                    <div class="mt-1 text-xs text-slate-600 truncate">{{ pkg.description || '—' }}</div>
+                    <div class="mt-1 text-xs text-slate-500 truncate">{{ pkg.type || '—' }}</div>
                   </div>
-                  <div class="mt-1 text-xs text-slate-600 truncate">{{ pkg.description || '\u2014' }}</div>
-                  <div class="mt-1 text-xs text-slate-500 truncate">{{ pkg.type || '\u2014' }}</div>
+                  <span :class="statusBadgeClass(pkg.status)" class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium capitalize flex-shrink-0">
+                    {{ pkg.status || 'Unknown' }}
+                  </span>
                 </div>
-                <span :class="statusBadgeClass(pkg.status)" class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium capitalize flex-shrink-0">
-                  {{ pkg.status || 'Unknown' }}
-                </span>
-              </div>
 
-              <div class="mt-3 grid grid-cols-2 gap-3">
-                <div class="bg-slate-50 border border-slate-200 rounded-md p-2">
-                  <div class="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Price</div>
-                  <div class="mt-1 text-xs font-medium text-slate-700">KES {{ formatMoney(pkg.price) }}</div>
+                <div class="mt-3 grid grid-cols-2 gap-3">
+                  <div class="bg-slate-50 border border-slate-200 rounded-md p-2">
+                    <div class="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Price</div>
+                    <div class="mt-1 text-xs font-medium text-slate-700">KES {{ formatMoney(pkg.price) }}</div>
+                  </div>
+                  <div class="bg-slate-50 border border-slate-200 rounded-md p-2">
+                    <div class="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Speed</div>
+                    <div class="mt-1 text-xs font-medium text-slate-700">{{ pkg.speed || '—' }}</div>
+                  </div>
                 </div>
-                <div class="bg-slate-50 border border-slate-200 rounded-md p-2">
-                  <div class="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Speed</div>
-                  <div class="mt-1 text-xs font-medium text-slate-700">{{ pkg.speed || '\u2014' }}</div>
-                </div>
-              </div>
 
-              <div class="mt-3 flex items-center justify-end gap-2" @click.stop>
-                <button
-                  @click="handleToggleStatus(pkg)"
-                  :class="[
-                    'px-3 py-2 text-xs font-medium rounded-md transition-colors',
-                    pkg.status === 'active'
-                      ? 'text-amber-700 bg-amber-50 hover:bg-amber-100'
-                      : 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100'
-                  ]"
-                >
-                  {{ pkg.status === 'active' ? 'Deactivate' : 'Activate' }}
-                </button>
-                <button
-                  @click="openDetails(pkg)"
-                  class="px-3 py-2 text-xs font-medium text-blue-700 bg-blue-50 rounded-md hover:bg-blue-100 transition-colors"
-                >
-                  View
-                </button>
+                <div class="mt-3 flex items-center justify-end gap-2" @click.stop>
+                  <button
+                    @click="handleToggleStatus(pkg)"
+                    :class="[
+                      'px-3 py-2 text-xs font-medium rounded-md transition-colors',
+                      pkg.status === 'active'
+                        ? 'text-amber-700 bg-amber-50 hover:bg-amber-100'
+                        : 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100'
+                    ]"
+                  >
+                    {{ pkg.status === 'active' ? 'Deactivate' : 'Activate' }}
+                  </button>
+                  <button
+                    @click="openDetails(pkg)"
+                    class="px-3 py-2 text-xs font-medium text-blue-700 bg-blue-50 rounded-md hover:bg-blue-100 transition-colors"
+                  >
+                    View
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
 
-          <!-- Desktop Table -->
-          <div class="hidden md:flex bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden flex-col min-h-0">
-            <div class="overflow-x-auto overflow-y-auto flex-1 min-h-0">
-              <table class="w-full">
-                <thead class="bg-slate-50 border-b border-slate-200 sticky top-0 z-[5]">
-                  <tr>
-                    <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
-                      <div class="flex items-center gap-2">
-                        <div class="w-7 h-7"></div>
-                        <span>Package</span>
-                      </div>
-                    </th>
-                    <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider hidden lg:table-cell">Type</th>
-                    <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Price</th>
-                    <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider hidden xl:table-cell">Speed</th>
-                    <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider hidden xl:table-cell">Validity</th>
-                    <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Status</th>
-                    <th class="px-6 py-3 text-right text-xs font-semibold text-slate-700 uppercase tracking-wider">Actions</th>
-                  </tr>
-                </thead>
-
-                <tbody class="divide-y divide-slate-100">
-                  <tr
-                    v-for="pkg in paginatedPackages"
-                    :key="pkg.id"
-                    class="hover:bg-blue-50/50 transition-colors cursor-pointer group"
-                    @click="openDetails(pkg)"
-                  >
-                    <td class="px-6 py-4">
-                      <div class="flex items-center gap-3">
-                        <div class="w-7 h-7 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-md flex items-center justify-center text-white flex-shrink-0">
-                          <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-                          </svg>
+            <!-- Desktop Table -->
+            <div class="hidden md:flex bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden flex-col min-h-0">
+              <div class="overflow-x-auto overflow-y-auto flex-1 min-h-0">
+                <table class="w-full">
+                  <thead class="bg-slate-50 border-b border-slate-200 sticky top-0 z-[5]">
+                    <tr>
+                      <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                        <div class="flex items-center gap-2">
+                          <div class="w-7 h-7"></div>
+                          <span>Package</span>
                         </div>
-                        <div class="flex items-center gap-1.5 min-w-0">
-                          <span class="w-1.5 h-1.5 rounded-full flex-shrink-0" :class="pkg.status === 'active' ? 'bg-emerald-500' : 'bg-slate-400'"></span>
-                          <div class="min-w-0">
-                            <div class="text-sm font-semibold text-slate-900 truncate">{{ pkg.name }}</div>
-                            <div class="text-xs text-slate-500 truncate">{{ pkg.description || '\u2014' }}</div>
+                      </th>
+                      <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider hidden lg:table-cell">Type</th>
+                      <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Price</th>
+                      <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider hidden xl:table-cell">Speed</th>
+                      <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider hidden xl:table-cell">Validity</th>
+                      <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Status</th>
+                      <th class="px-6 py-3 text-right text-xs font-semibold text-slate-700 uppercase tracking-wider">Actions</th>
+                    </tr>
+                  </thead>
+
+                  <tbody class="divide-y divide-slate-100">
+                    <tr
+                      v-for="pkg in paginatedPackages"
+                      :key="pkg.id"
+                      class="hover:bg-blue-50/50 transition-colors cursor-pointer group"
+                      @click="openDetails(pkg)"
+                    >
+                      <td class="px-6 py-4">
+                        <div class="flex items-center gap-3">
+                          <div class="w-7 h-7 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-md flex items-center justify-center text-white flex-shrink-0">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                              <path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                            </svg>
+                          </div>
+                          <div class="flex items-center gap-1.5 min-w-0">
+                            <span class="w-1.5 h-1.5 rounded-full flex-shrink-0" :class="pkg.status === 'active' ? 'bg-emerald-500' : 'bg-slate-400'"></span>
+                            <div class="min-w-0">
+                              <div class="text-sm font-semibold text-slate-900 truncate">{{ pkg.name }}</div>
+                              <div class="text-xs text-slate-500 truncate">{{ pkg.description || '—' }}</div>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    </td>
+                      </td>
 
-                    <td class="px-6 py-4 hidden lg:table-cell">
-                      <span v-if="pkg.type" class="text-xs text-slate-500 truncate">{{ pkg.type }}</span>
-                      <span v-else class="text-xs text-slate-400">\u2014</span>
-                    </td>
+                      <td class="px-6 py-4 hidden lg:table-cell">
+                        <span v-if="pkg.type" class="text-xs text-slate-500 truncate">{{ pkg.type }}</span>
+                        <span v-else class="text-xs text-slate-400">—</span>
+                      </td>
 
-                    <td class="px-6 py-4">
-                      <span class="text-sm font-semibold text-slate-900">KES {{ formatMoney(pkg.price) }}</span>
-                    </td>
+                      <td class="px-6 py-4">
+                        <span class="text-sm font-semibold text-slate-900">KES {{ formatMoney(pkg.price) }}</span>
+                      </td>
 
-                    <td class="px-6 py-4 hidden xl:table-cell">
-                      <span v-if="pkg.speed" class="text-xs text-slate-500 truncate">{{ pkg.speed }}</span>
-                      <span v-else class="text-xs text-slate-400">\u2014</span>
-                    </td>
+                      <td class="px-6 py-4 hidden xl:table-cell">
+                        <span v-if="pkg.speed" class="text-xs text-slate-500 truncate">{{ pkg.speed }}</span>
+                        <span v-else class="text-xs text-slate-400">—</span>
+                      </td>
 
-                    <td class="px-6 py-4 hidden xl:table-cell">
-                      <span v-if="pkg.validity" class="text-xs text-slate-500 truncate">{{ pkg.validity }}</span>
-                      <span v-else class="text-xs text-slate-400">\u2014</span>
-                    </td>
+                      <td class="px-6 py-4 hidden xl:table-cell">
+                        <span v-if="pkg.validity" class="text-xs text-slate-500 truncate">{{ pkg.validity }}</span>
+                        <span v-else class="text-xs text-slate-400">—</span>
+                      </td>
 
-                    <td class="px-6 py-4">
-                      <span :class="statusBadgeClass(pkg.status)" class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium capitalize">
-                        {{ pkg.status || 'Unknown' }}
-                      </span>
-                    </td>
+                      <td class="px-6 py-4">
+                        <span :class="statusBadgeClass(pkg.status)" class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium capitalize">
+                          {{ pkg.status || 'Unknown' }}
+                        </span>
+                      </td>
 
-                    <td class="px-6 py-4 text-right" @click.stop>
-                      <div class="flex items-center justify-end gap-1">
-                        <button
-                          @click="handleToggleStatus(pkg)"
-                          :class="[
-                            'px-2 py-1 text-xs font-medium rounded transition-colors inline-flex items-center gap-1',
-                            pkg.status === 'active'
-                              ? 'text-amber-700 bg-amber-50 hover:bg-amber-100'
-                              : 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100'
-                          ]"
-                        >
-                          {{ pkg.status === 'active' ? 'Deactivate' : 'Activate' }}
-                        </button>
-
-                        <button @click="openDetails(pkg)"
-                          class="px-2 py-1 text-xs font-medium text-blue-700 bg-blue-50 rounded hover:bg-blue-100 transition-colors inline-flex items-center gap-1">
-                          View
-                        </button>
-
-                        <div class="relative">
+                      <td class="px-6 py-4 text-right" @click.stop>
+                        <div class="flex items-center justify-end gap-1">
                           <button
-                            data-menu-button
-                            @click="toggleMenu(pkg.id, $event)"
-                            class="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded transition-colors"
+                            @click="handleToggleStatus(pkg)"
+                            :class="[
+                              'px-2 py-1 text-xs font-medium rounded transition-colors inline-flex items-center gap-1',
+                              pkg.status === 'active'
+                                ? 'text-amber-700 bg-amber-50 hover:bg-amber-100'
+                                : 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100'
+                            ]"
                           >
-                            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                              <path stroke-linecap="round" stroke-linejoin="round" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
-                            </svg>
+                            {{ pkg.status === 'active' ? 'Deactivate' : 'Activate' }}
                           </button>
+
+                          <button @click="openDetails(pkg)"
+                            class="px-2 py-1 text-xs font-medium text-blue-700 bg-blue-50 rounded hover:bg-blue-100 transition-colors inline-flex items-center gap-1">
+                            View
+                          </button>
+
+                          <div class="relative">
+                            <button
+                              data-menu-button
+                              @click="toggleMenu(pkg.id, $event)"
+                              class="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded transition-colors"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+                              </svg>
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
 
@@ -355,7 +357,7 @@
                   class="h-9 px-3 text-sm font-medium bg-white border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <span class="sr-only">Previous</span>
-                  &lt;
+                  &​lt;
                 </button>
                 <div class="h-9 px-3 flex items-center text-sm text-slate-700 bg-slate-50 border border-slate-200 rounded-lg">
                   {{ currentPage }} / {{ totalPages || 1 }}
@@ -367,7 +369,7 @@
                   class="h-9 px-3 text-sm font-medium bg-white border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <span class="sr-only">Next</span>
-                  &gt;
+                  &​gt;
                 </button>
                 <button
                   type="button"

@@ -10,7 +10,7 @@
               <Ticket class="h-5 w-5 md:h-6 md:w-6 text-white" />
             </div>
             <div>
-              <h2 class="text-lg md:text-xl font-bold text-slate-900">Create Voucher</h2>
+              <h2 class="text-lg md:text-xl font-bold text-slate-900">Voucher Management</h2>
               <p class="text-xs text-slate-500 mt-0.5 hidden md:block">Generate and manage hotspot vouchers</p>
             </div>
           </div>

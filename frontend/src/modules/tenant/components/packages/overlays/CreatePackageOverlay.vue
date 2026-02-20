@@ -75,7 +75,7 @@
               ></textarea>
             </div>
 
-            <div class="grid grid-cols-2 gap-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Price (KES) *</label>
                 <input
@@ -108,28 +108,7 @@
         <div class="bg-white p-4 rounded-lg border border-gray-200">
           <h4 class="text-sm font-semibold text-gray-800 mb-4">Speed & Data Limits</h4>
           <div class="space-y-4">
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">Speed *</label>
-              <div class="flex items-center gap-2">
-                <input
-                  v-model="speedValue"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  required
-                  class="flex-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="e.g., 10"
-                />
-                <select
-                  v-model="speedUnit"
-                  class="w-24 px-2 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                >
-                  <option v-for="unit in speedUnits" :key="unit" :value="unit">{{ unit }}</option>
-                </select>
-              </div>
-            </div>
-
-            <div class="grid grid-cols-2 gap-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Upload Speed *</label>
                 <div class="flex items-center gap-2">
@@ -173,6 +152,8 @@
               </div>
             </div>
 
+            <p class="text-xs text-slate-500">Download speed is used as the package speed label.</p>
+
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">Data Limit</label>
               <div class="flex items-center gap-2">
@@ -197,7 +178,7 @@
 
         <!-- Duration & Validity -->
         <div class="bg-white p-4 rounded-lg border border-gray-200">
-          <h4 class="text-sm font-semibold text-gray-800 mb-4">Duration & Validity</h4>
+          <h4 class="text-sm font-semibold text-gray-800 mb-4">Duration</h4>
           <div class="space-y-4">
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">Duration *</label>
@@ -220,26 +201,7 @@
               </div>
             </div>
 
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">Validity *</label>
-              <div class="flex items-center gap-2">
-                <input
-                  v-model="validityValue"
-                  type="number"
-                  min="0"
-                  step="1"
-                  required
-                  class="flex-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="e.g., 1"
-                />
-                <select
-                  v-model="validityUnit"
-                  class="w-28 px-2 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                >
-                  <option v-for="unit in durationUnits" :key="unit" :value="unit">{{ unit }}</option>
-                </select>
-              </div>
-            </div>
+            <p class="text-xs text-slate-500">Validity defaults to the selected duration.</p>
           </div>
         </div>
 
@@ -351,8 +313,6 @@ const speedUnits = ['Mbps', 'Gbps']
 const dataUnits = ['MB', 'GB', 'TB']
 const durationUnits = ['Hours', 'Days', 'Months', 'Years']
 
-const speedValue = ref('')
-const speedUnit = ref('Mbps')
 const uploadSpeedValue = ref('')
 const uploadSpeedUnit = ref('Mbps')
 const downloadSpeedValue = ref('')
@@ -361,8 +321,6 @@ const dataLimitValue = ref('')
 const dataLimitUnit = ref('GB')
 const durationValue = ref('')
 const durationUnit = ref('Hours')
-const validityValue = ref('')
-const validityUnit = ref('Hours')
 
 const parseValueUnit = (input, allowedUnits, defaultUnit) => {
   const raw = String(input || '').trim()
@@ -417,10 +375,6 @@ const toValueUnitString = (value, unit) => {
 }
 
 const syncFromFormData = () => {
-  const speedParsed = parseValueUnit(props.formData?.speed, speedUnits, 'Mbps')
-  speedValue.value = speedParsed.value
-  speedUnit.value = speedParsed.unit
-
   const upParsed = parseValueUnit(props.formData?.upload_speed, speedUnits, 'Mbps')
   uploadSpeedValue.value = upParsed.value
   uploadSpeedUnit.value = upParsed.unit
@@ -436,10 +390,6 @@ const syncFromFormData = () => {
   const durationParsed = parseDurationValueUnit(props.formData?.duration)
   durationValue.value = durationParsed.value
   durationUnit.value = durationParsed.unit
-
-  const validityParsed = parseDurationValueUnit(props.formData?.validity)
-  validityValue.value = validityParsed.value
-  validityUnit.value = validityParsed.unit
 }
 
 watch(
@@ -451,16 +401,14 @@ watch(
   }
 )
 
-watch([speedValue, speedUnit], () => {
-  props.formData.speed = toValueUnitString(speedValue.value, speedUnit.value)
-})
-
 watch([uploadSpeedValue, uploadSpeedUnit], () => {
   props.formData.upload_speed = toValueUnitString(uploadSpeedValue.value, uploadSpeedUnit.value)
 })
 
 watch([downloadSpeedValue, downloadSpeedUnit], () => {
-  props.formData.download_speed = toValueUnitString(downloadSpeedValue.value, downloadSpeedUnit.value)
+  const speed = toValueUnitString(downloadSpeedValue.value, downloadSpeedUnit.value)
+  props.formData.download_speed = speed
+  props.formData.speed = speed
 })
 
 watch([dataLimitValue, dataLimitUnit], () => {
@@ -469,10 +417,6 @@ watch([dataLimitValue, dataLimitUnit], () => {
 
 watch([durationValue, durationUnit], () => {
   props.formData.duration = toDurationString(durationValue.value, durationUnit.value)
-})
-
-watch([validityValue, validityUnit], () => {
-  props.formData.validity = toDurationString(validityValue.value, validityUnit.value)
 })
 
 // Minimum datetime (current time)
@@ -488,6 +432,12 @@ const minDateTime = computed(() => {
 })
 
 const handleSubmit = () => {
+  if (props.formData?.download_speed) {
+    props.formData.speed = props.formData.download_speed
+  }
+  if (!props.isEditing && !props.formData?.validity) {
+    props.formData.validity = props.formData.duration
+  }
   emit('submit')
 }
 </script>
