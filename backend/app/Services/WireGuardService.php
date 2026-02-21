@@ -7,6 +7,7 @@ use App\Models\RouterVpnConfig;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
+use Illuminate\Support\Carbon;
 
 class WireGuardService extends TenantAwareService
 {
@@ -226,14 +227,18 @@ class WireGuardService extends TenantAwareService
             $parts = explode("\t", $line);
             
             if (count($parts) >= 6 && $parts[0] === $publicKey) {
+                $handshake = (int) ($parts[4] ?? 0);
+                $handshakeAt = $handshake > 0 ? Carbon::createFromTimestamp($handshake) : null;
+                $handshakeAgeSeconds = $handshakeAt ? now()->diffInSeconds($handshakeAt) : null;
+
                 return [
                     'public_key' => $parts[0],
                     'endpoint' => $parts[2] ?? null,
                     'allowed_ips' => $parts[3] ?? null,
-                    'latest_handshake' => $parts[4] ? now()->subSeconds((int)$parts[4]) : null,
+                    'latest_handshake' => $handshakeAt,
                     'bytes_received' => (int)($parts[5] ?? 0),
                     'bytes_sent' => (int)($parts[6] ?? 0),
-                    'connected' => ((int)$parts[4]) < 180, // Connected if handshake within 3 minutes
+                    'connected' => $handshakeAgeSeconds !== null && $handshakeAgeSeconds < 180,
                 ];
             }
         }

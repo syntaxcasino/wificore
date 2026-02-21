@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\TenantVpnTunnel;
 use App\Models\VpnConfiguration;
 use App\Scopes\TenantScope;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Process;
 
@@ -602,7 +603,7 @@ EOT;
 
                     $handshake = (int) ($parts[4] ?? 0);
                     if ($handshake > 0) {
-                        $handshakeTime = now()->subSeconds(time() - $handshake);
+                        $handshakeTime = Carbon::createFromTimestamp($handshake);
                         if (!$latestHandshake || $handshakeTime->gt($latestHandshake)) {
                             $latestHandshake = $handshakeTime;
                         }
