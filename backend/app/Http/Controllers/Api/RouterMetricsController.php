@@ -100,12 +100,20 @@ class RouterMetricsController extends Controller
         $selector = sprintf('tenant_id="%s",router_id="%s"', $this->escapeLabelValue((string) $tenantId), $this->escapeLabelValue($routerId));
 
         $inPrimary = sprintf('sum by (router_id) (rate(interface_ifHCInOctets{%s}[1m]))', $selector);
-        $inFallback = sprintf('sum by (router_id) (rate(interface_counters_ifHCInOctets{%s}[1m]))', $selector);
+        $inFallbacks = [
+            sprintf('sum by (router_id) (rate(interface_ifInOctets{%s}[1m]))', $selector),
+            sprintf('sum by (router_id) (rate(interface_counters_ifHCInOctets{%s}[1m]))', $selector),
+            sprintf('sum by (router_id) (rate(interface_counters_ifInOctets{%s}[1m]))', $selector),
+        ];
         $outPrimary = sprintf('sum by (router_id) (rate(interface_ifHCOutOctets{%s}[1m]))', $selector);
-        $outFallback = sprintf('sum by (router_id) (rate(interface_counters_ifHCOutOctets{%s}[1m]))', $selector);
+        $outFallbacks = [
+            sprintf('sum by (router_id) (rate(interface_ifOutOctets{%s}[1m]))', $selector),
+            sprintf('sum by (router_id) (rate(interface_counters_ifHCOutOctets{%s}[1m]))', $selector),
+            sprintf('sum by (router_id) (rate(interface_counters_ifOutOctets{%s}[1m]))', $selector),
+        ];
 
-        $in = $this->queryRangeWithFallback($vm, $inPrimary, $inFallback, $start, $now, $step);
-        $out = $this->queryRangeWithFallback($vm, $outPrimary, $outFallback, $start, $now, $step);
+        $in = $this->queryRangeWithFallback($vm, $inPrimary, $inFallbacks, $start, $now, $step);
+        $out = $this->queryRangeWithFallback($vm, $outPrimary, $outFallbacks, $start, $now, $step);
 
         return response()->json([
             'success' => true,
@@ -136,18 +144,34 @@ class RouterMetricsController extends Controller
         $selector = sprintf('tenant_id="%s"', $this->escapeLabelValue((string) $tenantId));
 
         $totalInPrimary = sprintf('sum(rate(interface_ifHCInOctets{%s}[1m]))', $selector);
-        $totalInFallback = sprintf('sum(rate(interface_counters_ifHCInOctets{%s}[1m]))', $selector);
+        $totalInFallbacks = [
+            sprintf('sum(rate(interface_ifInOctets{%s}[1m]))', $selector),
+            sprintf('sum(rate(interface_counters_ifHCInOctets{%s}[1m]))', $selector),
+            sprintf('sum(rate(interface_counters_ifInOctets{%s}[1m]))', $selector),
+        ];
         $totalOutPrimary = sprintf('sum(rate(interface_ifHCOutOctets{%s}[1m]))', $selector);
-        $totalOutFallback = sprintf('sum(rate(interface_counters_ifHCOutOctets{%s}[1m]))', $selector);
+        $totalOutFallbacks = [
+            sprintf('sum(rate(interface_ifOutOctets{%s}[1m]))', $selector),
+            sprintf('sum(rate(interface_counters_ifHCOutOctets{%s}[1m]))', $selector),
+            sprintf('sum(rate(interface_counters_ifOutOctets{%s}[1m]))', $selector),
+        ];
         $byRouterInPrimary = sprintf('sum by (router_id) (rate(interface_ifHCInOctets{%s}[1m]))', $selector);
-        $byRouterInFallback = sprintf('sum by (router_id) (rate(interface_counters_ifHCInOctets{%s}[1m]))', $selector);
+        $byRouterInFallbacks = [
+            sprintf('sum by (router_id) (rate(interface_ifInOctets{%s}[1m]))', $selector),
+            sprintf('sum by (router_id) (rate(interface_counters_ifHCInOctets{%s}[1m]))', $selector),
+            sprintf('sum by (router_id) (rate(interface_counters_ifInOctets{%s}[1m]))', $selector),
+        ];
         $byRouterOutPrimary = sprintf('sum by (router_id) (rate(interface_ifHCOutOctets{%s}[1m]))', $selector);
-        $byRouterOutFallback = sprintf('sum by (router_id) (rate(interface_counters_ifHCOutOctets{%s}[1m]))', $selector);
+        $byRouterOutFallbacks = [
+            sprintf('sum by (router_id) (rate(interface_ifOutOctets{%s}[1m]))', $selector),
+            sprintf('sum by (router_id) (rate(interface_counters_ifHCOutOctets{%s}[1m]))', $selector),
+            sprintf('sum by (router_id) (rate(interface_counters_ifOutOctets{%s}[1m]))', $selector),
+        ];
 
-        $totalIn = $this->queryRangeWithFallback($vm, $totalInPrimary, $totalInFallback, $start, $now, $step);
-        $totalOut = $this->queryRangeWithFallback($vm, $totalOutPrimary, $totalOutFallback, $start, $now, $step);
-        $byRouterIn = $this->queryRangeWithFallback($vm, $byRouterInPrimary, $byRouterInFallback, $start, $now, $step);
-        $byRouterOut = $this->queryRangeWithFallback($vm, $byRouterOutPrimary, $byRouterOutFallback, $start, $now, $step);
+        $totalIn = $this->queryRangeWithFallback($vm, $totalInPrimary, $totalInFallbacks, $start, $now, $step);
+        $totalOut = $this->queryRangeWithFallback($vm, $totalOutPrimary, $totalOutFallbacks, $start, $now, $step);
+        $byRouterIn = $this->queryRangeWithFallback($vm, $byRouterInPrimary, $byRouterInFallbacks, $start, $now, $step);
+        $byRouterOut = $this->queryRangeWithFallback($vm, $byRouterOutPrimary, $byRouterOutFallbacks, $start, $now, $step);
 
         return response()->json([
             'success' => true,
@@ -178,8 +202,8 @@ class RouterMetricsController extends Controller
             );
         }
 
-        $diskType = '(^[.]?1[.]3[.]6[.]1[.]2[.]1[.]25[.]2[.]1[.]4$|hrStorageFixedDisk|HOST-RESOURCES-MIB::hrStorageFixedDisk)';
-        $ramType = '(^[.]?1[.]3[.]6[.]1[.]2[.]1[.]25[.]2[.]1[.]2$|hrStorageRam|HOST-RESOURCES-MIB::hrStorageRam)';
+        $diskType = '(^([.]?1[.]3[.]6[.]1[.]2[.]1[.]25[.]2[.]1[.]4|iso[.]3[.]6[.]1[.]2[.]1[.]25[.]2[.]1[.]4)$|hrStorageFixedDisk|HOST-RESOURCES-MIB::hrStorageFixedDisk)';
+        $ramType = '(^([.]?1[.]3[.]6[.]1[.]2[.]1[.]25[.]2[.]1[.]2|iso[.]3[.]6[.]1[.]2[.]1[.]25[.]2[.]1[.]2)$|hrStorageRam|HOST-RESOURCES-MIB::hrStorageRam)';
 
         $queries = [
             'cpu_load' => [
@@ -187,6 +211,7 @@ class RouterMetricsController extends Controller
                 'fallback' => sprintf('avg by (router_id) (cpu_hrProcessorLoad{%s})', $selector),
             ],
             'total_memory' => sprintf('router_health_total_memory{%s}', $selector),
+            'total_memory_kb' => sprintf('router_health_total_memory_kb{%s}', $selector),
             'free_memory' => sprintf('router_health_free_memory{%s}', $selector),
             'uptime_ticks' => sprintf('router_health_uptime_ticks{%s}', $selector),
             'disk_total_bytes' => [
@@ -246,22 +271,48 @@ class RouterMetricsController extends Controller
 
             $memoryTotal = $live[$rid]['total_memory'] ?? null;
             $memoryFree = $live[$rid]['free_memory'] ?? null;
+            $memoryTotalKb = $live[$rid]['total_memory_kb'] ?? null;
             $memoryTotalBytes = $live[$rid]['memory_total_bytes'] ?? null;
             $memoryUsedBytes = $live[$rid]['memory_used_bytes'] ?? null;
+
+            if (is_int($memoryTotal) && $memoryTotal <= 0) {
+                $memoryTotal = null;
+                unset($live[$rid]['total_memory']);
+            }
+
+            if (is_int($memoryFree) && $memoryFree <= 0) {
+                $memoryFree = null;
+                unset($live[$rid]['free_memory']);
+            }
 
             if ($memoryTotal === null && is_int($memoryTotalBytes) && $memoryTotalBytes >= 0) {
                 $memoryTotal = $memoryTotalBytes;
                 $live[$rid]['total_memory'] = $memoryTotalBytes;
             }
 
-            if ($memoryFree === null && is_int($memoryTotalBytes) && is_int($memoryUsedBytes)) {
-                $free = $memoryTotalBytes - $memoryUsedBytes;
-                if ($free < 0) {
-                    $free = 0;
-                }
-                $live[$rid]['free_memory'] = $free;
+            if ($memoryTotal === null && is_int($memoryTotalKb) && $memoryTotalKb >= 0) {
+                $memoryTotal = $memoryTotalKb * 1024;
+                $live[$rid]['total_memory'] = $memoryTotal;
             }
 
+            if ($memoryFree === null && is_int($memoryUsedBytes) && $memoryUsedBytes >= 0) {
+                $totalForFree = null;
+                if (is_int($memoryTotalBytes) && $memoryTotalBytes >= 0) {
+                    $totalForFree = $memoryTotalBytes;
+                } elseif (is_int($memoryTotal) && $memoryTotal >= 0) {
+                    $totalForFree = $memoryTotal;
+                }
+
+                if ($totalForFree !== null) {
+                    $free = $totalForFree - $memoryUsedBytes;
+                    if ($free < 0) {
+                        $free = 0;
+                    }
+                    $live[$rid]['free_memory'] = $free;
+                }
+            }
+
+            unset($live[$rid]['total_memory_kb']);
             unset($live[$rid]['memory_total_bytes']);
             unset($live[$rid]['memory_used_bytes']);
         }
@@ -343,14 +394,39 @@ class RouterMetricsController extends Controller
         );
     }
 
-    private function queryRangeWithFallback(VictoriaMetricsClient $vm, string $primary, ?string $fallback, int $start, int $end, string $step): array
+    private function queryRangeWithFallback(
+        VictoriaMetricsClient $vm,
+        string $primary,
+        string|array|null $fallback,
+        int $start,
+        int $end,
+        string $step
+    ): array
     {
         $response = $vm->queryRange($primary, $start, $end, $step);
-        if ($fallback === null || $this->hasSeries($response)) {
+        if ($this->hasSeries($response)) {
             return $response;
         }
 
-        return $vm->queryRange($fallback, $start, $end, $step);
+        if ($fallback === null) {
+            return $response;
+        }
+
+        $fallbacks = is_array($fallback) ? $fallback : [$fallback];
+        foreach ($fallbacks as $fallbackQuery) {
+            if (!$fallbackQuery) {
+                continue;
+            }
+
+            $fallbackResponse = $vm->queryRange($fallbackQuery, $start, $end, $step);
+            if ($this->hasSeries($fallbackResponse)) {
+                return $fallbackResponse;
+            }
+
+            $response = $fallbackResponse;
+        }
+
+        return $response;
     }
 
     private function hasSeries(array $response): bool
