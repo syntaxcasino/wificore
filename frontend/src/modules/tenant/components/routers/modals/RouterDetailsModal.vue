@@ -279,7 +279,7 @@
               <div class="bg-gradient-to-br from-amber-50 to-amber-100 p-3 rounded-lg">
                 <label class="block text-xs font-medium text-amber-600 mb-1">Interfaces</label>
                 <p class="text-amber-800 font-bold text-lg">
-                  {{ (routerDetails.resources || routerDetails.live_data)?.interface_count ?? ((routerDetails.interfaces || routerDetails.live_data?.interfaces) ? (routerDetails.interfaces || routerDetails.live_data.interfaces).length : 0) }}
+                  {{ (routerDetails.resources || routerDetails.live_data)?.interface_count ?? ((routerDetails.interfaces || routerDetails.live_data?.interfaces) ? (routerDetails.interfaces || routerDetails.live_data?.interfaces).length : 0) }}
                 </p>
               </div>
               <div class="bg-gradient-to-br from-cyan-50 to-cyan-100 p-3 rounded-lg">
@@ -314,7 +314,7 @@
 
           <!-- Interfaces Section -->
           <div
-            v-if="(routerDetails.interfaces || routerDetails.live_data?.interfaces) && (routerDetails.interfaces || routerDetails.live_data.interfaces).length"
+            v-if="(routerDetails.interfaces || routerDetails.live_data?.interfaces) && (routerDetails.interfaces || routerDetails.live_data?.interfaces).length"
             class="bg-white p-5 rounded-xl shadow-sm"
           >
             <h4 class="text-sm font-semibold text-gray-700 mb-4 flex items-center">
@@ -336,7 +336,7 @@
             </h4>
             <div class="space-y-3">
               <div
-                v-for="(iface, index) in (routerDetails.interfaces || routerDetails.live_data.interfaces)"
+                v-for="(iface, index) in (routerDetails.interfaces || routerDetails.live_data?.interfaces || [])"
                 :key="index"
                 class="p-3 bg-gray-50 rounded-lg border border-gray-200"
               >

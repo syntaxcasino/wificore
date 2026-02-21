@@ -326,6 +326,18 @@ class GenerateTelegrafConfig extends Command
                         $lines[] = 'name = "ifHCOutOctets"';
                         $lines[] = 'oid = "1.3.6.1.2.1.31.1.1.1.10"';
                         $lines[] = '';
+
+                        // ifInOctets — 32-bit inbound byte counter
+                        $lines[] = '[[inputs.snmp.table.field]]';
+                        $lines[] = 'name = "ifInOctets"';
+                        $lines[] = 'oid = "1.3.6.1.2.1.2.2.1.10"';
+                        $lines[] = '';
+
+                        // ifOutOctets — 32-bit outbound byte counter
+                        $lines[] = '[[inputs.snmp.table.field]]';
+                        $lines[] = 'name = "ifOutOctets"';
+                        $lines[] = 'oid = "1.3.6.1.2.1.2.2.1.16"';
+                        $lines[] = '';
                     }
                 } catch (\Throwable $e) {
                     Log::warning('Telegraf config generation skipped tenant due to error', [
