@@ -7,6 +7,7 @@ use App\Models\VpnSubnetAllocation;
 use App\Models\Tenant;
 use App\Models\Router;
 use App\Models\TenantVpnTunnel;
+use App\Models\WireguardPeer;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -150,6 +151,15 @@ class VpnService extends TenantAwareService
                     'preshared_key' => $this->generatePresharedKey(),
                     'status' => 'pending',
                 ]);
+
+                WireguardPeer::updateOrCreate(
+                    ['router_id' => $router->id],
+                    [
+                        'peer_name' => $router->name,
+                        'public_key' => $vpnConfig->client_public_key,
+                        'allowed_ips' => $vpnConfig->client_ip ? $vpnConfig->client_ip . '/32' : null,
+                    ]
+                );
 
                 $this->tunnelService->addRouterPeer($tunnel, $vpnConfig);
 
