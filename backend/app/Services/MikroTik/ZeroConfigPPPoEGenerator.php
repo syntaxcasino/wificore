@@ -155,7 +155,7 @@ class ZeroConfigPPPoEGenerator
         // ============ PPPoE SERVER ============
         // ISP-grade settings: MSS clamping, keepalive, proper MTU
         // Idempotent: only create if missing
-        $s[] = ":do { :if ([:len [/interface pppoe-server server find comment~\"PPPoE-$id\"]] = 0) do={ /interface pppoe-server server add interface=\"{$bridge}\" service-name=\"{$p['service']}\" default-profile=\"{$p['profile']}\" authentication=pap,chap,mschap2 one-session-per-host=yes keepalive-timeout=30 max-mtu=1480 max-mru=1480 mrru=disabled disabled=no comment=\"PPPoE-$id\" } } on-error={}";
+        $s[] = ":do { :if ([:len [/interface pppoe-server server find comment~\"PPPoE-$id\"]] = 0) do={ /interface pppoe-server server add interface=\"{$bridge}\" service-name=\"{$p['service']}\" default-profile=\"{$p['profile']}\" authentication=chap,mschap2 one-session-per-host=yes keepalive-timeout=30 max-mtu=1480 max-mru=1480 mrru=disabled disabled=no comment=\"PPPoE-$id\" } } on-error={}";
         $s[] = ":do { :if ([:len [/interface list member find list={$p['pppoe_list']} interface=\"{$bridge}\"]] = 0) do={ /interface list member add list={$p['pppoe_list']} interface=\"{$bridge}\" } } on-error={}";
 
         // ============ FIREWALL CONFIGURATION ============
