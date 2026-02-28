@@ -1,0 +1,265 @@
+<?php
+
+namespace App\Services;
+
+class RouterMetricsService
+{
+    public function getLatestRouterMetrics(VictoriaMetricsClient $vm, string $tenantId, array $routerIds): array
+    {
+        $routerIds = array_values(array_filter(array_map('strval', $routerIds), fn ($id) => $id !== ''));
+        if (count($routerIds) === 0) {
+            return [];
+        }
+
+        if (count($routerIds) === 1) {
+            $selector = sprintf(
+                'tenant_id="%s",router_id="%s"',
+                $this->escapeLabelValue($tenantId),
+                $this->escapeLabelValue((string) $routerIds[0])
+            );
+        } else {
+            $routerIdRegex = '^(?:' . implode('|', array_map(fn ($id) => $this->escapeRegexValue((string) $id), $routerIds)) . ')$';
+            $selector = sprintf(
+                'tenant_id="%s",router_id=~"%s"',
+                $this->escapeLabelValue($tenantId),
+                $this->escapeLabelValue($routerIdRegex)
+            );
+        }
+
+        $diskType = '(^([.]?1[.]3[.]6[.]1[.]2[.]1[.]25[.]2[.]1[.]4|iso[.]3[.]6[.]1[.]2[.]1[.]25[.]2[.]1[.]4)$|hrStorageFixedDisk|HOST-RESOURCES-MIB::hrStorageFixedDisk)';
+        $ramType = '(^([.]?1[.]3[.]6[.]1[.]2[.]1[.]25[.]2[.]1[.]2|iso[.]3[.]6[.]1[.]2[.]1[.]25[.]2[.]1[.]2)$|hrStorageRam|HOST-RESOURCES-MIB::hrStorageRam)';
+
+        $queries = [
+            'cpu_load' => [
+                'primary' => sprintf('router_health_cpu_load{%s}', $selector),
+                'fallback' => sprintf('avg by (router_id) (cpu_hrProcessorLoad{%s})', $selector),
+            ],
+            'total_memory' => sprintf('router_health_total_memory{%s}', $selector),
+            'total_memory_kb' => sprintf('router_health_total_memory_kb{%s}', $selector),
+            'free_memory' => sprintf('router_health_free_memory{%s}', $selector),
+            'uptime_ticks' => sprintf('router_health_uptime_ticks{%s}', $selector),
+            'pppoe_sessions' => sprintf('router_health_pppoe_sessions{%s}', $selector),
+            'disk_total_bytes' => [
+                'primary' => $this->buildStorageBytesQuery('storage', 'hrStorageSize', $selector, $diskType),
+                'fallback' => $this->buildStorageBytesQuery('router_storage', 'hrStorageSize', $selector, $diskType),
+            ],
+            'disk_used_bytes' => [
+                'primary' => $this->buildStorageBytesQuery('storage', 'hrStorageUsed', $selector, $diskType),
+                'fallback' => $this->buildStorageBytesQuery('router_storage', 'hrStorageUsed', $selector, $diskType),
+            ],
+            'memory_total_bytes' => [
+                'primary' => $this->buildStorageBytesQuery('storage', 'hrStorageSize', $selector, $ramType),
+                'fallback' => $this->buildStorageBytesQuery('router_storage', 'hrStorageSize', $selector, $ramType),
+            ],
+            'memory_used_bytes' => [
+                'primary' => $this->buildStorageBytesQuery('storage', 'hrStorageUsed', $selector, $ramType),
+                'fallback' => $this->buildStorageBytesQuery('router_storage', 'hrStorageUsed', $selector, $ramType),
+            ],
+        ];
+
+        $live = [];
+        foreach ($routerIds as $routerId) {
+            $live[(string) $routerId] = [];
+        }
+
+        foreach ($queries as $field => $promql) {
+            $primary = is_array($promql) ? $promql['primary'] : $promql;
+            $fallback = is_array($promql) ? ($promql['fallback'] ?? null) : null;
+
+            $missing = array_fill_keys($routerIds, true);
+            $response = $vm->queryInstant($primary);
+            
+            // Log the raw response count for debugging
+            $resultCount = count($response['data']['result'] ?? []);
+            \Illuminate\Support\Facades\Log::info("VM Query [$field] primary result count: $resultCount");
+            
+            $missing = $this->applyInstantResult($response, $live, $field, $missing);
+
+            if ($fallback && count($missing) > 0) {
+                \Illuminate\Support\Facades\Log::info("VM Query [$field] using fallback for " . count($missing) . " routers");
+                $fallbackResponse = $vm->queryInstant($fallback);
+                
+                $fallbackResultCount = count($fallbackResponse['data']['result'] ?? []);
+                \Illuminate\Support\Facades\Log::info("VM Query [$field] fallback result count: $fallbackResultCount");
+                
+                $this->applyInstantResult($fallbackResponse, $live, $field, $missing);
+            }
+        }
+
+        foreach ($routerIds as $routerId) {
+            $rid = (string) $routerId;
+            $diskTotal = $live[$rid]['disk_total_bytes'] ?? null;
+            $diskUsed = $live[$rid]['disk_used_bytes'] ?? null;
+
+            if (is_int($diskTotal) && is_int($diskUsed) && $diskTotal >= 0 && $diskUsed >= 0) {
+                $free = $diskTotal - $diskUsed;
+                if ($free < 0) {
+                    $free = 0;
+                }
+
+                $live[$rid]['total_hdd_space'] = $diskTotal;
+                $live[$rid]['free_hdd_space'] = $free;
+            }
+
+            unset($live[$rid]['disk_total_bytes']);
+            unset($live[$rid]['disk_used_bytes']);
+
+            $memoryTotal = $live[$rid]['total_memory'] ?? null;
+            $memoryFree = $live[$rid]['free_memory'] ?? null;
+            $memoryTotalKb = $live[$rid]['total_memory_kb'] ?? null;
+            $memoryTotalBytes = $live[$rid]['memory_total_bytes'] ?? null;
+            $memoryUsedBytes = $live[$rid]['memory_used_bytes'] ?? null;
+
+            if (is_int($memoryTotal) && $memoryTotal <= 0) {
+                $memoryTotal = null;
+                unset($live[$rid]['total_memory']);
+            }
+
+            if (is_int($memoryFree) && $memoryFree <= 0) {
+                $memoryFree = null;
+                unset($live[$rid]['free_memory']);
+            }
+
+            if ($memoryTotal === null && is_int($memoryTotalBytes) && $memoryTotalBytes >= 0) {
+                $memoryTotal = $memoryTotalBytes;
+                $live[$rid]['total_memory'] = $memoryTotalBytes;
+            }
+
+            if ($memoryTotal === null && is_int($memoryTotalKb) && $memoryTotalKb >= 0) {
+                $memoryTotal = $memoryTotalKb * 1024;
+                $live[$rid]['total_memory'] = $memoryTotal;
+            }
+
+            if ($memoryFree === null && is_int($memoryUsedBytes) && $memoryUsedBytes >= 0) {
+                $totalForFree = null;
+                if (is_int($memoryTotalBytes) && $memoryTotalBytes >= 0) {
+                    $totalForFree = $memoryTotalBytes;
+                } elseif (is_int($memoryTotal) && $memoryTotal >= 0) {
+                    $totalForFree = $memoryTotal;
+                }
+
+                if ($totalForFree !== null) {
+                    $free = $totalForFree - $memoryUsedBytes;
+                    if ($free < 0) {
+                        $free = 0;
+                    }
+                    $live[$rid]['free_memory'] = $free;
+                }
+            }
+
+            unset($live[$rid]['total_memory_kb']);
+            unset($live[$rid]['memory_total_bytes']);
+            unset($live[$rid]['memory_used_bytes']);
+
+            $uptimeTicks = $live[$rid]['uptime_ticks'] ?? null;
+            if (is_int($uptimeTicks) && $uptimeTicks >= 0) {
+                $live[$rid]['uptime'] = $this->formatUptimeFromTicks($uptimeTicks);
+            }
+
+            $pppoeSessions = $live[$rid]['pppoe_sessions'] ?? null;
+            if (is_int($pppoeSessions) && !array_key_exists('active_connections', $live[$rid])) {
+                $live[$rid]['active_connections'] = $pppoeSessions;
+            }
+        }
+
+        return $live;
+    }
+
+    private function formatUptimeFromTicks(int $ticks): string
+    {
+        $seconds = (int) floor($ticks / 100);
+
+        $days = intdiv($seconds, 86400);
+        $hours = intdiv($seconds % 86400, 3600);
+        $minutes = intdiv($seconds % 3600, 60);
+        $secs = $seconds % 60;
+
+        if ($days > 0) {
+            return $days . 'd ' . $hours . 'h';
+        }
+
+        if ($hours > 0) {
+            return $hours . 'h ' . $minutes . 'm';
+        }
+
+        return $minutes . 'm ' . $secs . 's';
+    }
+
+    private function extractPrometheusValue(array $series): ?int
+    {
+        $value = $series['value'] ?? null;
+        if (!is_array($value) || count($value) < 2) {
+            return null;
+        }
+
+        $raw = $value[1];
+        if ($raw === null || $raw === '') {
+            return null;
+        }
+
+        if (!is_numeric($raw)) {
+            return null;
+        }
+
+        return (int) round((float) $raw);
+    }
+
+    private function applyInstantResult(array $response, array &$live, string $field, array $missing): array
+    {
+        $result = (array) (($response['data']['result'] ?? []) ?: []);
+
+        foreach ($result as $series) {
+            $labels = (array) ($series['metric'] ?? []);
+            $routerId = (string) ($labels['router_id'] ?? '');
+            if ($routerId === '' || !array_key_exists($routerId, $live)) {
+                continue;
+            }
+
+            if (!array_key_exists($routerId, $missing)) {
+                continue;
+            }
+
+            $value = $this->extractPrometheusValue($series);
+            if ($value === null) {
+                continue;
+            }
+
+            $live[$routerId][$field] = $value;
+            unset($missing[$routerId]);
+        }
+
+        return $missing;
+    }
+
+    private function buildStorageBytesQuery(string $prefix, string $valueField, string $selector, string $storageTypePattern): string
+    {
+        $allocUnits = sprintf('%s_hrStorageAllocationUnits', $prefix);
+        $values = sprintf('%s_%s', $prefix, $valueField);
+
+        return sprintf(
+            'max by (tenant_id, router_id) (%s{%s,hrStorageType=~"%s"} * on (tenant_id, router_id, hrStorageIndex) group_left %s{%s,hrStorageType=~"%s"})',
+            $allocUnits,
+            $selector,
+            $storageTypePattern,
+            $values,
+            $selector,
+            $storageTypePattern
+        );
+    }
+
+    private function escapeLabelValue(string $value): string
+    {
+        return str_replace([
+            "\\",
+            '"',
+        ], [
+            "\\\\",
+            '\\"',
+        ], $value);
+    }
+
+    private function escapeRegexValue(string $value): string
+    {
+        return preg_replace('/([\\\\.^$|?*+()\[\]{}])/', '\\\\$1', $value) ?? '';
+    }
+}

@@ -2,7 +2,6 @@
 
 namespace App\Console\Commands;
 
-use App\Models\Router;
 use App\Models\Tenant;
 use App\Services\TenantContext;
 use Illuminate\Console\Command;
@@ -45,7 +44,9 @@ class GenerateTelegrafConfig extends Command
             @mkdir($outputDir, 0755, true);
         }
 
-        $tenants = Tenant::where('is_active', true)->get(['id', 'schema_name', 'name']);
+        $tenants = Tenant::where('is_active', true)
+            ->whereNotNull('schema_name')
+            ->get(['id', 'schema_name', 'name', 'schema_created']);
 
         $written = 0;
         $routerCountByShard = array_fill(0, $shardCount, 0);
@@ -60,7 +61,7 @@ class GenerateTelegrafConfig extends Command
             $slowInterval = (string) config('telegraf.slow_interval', '30s');
             
             // Global SNMPv2c community from config (default for all routers)
-            $snmpCommunity = (string) config('telegraf.snmp_community', 'public');
+            $snmpCommunity = (string) config('telegraf.snmp_community', 'traidnet-monitor');
 
             // SNMPv3 credentials from config (fallback if router has no per-router v3 creds)
             $snmpV3User = (string) config('telegraf.snmpv3_user', 'snmpmonitor');
@@ -89,34 +90,52 @@ class GenerateTelegrafConfig extends Command
             $lines[] = '';
 
             foreach ($tenants as $tenant) {
-                if (!$tenant->schema_name) {
+                if (!$tenant->schema_created) {
+                    Log::info('Telegraf config generation skipped tenant: schema not created', [
+                        'tenant_id' => $tenant->id,
+                        'schema_name' => $tenant->schema_name,
+                    ]);
                     continue;
+                }
+
+                if (!$this->hasTableInSchema((string) $tenant->schema_name, 'routers')) {
+                    Log::warning('Telegraf config generation skipped tenant: routers table missing in schema', [
+                        'tenant_id' => $tenant->id,
+                        'schema_name' => $tenant->schema_name,
+                    ]);
+                    continue;
+                }
+
+                $routerColumns = [
+                    'id',
+                    'vpn_ip',
+                    'ip_address',
+                    'device_type',
+                    'snmp_enabled',
+                    'snmp_version',
+                    'snmp_community',
+                    'snmp_v3_user',
+                    'snmp_v3_auth_protocol',
+                    'snmp_v3_auth_password',
+                    'snmp_v3_priv_protocol',
+                    'snmp_v3_priv_password',
+                ];
+
+                if ($this->hasColumnInSchema((string) $tenant->schema_name, 'routers', 'router_type')) {
+                    $routerColumns[] = 'router_type';
                 }
 
                 try {
                     /** @var TenantContext $tenantContext */
                     $tenantContext = app(TenantContext::class);
-                    $tenantContext->setTenant($tenant);
-
-                    DB::statement("SET search_path TO {$tenant->schema_name}, public");
-
-                    $routers = Router::query()
-                        ->where('snmp_enabled', true)
-                        ->get([
-                            'id',
-                            'vpn_ip',
-                            'ip_address',
-                            'device_type',
-                            'router_type',
-                            'snmp_enabled',
-                            'snmp_version',
-                            'snmp_community',
-                            'snmp_v3_user',
-                            'snmp_v3_auth_protocol',
-                            'snmp_v3_auth_password',
-                            'snmp_v3_priv_protocol',
-                            'snmp_v3_priv_password',
-                        ]);
+                    $routers = $tenantContext->runInTenantContext($tenant, function () use ($routerColumns) {
+                        return DB::table('routers')
+                            ->where(function ($query) {
+                                $query->where('snmp_enabled', true)
+                                    ->orWhereNull('snmp_enabled');
+                            })
+                            ->get($routerColumns);
+                    });
 
                     foreach ($routers as $router) {
                         $routerId = (string) ($router->id ?? '');
@@ -184,30 +203,29 @@ class GenerateTelegrafConfig extends Command
                         $lines[] = 'oid = "1.3.6.1.2.1.25.3.3.1.2"';
                         $lines[] = '';
 
-                        // Add OIDs based on router type
-                        if ($routerType === 'chr') {
-                            // CHR uses HOST-RESOURCES-MIB for memory
-                            $lines[] = '[[inputs.snmp.field]]';
-                            $lines[] = 'name = "total_memory_kb"';
-                            $lines[] = 'oid = "1.3.6.1.2.1.25.2.2.0"';
-                            $lines[] = '';
-                        } else {
-                            // Physical MikroTik uses enterprise OIDs
-                            $lines[] = '[[inputs.snmp.field]]';
-                            $lines[] = 'name = "cpu_load"';
-                            $lines[] = 'oid = "1.3.6.1.4.1.14988.1.1.3.10.0"';
-                            $lines[] = '';
+                        // Add OIDs for all router types (try both Enterprise and HOST-RESOURCES)
+                        
+                        // HOST-RESOURCES-MIB Memory (Standard)
+                        $lines[] = '[[inputs.snmp.field]]';
+                        $lines[] = 'name = "total_memory_kb"';
+                        $lines[] = 'oid = "1.3.6.1.2.1.25.2.2.0"';
+                        $lines[] = '';
 
-                            $lines[] = '[[inputs.snmp.field]]';
-                            $lines[] = 'name = "total_memory"';
-                            $lines[] = 'oid = "1.3.6.1.4.1.14988.1.1.3.1.0"';
-                            $lines[] = '';
+                        // MikroTik Enterprise Memory & CPU
+                        $lines[] = '[[inputs.snmp.field]]';
+                        $lines[] = 'name = "cpu_load"';
+                        $lines[] = 'oid = "1.3.6.1.4.1.14988.1.1.3.10.0"';
+                        $lines[] = '';
 
-                            $lines[] = '[[inputs.snmp.field]]';
-                            $lines[] = 'name = "free_memory"';
-                            $lines[] = 'oid = "1.3.6.1.4.1.14988.1.1.3.2.0"';
-                            $lines[] = '';
-                        }
+                        $lines[] = '[[inputs.snmp.field]]';
+                        $lines[] = 'name = "total_memory"';
+                        $lines[] = 'oid = "1.3.6.1.4.1.14988.1.1.3.1.0"';
+                        $lines[] = '';
+
+                        $lines[] = '[[inputs.snmp.field]]';
+                        $lines[] = 'name = "free_memory"';
+                        $lines[] = 'oid = "1.3.6.1.4.1.14988.1.1.3.2.0"';
+                        $lines[] = '';
 
                         // Temperature (MikroTik specific)
                         $lines[] = '[[inputs.snmp.field]]';
@@ -345,11 +363,6 @@ class GenerateTelegrafConfig extends Command
                         'schema_name' => $tenant->schema_name ?? null,
                         'error' => $e->getMessage(),
                     ]);
-                } finally {
-                    try {
-                        DB::statement('SET search_path TO public');
-                    } catch (\Throwable $e) {
-                    }
                 }
             }
 
@@ -374,6 +387,23 @@ class GenerateTelegrafConfig extends Command
         }
 
         return Command::SUCCESS;
+    }
+
+    private function hasTableInSchema(string $schemaName, string $tableName): bool
+    {
+        return DB::table('information_schema.tables')
+            ->where('table_schema', $schemaName)
+            ->where('table_name', $tableName)
+            ->exists();
+    }
+
+    private function hasColumnInSchema(string $schemaName, string $tableName, string $columnName): bool
+    {
+        return DB::table('information_schema.columns')
+            ->where('table_schema', $schemaName)
+            ->where('table_name', $tableName)
+            ->where('column_name', $columnName)
+            ->exists();
     }
 
     /**
