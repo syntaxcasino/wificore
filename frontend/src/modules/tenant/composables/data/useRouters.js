@@ -1,5 +1,7 @@
-import { ref, reactive, watch } from 'vue'
+import { ref, reactive, watch, onUnmounted } from 'vue'
 import axios from 'axios'
+import { useBroadcasting } from '@/modules/common/composables/websocket/useBroadcasting'
+import { useAuthStore } from '@/stores/auth'
 
 export function useRouters() {
   const routers = ref([]) // Initialize as empty array
@@ -40,6 +42,12 @@ export function useRouters() {
   const formMessage = ref({ text: '', type: '' })
   const formSubmitted = ref(false)
   const showMenu = ref(null) // Track which router's menu is open (null or router ID)
+  let latestMetricsRequestToken = 0
+
+  // WebSocket Integration
+  const { subscribeToPrivateChannel, unsubscribeFromChannel } = useBroadcasting()
+  const authStore = useAuthStore()
+  let routerUpdatesChannel = null
 
   // Watch formData for changes
   watch(
@@ -49,6 +57,88 @@ export function useRouters() {
     },
     { deep: true },
   )
+
+  const setupRealtimeUpdates = () => {
+    const tenantId = authStore.tenantId
+    if (!tenantId) return
+
+    // Unsubscribe existing if any
+    if (routerUpdatesChannel) {
+      unsubscribeFromChannel(routerUpdatesChannel)
+    }
+
+    routerUpdatesChannel = `tenant.${tenantId}.router-updates`
+    
+    subscribeToPrivateChannel(routerUpdatesChannel, {
+      RouterLiveDataUpdated: (event) => {
+        // Update router metrics
+        const routerIndex = routers.value.findIndex(r => String(r.id) === String(event.router_id))
+        if (routerIndex !== -1) {
+          const router = routers.value[routerIndex]
+          const newData = event.liveData || event.data
+          
+          routers.value[routerIndex] = {
+            ...router,
+            live_data: {
+              ...(router.live_data || {}),
+              ...newData
+            },
+            resources: {
+              ...(router.resources || {}),
+              ...newData
+            }
+          }
+        }
+        
+        // Also update current router detail if open
+        if (currentRouter.value && String(currentRouter.value.id) === String(event.router_id)) {
+          const newData = event.liveData || event.data
+          currentRouter.value = {
+            ...currentRouter.value,
+            live_data: {
+              ...(currentRouter.value.live_data || {}),
+              ...newData
+            },
+            resources: {
+              ...(currentRouter.value.resources || {}),
+              ...newData
+            }
+          }
+        }
+      },
+      RouterStatusUpdated: (event) => {
+        // Update router status
+        // Event might contain a list of routers or a single one
+        const updates = Array.isArray(event.routers) ? event.routers : [event.router || event]
+        
+        updates.forEach(update => {
+          const routerIndex = routers.value.findIndex(r => String(r.id) === String(update.id))
+          if (routerIndex !== -1) {
+            routers.value[routerIndex] = {
+              ...routers.value[routerIndex],
+              ...update,
+              status: update.status || routers.value[routerIndex].status,
+              last_seen: update.last_seen || routers.value[routerIndex].last_seen
+            }
+          }
+          
+          if (currentRouter.value && String(currentRouter.value.id) === String(update.id)) {
+            currentRouter.value = {
+              ...currentRouter.value,
+              ...update
+            }
+          }
+        })
+      }
+    })
+  }
+
+  const cleanupRealtimeUpdates = () => {
+    if (routerUpdatesChannel) {
+      unsubscribeFromChannel(routerUpdatesChannel)
+      routerUpdatesChannel = null
+    }
+  }
 
   const formatTimestamp = (timestamp) => {
     if (!timestamp) return ''
@@ -143,27 +233,44 @@ export function useRouters() {
       routers.value = sortedRouters
 
       const routerIds = sortedRouters.map((r) => String(r?.id ?? '')).filter((id) => id !== '')
-      const liveDataMap = await fetchRouterMetricsBatch(routerIds)
-      if (liveDataMap && typeof liveDataMap === 'object') {
-        routers.value = routers.value.map((router) => {
-          const rid = String(router?.id ?? '')
-          const live = liveDataMap[rid]
+      const requestToken = ++latestMetricsRequestToken
 
-          if (!live || typeof live !== 'object') {
-            return router
+      // Do not block initial render; load DB rows first, then hydrate metrics asynchronously.
+      void fetchRouterMetricsBatch(routerIds)
+        .then((liveDataMap) => {
+          if (requestToken !== latestMetricsRequestToken) {
+            return
           }
 
-          return {
-            ...router,
-            live_data: {
-              ...(router.live_data || {}),
-              ...live,
-            },
+          if (!liveDataMap || typeof liveDataMap !== 'object') {
+            return
           }
+
+          routers.value = routers.value.map((router) => {
+            const rid = String(router?.id ?? '')
+            const live = liveDataMap[rid]
+
+            if (!live || typeof live !== 'object') {
+              return router
+            }
+
+            return {
+              ...router,
+              live_data: {
+                ...(router.live_data || {}),
+                ...live,
+              },
+            }
+          })
         })
-      }
+        .catch((err) => {
+          console.warn('fetchRouterMetricsBatch async merge error:', err.message, err.response?.data)
+        })
 
       // Routers fetched and sorted successfully
+      
+      // Start listening for real-time updates
+      setupRealtimeUpdates()
     } catch (err) {
       const errorMessage = err.response?.data?.error || 'Failed to fetch routers'
       console.error('fetchRouters error:', err.message, err.response?.data)
@@ -454,53 +561,58 @@ export function useRouters() {
         access_points: data.access_points || currentRouter.value?.access_points || [],
       }
 
-      // Step 2: Fetch live data from MikroTik (async, may be slow/fail)
-      console.log('Fetching live data from MikroTik...')
-      let sshLive = {}
+      // Step 2: Fetch live metrics from VictoriaMetrics
+      console.log('Fetching live metrics from VictoriaMetrics...')
+      let hasMetrics = false
       try {
-        const liveResponse = await axios.get(`/routers/${routerId}/live-data`)
-        if (liveResponse.data?.success && liveResponse.data?.resources && typeof liveResponse.data.resources === 'object') {
-          sshLive = liveResponse.data.resources
-          console.log('Live data from MikroTik:', sshLive)
-          
-          // Update UI with live data
-          currentRouter.value = {
-            ...currentRouter.value,
-            live_data: {
-              ...(currentRouter.value?.live_data || {}),
-              ...sshLive,
-            },
-            // Update hardware fields from live data
-            model: sshLive.board_name || currentRouter.value.model,
-            os_version: sshLive.version || currentRouter.value.os_version,
-            serial_number: sshLive.serial_number || currentRouter.value.serial_number,
-            firmware: sshLive.version || currentRouter.value.firmware,
-          }
-        }
-      } catch (err) {
-        console.warn('Could not fetch router live data via SSH:', err.message)
-        // Don't set error - DB data is still valid
-      }
+        const metricsResponse = await axios.get(`/routers/${routerId}/metrics/live`)
+        if (metricsResponse.data?.success && metricsResponse.data?.live_data && typeof metricsResponse.data.live_data === 'object') {
+          const metricsLive = metricsResponse.data.live_data
+          console.log('Metrics from VictoriaMetrics:', metricsLive)
 
-      // Step 3: Fallback to VictoriaMetrics if SSH failed
-      if (Object.keys(sshLive).length === 0) {
-        console.log('Trying VictoriaMetrics as fallback...')
-        try {
-          const metricsResponse = await axios.get(`/routers/${routerId}/metrics/live`)
-          if (metricsResponse.data?.success && metricsResponse.data?.live_data && typeof metricsResponse.data.live_data === 'object') {
-            const metricsLive = metricsResponse.data.live_data
-            console.log('Metrics from VictoriaMetrics:', metricsLive)
-            
+          if (Object.keys(metricsLive).length > 0) {
+            hasMetrics = true
             currentRouter.value = {
               ...currentRouter.value,
               live_data: {
                 ...(currentRouter.value?.live_data || {}),
                 ...metricsLive,
               },
+              resources: {
+                ...(currentRouter.value?.resources || {}),
+                ...metricsLive,
+              },
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Could not fetch router metrics:', err.message)
+        // Don't set error - DB data is still valid
+      }
+
+      if (!hasMetrics) {
+        console.log('Falling back to router live-data endpoint...')
+        try {
+          const liveResponse = await axios.get(`/routers/${routerId}/live-data`)
+          const fallbackLive = liveResponse.data?.resources || liveResponse.data?.live_data || {}
+
+          if (Object.keys(fallbackLive).length > 0) {
+            currentRouter.value = {
+              ...currentRouter.value,
+              live_data: {
+                ...(currentRouter.value?.live_data || {}),
+                ...fallbackLive,
+              },
+              resources: {
+                ...(currentRouter.value?.resources || {}),
+                ...fallbackLive,
+              },
+              active_connections:
+                liveResponse.data?.active_connections ?? currentRouter.value?.active_connections,
             }
           }
         } catch (err) {
-          console.warn('Could not fetch router metrics:', err.message)
+          console.warn('Could not fetch router live data fallback:', err.message)
         }
       }
 
@@ -625,6 +737,10 @@ export function useRouters() {
     Object.assign(formData.value, data)
     console.log('formData updated in useRouters:', JSON.parse(JSON.stringify(formData.value)))
   }
+
+  onUnmounted(() => {
+    cleanupRealtimeUpdates()
+  })
 
   return {
     routers,
