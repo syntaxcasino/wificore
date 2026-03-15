@@ -3,7 +3,9 @@
 namespace App\Jobs;
 
 use App\Models\Router;
+use App\Models\VpnConfiguration;
 use App\Services\MikrotikProvisioningService;
+use App\Services\VpnConnectivityService;
 use App\Events\RouterProvisioningProgress;
 use App\Traits\TenantAwareJob;
 use Illuminate\Bus\Queueable;
@@ -39,9 +41,12 @@ class RouterProvisioningJob implements ShouldQueue
     /**
      * Execute the job.
      */
-    public function handle(MikrotikProvisioningService $provisioningService): void
+    public function handle(
+        MikrotikProvisioningService $provisioningService,
+        VpnConnectivityService $vpnConnectivityService
+    ): void
     {
-        $this->executeInTenantContext(function() use ($provisioningService) {
+        $this->executeInTenantContext(function() use ($provisioningService, $vpnConnectivityService) {
             $router = Router::find($this->routerId);
 
             if (!$router) {
@@ -63,18 +68,24 @@ class RouterProvisioningJob implements ShouldQueue
             }
 
             try {
-                // Stage 1: Verify connectivity (should already be done, but double-check)
-                $this->broadcastProgress($router, 'verifying', 5, 'Verifying router connectivity...');
-                
-                $connectivity = $provisioningService->verifyConnectivity($router);
-                
-                if ($connectivity['status'] !== 'connected' && $connectivity['status'] !== 'online') {
-                    throw new \Exception('Router not connected');
+                // Stage 1: Verify status via ping only (strict provisioning policy)
+                $this->broadcastProgress($router, 'verifying', 5, 'Verifying router status via ping...');
+
+                $vpnConfig = VpnConfiguration::where('router_id', $router->id)->first();
+                if (!$vpnConfig) {
+                    throw new \Exception('Router VPN configuration not found for ping status check');
+                }
+
+                $connectivity = $vpnConnectivityService->verifyConnectivity($vpnConfig, 2, 3, true);
+
+                if (!($connectivity['success'] ?? false) || ($connectivity['packet_loss'] ?? 100) > 0) {
+                    throw new \Exception($connectivity['message'] ?? 'Router ping check failed during provisioning');
                 }
 
                 $this->broadcastProgress($router, 'connected', 20, 'Router connected successfully', [
-                    'model' => $connectivity['model'],
-                    'version' => $connectivity['os_version'],
+                    'model' => $router->model,
+                    'version' => $router->os_version,
+                    'latency_ms' => $connectivity['latency'] ?? null,
                 ]);
 
                 // Stage 2: Apply saved service configuration (already generated in previous step)
@@ -87,41 +98,18 @@ class RouterProvisioningJob implements ShouldQueue
                 // Stage 3: Verify deployment
                 $this->broadcastProgress($router, 'verifying_deployment', 85, 'Verifying deployment...');
                 
-                // Reduced delay for faster deployment (low-end device compatible)
-                sleep(1);
-
-                // If hotspot was requested, verify hotspot resources exist
-                $serviceType = $this->provisioningData['service_type'] ?? 'unknown';
-                if ($serviceType === 'hotspot' || ($this->provisioningData['enable_hotspot'] ?? false)) {
-                    $this->broadcastProgress($router, 'verifying_hotspot', 88, 'Verifying hotspot deployment...');
-                    $verified = false;
-                    // Reduced attempts for faster deployment (2 attempts with 1s delay)
-                    for ($i = 0; $i < 2; $i++) {
-                        if ($provisioningService->verifyHotspotDeployment($router)) {
-                            $verified = true;
-                            break;
-                        }
-                        sleep(1);
-                    }
-                    if (!$verified) {
-                        throw new \Exception('Hotspot deployment verification failed: hotspot resources not found');
-                    }
-                }
-
-                // Fetch live data to verify device responsiveness (use 'live' context for full data)
-                $liveData = $provisioningService->fetchLiveRouterData($router, 'live', false);
-                
                 // Update router status
                 $router->update([
-                    'status' => 'active',
+                    'status' => 'online',
                     'last_seen' => now(),
                 ]);
 
                 // Stage 4: Complete
                 $this->broadcastProgress($router, 'completed', 100, 'Router provisioned successfully!', [
                     'router_id' => $router->id,
-                    'interfaces' => $liveData['interface_count'] ?? 0,
-                    'uptime' => $liveData['uptime'] ?? 'N/A',
+                    'service_type' => $this->provisioningData['service_type'] ?? 'unknown',
+                    'execution_time' => $applyResult['execution_time'] ?? null,
+                    'method' => $applyResult['method'] ?? 'SSH',
                 ]);
 
                 Log::info('Router provisioning completed', [
@@ -129,6 +117,8 @@ class RouterProvisioningJob implements ShouldQueue
                     'router_name' => $router->name,
                     'service_type' => $this->provisioningData['service_type'] ?? 'unknown',
                     'tenant_id' => $this->tenantId,
+                    'provision_method' => $applyResult['method'] ?? 'SSH',
+                    'execution_time' => $applyResult['execution_time'] ?? null,
                 ]);
 
             } catch (\Exception $e) {

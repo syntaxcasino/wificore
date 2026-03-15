@@ -88,8 +88,10 @@ abstract class BaseMikroTikService extends TenantAwareService
     /**
      * Create interface lists (LAN/WAN)
      */
-    protected function createInterfaceLists(): array
+    protected function createInterfaceLists(?string $wanInterface = null): array
     {
+        $wanInterface = $this->resolveWanInterface($wanInterface);
+
         return [
             '# Interface Lists',
             ':if ([/interface list find name="LAN"] = "") do={',
@@ -99,12 +101,25 @@ abstract class BaseMikroTikService extends TenantAwareService
             '  /interface list add name=WAN comment="Wide Area Network"',
             '}',
             '',
-            '# Add ether1 to WAN by default',
-            ':if ([/interface list member find list=WAN interface=ether1] = "") do={',
-            '  /interface list member add list=WAN interface=ether1',
+            '# Add WAN interface to WAN list',
+            ":if ([/interface list member find list=WAN interface={$wanInterface}] = \"\") do={",
+            "  /interface list member add list=WAN interface={$wanInterface}",
             '}',
             '',
         ];
+    }
+
+    /**
+     * Normalize WAN interface (fallback to ether1).
+     */
+    protected function resolveWanInterface(?string $wanInterface): string
+    {
+        $wanInterface = trim((string) $wanInterface);
+        if ($wanInterface === '' || !preg_match('/^[a-zA-Z0-9_\-\.]+$/', $wanInterface)) {
+            return 'ether1';
+        }
+
+        return $wanInterface;
     }
     
     /**

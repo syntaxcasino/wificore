@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Router;
+use App\Services\RouterMetricsService;
 use App\Services\TenantContext;
 use App\Services\VictoriaMetricsClient;
 use Illuminate\Http\JsonResponse;
@@ -11,7 +12,7 @@ use Illuminate\Http\Request;
 
 class RouterMetricsController extends Controller
 {
-    public function live(Request $request, Router $router, VictoriaMetricsClient $vm, TenantContext $tenantContext): JsonResponse
+    public function live(Request $request, Router $router, VictoriaMetricsClient $vm, TenantContext $tenantContext, RouterMetricsService $metricsService): JsonResponse
     {
         $tenantId = $tenantContext->getTenantId();
         if (!$tenantId) {
@@ -23,7 +24,7 @@ class RouterMetricsController extends Controller
 
         $routerId = (string) $router->id;
 
-        $live = $this->queryLatestRouterMetrics($vm, (string) $tenantId, [$routerId]);
+        $live = $metricsService->getLatestRouterMetrics($vm, (string) $tenantId, [$routerId]);
 
         return response()->json([
             'success' => true,
@@ -32,7 +33,7 @@ class RouterMetricsController extends Controller
         ]);
     }
 
-    public function liveBatch(Request $request, VictoriaMetricsClient $vm, TenantContext $tenantContext): JsonResponse
+    public function liveBatch(Request $request, VictoriaMetricsClient $vm, TenantContext $tenantContext, RouterMetricsService $metricsService): JsonResponse
     {
         $tenantId = $tenantContext->getTenantId();
         if (!$tenantId) {
@@ -72,7 +73,7 @@ class RouterMetricsController extends Controller
             ]);
         }
 
-        $live = $this->queryLatestRouterMetrics($vm, (string) $tenantId, $allowedIds);
+        $live = $metricsService->getLatestRouterMetrics($vm, (string) $tenantId, $allowedIds);
 
         return response()->json([
             'success' => true,

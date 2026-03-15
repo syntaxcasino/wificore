@@ -188,7 +188,7 @@ class VpnService extends TenantAwareService
                     $vpnConfig->id,
                     120,
                     5
-                )->onQueue('default');
+                )->onQueue('router-checks');
 
                 Log::info('VPN connectivity verification job dispatched', [
                     'tenant_id' => $tenant->id,
@@ -271,11 +271,29 @@ SCRIPT;
      */
     public function deleteVpnConfiguration(VpnConfiguration $config): void
     {
-        DB::transaction(function () use ($config) {
+        $tunnel = $config->tenant_vpn_tunnel_id
+            ? TenantVpnTunnel::find($config->tenant_vpn_tunnel_id)
+            : null;
+        $publicKey = $config->client_public_key;
+        $routerId = $config->router_id;
+
+        DB::transaction(function () use ($config, $publicKey, $routerId) {
             $subnet = VpnSubnetAllocation::where('subnet_cidr', $config->subnet_cidr)->first();
             
             if ($subnet) {
                 $subnet->releaseIp();
+            }
+
+            if ($publicKey || $routerId) {
+                WireguardPeer::where(function ($query) use ($publicKey, $routerId) {
+                    if ($publicKey) {
+                        $query->where('public_key', $publicKey);
+                    }
+
+                    if ($routerId) {
+                        $query->orWhere('router_id', $routerId);
+                    }
+                })->delete();
             }
 
             $config->delete();
@@ -285,6 +303,16 @@ SCRIPT;
                 'client_ip' => $config->client_ip,
             ]);
         });
+
+        if ($tunnel && $publicKey) {
+            $this->tunnelService->removeRouterPeer($tunnel, $config);
+        } else {
+            Log::warning('Skipped WireGuard peer removal during VPN deletion', [
+                'vpn_config_id' => $config->id,
+                'router_id' => $routerId,
+                'tunnel_id' => $config->tenant_vpn_tunnel_id,
+            ]);
+        }
     }
 
     /**

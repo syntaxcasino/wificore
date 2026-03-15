@@ -1,7 +1,7 @@
 <?php
 
 return [
-    'snmp_community' => env('TELEGRAF_SNMP_COMMUNITY', 'public'),
+    'snmp_community' => env('TELEGRAF_SNMP_COMMUNITY', 'traidnet-monitor'),
     'snmpv3_user' => env('TELEGRAF_SNMPV3_USER', 'snmpmonitor'),
     'snmpv3_auth_password' => env('TELEGRAF_SNMPV3_AUTH_PASSWORD', ''),
     'snmpv3_priv_password' => env('TELEGRAF_SNMPV3_PRIV_PASSWORD', ''),

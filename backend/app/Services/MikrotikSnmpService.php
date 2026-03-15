@@ -24,7 +24,7 @@ class MikrotikSnmpService
         }
 
         $host = 'udp:' . $ip . ':' . (int) env('MIKROTIK_SNMP_PORT', 161);
-        $community = (string) env('MIKROTIK_SNMP_COMMUNITY', 'public');
+        $community = (string) env('MIKROTIK_SNMP_COMMUNITY', 'traidnet-monitor');
         $timeoutSeconds = (int) env('MIKROTIK_SNMP_TIMEOUT', 2);
         $retries = (int) env('MIKROTIK_SNMP_RETRIES', 1);
 

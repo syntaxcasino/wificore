@@ -12,7 +12,11 @@ FROM postgres:17-bookworm
 ENV TZ=Africa/Nairobi
 
 # Install pg_partman and pg_cron extensions
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# Added retry logic for better build resilience
+RUN echo "Acquire::Retries \"3\";" > /etc/apt/apt.conf.d/80-retries && \
+    echo "Acquire::http::Timeout \"120\";" > /etc/apt/apt.conf.d/80-timeout && \
+    (apt-get update || (sleep 5 && apt-get update) || (sleep 10 && apt-get update)) && \
+    apt-get install -y --no-install-recommends \
     postgresql-17-partman \
     postgresql-17-cron \
     tzdata \

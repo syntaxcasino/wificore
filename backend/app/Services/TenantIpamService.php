@@ -19,8 +19,8 @@ class TenantIpamService extends TenantAwareService
     ];
 
     private const BASE_NETWORKS = [
-        'hotspot' => '192.168.100.0',
-        'pppoe' => '192.168.200.0',
+        'hotspot' => '172.16.0.0',
+        'pppoe' => '100.64.0.0',
         'management' => '192.168.10.0',
     ];
 

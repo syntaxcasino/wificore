@@ -46,6 +46,87 @@ return new class extends Migration
             $table->index(['recorded_at', 'tps_current']);
             $table->index(['recorded_at', 'ops_current']);
         });
+
+        // Queue metrics - historical data
+        if (!Schema::hasTable('queue_metrics')) {
+            Schema::create('queue_metrics', function (Blueprint $table) {
+                $table->uuid('id')->primary();
+                $table->timestamp('recorded_at');
+
+                // Queue statistics
+                $table->integer('pending_jobs')->default(0);
+                $table->integer('processing_jobs')->default(0);
+                $table->integer('failed_jobs')->default(0);
+                $table->integer('completed_jobs')->default(0);
+                $table->integer('active_workers')->default(0);
+
+                // Workers by queue (JSON)
+                $table->json('workers_by_queue')->nullable();
+                $table->json('pending_by_queue')->nullable();
+                $table->json('failed_by_queue')->nullable();
+
+                // Indexes for querying
+                $table->index('recorded_at');
+                $table->index(['recorded_at', 'active_workers']);
+
+                $table->timestamps();
+            });
+        }
+
+        // System health metrics - historical data
+        if (!Schema::hasTable('system_health_metrics')) {
+            Schema::create('system_health_metrics', function (Blueprint $table) {
+                $table->uuid('id')->primary();
+                $table->timestamp('recorded_at');
+
+                // Database metrics
+                $table->integer('db_connections')->default(0);
+                $table->integer('db_max_connections')->default(0);
+                $table->decimal('db_response_time', 8, 2)->default(0);
+                $table->integer('db_slow_queries')->default(0);
+
+                // Redis metrics
+                $table->decimal('redis_hit_rate', 5, 2)->default(0);
+                $table->bigInteger('redis_memory_used')->default(0);
+                $table->bigInteger('redis_memory_peak')->default(0);
+
+                // Disk metrics
+                $table->bigInteger('disk_total')->default(0);
+                $table->bigInteger('disk_available')->default(0);
+                $table->decimal('disk_used_percentage', 5, 2)->default(0);
+
+                // System uptime
+                $table->decimal('uptime_percentage', 5, 2)->default(0);
+                $table->string('uptime_duration')->nullable();
+                $table->timestamp('last_restart')->nullable();
+
+                // Indexes
+                $table->index('recorded_at');
+                $table->index(['recorded_at', 'db_connections']);
+
+                $table->timestamps();
+            });
+        }
+
+        // Worker status snapshots - for detailed worker tracking
+        if (!Schema::hasTable('worker_snapshots')) {
+            Schema::create('worker_snapshots', function (Blueprint $table) {
+                $table->uuid('id')->primary();
+                $table->timestamp('recorded_at');
+
+                $table->string('queue_name')->index();
+                $table->integer('worker_count')->default(0);
+                $table->integer('pending_jobs')->default(0);
+                $table->integer('failed_jobs')->default(0);
+                $table->decimal('avg_processing_time', 8, 2)->nullable();
+
+                // Indexes
+                $table->index(['recorded_at', 'queue_name']);
+                $table->index(['queue_name', 'recorded_at']);
+
+                $table->timestamps();
+            });
+        }
     }
 
     /**
@@ -53,6 +134,9 @@ return new class extends Migration
      */
     public function down(): void
     {
+        Schema::dropIfExists('worker_snapshots');
+        Schema::dropIfExists('system_health_metrics');
+        Schema::dropIfExists('queue_metrics');
         Schema::dropIfExists('performance_metrics');
     }
 };

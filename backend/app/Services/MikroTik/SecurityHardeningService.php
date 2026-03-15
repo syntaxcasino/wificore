@@ -26,6 +26,7 @@ class SecurityHardeningService extends TenantAwareService
         try {
             $password = decrypt($router->password);
             $ipAddress = trim(explode('/', $router->ip_address)[0]);
+            $wanInterface = $this->resolveWanInterface($router->wan_interface ?? null);
 
             $client = new Client([
                 'host' => $ipAddress,
@@ -50,7 +51,7 @@ class SecurityHardeningService extends TenantAwareService
             $this->disableFTP($client, $router->id, $results);
 
             // 5. Configure additional firewall rules
-            $this->configureAdvancedFirewall($client, $router->id, $results);
+            $this->configureAdvancedFirewall($client, $router->id, $wanInterface, $results);
 
             // 6. Enable SNMP for monitoring (optional)
             $this->configureSNMP($client, $router->id, $results);
@@ -70,8 +71,17 @@ class SecurityHardeningService extends TenantAwareService
             ]);
             $results['errors'][] = $e->getMessage();
         }
-
         return $results;
+    }
+
+    private function resolveWanInterface(?string $wanInterface): string
+    {
+        $wanInterface = trim((string) $wanInterface);
+        if ($wanInterface === '' || !preg_match('/^[a-zA-Z0-9_\-\.]+$/', $wanInterface)) {
+            return 'ether1';
+        }
+
+        return $wanInterface;
     }
 
     /**
@@ -166,7 +176,7 @@ class SecurityHardeningService extends TenantAwareService
     /**
      * Configure advanced firewall rules
      */
-    private function configureAdvancedFirewall(Client $client, string $routerId, array &$results): void
+    private function configureAdvancedFirewall(Client $client, string $routerId, string $wanInterface, array &$results): void
     {
         try {
             $rules = $client->query(new Query('/ip/firewall/filter/print'))->read();
@@ -185,7 +195,7 @@ class SecurityHardeningService extends TenantAwareService
                     ->equal('chain', 'forward')
                     ->equal('action', 'drop')
                     ->equal('connection-state', 'new')
-                    ->equal('in-interface', 'ether1')
+                    ->equal('in-interface', $wanInterface)
                     ->equal('comment', 'Drop WAN to LAN')
                 )->read();
 

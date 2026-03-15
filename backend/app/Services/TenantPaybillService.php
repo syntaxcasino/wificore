@@ -11,6 +11,7 @@ use App\Models\PppoePayment;
 use App\Models\PaymentCheckLog;
 use App\Events\PaymentReceived;
 use App\Events\PppoeUserPaymentStatusChanged;
+use App\Events\PppoeGracePeriodStarted;
 use App\Jobs\DisconnectPppoeUserJob;
 use App\Jobs\ReconnectPppoeUserJob;
 use Illuminate\Support\Facades\DB;
@@ -291,23 +292,23 @@ class TenantPaybillService extends TenantAwareService
                 'tenant_id' => $this->tenantId,
                 'data' => $data,
             ]);
+
             return $this->confirmationResponse('1', 'Invalid data');
         }
 
-        // Check for duplicate transaction
         $existingTransaction = MpesaTransaction::where('transaction_id', $transactionId)->first();
         if ($existingTransaction) {
             Log::warning('TenantPaybillService: Duplicate transaction', [
                 'tenant_id' => $this->tenantId,
                 'transaction_id' => $transactionId,
             ]);
+
             return $this->confirmationResponse('0', 'Already processed');
         }
 
         try {
             DB::beginTransaction();
 
-            // Record transaction
             $transaction = MpesaTransaction::create([
                 'transaction_id' => $transactionId,
                 'transaction_type' => 'C2B',
@@ -322,7 +323,6 @@ class TenantPaybillService extends TenantAwareService
                 'raw_payload' => $data,
             ]);
 
-            // Find and match user
             $user = PppoeUser::where('account_number', $accountNumber)
                 ->orWhere('username', $accountNumber)
                 ->first();
@@ -331,9 +331,6 @@ class TenantPaybillService extends TenantAwareService
                 $transaction->markAsMatched($user->id, 'account_number');
                 $payment = $this->createPaymentAndActivateUser($user, $transaction, $data);
                 $transaction->markAsCompleted($payment->id);
-                
-                // Broadcast payment received event
-                event(new PaymentReceived($this->tenantId, $user->id, $payment->id, $amount));
             } else {
                 Log::warning('TenantPaybillService: User not found for confirmation', [
                     'tenant_id' => $this->tenantId,
@@ -344,13 +341,18 @@ class TenantPaybillService extends TenantAwareService
             DB::commit();
 
             return $this->confirmationResponse('0', 'Success');
-
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error('TenantPaybillService: Payment processing failed', [
+            if (isset($transaction)) {
+                $transaction->markAsFailed($e->getMessage());
+            }
+
+            Log::error('TenantPaybillService: Confirmation processing failed', [
                 'tenant_id' => $this->tenantId,
                 'error' => $e->getMessage(),
+                'data' => $data,
             ]);
+
             return $this->confirmationResponse('1', 'Processing error');
         }
     }
@@ -360,9 +362,6 @@ class TenantPaybillService extends TenantAwareService
      */
     protected function createPaymentAndActivateUser(PppoeUser $user, MpesaTransaction $transaction, array $data): PppoePayment
     {
-        $wasInactive = in_array($user->status, ['suspended', 'pending', 'expired']);
-
-        // Create payment record
         $payment = PppoePayment::create([
             'pppoe_user_id' => $user->id,
             'account_number' => $user->account_number,
@@ -380,40 +379,46 @@ class TenantPaybillService extends TenantAwareService
                 'phone_number' => $transaction->msisdn,
                 'shortcode' => $transaction->business_shortcode,
                 'is_landlord_paybill' => $this->usingLandlordPaybill,
+                'confirmation_payload' => $data,
             ],
         ]);
 
-        // Activate user
-        $user->update([
-            'last_payment_date' => now(),
-            'next_payment_due' => now()->addDays(30),
-            'status' => 'active',
-            'payment_status' => 'paid',
-            'suspended_at' => null,
-            'suspension_reason' => null,
-            'in_grace_period' => false,
-        ]);
+        $user->customer_phone = $user->customer_phone ?: $transaction->msisdn;
+        $user->save();
 
-        // Remove Auth-Type Reject from RADIUS
-        DB::table('radcheck')
-            ->where('username', $user->username)
-            ->where('attribute', 'Auth-Type')
-            ->where('value', 'Reject')
-            ->delete();
-
-        // Dispatch reconnection job if user was suspended
-        if ($wasInactive) {
-            Log::info('TenantPaybillService: Dispatching reconnection job', [
-                'tenant_id' => $this->tenantId,
-                'user_id' => $user->id,
-            ]);
-            ReconnectPppoeUserJob::dispatch($user->id, $this->tenantId);
-        }
-
-        // Broadcast status change
-        event(new PppoeUserPaymentStatusChanged($this->tenantId, $user->id, 'paid', $wasInactive ? 'reconnected' : 'renewed'));
+        app(PppoeBillingLifecycleService::class)
+            ->handleSuccessfulPayment($user, $payment, $this->tenantId, 'tenant_paybill_service');
 
         return $payment;
+    }
+
+    /**
+     * Try to match a single transaction
+     */
+    protected function tryMatchTransaction(MpesaTransaction $transaction): bool
+    {
+        $user = PppoeUser::where('account_number', $transaction->bill_ref_number)
+            ->orWhere('username', $transaction->bill_ref_number)
+            ->first();
+
+        if ($user) {
+            try {
+                DB::beginTransaction();
+
+                $transaction->markAsMatched($user->id, 'account_number');
+                $payment = $this->createPaymentAndActivateUser($user, $transaction, []);
+                $transaction->markAsCompleted($payment->id);
+
+                DB::commit();
+
+                return true;
+            } catch (\Exception $e) {
+                DB::rollBack();
+                $transaction->markAsFailed($e->getMessage());
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -422,7 +427,7 @@ class TenantPaybillService extends TenantAwareService
     public function matchUnmatchedTransactions(): array
     {
         $log = PaymentCheckLog::startCheck('automatic', $this->config['shortcode'] ?? null, $this->usingLandlordPaybill);
-        
+
         $results = [
             'transactions_found' => 0,
             'transactions_matched' => 0,
@@ -433,14 +438,8 @@ class TenantPaybillService extends TenantAwareService
 
         try {
             $transactions = MpesaTransaction::unmatched()
-                ->when($this->usingLandlordPaybill, function ($q) {
-                    $q->where('is_landlord_paybill', true)
-                      ->where('source_tenant_id', $this->tenantId);
-                })
-                ->when(!$this->usingLandlordPaybill, function ($q) {
-                    $q->byShortcode($this->config['shortcode']);
-                })
-                ->recent(48) // Last 48 hours
+                ->byShortcode($this->config['shortcode'] ?? config('mpesa.shortcode'))
+                ->recent(48)
                 ->get();
 
             $results['transactions_found'] = $transactions->count();
@@ -454,7 +453,6 @@ class TenantPaybillService extends TenantAwareService
             }
 
             $log->complete($results);
-
         } catch (\Exception $e) {
             Log::error('TenantPaybillService: Match transactions failed', [
                 'tenant_id' => $this->tenantId,
@@ -466,38 +464,6 @@ class TenantPaybillService extends TenantAwareService
         return $results;
     }
 
-    /**
-     * Try to match a single transaction
-     */
-    protected function tryMatchTransaction(MpesaTransaction $transaction): bool
-    {
-        // Try matching by account number
-        $user = PppoeUser::where('account_number', $transaction->bill_ref_number)
-            ->orWhere('username', $transaction->bill_ref_number)
-            ->first();
-
-        if ($user) {
-            try {
-                DB::beginTransaction();
-                
-                $transaction->markAsMatched($user->id, 'account_number');
-                $payment = $this->createPaymentAndActivateUser($user, $transaction, []);
-                $transaction->markAsCompleted($payment->id);
-                
-                DB::commit();
-                return true;
-            } catch (\Exception $e) {
-                DB::rollBack();
-                $transaction->markAsFailed($e->getMessage());
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * Check and disconnect overdue users
-     */
     public function checkAndDisconnectOverdueUsers(): array
     {
         $results = [
@@ -511,7 +477,7 @@ class TenantPaybillService extends TenantAwareService
             ->where('payment_status', '!=', 'paid')
             ->where(function ($q) {
                 $q->where('next_payment_due', '<', now())
-                  ->orWhereNull('next_payment_due');
+                    ->orWhereNull('next_payment_due');
             })
             ->where('in_grace_period', false)
             ->get();
@@ -519,22 +485,26 @@ class TenantPaybillService extends TenantAwareService
         $results['checked'] = $overdueUsers->count();
 
         foreach ($overdueUsers as $user) {
-            // Put in grace period first (e.g., 3 days)
             $gracePeriodDays = config('billing.grace_period_days', 3);
-            
+
             if (!$user->grace_period_ends || $user->grace_period_ends < now()) {
                 $user->update([
                     'in_grace_period' => true,
                     'grace_period_ends' => now()->addDays($gracePeriodDays),
                 ]);
                 $results['grace_period']++;
-                
-                // Broadcast grace period started
+
                 event(new PppoeUserPaymentStatusChanged($this->tenantId, $user->id, 'grace_period', 'grace_started'));
+                event(new PppoeGracePeriodStarted(
+                    $this->tenantId,
+                    $user->id,
+                    'grace_period',
+                    optional($user->grace_period_ends)->toIso8601String(),
+                    'tenant_paybill_service'
+                ));
             }
         }
 
-        // Disconnect users whose grace period has ended
         $expiredGraceUsers = PppoeUser::where('status', 'active')
             ->where('in_grace_period', true)
             ->where('grace_period_ends', '<', now())
@@ -543,12 +513,9 @@ class TenantPaybillService extends TenantAwareService
         foreach ($expiredGraceUsers as $user) {
             $user->suspendForNonPayment();
             $user->save();
-            
+
             DisconnectPppoeUserJob::dispatch($user->id, $this->tenantId, 'Payment overdue - grace period ended');
             $results['disconnected']++;
-            
-            // Broadcast disconnection
-            event(new PppoeUserPaymentStatusChanged($this->tenantId, $user->id, 'suspended', 'disconnected'));
         }
 
         return $results;
@@ -593,7 +560,10 @@ class TenantPaybillService extends TenantAwareService
 
     protected function parseTransactionTime(?string $time): \DateTime
     {
-        if (!$time) return now();
+        if (!$time) {
+            return now();
+        }
+
         try {
             return \DateTime::createFromFormat('YmdHis', $time) ?: now();
         } catch (\Exception $e) {

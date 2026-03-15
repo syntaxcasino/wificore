@@ -138,8 +138,8 @@ class FixTenantSchemas extends Command
 
             $this->info("  📋 Migrating RADIUS data for {$users->count()} users...");
 
-            // Switch to tenant schema
-            DB::statement("SET search_path TO {$tenant->schema_name}, public");
+            DB::transaction(function () use ($tenant, $users) {
+            DB::statement("SET LOCAL search_path TO {$tenant->schema_name}, public");
 
             foreach ($users as $user) {
                 // Check if user has RADIUS entry in public schema
@@ -179,15 +179,12 @@ class FixTenantSchemas extends Command
                     $this->info("    ✅ Migrated RADIUS data for user: {$user->username}");
                 }
             }
-
-            // Reset search path
-            DB::statement("SET search_path TO public");
+            }); // end DB::transaction
 
             $this->info("  ✅ RADIUS data migration completed");
 
         } catch (\Exception $e) {
             $this->error("  ❌ Failed to migrate RADIUS data: " . $e->getMessage());
-            DB::statement("SET search_path TO public");
         }
     }
 }

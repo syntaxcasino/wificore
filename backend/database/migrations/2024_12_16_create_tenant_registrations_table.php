@@ -19,6 +19,7 @@ return new class extends Migration
             $table->string('tenant_email')->unique();
             $table->string('tenant_phone')->nullable();
             $table->text('tenant_address')->nullable();
+            $table->string('timezone')->default('Africa/Nairobi');
             $table->string('generated_username')->nullable();
             $table->string('generated_password')->nullable();
             $table->boolean('email_verified')->default(false);

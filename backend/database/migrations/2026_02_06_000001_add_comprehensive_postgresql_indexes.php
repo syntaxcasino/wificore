@@ -45,6 +45,10 @@ return new class extends Migration
                 ['last_invoice_at', 'subscription_warning_sent_at']);
             $this->safeCreateIndex('public', 'tenants', 'tenants_custom_paybill_idx',
                 ['custom_paybill']);
+            $this->safeCreateIndex('public', 'tenants', 'tenants_subscription_enforcement_idx',
+                ['subscription_ends_at', 'is_active', 'landlord_override']);
+            $this->safeCreateIndex('public', 'tenants', 'tenants_is_landlord_idx',
+                ['is_landlord']);
 
             // =================================================================
             // USERS TABLE
@@ -97,6 +101,28 @@ return new class extends Migration
                 ['tenant_id']);
 
             // =================================================================
+            // TENANT_IP_POOLS TABLE
+            // =================================================================
+            $this->safeCreateIndex('public', 'tenant_ip_pools', 'tenant_ip_pools_tenant_id_service_type_status_index',
+                ['tenant_id', 'service_type', 'status']);
+            $this->safeCreateIndex('public', 'tenant_ip_pools', 'tenant_ip_pools_service_type_index',
+                ['service_type']);
+            $this->safeCreateIndex('public', 'tenant_ip_pools', 'tenant_ip_pools_status_index',
+                ['status']);
+
+            // =================================================================
+            // ROUTER_TENANT_MAP TABLE
+            // =================================================================
+            $this->safeCreateIndex('public', 'router_tenant_map', 'router_tenant_map_tenant_id_index',
+                ['tenant_id']);
+            $this->safeCreateIndex('public', 'router_tenant_map', 'router_tenant_map_ip_address_index',
+                ['ip_address']);
+            $this->safeCreateIndex('public', 'router_tenant_map', 'router_tenant_map_vpn_ip_index',
+                ['vpn_ip']);
+            $this->safeCreateIndex('public', 'router_tenant_map', 'router_tenant_map_config_token_index',
+                ['config_token']);
+
+            // =================================================================
             // PERFORMANCE_METRICS TABLE
             // =================================================================
             $this->safeCreateIndex('public', 'performance_metrics', 'perf_metrics_recorded_idx',
@@ -109,6 +135,18 @@ return new class extends Migration
             // =================================================================
             $this->safeCreateIndex('public', 'system_health_metrics', 'health_metrics_recorded_idx',
                 ['recorded_at']);
+
+            // =================================================================
+            // SYSTEM_LOGS TABLE
+            // =================================================================
+            $this->safeCreateIndex('public', 'system_logs', 'system_logs_category_index',
+                ['category']);
+            $this->safeCreateIndex('public', 'system_logs', 'system_logs_tenant_id_category_created_at_index',
+                ['tenant_id', 'category', 'created_at']);
+            $this->safeCreateIndex('public', 'system_logs', 'system_logs_user_id_created_at_index',
+                ['user_id', 'created_at']);
+            $this->safeCreateIndex('public', 'system_logs', 'system_logs_category_action_created_at_index',
+                ['category', 'action', 'created_at']);
 
             // =================================================================
             // RADIUS CORE TABLES
@@ -167,6 +205,8 @@ return new class extends Migration
             ['public', 'tenants_subscription_status_idx'],
             ['public', 'tenants_billing_lookup_idx'],
             ['public', 'tenants_custom_paybill_idx'],
+            ['public', 'tenants_subscription_enforcement_idx'],
+            ['public', 'tenants_is_landlord_idx'],
             ['public', 'users_tenant_role_active_idx'],
             ['public', 'users_email_active_idx'],
             ['public', 'users_last_login_idx'],
@@ -180,9 +220,20 @@ return new class extends Migration
             ['public', 'radius_mapping_tenant_idx'],
             ['public', 'mpesa_maps_checkout_idx'],
             ['public', 'mpesa_maps_tenant_idx'],
+            ['public', 'tenant_ip_pools_tenant_id_service_type_status_index'],
+            ['public', 'tenant_ip_pools_service_type_index'],
+            ['public', 'tenant_ip_pools_status_index'],
+            ['public', 'router_tenant_map_tenant_id_index'],
+            ['public', 'router_tenant_map_ip_address_index'],
+            ['public', 'router_tenant_map_vpn_ip_index'],
+            ['public', 'router_tenant_map_config_token_index'],
             ['public', 'perf_metrics_recorded_idx'],
             ['public', 'perf_metrics_type_time_idx'],
             ['public', 'health_metrics_recorded_idx'],
+            ['public', 'system_logs_category_index'],
+            ['public', 'system_logs_tenant_id_category_created_at_index'],
+            ['public', 'system_logs_user_id_created_at_index'],
+            ['public', 'system_logs_category_action_created_at_index'],
             ['public', 'radcheck_username_attribute_idx'],
             ['public', 'radreply_username_attribute_idx'],
             ['public', 'radacct_username_start_idx'],

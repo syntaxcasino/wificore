@@ -29,6 +29,11 @@ class TenantContext
      * Original search path before tenant context was set
      */
     protected ?string $originalSearchPath = null;
+
+    /**
+     * Original read connection search path before tenant context was set
+     */
+    protected ?string $originalReadSearchPath = null;
     
     /**
      * Set tenant context by tenant object
@@ -139,10 +144,22 @@ class TenantContext
     public function clearTenant(): void
     {
         if ($this->originalSearchPath) {
-            DB::statement("SET search_path TO {$this->originalSearchPath}");
+            DB::statement("SET LOCAL search_path TO {$this->originalSearchPath}");
             $this->originalSearchPath = null;
         } else {
-            DB::statement("SET search_path TO {$this->systemSchema}");
+            DB::statement("SET LOCAL search_path TO {$this->systemSchema}");
+        }
+
+        $connection = DB::connection();
+        $readPdo = $connection->getReadPdo();
+
+        if ($readPdo) {
+            if ($this->originalReadSearchPath) {
+                $readPdo->exec("SET LOCAL search_path TO {$this->originalReadSearchPath}");
+                $this->originalReadSearchPath = null;
+            } else {
+                $readPdo->exec("SET LOCAL search_path TO {$this->systemSchema}");
+            }
         }
         
         $this->tenant = null;
@@ -168,10 +185,25 @@ class TenantContext
             $result = DB::selectOne("SHOW search_path");
             $this->originalSearchPath = $result->search_path ?? 'public';
         }
+
+        $connection = DB::connection();
+        $readPdo = $connection->getReadPdo();
+
+        if ($readPdo && !$this->originalReadSearchPath) {
+            $statement = $readPdo->query('SHOW search_path');
+            $this->originalReadSearchPath = $statement ? ($statement->fetchColumn() ?: 'public') : 'public';
+        }
         
-        // Set search path: tenant schema first, then public
-        // This allows tenant tables to override public tables
-        DB::statement("SET search_path TO {$schemaName}, {$this->systemSchema}");
+        // Use SET LOCAL so the search_path is scoped to the current transaction.
+        // This is required for PgBouncer transaction pooling compatibility:
+        // plain SET is session-level but PgBouncer rotates the backend connection
+        // between statements in transaction mode, losing session-level settings.
+        // Callers that span multiple statements MUST wrap in DB::transaction().
+        DB::statement("SET LOCAL search_path TO {$schemaName}, {$this->systemSchema}");
+
+        if ($readPdo) {
+            $readPdo->exec("SET LOCAL search_path TO {$schemaName}, {$this->systemSchema}");
+        }
         
         Log::debug('Search path set', [
             'schema_name' => $schemaName,
@@ -203,7 +235,12 @@ class TenantContext
     public function runInTenantContext(Tenant $tenant, callable $callback)
     {
         $previousTenant = $this->tenant;
-        
+
+        // NOTE: Callers (SetTenantContext middleware, TenantAwareJob, RscFileCleanupService)
+        // are responsible for wrapping in DB::transaction() so SET LOCAL search_path
+        // persists across statements under PgBouncer transaction pooling.
+        // Do NOT add DB::transaction() here — it would issue a nested SET LOCAL
+        // clearTenant() call that resets search_path mid outer-transaction.
         try {
             $this->setTenant($tenant);
             return $callback();
@@ -226,7 +263,7 @@ class TenantContext
     public function runInSystemContext(callable $callback)
     {
         $previousTenant = $this->tenant;
-        
+
         try {
             $this->clearTenant();
             return $callback();

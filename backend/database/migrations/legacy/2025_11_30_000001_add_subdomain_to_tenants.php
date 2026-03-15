@@ -11,9 +11,7 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('tenant_registrations', function (Blueprint $table) {
-            $table->string('timezone')->default('Africa/Nairobi')->after('tenant_address');
-        });
+        // No-op: subdomain/branding fields are created in 0001_01_01_000000_create_tenants_table.php.
     }
 
     /**
@@ -21,8 +19,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('tenant_registrations', function (Blueprint $table) {
-            $table->dropColumn('timezone');
-        });
+        // No-op: retained for migration history compatibility.
     }
 };

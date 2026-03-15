@@ -105,7 +105,9 @@ class TenantVpnTunnelService
      */
     protected function createHostTunnel(string $tenantId): TenantVpnTunnel
     {
-        // 1. Allocate subnet (10.X.0.0/16)
+        // 1. Allocate subnet (10.8.X.0/24) - Adjusted to fit within 10.8.0.0/16 if needed, 
+        // but typically Host mode shares the interface and separates by allowed IPs.
+        // If we strictly follow the existing logic of 10.X.0.0/16, it might conflict if X=8.
         $subnetIndex = $this->allocateSubnetIndex();
         $subnet = "10.{$subnetIndex}.0.0/16";
         

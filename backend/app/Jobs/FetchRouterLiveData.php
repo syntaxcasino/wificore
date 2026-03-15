@@ -6,7 +6,8 @@ use App\Events\RouterLiveDataUpdated;
 use App\Events\RouterStatusUpdated;
 use App\Models\Router;
 use App\Services\CacheInvalidationService;
-use App\Services\MikrotikSnmpService;
+use App\Services\RouterMetricsService;
+use App\Services\VictoriaMetricsClient;
 use App\Traits\TenantAwareJob;
 use Illuminate\Bus\Batchable;
 use Illuminate\Bus\Queueable;
@@ -42,9 +43,9 @@ class FetchRouterLiveData implements ShouldQueue
         ]);
     }
 
-    public function handle(MikrotikSnmpService $snmpService)
+    public function handle(RouterMetricsService $metricsService, VictoriaMetricsClient $vm)
     {
-        $this->executeInTenantContext(function() use ($snmpService) {
+        $this->executeInTenantContext(function() use ($metricsService, $vm) {
             $startTime = microtime(true);
             
             Log::withContext([
@@ -52,14 +53,14 @@ class FetchRouterLiveData implements ShouldQueue
                 'tenant_id' => $this->tenantId,
                 'attempt' => $this->attempts(),
                 'job_id' => $this->job->getJobId() ?? 'unknown'
-            ])->info('Starting job execution');
+            ])->info('Starting job execution using VictoriaMetrics');
 
             try {
-                $routers = Router::whereIn('id', $this->routerIds)->get();
+                $routers = Router::whereIn('id', $this->routerIds)->get()->keyBy('id');
 
                 Log::info('Retrieved routers from database', [
                     'router_count' => $routers->count(),
-                    'router_ids' => $routers->pluck('id')->toArray()
+                    'router_ids' => $routers->keys()->toArray()
                 ]);
 
                 if ($routers->isEmpty()) {
@@ -67,14 +68,27 @@ class FetchRouterLiveData implements ShouldQueue
                     return;
                 }
 
+                // Batch fetch metrics from VictoriaMetrics
+                $liveDataBatch = [];
+                try {
+                    $liveDataBatch = $metricsService->getLatestRouterMetrics($vm, (string) $this->tenantId, $this->routerIds);
+                } catch (\Exception $e) {
+                    Log::error('Failed to fetch batch metrics from VictoriaMetrics', [
+                        'error' => $e->getMessage()
+                    ]);
+                    // Continue with empty batch - allows marking routers as offline if needed, 
+                    // or better, rely on existing data if VM is temporarily down? 
+                    // For now, we assume if VM fetch fails, we can't update status reliably.
+                    // But we should probably not mark everything offline immediately on single scrape failure.
+                    throw $e;
+                }
+
                 $successfulRouters = [];
                 $failedRouters = [];
 
-                foreach ($routers->lazy() as $router) {
-                    Log::info('Processing router', [
-                        'router_id' => $router->id,
-                        'router_name' => $router->name
-                    ]);
+                foreach ($this->routerIds as $routerId) {
+                    $router = $routers->get($routerId);
+                    if (!$router) continue;
 
                     // Skip routers that are under provisioning
                     if (in_array($router->status, ['pending', 'deploying', 'provisioning', 'verifying'])) {
@@ -85,13 +99,15 @@ class FetchRouterLiveData implements ShouldQueue
                         continue;
                     }
 
-                    try {
-                        // SNMP-only: SSH must NOT be used for periodic metrics collection.
-                        // VictoriaMetrics (via Telegraf SNMP) is the primary metrics source.
-                        // This Laravel polling path is a fallback for environments without Telegraf.
-                        $liveData = $snmpService->fetchLiveData($router, false);
-                        
-                        Log::debug('Fetched live data for router', [
+                    $liveData = $liveDataBatch[$routerId] ?? [];
+                    
+                    // Determine status based on presence of metrics
+                    // If we got metrics (e.g. uptime), router is online.
+                    // If array is empty, it might be offline or Telegraf issues.
+                    $isOnline = !empty($liveData) && isset($liveData['uptime']);
+                    
+                    if ($isOnline) {
+                        Log::debug('Fetched live data for router from VM', [
                             'router_id' => $router->id,
                             'live_data' => $liveData
                         ]);
@@ -99,12 +115,7 @@ class FetchRouterLiveData implements ShouldQueue
                         // Broadcast event on tenant-scoped channel
                         broadcast(new RouterLiveDataUpdated((string) $this->tenantId, (string) $router->id, $liveData));
                         
-                        Log::info('Broadcasted update event', [
-                            'router_id' => $router->id,
-                            'data_size' => strlen(json_encode($liveData))
-                        ]);
-
-                        // FIXED: Remove tags() - use regular cache put
+                        // Cache data
                         Cache::put(
                             "router_live_data_{$router->id}", 
                             $liveData, 
@@ -114,35 +125,23 @@ class FetchRouterLiveData implements ShouldQueue
                         // Update router status
                         $this->updateRouterStatus($router, $liveData, 'online');
                         $successfulRouters[] = $router->id;
-                    } catch (\Exception $e) {
-                        // Don't count as failure if router is busy
-                        if ($e->getCode() === 503 || str_contains($e->getMessage(), 'busy')) {
-                            Log::info('Router is busy, skipping live data fetch', [
-                                'router_id' => $router->id
-                            ]);
-                            continue;
-                        }
-
-                        // Don't count as failure if password decryption failed (APP_KEY issue)
-                        if (str_contains($e->getMessage(), 'decrypt')) {
-                            Log::error('Password decryption failed - possible APP_KEY mismatch', [
-                                'router_id' => $router->id,
-                                'router_name' => $router->name,
-                                'error' => $e->getMessage(),
-                                'hint' => 'Check if APP_KEY in .env.production matches the key used when router was created'
-                            ]);
-                        }
-
+                    } else {
+                        // VM returned no data for this router
+                        // It could be offline, new and not yet scraped, or VM/Telegraf lag.
+                        // IMPORTANT: Do not force offline here; CheckRoutersJob is the
+                        // connectivity source of truth during/after provisioning.
                         $failedRouters[] = $router->id;
-                        
-                        Log::warning('Failed to fetch live data for router', [
+                        $router->refresh();
+                        $router->update(['last_checked' => now()]);
+
+                        Log::debug('No VM metrics returned; preserving connectivity status', [
                             'router_id' => $router->id,
-                            'error' => $e->getMessage(),
-                            'exception' => get_class($e)
+                            'current_status' => $router->status,
+                            'vpn_status' => $router->vpn_status,
+                            'last_seen' => $router->last_seen,
                         ]);
 
-                        $this->cacheErrorState($router, $e);
-                        $this->updateRouterStatus($router, [], 'offline');
+                        continue;
                     }
                 }
 
@@ -164,7 +163,11 @@ class FetchRouterLiveData implements ShouldQueue
                 ]);
 
                 if ($this->attempts() >= $this->tries) {
-                    $this->markAllRoutersOffline();
+                    Log::warning('Skipping forced offline transition after VM fetch failure', [
+                        'tenant_id' => $this->tenantId,
+                        'router_ids' => $this->routerIds,
+                        'reason' => 'Connectivity state is managed by CheckRoutersJob/VerifyVpnConnectivityJob',
+                    ]);
                 }
 
                 throw $e;
@@ -176,12 +179,18 @@ class FetchRouterLiveData implements ShouldQueue
     {
         try {
             $previousStatus = $router->status;
-            $router->update([
+            $updates = [
                 'status' => $status,
-                'model' => $liveData['board_name'] ?? $router->model,
-                'os_version' => $liveData['version'] ?? $router->os_version,
-                'last_seen' => $status === 'online' ? now() : $router->last_seen,
-            ]);
+                'last_checked' => now(),
+            ];
+
+            if ($status === 'online') {
+                $updates['last_seen'] = now();
+                if (isset($liveData['board_name'])) $updates['model'] = $liveData['board_name'];
+                if (isset($liveData['version'])) $updates['os_version'] = $liveData['version'];
+            }
+
+            $router->update($updates);
 
             if ($previousStatus !== $status) {
                 CacheInvalidationService::invalidateRouterCache((string) $this->tenantId, (string) $router->id);
@@ -218,7 +227,6 @@ class FetchRouterLiveData implements ShouldQueue
 
     protected function cacheErrorState(Router $router, \Exception $e): void
     {
-        // FIXED: Remove tags() - use regular cache put
         Cache::put(
             "router_live_data_{$router->id}", 
             [
@@ -297,16 +305,10 @@ class FetchRouterLiveData implements ShouldQueue
             'max_retries_reached' => true
         ]);
 
-        // We can try to mark routers as offline if we can switch context, 
-        // but it's tricky in failed(). 
-        // We'll try to rely on the try-catch block in handle().
-        // Or we can try:
-        try {
-            $this->executeInTenantContext(function() {
-                $this->markAllRoutersOffline();
-            });
-        } catch (\Exception $e) {
-            Log::error('Failed to execute markAllRoutersOffline in failed()', ['error' => $e->getMessage()]);
-        }
+        Log::warning('FetchRouterLiveData failed without forcing router offline state', [
+            'tenant_id' => $this->tenantId,
+            'router_ids' => $this->routerIds,
+            'reason' => 'Connectivity state is managed by CheckRoutersJob/VerifyVpnConnectivityJob',
+        ]);
     }
 }

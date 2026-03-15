@@ -498,12 +498,14 @@ class MikrotikProvisioningService extends TenantAwareService
     protected function getSnmpConfigScript(Router $router): string
     {
         // Use simple SNMPv2c community string (same for all routers)
-        $community = env('SNMP_COMMUNITY', 'wificore_monitor');
+        $community = config('telegraf.snmp_community', env('MIKROTIK_SNMP_COMMUNITY', 'traidnet-monitor'));
+        // Always allow 10.8.0.1/32 for SNMP monitoring (VPN Server IP)
+        $snmpSubnet = '10.8.0.1/32';
         
         // Save SNMP configuration to database
         $router->update([
             'snmp_enabled' => true,
-            'snmp_version' => 'v2c',
+            'snmp_version' => '2c',
             'snmp_community' => $community,
         ]);
         
@@ -525,9 +527,8 @@ class MikrotikProvisioningService extends TenantAwareService
 /snmp set enabled=yes
 /snmp set contact="Network Admin"
 /snmp set location="Managed by WifiCore"
-:do { /snmp community remove [find name=public] } on-error={}
-:do { /snmp community remove [find name=wificore_monitor] } on-error={}
-/snmp community add name={$community} addresses=0.0.0.0/0
+:if ([:len [/snmp community find name="{$community}"]] > 0) do={/snmp community set [find name="{$community}"] addresses={$snmpSubnet} security=none read-access=yes write-access=no} else={/snmp community add name="{$community}" addresses={$snmpSubnet} security=none read-access=yes write-access=no}
+/snmp set trap-community="{$community}"
 SCRIPT;
     }
 
@@ -944,6 +945,8 @@ SCRIPT;
                         $expectedHotspotProfile = null;
                         $expectedHotspotBridge = null;
                         $expectedPppoeServer = null;
+                        $hotspotCount = null;
+                        $pppoeCount = null;
 
                         if ($expectsHotspot) {
                             if (preg_match('/\/ip hotspot\s+add\s+name=(?:\\"([^\\"]+)\\"|([^\s]+))/i', $serviceScript, $m)) {
@@ -958,13 +961,10 @@ SCRIPT;
                         }
 
                         if ($expectsPppoe) {
-                            if (preg_match('/\/interface pppoe-server server\s+add\s+name=(?:\\"([^\\"]+)\\"|([^\s]+))/i', $serviceScript, $m)) {
+                            if (preg_match('/\/interface pppoe-server server\s+add\b[^\n]*\bservice-name=(?:"([^"]+)"|([^\s"]+))/i', $serviceScript, $m)) {
                                 $expectedPppoeServer = $m[1] ?: ($m[2] ?? null);
                             }
                         }
-
-                        $hotspotCount = (int) trim($sshExecutor->exec('/ip hotspot print count-only'));
-                        $pppoeCount = (int) trim($sshExecutor->exec('/interface pppoe-server server print count-only'));
 
                         if ($expectsHotspot) {
                             if ($expectedHotspotServer) {
@@ -1015,7 +1015,7 @@ SCRIPT;
                         }
 
                         if ($expectsPppoe && $expectedPppoeServer) {
-                            $pppoeServerCount = (int) trim($sshExecutor->exec('/interface pppoe-server server print count-only where name="' . $expectedPppoeServer . '"'));
+                            $pppoeServerCount = (int) trim($sshExecutor->exec('/interface pppoe-server server print count-only where service-name="' . $expectedPppoeServer . '"'));
                             if ($pppoeServerCount < 1) {
                                 return [
                                     'valid' => false,
@@ -1025,11 +1025,21 @@ SCRIPT;
                         }
 
                         if ($expectsHotspot && !$expectsPppoe) {
+                            if ($expectedHotspotServer || $expectedHotspotProfile || $expectedHotspotBridge) {
+                                Log::info('Service deployment validation passed (hotspot)', [
+                                    'router_id' => $router->id,
+                                    'expected_hotspot_server' => $expectedHotspotServer,
+                                    'expected_hotspot_profile' => $expectedHotspotProfile,
+                                    'expected_hotspot_bridge' => $expectedHotspotBridge,
+                                ]);
+                                return ['valid' => true];
+                            }
+
+                            $hotspotCount = (int) trim($sshExecutor->exec('/ip hotspot print count-only'));
                             if ($hotspotCount > 0) {
                                 Log::info('Service deployment validation passed (hotspot)', [
                                     'router_id' => $router->id,
                                     'hotspot_count' => $hotspotCount,
-                                    'pppoe_count' => $pppoeCount,
                                     'expected_hotspot_server' => $expectedHotspotServer,
                                     'expected_hotspot_profile' => $expectedHotspotProfile,
                                     'expected_hotspot_bridge' => $expectedHotspotBridge,
@@ -1044,10 +1054,18 @@ SCRIPT;
                         }
 
                         if ($expectsPppoe && !$expectsHotspot) {
+                            if ($expectedPppoeServer) {
+                                Log::info('Service deployment validation passed (pppoe)', [
+                                    'router_id' => $router->id,
+                                    'expected_pppoe_server' => $expectedPppoeServer,
+                                ]);
+                                return ['valid' => true];
+                            }
+
+                            $pppoeCount = (int) trim($sshExecutor->exec('/interface pppoe-server server print count-only'));
                             if ($pppoeCount > 0) {
                                 Log::info('Service deployment validation passed (pppoe)', [
                                     'router_id' => $router->id,
-                                    'hotspot_count' => $hotspotCount,
                                     'pppoe_count' => $pppoeCount,
                                     'expected_pppoe_server' => $expectedPppoeServer,
                                 ]);
@@ -1061,6 +1079,8 @@ SCRIPT;
                         }
 
                         if ($expectsHotspot && $expectsPppoe) {
+                            $hotspotCount = (int) trim($sshExecutor->exec('/ip hotspot print count-only'));
+                            $pppoeCount = (int) trim($sshExecutor->exec('/interface pppoe-server server print count-only'));
                             if ($hotspotCount > 0 && $pppoeCount > 0) {
                                 Log::info('Service deployment validation passed (hybrid)', [
                                     'router_id' => $router->id,
@@ -1080,6 +1100,8 @@ SCRIPT;
                             ];
                         }
 
+                        $hotspotCount = $hotspotCount ?? (int) trim($sshExecutor->exec('/ip hotspot print count-only'));
+                        $pppoeCount = $pppoeCount ?? (int) trim($sshExecutor->exec('/interface pppoe-server server print count-only'));
                         if ($hotspotCount > 0 || $pppoeCount > 0) {
                             Log::info('Service deployment validation passed', [
                                 'router_id' => $router->id,

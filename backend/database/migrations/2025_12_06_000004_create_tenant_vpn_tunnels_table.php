@@ -14,7 +14,7 @@ return new class extends Migration
         Schema::create('tenant_vpn_tunnels', function (Blueprint $table) {
             $table->id();
             $table->uuid('tenant_id')->unique();
-            $table->string('interface_name', 10)->unique(); // wg0, wg1, wg2, etc.
+            $table->string('interface_name', 10); // wg0, wg1, wg2, etc.
             $table->text('server_private_key'); // Encrypted
             $table->text('server_public_key');
             $table->ipAddress('server_ip'); // 10.X.0.1
@@ -30,6 +30,7 @@ return new class extends Migration
             $table->foreign('tenant_id')->references('id')->on('tenants')->onDelete('cascade');
             $table->index('status');
             $table->index('interface_name');
+            $table->index(['tenant_id', 'interface_name']);
         });
     }
 

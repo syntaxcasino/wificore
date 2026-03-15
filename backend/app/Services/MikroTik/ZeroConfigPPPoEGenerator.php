@@ -64,6 +64,15 @@ class ZeroConfigPPPoEGenerator
             throw new \RuntimeException('No valid PPPoE interfaces provided. Raw value: ' . json_encode($rawInterfaces));
         }
 
+        $radiusServer = config('radius.server_ip', config('services.radius.host', 'wificore-freeradius'));
+        $resolvedRadiusServer = $radiusServer;
+        if (filter_var((string) $resolvedRadiusServer, FILTER_VALIDATE_IP) === false) {
+            $resolvedRadiusServer = gethostbyname((string) $resolvedRadiusServer);
+        }
+        if (filter_var((string) $resolvedRadiusServer, FILTER_VALIDATE_IP) === false) {
+            $resolvedRadiusServer = config('vpn.server_ip', '10.8.0.1');
+        }
+
         return $this->buildConfiguration([
             'router_id'     => (string) $router->id,
             'tenant_id'     => (string) $router->tenant_id,
@@ -76,7 +85,7 @@ class ZeroConfigPPPoEGenerator
             'range_end'     => $pool->range_end,
             'dns_primary'   => $pool->dns_primary ?? '8.8.8.8',
             'dns_secondary' => $pool->dns_secondary ?? '8.8.4.4',
-            'radius_server' => config('radius.server_ip', config('services.radius.host', 'wificore-freeradius')),
+            'radius_server' => $resolvedRadiusServer,
             'radius_secret' => config('radius.secret', 'testing123'),
             'management_subnet' => config('vpn.subnet.base', '10.0.0.0/8'),
         ]);
@@ -115,21 +124,20 @@ class ZeroConfigPPPoEGenerator
         // Idempotent: only recreate if missing or different
         $s[] = ":do { :if ([:len [/ip pool find name=\"{$p['pool']}\"]] = 0) do={ /ip pool add name=\"{$p['pool']}\" ranges={$p['range_start']}-{$p['range_end']} comment=\"PPPoE-$id\" } } on-error={}";
 
-        // ============ PPP PROFILE (ISP-GRADE) ============
-        // No static rate-limit - RADIUS sets Mikrotik-Rate-Limit dynamically
-        // Idempotent: only create if missing
-        // interface-list=PPPOE-ACTIVE: dynamic <pppoe-*> interfaces auto-join this list on auth
-        // This is CRITICAL for security: firewall rules match on this list, not src-address
-        $s[] = ":do { :if ([:len [/ppp profile find name=\"{$p['profile']}\"]] = 0) do={ /ppp profile add name=\"{$p['profile']}\" local-address={$p['gateway_ip']} remote-address={$p['pool']} dns-server={$p['dns_primary']},{$p['dns_secondary']} interface-list={$p['pppoe_active_list']} only-one=yes change-tcp-mss=yes use-compression=no use-encryption=no comment=\"PPPoE-$id\" } } on-error={}";
-        // Update existing profile to add interface-list if it was created without it
-        $s[] = ":do { /ppp profile set [find name=\"{$p['profile']}\"] interface-list={$p['pppoe_active_list']} } on-error={}";
-
         // ============ INTERFACE LISTS ============
         $s[] = ":do { :if ([:len [/interface list find name={$p['wan_list']}]] = 0) do={ /interface list add name={$p['wan_list']} } } on-error={}";
         $s[] = ":do { :if ([:len [/interface list find name={$p['pppoe_list']}]] = 0) do={ /interface list add name={$p['pppoe_list']} } } on-error={}";
         // PPPOE-ACTIVE list: PPP profile assigns authenticated dynamic interfaces here
         $s[] = ":do { :if ([:len [/interface list find name={$p['pppoe_active_list']}]] = 0) do={ /interface list add name={$p['pppoe_active_list']} } } on-error={}";
         $s[] = ":do { :if ([:len [/interface find name=\"ether1\"]] > 0) do={ :if ([:len [/interface list member find list={$p['wan_list']} interface=\"ether1\"]] = 0) do={ /interface list member add list={$p['wan_list']} interface=\"ether1\" } } } on-error={}";
+
+        // ============ PPP PROFILE (ISP-GRADE) ============
+        // No static rate-limit - RADIUS sets Mikrotik-Rate-Limit dynamically
+        // Idempotent: only create if missing
+        // interface-list=PPPOE-ACTIVE: dynamic <pppoe-*> interfaces auto-join this list on auth
+        // This is CRITICAL for security: firewall rules match on this list, not src-address
+        $s[] = ":do { :if ([:len [/ppp profile find name=\"{$p['profile']}\"]] = 0) do={ /ppp profile add name=\"{$p['profile']}\" local-address={$p['gateway_ip']} remote-address={$p['pool']} dns-server={$p['dns_primary']},{$p['dns_secondary']} interface-list={$p['pppoe_active_list']} only-one=yes change-tcp-mss=yes use-compression=no use-encryption=no comment=\"PPPoE-$id\" } } on-error={}";
+        $s[] = ":do { /ppp profile set [find name=\"{$p['profile']}\"] interface-list={$p['pppoe_active_list']} } on-error={}";
 
         // ============ PPPoE BRIDGE SETUP ============
         // Bridge isolates PPPoE discovery/session traffic from other networks
@@ -155,7 +163,9 @@ class ZeroConfigPPPoEGenerator
         // ============ PPPoE SERVER ============
         // ISP-grade settings: MSS clamping, keepalive, proper MTU
         // Idempotent: only create if missing
-        $s[] = ":do { :if ([:len [/interface pppoe-server server find comment~\"PPPoE-$id\"]] = 0) do={ /interface pppoe-server server add interface=\"{$bridge}\" service-name=\"{$p['service']}\" default-profile=\"{$p['profile']}\" authentication=chap,mschap2 one-session-per-host=yes keepalive-timeout=30 max-mtu=1480 max-mru=1480 mrru=disabled disabled=no comment=\"PPPoE-$id\" } } on-error={}";
+        $s[] = ":do { :if ([:len [/interface pppoe-server server find service-name=\"{$p['service']}\"]] = 0) do={ /interface pppoe-server server add service-name=\"{$p['service']}\" interface=\"{$bridge}\" default-profile=\"{$p['profile']}\" authentication=chap,mschap2 one-session-per-host=yes keepalive-timeout=30 max-mtu=1480 max-mru=1480 disabled=no comment=\"PPPoE-$id\" } } on-error={ :error \"PPPoE-$id: PPPoE server create failed ({$p['service']})\" }";
+        $s[] = ":do { /interface pppoe-server server set [find service-name=\"{$p['service']}\"] interface=\"{$bridge}\" default-profile=\"{$p['profile']}\" authentication=chap,mschap2 one-session-per-host=yes keepalive-timeout=30 max-mtu=1480 max-mru=1480 disabled=no comment=\"PPPoE-$id\" } on-error={ :error \"PPPoE-$id: PPPoE server set failed ({$p['service']})\" }";
+        $s[] = ":if ([:len [/interface pppoe-server server find service-name=\"{$p['service']}\"]] = 0) do={ :error \"PPPoE-$id: PPPoE server missing ({$p['service']})\" }";
         $s[] = ":do { :if ([:len [/interface list member find list={$p['pppoe_list']} interface=\"{$bridge}\"]] = 0) do={ /interface list member add list={$p['pppoe_list']} interface=\"{$bridge}\" } } on-error={}";
 
         // ============ FIREWALL CONFIGURATION ============
@@ -164,25 +174,27 @@ class ZeroConfigPPPoEGenerator
         // Management access - allow VPN subnet only to management ports
         $managementPorts = '22,8291,8728,8729';
         $s[] = ":do { /ip firewall filter remove [find comment~\"PPPoE-$id-MGMT\"]; } on-error={}";
-        $s[] = "/ip firewall filter add chain=input protocol=tcp dst-port={$managementPorts} action=drop place-before=0 comment=\"PPPoE-$id-MGMT-DROP\"";
-        $s[] = "/ip firewall filter add chain=input protocol=tcp dst-port={$managementPorts} src-address={$p['management_subnet']} action=accept place-before=0 comment=\"PPPoE-$id-MGMT-ALLOW\"";
-        $s[] = "/ip firewall filter add chain=input connection-state=established,related action=accept place-before=0 comment=\"PPPoE-$id-MGMT-EST\"";
-        $s[] = ":do { /ip firewall filter move [find comment=\"PPPoE-$id-MGMT-EST\"] destination=0; } on-error={}";
-        $s[] = ":do { /ip firewall filter move [find comment=\"PPPoE-$id-MGMT-ALLOW\"] destination=1; } on-error={}";
-        $s[] = ":do { /ip firewall filter move [find comment=\"PPPoE-$id-MGMT-DROP\"] destination=2; } on-error={}";
+        $s[] = ":do { /ip firewall filter remove [find comment=\"PPPoE-$id-SNMP-ALLOW\"]; } on-error={}";
 
         // INPUT chain - protect the router itself
-        // Remove existing input rules for idempotent re-ordering
+        // Rebuild the entire PPPoE-managed input block in reverse order so the final chain order is:
+        //   1. MGMT-EST
+        //   2. MGMT-ALLOW
+        //   3. SNMP-ALLOW
+        //   4. DISC
+        //   5. EST-IN
+        //   6. INV-IN
+        //   7. DROP-IN
+        //   8. MGMT-DROP
         $s[] = ":do { /ip firewall filter remove [find comment~\"PPPoE-$id-(DISC|EST-IN|INV-IN|DROP-IN)\"]; } on-error={}";
-        // Insert in REVERSE order with place-before=0 for correct ordering at top:
-        //   1. DISC (PPPoE discovery)
-        //   2. EST-IN (established/related)
-        //   3. INV-IN (invalid drop)
-        //   4. DROP-IN (block all other)
+        $s[] = "/ip firewall filter add chain=input protocol=tcp dst-port={$managementPorts} src-address=!{$p['management_subnet']} action=drop place-before=0 comment=\"PPPoE-$id-MGMT-DROP\"";
         $s[] = "/ip firewall filter add chain=input in-interface={$bridge} action=drop place-before=0 comment=\"PPPoE-$id-DROP-IN\"";
         $s[] = "/ip firewall filter add chain=input in-interface={$bridge} connection-state=invalid action=drop place-before=0 comment=\"PPPoE-$id-INV-IN\"";
         $s[] = "/ip firewall filter add chain=input in-interface={$bridge} connection-state=established,related action=accept place-before=0 comment=\"PPPoE-$id-EST-IN\"";
         $s[] = "/ip firewall filter add chain=input in-interface={$bridge} protocol=udp dst-port=8863-8864 action=accept place-before=0 comment=\"PPPoE-$id-DISC\"";
+        $s[] = ":do { /ip firewall filter add chain=input protocol=udp dst-port=161 src-address={$p['radius_server']} action=accept place-before=0 comment=\"PPPoE-$id-SNMP-ALLOW\" } on-error={ /log warning \"PPPoE-$id-SNMP-ALLOW skipped\" }";
+        $s[] = "/ip firewall filter add chain=input protocol=tcp dst-port={$managementPorts} src-address={$p['management_subnet']} action=accept place-before=0 comment=\"PPPoE-$id-MGMT-ALLOW\"";
+        $s[] = "/ip firewall filter add chain=input connection-state=established,related action=accept place-before=0 comment=\"PPPoE-$id-MGMT-EST\"";
 
         // FORWARD chain - control PPPoE client traffic
         // SECURITY PRINCIPLE: Never allow traffic from the bridge directly.
@@ -192,26 +204,29 @@ class ZeroConfigPPPoEGenerator
         // An unauthorized client on the bridge can spoof src-address but CANNOT create a PPPoE session.
         //
         // Rule order:
-        // 1. Accept established/related FROM authenticated PPPoE interfaces
-        // 2. Drop invalid FROM authenticated PPPoE interfaces
-        // 3. Allow authenticated PPPoE interfaces to WAN
-        // 4. DROP everything from the bridge (unauthenticated devices)
+        // 1. Accept established/related FROM WAN back to authenticated PPPoE interfaces
+        // 2. Accept established/related FROM authenticated PPPoE interfaces
+        // 3. Drop invalid FROM authenticated PPPoE interfaces
+        // 4. Allow authenticated PPPoE interfaces to WAN
+        // 5. DROP everything from the bridge (unauthenticated devices)
 
         // Remove existing forward rules for idempotent re-ordering (only our PPPoE service rules)
-        $s[] = ":do { /ip firewall filter remove [find comment~\"PPPoE-$id-(EST|INV|DNS|INET|LOCAL|BLOCK-UNAUTH)\"]; } on-error={}";
+        $s[] = ":do { /ip firewall filter remove [find comment~\"PPPoE-$id-(WAN-EST|EST|INV|DNS|INET|LOCAL|BLOCK-UNAUTH)\"]; } on-error={}";
 
         // CRITICAL: Insert rules in REVERSE order with place-before=0 so they end up
         // at the TOP of the filter list in the CORRECT order.
         // Since place-before=0 inserts at position 0, we add LAST rule first.
         //
-        // 4. DROP all traffic from bridge (unauthenticated devices cannot pass)
+        // 5. DROP all traffic from bridge (unauthenticated devices cannot pass)
         $s[] = "/ip firewall filter add chain=forward in-interface={$bridge} action=drop place-before=0 comment=\"PPPoE-$id-BLOCK-UNAUTH\"";
-        // 3. Allow ONLY authenticated PPPoE sessions to WAN (interface-list, NOT src-address)
+        // 4. Allow ONLY authenticated PPPoE sessions to WAN (interface-list, NOT src-address)
         $s[] = "/ip firewall filter add chain=forward in-interface-list={$p['pppoe_active_list']} out-interface-list={$p['wan_list']} action=accept place-before=0 comment=\"PPPoE-$id-INET\"";
-        // 2. Drop invalid from authenticated PPPoE interfaces
+        // 3. Drop invalid from authenticated PPPoE interfaces
         $s[] = "/ip firewall filter add chain=forward in-interface-list={$p['pppoe_active_list']} connection-state=invalid action=drop place-before=0 comment=\"PPPoE-$id-INV\"";
-        // 1. Accept established/related from authenticated PPPoE interfaces
+        // 2. Accept established/related from authenticated PPPoE interfaces
         $s[] = "/ip firewall filter add chain=forward in-interface-list={$p['pppoe_active_list']} connection-state=established,related action=accept place-before=0 comment=\"PPPoE-$id-EST\"";
+        // 1. Accept established/related return traffic from WAN to authenticated PPPoE interfaces
+        $s[] = "/ip firewall filter add chain=forward in-interface-list={$p['wan_list']} out-interface-list={$p['pppoe_active_list']} connection-state=established,related action=accept place-before=0 comment=\"PPPoE-$id-WAN-EST\"";
 
         // GLOBAL DEFAULT DROP (input + forward)
         $s[] = ":do { /ip firewall filter remove [find comment~\"GLOBAL-DEFAULT-DROP-\"]; } on-error={}";

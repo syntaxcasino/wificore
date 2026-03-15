@@ -78,6 +78,45 @@
           }}</span>
         </div>
 
+        <!-- VPN Status Card -->
+        <div class="mb-6 bg-white p-5 rounded-xl shadow-sm">
+          <h4 class="text-sm font-semibold text-gray-700 mb-4 flex items-center">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-4 w-4 mr-2 text-emerald-500"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904 3.905 10.236 3.905 14.142 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0"
+              />
+            </svg>
+            VPN Status
+          </h4>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs font-medium text-gray-500 mb-1">Connection</label>
+              <span
+                class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold uppercase tracking-wide"
+                :class="vpnStatusBadgeClass"
+              >
+                {{ vpnStatusText }}
+              </span>
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-gray-500 mb-1">Last Handshake</label>
+              <div class="flex flex-col gap-1">
+                <p class="text-gray-900 text-sm">EAT: {{ handshakeEatTime }}</p>
+                <p class="text-gray-500 text-xs">UTC: {{ handshakeUtcTime }}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- Router Details -->
         <div class="space-y-4">
           <!-- Basic Info Card -->
@@ -578,23 +617,46 @@
           </div>
 
           <div class="bg-white p-5 rounded-xl shadow-sm">
-            <h4 class="text-sm font-semibold text-gray-700 mb-4 flex items-center">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                class="h-4 w-4 mr-2 text-blue-500"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M4 19v-6m4 6V5m4 14v-9m4 9V9m4 10V7"
-                />
-              </svg>
-              Traffic
-            </h4>
+            <div class="flex items-center justify-between mb-4">
+              <h4 class="text-sm font-semibold text-gray-700 flex items-center">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="h-4 w-4 mr-2 text-blue-500"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M4 19v-6m4 6V5m4 14v-9m4 9V9m4 10V7"
+                  />
+                </svg>
+                Traffic
+              </h4>
+              <div class="flex items-center gap-3">
+                 <div v-if="hoveredData && !['pie', 'donut', 'histogram'].includes(selectedChartType)" class="hidden md:flex items-center gap-3 text-xs bg-gray-50 px-2 py-1 rounded border border-gray-100">
+                    <span class="font-mono text-gray-500">{{ formatTime(hoveredData.ts) }}</span>
+                    <span class="flex items-center gap-1">
+                      <span class="w-1.5 h-1.5 rounded-full bg-green-500"></span>
+                      <span class="font-medium text-gray-700">DL: {{ formatBytes(hoveredData.download) }}/s</span>
+                    </span>
+                    <span class="flex items-center gap-1">
+                      <span class="w-1.5 h-1.5 rounded-full bg-purple-500"></span>
+                      <span class="font-medium text-gray-700">UL: {{ formatBytes(hoveredData.upload) }}/s</span>
+                    </span>
+                 </div>
+                 <select
+                    v-model="selectedChartType"
+                    class="text-xs border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-1 px-2 bg-white"
+                  >
+                    <option v-for="t in chartTypes" :key="t.value" :value="t.value">
+                      {{ t.label }}
+                    </option>
+                  </select>
+              </div>
+            </div>
 
             <div v-if="trafficError" class="bg-red-50 p-3 rounded-lg border border-red-200">
               <p class="text-red-700 text-xs">{{ trafficError }}</p>
@@ -617,19 +679,127 @@
               </div>
 
               <div v-if="trafficLoading" class="text-xs text-gray-500">Loading traffic…</div>
-              <div v-else class="h-40 bg-gray-50 rounded-lg flex items-end justify-between p-3 gap-1">
-                <div v-for="(point, i) in trafficData" :key="i" class="flex-1 flex flex-col items-center justify-end gap-1">
-                  <div class="w-full bg-green-500 rounded-t transition-all" :style="{ height: trafficMax > 0 ? (point.download / trafficMax * 100) + '%' : '0%' }"></div>
-                  <div class="w-full bg-purple-500 rounded-t transition-all" :style="{ height: trafficMax > 0 ? (point.upload / trafficMax * 100) + '%' : '0%' }"></div>
+              <div v-else class="bg-white rounded-lg border border-gray-100 p-4" style="height: 300px;">
+                <div class="flex h-full">
+                  <!-- Y-Axis -->
+                  <div v-if="yAxisTicks.length" class="relative h-full w-14 mr-2 border-r border-gray-100">
+                    <div v-for="tick in yAxisTicks" :key="tick.value" 
+                         class="absolute right-1 text-[10px] text-gray-400 transform translate-y-1/2"
+                         :style="{ bottom: tick.percent + '%' }">
+                      {{ tick.label }}
+                    </div>
+                  </div>
+                  
+                  <!-- Graph -->
+                  <div class="relative flex-1 flex flex-col">
+                    <div 
+                      class="relative flex-1 overflow-hidden cursor-crosshair"
+                      @mousemove="handleGraphHover"
+                      @mouseleave="handleGraphLeave"
+                      ref="graphContainer"
+                    >
+                       <!-- Grid Lines -->
+                       <div v-for="tick in yAxisTicks" :key="tick.value" 
+                            class="absolute w-full border-t border-gray-100"
+                            :style="{ bottom: tick.percent + '%' }">
+                       </div>
+
+                       <!-- SVG Chart -->
+                       <svg v-if="chartRenderData" class="absolute inset-0 w-full h-full" viewBox="0 0 1000 200" preserveAspectRatio="none">
+                          <defs>
+                            <linearGradient id="gradDownload" x1="0" x2="0" y1="0" y2="1">
+                              <stop offset="0%" stop-color="#22c55e" stop-opacity="0.2"/>
+                              <stop offset="100%" stop-color="#22c55e" stop-opacity="0"/>
+                            </linearGradient>
+                            <linearGradient id="gradUpload" x1="0" x2="0" y1="0" y2="1">
+                              <stop offset="0%" stop-color="#a855f7" stop-opacity="0.2"/>
+                              <stop offset="100%" stop-color="#a855f7" stop-opacity="0"/>
+                            </linearGradient>
+                          </defs>
+                          
+                          <!-- Line / Area / Stacked -->
+                          <template v-if="['line', 'area', 'stacked'].includes(chartRenderData.type)">
+                            <template v-if="chartRenderData.type !== 'line'">
+                                <path :d="chartRenderData.paths.download" fill="url(#gradDownload)" stroke="none" />
+                                <path :d="chartRenderData.paths.upload" fill="url(#gradUpload)" stroke="none" />
+                            </template>
+                            
+                            <path :d="chartRenderData.paths.download" fill="none" stroke="#22c55e" stroke-width="2" vector-effect="non-scaling-stroke" />
+                            <path :d="chartRenderData.paths.upload" fill="none" stroke="#a855f7" stroke-width="2" vector-effect="non-scaling-stroke" />
+                          </template>
+
+                          <!-- Bar / Histogram -->
+                          <template v-else-if="['bar', 'histogram'].includes(chartRenderData.type)">
+                             <g v-for="(bar, i) in chartRenderData.bars" :key="i">
+                               <rect :x="bar.x - bar.w/2" :y="bar.yD" :width="bar.w" :height="bar.hD" fill="#22c55e" opacity="0.6" />
+                               <rect :x="bar.x - bar.w/2" :y="bar.yU" :width="bar.w" :height="bar.hU" fill="#a855f7" opacity="0.6" />
+                             </g>
+                          </template>
+
+                          <!-- Pie / Donut -->
+                          <template v-else-if="['pie', 'donut'].includes(chartRenderData.type)">
+                              <!-- Use a different viewBox or transform for pie to center it -->
+                              <!-- Since viewBox is 0 0 1000 200, center is 500, 100. radius ~90 -->
+                              <path :d="chartRenderData.paths.download" fill="#22c55e" />
+                              <path :d="chartRenderData.paths.upload" fill="#a855f7" />
+                              <circle v-if="chartRenderData.type === 'donut'" :cx="chartRenderData.cx" :cy="chartRenderData.cy" :r="chartRenderData.r * 0.6" fill="white" />
+                              
+                              <!-- Labels -->
+                              <text :x="chartRenderData.cx - chartRenderData.r - 20" :y="chartRenderData.cy" text-anchor="end" fill="#22c55e" font-size="12">
+                                  DL: {{ formatBytes(chartRenderData.totals.download) }}
+                              </text>
+                              <text :x="chartRenderData.cx + chartRenderData.r + 20" :y="chartRenderData.cy" text-anchor="start" fill="#a855f7" font-size="12">
+                                  UL: {{ formatBytes(chartRenderData.totals.upload) }}
+                              </text>
+                          </template>
+
+                       </svg>
+
+                       <!-- Hover Line -->
+                       <div v-if="hoveredIndex >= 0 && !['pie', 'donut', 'histogram'].includes(selectedChartType)" 
+                            class="absolute top-0 bottom-0 border-l border-gray-400 border-dashed pointer-events-none z-10"
+                            :style="{ left: hoverX + '%' }">
+                          <!-- Dot indicators -->
+                          <div class="absolute w-2 h-2 bg-green-500 rounded-full -ml-1 border border-white"
+                               :style="{ bottom: (hoveredData.download / trafficMax * 100) + '%' }"></div>
+                          <div class="absolute w-2 h-2 bg-purple-500 rounded-full -ml-1 border border-white"
+                               :style="{ bottom: (hoveredData.upload / trafficMax * 100) + '%' }"></div>
+                          
+                          <!-- Floating Tooltip -->
+                          <div class="absolute top-0 left-2 bg-white/90 backdrop-blur-sm shadow-lg border border-gray-200 rounded p-2 text-xs whitespace-nowrap z-20 pointer-events-none"
+                               :class="{ '-translate-x-full -left-2': hoverX > 80 }">
+                             <div class="font-mono text-gray-500 mb-1">{{ formatTime(hoveredData.ts) }}</div>
+                             <div class="flex items-center gap-2 mb-0.5">
+                               <span class="w-1.5 h-1.5 rounded-full bg-green-500"></span>
+                               <span class="font-medium text-gray-700">DL: {{ formatBytes(hoveredData.download) }}/s</span>
+                             </div>
+                             <div class="flex items-center gap-2">
+                               <span class="w-1.5 h-1.5 rounded-full bg-purple-500"></span>
+                               <span class="font-medium text-gray-700">UL: {{ formatBytes(hoveredData.upload) }}/s</span>
+                             </div>
+                          </div>
+                       </div>
+                    </div>
+                    
+                    <!-- X-Axis -->
+                    <div v-if="xAxisTicks.length" class="h-6 relative mt-1">
+                       <div v-for="tick in xAxisTicks" :key="tick.x" 
+                            class="absolute text-[10px] text-gray-400 transform -translate-x-1/2 whitespace-nowrap"
+                            :style="{ left: tick.x + '%' }">
+                         {{ tick.label }}
+                       </div>
+                    </div>
+                  </div>
                 </div>
               </div>
+
               <div class="flex items-center justify-center gap-6 mt-3">
                 <div class="flex items-center gap-2">
-                  <div class="w-3 h-3 bg-green-500 rounded"></div>
+                  <div class="w-3 h-3 bg-green-500 rounded-full"></div>
                   <span class="text-xs text-gray-600">Download</span>
                 </div>
                 <div class="flex items-center gap-2">
-                  <div class="w-3 h-3 bg-purple-500 rounded"></div>
+                  <div class="w-3 h-3 bg-purple-500 rounded-full"></div>
                   <span class="text-xs text-gray-600">Upload</span>
                 </div>
               </div>
@@ -678,6 +848,9 @@
 <script>
 import axios from 'axios'
 import SlideOverlay from '@/modules/common/components/base/SlideOverlay.vue'
+import { useRouterUtils } from '@/modules/common/composables/utils/useRouterUtils'
+
+const { formatHandshakeDateTime } = useRouterUtils()
 
 export default {
   components: { SlideOverlay },
@@ -718,6 +891,28 @@ export default {
       if (status === 'pending' || status === 'warning') return 'Warning'
       return 'Unknown'
     },
+    vpnStatusBadgeClass() {
+      const status = String(this.routerDetails.vpn_status || '').toLowerCase()
+      return {
+        'bg-emerald-100 text-emerald-700': status === 'active' || status === 'connected',
+        'bg-amber-100 text-amber-700': status === 'pending',
+        'bg-slate-100 text-slate-600': status === 'inactive' || status === 'disconnected' || !status,
+      }
+    },
+    vpnStatusText() {
+      const status = String(this.routerDetails.vpn_status || '').toLowerCase()
+      if (!status) return 'Unknown'
+      if (status === 'active' || status === 'connected') return 'Active'
+      if (status === 'inactive' || status === 'disconnected') return 'Inactive'
+      if (status === 'pending') return 'Pending'
+      return status
+    },
+    handshakeEatTime() {
+      return formatHandshakeDateTime(this.routerDetails, 'Africa/Nairobi')
+    },
+    handshakeUtcTime() {
+      return formatHandshakeDateTime(this.routerDetails, 'UTC')
+    },
     groupedServices() {
       const services = this.routerDetails.services || []
       if (!services.length) return []
@@ -747,8 +942,20 @@ export default {
             existing.status = 'active'
           }
 
-          existing.active_users = (existing.active_users || 0) + (svc.active_users ?? 0)
-          existing.total_sessions = (existing.total_sessions || 0) + (svc.total_sessions ?? 0)
+          // Use live data if available for more accurate session counts
+          const live = this.routerDetails.live_data || this.routerDetails.resources || {}
+          
+          if (type === 'pppoe' && live.pppoe_sessions !== undefined) {
+             existing.total_sessions = live.pppoe_sessions
+             existing.active_users = live.pppoe_sessions
+          } else if (type === 'hotspot' && live.hotspot_active !== undefined) {
+             existing.total_sessions = live.hotspot_active
+             existing.active_users = live.hotspot_active
+          } else {
+             // Fallback to database values
+             existing.active_users = (existing.active_users || 0) + (svc.active_users ?? 0)
+             existing.total_sessions = (existing.total_sessions || 0) + (svc.total_sessions ?? 0)
+          }
 
           if (!existing.deployment_status || existing.deployment_status === 'deployed') {
             existing.deployment_status = svc.deployment_status || existing.deployment_status
@@ -764,7 +971,262 @@ export default {
     },
     trafficMax() {
       if (!Array.isArray(this.trafficData) || this.trafficData.length === 0) return 1
-      return Math.max(...this.trafficData.map((d) => (d.download || 0) + (d.upload || 0)), 1)
+      if (this.selectedChartType === 'stacked') {
+        return Math.max(
+          ...this.trafficData.map((d) => (d.download || 0) + (d.upload || 0)),
+          1,
+        )
+      }
+      return Math.max(
+        ...this.trafficData.map((d) => Math.max(d.download || 0, d.upload || 0)),
+        1,
+      )
+    },
+    chartRenderData() {
+      if (!this.trafficData.length) return null
+
+      const width = 1000
+      const height = 200
+      const max = this.trafficMax
+      const data = this.trafficData
+      const count = data.length
+      const type = this.selectedChartType
+
+      // Common: Line / Area / Stacked
+      if (['line', 'area', 'stacked'].includes(type)) {
+        const getPt = (val, i) => {
+          const x = (i / (count - 1 || 1)) * width
+          const y = height - (val / max) * height
+          return `${x.toFixed(1)},${y.toFixed(1)}`
+        }
+
+        if (type === 'stacked') {
+          // Stacked Area
+          // Layer 1: Download (Base)
+          // Layer 2: Upload (On top of Download)
+          const dPoints = data.map((d, i) => getPt(d.download, i))
+          const uPoints = data.map((d, i) => {
+            const total = (d.download || 0) + (d.upload || 0)
+            const x = (i / (count - 1 || 1)) * width
+            const y = height - (total / max) * height
+            return `${x.toFixed(1)},${y.toFixed(1)}`
+          })
+
+          const dLine = `M ${dPoints.join(' L ')}`
+          // Build area for upload: move to last point of upload, line to first point of upload,
+          // then line to first point of download, then line to last point of download (reverse)
+          // Actually simplest is:
+          // Download Area: 0 to Download curve
+          // Upload Area: Download curve to Total curve
+
+          // Download Area Path
+          const dArea = `${dLine} L ${width},${height} L 0,${height} Z`
+
+          // Upload Area Path: Top Curve (Total) -> Down to Download Curve -> Back to Start
+          // We need points in reverse for the bottom part of the shape
+          const dPointsRev = [...dPoints].reverse()
+          const uArea = `M ${uPoints.join(' L ')} L ${dPointsRev.join(' L ')} Z`
+
+          return {
+            type,
+            paths: {
+              download: dArea, // In stacked, the "line" is the top of the area usually, or we just render areas
+              upload: uArea,
+            },
+          }
+        }
+
+        const dPoints = data.map((d, i) => getPt(d.download, i))
+        const uPoints = data.map((d, i) => getPt(d.upload, i))
+        const dLine = `M ${dPoints.join(' L ')}`
+        const uLine = `M ${uPoints.join(' L ')}`
+
+        if (type === 'area') {
+          return {
+            type,
+            paths: {
+              download: `${dLine} L ${width},${height} L 0,${height} Z`,
+              upload: `${uLine} L ${width},${height} L 0,${height} Z`,
+            },
+          }
+        }
+
+        // Line
+        return {
+          type,
+          paths: {
+            download: dLine,
+            upload: uLine,
+          },
+        }
+      }
+
+      // Bar
+      if (type === 'bar') {
+        const barWidth = width / count
+        const gap = Math.max(1, barWidth * 0.2)
+        const w = Math.max(1, barWidth - gap)
+
+        const bars = data.map((d, i) => {
+          const x = i * barWidth + gap / 2
+          const hD = (d.download / max) * height
+          const hU = (d.upload / max) * height
+          return {
+            x,
+            w,
+            yD: height - hD,
+            hD,
+            yU: height - hU,
+            hU,
+          }
+        })
+        return { type, bars }
+      }
+
+      // Pie / Donut
+      if (type === 'pie' || type === 'donut') {
+        const totalD = data.reduce((acc, d) => acc + (d.download || 0), 0)
+        const totalU = data.reduce((acc, d) => acc + (d.upload || 0), 0)
+        const total = totalD + totalU || 1
+
+        const cx = width / 2
+        const cy = height / 2
+        const r = Math.min(width, height) / 2 - 10
+
+        // Helper to calc path
+        const getSector = (startPct, endPct) => {
+          const startAngle = startPct * 360
+          const endAngle = endPct * 360
+          
+          // Convert to radians, shifted by -90deg to start at top
+          const toRad = (deg) => ((deg - 90) * Math.PI) / 180
+          const x1 = cx + r * Math.cos(toRad(startAngle))
+          const y1 = cy + r * Math.sin(toRad(startAngle))
+          const x2 = cx + r * Math.cos(toRad(endAngle))
+          const y2 = cy + r * Math.sin(toRad(endAngle))
+          
+          const largeArc = endAngle - startAngle > 180 ? 1 : 0
+          
+          return `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2} Z`
+        }
+
+        const pctD = totalD / total
+        const dPath = getSector(0, pctD)
+        const uPath = getSector(pctD, 1)
+
+        return {
+          type,
+          cx,
+          cy,
+          r,
+          paths: {
+            download: dPath,
+            upload: uPath,
+          },
+          totals: { download: totalD, upload: totalU },
+        }
+      }
+
+      // Histogram (Distribution)
+      if (type === 'histogram') {
+        const bins = 20
+        const binWidth = max / bins
+        const dFreq = new Array(bins).fill(0)
+        const uFreq = new Array(bins).fill(0)
+
+        data.forEach((d) => {
+          const dIdx = Math.min(Math.floor(d.download / binWidth), bins - 1)
+          const uIdx = Math.min(Math.floor(d.upload / binWidth), bins - 1)
+          dFreq[dIdx]++
+          uFreq[uIdx]++
+        })
+
+        const maxFreq = Math.max(...dFreq, ...uFreq, 1)
+        const barW = (width / bins) - 2
+
+        const bars = dFreq.map((count, i) => {
+          const hD = (count / maxFreq) * height
+          const hU = (uFreq[i] / maxFreq) * height
+          return {
+            x: i * (width / bins),
+            w: barW,
+            yD: height - hD,
+            hD,
+            yU: height - hU,
+            hU,
+            label: this.formatBytes(i * binWidth),
+          }
+        })
+
+        return { type, bars }
+      }
+
+      return null
+    },
+    yAxisTicks() {
+      if (['pie', 'donut'].includes(this.selectedChartType)) return []
+      
+      const max = this.trafficMax
+      const ticks = 5
+      return Array.from({ length: ticks + 1 }, (_, i) => {
+        const val = (max / ticks) * i
+        return {
+          value: val,
+          label: this.formatBytes(val),
+          percent: (i / ticks) * 100,
+        }
+      })
+    },
+    hoverX() {
+      if (this.hoveredIndex < 0 || !this.trafficData.length) return 0
+      return (this.hoveredIndex / (this.trafficData.length - 1)) * 100
+    },
+    xAxisTicks() {
+      if (['pie', 'donut'].includes(this.selectedChartType)) return []
+      if (!this.trafficData.length) return []
+
+      if (this.selectedChartType === 'histogram') {
+          // Histogram buckets
+          const bins = 20
+          const max = this.trafficMax
+          const binWidth = max / bins
+          // Show 5 labels distributed
+          const count = 5
+          return Array.from({ length: count }, (_, i) => {
+              const idx = Math.floor(i * (bins / (count - 1)))
+              // Clamp
+              const safeIdx = Math.min(idx, bins)
+              const val = safeIdx * binWidth
+              return {
+                  x: (safeIdx / bins) * 100,
+                  label: this.formatBytes(val)
+              }
+          })
+      }
+
+      const count = 6
+      const data = this.trafficData
+      const step = Math.floor((data.length - 1) / (count - 1)) || 1
+
+      return data
+        .filter((_, i) => i % step === 0 || i === data.length - 1)
+        .map((d) => {
+          const index = data.indexOf(d)
+          const x = (index / (data.length - 1)) * 100
+          let label = ''
+          try {
+            label = new Date(d.ts * 1000).toLocaleTimeString([], {
+              hour: '2-digit',
+              minute: '2-digit',
+            })
+          } catch (e) {
+            label = ''
+          }
+          return {
+            x,
+            label,
+          }
+        })
     },
   },
   data() {
@@ -777,12 +1239,31 @@ export default {
         download: 0,
         upload: 0,
       },
+      selectedChartType: 'line',
+      chartTypes: [
+        { value: 'line', label: 'Time Series (Line)' },
+        { value: 'area', label: 'Area' },
+        { value: 'stacked', label: 'Stacked Area' },
+        { value: 'bar', label: 'Bar' },
+        { value: 'pie', label: 'Pie (Total)' },
+        { value: 'donut', label: 'Donut (Total)' },
+        { value: 'histogram', label: 'Histogram' },
+      ],
+      hoveredIndex: -1,
+      hoveredData: null,
+      refreshInterval: null,
     }
+  },
+  beforeUnmount() {
+    this.stopAutoRefresh()
   },
   watch: {
     showDetailsOverlay(val) {
       if (val) {
         this.loadTraffic()
+        this.startAutoRefresh()
+      } else {
+        this.stopAutoRefresh()
       }
     },
     selectedRouter() {
@@ -792,6 +1273,50 @@ export default {
     },
   },
   methods: {
+    formatTime(ts) {
+      if (!ts) return ''
+      try {
+        return new Date(ts * 1000).toLocaleTimeString()
+      } catch (e) {
+        return ''
+      }
+    },
+    handleGraphHover(event) {
+      if (!this.trafficData.length) return
+      if (['pie', 'donut', 'histogram'].includes(this.selectedChartType)) return
+
+      const container = this.$refs.graphContainer
+      if (!container) return
+      
+      const rect = container.getBoundingClientRect()
+      const x = event.clientX - rect.left
+      const width = rect.width
+      const count = this.trafficData.length
+
+      // x / width = index / (count - 1)
+      // index = (x / width) * (count - 1)
+      let index = Math.round((x / width) * (count - 1))
+      index = Math.max(0, Math.min(index, count - 1))
+
+      this.hoveredIndex = index
+      this.hoveredData = this.trafficData[index]
+    },
+    handleGraphLeave() {
+      this.hoveredIndex = -1
+      this.hoveredData = null
+    },
+    startAutoRefresh() {
+      this.stopAutoRefresh()
+      this.refreshInterval = setInterval(() => {
+        this.$emit('refresh-details')
+      }, 30000)
+    },
+    stopAutoRefresh() {
+      if (this.refreshInterval) {
+        clearInterval(this.refreshInterval)
+        this.refreshInterval = null
+      }
+    },
     formatDate(dateString) {
       if (!dateString) return 'N/A'
       try {
@@ -831,7 +1356,8 @@ export default {
         }
       }
 
-      if (!Number.isFinite(numeric) || numeric < 0) return 'N/A'
+      if (!Number.isFinite(numeric) || numeric < 0) return '0 B'
+      if (numeric === 0) return '0 B'
 
       const units = ['B', 'KB', 'MB', 'GB', 'TB']
       let value = numeric
@@ -904,8 +1430,11 @@ export default {
       const routerId = String(this.routerDetails?.id ?? '')
       if (!routerId) return
 
-      this.trafficLoading = true
-      this.trafficError = ''
+      // Only show loading state if we have no data (initial load)
+      if (this.trafficData.length === 0) {
+        this.trafficLoading = true
+        this.trafficError = ''
+      }
 
       try {
         const response = await axios.get(`/routers/${routerId}/metrics/traffic`, {
@@ -917,33 +1446,54 @@ export default {
 
         const data = response.data || {}
         if (!data.success) {
-          this.trafficError = data.error || 'Failed to load traffic'
-          this.trafficData = []
-          return
+          throw new Error(data.error || 'Failed to load traffic')
         }
 
         const inSeries = this.parseVmSeriesValues(data.in)
         const outSeries = this.parseVmSeriesValues(data.out)
-        const maxLen = Math.max(inSeries.length, outSeries.length)
-        const points = []
 
-        for (let i = 0; i < maxLen; i++) {
-          points.push({
-            download: inSeries[i]?.v ?? 0,
-            upload: outSeries[i]?.v ?? 0,
-          })
-        }
+        // Align by timestamp
+        const map = new Map()
 
+        inSeries.forEach((p) => {
+          if (!map.has(p.ts)) map.set(p.ts, { ts: p.ts, download: 0, upload: 0 })
+          map.get(p.ts).upload = p.v
+        })
+
+        outSeries.forEach((p) => {
+          if (!map.has(p.ts)) map.set(p.ts, { ts: p.ts, download: 0, upload: 0 })
+          map.get(p.ts).download = p.v
+        })
+
+        const points = Array.from(map.values()).sort((a, b) => a.ts - b.ts)
         this.trafficData = points.slice(-60)
+        this.trafficError = '' // Clear error on success
 
-        const currentIn = this.getLastValue(inSeries)
-        const currentOut = this.getLastValue(outSeries)
-        this.trafficStats.download = currentIn
-        this.trafficStats.upload = currentOut
-        this.trafficStats.current = currentIn + currentOut
+        const lastPoint = this.trafficData[this.trafficData.length - 1] || {
+          download: 0,
+          upload: 0,
+        }
+        this.trafficStats.download = lastPoint.download
+        this.trafficStats.upload = lastPoint.upload
+        this.trafficStats.current = lastPoint.download + lastPoint.upload
+
+        // Update tooltip data if hovering
+        if (this.hoveredIndex >= 0) {
+          if (this.hoveredIndex < this.trafficData.length) {
+            this.hoveredData = this.trafficData[this.hoveredIndex]
+          } else {
+            this.hoveredIndex = -1
+            this.hoveredData = null
+          }
+        }
       } catch (err) {
-        this.trafficError = err.response?.data?.error || err.message || 'Failed to load traffic'
-        this.trafficData = []
+        // Only show error if we don't have existing data
+        if (this.trafficData.length === 0) {
+          this.trafficError = err.response?.data?.error || err.message || 'Failed to load traffic'
+          this.trafficData = []
+        } else {
+          console.warn('Background traffic refresh failed:', err.message)
+        }
       } finally {
         this.trafficLoading = false
       }

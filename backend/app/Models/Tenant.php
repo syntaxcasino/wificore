@@ -51,6 +51,7 @@ class Tenant extends Model
         'last_invoice_amount',
         'subscription_warning_sent_at',
         'custom_paybill',
+        'account_prefix',
     ];
 
     protected $casts = [
@@ -337,10 +338,37 @@ class Tenant extends Model
         // which cannot safely execute inside a caller's DB::beginTransaction()
         // because PostgreSQL aborts the entire transaction on any DDL error.
 
+        static::creating(function ($tenant) {
+            if (empty($tenant->account_prefix)) {
+                $tenant->account_prefix = static::generateAccountPrefix($tenant->slug ?? $tenant->name);
+            }
+        });
+
         static::deleting(function ($tenant) {
             // Clean up tenant schema when tenant is deleted
             $migrationManager = app(\App\Services\TenantMigrationManager::class);
             $migrationManager->dropTenantSchema($tenant);
         });
     }
+
+    /**
+     * Generate a unique 3-character alphanumeric account prefix for this tenant.
+     * Used as the first 3 characters of customer account numbers (e.g. TRD-P00001).
+     */
+    public static function generateAccountPrefix(string $seed): string
+    {
+        $base = strtoupper(preg_replace('/[^A-Z0-9]/i', '', $seed));
+        $base = str_pad(substr($base, 0, 3), 3, '0');
+
+        $candidate = $base;
+        $suffix = 0;
+
+        while (static::where('account_prefix', $candidate)->exists()) {
+            $suffix++;
+            $candidate = strtoupper(substr(substr($base, 0, 2) . base_convert($suffix, 10, 36), 0, 3));
+        }
+
+        return $candidate;
+    }
+
 }

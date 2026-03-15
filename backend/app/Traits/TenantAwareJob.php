@@ -74,17 +74,26 @@ trait TenantAwareJob
         // Set auth context
         Auth::setUser($systemUser);
 
-        // Set search_path for the entire connection session
-        // This ensures queries outside transactions (like event broadcasting) use correct schema
-        \Illuminate\Support\Facades\DB::statement("SET search_path TO {$tenant->schema_name}, public");
-
+        // Wrap callback in DB::transaction() so PgBouncer holds a single backend
+        // PostgreSQL connection for all statements. SET LOCAL search_path is
+        // transaction-scoped: it persists across all statements within the same
+        // transaction but is automatically rolled back when the transaction ends.
+        // Plain SET search_path is session-level and is lost between statements
+        // when PgBouncer transaction pooling rotates the backend connection.
         try {
-            // Execute callback - no transaction needed since search_path is set at connection level
-            return $callback();
+            return \Illuminate\Support\Facades\DB::transaction(function () use ($tenant, $callback) {
+                \Illuminate\Support\Facades\DB::statement("SET LOCAL search_path TO {$tenant->schema_name}, public");
+
+                $connection = \Illuminate\Support\Facades\DB::connection();
+                $readPdo = $connection->getReadPdo();
+
+                if ($readPdo) {
+                    $readPdo->exec("SET LOCAL search_path TO {$tenant->schema_name}, public");
+                }
+
+                return $callback();
+            });
         } finally {
-            // Reset search_path to default
-            \Illuminate\Support\Facades\DB::statement("SET search_path TO public");
-            
             // Clear auth context
             Auth::logout();
         }

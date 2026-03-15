@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Models\PppoeUser;
 use App\Models\Router;
 use App\Events\PppoeUserPaymentStatusChanged;
+use App\Events\PppoeUserReconnectedAfterPayment;
 use App\Traits\TenantAwareJob;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -65,6 +66,7 @@ class ReconnectPppoeUserJob implements ShouldQueue
                 $user->update([
                     'status' => 'active',
                     'payment_status' => 'paid',
+                    'is_active' => true,
                     'suspended_at' => null,
                     'suspension_reason' => null,
                     'in_grace_period' => false,
@@ -83,6 +85,14 @@ class ReconnectPppoeUserJob implements ShouldQueue
                     $this->pppoeUserId,
                     'paid',
                     'reconnected'
+                ));
+
+                event(new PppoeUserReconnectedAfterPayment(
+                    $this->tenantId,
+                    $this->pppoeUserId,
+                    'paid',
+                    null,
+                    'reconnect_job'
                 ));
 
             } catch (\Exception $e) {

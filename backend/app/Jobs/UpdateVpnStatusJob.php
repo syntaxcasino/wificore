@@ -3,7 +3,8 @@
 namespace App\Jobs;
 
 use App\Models\Tenant;
-use App\Services\WireGuardService;
+use App\Events\RouterStatusUpdated;
+use App\Services\WireguardPeerHealthService;
 use App\Traits\TenantAwareJob;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -32,7 +33,7 @@ class UpdateVpnStatusJob implements ShouldQueue
     /**
      * Execute the job.
      */
-    public function handle(WireGuardService $wireGuardService): void
+    public function handle(WireguardPeerHealthService $peerHealthService): void
     {
         // If no tenant ID is set, this is the main scheduler job.
         // We need to dispatch a job for each active tenant.
@@ -47,20 +48,27 @@ class UpdateVpnStatusJob implements ShouldQueue
             return;
         }
 
-        $this->executeInTenantContext(function() use ($wireGuardService) {
-            Log::info('Updating VPN connection statuses...', ['tenant_id' => $this->tenantId]);
-            
+        $this->executeInTenantContext(function() use ($peerHealthService) {
+            Log::info('Refreshing WireGuard peer health...', ['tenant_id' => $this->tenantId]);
+
             try {
-                $wireGuardService->updateAllPeerStatuses();
-                
-                Log::info('VPN statuses updated successfully', ['tenant_id' => $this->tenantId]);
-                
+                $updatedRouters = $peerHealthService->refreshPeerStats((string) $this->tenantId);
+
+                if (!empty($updatedRouters)) {
+                    broadcast(new RouterStatusUpdated($updatedRouters, (string) $this->tenantId))->toOthers();
+                }
+
+                Log::info('WireGuard peer health refresh completed', [
+                    'tenant_id' => $this->tenantId,
+                    'updated_router_count' => count($updatedRouters),
+                ]);
+
             } catch (\Exception $e) {
-                Log::error('Failed to update VPN statuses', [
+                Log::error('Failed to refresh WireGuard peer health', [
                     'tenant_id' => $this->tenantId,
                     'error' => $e->getMessage(),
                 ]);
-                
+
                 throw $e;
             }
         });

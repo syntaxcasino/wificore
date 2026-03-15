@@ -319,70 +319,8 @@ class MpesaC2BService
      */
     protected function activateUserAfterPayment(PppoeUser $user, PppoePayment $payment): void
     {
-        $wasInactive = in_array($user->status, ['suspended', 'pending', 'expired']);
-
-        // Update user payment info
-        $user->update([
-            'last_payment_date' => now(),
-            'next_payment_due' => now()->addDays(30),
-            'status' => 'active',
-            'payment_status' => 'paid',
-        ]);
-
-        if ($wasInactive) {
-            Log::info('M-Pesa C2B: User activated after payment', [
-                'user_id' => $user->id,
-                'previous_status' => $user->getOriginal('status'),
-            ]);
-
-            // Remove Auth-Type Reject from RADIUS to allow reconnection
-            DB::table('radcheck')
-                ->where('username', $user->username)
-                ->where('attribute', 'Auth-Type')
-                ->where('value', 'Reject')
-                ->delete();
-
-            // Dispatch reconnection job
-            ReconnectPppoeUserJob::dispatch($user->id, $this->tenant->id);
-        }
-    }
-
-    /**
-     * Format validation response for Safaricom
-     */
-    protected function validationResponse(string $code, string $desc): array
-    {
-        return [
-            'ResultCode' => $code,
-            'ResultDesc' => $desc,
-        ];
-    }
-
-    /**
-     * Format confirmation response for Safaricom
-     */
-    protected function confirmationResponse(string $code, string $desc): array
-    {
-        return [
-            'ResultCode' => $code,
-            'ResultDesc' => $desc,
-        ];
-    }
-
-    /**
-     * Parse M-Pesa transaction time format (YYYYMMDDHHmmss)
-     */
-    protected function parseTransactionTime(?string $time): \DateTime
-    {
-        if (!$time) {
-            return now();
-        }
-
-        try {
-            return \DateTime::createFromFormat('YmdHis', $time) ?: now();
-        } catch (\Exception $e) {
-            return now();
-        }
+        app(PppoeBillingLifecycleService::class)
+            ->handleSuccessfulPayment($user, $payment, $this->tenant->id, 'mpesa_c2b_confirmation');
     }
 
     /**

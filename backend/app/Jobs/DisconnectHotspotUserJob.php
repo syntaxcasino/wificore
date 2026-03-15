@@ -3,8 +3,10 @@
 namespace App\Jobs;
 
 use App\Models\RadiusSession;
+use App\Models\Router;
 use App\Models\SessionDisconnection;
 use App\Events\SessionExpired;
+use App\Services\MikroTik\SshExecutor;
 use App\Traits\TenantAwareJob;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -61,17 +63,25 @@ class DisconnectHotspotUserJob implements ShouldQueue
                 ]);
                 return;
             }
-            
-            DB::beginTransaction();
+
+            $transactionStarted = false;
             
             try {
-                // 1. Send RADIUS disconnect request
-                $this->sendRadiusDisconnect($session);
+                // 1. Block re-authentication immediately in RADIUS
+                $this->blockUserInRadius((string) $session->username);
+
+                // 2. Terminate active Hotspot session on NAS (required for immediate cutoff)
+                if (!$this->sendRadiusDisconnect($session)) {
+                    throw new \RuntimeException('Failed to terminate active Hotspot session on NAS');
+                }
                 
-                // 2. Calculate session duration
+                // 3. Calculate session duration
                 $duration = now()->diffInSeconds($session->session_start);
+
+                DB::beginTransaction();
+                $transactionStarted = true;
                 
-                // 3. Update session status
+                // 4. Update session status
                 $session->update([
                     'status' => 'expired',
                     'session_end' => now(),
@@ -79,7 +89,7 @@ class DisconnectHotspotUserJob implements ShouldQueue
                     'duration_seconds' => $duration,
                 ]);
                 
-                // 4. Update hotspot user
+                // 5. Update hotspot user
                 if ($session->hotspotUser) {
                     $session->hotspotUser->update([
                         'has_active_subscription' => false,
@@ -87,18 +97,21 @@ class DisconnectHotspotUserJob implements ShouldQueue
                     ]);
                 }
                 
-                // 5. Update RADIUS accounting if exists
+                // 6. Update RADIUS accounting rows
+                $radacctUpdate = DB::table('radacct')
+                    ->where('username', $session->username)
+                    ->whereNull('acctstoptime');
+
                 if ($session->radacct_id) {
-                    DB::table('radacct')
-                        ->where('radacctid', $session->radacct_id)
-                        ->whereNull('acctstoptime')
-                        ->update([
-                            'acctstoptime' => now(),
-                            'acctterminatecause' => $this->reason,
-                        ]);
+                    $radacctUpdate->where('radacctid', $session->radacct_id);
                 }
+
+                $radacctUpdate->update([
+                    'acctstoptime' => now(),
+                    'acctterminatecause' => $this->reason,
+                ]);
                 
-                // 6. Log disconnection
+                // 7. Log disconnection
                 SessionDisconnection::create([
                     'radius_session_id' => $session->id,
                     'hotspot_user_id' => $session->hotspot_user_id,
@@ -111,8 +124,9 @@ class DisconnectHotspotUserJob implements ShouldQueue
                 ]);
                 
                 DB::commit();
+                $transactionStarted = false;
                 
-                // 7. Broadcast event
+                // 8. Broadcast event
                 broadcast(new SessionExpired($session, $this->reason, $this->tenantId))->toOthers();
                 
                 Log::info('User disconnected successfully', [
@@ -126,7 +140,9 @@ class DisconnectHotspotUserJob implements ShouldQueue
                 ]);
                 
             } catch (\Exception $e) {
-                DB::rollBack();
+                if ($transactionStarted && DB::transactionLevel() > 0) {
+                    DB::rollBack();
+                }
                 
                 Log::error('Failed to disconnect user', [
                     'error' => $e->getMessage(),
@@ -143,17 +159,114 @@ class DisconnectHotspotUserJob implements ShouldQueue
     /**
      * Send RADIUS disconnect packet
      */
-    private function sendRadiusDisconnect(RadiusSession $session): void
+    private function sendRadiusDisconnect(RadiusSession $session): bool
     {
-        // TODO: Implement RADIUS disconnect packet
-        // This requires a RADIUS client library
-        
-        Log::info('RADIUS disconnect packet would be sent', [
-            'username' => $session->username,
-            'nas_ip' => $session->nas_ip_address,
-            'session_id' => $session->id,
-            'tenant_id' => $this->tenantId
-        ]);
+        $username = trim((string) $session->username);
+        if ($username === '') {
+            Log::warning('Cannot disconnect hotspot session: empty username', [
+                'session_id' => $session->id,
+                'tenant_id' => $this->tenantId,
+            ]);
+            return false;
+        }
+
+        try {
+            $activeRadacct = $this->lookupActiveRadacct($session, $username);
+            $nasIp = $session->nas_ip_address ?: ($activeRadacct->nasipaddress ?? null);
+            $router = $this->resolveRouterForSession($session, $nasIp);
+
+            if (!$router) {
+                Log::warning('Cannot disconnect hotspot session: router not resolved', [
+                    'session_id' => $session->id,
+                    'username' => $username,
+                    'nas_ip' => $nasIp,
+                    'tenant_id' => $this->tenantId,
+                ]);
+                return false;
+            }
+
+            $ssh = new SshExecutor($router, 10);
+            if (!$ssh->connect()) {
+                Log::warning('Cannot disconnect hotspot session: SSH connection failed', [
+                    'session_id' => $session->id,
+                    'username' => $username,
+                    'router_id' => $router->id,
+                    'tenant_id' => $this->tenantId,
+                ]);
+                return false;
+            }
+
+            try {
+                $escapedUsername = addslashes($username);
+                $ssh->exec(sprintf(':do { /ip hotspot active remove [find user="%s"] } on-error={}', $escapedUsername));
+
+                if (!empty($session->mac_address)) {
+                    $ssh->exec(sprintf(':do { /ip hotspot host remove [find mac-address="%s"] } on-error={}', addslashes((string) $session->mac_address)));
+                }
+            } finally {
+                $ssh->disconnect();
+            }
+
+            Log::info('Hotspot session terminated on router', [
+                'session_id' => $session->id,
+                'username' => $username,
+                'router_id' => $router->id,
+                'nas_ip' => $nasIp,
+                'tenant_id' => $this->tenantId,
+            ]);
+
+            return true;
+        } catch (\Exception $e) {
+            Log::error('Failed to terminate hotspot session on router', [
+                'session_id' => $session->id,
+                'username' => $username,
+                'tenant_id' => $this->tenantId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return false;
+        }
+    }
+
+    private function blockUserInRadius(string $username): void
+    {
+        DB::table('radcheck')->updateOrInsert(
+            ['username' => $username, 'attribute' => 'Auth-Type'],
+            ['op' => ':=', 'value' => 'Reject']
+        );
+    }
+
+    private function lookupActiveRadacct(RadiusSession $session, string $username): ?object
+    {
+        $query = DB::table('radacct')->whereNull('acctstoptime');
+
+        if ($session->radacct_id) {
+            $query->where('radacctid', $session->radacct_id);
+        } else {
+            $query->where('username', $username)->orderBy('acctstarttime', 'desc');
+        }
+
+        return $query->first();
+    }
+
+    private function resolveRouterForSession(RadiusSession $session, ?string $nasIp): ?Router
+    {
+        if (!empty($nasIp)) {
+            $router = Router::where('ip_address', $nasIp)
+                ->orWhere('vpn_ip', $nasIp)
+                ->first();
+
+            if ($router) {
+                return $router;
+            }
+        }
+
+        $payment = $session->relationLoaded('payment') ? $session->payment : $session->payment()->first();
+        if ($payment && !empty($payment->router_id)) {
+            return Router::find($payment->router_id);
+        }
+
+        return null;
     }
 
     /**

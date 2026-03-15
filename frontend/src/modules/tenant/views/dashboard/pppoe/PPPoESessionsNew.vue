@@ -141,12 +141,21 @@
                     <div class="text-xs text-slate-500">{{ formatDateTime(session.connected_at || session.start_time) }}</div>
                   </td>
                   <td class="px-6 py-4">
-                    <div class="flex items-center justify-end gap-2">
+                    <div class="flex items-center justify-end gap-2" @click.stop>
                       <BaseButton @click="viewSessionDetails(session)" variant="ghost" size="sm">
                         <Eye class="w-4 h-4" />
                       </BaseButton>
                       <BaseButton @click="disconnectSession(session)" variant="danger" size="sm">
                         <Power class="w-4 h-4" />
+                      </BaseButton>
+                      <BaseButton
+                        data-menu-button
+                        @click="toggleMenu(session.id, $event)"
+                        variant="ghost"
+                        size="sm"
+                        title="More Actions"
+                      >
+                        <MoreVertical class="w-4 h-4 text-slate-600" />
                       </BaseButton>
                     </div>
                   </td>
@@ -155,6 +164,30 @@
             </table>
           </div>
         </BaseCard>
+
+        <Teleport to="body">
+          <div
+            v-if="activeMenu !== null"
+            data-dropdown-menu
+            :style="menuPosition"
+            class="fixed w-44 bg-white rounded-lg shadow-2xl border border-slate-200 py-1 z-[9999] overflow-hidden"
+          >
+            <button
+              @click="handleViewFromMenu"
+              class="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+            >
+              <Eye class="w-4 h-4" />
+              View details
+            </button>
+            <button
+              @click="handleDisconnectFromMenu"
+              class="w-full px-4 py-2 text-left text-sm text-rose-600 hover:bg-rose-50 flex items-center gap-2"
+            >
+              <Power class="w-4 h-4" />
+              Disconnect session
+            </button>
+          </div>
+        </Teleport>
 
         <!-- Pagination -->
         <div class="mt-4 flex items-center justify-between">
@@ -183,8 +216,8 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { 
-  RefreshCw, Power, Eye, X, Network
+import {
+  RefreshCw, Power, Eye, X, Network, MoreVertical
 } from 'lucide-vue-next'
 import axios from 'axios'
 import { useBroadcasting } from '@/modules/common/composables/websocket/useBroadcasting'
@@ -222,6 +255,9 @@ const currentPage = ref(1)
 const itemsPerPage = ref(10)
 const showDetailsOverlay = ref(false)
 const selectedSession = ref(null)
+const activeMenu = ref(null)
+const menuPosition = ref({})
+const selectedMenuSession = ref(null)
 
 const confirmStore = useConfirmStore()
 const authStore = useAuthStore()
@@ -391,6 +427,71 @@ const closeDetailsOverlay = () => {
   showDetailsOverlay.value = false
 }
 
+const closeMenu = () => {
+  activeMenu.value = null
+  menuPosition.value = {}
+  selectedMenuSession.value = null
+}
+
+const toggleMenu = (sessionId, event) => {
+  event.stopPropagation()
+
+  if (activeMenu.value === sessionId) {
+    closeMenu()
+    return
+  }
+
+  activeMenu.value = sessionId
+  selectedMenuSession.value = sessions.value.find((session) => session.id === sessionId) || null
+
+  const button = event.currentTarget
+  const rect = button.getBoundingClientRect()
+  const viewportWidth = window.innerWidth
+  const viewportHeight = window.innerHeight
+  const menuWidth = 176
+  const menuHeight = 96
+
+  let top = rect.bottom + 6
+  let left = rect.right - menuWidth
+
+  if (left < 8) {
+    left = 8
+  } else if (left + menuWidth > viewportWidth - 8) {
+    left = viewportWidth - menuWidth - 8
+  }
+
+  if (top + menuHeight > viewportHeight - 8) {
+    top = rect.top - menuHeight - 6
+  }
+
+  menuPosition.value = {
+    top: `${top}px`,
+    left: `${left}px`,
+  }
+}
+
+const handleViewFromMenu = () => {
+  if (!selectedMenuSession.value) return
+  viewSessionDetails(selectedMenuSession.value)
+  closeMenu()
+}
+
+const handleDisconnectFromMenu = () => {
+  if (!selectedMenuSession.value) return
+  disconnectSession(selectedMenuSession.value)
+  closeMenu()
+}
+
+const handleClickOutside = (event) => {
+  if (!activeMenu.value) return
+  const isMenuButton = event.target.closest('[data-menu-button]')
+  const isDropdownMenu = event.target.closest('[data-dropdown-menu]')
+
+  if (!isMenuButton && !isDropdownMenu) {
+    closeMenu()
+  }
+}
+
 const disconnectSession = async (session) => {
   const confirmed = await confirmStore.open({
     title: 'Confirm Disconnect',
@@ -445,11 +546,40 @@ const disconnectAll = async () => {
 
 // Channel name for cleanup
 let sessionChannel = null
+let pollingInterval = null
+
+const startPolling = () => {
+  stopPolling()
+  pollingInterval = setInterval(() => {
+    // Silent refresh (no loading indicator)
+    axios.get('pppoe/sessions')
+      .then(response => {
+        const payload = response.data?.data ?? response.data
+        const newSessions = Array.isArray(payload) ? payload : (payload?.data ?? [])
+        
+        // Update sessions while preserving order/selection if possible?
+        // Simple replacement is usually fine for metrics
+        sessions.value = newSessions
+      })
+      .catch(err => console.error('Silent session refresh failed:', err))
+  }, 10000) // Poll every 10 seconds
+}
+
+const stopPolling = () => {
+  if (pollingInterval) {
+    clearInterval(pollingInterval)
+    pollingInterval = null
+  }
+}
 
 // EVENT-BASED: Subscribe to WebSocket for real-time updates (NO POLLING)
 onMounted(() => {
   // Fetch initial sessions ONCE
-  fetchSessions()
+  fetchSessions().then(() => {
+    startPolling() // Start polling for live metrics updates
+  })
+
+  document.addEventListener('click', handleClickOutside)
   
   // Subscribe to WebSocket events for PPPoE sessions
   const tenantId = authStore.tenantId
@@ -459,15 +589,8 @@ onMounted(() => {
     subscribeToPrivateChannel(sessionChannel, {
       PppoeSessionStarted: (event) => {
         console.log('✨ Session started:', event)
-        if (event.session) {
-          // Add new session to the list
-          const exists = sessions.value.some(s => 
-            s.username === event.session.username && s.router_id === event.session.router_id
-          )
-          if (!exists) {
-            sessions.value.unshift(event.session)
-          }
-        }
+        // Refresh immediately to get full data with metrics
+        refreshSessions()
       },
       PppoeSessionEnded: (event) => {
         console.log('👋 Session ended:', event)
@@ -478,17 +601,10 @@ onMounted(() => {
           )
         }
       },
+      // PppoeSessionUpdated usually doesn't carry live metrics, so we rely on polling/refresh
       PppoeSessionUpdated: (event) => {
         console.log('🔄 Session updated:', event)
-        if (event.session) {
-          // Update session in the list
-          const index = sessions.value.findIndex(s => 
-            s.username === event.session.username && s.router_id === event.session.router_id
-          )
-          if (index !== -1) {
-            sessions.value[index] = { ...sessions.value[index], ...event.session }
-          }
-        }
+        refreshSessions()
       }
     })
   }
@@ -496,8 +612,10 @@ onMounted(() => {
 
 // Cleanup WebSocket subscription on unmount
 onUnmounted(() => {
+  stopPolling()
   if (sessionChannel) {
     unsubscribeFromChannel(sessionChannel)
   }
+  document.removeEventListener('click', handleClickOutside)
 })
 </script>

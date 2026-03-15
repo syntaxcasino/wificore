@@ -8,24 +8,28 @@ use Illuminate\Support\Facades\Log;
 class VpnConnectivityService
 {
     /**
-     * Verify VPN connectivity to a router
-     * Tests if the server can open a TCP connection to the router's SSH port
-     * 
+     * Verify VPN connectivity to a router.
+     *
+     * Default behavior uses TCP probe with ICMP ping fallback.
+     * For provisioning status checks, callers can enforce strict ping mode.
+     *
      * @param VpnConfiguration $config
-     * @param int $maxAttempts Maximum number of TCP attempts
-     * @param int $timeout Timeout per TCP attempt in seconds
+     * @param int $maxAttempts Maximum number of attempts
+     * @param int $timeout Timeout per attempt in seconds
+     * @param bool $pingOnly When true, use ICMP ping only (no TCP probe)
      * @return array ['success' => bool, 'latency' => float|null, 'packet_loss' => int, 'message' => string]
      */
-    public function verifyConnectivity(VpnConfiguration $config, int $maxAttempts = 4, int $timeout = 5): array
+    public function verifyConnectivity(VpnConfiguration $config, int $maxAttempts = 4, int $timeout = 5, bool $pingOnly = false): array
     {
         $clientIp = explode('/', $config->client_ip ?? '')[0];
         $port = $this->resolveSshPort($config);
         
-        Log::info('Starting VPN connectivity verification (TCP probe)', [
+        Log::info('Starting VPN connectivity verification', [
             'router_id' => $config->router_id,
             'client_ip' => $clientIp,
             'port' => $port,
             'max_attempts' => $maxAttempts,
+            'probe_mode' => $pingOnly ? 'ping' : 'tcp_then_ping',
         ]);
 
         if (empty($clientIp)) {
@@ -46,6 +50,20 @@ class VpnConnectivityService
         $probeTimeout = max(1, $timeout);
 
         for ($attempt = 1; $attempt <= $attempts; $attempt++) {
+            if ($pingOnly) {
+                $pingProbe = $this->pingProbe($clientIp, $probeTimeout);
+                if ($pingProbe['success']) {
+                    $success = true;
+                    $latency = $pingProbe['latency'];
+                    $lastError = null;
+                    break;
+                }
+
+                $lastError = $pingProbe['error'];
+                continue;
+            }
+
+            // Try TCP probe first (SSH port)
             $probe = $this->tcpProbe($clientIp, $port, $probeTimeout);
             $latency = $probe['latency'];
 
@@ -53,8 +71,17 @@ class VpnConnectivityService
                 $success = true;
                 break;
             }
+            
+            // Fallback to ICMP Ping if TCP fails
+            $pingProbe = $this->pingProbe($clientIp, $probeTimeout);
+            if ($pingProbe['success']) {
+                $success = true;
+                $latency = $pingProbe['latency'];
+                $lastError = null; // Clear TCP error if ping succeeds
+                break;
+            }
 
-            $lastError = $probe['error'];
+            $lastError = $probe['error'] . ' | Ping: ' . $pingProbe['error'];
         }
 
         $result = [
@@ -62,18 +89,19 @@ class VpnConnectivityService
             'latency' => $latency,
             'packet_loss' => $success ? 0 : 100,
             'message' => $success
-                ? 'VPN connectivity verified via TCP probe'
-                : ('TCP probe failed' . ($lastError ? ': ' . $lastError : '')),
+                ? ($pingOnly ? 'Ping connectivity verified' : 'VPN connectivity verified')
+                : ('Connectivity check failed: ' . $lastError),
             'raw_output' => $lastError,
         ];
         
-        Log::info('VPN connectivity verification completed (TCP probe)', [
+        Log::info('VPN connectivity verification completed', [
             'router_id' => $config->router_id,
             'client_ip' => $clientIp,
             'port' => $port,
             'success' => $result['success'],
             'packet_loss' => $result['packet_loss'],
             'latency' => $result['latency'],
+            'probe_mode' => $pingOnly ? 'ping' : 'tcp_then_ping',
         ]);
 
         return $result;
@@ -123,6 +151,36 @@ class VpnConnectivityService
             'success' => false,
             'latency' => null,
             'error' => $error,
+        ];
+    }
+
+    protected function pingProbe(string $host, int $timeout): array
+    {
+        $start = microtime(true);
+        
+        // Determine OS for ping command
+        $isWindows = strtoupper(substr(PHP_OS, 0, 3)) === 'WIN';
+        $countFlag = $isWindows ? '-n' : '-c';
+        $timeoutFlag = $isWindows ? '-w' : '-W';
+        // Windows timeout is in milliseconds, Linux/Mac is in seconds
+        $timeoutVal = $isWindows ? ($timeout * 1000) : $timeout;
+        
+        $command = "ping {$countFlag} 1 {$timeoutFlag} {$timeoutVal} {$host}";
+        
+        exec($command, $output, $resultCode);
+        
+        if ($resultCode === 0) {
+            return [
+                'success' => true,
+                'latency' => round((microtime(true) - $start) * 1000, 2),
+                'error' => null,
+            ];
+        }
+        
+        return [
+            'success' => false,
+            'latency' => null,
+            'error' => "Ping failed (code {$resultCode})",
         ];
     }
 

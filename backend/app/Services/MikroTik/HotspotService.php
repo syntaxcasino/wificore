@@ -40,19 +40,18 @@ class HotspotService extends BaseMikroTikService
             throw new \Exception('At least one interface is required for hotspot setup.');
         }
 
+        $router = Router::find($routerId);
+
         // NEW: Validate interfaces if interface manager is set
-        if ($this->interfaceManager) {
-            $router = Router::find($routerId);
-            if ($router) {
-                $validation = $this->interfaceManager->validateInterfaceAssignment(
-                    $router,
-                    'hotspot',
-                    $interfaces
-                );
-                
-                if (!$validation['valid']) {
-                    throw new \Exception('Interface validation failed: ' . implode(', ', $validation['errors']));
-                }
+        if ($this->interfaceManager && $router) {
+            $validation = $this->interfaceManager->validateInterfaceAssignment(
+                $router,
+                'hotspot',
+                $interfaces
+            );
+
+            if (!$validation['valid']) {
+                throw new \Exception('Interface validation failed: ' . implode(', ', $validation['errors']));
             }
         }
 
@@ -83,6 +82,9 @@ class HotspotService extends BaseMikroTikService
         $server      = "hs-server-$routerId";
         $poolName    = "pool-hotspot-$routerId";
         $dhcpName    = "dhcp-hotspot-$routerId";
+        $wanInterface = $this->resolveWanInterface(
+            $options['wan_interface'] ?? ($router ? $router->wan_interface : null)
+        );
 
         $portalHost = null;
         try {
@@ -175,10 +177,12 @@ class HotspotService extends BaseMikroTikService
             ":do { /ip firewall filter remove [find comment=\"Drop Port Scanners\"]; } on-error={}",
             ":do { /ip firewall filter remove [find comment=\"Limit ICMP\"]; } on-error={}",
             ":do { /ip firewall filter remove [find comment=\"Allow Hotspot to WAN\"]; } on-error={}",
+            ":do { /ip firewall filter remove [find comment=\"Allow Hotspot WAN Return\"]; } on-error={}",
             ":do { /ip firewall filter remove [find comment=\"Allow DHCP\"]; } on-error={}",
             ":do { /ip firewall filter remove [find comment=\"Allow Hotspot HTTP/HTTPS\"]; } on-error={}",
             ":do { /ip firewall filter remove [find comment=\"Allow RADIUS\"]; } on-error={}",
             ":do { /ip firewall filter remove [find comment=\"Drop Other Hotspot Input\"]; } on-error={}",
+            "/ip firewall filter add chain=forward action=accept connection-state=established,related in-interface=$wanInterface out-interface=$bridge comment=\"Allow Hotspot WAN Return\"",
             "/ip firewall filter add chain=forward action=accept connection-state=established,related comment=\"Allow Established/Related\"",
             "/ip firewall filter add chain=forward action=drop connection-state=invalid comment=\"Drop Invalid\"",
             "/ip firewall filter add chain=forward action=drop protocol=tcp tcp-flags=syn connection-limit=20,32 comment=\"Limit TCP Connections per IP\"",
@@ -192,7 +196,7 @@ class HotspotService extends BaseMikroTikService
             "",
             "# NAT Rules - Production Configuration",
             "/ip firewall nat remove [find comment~\"Hotspot\"]",
-            "/ip firewall nat add chain=srcnat action=masquerade src-address=$network out-interface=ether1 comment=\"Hotspot Internet Access\"",
+            "/ip firewall nat add chain=srcnat action=masquerade src-address=$network out-interface={$wanInterface} comment=\"Hotspot Internet Access\"",
             "# Fallback NAT for any interface except bridge",
             ":do { /ip firewall nat add chain=srcnat action=masquerade src-address=$network out-interface=!$bridge comment=\"Hotspot NAT Fallback\" } on-error={}",
             "/ip firewall nat add chain=dstnat action=redirect to-ports=64872 protocol=tcp dst-port=80 in-interface=$bridge",

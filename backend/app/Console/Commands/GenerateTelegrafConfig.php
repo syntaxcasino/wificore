@@ -239,6 +239,30 @@ class GenerateTelegrafConfig extends Command
                         $lines[] = 'oid = "1.3.6.1.4.1.14988.1.1.5.4.0"';
                         $lines[] = '';
 
+                        // Active Hotspot users count
+                        $lines[] = '[[inputs.snmp.field]]';
+                        $lines[] = 'name = "hotspot_active"';
+                        $lines[] = 'oid = "1.3.6.1.4.1.14988.1.1.5.1.0"';
+                        $lines[] = '';
+
+                        // Wireless clients count
+                        $lines[] = '[[inputs.snmp.field]]';
+                        $lines[] = 'name = "wireless_clients"';
+                        $lines[] = 'oid = "1.3.6.1.4.1.14988.1.1.1.3.0"';
+                        $lines[] = '';
+
+                        // DHCP Leases count
+                        $lines[] = '[[inputs.snmp.field]]';
+                        $lines[] = 'name = "dhcp_leases"';
+                        $lines[] = 'oid = "1.3.6.1.4.1.14988.1.1.6.1.0"';
+                        $lines[] = '';
+
+                        // Interface count (Standard MIB)
+                        $lines[] = '[[inputs.snmp.field]]';
+                        $lines[] = 'name = "interface_count"';
+                        $lines[] = 'oid = "1.3.6.1.2.1.2.1.0"';
+                        $lines[] = '';
+
                         // === Block 2: Storage / Disk (HOST-RESOURCES-MIB hrStorage table) ===
                         $this->addSnmpBlock($lines, [
                             'interval' => $slowInterval,

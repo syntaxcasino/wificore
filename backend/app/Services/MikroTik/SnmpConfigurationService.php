@@ -33,21 +33,26 @@ class SnmpConfigurationService
     }
 
     /**
-     * Enable SNMPv2c on a MikroTik router (preserves public community).
+     * Enable SNMPv2c on a MikroTik router (preserves configured community).
      */
     public function enableSnmpV2c(Router $router, array $options = []): array
     {
-        $community = $options['community'] ?? config('telegraf.snmp_community', 'public');
+        $community = $options['community'] ?? config('telegraf.snmp_community', 'traidnet-monitor');
         $contact = $options['contact'] ?? 'Network Admin';
         $location = $options['location'] ?? $router->location ?? 'Unknown';
+        // Always allow monitoring from the VPN server IP (10.8.0.1/32)
+        // We do NOT use the tenant's VPN subnet here because in Host Mode, the server (10.8.0.1) 
+        // is outside the tenant's allocated range (e.g. 10.100.0.0/16).
+        $snmpSubnet = $options['snmp_subnet'] ?? '10.8.0.1/32';
 
         $commands = [
             '/snmp set enabled=yes',
             "/snmp set contact=\"{$contact}\"",
             "/snmp set location=\"{$location}\"",
             // Ensure community exists (idempotent: remove then re-add)
-            ":do { /snmp community remove [find name=\"{$community}\"]; } on-error={}",
-            "/snmp community add name=\"{$community}\" addresses=0.0.0.0/0 security=none read-access=yes write-access=no",
+            ":do { /snmp community remove [find name=\"{$community}\"]; } on-error={} ",
+            "/snmp community add name=\"{$community}\" addresses={$snmpSubnet} security=none read-access=yes write-access=no",
+            "/snmp set trap-community=\"{$community}\" trap-version=2",
         ];
 
         try {
@@ -99,6 +104,7 @@ class SnmpConfigurationService
         $privPassword = $credentials['priv_password'] ?? config('telegraf.snmpv3_priv_password', '');
         $contact = $credentials['contact'] ?? 'Network Admin';
         $location = $credentials['location'] ?? $router->location ?? 'Unknown';
+        $snmpSubnet = $credentials['snmp_subnet'] ?? '10.8.0.1/32';
 
         if (empty($authPassword) || empty($privPassword)) {
             throw new \InvalidArgumentException('SNMPv3 requires both auth and priv passwords');
@@ -111,7 +117,7 @@ class SnmpConfigurationService
             // Remove existing v3 user before adding (idempotent)
             ":do { /snmp community remove [find name={$user}]; } on-error={}",
             // Add SNMPv3 user
-            "/snmp community add name={$user} addresses=0.0.0.0/0 security=private " .
+            "/snmp community add name={$user} addresses={$snmpSubnet} security=private " .
             "authentication-protocol={$authProtocol} authentication-password=\"{$authPassword}\" " .
             "encryption-protocol={$privProtocol} encryption-password=\"{$privPassword}\"",
         ];
@@ -186,9 +192,10 @@ class SnmpConfigurationService
      */
     public function getSnmpConfigScript(array $options = []): string
     {
-        $community = $options['community'] ?? config('telegraf.snmp_community', 'public');
+        $community = $options['community'] ?? config('telegraf.snmp_community', 'traidnet-monitor');
         $contact = $options['contact'] ?? 'Network Admin';
         $location = $options['location'] ?? 'Unknown';
+        $snmpSubnet = $options['snmp_subnet'] ?? '10.8.0.1/32';
 
         return <<<SCRIPT
 # Enable SNMPv2c for monitoring
@@ -196,7 +203,8 @@ class SnmpConfigurationService
 /snmp set contact="{$contact}"
 /snmp set location="{$location}"
 :do { /snmp community remove [find name="{$community}"]; } on-error={}
-/snmp community add name="{$community}" addresses=0.0.0.0/0 security=none read-access=yes write-access=no
+/snmp community add name="{$community}" addresses={$snmpSubnet} security=none read-access=yes write-access=no
+/snmp set trap-community="{$community}" trap-version=2
 SCRIPT;
     }
 }

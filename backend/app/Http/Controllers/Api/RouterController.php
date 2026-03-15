@@ -3,9 +3,15 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\RouterProbingJob;
 use App\Models\Router;
 use App\Models\RouterConfig;
+use App\Models\RouterTenantMap;
+use App\Models\Tenant;
 use App\Services\MikrotikProvisioningService;
+use App\Services\RouterMetricsService;
+use App\Services\TenantContext;
+use App\Services\VictoriaMetricsClient;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -86,23 +92,43 @@ class RouterController extends Controller
     /**
      * Fetch live data for all routers (async endpoint)
      */
-    public function getLiveData(Request $request)
+    public function getLiveData(
+        Request $request,
+        VictoriaMetricsClient $vm,
+        TenantContext $tenantContext,
+        RouterMetricsService $metricsService
+    )
     {
         try {
+            $tenantId = $tenantContext->getTenantId();
+            if (!$tenantId) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Tenant context not set',
+                    'data' => [],
+                ], 403);
+            }
+
             $routers = Router::with(['services', 'accessPoints'])
                 ->orderBy('created_at', 'desc')
                 ->get();
-            $provisioningService = app(\App\Services\MikrotikProvisioningService::class);
 
-            $routersWithLive = $routers->map(function ($router) use ($provisioningService) {
-                try {
-                    $liveData = $provisioningService->fetchLiveRouterData($router, 'live', false);
-                } catch (\Exception $e) {
-                    Log::warning('Failed to fetch live data for router', [
-                        'router_id' => $router->id,
-                        'error' => $e->getMessage(),
-                    ]);
-                    $liveData = null;
+            $routerIds = $routers
+                ->pluck('id')
+                ->map(fn ($id) => (string) $id)
+                ->values()
+                ->all();
+
+            $liveDataByRouter = count($routerIds) > 0
+                ? $metricsService->getLatestRouterMetrics($vm, (string) $tenantId, $routerIds)
+                : [];
+
+            $routersWithLive = $routers->map(function ($router) use ($liveDataByRouter) {
+                $routerId = (string) $router->id;
+                $liveData = $liveDataByRouter[$routerId] ?? [];
+
+                if (!empty($liveData)) {
+                    $liveData['source'] = 'victoriametrics';
                 }
 
                 $router->setAttribute('live_data', $liveData);
@@ -112,7 +138,8 @@ class RouterController extends Controller
             return response()->json([
                 'data' => $routersWithLive,
                 'has_live_data' => true,
-                'message' => 'Live data fetched successfully'
+                'message' => 'Live data fetched successfully',
+                'source' => 'victoriametrics',
             ]);
             
         } catch (\Exception $e) {
@@ -163,6 +190,7 @@ class RouterController extends Controller
     {
         $request->validate([
             'name' => 'required|string|max:255',
+            'wan_interface' => 'nullable|string|max:64',
         ]);
 
         try {
@@ -190,13 +218,14 @@ class RouterController extends Controller
                 'username' => $username,
                 'password' => Crypt::encrypt($password),
                 'port' => $port,
+                'wan_interface' => $request->input('wan_interface'),
                 'config_token' => $configToken,
                 'status' => 'pending',
                 'vpn_enabled' => true, // Always enabled
                 'vpn_status' => 'pending',
                 'snmp_enabled' => true,
                 'snmp_version' => '2c',
-                'snmp_community' => config('telegraf.snmp_community', 'public'),
+                'snmp_community' => config('telegraf.snmp_community', 'traidnet-monitor'),
             ]);
 
             $connectivityScript = $this->generateConnectivityScript($router);
@@ -227,22 +256,7 @@ class RouterController extends Controller
 
         // Generate complete configuration script (basic setup + VPN + SNMP)
         // This is what will be in the .rsc file that MikroTik downloads
-        $decryptedPassword = Crypt::decrypt($router->password);
-        $snmpCommunity = config('telegraf.snmp_community', 'public');
-        $completeScript = <<<EOT
-/ip service set api disabled=no port={$router->port}
-/ip service set ssh disabled=no port=22 address=""
-/user add name={$router->username} password="$decryptedPassword" group=full
-/system identity set name="{$router->name}"
-/system note set note="Managed by Traidnet Solution LTD"
-/snmp set enabled=yes contact="Network Admin" location="Managed by WifiCore"
-:do { /snmp community remove [find name="{$snmpCommunity}"] } on-error={}
-/snmp community add name="{$snmpCommunity}" addresses=0.0.0.0/0 security=none read-access=yes write-access=no
-$vpnScript
-/ip firewall filter add chain=input protocol=tcp dst-port=22 action=accept comment="Allow SSH access"
-/ip firewall filter add chain=input protocol=udp dst-port=161 action=accept comment="Allow SNMP monitoring"
-
-EOT;
+        $completeScript = $this->buildBootstrapCompleteScript($router, $vpnScript, true);
 
         // Store VPN script in router configs
         RouterConfig::create([
@@ -283,7 +297,7 @@ EOT;
             'os_version' => $router->os_version,
             'last_seen' => $router->last_seen,
             'vpn_enabled' => true,
-            'vpn_status' => 'active',
+            'vpn_status' => $router->vpn_status,
         ], 201);
     } catch (\Exception $e) {
         Log::error('Failed to create router: ' . $e->getMessage(), [
@@ -294,12 +308,164 @@ EOT;
     }
 }
 
+    public function createRouterWithConfig(Request $request)
+    {
+        $response = $this->store($request);
+
+        if (!method_exists($response, 'getStatusCode') || $response->getStatusCode() >= 400) {
+            return $response;
+        }
+
+        $payload = $response->getData(true);
+        $routerId = $payload['id'] ?? null;
+
+        if (!$routerId) {
+            return $response;
+        }
+
+        $router = Router::find($routerId);
+        if (!$router) {
+            return $response;
+        }
+
+        $dispatchResult = $this->dispatchRouterProbing($router);
+        $payload['probing_started'] = $dispatchResult['success'];
+        if (!$dispatchResult['success']) {
+            $payload['probing_error'] = $dispatchResult['message'];
+        }
+
+        return response()->json($payload, $response->getStatusCode());
+    }
+
+    public function startRouterProbing(Router $router)
+    {
+        try {
+            if (in_array($router->status, ['online', 'connected', 'active'], true)) {
+                return response()->json([
+                    'success' => true,
+                    'router_id' => $router->id,
+                    'status' => $router->status,
+                    'message' => 'Router is already online',
+                ]);
+            }
+
+            if (in_array($router->status, ['failed', 'connection_failed'], true)) {
+                $router->update(['status' => 'pending']);
+            }
+
+            $dispatchResult = $this->dispatchRouterProbing($router);
+            if (!$dispatchResult['success']) {
+                return response()->json([
+                    'success' => false,
+                    'router_id' => $router->id,
+                    'message' => $dispatchResult['message'],
+                ], 422);
+            }
+
+            return response()->json([
+                'success' => true,
+                'router_id' => $router->id,
+                'status' => $router->status,
+                'message' => 'Router probing started',
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to start router probing', [
+                'router_id' => $router->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'router_id' => $router->id,
+                'message' => 'Failed to start probing: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function resetProvisioning(Request $request, Router $router)
+    {
+        try {
+            $startProbing = $request->boolean('start_probing', true);
+
+            $router->update([
+                'status' => 'pending',
+                'provisioning_stage' => null,
+            ]);
+
+            Cache::forget("vpn_check_pending_{$router->id}");
+            Cache::forget("discovery_dispatch_{$router->id}");
+            Cache::forget("router_discovery_lock_{$router->id}");
+
+            $dispatchResult = ['success' => false, 'message' => 'Probing not requested'];
+            if ($startProbing) {
+                $dispatchResult = $this->dispatchRouterProbing($router);
+            }
+
+            return response()->json([
+                'success' => true,
+                'router_id' => $router->id,
+                'status' => $router->status,
+                'vpn_status' => $router->vpn_status,
+                'message' => $startProbing
+                    ? ($dispatchResult['success']
+                        ? 'Provisioning state reset and probing restarted'
+                        : 'Provisioning state reset, but probing could not be started')
+                    : 'Provisioning state reset successfully',
+                'probing_started' => $startProbing ? $dispatchResult['success'] : false,
+                'probing_error' => $startProbing && !$dispatchResult['success']
+                    ? $dispatchResult['message']
+                    : null,
+            ], $startProbing && !$dispatchResult['success'] ? 202 : 200);
+        } catch (\Exception $e) {
+            Log::error('Failed to reset router provisioning state', [
+                'router_id' => $router->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'router_id' => $router->id,
+                'message' => 'Failed to reset provisioning: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    private function dispatchRouterProbing(Router $router): array
+    {
+        $tenantId = auth()->user()?->tenant_id
+            ?? app(TenantContext::class)->getTenantId()
+            ?? RouterTenantMap::findTenantByRouterId($router->id);
+
+        if (!$tenantId) {
+            return [
+                'success' => false,
+                'message' => 'Tenant context not available for probing dispatch',
+            ];
+        }
+
+        RouterProbingJob::dispatch((string) $router->id, (string) $tenantId)
+            ->onQueue('router-monitoring');
+
+        Log::info('Router probing dispatched', [
+            'router_id' => $router->id,
+            'tenant_id' => $tenantId,
+        ]);
+
+        return [
+            'success' => true,
+            'message' => 'Router probing dispatched',
+        ];
+    }
+
     public function update(Request $request, Router $router)
     {
         $request->validate([
             'name' => 'required|string|max:255',
             'ip_address' => 'nullable|string|max:255',
             'config_token' => 'nullable|string|max:255',
+            'wan_interface' => 'nullable|string|max:64',
         ]);
 
         try {
@@ -307,6 +473,7 @@ EOT;
                 'name' => $request->name,
                 'ip_address' => $request->ip_address ?? $router->ip_address,
                 'config_token' => $request->config_token ?? $router->config_token,
+                'wan_interface' => $request->input('wan_interface', $router->wan_interface),
             ]);
 
             Log::info('Router updated successfully:', [
@@ -385,6 +552,9 @@ EOT;
     public function getRouterDetails(Request $request, Router $router)
     {
         try {
+            // Refresh router model to get latest VPN status and handshake
+            $router->refresh();
+
             $withLive = $request->boolean('with_live', false);
             
             // Load relationships quickly from database
@@ -409,6 +579,12 @@ EOT;
                         'serial_number' => $router->serial_number,
                         'firmware' => $router->firmware,
                         'last_seen' => $router->last_seen,
+                        'wan_interface' => $router->wan_interface,
+                        'vpn_status' => $router->vpn_status,
+                        'vpn_last_handshake' => $router->vpn_last_handshake,
+                        'vpn_last_handshake_utc' => $router->vpn_last_handshake_utc,
+                        'vpn_last_handshake_eat' => $router->vpn_last_handshake_eat,
+                        'vpn_last_handshake_timezones' => $router->vpn_last_handshake_timezones,
                     ],
                     // Empty live data sections - will be populated when with_live=1
                     'resources' => [],
@@ -442,6 +618,12 @@ EOT;
                     'serial_number' => $router->serial_number,
                     'firmware' => $router->firmware,
                     'last_seen' => $router->last_seen,
+                    'wan_interface' => $router->wan_interface,
+                    'vpn_status' => $router->vpn_status,
+                    'vpn_last_handshake' => $router->vpn_last_handshake,
+                    'vpn_last_handshake_utc' => $router->vpn_last_handshake_utc,
+                    'vpn_last_handshake_eat' => $router->vpn_last_handshake_eat,
+                    'vpn_last_handshake_timezones' => $router->vpn_last_handshake_timezones,
                 ],
                 // Loading state for live data sections
                 'resources' => null,
@@ -494,45 +676,66 @@ EOT;
      * @param Router $router
      * @return \Illuminate\Http\JsonResponse
      */
-    public function getRouterLiveData(Router $router)
+    public function getRouterLiveData(
+        Router $router,
+        VictoriaMetricsClient $vm,
+        TenantContext $tenantContext,
+        RouterMetricsService $metricsService
+    )
     {
         try {
-            /** @var \App\Services\MikrotikProvisioningService $provisioningService */
-            $provisioningService = app(\App\Services\MikrotikProvisioningService::class);
+            $tenantId = $tenantContext->getTenantId();
+            if (!$tenantId) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Tenant context not set',
+                ], 403);
+            }
 
-            // Fetch live data from router
-            $details = $provisioningService->getRouterDetails($router);
-            $live = $details['live'] ?? [];
+            $routerId = (string) $router->id;
+            $liveData = $metricsService->getLatestRouterMetrics($vm, (string) $tenantId, [$routerId]);
+            $live = $liveData[$routerId] ?? [];
+            $hasLive = !empty($live);
+
+            if ($hasLive) {
+                $live['source'] = 'victoriametrics';
+            }
 
             // Prefer the richer active_connections metric when available, but
             // keep hotspot_active as a fallback for backwards compatibility.
             $activeConnections = $live['active_connections']
+                ?? $live['pppoe_sessions']
                 ?? $live['hotspot_active']
                 ?? 0;
 
             return response()->json([
                 'success' => true,
-                'has_live_data' => true,
-                'message' => 'Live data fetched successfully',
+                'has_live_data' => $hasLive,
+                'message' => $hasLive ? 'Live metrics fetched successfully' : 'No live metrics available yet',
                 'router' => [
-                    'id' => $details['id'] ?? $router->id,
-                    'name' => $details['name'] ?? $router->name,
-                    'ip_address' => $details['ip_address'] ?? $router->ip_address,
-                    'status' => $details['status'] ?? $router->status,
-                    'model' => $details['model'] ?? $router->model,
-                    'os_version' => $details['os_version'] ?? $router->os_version,
-                    'last_seen' => $details['last_seen'] ?? $router->last_seen,
+                    'id' => $router->id,
+                    'name' => $router->name,
+                    'ip_address' => $router->ip_address,
+                    'status' => $router->status,
+                    'model' => $router->model,
+                    'os_version' => $router->os_version,
+                    'last_seen' => $router->last_seen,
+                    'vpn_status' => $router->vpn_status,
+                    'vpn_last_handshake' => $router->vpn_last_handshake,
+                    'vpn_last_handshake_utc' => $router->vpn_last_handshake_utc,
+                    'vpn_last_handshake_eat' => $router->vpn_last_handshake_eat,
+                    'vpn_last_handshake_timezones' => $router->vpn_last_handshake_timezones,
                 ],
                 // Live data sections
                 'resources' => $live,
-                'interfaces' => $live['interfaces'] ?? [],
-                'hotspots' => $live['hotspots'] ?? [],
-                'radius_servers' => $live['radius_servers'] ?? [],
+                'interfaces' => [],
+                'hotspots' => [],
+                'radius_servers' => [],
                 'active_connections' => $activeConnections,
             ]);
             
         } catch (\Exception $e) {
-            Log::warning('Could not connect to router for live data', [
+            Log::warning('Could not fetch VictoriaMetrics live data', [
                 'router_id' => $router->id,
                 'router_name' => $router->name,
                 'ip_address' => $router->ip_address,
@@ -543,13 +746,19 @@ EOT;
             return response()->json([
                 'success' => false,
                 'has_live_data' => false,
-                'error' => 'Router is offline or unreachable',
-                'message' => 'Could not connect to router. It may be offline or network unreachable.',
+                'error' => 'Metrics unavailable',
+                'message' => 'Could not fetch live metrics from VictoriaMetrics.',
                 'router' => [
                     'id' => $router->id,
                     'name' => $router->name,
                     'ip_address' => $router->ip_address,
                     'status' => 'offline',
+                    'wan_interface' => $router->wan_interface,
+                    'vpn_status' => $router->vpn_status,
+                    'vpn_last_handshake' => $router->vpn_last_handshake,
+                    'vpn_last_handshake_utc' => $router->vpn_last_handshake_utc,
+                    'vpn_last_handshake_eat' => $router->vpn_last_handshake_eat,
+                    'vpn_last_handshake_timezones' => $router->vpn_last_handshake_timezones,
                 ],
                 'resources' => [],
                 'interfaces' => [],
@@ -833,7 +1042,7 @@ EOT;
                 'model' => $result['model'] ?? $router->model,
                 'os_version' => $result['os_version'] ?? $router->os_version,
                 'last_seen' => $result['last_seen'] ?? now(),
-                'status' => 'active',
+                'status' => 'online',
             ]);
 
             Log::info('Connectivity verified successfully for router via SSH:', [
@@ -920,7 +1129,7 @@ EOT;
                 }
             }
 
-            $serviceScript = $this->generateServiceScript($interfaceAssignments, $interfaceServices, $configurations);
+            $serviceScript = $this->generateServiceScript($router, $interfaceAssignments, $interfaceServices, $configurations);
 
             RouterConfig::create([
                 'router_id' => $router->id,
@@ -960,67 +1169,86 @@ EOT;
      */
     public function fetchConfig($configToken)
     {
+        $tenantContext = app(TenantContext::class);
+        $router = null;
+        $foundTenant = null;
+
         try {
-            // CRITICAL: Router table is in tenant schema, but we don't know which tenant yet
-            // We need to search across all tenant schemas to find the router
-            
-            // First, get all active tenants
-            $tenants = \App\Models\Tenant::where('is_active', true)->get();
-            
-            $router = null;
-            $foundTenant = null;
-            
-            // Search for router in each tenant schema
-            foreach ($tenants as $tenant) {
-                try {
-                    // Set search path to tenant schema
-                    DB::statement("SET search_path TO {$tenant->schema_name}, public");
-                    
-                    // Try to find router in this tenant's schema
-                    $router = Router::where('config_token', $configToken)->first();
-                    
+            $mappedTenantId = RouterTenantMap::findTenantByConfigToken($configToken);
+            if ($mappedTenantId) {
+                $mappedTenant = Tenant::find($mappedTenantId);
+                if ($mappedTenant && $mappedTenant->schema_created && $mappedTenant->schema_name) {
+                    $tenantContext->setTenant($mappedTenant);
+                    $router = Router::where('config_token', $configToken)->useWritePdo()->first();
                     if ($router) {
-                        $foundTenant = $tenant;
-                        Log::info('Router found in tenant schema', [
-                            'tenant_id' => $tenant->id,
-                            'tenant_slug' => $tenant->slug,
-                            'schema_name' => $tenant->schema_name,
-                            'router_id' => $router->id,
-                            'config_token' => $configToken,
-                        ]);
-                        break;
+                        $foundTenant = $mappedTenant;
                     }
-                } catch (\Exception $e) {
-                    // Schema might not exist or have issues, continue to next tenant
-                    Log::debug('Could not search tenant schema', [
-                        'tenant_id' => $tenant->id,
-                        'schema_name' => $tenant->schema_name,
-                        'error' => $e->getMessage(),
-                    ]);
-                    continue;
                 }
             }
-            
-            // Reset to public schema
-            DB::statement("SET search_path TO public");
-            
+
+            if (!$router) {
+                // CRITICAL: Router table is in tenant schema, but we don't know which tenant yet
+                // Fallback: search across all tenant schemas using write connection only
+                $tenants = Tenant::where('is_active', true)->get();
+
+                foreach ($tenants as $tenant) {
+                    if (!$tenant->schema_created || !$tenant->schema_name) {
+                        continue;
+                    }
+
+                    try {
+                        $tenantContext->setTenant($tenant);
+                        $router = Router::where('config_token', $configToken)->useWritePdo()->first();
+
+                        if ($router) {
+                            $foundTenant = $tenant;
+                            Log::info('Router found in tenant schema', [
+                                'tenant_id' => $tenant->id,
+                                'tenant_slug' => $tenant->slug,
+                                'schema_name' => $tenant->schema_name,
+                                'router_id' => $router->id,
+                                'config_token' => $configToken,
+                            ]);
+                            break;
+                        }
+                    } catch (\Exception $e) {
+                        // Schema might not exist or have issues, continue to next tenant
+                        Log::debug('Could not search tenant schema', [
+                            'tenant_id' => $tenant->id,
+                            'schema_name' => $tenant->schema_name,
+                            'error' => $e->getMessage(),
+                        ]);
+                        continue;
+                    }
+                }
+
+                if (isset($tenants) && (!$router || !$foundTenant)) {
+                    Log::warning('Router not found with config token', [
+                        'config_token' => $configToken,
+                        'tenants_searched' => $tenants->count(),
+                    ]);
+                }
+            }
+
+            if ($router && $foundTenant) {
+                RouterTenantMap::registerRouter(
+                    $router->id,
+                    $foundTenant->id,
+                    $router->ip_address,
+                    $router->vpn_ip,
+                    $router->config_token
+                );
+            }
+
             if (!$router || !$foundTenant) {
-                Log::warning('Router not found with config token', [
-                    'config_token' => $configToken,
-                    'tenants_searched' => $tenants->count(),
-                ]);
                 return response('# ERROR: Configuration not found. Please verify your config token.', 404)
                     ->header('Content-Type', 'text/plain; charset=utf-8');
             }
-            
-            // Now set the correct tenant context for subsequent queries
-            DB::statement("SET search_path TO {$foundTenant->schema_name}, public");
             
             // Get VPN configuration
             $vpnConfig = $router->vpnConfiguration;
             
             if (!$vpnConfig) {
-                DB::statement("SET search_path TO public");
                 return response('# ERROR: VPN configuration not found. Please contact support.', 404)
                     ->header('Content-Type', 'text/plain; charset=utf-8');
             }
@@ -1034,20 +1262,7 @@ EOT;
             // SNMP configuration is now handled separately via provisioning service
             // to avoid conflicts and ensure proper SNMPv3 setup
             
-            $completeScript = <<<EOT
-/ip service set api disabled=no port={$router->port}
-/ip service set ssh disabled=no port=22 address=""
-/user add name={$router->username} password="$decryptedPassword" group=full
-/system identity set name="{$router->name}"
-/system note set note="Managed by Traidnet Solution LTD"
-$vpnScript
-/ip firewall filter add chain=input protocol=tcp dst-port=22 action=accept comment="Allow SSH access"
-/ip firewall filter add chain=input protocol=udp dst-port=161 action=accept comment="Allow SNMP monitoring"
-
-EOT;
-
-            // Ensure trailing newline for RouterOS import compatibility
-            $completeScript = rtrim($completeScript) . "\n";
+            $completeScript = $this->buildBootstrapCompleteScript($router, $vpnScript, false);
 
             // Persist the latest generated script in the tenant DB
             RouterConfig::updateOrCreate(
@@ -1067,9 +1282,6 @@ EOT;
                 'config_token' => $configToken,
             ]);
             
-            // Reset to public schema
-            DB::statement("SET search_path TO public");
-            
             // Return as .rsc file for MikroTik /tool fetch
             // CRITICAL: MikroTik requires Content-Disposition for dst-path to work
             return response($completeScript, 200)
@@ -1079,9 +1291,6 @@ EOT;
                 ->header('Cache-Control', 'no-cache, no-store, must-revalidate');
                 
         } catch (\Exception $e) {
-            // Ensure we reset to public schema on error
-            DB::statement("SET search_path TO public");
-            
             Log::error('Failed to fetch router config', [
                 'config_token' => $configToken,
                 'error' => $e->getMessage(),
@@ -1089,6 +1298,8 @@ EOT;
             ]);
             return response('# ERROR: Configuration not found', 404)
                 ->header('Content-Type', 'text/plain; charset=utf-8');
+        } finally {
+            $tenantContext->clearTenant();
         }
     }
 
@@ -1100,6 +1311,34 @@ EOT;
         return $connectivityScript;
     }
 
+    private function buildBootstrapCompleteScript(Router $router, string $vpnScript, bool $includeSnmp): string
+    {
+        $decryptedPassword = Crypt::decrypt($router->password);
+        $managementSubnet = config('vpn.subnet.base', '10.0.0.0/8');
+        $snmpCommunity = config('telegraf.snmp_community', 'traidnet-monitor');
+        $snmpSubnet = '10.8.0.1/32';
+
+        $snmpLines = $includeSnmp
+            ? "/snmp set enabled=yes contact=\"Network Admin\" location=\"Managed by WifiCore\"\n"
+                . ":do { /snmp community remove [find name=\"{$snmpCommunity}\"] } on-error={}\n"
+                . "/snmp community add name=\"{$snmpCommunity}\" addresses={$snmpSubnet} security=none read-access=yes write-access=no\n"
+                . "/snmp set trap-community=\"{$snmpCommunity}\" trap-version=2"
+            : '';
+
+        $script = <<<EOT
+/ip service set api disabled=no port={$router->port} address={$managementSubnet}
+/ip service set ssh disabled=no port=22 address={$managementSubnet}
+/user add name={$router->username} password="$decryptedPassword" group=full
+/system identity set name="{$router->name}"
+/system note set note="Managed by Traidnet Solution LTD"
+{$snmpLines}
+{$vpnScript}
+
+EOT;
+
+        return rtrim($script) . "\n";
+    }
+
     private function generateConnectivityScript(Router $router)
     {
         $fetchUrl = config('app.url') . '/api/routers/' . $router->config_token . '/fetch-config';
@@ -1107,7 +1346,7 @@ EOT;
         return "/tool fetch mode=https url=\"{$fetchUrl}\" dst-path=config.rsc keep-result=yes check-certificate=no; :delay 5s; /import config.rsc";
     }
 
-    private function generateServiceScript(array $interfaceAssignments, array $interfaceServices, array $configurations): string
+    private function generateServiceScript(Router $router, array $interfaceAssignments, array $interfaceServices, array $configurations): string
 {
     Log::info('Starting generateServiceScript', [
         'interface_assignments' => $interfaceAssignments,
@@ -1116,6 +1355,11 @@ EOT;
     ]);
 
     $startTime = microtime(true);
+    $wanInterface = $router->wan_interface ?: 'ether1';
+    if (!preg_match('/^[a-zA-Z0-9_\-\.]+$/', $wanInterface)) {
+        $wanInterface = 'ether1';
+    }
+
     $scriptLines = [
         '# Generated by Traidnet Solution LTD',
         '# Common Configuration',
@@ -1123,7 +1367,7 @@ EOT;
         'add name=LAN',
         'add name=WAN',
         '/interface list member',
-        'add list=WAN interface=ether1',
+        "add list=WAN interface={$wanInterface}",
     ];
 
     // Collect hotspot interfaces

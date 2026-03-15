@@ -36,12 +36,22 @@ return new class extends Migration
                 $table->boolean('vpn_enabled')->default(false);
                 $table->timestamp('vpn_last_handshake')->nullable();
                 $table->string('model')->nullable();
+                $table->string('router_type', 20)->default('physical')->after('model');
                 $table->string('os_version')->nullable();
+                $table->string('serial_number', 100)->nullable()->after('os_version');
+                $table->string('firmware', 100)->nullable()->after('serial_number');
                 $table->timestamp('last_seen')->nullable();
                 $table->timestamp('last_checked')->nullable();
                 $table->integer('port')->default(8728);
+                $table->string('wan_interface', 64)->nullable()->after('port');
                 $table->string('username');
                 $table->string('password'); // Will be encrypted by model
+                $table->text('ssh_key')->nullable()->after('password')
+                    ->comment('Encrypted SSH private key for key-based authentication (preferred)');
+                $table->timestamp('ssh_key_created_at')->nullable()->after('ssh_key')
+                    ->comment('When the SSH key was first created');
+                $table->timestamp('ssh_key_rotated_at')->nullable()->after('ssh_key_created_at')
+                    ->comment('When the SSH key was last rotated');
                 $table->string('location')->nullable();
                 $table->string('status', 20)->default('unknown');
                 $table->string('provisioning_stage', 50)->default('pending');
@@ -55,18 +65,18 @@ return new class extends Migration
                 $table->json('reserved_interfaces')->nullable();
 
                 // SNMP columns for Telegraf/monitoring
-                $table->boolean('snmp_enabled')->default(false);
+                $table->boolean('snmp_enabled')->default(true);
                 $table->string('snmp_version', 10)->default('2c');
                 $table->string('snmp_community', 64)->default('public');
-                $table->string('snmp_v3_user')->nullable();
-                $table->string('snmp_v3_auth_protocol', 10)->nullable();
+                $table->string('snmp_v3_user', 64)->nullable();
+                $table->string('snmp_v3_auth_protocol', 16)->default('SHA1');
                 $table->text('snmp_v3_auth_password')->nullable();
-                $table->string('snmp_v3_priv_protocol', 10)->nullable();
+                $table->string('snmp_v3_priv_protocol', 16)->default('AES');
                 $table->text('snmp_v3_priv_password')->nullable();
-                $table->boolean('snmp_trap_enabled')->default(false);
-                $table->string('snmp_trap_version', 10)->nullable();
+                $table->boolean('snmp_trap_enabled')->default(true);
+                $table->string('snmp_trap_version', 10)->default('v3');
                 $table->text('snmp_trap_community')->nullable();
-                $table->string('snmp_trap_target')->nullable();
+                $table->string('snmp_trap_target', 64)->nullable();
 
                 $table->timestamps();
                 $table->softDeletes();
@@ -86,7 +96,16 @@ return new class extends Migration
                 $table->uuid('id')->primary();
                 // tenant_id removed
                 $table->uuid('router_id');
+                $table->text('interface_name')->nullable();
                 $table->string('service_type', 50);
+                $table->uuid('ip_pool_id')->nullable();
+                $table->integer('vlan_id')->nullable();
+                $table->boolean('vlan_required')->default(false);
+                $table->string('radius_profile')->nullable();
+                $table->jsonb('advanced_config')->nullable();
+                $table->enum('deployment_status', ['pending', 'deploying', 'deployed', 'failed'])
+                    ->default('pending');
+                $table->timestamp('deployed_at')->nullable();
                 $table->string('service_name', 100);
                 $table->json('interfaces')->default('[]');
                 $table->json('configuration')->default('{}');
@@ -98,10 +117,16 @@ return new class extends Migration
                 $table->timestamps();
 
                 $table->foreign('router_id')->references('id')->on('routers')->onDelete('cascade');
+                $table->foreign('ip_pool_id')
+                    ->references('id')
+                    ->on(new \Illuminate\Database\Query\Expression('public.tenant_ip_pools'))
+                    ->onDelete('set null');
                 
                 $table->index('router_id');
                 $table->index('service_type');
                 $table->index('status');
+                $table->index('deployment_status');
+                $table->index(['router_id', 'deployment_status']);
             });
             
             $this->migrateFromPublic('router_services');
@@ -116,6 +141,8 @@ return new class extends Migration
                 $table->text('public_key')->nullable();
                 $table->string('endpoint')->nullable();
                 $table->text('allowed_ips')->nullable();
+                $table->unsignedBigInteger('transfer_rx')->default(0)->after('allowed_ips');
+                $table->unsignedBigInteger('transfer_tx')->default(0)->after('transfer_rx');
                 $table->timestamp('last_handshake')->nullable();
                 $table->timestamps(); // Added timestamps which were missing in original but good practice
 

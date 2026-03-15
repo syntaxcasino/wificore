@@ -15,6 +15,9 @@ class PppoeUser extends Model
         'username',
         'password',
         'account_number',
+        'customer_name',
+        'customer_email',
+        'customer_phone',
         'package_id',
         'router_id',
         'expires_at',
@@ -33,6 +36,10 @@ class PppoeUser extends Model
         'suspension_reason',
         'payment_method',
         'payment_reference',
+        'last_reminder_sent_at',
+        'reminder_count',
+        'last_invoice_sent_at',
+        'last_receipt_sent_at',
     ];
 
     protected $hidden = [
@@ -50,6 +57,10 @@ class PppoeUser extends Model
         'in_grace_period' => 'boolean',
         'grace_period_ends' => 'datetime',
         'suspended_at' => 'datetime',
+        'last_reminder_sent_at' => 'datetime',
+        'reminder_count' => 'integer',
+        'last_invoice_sent_at' => 'datetime',
+        'last_receipt_sent_at' => 'datetime',
     ];
 
     public function package()
@@ -115,17 +126,99 @@ class PppoeUser extends Model
         return $this->save();
     }
 
-    public static function generateAccountNumber(string $tenantPrefix): string
+    public function getBillingName(): string
     {
-        // Use withTrashed() to include soft-deleted users and get the MAX number
-        // This prevents duplicate account numbers when users are deleted
+        return (string) ($this->customer_name ?: $this->username);
+    }
+
+    public function getBillingEmail(): ?string
+    {
+        return $this->customer_email ?: null;
+    }
+
+    public function getBillingPhone(): ?string
+    {
+        return $this->customer_phone ?: $this->payment_reference ?: null;
+    }
+
+    public function canReceiveBillingNotifications(): bool
+    {
+        return !empty($this->getBillingEmail()) || !empty($this->getBillingPhone());
+    }
+
+    public function needsBillingReminder(): bool
+    {
+        if (!$this->next_payment_due || $this->isSuspended()) {
+            return false;
+        }
+
+        if ($this->last_reminder_sent_at && $this->last_reminder_sent_at->isToday()) {
+            return false;
+        }
+
+        $daysUntilDue = now()->diffInDays($this->next_payment_due, false);
+
+        return in_array($daysUntilDue, [7, 3, 1, 0], true);
+    }
+
+    public function markReminderSent(): bool
+    {
+        $this->last_reminder_sent_at = now();
+        $this->reminder_count = ($this->reminder_count ?? 0) + 1;
+
+        return $this->save();
+    }
+
+    public function shouldSendInvoice(): bool
+    {
+        if (!$this->next_payment_due) {
+            return false;
+        }
+
+        if ($this->last_invoice_sent_at && $this->last_invoice_sent_at->isSameDay($this->next_payment_due)) {
+            return false;
+        }
+
+        return now()->diffInDays($this->next_payment_due, false) <= 7;
+    }
+
+    public function markInvoiceSent(): bool
+    {
+        $this->last_invoice_sent_at = now();
+
+        return $this->save();
+    }
+
+    public function markReceiptSent(): bool
+    {
+        $this->last_receipt_sent_at = now();
+
+        return $this->save();
+    }
+
+    /**
+     * Generate a tenant-scoped account number.
+     *
+     * Format: {3-char prefix}{service-type-char}{5-digit counter}
+     * Examples: TRDP00001 (PPPoE), TRDH00001 (Hotspot)
+     *
+     * @param  string  $tenantPrefix   3-char alphanumeric tenant code (from tenants.account_prefix)
+     * @param  string  $serviceType    'P' for PPPoE, 'H' for Hotspot
+     */
+    public static function generateAccountNumber(string $tenantPrefix, string $serviceType = 'P'): string
+    {
+        $prefix = strtoupper(substr($tenantPrefix, 0, 3));
+        $typeChar = strtoupper(substr($serviceType, 0, 1));
+        $scope = $prefix . $typeChar;
+
+        // Use withTrashed() to include soft-deleted users and prevent re-use of numbers
         $maxAccountNumber = static::withTrashed()
-            ->where('account_number', 'like', strtoupper($tenantPrefix) . '%')
+            ->where('account_number', 'like', $scope . '%')
             ->selectRaw("MAX(CAST(SUBSTRING(account_number FROM '[0-9]+$') AS INTEGER)) as max_num")
             ->value('max_num');
-        
+
         $nextNumber = ($maxAccountNumber ?? 0) + 1;
-        
-        return strtoupper($tenantPrefix) . str_pad($nextNumber, 5, '0', STR_PAD_LEFT);
+
+        return $scope . str_pad($nextNumber, 5, '0', STR_PAD_LEFT);
     }
 }

@@ -47,8 +47,8 @@ class AppServiceProvider extends ServiceProvider
         }
 
         $pgsql = (array) config('database.connections.pgsql', []);
-        $writeHost = data_get($pgsql, 'write.host', data_get($pgsql, 'host', env('DB_HOST', '127.0.0.1')));
-        $writePort = (int) data_get($pgsql, 'write.port', data_get($pgsql, 'port', env('DB_PORT', 5432)));
+        $writeHost = data_get($pgsql, 'write.host', data_get($pgsql, 'host', env('DB_HOST', '172.70.0.3')));
+        $writePort = (int) data_get($pgsql, 'write.port', data_get($pgsql, 'port', env('DB_PORT', 6432)));
         $readHost = data_get($pgsql, 'read.host', env('DB_READ_HOST', $writeHost));
         $readPort = (int) data_get($pgsql, 'read.port', env('DB_READ_PORT', $writePort));
         $database = (string) data_get($pgsql, 'database', env('DB_DATABASE', 'postgres'));
