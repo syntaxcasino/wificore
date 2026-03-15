@@ -451,6 +451,54 @@ export function useRouterProvisioning(props, emit) {
     }, 3000)
   }
 
+  const waitForServiceDeployment = (routerId, serviceId, serviceLabel) => {
+    const maxAttempts = 40
+    let attempts = 0
+
+    return new Promise((resolve, reject) => {
+      const interval = setInterval(async () => {
+        attempts++
+
+        try {
+          const response = await axios.get(`/routers/${routerId}/services`)
+          const services = response.data.services || response.data.data || []
+          const service = services.find((entry) => entry.id === serviceId)
+
+          if (!service) {
+            if (attempts >= maxAttempts) {
+              clearInterval(interval)
+              reject(new Error(`${serviceLabel} deployment status could not be found`))
+            }
+            return
+          }
+
+          if (service.deployment_status === 'deployed') {
+            clearInterval(interval)
+            addLog('success', `${serviceLabel} deployed successfully`)
+            resolve(service)
+            return
+          }
+
+          if (service.deployment_status === 'failed') {
+            clearInterval(interval)
+            reject(new Error(service.last_error || `${serviceLabel} deployment failed`))
+            return
+          }
+
+          if (attempts >= maxAttempts) {
+            clearInterval(interval)
+            reject(new Error(`${serviceLabel} deployment timed out`))
+          }
+        } catch (error) {
+          if (attempts >= maxAttempts) {
+            clearInterval(interval)
+            reject(error)
+          }
+        }
+      }, 3000)
+    })
+  }
+
   const confirmServiceMappingAndDeploy = async () => {
     if (!provisioningRouter.value?.id) {
       addLog('error', 'Router is not ready for service deployment')
@@ -492,7 +540,10 @@ export function useRouterProvisioning(props, emit) {
 
         const validation = resp.data.validation
         if (validation && validation.valid === false) {
-          throw new Error(resp.data?.message || `Validation failed for ${type} on ${iface}`)
+          const errorDetails = validation.errors && validation.errors.length > 0 
+            ? validation.errors.join(', ') 
+            : `Validation failed for ${type} on ${iface}`
+          throw new Error(errorDetails)
         }
 
         configured.push(resp.data.service)
@@ -506,19 +557,29 @@ export function useRouterProvisioning(props, emit) {
       mappingStatus.value = 'Deploying services...'
       addLog('info', `Deploying ${configured.length} configured service instance(s) across ${selected.length} interface(s)...`)
 
-      const serviceIds = []
-      for (const service of configured) {
+      const deployedServices = []
+      for (let index = 0; index < configured.length; index++) {
+        const service = configured[index]
+        const serviceLabel = `${service.service_type || 'service'} on ${service.interface_name || service.interface || 'unknown interface'}`
+
+        provisioningStatus.value = `Deploying service ${index + 1} of ${configured.length}...`
+        mappingStatus.value = `Deploying ${serviceLabel} (${index + 1}/${configured.length})...`
         const deployResp = await axios.post(`/routers/${routerId}/services/${service.id}/deploy`)
         if (!deployResp.data?.success) {
           throw new Error(deployResp.data?.message || `Failed to deploy service ${service.id}`)
         }
-        serviceIds.push(service.id)
+
+        addLog('info', `Queued ${serviceLabel}`)
+        const deployedService = await waitForServiceDeployment(routerId, service.id, serviceLabel)
+        deployedServices.push(deployedService)
       }
 
-      provisioningProgress.value = 96
-      provisioningStatus.value = 'Deployment in progress...'
-      mappingStatus.value = 'Deployment in progress...'
-      await pollServiceDeployments(routerId, serviceIds)
+      mappingDeployedServices.value = deployedServices
+      mappingDeploying.value = false
+      provisioningProgress.value = 100
+      provisioningStatus.value = 'Deployment completed successfully'
+      mappingStatus.value = 'Deployment completed successfully'
+      addLog('success', 'All mapped services deployed successfully')
     } catch (e) {
       mappingDeploying.value = false
       const msg = e.response?.data?.message || e.message || 'Service deployment failed'

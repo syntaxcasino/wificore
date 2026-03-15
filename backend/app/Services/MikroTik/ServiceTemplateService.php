@@ -63,6 +63,7 @@ class ServiceTemplateService extends TenantAwareService
         $radiusSecret = $config['radius_secret'] ?? 'wificore123';
         $hotspotName = $config['hotspot_name'] ?? 'WiFiCore-Hotspot';
         $dnsServers = $config['dns_servers'] ?? '8.8.8.8,8.8.4.4';
+        $wanInterface = $this->resolveWanInterface($config['wan_interface'] ?? $router->wan_interface ?? null);
         
         return <<<SCRIPT
 # ============================================================
@@ -151,7 +152,7 @@ set [find name="hotspot-profile"] use-radius=yes
 
 # 8. Configure firewall for Hotspot
 /ip firewall nat
-add chain=srcnat out-interface=ether1 action=masquerade \
+add chain=srcnat out-interface={$wanInterface} action=masquerade \
     comment="Hotspot NAT"
 
 # 9. User isolation (prevent client-to-client communication)
@@ -181,6 +182,7 @@ SCRIPT;
         $radiusSecret = $config['radius_secret'] ?? 'wificore123';
         $dnsServers = $config['dns_servers'] ?? '8.8.8.8,8.8.4.4';
         $mtu = $config['mtu'] ?? 1480;
+        $wanInterface = $this->resolveWanInterface($config['wan_interface'] ?? $router->wan_interface ?? null);
         
         return <<<SCRIPT
 # ============================================================
@@ -262,7 +264,7 @@ set use-radius=yes
 
 # 8. Configure firewall for PPPoE
 /ip firewall nat
-add chain=srcnat out-interface=ether1 src-address={$ipPool} \
+add chain=srcnat out-interface={$wanInterface} src-address={$ipPool} \
     action=masquerade comment="PPPoE NAT"
 
 # 9. Configure simple queue for bandwidth management
@@ -483,9 +485,9 @@ set use-radius=yes
 
 # NAT for both services
 /ip firewall nat
-add chain=srcnat out-interface=ether1 src-address={$hotspotNetwork} \
+add chain=srcnat out-interface={$wanInterface} src-address={$hotspotNetwork} \
     action=masquerade comment="Hotspot NAT"
-add chain=srcnat out-interface=ether1 src-address={$pppoePool} \
+add chain=srcnat out-interface={$wanInterface} src-address={$pppoePool} \
     action=masquerade comment="PPPoE NAT"
 
 # Prevent cross-service communication (security)

@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Carbon\Carbon;
 
 class BackupDatabase extends Command
@@ -81,6 +82,7 @@ class BackupDatabase extends Command
             
             // Log backup
             DB::table('system_logs')->insert([
+                'id' => (string) Str::uuid(),
                 'tenant_id' => null,
                 'user_id' => null,
                 'category' => 'backup',

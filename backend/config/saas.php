@@ -64,6 +64,10 @@ return [
         'check_interval_minutes' => 5, // How often to check subscriptions
     ],
 
+    'pppoe_billing' => [
+        'legacy_status_job_enabled' => env('PPPOE_LEGACY_STATUS_JOB_ENABLED', false),
+    ],
+
     // Notification Settings
     'notifications' => [
         'invoice_enabled' => true,

@@ -37,19 +37,18 @@ class PPPoEService extends BaseMikroTikService
             throw new \Exception('At least one interface is required for PPPoE configuration');
         }
 
+        $router = Router::find($routerId);
+
         // NEW: Validate interfaces if interface manager is set
-        if ($this->interfaceManager) {
-            $router = Router::find($routerId);
-            if ($router) {
-                $validation = $this->interfaceManager->validateInterfaceAssignment(
-                    $router,
-                    'pppoe',
-                    $interfaces
-                );
-                
-                if (!$validation['valid']) {
-                    throw new \Exception('Interface validation failed: ' . implode(', ', $validation['errors']));
-                }
+        if ($this->interfaceManager && $router) {
+            $validation = $this->interfaceManager->validateInterfaceAssignment(
+                $router,
+                'pppoe',
+                $interfaces
+            );
+
+            if (!$validation['valid']) {
+                throw new \Exception('Interface validation failed: ' . implode(', ', $validation['errors']));
             }
         }
         
@@ -59,6 +58,9 @@ class PPPoEService extends BaseMikroTikService
         $useRadius = $options['use_radius'] ?? true;
         $radiusIp = $options['radius_ip'] ?? ($options['radius_server'] ?? '172.20.0.6');
         $radiusSecret = $options['radius_secret'] ?? 'testing123';
+        $wanInterface = $this->resolveWanInterface(
+            $options['wan_interface'] ?? ($router ? $router->wan_interface : null)
+        );
         
         // Build configuration script
         $script = [];
@@ -69,7 +71,7 @@ class PPPoEService extends BaseMikroTikService
         // Ensure interface lists exist (single-line commands for SSH exec compatibility)
         $script[] = ':do { :if ([/interface list find name="LAN"] = "") do={ /interface list add name=LAN comment="Local Area Network" } } on-error={}';
         $script[] = ':do { :if ([/interface list find name="WAN"] = "") do={ /interface list add name=WAN comment="Wide Area Network" } } on-error={}';
-        $script[] = ':do { :if ([/interface list member find list=WAN interface=ether1] = "") do={ /interface list member add list=WAN interface=ether1 } } on-error={}';
+        $script[] = ":do { :if ([/interface list member find list=WAN interface={$wanInterface}] = \"\") do={ /interface list member add list=WAN interface={$wanInterface} } } on-error={}";
         $script[] = '';
         
         $safeInterfaces = array_values(array_unique(array_map(fn ($i) => $this->validateInterface((string) $i), $interfaces)));
@@ -107,7 +109,7 @@ class PPPoEService extends BaseMikroTikService
 
         // PPP Profile (single-line) - rate-limit empty to allow RADIUS override
         // interface-list=PPPOE-ACTIVE: dynamic <pppoe-*> interfaces auto-join on auth
-        $script[] = ":do { /ppp profile remove [find name=\"{$profileName}\"]; /ppp profile add name=\"{$profileName}\" use-radius=yes local-address={$gateway} remote-address=\"{$poolName}\" dns-server=\"{$dnsServers}\" interface-list=PPPOE-ACTIVE use-compression=no use-encryption=no only-one=no change-tcp-mss=yes rate-limit=\"\"; } on-error={ :error \"PPPoE: PPP profile create failed ({$profileName})\" }";
+        $script[] = ":do { /ppp profile remove [find name=\"{$profileName}\"]; /ppp profile add name=\"{$profileName}\" local-address={$gateway} remote-address=\"{$poolName}\" dns-server=\"{$dnsServers}\" interface-list=PPPOE-ACTIVE use-compression=no use-encryption=no only-one=no change-tcp-mss=yes rate-limit=\"\"; } on-error={ :error \"PPPoE: PPP profile create failed ({$profileName})\" }";
         $script[] = ":if ([:len [/ppp profile find name=\"{$profileName}\"]] = 0) do={ :error \"PPPoE: PPP profile missing ({$profileName})\" }";
         // Ensure existing profile gets interface-list updated
         $script[] = ":do { /ppp profile set [find name=\"{$profileName}\"] interface-list=PPPOE-ACTIVE } on-error={}";
@@ -164,11 +166,14 @@ class PPPoEService extends BaseMikroTikService
         // 1. Accept established/related FROM authenticated PPPoE interfaces
         // 2. Drop invalid FROM authenticated PPPoE interfaces
         // 3. Allow authenticated PPPoE interfaces to WAN
-        // 4. DROP everything from bridge (unauthenticated devices)
+        // 4. Accept established/related FROM WAN (return traffic)
+        // 5. DROP everything from bridge (unauthenticated devices)
         $script[] = "# Forward chain - authentication enforcement";
         $script[] = ":do { /ip firewall filter remove [find comment~\"WiFiCore PPPoE FW\"]; } on-error={}";
-        // 4. DROP all traffic from bridge (unauthenticated devices cannot pass)
+        // 5. DROP all traffic from bridge (unauthenticated devices cannot pass)
         $script[] = ":do { /ip firewall filter add chain=forward in-interface=\"{$bridgeName}\" action=drop place-before=0 comment=\"WiFiCore PPPoE FW-DROP ({$routerId})\"; } on-error={}";
+        // 4. Accept established/related from WAN (return traffic)
+        $script[] = ":do { /ip firewall filter add chain=forward in-interface-list=WAN connection-state=established,related action=accept place-before=0 comment=\"WiFiCore PPPoE FW-RETURN ({$routerId})\"; } on-error={}";
         // 3. Allow ONLY authenticated PPPoE sessions to WAN (interface-list, NOT src-address)
         $script[] = ":do { /ip firewall filter add chain=forward in-interface-list=PPPOE-ACTIVE out-interface-list=WAN action=accept place-before=0 comment=\"WiFiCore PPPoE FW-INET ({$routerId})\"; } on-error={}";
         // 2. Drop invalid from authenticated PPPoE interfaces
@@ -241,7 +246,7 @@ class PPPoEService extends BaseMikroTikService
         $script[] = '';
 
         // PPP Profile (single-line)
-        $script[] = ":do { /ppp profile remove [find name=\"{$profileName}\"]; /ppp profile add name=\"{$profileName}\" use-radius=yes local-address={$gateway} remote-address=\"{$poolName}\" dns-server=\"{$dnsServers}\" use-compression=no use-encryption=no only-one=no change-tcp-mss=yes rate-limit=\"\"; } on-error={ :error \"PPPoE: PPP profile create failed ({$profileName})\" }";
+        $script[] = ":do { /ppp profile remove [find name=\"{$profileName}\"]; /ppp profile add name=\"{$profileName}\" local-address={$gateway} remote-address=\"{$poolName}\" dns-server=\"{$dnsServers}\" use-compression=no use-encryption=no only-one=no change-tcp-mss=yes rate-limit=\"\"; } on-error={ :error \"PPPoE: PPP profile create failed ({$profileName})\" }";
         $script[] = ":if ([:len [/ppp profile find name=\"{$profileName}\"]] = 0) do={ :error \"PPPoE: PPP profile missing ({$profileName})\" }";
         $script[] = '';
 

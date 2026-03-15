@@ -12,6 +12,8 @@ return new class extends Migration
     {
         DB::statement('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"');
         DB::statement('CREATE EXTENSION IF NOT EXISTS "pgcrypto"');
+        DB::statement('CREATE EXTENSION IF NOT EXISTS pg_stat_statements');
+        DB::statement('CREATE EXTENSION IF NOT EXISTS pg_trgm');
     }
 
     /**
@@ -19,6 +21,8 @@ return new class extends Migration
      */
     public function down(): void
     {
+        DB::statement('DROP EXTENSION IF EXISTS pg_stat_statements CASCADE');
+        DB::statement('DROP EXTENSION IF EXISTS pg_trgm CASCADE');
         DB::statement('DROP EXTENSION IF EXISTS "pgcrypto"');
         DB::statement('DROP EXTENSION IF EXISTS "uuid-ossp"');
     }

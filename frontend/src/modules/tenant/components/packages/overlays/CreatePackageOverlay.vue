@@ -110,27 +110,6 @@
           <div class="space-y-4">
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Upload Speed *</label>
-                <div class="flex items-center gap-2">
-                  <input
-                    v-model="uploadSpeedValue"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    required
-                    class="flex-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="e.g., 5"
-                  />
-                  <select
-                    v-model="uploadSpeedUnit"
-                    class="w-24 px-2 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  >
-                    <option v-for="unit in speedUnits" :key="unit" :value="unit">{{ unit }}</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Download Speed *</label>
                 <div class="flex items-center gap-2">
                   <input
@@ -144,6 +123,27 @@
                   />
                   <select
                     v-model="downloadSpeedUnit"
+                    class="w-24 px-2 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option v-for="unit in speedUnits" :key="unit" :value="unit">{{ unit }}</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Upload Speed *</label>
+                <div class="flex items-center gap-2">
+                  <input
+                    v-model="uploadSpeedValue"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    required
+                    class="flex-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="e.g., 5"
+                  />
+                  <select
+                    v-model="uploadSpeedUnit"
                     class="w-24 px-2 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   >
                     <option v-for="unit in speedUnits" :key="unit" :value="unit">{{ unit }}</option>

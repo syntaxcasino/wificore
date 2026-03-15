@@ -23,19 +23,26 @@ class RouterHardeningService extends TenantAwareService
      */
     public function generateHardeningScript(Router $router, array $options = []): string
     {
-        $vpnSubnet = $options['vpn_subnet'] ?? '10.0.0.0/8';
+        $vpnSubnet = $options['vpn_subnet'] ?? $router->vpnConfiguration?->subnet_cidr ?? '10.8.0.1/32';
         $allowedSshIps = $options['allowed_ssh_ips'] ?? [$vpnSubnet];
+        
+        // Always allow Server VPN IP for SSH access
+        if (!in_array('10.8.0.1/32', $allowedSshIps)) {
+            $allowedSshIps[] = '10.8.0.1/32';
+        }
+
         $maxSshSessions = $options['max_ssh_sessions'] ?? 5;
         $sshRateLimit = $options['ssh_rate_limit'] ?? 3;
         $enableApiSsl = $options['enable_api_ssl'] ?? false;
+        $wanInterface = $this->resolveWanInterface($options['wan_interface'] ?? $router->wan_interface ?? null);
         
         $script = $this->generateScriptHeader($router);
         $script .= $this->generateServiceHardening($enableApiSsl);
         $script .= $this->generateSshRestrictions($allowedSshIps, $maxSshSessions, $sshRateLimit);
-        $script .= $this->generateFirewallRules($vpnSubnet);
+        $script .= $this->generateFirewallRules($vpnSubnet, $wanInterface);
         $script .= $this->generateUserSecurity($router);
-        $script .= $this->generateSystemSecurity();
-        $script .= $this->generateLoggingConfig();
+        $script .= $this->generateSystemSecurity($wanInterface);
+        $script .= $this->generateLoggingConfig($vpnSubnet);
         
         return $script;
     }
@@ -55,6 +62,16 @@ class RouterHardeningService extends TenantAwareService
 :log info "Starting WiFiCore security hardening"
 
 SCRIPT;
+    }
+
+    private function resolveWanInterface(?string $wanInterface): string
+    {
+        $wanInterface = trim((string) $wanInterface);
+        if ($wanInterface === '' || !preg_match('/^[a-zA-Z0-9_\-\.]+$/', $wanInterface)) {
+            return 'ether1';
+        }
+
+        return $wanInterface;
     }
     
     /**
@@ -130,7 +147,7 @@ SCRIPT;
     /**
      * Generate comprehensive firewall rules with advanced protection
      */
-    private function generateFirewallRules(string $vpnSubnet): string
+    private function generateFirewallRules(string $vpnSubnet, string $wanInterface): string
     {
         return <<<SCRIPT
 # ============================================================
@@ -146,6 +163,7 @@ SCRIPT;
 
 /ip firewall address-list
 add list=vpn_subnet address={$vpnSubnet} comment="WiFiCore VPN Subnet"
+add list=vpn_subnet address=10.8.0.1/32 comment="WiFiCore Server VPN IP"
 
 # Bogon addresses (should never appear on WAN)
 add list=bogons address=0.0.0.0/8 comment="RFC 1122 'this' network"
@@ -253,7 +271,7 @@ add chain=input src-address-list=port_scanners action=drop \
 # ============================================================
 
 # Drop bogon addresses from WAN
-add chain=input in-interface=ether1 \
+add chain=input in-interface={$wanInterface} \
     src-address-list=bogons action=drop \
     comment="Drop bogon addresses from WAN"
 
@@ -368,9 +386,9 @@ SCRIPT;
     /**
      * Generate system security settings including DNS security
      */
-    private function generateSystemSecurity(): string
+    private function generateSystemSecurity(string $wanInterface): string
     {
-        return <<<'SCRIPT'
+        return <<<SCRIPT
 # ============================================================
 # 5. SYSTEM SECURITY & DNS HARDENING
 # Additional system-level security hardening
@@ -390,7 +408,7 @@ SCRIPT;
 /tool mac-server mac-winbox set allowed-interface-list=none
 
 # Disable neighbor discovery on WAN
-/ip neighbor discovery-settings set discover-interface-list=!ether1
+/ip neighbor discovery-settings set discover-interface-list=!{$wanInterface}
 
 # Enable SYN flood protection
 /ip settings set tcp-syncookies=yes
@@ -432,7 +450,7 @@ set allow-remote-requests=yes \
 # Block external DNS queries to router
 add chain=input protocol=udp dst-port=53 \
     src-address-list=!vpn_subnet \
-    in-interface=ether1 action=drop \
+    in-interface={$wanInterface} action=drop \
     comment="Block external DNS queries"
 
 # Force clients to use router DNS (prevent DNS hijacking)
@@ -485,9 +503,13 @@ SCRIPT;
     /**
      * Generate comprehensive monitoring and logging configuration
      */
-    private function generateLoggingConfig(): string
+    private function generateLoggingConfig(string $vpnSubnet): string
     {
-        return <<<'SCRIPT'
+        $snmpCommunity = config('telegraf.snmp_community', 'traidnet-monitor');
+        // Always allow 10.8.0.1/32 for SNMP monitoring, regardless of the router's specific VPN subnet.
+        $snmpSubnet = '10.8.0.1/32';
+
+        return <<<SCRIPT
 # ============================================================
 # 6. MONITORING & LOGGING CONFIGURATION
 # Comprehensive monitoring, logging, and alerting
@@ -533,14 +555,13 @@ add topics=critical action=memory
 /snmp
 set enabled=yes \
     contact="admin@wificore.local" \
-    location="Managed by WiFiCore" \
-    trap-community=public \
-    trap-version=2
+    location="Managed by WiFiCore"
 
-# Configure SNMP community (restrict to management network)
-/snmp community
-set [find name=public] addresses=10.100.0.0/16 \
-    comment="WiFiCore Management Network"
+:do { /snmp community remove [find name="{$snmpCommunity}"]; } on-error={}
+/snmp community add name="{$snmpCommunity}" addresses={$snmpSubnet} security=none read-access=yes write-access=no \
+    comment="WiFiCore VPN Monitoring"
+
+/snmp set trap-community="{$snmpCommunity}" trap-version=2
 
 :log info "SNMP monitoring enabled"
 

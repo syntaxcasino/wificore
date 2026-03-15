@@ -28,6 +28,7 @@ return new class extends Migration
         Schema::create('pppoe_users', function (Blueprint $table) {
             $table->uuid('id')->primary();
             $table->string('username')->unique();
+            $table->string('account_number', 20)->unique();
             $table->string('password');
 
             $table->uuid('package_id');
@@ -39,6 +40,17 @@ return new class extends Migration
 
             $table->boolean('is_active')->default(true);
             $table->string('status', 20)->default('active');
+            $table->string('payment_status', 20)->default('unpaid');
+            $table->timestamp('last_payment_date')->nullable();
+            $table->timestamp('next_payment_due')->nullable();
+            $table->decimal('amount_due', 10, 2)->default(0);
+            $table->decimal('amount_paid', 10, 2)->default(0);
+            $table->boolean('in_grace_period')->default(false);
+            $table->timestamp('grace_period_ends')->nullable();
+            $table->timestamp('suspended_at')->nullable();
+            $table->text('suspension_reason')->nullable();
+            $table->string('payment_method', 50)->nullable();
+            $table->string('payment_reference', 100)->nullable();
 
             $table->timestamps();
             $table->softDeletes();
@@ -58,6 +70,9 @@ return new class extends Migration
             $table->index('status');
             $table->index('is_active');
             $table->index('expires_at');
+            $table->index('payment_status');
+            $table->index('next_payment_due');
+            $table->index('in_grace_period');
         });
     }
 

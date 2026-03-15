@@ -19,7 +19,7 @@ class EnableRouterSnmp extends Command
 
     public function handle(): int
     {
-        $community = $this->option('community') ?: config('telegraf.snmp_community', 'public');
+        $community = $this->option('community') ?: config('telegraf.snmp_community', 'traidnet-monitor');
         $version = $this->option('version') ?: '2c';
 
         $tenants = Tenant::where('is_active', true)->get(['id', 'schema_name', 'name']);

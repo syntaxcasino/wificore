@@ -9,6 +9,7 @@ use App\Events\VpnConnectivityVerified;
 use App\Models\Router;
 use App\Models\VpnConfiguration;
 use App\Services\VpnConnectivityService;
+use App\Services\WireGuardService;
 use App\Traits\TenantAwareJob;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -39,9 +40,9 @@ class VerifyVpnConnectivityJob implements ShouldQueue
         $this->retryInterval = $retryInterval;
     }
 
-    public function handle(VpnConnectivityService $connectivityService): void
+    public function handle(VpnConnectivityService $connectivityService, WireGuardService $wireGuardService): void
     {
-        $this->executeInTenantContext(function () use ($connectivityService) {
+        $this->executeInTenantContext(function () use ($connectivityService, $wireGuardService) {
             Log::info('Starting VPN connectivity verification job', [
                 'tenant_id' => $this->tenantId,
                 'vpn_config_id' => $this->vpnConfigId,
@@ -81,23 +82,63 @@ class VerifyVpnConnectivityJob implements ShouldQueue
                     'client_ip' => $vpnConfig->client_ip,
                 ]);
 
-                // Perform connectivity check (quick: 2 pings, 3s timeout)
+                // 1. Priority Check: WireGuard Handshake
+                // If handshake is recent (< 3 mins), the tunnel is UP regardless of ping/SSH
+                $peerStatus = null;
+                $clientPublicKey = $vpnConfig->client_public_key ?? $vpnConfig->wireguard_public_key ?? null;
+
+                if (is_string($clientPublicKey) && trim($clientPublicKey) !== '') {
+                    $peerStatus = $wireGuardService->getPeerStatus($clientPublicKey);
+                } else {
+                    Log::warning('Skipping WireGuard handshake check: missing client public key', [
+                        'tenant_id' => $this->tenantId,
+                        'vpn_config_id' => $this->vpnConfigId,
+                        'router_id' => $vpnConfig->router_id,
+                    ]);
+                }
+                $isHandshakeActive = $peerStatus && 
+                                     isset($peerStatus['connected']) && 
+                                     $peerStatus['connected'] === true;
+
+                // 2. Secondary Check: Active Probe (TCP/Ping)
+                // Use quick probe: 2 attempts, 3s timeout
                 $result = $connectivityService->verifyConnectivity($vpnConfig, 2, 3);
 
-                if ($result['success'] && $result['packet_loss'] === 0) {
+                if ($isHandshakeActive || ($result['success'] && $result['packet_loss'] === 0)) {
                     // Success! Update status and broadcast success event
-                    $vpnConfig->update([
+                    $updateData = [
                         'status' => 'connected',
-                        'last_handshake_at' => now(),
-                    ]);
+                    ];
+                    
+                    // Use handshake timestamp if available, otherwise now()
+                    if ($isHandshakeActive && !empty($peerStatus['latest_handshake'])) {
+                        $updateData['last_handshake_at'] = $peerStatus['latest_handshake'];
+                    } else {
+                        $updateData['last_handshake_at'] = now();
+                    }
+                    
+                    $vpnConfig->update($updateData);
+
+                    // Also update Router status immediately so frontend polling sees it as online
+                    $router = Router::find($vpnConfig->router_id);
+                    if ($router) {
+                        $router->update([
+                            'status' => 'online',
+                            'vpn_status' => 'active',
+                            'last_seen' => now(),
+                            'last_checked' => now(),
+                            'vpn_last_handshake' => $updateData['last_handshake_at'],
+                        ]);
+                    }
 
                     Log::info('VPN connectivity verified successfully', [
                         'tenant_id' => $this->tenantId,
                         'router_id' => $vpnConfig->router_id,
                         'client_ip' => $vpnConfig->client_ip,
+                        'method' => $isHandshakeActive ? 'handshake' : 'active_probe',
                         'attempt' => $attempt,
                         'elapsed_seconds' => time() - $startTime,
-                        'latency_ms' => $result['latency'],
+                        'latency_ms' => $result['latency'] ?? 0,
                     ]);
 
                     broadcast(new VpnConnectivityVerified(

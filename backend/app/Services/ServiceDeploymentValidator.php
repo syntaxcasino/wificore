@@ -269,12 +269,19 @@ class ServiceDeploymentValidator extends TenantAwareService
 
         // Check if router is reachable
         // Consider router available if:
-        // 1. Status is explicitly 'online', OR
-        // 2. VPN is connected and router was seen recently (within 5 minutes)
+        // 1. Status is explicitly 'online'
+        // 2. VPN is active/connected and router was seen recently (within 5 minutes)
+        // 3. Router was seen very recently (< 2 mins) regardless of status flags (handles race conditions)
         $isReachable = $router->status === 'online' || 
-                      ($router->vpn_status === 'connected' && 
+                      (in_array($router->vpn_status, ['active', 'connected']) && 
                        $router->last_seen && 
-                       $router->last_seen->diffInMinutes(now()) < 5);
+                       $router->last_seen->diffInMinutes(now()) < 5) ||
+                      ($router->last_seen && $router->last_seen->diffInMinutes(now()) < 2);
+        
+        // Double check using model helper if available
+        if (!$isReachable && method_exists($router, 'isVpnConnected') && $router->isVpnConnected()) {
+            $isReachable = true;
+        }
         
         if (!$isReachable) {
             $lastSeenInfo = $router->last_seen 

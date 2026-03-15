@@ -16,56 +16,41 @@ class TenantMigrationManager
     public function runMigrationsForTenant(Tenant $tenant): bool
     {
         try {
-            // Set search path to tenant schema
-            DB::statement("SET search_path TO {$tenant->schema_name}, public");
-            
-            // Get all tenant migration files
+            // Get migration files and already-executed list before opening the transaction,
+            // since these queries target the public schema and don't need tenant search_path.
             $migrationFiles = $this->getTenantMigrationFiles();
             Log::info("Found " . count($migrationFiles) . " migration files", ['files' => array_map('basename', $migrationFiles)]);
-            
-            // Get already executed migrations for this tenant
+
             $executedMigrations = $this->getExecutedMigrations($tenant);
             Log::info("Found " . count($executedMigrations) . " executed migrations", ['executed' => $executedMigrations]);
-            
+
             $batch = $this->getNextBatchNumber($tenant);
-            
-            foreach ($migrationFiles as $migrationFile) {
-                $migrationName = pathinfo($migrationFile, PATHINFO_FILENAME);
-                
-                // Skip if already executed
-                if (in_array($migrationName, $executedMigrations)) {
-                    Log::info("Skipping executed migration: {$migrationName}");
-                    continue;
+
+            // Wrap SET LOCAL + all migration DDL in a single transaction so PgBouncer
+            // holds the same backend PostgreSQL connection throughout. SET LOCAL is
+            // transaction-scoped and is required for PgBouncer transaction pooling mode.
+            DB::transaction(function () use ($tenant, $migrationFiles, $executedMigrations, $batch) {
+                DB::statement("SET LOCAL search_path TO {$tenant->schema_name}, public");
+
+                foreach ($migrationFiles as $migrationFile) {
+                    $migrationName = pathinfo($migrationFile, PATHINFO_FILENAME);
+
+                    if (in_array($migrationName, $executedMigrations)) {
+                        Log::info("Skipping executed migration: {$migrationName}");
+                        continue;
+                    }
+
+                    Log::info("Running migration: {$migrationName}");
+                    $this->executeMigration($migrationFile, $tenant, $batch);
+                    $this->recordMigration($tenant, $migrationName, $batch);
+                    Log::info("Executed tenant migration: {$migrationName} for tenant: {$tenant->name}");
                 }
-                
-                Log::info("Running migration: {$migrationName}");
-                
-                // Run the migration
-                $this->executeMigration($migrationFile, $tenant, $batch);
-                
-                // Record the migration
-                $this->recordMigration($tenant, $migrationName, $batch);
-                
-                Log::info("Executed tenant migration: {$migrationName} for tenant: {$tenant->name}");
-            }
-            
-            // Reset search path
-            DB::statement("SET search_path TO public");
-            
+            });
+
             return true;
-            
+
         } catch (\Exception $e) {
             Log::error("Failed to run tenant migrations for {$tenant->name}: " . $e->getMessage());
-            
-            // Reset search path on error — the connection may be in a
-            // PostgreSQL "aborted transaction" state (25P02) where no SQL
-            // except ROLLBACK is accepted.  Reconnect to get a clean state.
-            try {
-                DB::statement("SET search_path TO public");
-            } catch (\Exception $ignored) {
-                DB::reconnect();
-            }
-            
             return false;
         }
     }
@@ -160,27 +145,21 @@ class TenantMigrationManager
     public function seedTenantSchema(Tenant $tenant, bool $withTestData = false): bool
     {
         try {
-            // Set search path to tenant schema
-            DB::statement("SET search_path TO {$tenant->schema_name}, public");
-            
-            if ($withTestData) {
-                $this->seedTestData($tenant);
-            } else {
-                $this->seedBasicData($tenant);
-            }
-            
-            // Reset search path
-            DB::statement("SET search_path TO public");
-            
+            DB::transaction(function () use ($tenant, $withTestData) {
+                DB::statement("SET LOCAL search_path TO {$tenant->schema_name}, public");
+
+                if ($withTestData) {
+                    $this->seedTestData($tenant);
+                } else {
+                    $this->seedBasicData($tenant);
+                }
+            });
+
             Log::info("Successfully seeded tenant schema: {$tenant->name}");
             return true;
-            
+
         } catch (\Exception $e) {
             Log::error("Failed to seed tenant schema for {$tenant->name}: " . $e->getMessage());
-            
-            // Reset search path on error
-            DB::statement("SET search_path TO public");
-            
             return false;
         }
     }

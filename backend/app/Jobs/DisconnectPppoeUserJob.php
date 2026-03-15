@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Events\PppoeUserDisconnectedForNonPayment;
 use App\Models\PppoeUser;
 use App\Models\Router;
 use App\Events\PppoeUserPaymentStatusChanged;
@@ -72,6 +73,8 @@ class DisconnectPppoeUserJob implements ShouldQueue
                 $user->update([
                     'status' => 'suspended',
                     'payment_status' => 'overdue',
+                    'is_active' => false,
+                    'in_grace_period' => false,
                     'suspended_at' => now(),
                     'suspension_reason' => $this->reason,
                 ]);
@@ -88,6 +91,14 @@ class DisconnectPppoeUserJob implements ShouldQueue
                     $this->pppoeUserId,
                     'suspended',
                     'disconnected'
+                ));
+
+                event(new PppoeUserDisconnectedForNonPayment(
+                    $this->tenantId,
+                    $this->pppoeUserId,
+                    'suspended',
+                    $this->reason,
+                    'disconnect_job'
                 ));
 
             } catch (\Exception $e) {

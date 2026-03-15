@@ -10,6 +10,7 @@ use App\Models\Package;
 use App\Models\PppoeUser;
 use App\Models\Router;
 use App\Models\Tenant;
+use App\Services\MikroTik\BandwidthHelper;
 use App\Services\MikroTik\SshExecutor;
 use App\Services\TenantContext;
 use Illuminate\Http\Request;
@@ -331,12 +332,35 @@ class PppoeUserController extends Controller
             ], 500);
         }
 
+        $requiredPppoeColumns = ['customer_name', 'customer_email', 'customer_phone'];
+        $missingPppoeColumns = array_values(array_filter(
+            $requiredPppoeColumns,
+            static fn (string $column): bool => !Schema::hasColumn('pppoe_users', $column)
+        ));
+
+        if (!empty($missingPppoeColumns)) {
+            Log::error('PPPoE user creation failed - tenant schema missing required columns', [
+                'tenant_id' => $tenantId,
+                'schema' => $tenantSchemaName,
+                'missing_columns' => $missingPppoeColumns,
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'PPPoE users schema is outdated for this tenant. Please run latest tenant migrations.',
+                'missing_columns' => $missingPppoeColumns,
+            ], 500);
+        }
+
         $validator = Validator::make($request->all(), [
             'username' => 'required|string|max:64|regex:/^[a-z0-9_\.\-]+$/i',
             'package_id' => 'required|uuid',
             'router_id' => 'required|uuid',
             'simultaneous_use' => 'nullable|integer|min:1|max:50',
             'grace_period_days' => 'nullable|integer|min:0|max:365',
+            'customer_name' => 'nullable|string|max:255',
+            'customer_email' => 'nullable|email|max:255',
+            'customer_phone' => 'nullable|string|max:30',
         ]);
 
         if ($validator->fails()) {
@@ -350,6 +374,9 @@ class PppoeUserController extends Controller
         $username = (string) $request->username;
         $plainPassword = Str::random(12);
         $simultaneousUse = (int) ($request->simultaneous_use ?? 1);
+        $customerName = $request->filled('customer_name') ? (string) $request->customer_name : $username;
+        $customerEmail = $request->filled('customer_email') ? (string) $request->customer_email : null;
+        $customerPhone = $request->filled('customer_phone') ? (string) $request->customer_phone : null;
 
         $package = Package::where('id', $request->package_id)
             ->where('type', 'pppoe')
@@ -374,7 +401,7 @@ class PppoeUserController extends Controller
         $gracePeriodDays = (int) ($request->grace_period_days ?? 0);
         $baseExpiresAt = $this->calculateExpiresAtFromPackage($package, now());
         $expiresAt = $gracePeriodDays > 0 ? $baseExpiresAt->copy()->addDays($gracePeriodDays) : $baseExpiresAt;
-        $rateLimit = $this->formatMikrotikRateLimit((string) $package->download_speed, (string) $package->upload_speed);
+        $rateLimit = BandwidthHelper::formatMikrotikRateLimit((string) $package->download_speed, (string) $package->upload_speed);
 
         try {
             if (PppoeUser::where('username', $username)->exists()) {
@@ -395,9 +422,10 @@ class PppoeUserController extends Controller
             ]);
 
             // STEP 2: Create user and RADIUS entries in TENANT schema using TenantContext
-            $pppoeUser = $this->tenantContext->runInTenantContext($tenant, function () use ($username, $plainPassword, $package, $router, $expiresAt, $rateLimit, $simultaneousUse, $tenant) {
-                $tenantPrefix = substr($tenant->name, 0, 1);
-                $accountNumber = PppoeUser::generateAccountNumber($tenantPrefix);
+            $pppoeUser = $this->tenantContext->runInTenantContext($tenant, function () use ($username, $plainPassword, $package, $router, $expiresAt, $rateLimit, $simultaneousUse, $customerName, $customerEmail, $customerPhone, $tenant) {
+                $tenantPrefix = $tenant->account_prefix
+                    ?? \App\Models\Tenant::generateAccountPrefix($tenant->slug ?? $tenant->name);
+                $accountNumber = PppoeUser::generateAccountNumber($tenantPrefix, 'P');
 
                 // Calculate payment due date (30 days from package duration)
                 $nextPaymentDue = $expiresAt ? clone $expiresAt : now()->addDays(30);
@@ -408,6 +436,9 @@ class PppoeUserController extends Controller
                     'username' => $username,
                     'password' => bcrypt($plainPassword),
                     'account_number' => $accountNumber,
+                    'customer_name' => $customerName,
+                    'customer_email' => $customerEmail,
+                    'customer_phone' => $customerPhone,
                     'package_id' => $package->id,
                     'router_id' => $router->id,
                     'expires_at' => $expiresAt,
@@ -462,6 +493,8 @@ class PppoeUserController extends Controller
             $message = 'Failed to create PPPoE user due to a database error.';
             if (str_contains($e->getMessage(), 'relation') && str_contains($e->getMessage(), 'does not exist')) {
                 $message = 'PPPoE/RADIUS tables are missing for this tenant. Please run tenant migrations.';
+            } elseif ((string) $e->getCode() === '42703' && str_contains($e->getMessage(), 'pppoe_users')) {
+                $message = 'PPPoE users schema is outdated for this tenant (missing columns). Please run latest tenant migrations.';
             }
 
             return response()->json([
@@ -507,6 +540,9 @@ class PppoeUserController extends Controller
             'simultaneous_use' => 'sometimes|required|integer|min:1|max:50',
             'is_active' => 'sometimes|boolean',
             'status' => 'sometimes|required|string|in:active,inactive,blocked,expired,suspended',
+            'customer_name' => 'sometimes|nullable|string|max:255',
+            'customer_email' => 'sometimes|nullable|email|max:255',
+            'customer_phone' => 'sometimes|nullable|string|max:30',
         ]);
 
         if ($validator->fails()) {
@@ -547,7 +583,7 @@ class PppoeUserController extends Controller
 
         if ($package) {
             $expiresAt = $this->calculateExpiresAtFromPackage($package, now());
-            $rateLimit = $this->formatMikrotikRateLimit((string) $package->download_speed, (string) $package->upload_speed);
+            $rateLimit = BandwidthHelper::formatMikrotikRateLimit((string) $package->download_speed, (string) $package->upload_speed);
 
             $pppoeUser->package_id = $package->id;
             $pppoeUser->expires_at = $expiresAt;
@@ -566,6 +602,18 @@ class PppoeUserController extends Controller
             $pppoeUser->status = (string) $request->status;
         }
 
+        if ($request->has('customer_name')) {
+            $pppoeUser->customer_name = $request->filled('customer_name') ? (string) $request->customer_name : null;
+        }
+
+        if ($request->has('customer_email')) {
+            $pppoeUser->customer_email = $request->filled('customer_email') ? (string) $request->customer_email : null;
+        }
+
+        if ($request->has('customer_phone')) {
+            $pppoeUser->customer_phone = $request->filled('customer_phone') ? (string) $request->customer_phone : null;
+        }
+
         try {
             // STEP 1: Ensure schema mapping in PUBLIC schema (metadata)
             $this->ensureRadiusSchemaMapping($pppoeUser->username, $tenant->schema_name, (string) $tenant->id);
@@ -576,11 +624,11 @@ class PppoeUserController extends Controller
 
                 DB::table('radreply')->updateOrInsert(
                     ['username' => $pppoeUser->username, 'attribute' => 'Tenant-ID'],
-                    ['op' => ':=', 'value' => (string) $tenant->id, 'updated_at' => now(), 'created_at' => now()]
+                    ['op' => ':=', 'value' => (string) $tenant->id]
                 );
                 DB::table('radreply')->updateOrInsert(
                     ['username' => $pppoeUser->username, 'attribute' => 'Service-Type'],
-                    ['op' => ':=', 'value' => 'Framed-User', 'updated_at' => now(), 'created_at' => now()]
+                    ['op' => ':=', 'value' => 'Framed-User']
                 );
 
                 $this->syncRadiusMetaForUser(
@@ -713,7 +761,7 @@ class PppoeUserController extends Controller
                 // This preserves password visibility while still rejecting auth.
                 DB::table('radcheck')->updateOrInsert(
                     ['username' => $pppoeUser->username, 'attribute' => 'Auth-Type'],
-                    ['op' => ':=', 'value' => 'Reject', 'updated_at' => now(), 'created_at' => now()]
+                    ['op' => ':=', 'value' => 'Reject']
                 );
                 
                 // Remove rate limit reply attributes so blocked user has no service
@@ -787,18 +835,18 @@ class PppoeUserController extends Controller
                 // Fully restore radreply attributes including rate-limit
                 DB::table('radreply')->updateOrInsert(
                     ['username' => $pppoeUser->username, 'attribute' => 'Tenant-ID'],
-                    ['op' => ':=', 'value' => (string) $tenant->id, 'updated_at' => now(), 'created_at' => now()]
+                    ['op' => ':=', 'value' => (string) $tenant->id]
                 );
                 DB::table('radreply')->updateOrInsert(
                     ['username' => $pppoeUser->username, 'attribute' => 'Service-Type'],
-                    ['op' => ':=', 'value' => 'Framed-User', 'updated_at' => now(), 'created_at' => now()]
+                    ['op' => ':=', 'value' => 'Framed-User']
                 );
 
                 // CRITICAL: Restore rate-limit attribute that was deleted during block
                 if ($pppoeUser->rate_limit) {
                     DB::table('radreply')->updateOrInsert(
                         ['username' => $pppoeUser->username, 'attribute' => 'Mikrotik-Rate-Limit'],
-                        ['op' => ':=', 'value' => $pppoeUser->rate_limit, 'updated_at' => now(), 'created_at' => now()]
+                        ['op' => ':=', 'value' => $pppoeUser->rate_limit]
                     );
                 }
 
@@ -807,7 +855,7 @@ class PppoeUserController extends Controller
                     $sessionTimeout = max(60, (int) now()->diffInSeconds($pppoeUser->expires_at, false));
                     DB::table('radreply')->updateOrInsert(
                         ['username' => $pppoeUser->username, 'attribute' => 'Session-Timeout'],
-                        ['op' => ':=', 'value' => (string) $sessionTimeout, 'updated_at' => now(), 'created_at' => now()]
+                        ['op' => ':=', 'value' => (string) $sessionTimeout]
                     );
                 }
 
@@ -891,18 +939,18 @@ class PppoeUserController extends Controller
                 // Restore radreply attributes
                 DB::table('radreply')->updateOrInsert(
                     ['username' => $pppoeUser->username, 'attribute' => 'Tenant-ID'],
-                    ['op' => ':=', 'value' => (string) $tenant->id, 'updated_at' => now(), 'created_at' => now()]
+                    ['op' => ':=', 'value' => (string) $tenant->id]
                 );
                 DB::table('radreply')->updateOrInsert(
                     ['username' => $pppoeUser->username, 'attribute' => 'Service-Type'],
-                    ['op' => ':=', 'value' => 'Framed-User', 'updated_at' => now(), 'created_at' => now()]
+                    ['op' => ':=', 'value' => 'Framed-User']
                 );
 
                 // Restore rate-limit
                 if ($pppoeUser->rate_limit) {
                     DB::table('radreply')->updateOrInsert(
                         ['username' => $pppoeUser->username, 'attribute' => 'Mikrotik-Rate-Limit'],
-                        ['op' => ':=', 'value' => $pppoeUser->rate_limit, 'updated_at' => now(), 'created_at' => now()]
+                        ['op' => ':=', 'value' => $pppoeUser->rate_limit]
                     );
                 }
 
@@ -911,7 +959,7 @@ class PppoeUserController extends Controller
                     $sessionTimeout = max(60, (int) now()->diffInSeconds($pppoeUser->expires_at, false));
                     DB::table('radreply')->updateOrInsert(
                         ['username' => $pppoeUser->username, 'attribute' => 'Session-Timeout'],
-                        ['op' => ':=', 'value' => (string) $sessionTimeout, 'updated_at' => now(), 'created_at' => now()]
+                        ['op' => ':=', 'value' => (string) $sessionTimeout]
                     );
                 }
 
@@ -989,7 +1037,7 @@ class PppoeUserController extends Controller
                 // Password is preserved for future reactivation
                 DB::table('radcheck')->updateOrInsert(
                     ['username' => $pppoeUser->username, 'attribute' => 'Auth-Type'],
-                    ['op' => ':=', 'value' => 'Reject', 'updated_at' => now(), 'created_at' => now()]
+                    ['op' => ':=', 'value' => 'Reject']
                 );
             });
 
@@ -1034,32 +1082,24 @@ class PppoeUserController extends Controller
                 'attribute' => 'Cleartext-Password',
                 'op' => ':=',
                 'value' => $plainPassword,
-                'created_at' => now(),
-                'updated_at' => now(),
             ],
             [
                 'username' => $username,
                 'attribute' => 'NT-Password',
                 'op' => ':=',
                 'value' => $ntPassword,
-                'created_at' => now(),
-                'updated_at' => now(),
             ],
             [
                 'username' => $username,
                 'attribute' => 'Expiration',
                 'op' => ':=',
                 'value' => $expiresAt ? $expiresAt->format('F d Y H:i:s') : '',
-                'created_at' => now(),
-                'updated_at' => now(),
             ],
             [
                 'username' => $username,
                 'attribute' => 'Simultaneous-Use',
                 'op' => ':=',
                 'value' => (string) $simultaneousUse,
-                'created_at' => now(),
-                'updated_at' => now(),
             ],
         ]);
 
@@ -1070,8 +1110,6 @@ class PppoeUserController extends Controller
             'attribute' => 'Tenant-ID',
             'op' => ':=',
             'value' => $tenantId,
-            'created_at' => now(),
-            'updated_at' => now(),
         ];
 
         $replyRows[] = [
@@ -1079,8 +1117,6 @@ class PppoeUserController extends Controller
             'attribute' => 'Service-Type',
             'op' => ':=',
             'value' => 'Framed-User',
-            'created_at' => now(),
-            'updated_at' => now(),
         ];
 
         if ($expiresAt) {
@@ -1090,8 +1126,6 @@ class PppoeUserController extends Controller
                 'attribute' => 'Session-Timeout',
                 'op' => ':=',
                 'value' => (string) $sessionTimeout,
-                'created_at' => now(),
-                'updated_at' => now(),
             ];
         }
 
@@ -1101,8 +1135,6 @@ class PppoeUserController extends Controller
                 'attribute' => 'Mikrotik-Rate-Limit',
                 'op' => ':=',
                 'value' => $rateLimit,
-                'created_at' => now(),
-                'updated_at' => now(),
             ];
         }
 
@@ -1162,7 +1194,7 @@ class PppoeUserController extends Controller
         if (!$isActive || $status === 'blocked' || $status === 'expired' || $status === 'inactive' || $status === 'suspended') {
             DB::table('radcheck')->updateOrInsert(
                 ['username' => $username, 'attribute' => 'Auth-Type'],
-                ['op' => ':=', 'value' => 'Reject', 'updated_at' => now(), 'created_at' => now()]
+                ['op' => ':=', 'value' => 'Reject']
             );
             return;
         }
@@ -1176,25 +1208,25 @@ class PppoeUserController extends Controller
         if ($expiresAt) {
             DB::table('radcheck')->updateOrInsert(
                 ['username' => $username, 'attribute' => 'Expiration'],
-                ['op' => ':=', 'value' => $expiresAt->format('F d Y H:i:s'), 'updated_at' => now(), 'created_at' => now()]
+                ['op' => ':=', 'value' => $expiresAt->format('F d Y H:i:s')]
             );
 
             $sessionTimeout = max(60, (int) now()->diffInSeconds($expiresAt, false));
             DB::table('radreply')->updateOrInsert(
                 ['username' => $username, 'attribute' => 'Session-Timeout'],
-                ['op' => ':=', 'value' => (string) $sessionTimeout, 'updated_at' => now(), 'created_at' => now()]
+                ['op' => ':=', 'value' => (string) $sessionTimeout]
             );
         }
 
         DB::table('radcheck')->updateOrInsert(
             ['username' => $username, 'attribute' => 'Simultaneous-Use'],
-            ['op' => ':=', 'value' => (string) $simultaneousUse, 'updated_at' => now(), 'created_at' => now()]
+            ['op' => ':=', 'value' => (string) $simultaneousUse]
         );
 
         if ($rateLimit) {
             DB::table('radreply')->updateOrInsert(
                 ['username' => $username, 'attribute' => 'Mikrotik-Rate-Limit'],
-                ['op' => ':=', 'value' => $rateLimit, 'updated_at' => now(), 'created_at' => now()]
+                ['op' => ':=', 'value' => $rateLimit]
             );
         }
     }
@@ -1226,43 +1258,5 @@ class PppoeUserController extends Controller
             'year', 'years' => $baseTime->copy()->addYears($value),
             default => $baseTime->copy()->addHour(),
         };
-    }
-
-    private function normalizeSpeed(string $speed): ?string
-    {
-        $speed = trim($speed);
-        if ($speed === '') {
-            return null;
-        }
-
-        if (preg_match('/^(\d+)\s*([kKmMgG])$/', $speed, $m)) {
-            return $m[1] . strtoupper($m[2]);
-        }
-
-        if (preg_match('/^(\d+)\s*Mbps$/i', $speed, $m)) {
-            return $m[1] . 'M';
-        }
-
-        if (preg_match('/^(\d+)\s*Kbps$/i', $speed, $m)) {
-            return $m[1] . 'K';
-        }
-
-        if (preg_match('/^(\d+)\s*Gbps$/i', $speed, $m)) {
-            return $m[1] . 'G';
-        }
-
-        return $speed;
-    }
-
-    private function formatMikrotikRateLimit(string $download, string $upload): ?string
-    {
-        $down = $this->normalizeSpeed($download);
-        $up = $this->normalizeSpeed($upload);
-
-        if (!$down && !$up) {
-            return null;
-        }
-
-        return ($down ?: '0') . '/' . ($up ?: '0');
     }
 }

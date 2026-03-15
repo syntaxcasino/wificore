@@ -190,7 +190,7 @@
                   </div>
                   <div class="bg-slate-50 border border-slate-200 rounded-md p-2">
                     <div class="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Speed</div>
-                    <div class="mt-1 text-xs font-medium text-slate-700">{{ pkg.speed || '—' }}</div>
+                    <div class="mt-1 text-xs font-medium text-slate-700">{{ formatPackageSpeed(pkg) }}</div>
                   </div>
                 </div>
 
@@ -271,8 +271,7 @@
                       </td>
 
                       <td class="px-6 py-4 hidden xl:table-cell">
-                        <span v-if="pkg.speed" class="text-xs text-slate-500 truncate">{{ pkg.speed }}</span>
-                        <span v-else class="text-xs text-slate-400">—</span>
+                        <span class="text-xs text-slate-500 truncate">{{ formatPackageSpeed(pkg) }}</span>
                       </td>
 
                       <td class="px-6 py-4 hidden xl:table-cell">
@@ -533,6 +532,15 @@ const inactiveCount = computed(() => {
 
 const formatMoney = (amount) => {
   return new Intl.NumberFormat('en-KE').format(amount)
+}
+
+const formatPackageSpeed = (pkg) => {
+  if (!pkg) return '—'
+  const down = pkg.download_speed ? String(pkg.download_speed).trim() : ''
+  const up = pkg.upload_speed ? String(pkg.upload_speed).trim() : ''
+
+  if (down && up) return `${down} / ${up}`
+  return down || up || pkg.speed || '—'
 }
 
 const handleToggleStatus = async (pkg) => {

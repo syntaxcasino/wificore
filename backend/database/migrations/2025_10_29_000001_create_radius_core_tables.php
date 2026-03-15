@@ -133,6 +133,36 @@ return new class extends Migration
             });
         }
 
+        if (!Schema::hasTable('radius_user_schema_mapping')) {
+            Schema::create('radius_user_schema_mapping', function (Blueprint $table) {
+                $table->id();
+                $table->string('username', 64)->unique();
+                $table->string('schema_name', 64);
+                $table->uuid('tenant_id')->nullable();
+                $table->string('user_role', 32)->nullable();
+                $table->boolean('is_active')->default(true);
+                $table->timestamps();
+
+                $table->foreign('tenant_id')
+                      ->references('id')
+                      ->on('tenants')
+                      ->onDelete('cascade');
+
+                $table->index('username');
+                $table->index('schema_name');
+                $table->index(['username', 'is_active']);
+                $table->index('tenant_id');
+            });
+
+            DB::statement("
+                COMMENT ON TABLE radius_user_schema_mapping IS
+                'Maps RADIUS usernames to tenant schemas for multi-tenant authentication.\n'
+                'Queried by FreeRADIUS BEFORE tenant context is established.'
+            ");
+
+            DB::statement('GRANT SELECT ON public.radius_user_schema_mapping TO admin');
+        }
+
         // Create indexes only if table exists
         if (Schema::hasTable('radacct')) {
             DB::statement('CREATE INDEX IF NOT EXISTS radacct_active ON radacct (acctuniqueid) WHERE acctstoptime IS NULL');
@@ -145,6 +175,7 @@ return new class extends Migration
      */
     public function down(): void
     {
+        Schema::dropIfExists('radius_user_schema_mapping');
         Schema::dropIfExists('nas');
         Schema::dropIfExists('radpostauth');
         Schema::dropIfExists('radacct');

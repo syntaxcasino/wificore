@@ -119,7 +119,6 @@
                   </td>
                   <td class="px-6 py-4">
                     <div class="text-sm text-slate-900">{{ user.router?.name || 'N/A' }}</div>
-                    <div class="text-xs text-slate-500">{{ user.rate_limit || 'No rate limit' }}</div>
                   </td>
                   <td class="px-6 py-4">
                     <div class="text-sm font-medium text-slate-900">{{ user.package?.name || 'No package' }}</div>
@@ -147,62 +146,14 @@
                       <!-- 3-dot menu for other actions -->
                       <div class="relative" @click.stop>
                         <BaseButton 
-                          @click="toggleActionMenu(user.id)" 
+                          data-menu-button
+                          @click="toggleActionMenu(user.id, $event)" 
                           variant="ghost" 
                           size="sm"
                           title="More Actions"
                         >
                           <MoreVertical class="w-4 h-4 text-slate-600" />
                         </BaseButton>
-                        
-                        <!-- Dropdown Menu -->
-                        <div 
-                          v-if="activeMenuId === user.id" 
-                          class="absolute right-0 top-full mt-1 w-44 bg-white border border-slate-200 rounded-lg shadow-xl z-[100]"
-                          style="position: absolute;"
-                        >
-                          <div class="py-1">
-                            <button 
-                              @click="handleEdit(user); closeActionMenu()" 
-                              class="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
-                            >
-                              <Edit2 class="w-4 h-4" />
-                              Edit User
-                            </button>
-                            <button 
-                              v-if="user.status !== 'blocked'"
-                              @click="handleToggleStatus(user); closeActionMenu()" 
-                              class="w-full px-4 py-2 text-left text-sm text-amber-600 hover:bg-amber-50 flex items-center gap-2"
-                            >
-                              <UserX class="w-4 h-4" />
-                              Block User
-                            </button>
-                            <button 
-                              v-else
-                              @click="handleToggleStatus(user); closeActionMenu()" 
-                              class="w-full px-4 py-2 text-left text-sm text-green-600 hover:bg-green-50 flex items-center gap-2"
-                            >
-                              <UserCheck class="w-4 h-4" />
-                              Unblock User
-                            </button>
-                            <button 
-                              v-if="user.status === 'active'"
-                              @click="handleDeactivate(user); closeActionMenu()" 
-                              class="w-full px-4 py-2 text-left text-sm text-slate-600 hover:bg-slate-50 flex items-center gap-2"
-                            >
-                              <PowerOff class="w-4 h-4" />
-                              Deactivate
-                            </button>
-                            <button 
-                              v-if="user.status === 'inactive'"
-                              @click="handleActivate(user); closeActionMenu()" 
-                              class="w-full px-4 py-2 text-left text-sm text-blue-600 hover:bg-blue-50 flex items-center gap-2"
-                            >
-                              <Power class="w-4 h-4" />
-                              Activate
-                            </button>
-                          </div>
-                        </div>
                       </div>
                     </div>
                   </td>
@@ -213,6 +164,55 @@
         </BaseCard>
       </div>
     </PageContent>
+
+    <Teleport to="body">
+      <div
+        v-if="activeMenuId !== null"
+        data-dropdown-menu
+        :style="menuPosition"
+        class="fixed w-44 bg-white rounded-lg shadow-2xl border border-slate-200 py-1 z-[9999] overflow-hidden"
+      >
+        <button
+          @click="selectedMenuUser && handleEdit(selectedMenuUser); closeActionMenu()"
+          class="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+        >
+          <Edit2 class="w-4 h-4" />
+          Edit User
+        </button>
+        <button
+          v-if="selectedMenuUser && selectedMenuUser.status !== 'blocked'"
+          @click="handleToggleStatus(selectedMenuUser); closeActionMenu()"
+          class="w-full px-4 py-2 text-left text-sm text-amber-600 hover:bg-amber-50 flex items-center gap-2"
+        >
+          <UserX class="w-4 h-4" />
+          Block User
+        </button>
+        <button
+          v-else-if="selectedMenuUser"
+          @click="handleToggleStatus(selectedMenuUser); closeActionMenu()"
+          class="w-full px-4 py-2 text-left text-sm text-green-600 hover:bg-green-50 flex items-center gap-2"
+        >
+          <UserCheck class="w-4 h-4" />
+          Unblock User
+        </button>
+        <button
+          v-if="selectedMenuUser && selectedMenuUser.status === 'active'"
+          @click="handleDeactivate(selectedMenuUser); closeActionMenu()"
+          class="w-full px-4 py-2 text-left text-sm text-slate-600 hover:bg-slate-50 flex items-center gap-2"
+        >
+          <PowerOff class="w-4 h-4" />
+          Deactivate
+        </button>
+        <button
+          v-if="selectedMenuUser && selectedMenuUser.status === 'inactive'"
+          @click="handleActivate(selectedMenuUser); closeActionMenu()"
+          class="w-full px-4 py-2 text-left text-sm text-blue-600 hover:bg-blue-50 flex items-center gap-2"
+        >
+          <Power class="w-4 h-4" />
+          Activate
+        </button>
+      </div>
+    </Teleport>
 
     <!-- Footer -->
     <PageFooter>
@@ -670,6 +670,8 @@ const loadingPassword = ref(false)
 
 // 3-dot menu state
 const activeMenuId = ref(null)
+const selectedMenuUser = ref(null)
+const menuPosition = ref({})
 
 const showEditUserOverlay = ref(false)
 const editSubmitting = ref(false)
@@ -993,12 +995,47 @@ const handleToggleStatus = async (user) => {
 }
 
 // 3-dot menu handlers
-const toggleActionMenu = (userId) => {
-  activeMenuId.value = activeMenuId.value === userId ? null : userId
+const toggleActionMenu = (userId, event) => {
+  event.stopPropagation()
+
+  if (activeMenuId.value === userId) {
+    closeActionMenu()
+    return
+  }
+
+  activeMenuId.value = userId
+  selectedMenuUser.value = users.value.find((user) => user.id === userId) || null
+
+  const button = event.currentTarget
+  const rect = button.getBoundingClientRect()
+  const viewportWidth = window.innerWidth
+  const viewportHeight = window.innerHeight
+  const menuWidth = 176
+  const menuHeight = 176
+
+  let top = rect.bottom + 6
+  let left = rect.right - menuWidth
+
+  if (left < 8) {
+    left = 8
+  } else if (left + menuWidth > viewportWidth - 8) {
+    left = viewportWidth - menuWidth - 8
+  }
+
+  if (top + menuHeight > viewportHeight - 8) {
+    top = rect.top - menuHeight - 6
+  }
+
+  menuPosition.value = {
+    top: `${top}px`,
+    left: `${left}px`,
+  }
 }
 
 const closeActionMenu = () => {
   activeMenuId.value = null
+  selectedMenuUser.value = null
+  menuPosition.value = {}
 }
 
 // Activate/Deactivate handlers
@@ -1042,7 +1079,12 @@ const handleDeactivate = async (user) => {
 
 // Close menu when clicking outside
 const handleClickOutside = (event) => {
-  if (activeMenuId.value && !event.target.closest('.relative')) {
+  if (!activeMenuId.value) return
+
+  const isMenuButton = event.target.closest('[data-menu-button]')
+  const isDropdownMenu = event.target.closest('[data-dropdown-menu]')
+
+  if (!isMenuButton && !isDropdownMenu) {
     closeActionMenu()
   }
 }

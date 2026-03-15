@@ -9,12 +9,28 @@ use App\Events\UserDeleted;
 use App\Events\HotspotUserCreated;
 use App\Events\PaymentCompleted;
 use App\Events\PaymentFailed;
+use App\Events\PaymentReceived;
 use App\Events\PackageStatusChanged;
+use App\Events\PppoeInvoiceDueSoon;
+use App\Events\PppoeInvoiceSent;
+use App\Events\PppoeMonthlyReportGenerated;
 use App\Events\RouterStatusUpdated;
 use App\Events\DashboardStatsUpdated;
 use App\Events\RouterProvisioningCompleted;
+use App\Events\PppoeGracePeriodStarted;
+use App\Events\PppoeMonthEndReportRequested;
+use App\Events\PppoePaymentReminderDue;
+use App\Events\PppoeReminderSent;
+use App\Events\PppoeUserDisconnectedForNonPayment;
+use App\Events\PppoeUserReconnectedAfterPayment;
+use App\Listeners\QueuePppoeInvoiceJob;
+use App\Listeners\QueuePppoeMonthlyPaymentReportJob;
+use App\Listeners\QueuePppoePaymentReminderJob;
+use App\Listeners\QueuePppoePaymentReceipt;
 use App\Listeners\TrackCompletedJobs;
 use App\Listeners\UpdateRouterStatus;
+use App\Listeners\LogPppoeBillingLifecycle;
+use App\Listeners\LogPppoeBillingOutcome;
 use Illuminate\Foundation\Support\Providers\EventServiceProvider as ServiceProvider;
 use Illuminate\Queue\Events\JobProcessed;
 
@@ -64,9 +80,53 @@ class EventServiceProvider extends ServiceProvider
             // e.g., NotifyAdminOfFailedPayment::class
         ],
         
+        PaymentReceived::class => [
+            QueuePppoePaymentReceipt::class,
+        ],
+        
+        PppoePaymentReminderDue::class => [
+            QueuePppoePaymentReminderJob::class,
+        ],
+        
+        PppoeInvoiceDueSoon::class => [
+            QueuePppoeInvoiceJob::class,
+        ],
+        
+        PppoeMonthEndReportRequested::class => [
+            QueuePppoeMonthlyPaymentReportJob::class,
+        ],
+        
+        PppoeReminderSent::class => [
+            LogPppoeBillingOutcome::class,
+        ],
+        
+        PppoeInvoiceSent::class => [
+            LogPppoeBillingOutcome::class,
+        ],
+        
+        PppoeMonthlyReportGenerated::class => [
+            LogPppoeBillingOutcome::class,
+        ],
+        
+        PppoeGracePeriodStarted::class => [
+            LogPppoeBillingLifecycle::class,
+        ],
+        
+        PppoeUserDisconnectedForNonPayment::class => [
+            LogPppoeBillingLifecycle::class,
+        ],
+        
+        PppoeUserReconnectedAfterPayment::class => [
+            LogPppoeBillingLifecycle::class,
+        ],
+        
         // Package events
         PackageStatusChanged::class => [
             // e.g., NotifySubscriberOfStatusChange::class
+        ],
+
+        \App\Events\PackageUpdated::class => [
+            \App\Listeners\UpdatePppoeUsersRateLimit::class,
         ],
         
         // Router events

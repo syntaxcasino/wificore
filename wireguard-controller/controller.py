@@ -406,6 +406,43 @@ def get_status(interface):
         logger.error(f"Failed to get status for {interface}: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/vpn/dump/<interface>', methods=['GET'])
+def get_dump(interface):
+    """Get WireGuard dump output for interface"""
+    if not verify_api_key():
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    if not interface.startswith('wg') or len(interface) > 15:
+        return jsonify({'error': 'Invalid interface name'}), 400
+
+    try:
+        check_result = run_command(f"ip link show {interface}", check=False)
+
+        if check_result['returncode'] != 0:
+            return jsonify({
+                'status': 'down',
+                'interface': interface,
+                'exists': False
+            }), 404
+
+        dump_result = run_command(f"wg show {interface} dump", check=False)
+
+        if not dump_result['success']:
+            return jsonify({
+                'status': 'error',
+                'interface': interface,
+                'error': dump_result['stderr'] or 'Failed to read dump'
+            }), 500
+
+        return jsonify({
+            'status': 'success',
+            'interface': interface,
+            'dump': dump_result['stdout']
+        })
+    except Exception as e:
+        logger.error(f"Failed to get dump for {interface}: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/vpn/down/<interface>', methods=['POST'])
 def bring_down(interface):
     """Bring down WireGuard interface"""

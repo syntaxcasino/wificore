@@ -23,7 +23,7 @@ class CheckPppoePaymentStatusJob implements ShouldQueue
     public $timeout = 300;
     public $tries = 3;
 
-    public function __construct(string $tenantId = null)
+    public function __construct(?string $tenantId = null)
     {
         $this->tenantId = $tenantId;
         $this->onQueue('payment-checks');
@@ -178,7 +178,7 @@ class CheckPppoePaymentStatusJob implements ShouldQueue
             // Add Auth-Type := Reject to radcheck
             DB::table('radcheck')->updateOrInsert(
                 ['username' => $user->username, 'attribute' => 'Auth-Type'],
-                ['op' => ':=', 'value' => 'Reject', 'updated_at' => now(), 'created_at' => now()]
+                ['op' => ':=', 'value' => 'Reject']
             );
 
             Log::info('Blocked user in RADIUS', [

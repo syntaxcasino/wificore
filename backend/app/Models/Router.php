@@ -5,6 +5,8 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use App\Traits\HasUuid;
+use App\Services\VpnService;
+use App\Models\VpnConfiguration;
 use Illuminate\Support\Facades\Log;
 
 class Router extends Model
@@ -50,6 +52,22 @@ class Router extends Model
 
         // Delete services individually so their deleting hooks fire (releases IP allocations)
         static::deleting(function (Router $router) {
+            $vpnConfigs = VpnConfiguration::where('router_id', $router->id)->get();
+            if ($vpnConfigs->isNotEmpty()) {
+                $vpnService = app(VpnService::class);
+                foreach ($vpnConfigs as $config) {
+                    try {
+                        $vpnService->deleteVpnConfiguration($config);
+                    } catch (\Exception $e) {
+                        Log::warning('Failed to clean VPN configuration during router deletion', [
+                            'router_id' => $router->id,
+                            'vpn_config_id' => $config->id,
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
+                }
+            }
+
             $router->services->each(function (RouterService $service) {
                 $service->delete();
             });
@@ -117,6 +135,7 @@ class Router extends Model
         'firmware',
         'last_seen',
         'port',
+        'wan_interface',
         'username',
         'password',
         'ssh_key',
@@ -150,6 +169,12 @@ class Router extends Model
 
     protected $hidden = ['password', 'ssh_key', 'snmp_v3_auth_password', 'snmp_v3_priv_password', 'snmp_trap_community'];
 
+    protected $appends = [
+        'vpn_last_handshake_utc',
+        'vpn_last_handshake_eat',
+        'vpn_last_handshake_timezones',
+    ];
+
     protected $casts = [
         'id' => 'string',
         'last_seen' => 'datetime',
@@ -172,6 +197,31 @@ class Router extends Model
         'snmp_v3_priv_password' => 'encrypted',
         'snmp_trap_community' => 'encrypted',
     ];
+
+    public function getVpnLastHandshakeUtcAttribute(): ?string
+    {
+        $handshake = $this->vpn_last_handshake;
+
+        return $handshake?->copy()->timezone('UTC')->toIso8601String();
+    }
+
+    public function getVpnLastHandshakeEatAttribute(): ?string
+    {
+        $handshake = $this->vpn_last_handshake;
+
+        return $handshake?->copy()->timezone('Africa/Nairobi')->toIso8601String();
+    }
+
+    public function getVpnLastHandshakeTimezonesAttribute(): array
+    {
+        $utc = $this->vpn_last_handshake_utc;
+        $eat = $this->vpn_last_handshake_eat;
+
+        return [
+            'UTC' => $utc,
+            'Africa/Nairobi' => $eat,
+        ];
+    }
 
     public function wireguardPeers()
     {
@@ -241,7 +291,7 @@ class Router extends Model
      */
     public function isVpnConnected(): bool
     {
-        if ($this->vpn_status === 'active' && $this->vpn_last_handshake) {
+        if (in_array($this->vpn_status, ['active', 'connected']) && $this->vpn_last_handshake) {
             // Consider connected if handshake within last 3 minutes
             return $this->vpn_last_handshake->diffInMinutes(now()) < 3;
         }

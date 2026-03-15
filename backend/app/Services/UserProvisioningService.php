@@ -276,17 +276,17 @@ class UserProvisioningService extends TenantAwareService
 
             DB::table('radcheck')->updateOrInsert(
                 ['username' => $username, 'attribute' => 'Cleartext-Password'],
-                ['op' => ':=', 'value' => $password, 'updated_at' => now(), 'created_at' => now()]
+                ['op' => ':=', 'value' => $password]
             );
 
             DB::table('radreply')->updateOrInsert(
                 ['username' => $username, 'attribute' => 'Tenant-ID'],
-                ['op' => ':=', 'value' => $tenantId, 'updated_at' => now(), 'created_at' => now()]
+                ['op' => ':=', 'value' => $tenantId]
             );
 
             DB::table('radreply')->updateOrInsert(
                 ['username' => $username, 'attribute' => 'Service-Type'],
-                ['op' => ':=', 'value' => 'Framed-User', 'updated_at' => now(), 'created_at' => now()]
+                ['op' => ':=', 'value' => 'Framed-User']
             );
 
             \Log::info('RADIUS entry created', [

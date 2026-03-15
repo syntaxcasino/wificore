@@ -16,6 +16,8 @@ return new class extends Migration
             $table->uuid('tenant_id');
             $table->uuid('user_id')->nullable();
             $table->string('action');
+            $table->json('details')->nullable();
+            $table->string('category', 50)->nullable();
             $table->string('entity_type')->nullable();
             $table->uuid('entity_id')->nullable();
             $table->text('description')->nullable();

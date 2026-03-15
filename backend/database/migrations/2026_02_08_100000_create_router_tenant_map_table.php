@@ -18,6 +18,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('router_tenant_map')) {
+            return;
+        }
+
         Schema::create('router_tenant_map', function (Blueprint $table) {
             $table->uuid('router_id')->primary();
             $table->uuid('tenant_id');

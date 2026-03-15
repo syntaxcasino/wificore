@@ -415,14 +415,16 @@ class ZeroConfigHotspotGenerator
             "# Without in-interface scoping, established/related accept matches ALL traffic on the router",
             ":do { /ip firewall filter remove [find comment~\"Hotspot-{$routerId}-FW\"] } on-error={}",
             // Insert in reverse order with place-before=0 so rules end up in the correct order at the top
-            // 4. DROP all traffic from bridge (unauthenticated devices cannot pass)
-            ":do { /ip firewall filter add chain=forward in-interface={$iface} action=drop place-before=0 comment=\"Hotspot-{$routerId}-FW-DROP\" } on-error={}",
-            // 3. Allow ONLY authenticated hotspot users to reach WAN
-            ":do { /ip firewall filter add chain=forward in-interface={$iface} hotspot=auth out-interface=!{$iface} action=accept place-before=0 comment=\"Hotspot-{$routerId}-FW-INET\" } on-error={}",
-            // 2. Drop invalid
-            ":do { /ip firewall filter add chain=forward in-interface={$iface} connection-state=invalid action=drop place-before=0 comment=\"Hotspot-{$routerId}-FW-INV\" } on-error={}",
-            // 1. Accept established/related
-            ":do { /ip firewall filter add chain=forward in-interface={$iface} connection-state=established,related action=accept place-before=0 comment=\"Hotspot-{$routerId}-FW-EST\" } on-error={}",
+            // 5. DROP all traffic from bridge (unauthenticated devices cannot pass)
+            "/ip firewall filter add chain=forward in-interface={$iface} action=drop place-before=0 comment=\"Hotspot-{$routerId}-FW-DROP\"",
+            // 4. Allow ONLY authenticated hotspot users to reach WAN
+            "/ip firewall filter add chain=forward in-interface={$iface} hotspot=auth out-interface-list=WAN action=accept place-before=0 comment=\"Hotspot-{$routerId}-FW-INET\"",
+            // 3. Drop invalid
+            "/ip firewall filter add chain=forward in-interface={$iface} connection-state=invalid action=drop place-before=0 comment=\"Hotspot-{$routerId}-FW-INV\"",
+            // 2. Accept established/related from hotspot clients
+            "/ip firewall filter add chain=forward in-interface={$iface} connection-state=established,related action=accept place-before=0 comment=\"Hotspot-{$routerId}-FW-EST\"",
+            // 1. Accept established/related return traffic FROM WAN back to hotspot clients
+            "/ip firewall filter add chain=forward in-interface-list=WAN out-interface={$iface} connection-state=established,related action=accept place-before=0 comment=\"Hotspot-{$routerId}-FW-WAN-EST\"",
             ""
         ];
     }
@@ -433,13 +435,18 @@ class ZeroConfigHotspotGenerator
         $managementSubnet = $params['management_subnet'] ?? '10.0.0.0/8';
         $managementPorts = '22,8291,8728,8729';
 
+        $radiusServer = $params['radius_server'] ?? '10.8.0.1';
+
         return [
             "# Management Access - VPN/Management Subnet Only",
-            ":do { /ip firewall filter remove [find comment~\"Hotspot-{$routerId}-MGMT\"]; } on-error={} ",
+            ":do { /ip firewall filter remove [find comment~\"Hotspot-{$routerId}-MGMT\"]; } on-error={}",
+            ":do { /ip firewall filter remove [find comment=\"Hotspot-{$routerId}-SNMP-ALLOW\"]; } on-error={}",
             // Insert in reverse order with place-before=0 for correct ordering at the top
-            ":do { /ip firewall filter add chain=input protocol=tcp dst-port={$managementPorts} action=drop place-before=0 comment=\"Hotspot-{$routerId}-MGMT-DROP\" } on-error={}",
-            ":do { /ip firewall filter add chain=input protocol=tcp dst-port={$managementPorts} src-address={$managementSubnet} action=accept place-before=0 comment=\"Hotspot-{$routerId}-MGMT-ALLOW\" } on-error={}",
-            ":do { /ip firewall filter add chain=input connection-state=established,related action=accept place-before=0 comment=\"Hotspot-{$routerId}-MGMT-EST\" } on-error={}",
+            // Final order: MGMT-EST → MGMT-ALLOW → SNMP-ALLOW → MGMT-DROP
+            "/ip firewall filter add chain=input protocol=tcp dst-port={$managementPorts} action=drop place-before=0 comment=\"Hotspot-{$routerId}-MGMT-DROP\"",
+            "/ip firewall filter add chain=input protocol=udp dst-port=161 src-address={$radiusServer} action=accept place-before=0 comment=\"Hotspot-{$routerId}-SNMP-ALLOW\"",
+            "/ip firewall filter add chain=input protocol=tcp dst-port={$managementPorts} src-address={$managementSubnet} action=accept place-before=0 comment=\"Hotspot-{$routerId}-MGMT-ALLOW\"",
+            "/ip firewall filter add chain=input connection-state=established,related action=accept place-before=0 comment=\"Hotspot-{$routerId}-MGMT-EST\"",
             ""
         ];
     }

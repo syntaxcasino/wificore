@@ -133,10 +133,13 @@ return new class extends Migration
                 $table->string('code')->unique();
                 $table->uuid('package_id');
                 $table->uuid('router_id')->nullable();
-                $table->string('status', 20)->default('active');
+                $table->string('status', 20)->default('unused');
                 $table->uuid('used_by')->nullable();
                 $table->timestamp('used_at')->nullable();
                 $table->timestamp('expires_at')->nullable();
+                $table->string('prefix', 20)->nullable();
+                $table->text('notes')->nullable();
+                $table->string('batch_id', 50)->nullable();
                 $table->timestamps();
                 $table->softDeletes();
                 
@@ -150,6 +153,10 @@ return new class extends Migration
                 $table->index('code');
                 $table->index('status');
                 $table->index('package_id');
+                $table->index('batch_id');
+                $table->index('used_at');
+                $table->index('expires_at');
+                $table->index('created_at');
             });
             try {
                 $this->migrateFromPublic('vouchers');

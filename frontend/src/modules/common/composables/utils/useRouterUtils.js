@@ -17,6 +17,35 @@ export function useRouterUtils() {
   }
 
   /**
+   * Get VPN status badge class
+   */
+  const getVpnStatusBadgeClass = (status) => {
+    const normalized = String(status || '').toLowerCase()
+    if (normalized === 'active' || normalized === 'connected') {
+      return 'bg-emerald-100 text-emerald-700'
+    }
+    if (normalized === 'pending') {
+      return 'bg-amber-100 text-amber-700'
+    }
+    if (normalized === 'inactive' || normalized === 'disconnected') {
+      return 'bg-slate-100 text-slate-600'
+    }
+    return 'bg-slate-100 text-slate-600'
+  }
+
+  /**
+   * Format VPN status text
+   */
+  const formatVpnStatus = (status) => {
+    const normalized = String(status || '').toLowerCase()
+    if (!normalized) return 'Unknown'
+    if (normalized === 'active' || normalized === 'connected') return 'Active'
+    if (normalized === 'inactive' || normalized === 'disconnected') return 'Inactive'
+    if (normalized === 'pending') return 'Pending'
+    return normalized
+  }
+
+  /**
    * Get CPU usage color class based on load percentage
    */
   const getCpuColorClass = (cpuLoad) => {
@@ -238,6 +267,73 @@ export function useRouterUtils() {
     return `${Math.floor(diffInSeconds / 86400)}d ago`
   }
 
+  /**
+   * Format timestamp in a specific timezone
+   */
+  const formatDateTimeInTimezone = (dateString, timeZone) => {
+    if (!dateString) return 'Never'
+    try {
+      const date = new Date(dateString)
+      const options = {
+        year: 'numeric',
+        month: 'short',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+        timeZone: timeZone || undefined,
+      }
+      return date.toLocaleString(undefined, options)
+    } catch (err) {
+      return 'Invalid date'
+    }
+  }
+
+  /**
+   * Resolve VPN handshake timestamp for a preferred timezone
+   */
+  const getHandshakeTimestamp = (router, timeZone = 'Africa/Nairobi') => {
+    if (!router) return null
+    const timezoneMap = router.vpn_last_handshake_timezones
+
+    if (timezoneMap && typeof timezoneMap === 'object') {
+      if (timezoneMap[timeZone]) return timezoneMap[timeZone]
+
+      const normalized = String(timeZone || '').toLowerCase()
+      for (const [key, value] of Object.entries(timezoneMap)) {
+        if (String(key).toLowerCase() === normalized) {
+          return value
+        }
+      }
+    }
+
+    if (timeZone === 'Africa/Nairobi' && router.vpn_last_handshake_eat) {
+      return router.vpn_last_handshake_eat
+    }
+    if (timeZone === 'UTC' && router.vpn_last_handshake_utc) {
+      return router.vpn_last_handshake_utc
+    }
+
+    return router.vpn_last_handshake_eat || router.vpn_last_handshake_utc || router.vpn_last_handshake || null
+  }
+
+  /**
+   * Format VPN handshake as relative time for a preferred timezone
+   */
+  const formatHandshakeTimeAgo = (router, timeZone = 'Africa/Nairobi') => {
+    const timestamp = getHandshakeTimestamp(router, timeZone)
+    return formatTimeAgo(timestamp)
+  }
+
+  /**
+   * Format VPN handshake as absolute datetime for a preferred timezone
+   */
+  const formatHandshakeDateTime = (router, timeZone = 'Africa/Nairobi') => {
+    const timestamp = getHandshakeTimestamp(router, timeZone)
+    return formatDateTimeInTimezone(timestamp, timeZone)
+  }
+
   return {
     getStatusDotClass,
     getCpuColorClass,
@@ -250,6 +346,12 @@ export function useRouterUtils() {
     formatModel,
     getConnectedUsers,
     formatTimeAgo,
+    formatDateTimeInTimezone,
+    getHandshakeTimestamp,
+    formatHandshakeTimeAgo,
+    formatHandshakeDateTime,
+    getVpnStatusBadgeClass,
+    formatVpnStatus,
   }
 }
 

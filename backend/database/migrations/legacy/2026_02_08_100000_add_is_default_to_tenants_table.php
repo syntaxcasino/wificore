@@ -15,13 +15,7 @@ return new class extends Migration
      */
     public function up(): void
     {
-        if (Schema::hasColumn('tenants', 'is_default')) {
-            return;
-        }
-
-        Schema::table('tenants', function (Blueprint $table) {
-            $table->boolean('is_default')->default(false)->after('is_landlord');
-        });
+        // No-op: is_default is created in 0001_01_01_000000_create_tenants_table.php.
     }
 
     /**
@@ -29,8 +23,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('tenants', function (Blueprint $table) {
-            $table->dropColumn('is_default');
-        });
+        // No-op: retained for migration history compatibility.
     }
 };

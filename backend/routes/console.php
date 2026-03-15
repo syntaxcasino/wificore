@@ -33,12 +33,12 @@ Schedule::command('telegraf:generate-config')
     ->withoutOverlapping()
     ->onOneServer();
 
-if (env('ROUTER_POLLING_MODE', 'telegraf') === 'laravel') {
-    Schedule::job(new \App\Jobs\ScheduleRouterPollingJob)
-        ->everyTwoMinutes()
-        ->name('fetch-router-live-data')
-        ->withoutOverlapping();
-}
+// Fetch live router data from VictoriaMetrics and broadcast to frontend
+// This runs regardless of polling mode (Telegraf or Laravel) to ensure UI updates
+Schedule::job(new \App\Jobs\ScheduleRouterPollingJob)
+    ->everyThirtySeconds()
+    ->name('fetch-router-live-data')
+    ->withoutOverlapping();
 
 // Update dashboard statistics every 30 seconds (optimized for low-end device support)
 Schedule::call(function () {
@@ -68,9 +68,9 @@ Schedule::job(new SyncRadiusAccountingJob)
     ->everyFiveMinutes()
     ->onOneServer();
 
-// Update VPN connection statuses every 2 minutes
+// Update VPN connection statuses every 30 seconds
 Schedule::job(new UpdateVpnStatusJob)
-    ->everyTwoMinutes()
+    ->everyThirtySeconds()
     ->onOneServer();
 
 // =============================================================================
@@ -125,12 +125,15 @@ Schedule::job(new ProcessScheduledPackages)
     ->withoutOverlapping()
     ->onOneServer();
 
-// Check PPPoE payment status and auto-suspend overdue users every 5 minutes
-Schedule::job(new \App\Jobs\CheckPppoePaymentStatusJob)
-    ->everyFiveMinutes()
-    ->name('check-pppoe-payment-status')
-    ->withoutOverlapping()
-    ->onOneServer();
+// Legacy PPPoE payment status job is kept behind a feature flag to avoid overlapping
+// enforcement with the authoritative paybill-driven PPPoE billing flow.
+if (config('saas.pppoe_billing.legacy_status_job_enabled')) {
+    Schedule::job(new \App\Jobs\CheckPppoePaymentStatusJob)
+        ->everyFiveMinutes()
+        ->name('check-pppoe-payment-status')
+        ->withoutOverlapping()
+        ->onOneServer();
+}
 
 // =============================================================================
 // CACHE MANAGEMENT
@@ -235,6 +238,33 @@ Schedule::job(new \App\Jobs\SendTenantExpiryWarningJob())
 Schedule::job(new \App\Jobs\CheckPppoePaymentsJob())
     ->everyFiveMinutes()
     ->name('check-pppoe-payments')
+    ->onOneServer()
+    ->withoutOverlapping();
+
+// Send PPPoE payment reminders daily at 8:15 AM
+Schedule::call(function () {
+    event(new \App\Events\PppoePaymentReminderDue(null, 'scheduler'));
+})
+    ->dailyAt('08:15')
+    ->name('send-pppoe-payment-reminders')
+    ->onOneServer()
+    ->withoutOverlapping();
+
+// Send PPPoE invoices daily at 8:30 AM
+Schedule::call(function () {
+    event(new \App\Events\PppoeInvoiceDueSoon(null, 'scheduler'));
+})
+    ->dailyAt('08:30')
+    ->name('send-pppoe-invoices')
+    ->onOneServer()
+    ->withoutOverlapping();
+
+// Generate PPPoE monthly payment reports on the first day of each month at 1:00 AM
+Schedule::call(function () {
+    event(new \App\Events\PppoeMonthEndReportRequested(null, now()->subMonthNoOverflow()->format('Y-m'), 'scheduler'));
+})
+    ->monthlyOn(1, '01:00')
+    ->name('generate-pppoe-monthly-payment-report')
     ->onOneServer()
     ->withoutOverlapping();
 

@@ -115,6 +115,7 @@ class SyncRadiusAccountingJob implements ShouldQueue
                             // Dispatch disconnect job
                             DisconnectHotspotUserJob::dispatch(
                                 $session->id,
+                                $this->tenantId,
                                 'Data limit exceeded'
                             )->onQueue('hotspot-sessions');
                         }

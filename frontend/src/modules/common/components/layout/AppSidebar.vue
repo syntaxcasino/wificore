@@ -575,6 +575,7 @@ const route = useRoute()
 
 // Active menu state for dropdowns
 const activeMenu = ref('')
+const activeMenuStorageKey = 'wificore.sidebar.activeMenu'
 
 // Badge counts
 const todosCount = ref(0)
@@ -583,11 +584,34 @@ const hotspotSessionsCount = ref(0)
 const pppoeUsersCount = ref(0)
 const pppoeSessionsCount = ref(0)
 
+const resolveMenuFromRoute = (path) => {
+  const matchers = [
+    { key: 'hotspot', match: (value) => value.includes('/hotspot') },
+    { key: 'pppoe', match: (value) => value.includes('/pppoe') },
+    { key: 'packages', match: (value) => value.includes('/packages') },
+    { key: 'network', match: (value) => value.includes('/routers') || value.includes('/monitoring') },
+    { key: 'billing', match: (value) => value.includes('/billing') || value.includes('/finance') },
+    { key: 'reports', match: (value) => value.includes('/reports') },
+    { key: 'team', match: (value) => value.includes('/users/') || value.includes('/hr/') },
+    { key: 'support', match: (value) => value.includes('/support') },
+    { key: 'settings', match: (value) => value.includes('/settings') || value.includes('/admin/system-updates') },
+    { key: 'admin', match: (value) => value.includes('/admin') }
+  ]
+
+  const match = matchers.find((entry) => entry.match(path))
+  return match ? match.key : ''
+}
+
+const persistActiveMenu = (menu) => {
+  activeMenu.value = menu
+  localStorage.setItem(activeMenuStorageKey, menu)
+}
+
 const toggleMenu = (menu) => {
   if (activeMenu.value === menu) {
-    activeMenu.value = ''
+    persistActiveMenu('')
   } else {
-    activeMenu.value = menu
+    persistActiveMenu(menu)
   }
 }
 
@@ -607,6 +631,16 @@ const fetchBadgeCounts = async () => {
 // Fetch counts on mount
 onMounted(() => {
   fetchBadgeCounts()
+  const storedMenu = localStorage.getItem(activeMenuStorageKey)
+  if (storedMenu !== null) {
+    activeMenu.value = storedMenu
+    return
+  }
+
+  const derivedMenu = resolveMenuFromRoute(route.path)
+  if (derivedMenu) {
+    persistActiveMenu(derivedMenu)
+  }
 })
 
 const dashboardRoute = computed(() => authStore.dashboardRoute || '/dashboard')

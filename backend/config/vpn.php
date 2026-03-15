@@ -86,7 +86,8 @@ return [
 
     'monitoring' => [
         'check_interval' => 60, // Check connection status every 60 seconds
-        'inactive_threshold' => 180, // Mark as inactive after 3 minutes without handshake
+        'inactive_threshold' => 120, // Mark as inactive after 2 minutes without handshake
+        'latency_threshold_ms' => 120, // Online if VPN latency is within 120ms
     ],
 
 ];

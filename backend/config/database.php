@@ -85,8 +85,22 @@ return [
         'pgsql' => [
             'driver' => 'pgsql',
             'url' => env('DB_URL'),
-            'host' => env('DB_HOST', '127.0.0.1'),
-            'port' => env('DB_PORT', '5432'),
+            'host' => env('DB_HOST', '172.70.0.3'),
+            'read' => [
+                'host' => array_filter(
+                    explode(',', env('DB_READ_HOST', env('DB_HOST', '172.70.0.17'))),
+                    fn ($value) => $value !== ''
+                ),
+                'port' => env('DB_READ_PORT', env('DB_PORT', '6432')),
+            ],
+            'write' => [
+                'host' => array_filter(
+                    explode(',', env('DB_WRITE_HOST', env('DB_HOST', '172.70.0.3'))),
+                    fn ($value) => $value !== ''
+                ),
+                'port' => env('DB_WRITE_PORT', env('DB_PORT', '6432')),
+            ],
+            'port' => env('DB_PORT', '6432'),
             'database' => env('DB_DATABASE', 'wifi_hotspot'),
             'username' => env('DB_USERNAME', 'admin'),
             'password' => env('DB_PASSWORD', 'secret'),

@@ -100,7 +100,7 @@
     </div>
 
     <!-- Main Content Area -->
-    <div class="flex-1 min-h-0 overflow-y-auto md:overflow-hidden">
+    <div class="flex-1 min-h-0 overflow-hidden flex flex-col">
       <!-- Overlays (keep mounted so provisioning flow doesn't reset during list refresh/loading) -->
       <DetailsOverlay 
         :show-details-overlay="showDetailsOverlay" 
@@ -169,11 +169,11 @@
       </button>
       </div>
     
-      <div v-else class="flex flex-col min-h-0">
+      <div v-else class="flex flex-col min-h-0 flex-1">
       <!-- Routers Table Container -->
-      <div v-if="filteredRouters.length" class="px-4 md:px-6 pt-4 md:pt-6 pb-2 flex flex-col min-h-0">
+      <div v-if="filteredRouters.length" class="px-4 md:px-6 pt-4 md:pt-6 pb-2 flex flex-col min-h-0 flex-1 overflow-hidden">
         <!-- Mobile Cards -->
-        <div class="md:hidden space-y-3">
+        <div class="md:hidden space-y-3 overflow-y-auto flex-1 min-h-0">
           <div
             v-for="router in paginatedRouters"
             :key="router.id"
@@ -208,17 +208,6 @@
                   <div class="text-xs font-medium text-slate-700 w-10 text-right">{{ router.live_data.cpu_load }}%</div>
                 </div>
                 <div v-else class="mt-1 text-xs text-slate-400">—</div>
-              </div>
-
-              <div class="bg-slate-50 border border-slate-200 rounded-md p-2">
-                <div class="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Users</div>
-                <div class="mt-1 flex items-center gap-2">
-                  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-                  </svg>
-                  <div v-if="getConnectedUsers(router) !== null" class="text-xs font-medium text-slate-700">{{ getConnectedUsers(router) }}</div>
-                  <div v-else class="text-xs text-slate-400">—</div>
-                </div>
               </div>
 
               <div class="bg-slate-50 border border-slate-200 rounded-md p-2">
@@ -271,7 +260,7 @@
         </div>
 
         <!-- Desktop Table -->
-        <div class="hidden md:flex bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden flex-col min-h-0">
+        <div class="hidden md:flex bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden flex-col min-h-0 flex-1">
           <div class="overflow-x-auto overflow-y-auto flex-1 min-h-0">
             <table class="w-full">
               <!-- Table Header -->
@@ -288,7 +277,6 @@
                   <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider hidden xl:table-cell">CPU</th>
                   <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider hidden xl:table-cell">Memory</th>
                   <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider hidden xl:table-cell">Disk</th>
-                  <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider hidden xl:table-cell">Users</th>
                   <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider hidden lg:table-cell">Model</th>
                   <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider hidden lg:table-cell">Last Seen</th>
                   <th class="px-6 py-3 text-right text-xs font-semibold text-slate-700 uppercase tracking-wider">Actions</th>
@@ -335,7 +323,7 @@
                       {{ router.status || 'Unknown' }}
                     </span>
                   </td>
-                  
+
                   <!-- CPU Usage -->
                   <td class="px-6 py-4 hidden xl:table-cell">
                     <div v-if="router.live_data?.cpu_load !== undefined && router.live_data?.cpu_load !== null" class="flex items-center gap-1.5">
@@ -379,17 +367,6 @@
                       <span class="text-xs font-medium text-slate-700 w-8 text-right">{{ getDiskUsage(router) }}%</span>
                     </div>
                     <span v-else class="text-xs text-slate-400">—</span>
-                  </td>
-                  
-                  <!-- Connected Users -->
-                  <td class="px-6 py-4 hidden xl:table-cell">
-                    <div class="flex items-center gap-1 text-xs">
-                      <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-                      </svg>
-                      <span v-if="getConnectedUsers(router) !== null" class="font-medium text-slate-700">{{ getConnectedUsers(router) }}</span>
-                      <span v-else class="text-slate-400">—</span>
-                    </div>
                   </td>
                   
                   <!-- Model -->
@@ -443,7 +420,7 @@
           </div>
         </div>
 
-        <div class="mt-3 bg-white rounded-lg border border-slate-200 shadow-sm px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div class="mt-auto bg-white rounded-lg border border-slate-200 shadow-sm px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div class="text-sm text-slate-600">
             Showing {{ paginationInfo.start }} to {{ paginationInfo.end }} of {{ paginationInfo.total }} routers
           </div>
@@ -660,7 +637,6 @@ export default {
       getDiskUsage,
       getRouterModel,
       formatModel,
-      getConnectedUsers,
       formatTimeAgo,
     } = useRouterUtils()
     
@@ -1001,6 +977,21 @@ export default {
                     routers.value[idx].status = updatedRouter.status;
                     routers.value[idx].model = updatedRouter.model || routers.value[idx].model;
                     routers.value[idx].os_version = updatedRouter.os_version || routers.value[idx].os_version;
+                    if (Object.prototype.hasOwnProperty.call(updatedRouter, 'vpn_status')) {
+                      routers.value[idx].vpn_status = updatedRouter.vpn_status;
+                    }
+                    if (Object.prototype.hasOwnProperty.call(updatedRouter, 'vpn_last_handshake')) {
+                      routers.value[idx].vpn_last_handshake = updatedRouter.vpn_last_handshake;
+                    }
+                    if (Object.prototype.hasOwnProperty.call(updatedRouter, 'vpn_last_handshake_utc')) {
+                      routers.value[idx].vpn_last_handshake_utc = updatedRouter.vpn_last_handshake_utc;
+                    }
+                    if (Object.prototype.hasOwnProperty.call(updatedRouter, 'vpn_last_handshake_eat')) {
+                      routers.value[idx].vpn_last_handshake_eat = updatedRouter.vpn_last_handshake_eat;
+                    }
+                    if (Object.prototype.hasOwnProperty.call(updatedRouter, 'vpn_last_handshake_timezones')) {
+                      routers.value[idx].vpn_last_handshake_timezones = updatedRouter.vpn_last_handshake_timezones;
+                    }
                     routers.value[idx].last_updated = new Date().toISOString();
                   }
                 });
@@ -1086,7 +1077,6 @@ export default {
       getDiskColorClass,
       getMemoryUsage,
       getDiskUsage,
-      getConnectedUsers,
       getRouterModel,
       formatModel,
       formatTimeAgo,

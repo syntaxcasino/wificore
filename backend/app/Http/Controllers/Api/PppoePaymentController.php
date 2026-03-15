@@ -155,29 +155,8 @@ class PppoePaymentController extends Controller
 
     private function activateUserAfterPayment(PppoeUser $user, PppoePayment $payment): void
     {
-        // Update user payment status
-        $user->activateAfterPayment();
-        $user->last_payment_date = $payment->payment_date;
-        $user->next_payment_due = $payment->period_end;
-        $user->amount_paid = $payment->amount;
-        $user->payment_method = $payment->payment_method;
-        $user->payment_reference = $payment->payment_reference;
-        $user->save();
-
-        // Remove Auth-Type Reject from RADIUS if it exists
-        DB::table('radcheck')
-            ->where('username', $user->username)
-            ->where('attribute', 'Auth-Type')
-            ->where('value', 'Reject')
-            ->delete();
-
-        Log::info('User activated after payment', [
-            'user_id' => $user->id,
-            'username' => $user->username,
-            'account_number' => $user->account_number,
-            'payment_id' => $payment->id,
-            'amount' => $payment->amount,
-        ]);
+        app(PppoeBillingLifecycleService::class)
+            ->handleSuccessfulPayment($user, $payment, request()->user()->tenant_id, 'pppoe_payment_controller');
     }
 
     public function getPendingPayments(Request $request)

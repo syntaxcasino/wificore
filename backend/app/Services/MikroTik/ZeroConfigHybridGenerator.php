@@ -318,7 +318,7 @@ class ZeroConfigHybridGenerator
             ":do { /ip pool add name=\"{$poolName}\" ranges={$pool->range_start}-{$pool->range_end} comment=\"Hybrid PPPoE Pool\"; } on-error={ /log error \"Hybrid: PPPoE pool add failed\"; :error \"Hybrid: PPPoE pool add failed\" }",
             "",
             "# PPP Profile - interface-list assigns dynamic PPPoE interfaces to PPPOE-ACTIVE on auth",
-            ":do { /ppp profile remove [find name=\"{$profile}\"]; /ppp profile add name=\"{$profile}\" use-radius=yes local-address={$gateway} remote-address=\"{$poolName}\" dns-server=\"{$dns}\" interface-list={$params['pppoe_active_list']}; } on-error={ /log error \"Hybrid: PPP profile create failed\"; :error \"Hybrid: PPP profile create failed\" }",
+            ":do { /ppp profile remove [find name=\"{$profile}\"]; /ppp profile add name=\"{$profile}\" local-address={$gateway} remote-address=\"{$poolName}\" dns-server=\"{$dns}\" interface-list={$params['pppoe_active_list']}; } on-error={ /log error \"Hybrid: PPP profile create failed\"; :error \"Hybrid: PPP profile create failed\" }",
             ":do { /ppp profile set [find name=\"{$profile}\"] interface-list={$params['pppoe_active_list']} } on-error={}",
             "",
             "# PPPoE Server",
@@ -333,13 +333,18 @@ class ZeroConfigHybridGenerator
         $managementSubnet = $params['management_subnet'] ?? '10.0.0.0/8';
         $managementPorts = '22,8291,8728,8729';
 
+        $radiusServer = $params['radius_server'] ?? '10.8.0.1';
+
         return [
             "# Management Access - VPN/Management Subnet Only",
             ":do { /ip firewall filter remove [find comment~\"Hybrid-{$routerId}-MGMT\"]; } on-error={}",
+            ":do { /ip firewall filter remove [find comment=\"Hybrid-{$routerId}-SNMP-ALLOW\"]; } on-error={}",
             // Insert in reverse order with place-before=0 for correct ordering at the top
-            ":do { /ip firewall filter add chain=input protocol=tcp dst-port={$managementPorts} action=drop place-before=0 comment=\"Hybrid-{$routerId}-MGMT-DROP\" } on-error={}",
-            ":do { /ip firewall filter add chain=input protocol=tcp dst-port={$managementPorts} src-address={$managementSubnet} action=accept place-before=0 comment=\"Hybrid-{$routerId}-MGMT-ALLOW\" } on-error={}",
-            ":do { /ip firewall filter add chain=input connection-state=established,related action=accept place-before=0 comment=\"Hybrid-{$routerId}-MGMT-EST\" } on-error={}",
+            // Final order: MGMT-EST → MGMT-ALLOW → SNMP-ALLOW → MGMT-DROP
+            "/ip firewall filter add chain=input protocol=tcp dst-port={$managementPorts} action=drop place-before=0 comment=\"Hybrid-{$routerId}-MGMT-DROP\"",
+            "/ip firewall filter add chain=input protocol=udp dst-port=161 src-address={$radiusServer} action=accept place-before=0 comment=\"Hybrid-{$routerId}-SNMP-ALLOW\"",
+            "/ip firewall filter add chain=input protocol=tcp dst-port={$managementPorts} src-address={$managementSubnet} action=accept place-before=0 comment=\"Hybrid-{$routerId}-MGMT-ALLOW\"",
+            "/ip firewall filter add chain=input connection-state=established,related action=accept place-before=0 comment=\"Hybrid-{$routerId}-MGMT-EST\"",
             "",
         ];
     }
@@ -479,7 +484,7 @@ class ZeroConfigHybridGenerator
             ":if ([:len [/ip pool find name=\"{$poolName}\"]] = 0) do={ /log error \"Hybrid: PPPoE pool missing\"; :error \"Hybrid: PPPoE pool missing\" }",
             "",
             "# PPP Profile - interface-list assigns dynamic PPPoE interfaces to PPPOE-ACTIVE on auth",
-            ":do { /ppp profile remove [find name=\"{$profile}\"]; /ppp profile add name=\"{$profile}\" use-radius=yes local-address={$gateway} remote-address=\"{$poolName}\" dns-server=\"{$dns}\" interface-list={$pppoeActiveList}; } on-error={ /log error \"Hybrid: PPP profile create failed\"; :error \"Hybrid: PPP profile create failed\" }",
+            ":do { /ppp profile remove [find name=\"{$profile}\"]; /ppp profile add name=\"{$profile}\" local-address={$gateway} remote-address=\"{$poolName}\" dns-server=\"{$dns}\" interface-list={$pppoeActiveList}; } on-error={ /log error \"Hybrid: PPP profile create failed\"; :error \"Hybrid: PPP profile create failed\" }",
             ":if ([:len [/ppp profile find name=\"{$profile}\"]] = 0) do={ /log error \"Hybrid: PPP profile missing\"; :error \"Hybrid: PPP profile missing\" }",
             "# Ensure existing profile gets interface-list updated",
             ":do { /ppp profile set [find name=\"{$profile}\"] interface-list={$pppoeActiveList} } on-error={}",
@@ -506,12 +511,12 @@ class ZeroConfigHybridGenerator
             "# Hotspot RADIUS",
             ":do { /radius remove [find service=hotspot comment~\"Hybrid.*{$routerId}\"]; } on-error={}",
             // Single-line hotspot RADIUS add for SSH compatibility
-            ":do { /radius add service=hotspot address={$radiusServer} secret={$radiusSecret} authentication-port=1812 accounting-port=1813 timeout=3s comment=\"Hybrid Hotspot RADIUS (Router {$routerId})\"; } on-error={ /log error \"Hybrid: Hotspot RADIUS add failed\"; :error \"Hybrid: Hotspot RADIUS add failed\" }",
+            ":do { /radius add service=hotspot address={$radiusServer} secret=\"{$radiusSecret}\" authentication-port=1812 accounting-port=1813 timeout=3s comment=\"Hybrid Hotspot RADIUS (Router {$routerId})\"; } on-error={ /log error \"Hybrid: Hotspot RADIUS add failed\"; :error \"Hybrid: Hotspot RADIUS add failed\" }",
             "",
             "# PPPoE RADIUS",
             ":do { /radius remove [find service=ppp comment~\"Hybrid.*{$routerId}\"]; } on-error={}",
             // Single-line PPPoE RADIUS add for SSH compatibility
-            ":do { /radius add service=ppp address={$radiusServer} secret={$radiusSecret} authentication-port=1812 accounting-port=1813 timeout=3s comment=\"Hybrid PPPoE RADIUS (Router {$routerId})\"; } on-error={ /log error \"Hybrid: PPPoE RADIUS add failed\"; :error \"Hybrid: PPPoE RADIUS add failed\" }",
+            ":do { /radius add service=ppp address={$radiusServer} secret=\"{$radiusSecret}\" authentication-port=1812 accounting-port=1813 timeout=3s comment=\"Hybrid PPPoE RADIUS (Router {$routerId})\"; } on-error={ /log error \"Hybrid: PPPoE RADIUS add failed\"; :error \"Hybrid: PPPoE RADIUS add failed\" }",
             "/ppp aaa set use-radius=yes accounting=yes interim-update=5m",
             "",
             "# Clear local credentials (RADIUS-ONLY)",
@@ -545,9 +550,12 @@ class ZeroConfigHybridGenerator
             // 3. Drop invalid
             "/ip firewall filter add chain=forward in-interface-list={$pppoeActiveList} connection-state=invalid action=drop place-before=0 comment=\"Hybrid-{$routerId}-FW-PP-INV\"",
             "/ip firewall filter add chain=forward in-interface=\"{$bridge}\" connection-state=invalid action=drop place-before=0 comment=\"Hybrid-{$routerId}-FW-HS-INV\"",
-            // 2. Accept established/related
+            // 2. Accept established/related from clients
             "/ip firewall filter add chain=forward in-interface-list={$pppoeActiveList} connection-state=established,related action=accept place-before=0 comment=\"Hybrid-{$routerId}-FW-PP-EST\"",
             "/ip firewall filter add chain=forward in-interface=\"{$bridge}\" connection-state=established,related action=accept place-before=0 comment=\"Hybrid-{$routerId}-FW-HS-EST\"",
+            // 1. Accept established/related return traffic FROM WAN
+            "/ip firewall filter add chain=forward in-interface-list=WAN out-interface=\"{$bridge}\" connection-state=established,related action=accept place-before=0 comment=\"Hybrid-{$routerId}-FW-HS-WAN-EST\"",
+            "/ip firewall filter add chain=forward in-interface-list=WAN out-interface-list={$pppoeActiveList} connection-state=established,related action=accept place-before=0 comment=\"Hybrid-{$routerId}-FW-PP-WAN-EST\"",
             "",
         ];
     }
@@ -626,7 +634,7 @@ class ZeroConfigHybridGenerator
             // 6. DROP all other traffic from Hotspot VLAN (unauthenticated devices)
             "/ip firewall filter add chain=forward in-interface={$hotspotInterface} action=drop place-before=0 comment=\"Hybrid-{$routerId}-FW-HS-DROP\"",
             // 5. Allow authenticated Hotspot subnet traffic to WAN (hotspot system manages auth)
-            "/ip firewall filter add chain=forward src-address={$hotspotCidr} in-interface={$hotspotInterface} action=accept place-before=0 comment=\"Hybrid-{$routerId}-FW-HS-INET\"",
+            "/ip firewall filter add chain=forward in-interface={$hotspotInterface} hotspot=auth out-interface-list=WAN action=accept place-before=0 comment=\"Hybrid-{$routerId}-FW-HS-INET\"",
             // 4. Allow ONLY authenticated PPPoE sessions to WAN (interface-list, NOT src-address)
             "/ip firewall filter add chain=forward in-interface-list={$pppoeActiveList} out-interface-list=WAN action=accept place-before=0 comment=\"Hybrid-{$routerId}-FW-PP-INET\"",
             // 3. Drop invalid — scoped per service
@@ -635,7 +643,10 @@ class ZeroConfigHybridGenerator
             // 2. Accept established/related — scoped per service
             "/ip firewall filter add chain=forward in-interface-list={$pppoeActiveList} connection-state=established,related action=accept place-before=0 comment=\"Hybrid-{$routerId}-FW-PP-EST\"",
             "/ip firewall filter add chain=forward in-interface={$hotspotInterface} connection-state=established,related action=accept place-before=0 comment=\"Hybrid-{$routerId}-FW-HS-EST\"",
-            // 1. Block cross-VLAN traffic (isolation between Hotspot and PPPoE)
+            // 1. Accept established/related return traffic FROM WAN
+            "/ip firewall filter add chain=forward in-interface-list=WAN out-interface={$hotspotInterface} connection-state=established,related action=accept place-before=0 comment=\"Hybrid-{$routerId}-FW-HS-WAN-EST\"",
+            "/ip firewall filter add chain=forward in-interface-list=WAN out-interface-list={$pppoeActiveList} connection-state=established,related action=accept place-before=0 comment=\"Hybrid-{$routerId}-FW-PP-WAN-EST\"",
+            // 0. Block cross-VLAN traffic (isolation between Hotspot and PPPoE)
             "/ip firewall filter add chain=forward in-interface={$pppoeInterface} out-interface={$hotspotInterface} action=drop place-before=0 comment=\"Hybrid-{$routerId}-FW-XVLAN-PP\"",
             "/ip firewall filter add chain=forward in-interface={$hotspotInterface} out-interface={$pppoeInterface} action=drop place-before=0 comment=\"Hybrid-{$routerId}-FW-XVLAN-HS\"",
             "",

@@ -185,7 +185,7 @@ services:
       - TELEGRAF_SHARD_COUNT=${TELEGRAF_SHARD_COUNT:-1}
       - TELEGRAF_FAST_INTERVAL=${TELEGRAF_FAST_INTERVAL:-3s}
       - TELEGRAF_SLOW_INTERVAL=${TELEGRAF_SLOW_INTERVAL:-30s}
-      - TELEGRAF_SNMP_COMMUNITY=${TELEGRAF_SNMP_COMMUNITY:-public}
+      - TELEGRAF_SNMP_COMMUNITY=${TELEGRAF_SNMP_COMMUNITY:-traidnet-monitor}
       - VICTORIA_METRICS_WRITE_URL=${VICTORIA_METRICS_WRITE_URL:-http://wificore-victoriametrics:8428}
     depends_on:
       wificore-postgres:
@@ -482,6 +482,12 @@ services:
       - TZ=Africa/Nairobi
     command:
       - postgres
+      - -c
+      - shared_preload_libraries=pg_stat_statements
+      - -c
+      - pg_stat_statements.max=10000
+      - -c
+      - pg_stat_statements.track=all
       - -c
       - hot_standby=on
       - -c

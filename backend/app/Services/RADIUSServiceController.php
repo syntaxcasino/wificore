@@ -96,7 +96,7 @@ class RADIUSServiceController extends TenantAwareService
     public function reconnectUser(User $user): bool
     {
         try {
-            // Update radcheck to accept authentication
+            // Remove forced Auth-Type so FreeRADIUS returns to normal credential checks
             if (!$this->updateRADIUSAuth($user->username, 'Accept')) {
                 return false;
             }
@@ -132,24 +132,22 @@ class RADIUSServiceController extends TenantAwareService
     private function updateRADIUSAuth(string $username, string $authType): bool
     {
         try {
-            $result = $this->executeInUserSchema($username, function () use ($username, $authType) {
-                $exists = DB::table('radcheck')
-                    ->where('username', $username)
-                    ->where('attribute', 'Auth-Type')
-                    ->exists();
+            if (!in_array($authType, ['Accept', 'Reject'], true)) {
+                throw new \InvalidArgumentException('Unsupported auth type value');
+            }
 
-                if ($exists) {
+            $result = $this->executeInUserSchema($username, function () use ($username, $authType) {
+                if ($authType === 'Reject') {
+                    DB::table('radcheck')->updateOrInsert(
+                        ['username' => $username, 'attribute' => 'Auth-Type'],
+                        ['op' => ':=', 'value' => 'Reject']
+                    );
+                } else {
+                    // Re-enable normal RADIUS credential checks by removing forced Auth-Type rows.
                     DB::table('radcheck')
                         ->where('username', $username)
                         ->where('attribute', 'Auth-Type')
-                        ->update(['value' => $authType]);
-                } else {
-                    DB::table('radcheck')->insert([
-                        'username' => $username,
-                        'attribute' => 'Auth-Type',
-                        'op' => ':=',
-                        'value' => $authType,
-                    ]);
+                        ->delete();
                 }
 
                 return true;
@@ -247,16 +245,24 @@ class RADIUSServiceController extends TenantAwareService
 
             // Disconnect via SSH - remove active PPPoE session
             $ssh = new \App\Services\MikroTik\SshExecutor($router, 15);
-            $ssh->connect();
-            
-            // Try PPPoE active session removal
-            $escapedUsername = addslashes($username);
-            $ssh->exec("/ppp active remove [find name=\"{$escapedUsername}\"]");
-            
-            // Try Hotspot active session removal
-            $ssh->exec("/ip hotspot active remove [find user=\"{$escapedUsername}\"]");
-            
-            $ssh->disconnect();
+
+            if (!$ssh->connect()) {
+                Log::warning('CoA disconnect: SSH connection failed', [
+                    'username' => $username,
+                    'router_id' => $router->id,
+                    'nas_ip' => $nasIpAddress,
+                ]);
+                return false;
+            }
+
+            try {
+                $escapedUsername = addslashes($username);
+                // Suppress RouterOS errors so command execution remains idempotent.
+                $ssh->exec(sprintf(':do { /ppp active remove [find name="%s"] } on-error={}', $escapedUsername));
+                $ssh->exec(sprintf(':do { /ip hotspot active remove [find user="%s"] } on-error={}', $escapedUsername));
+            } finally {
+                $ssh->disconnect();
+            }
 
             Log::info('CoA disconnect: Session terminated via SSH', [
                 'username' => $username,

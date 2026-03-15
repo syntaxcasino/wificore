@@ -31,10 +31,6 @@ return new class extends Migration
             // Package assignment
             'package_router',
             
-            // Payment tables
-            'mpesa_transaction_maps',
-            'tenant_payments',
-            
             // Hotspot tables
             'user_sessions',
             'user_subscriptions',

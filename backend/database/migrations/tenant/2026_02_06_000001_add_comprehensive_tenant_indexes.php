@@ -36,6 +36,13 @@ return new class extends Migration
 
         try {
             DB::statement("SET LOCAL statement_timeout = '300s'");
+
+            // Enable pg_trgm for trigram indexes (safe if already installed)
+            try {
+                DB::statement('CREATE EXTENSION IF NOT EXISTS pg_trgm');
+            } catch (\Exception $e) {
+                // Extension may already exist or require elevated privileges
+            }
         
         // =========================================================================
         // ROUTERS TABLE - Router status and lookup queries
@@ -52,6 +59,36 @@ return new class extends Migration
             $this->safeCreateIndex($schema, 'routers', 'routers_created_idx', 
                 ['created_at']);
 
+            $this->safeCreateIndex($schema, 'routers', 'routers_name_idx',
+                ['name']);
+
+            $this->safeCreateIndex($schema, 'routers', 'routers_status_created_idx',
+                ['status', 'created_at']);
+
+            $this->safeCreateIndex($schema, 'routers', 'routers_device_type_idx',
+                ['device_type']);
+
+            $this->safeCreateIndex($schema, 'routers', 'routers_snmp_enabled_idx',
+                ['snmp_enabled']);
+
+            $this->safeCreateIndex($schema, 'routers', 'routers_vpn_ip_idx',
+                ['vpn_ip']);
+
+            $this->safeCreateIndex($schema, 'routers', 'routers_vpn_status_idx',
+                ['vpn_status']);
+
+            $this->safeCreateIndex($schema, 'routers', 'routers_provisioning_stage_idx',
+                ['provisioning_stage']);
+
+            $this->safeCreateIndex($schema, 'routers', 'routers_last_checked_idx',
+                ['last_checked']);
+
+            $this->safeCreateIndex($schema, 'routers', 'routers_config_token_idx',
+                ['config_token']);
+
+            $this->safeCreateIndex($schema, 'routers', 'routers_router_type_idx',
+                ['router_type']);
+
         // =========================================================================
         // ROUTER_SERVICES TABLE - Service type queries
         // =========================================================================
@@ -60,6 +97,15 @@ return new class extends Migration
             
             $this->safeCreateIndex($schema, 'router_services', 'router_services_status_idx', 
                 ['status']);
+
+            $this->safeCreateIndex($schema, 'router_services', 'router_services_created_at_idx',
+                ['created_at']);
+
+            $this->safeCreateIndex($schema, 'router_services', 'router_services_router_status_idx',
+                ['router_id', 'status']);
+
+            $this->safeCreateIndex($schema, 'router_services', 'router_services_last_checked_at_idx',
+                ['last_checked_at']);
 
         // =========================================================================
         // PACKAGES TABLE - Package availability queries
@@ -75,6 +121,9 @@ return new class extends Migration
         // =========================================================================
             $this->safeCreateIndex($schema, 'pppoe_users', 'pppoe_users_status_idx', 
                 ['status']);
+
+            $this->safeCreateIndex($schema, 'pppoe_users', 'pppoe_users_status_router_id_idx',
+                ['status', 'router_id']);
             
             $this->safeCreateIndex($schema, 'pppoe_users', 'pppoe_users_username_idx', 
                 ['username']);
@@ -87,6 +136,19 @@ return new class extends Migration
             
             $this->safeCreateIndex($schema, 'pppoe_users', 'pppoe_users_expiry_idx', 
                 ['expires_at']);
+
+            $this->safeCreateIndex($schema, 'pppoe_users', 'pppoe_users_payment_status_expires_idx',
+                ['payment_status', 'expires_at']);
+
+            $this->safeCreateIndex($schema, 'pppoe_users', 'pppoe_users_created_at_idx',
+                ['created_at']);
+
+            $this->safeCreatePartialIndex($schema, 'pppoe_users', 'pppoe_users_deleted_at_idx',
+                ['deleted_at'], 'deleted_at IS NULL');
+
+            if ($this->tableExists($schema, 'pppoe_users') && $this->columnExists($schema, 'pppoe_users', 'username')) {
+                DB::statement("DO $$\nBEGIN\n    IF NOT EXISTS (\n        SELECT 1 FROM pg_class c\n        JOIN pg_namespace n ON n.oid = c.relnamespace\n        WHERE c.relname = 'pppoe_users_username_trgm_idx'\n          AND n.nspname = '{$schema}'\n    ) THEN\n        CREATE INDEX \"pppoe_users_username_trgm_idx\"\n            ON \"{$schema}\".\"pppoe_users\"\n            USING gin (username gin_trgm_ops);\n    END IF;\nEXCEPTION WHEN duplicate_table THEN\n    NULL;\nEND\n$$;");
+            }
             
             // Partial index for active users
             $this->safeCreatePartialIndex($schema, 'pppoe_users', 'pppoe_users_active_idx',
@@ -97,6 +159,12 @@ return new class extends Migration
         // =========================================================================
             $this->safeCreateIndex($schema, 'pppoe_payments', 'pppoe_payments_user_status_idx', 
                 ['pppoe_user_id', 'status']);
+
+            $this->safeCreateIndex($schema, 'pppoe_payments', 'pppoe_payments_pppoe_user_id_idx',
+                ['pppoe_user_id']);
+
+            $this->safeCreateIndex($schema, 'pppoe_payments', 'pppoe_payments_status_idx',
+                ['status']);
             
             $this->safeCreateIndex($schema, 'pppoe_payments', 'pppoe_payments_date_idx', 
                 ['payment_date']);
@@ -106,6 +174,30 @@ return new class extends Migration
             
             $this->safeCreateIndex($schema, 'pppoe_payments', 'pppoe_payments_account_idx', 
                 ['account_number']);
+
+            $this->safeCreateIndex($schema, 'pppoe_payments', 'pppoe_payments_created_at_idx',
+                ['created_at']);
+
+        // =========================================================================
+        // VOUCHERS TABLE
+        // =========================================================================
+            $this->safeCreateIndex($schema, 'vouchers', 'vouchers_router_id_idx',
+                ['router_id']);
+
+            $this->safeCreateIndex($schema, 'vouchers', 'vouchers_used_at_idx',
+                ['used_at']);
+
+            $this->safeCreateIndex($schema, 'vouchers', 'vouchers_expires_at_idx',
+                ['expires_at']);
+
+            $this->safeCreateIndex($schema, 'vouchers', 'vouchers_created_at_idx',
+                ['created_at']);
+
+            $this->safeCreateIndex($schema, 'vouchers', 'vouchers_status_package_idx',
+                ['status', 'package_id']);
+
+            $this->safeCreatePartialIndex($schema, 'vouchers', 'vouchers_deleted_at_idx',
+                ['deleted_at'], 'deleted_at IS NULL');
 
         // =========================================================================
         // HOTSPOT_USERS TABLE - Hotspot user queries
@@ -125,6 +217,21 @@ return new class extends Migration
             $this->safeCreateIndex($schema, 'hotspot_users', 'hotspot_users_package_idx', 
                 ['package_id']);
 
+            $this->safeCreateIndex($schema, 'hotspot_users', 'hotspot_users_is_active_idx',
+                ['is_active']);
+
+            $this->safeCreateIndex($schema, 'hotspot_users', 'hotspot_users_has_active_subscription_idx',
+                ['has_active_subscription']);
+
+            $this->safeCreateIndex($schema, 'hotspot_users', 'hotspot_users_last_login_at_idx',
+                ['last_login_at']);
+
+            $this->safeCreateIndex($schema, 'hotspot_users', 'hotspot_users_created_at_idx',
+                ['created_at']);
+
+            $this->safeCreatePartialIndex($schema, 'hotspot_users', 'hotspot_users_deleted_at_idx',
+                ['deleted_at'], 'deleted_at IS NULL');
+
         // =========================================================================
         // HOTSPOT_SESSIONS TABLE - Session tracking
         // Note: hotspot_sessions uses is_active (boolean), NOT status (string)
@@ -137,6 +244,18 @@ return new class extends Migration
             
             $this->safeCreateIndex($schema, 'hotspot_sessions', 'hotspot_sessions_session_start_idx', 
                 ['session_start']);
+
+            $this->safeCreateIndex($schema, 'hotspot_sessions', 'hotspot_sessions_mac_address_idx',
+                ['mac_address']);
+
+            $this->safeCreateIndex($schema, 'hotspot_sessions', 'hotspot_sessions_session_end_idx',
+                ['session_end']);
+
+            $this->safeCreateIndex($schema, 'hotspot_sessions', 'hotspot_sessions_last_activity_idx',
+                ['last_activity']);
+
+            $this->safeCreateIndex($schema, 'hotspot_sessions', 'hotspot_sessions_active_user_idx',
+                ['is_active', 'hotspot_user_id']);
             
             // Partial index for active sessions (is_active = true)
             $this->safeCreatePartialIndex($schema, 'hotspot_sessions', 'hotspot_sessions_active_idx',
@@ -154,6 +273,18 @@ return new class extends Migration
             $this->safeCreateIndex($schema, 'user_subscriptions', 'user_subs_package_idx', 
                 ['package_id']);
 
+            $this->safeCreateIndex($schema, 'user_subscriptions', 'user_subscriptions_mac_address_idx',
+                ['mac_address']);
+
+            $this->safeCreateIndex($schema, 'user_subscriptions', 'user_subscriptions_start_time_idx',
+                ['start_time']);
+
+            $this->safeCreateIndex($schema, 'user_subscriptions', 'user_subscriptions_created_at_idx',
+                ['created_at']);
+
+            $this->safeCreatePartialIndex($schema, 'user_subscriptions', 'user_subscriptions_active_idx',
+                ['status', 'end_time'], "status = 'active'");
+
         // =========================================================================
         // PAYMENTS TABLE - Payment queries
         // =========================================================================
@@ -166,6 +297,18 @@ return new class extends Migration
             $this->safeCreateIndex($schema, 'payments', 'payments_transaction_idx', 
                 ['transaction_id']);
 
+            $this->safeCreateIndex($schema, 'payments', 'payments_router_id_idx',
+                ['router_id']);
+
+            $this->safeCreateIndex($schema, 'payments', 'payments_mac_address_idx',
+                ['mac_address']);
+
+            $this->safeCreateIndex($schema, 'payments', 'payments_package_id_idx',
+                ['package_id']);
+
+            $this->safeCreateIndex($schema, 'payments', 'payments_status_created_idx',
+                ['status', 'created_at']);
+
         // =========================================================================
         // RADIUS_SESSIONS TABLE - RADIUS accounting
         // =========================================================================
@@ -177,6 +320,21 @@ return new class extends Migration
             
             $this->safeCreateIndex($schema, 'radius_sessions', 'radius_sessions_start_idx', 
                 ['session_start']);
+
+            $this->safeCreateIndex($schema, 'radius_sessions', 'radius_sessions_created_at_idx',
+                ['created_at']);
+
+            $this->safeCreateIndex($schema, 'radius_sessions', 'radius_sessions_mac_address_idx',
+                ['mac_address']);
+
+            $this->safeCreateIndex($schema, 'radius_sessions', 'radius_sessions_expected_end_idx',
+                ['expected_end']);
+
+            $this->safeCreateIndex($schema, 'radius_sessions', 'radius_sessions_session_end_idx',
+                ['session_end']);
+
+            $this->safeCreatePartialIndex($schema, 'radius_sessions', 'radius_sessions_active_user_idx',
+                ['hotspot_user_id'], "status = 'active'");
             
             // Partial index for active sessions
             $this->safeCreatePartialIndex($schema, 'radius_sessions', 'radius_sessions_active_idx',
@@ -189,11 +347,27 @@ return new class extends Migration
                 ['username', 'attribute']);
             $this->safeCreateIndex($schema, 'radreply', 'radreply_username_attr_idx', 
                 ['username', 'attribute']);
+            $this->safeCreateIndex($schema, 'radcheck', 'radcheck_username_idx',
+                ['username']);
+            $this->safeCreateIndex($schema, 'radreply', 'radreply_username_idx',
+                ['username']);
             $this->safeCreateIndex($schema, 'radacct', 'radacct_user_start_idx', 
                 ['username', 'acctstarttime']);
             
             $this->safeCreateIndex($schema, 'radacct', 'radacct_session_idx', 
                 ['acctsessionid']);
+
+            $this->safeCreateIndex($schema, 'radacct', 'radacct_callingstationid_idx',
+                ['callingstationid']);
+
+            $this->safeCreateIndex($schema, 'radacct', 'radacct_framedipaddress_idx',
+                ['framedipaddress']);
+
+            $this->safeCreateIndex($schema, 'radacct', 'radacct_acctterminatecause_idx',
+                ['acctterminatecause']);
+
+            $this->safeCreatePartialIndex($schema, 'radacct', 'radacct_active_sessions_idx',
+                ['acctstoptime'], 'acctstoptime IS NULL');
             
             // Partial index for active sessions
             $this->safeCreatePartialIndex($schema, 'radacct', 'radacct_active_idx',
@@ -209,6 +383,42 @@ return new class extends Migration
                 ['status']);
             
             $this->safeCreateIndex($schema, 'access_points', 'access_points_mac_idx', 
+                ['mac_address']);
+
+            $this->safeCreateIndex($schema, 'access_points', 'access_points_created_at_idx',
+                ['created_at']);
+
+            $this->safeCreateIndex($schema, 'access_points', 'access_points_last_seen_at_idx',
+                ['last_seen_at']);
+
+            $this->safeCreateIndex($schema, 'access_points', 'access_points_status_router_idx',
+                ['status', 'router_id']);
+
+        // =========================================================================
+        // AP_ACTIVE_SESSIONS TABLE
+        // =========================================================================
+            $this->safeCreateIndex($schema, 'ap_active_sessions', 'ap_active_sessions_connected_at_idx',
+                ['connected_at']);
+
+            $this->safeCreateIndex($schema, 'ap_active_sessions', 'ap_active_sessions_last_activity_at_idx',
+                ['last_activity_at']);
+
+        // =========================================================================
+        // WIREGUARD_PEERS TABLE
+        // =========================================================================
+            $this->safeCreateIndex($schema, 'wireguard_peers', 'wireguard_peers_last_handshake_idx',
+                ['last_handshake']);
+
+        // =========================================================================
+        // USER_SESSIONS TABLE
+        // =========================================================================
+            $this->safeCreateIndex($schema, 'user_sessions', 'user_sessions_start_time_idx',
+                ['start_time']);
+
+            $this->safeCreateIndex($schema, 'user_sessions', 'user_sessions_end_time_idx',
+                ['end_time']);
+
+            $this->safeCreateIndex($schema, 'user_sessions', 'user_sessions_mac_address_idx',
                 ['mac_address']);
 
         // =========================================================================
@@ -280,6 +490,30 @@ return new class extends Migration
             $this->safeCreateIndex($schema, 'vpn_configurations', 'vpn_config_router_idx', 
                 ['router_id']);
 
+            $this->safeCreateIndex($schema, 'vpn_configurations', 'vpn_configurations_client_ip_idx',
+                ['client_ip']);
+
+            $this->safeCreateIndex($schema, 'vpn_configurations', 'vpn_configurations_server_ip_idx',
+                ['server_ip']);
+
+            $this->safeCreateIndex($schema, 'vpn_configurations', 'vpn_configurations_last_handshake_at_idx',
+                ['last_handshake_at']);
+
+            $this->safeCreateIndex($schema, 'vpn_configurations', 'vpn_configurations_subnet_cidr_idx',
+                ['subnet_cidr']);
+
+            $this->safeCreateIndex($schema, 'vpn_configurations', 'vpn_configurations_tunnel_status_idx',
+                ['tenant_vpn_tunnel_id', 'status']);
+
+        // =========================================================================
+        // VPN_SUBNET_ALLOCATIONS TABLE
+        // =========================================================================
+            $this->safeCreateIndex($schema, 'vpn_subnet_allocations', 'vpn_subnet_allocations_subnet_cidr_idx',
+                ['subnet_cidr']);
+
+            $this->safeCreateIndex($schema, 'vpn_subnet_allocations', 'vpn_subnet_allocations_status_idx',
+                ['status']);
+
         // =========================================================================
         // SERVICE_VLANS TABLE
         // =========================================================================
@@ -328,58 +562,126 @@ return new class extends Migration
             ['routers', 'routers_ip_address_idx'],
             ['routers', 'routers_last_seen_idx'],
             ['routers', 'routers_created_idx'],
+            ['routers', 'routers_name_idx'],
+            ['routers', 'routers_status_created_idx'],
+            ['routers', 'routers_device_type_idx'],
+            ['routers', 'routers_snmp_enabled_idx'],
+            ['routers', 'routers_vpn_ip_idx'],
+            ['routers', 'routers_vpn_status_idx'],
+            ['routers', 'routers_provisioning_stage_idx'],
+            ['routers', 'routers_last_checked_idx'],
+            ['routers', 'routers_config_token_idx'],
+            ['routers', 'routers_router_type_idx'],
             // Router Services
             ['router_services', 'router_services_router_type_idx'],
             ['router_services', 'router_services_status_idx'],
+            ['router_services', 'router_services_created_at_idx'],
+            ['router_services', 'router_services_router_status_idx'],
+            ['router_services', 'router_services_last_checked_at_idx'],
             // Packages
             ['packages', 'packages_type_active_idx'],
             ['packages', 'packages_router_idx'],
             // PPPoE Users
             ['pppoe_users', 'pppoe_users_status_idx'],
+            ['pppoe_users', 'pppoe_users_status_router_id_idx'],
             ['pppoe_users', 'pppoe_users_username_idx'],
             ['pppoe_users', 'pppoe_users_router_status_idx'],
             ['pppoe_users', 'pppoe_users_package_idx'],
             ['pppoe_users', 'pppoe_users_expiry_idx'],
+            ['pppoe_users', 'pppoe_users_payment_status_expires_idx'],
+            ['pppoe_users', 'pppoe_users_created_at_idx'],
+            ['pppoe_users', 'pppoe_users_deleted_at_idx'],
+            ['pppoe_users', 'pppoe_users_username_trgm_idx'],
             ['pppoe_users', 'pppoe_users_active_idx'],
             // PPPoE Payments
             ['pppoe_payments', 'pppoe_payments_user_status_idx'],
+            ['pppoe_payments', 'pppoe_payments_pppoe_user_id_idx'],
+            ['pppoe_payments', 'pppoe_payments_status_idx'],
             ['pppoe_payments', 'pppoe_payments_date_idx'],
             ['pppoe_payments', 'pppoe_payments_reference_idx'],
             ['pppoe_payments', 'pppoe_payments_account_idx'],
+            ['pppoe_payments', 'pppoe_payments_created_at_idx'],
+            // Vouchers
+            ['vouchers', 'vouchers_router_id_idx'],
+            ['vouchers', 'vouchers_used_at_idx'],
+            ['vouchers', 'vouchers_expires_at_idx'],
+            ['vouchers', 'vouchers_created_at_idx'],
+            ['vouchers', 'vouchers_status_package_idx'],
+            ['vouchers', 'vouchers_deleted_at_idx'],
             // Hotspot Users
             ['hotspot_users', 'hotspot_users_username_idx'],
             ['hotspot_users', 'hotspot_users_status_idx'],
             ['hotspot_users', 'hotspot_users_mac_idx'],
             ['hotspot_users', 'hotspot_users_subscription_idx'],
             ['hotspot_users', 'hotspot_users_package_idx'],
+            ['hotspot_users', 'hotspot_users_is_active_idx'],
+            ['hotspot_users', 'hotspot_users_has_active_subscription_idx'],
+            ['hotspot_users', 'hotspot_users_last_login_at_idx'],
+            ['hotspot_users', 'hotspot_users_created_at_idx'],
+            ['hotspot_users', 'hotspot_users_deleted_at_idx'],
             // Hotspot Sessions
             ['hotspot_sessions', 'hotspot_sessions_user_idx'],
             ['hotspot_sessions', 'hotspot_sessions_is_active_idx'],
             ['hotspot_sessions', 'hotspot_sessions_session_start_idx'],
+            ['hotspot_sessions', 'hotspot_sessions_mac_address_idx'],
+            ['hotspot_sessions', 'hotspot_sessions_session_end_idx'],
+            ['hotspot_sessions', 'hotspot_sessions_last_activity_idx'],
+            ['hotspot_sessions', 'hotspot_sessions_active_user_idx'],
             ['hotspot_sessions', 'hotspot_sessions_active_idx'],
             // User Subscriptions
             ['user_subscriptions', 'user_subs_user_status_idx'],
             ['user_subscriptions', 'user_subs_end_time_idx'],
             ['user_subscriptions', 'user_subs_package_idx'],
+            ['user_subscriptions', 'user_subscriptions_mac_address_idx'],
+            ['user_subscriptions', 'user_subscriptions_start_time_idx'],
+            ['user_subscriptions', 'user_subscriptions_created_at_idx'],
+            ['user_subscriptions', 'user_subscriptions_active_idx'],
             // Payments
             ['payments', 'payments_user_status_idx'],
             ['payments', 'payments_created_idx'],
             ['payments', 'payments_transaction_idx'],
+            ['payments', 'payments_router_id_idx'],
+            ['payments', 'payments_mac_address_idx'],
+            ['payments', 'payments_package_id_idx'],
+            ['payments', 'payments_status_created_idx'],
             // RADIUS Sessions
             ['radius_sessions', 'radius_sessions_user_idx'],
             ['radius_sessions', 'radius_sessions_username_idx'],
             ['radius_sessions', 'radius_sessions_start_idx'],
+            ['radius_sessions', 'radius_sessions_created_at_idx'],
+            ['radius_sessions', 'radius_sessions_mac_address_idx'],
+            ['radius_sessions', 'radius_sessions_expected_end_idx'],
+            ['radius_sessions', 'radius_sessions_session_end_idx'],
+            ['radius_sessions', 'radius_sessions_active_user_idx'],
             ['radius_sessions', 'radius_sessions_active_idx'],
             // Tenant RADIUS
             ['radcheck', 'radcheck_username_attr_idx'],
             ['radreply', 'radreply_username_attr_idx'],
+            ['radcheck', 'radcheck_username_idx'],
+            ['radreply', 'radreply_username_idx'],
             ['radacct', 'radacct_user_start_idx'],
             ['radacct', 'radacct_session_idx'],
+            ['radacct', 'radacct_callingstationid_idx'],
+            ['radacct', 'radacct_framedipaddress_idx'],
+            ['radacct', 'radacct_acctterminatecause_idx'],
+            ['radacct', 'radacct_active_sessions_idx'],
             ['radacct', 'radacct_active_idx'],
             // Access Points
             ['access_points', 'access_points_router_idx'],
             ['access_points', 'access_points_status_idx'],
             ['access_points', 'access_points_mac_idx'],
+            ['access_points', 'access_points_created_at_idx'],
+            ['access_points', 'access_points_last_seen_at_idx'],
+            ['access_points', 'access_points_status_router_idx'],
+            // AP Active Sessions
+            ['ap_active_sessions', 'ap_active_sessions_connected_at_idx'],
+            ['ap_active_sessions', 'ap_active_sessions_last_activity_at_idx'],
+            // Wireguard Peers
+            ['wireguard_peers', 'wireguard_peers_last_handshake_idx'],
+            // User Sessions
+            ['user_sessions', 'user_sessions_start_time_idx'],
+            ['user_sessions', 'user_sessions_end_time_idx'],
+            ['user_sessions', 'user_sessions_mac_address_idx'],
             // Todos
             ['todos', 'todos_status_priority_idx'],
             ['todos', 'todos_due_date_idx'],
@@ -403,6 +705,13 @@ return new class extends Migration
             // VPN
             ['vpn_configurations', 'vpn_config_status_idx'],
             ['vpn_configurations', 'vpn_config_router_idx'],
+            ['vpn_configurations', 'vpn_configurations_client_ip_idx'],
+            ['vpn_configurations', 'vpn_configurations_server_ip_idx'],
+            ['vpn_configurations', 'vpn_configurations_last_handshake_at_idx'],
+            ['vpn_configurations', 'vpn_configurations_subnet_cidr_idx'],
+            ['vpn_configurations', 'vpn_configurations_tunnel_status_idx'],
+            ['vpn_subnet_allocations', 'vpn_subnet_allocations_subnet_cidr_idx'],
+            ['vpn_subnet_allocations', 'vpn_subnet_allocations_status_idx'],
             // Service VLANs
             ['service_vlans', 'service_vlans_service_idx'],
             ['service_vlans', 'service_vlans_vlan_idx'],

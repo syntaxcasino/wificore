@@ -61,11 +61,21 @@ class SetTenantContext
                 
                 // Set tenant context (will set PostgreSQL search_path if schema exists)
                 try {
-                    $this->tenantContext->setTenant($tenant);
-                    
                     // Store tenant in request for easy access
                     $request->merge(['tenant' => $tenant]);
                     $request->attributes->set('tenant', $tenant);
+
+                    // Wrap the entire request in a DB::transaction() so PgBouncer
+                    // holds a single backend PostgreSQL connection for all statements.
+                    // SET LOCAL search_path is transaction-scoped: it is applied once
+                    // inside setTenant() below and persists for every query in the
+                    // controller as long as PgBouncer does not return the connection
+                    // to the pool. Without a transaction, PgBouncer transaction pooling
+                    // releases the backend between each statement, losing search_path.
+                    return \Illuminate\Support\Facades\DB::transaction(function () use ($request, $tenant, $next) {
+                        $this->tenantContext->setTenant($tenant);
+                        return $next($request);
+                    });
                 } catch (\Exception $e) {
                     Log::error('Failed to set tenant context', [
                         'tenant_id' => $tenant->id,

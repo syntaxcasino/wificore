@@ -39,6 +39,10 @@ class RouterMetricsService
             'free_memory' => sprintf('router_health_free_memory{%s}', $selector),
             'uptime_ticks' => sprintf('router_health_uptime_ticks{%s}', $selector),
             'pppoe_sessions' => sprintf('router_health_pppoe_sessions{%s}', $selector),
+            'hotspot_active' => sprintf('router_health_hotspot_active{%s}', $selector),
+            'wireless_clients' => sprintf('router_health_wireless_clients{%s}', $selector),
+            'dhcp_leases' => sprintf('router_health_dhcp_leases{%s}', $selector),
+            'interface_count' => sprintf('router_health_interface_count{%s}', $selector),
             'disk_total_bytes' => [
                 'primary' => $this->buildStorageBytesQuery('storage', 'hrStorageSize', $selector, $diskType),
                 'fallback' => $this->buildStorageBytesQuery('router_storage', 'hrStorageSize', $selector, $diskType),
@@ -152,8 +156,26 @@ class RouterMetricsService
             unset($live[$rid]['memory_used_bytes']);
 
             $uptimeTicks = $live[$rid]['uptime_ticks'] ?? null;
+            // Aggregate active connections from various services
             if (is_int($uptimeTicks) && $uptimeTicks >= 0) {
                 $live[$rid]['uptime'] = $this->formatUptimeFromTicks($uptimeTicks);
+            }
+
+            $pppoe = $live[$rid]['pppoe_sessions'] ?? 0;
+            $hotspot = $live[$rid]['hotspot_active'] ?? 0;
+            $wireless = $live[$rid]['wireless_clients'] ?? 0;
+
+            // Only set active_connections if we have at least one valid metric to avoid overwriting with 0 if data is missing
+            if (isset($live[$rid]['pppoe_sessions']) || isset($live[$rid]['hotspot_active']) || isset($live[$rid]['wireless_clients'])) {
+                $live[$rid]['active_connections'] = $pppoe + $hotspot + $wireless;
+            }
+
+            // Ensure basic integer fields are present if available
+            $intFields = ['dhcp_leases', 'interface_count'];
+            foreach ($intFields as $field) {
+                if (isset($live[$rid][$field])) {
+                    $live[$rid][$field] = (int) $live[$rid][$field];
+                }
             }
 
             $pppoeSessions = $live[$rid]['pppoe_sessions'] ?? null;
