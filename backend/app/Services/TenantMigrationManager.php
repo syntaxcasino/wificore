@@ -180,6 +180,30 @@ class TenantMigrationManager
     }
     
     /**
+     * Check whether any tenant migrations are pending for the given tenant.
+     * Runs entirely against the public schema (no search_path change needed).
+     */
+    public function hasPendingMigrations(Tenant $tenant): bool
+    {
+        try {
+            $migrationFiles      = $this->getTenantMigrationFiles();
+            $executedMigrations  = $this->getExecutedMigrations($tenant);
+
+            foreach ($migrationFiles as $file) {
+                $name = pathinfo($file, PATHINFO_FILENAME);
+                if (!in_array($name, $executedMigrations)) {
+                    return true;
+                }
+            }
+
+            return false;
+        } catch (\Exception $e) {
+            Log::warning("Could not determine pending migrations for tenant {$tenant->id}: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
      * Get all tenant migration files
      */
     private function getTenantMigrationFiles(): array

@@ -3,6 +3,7 @@
 namespace App\Traits;
 
 use App\Models\Tenant;
+use App\Services\TenantMigrationManager;
 use Illuminate\Support\Facades\Auth;
 
 trait TenantAwareJob
@@ -74,6 +75,19 @@ trait TenantAwareJob
         // Set auth context
         Auth::setUser($systemUser);
 
+        // Auto-migrate: if any tenant migrations have not been executed yet, run them
+        // before the job starts. This ensures tables always exist before queries run,
+        // preventing 42P01 errors on tenants whose schema was created but never fully migrated.
+        $migrationManager = app(TenantMigrationManager::class);
+        if ($migrationManager->hasPendingMigrations($tenant)) {
+            \Illuminate\Support\Facades\Log::info("Auto-migrating tenant schema before job execution", [
+                'tenant_id' => $tenant->id,
+                'schema_name' => $tenant->schema_name,
+                'job_class' => get_class($this),
+            ]);
+            $migrationManager->runMigrationsForTenant($tenant);
+        }
+
         // Wrap callback in DB::transaction() so PgBouncer holds a single backend
         // PostgreSQL connection for all statements. SET LOCAL search_path is
         // transaction-scoped: it persists across all statements within the same
@@ -82,14 +96,16 @@ trait TenantAwareJob
         // when PgBouncer transaction pooling rotates the backend connection.
         try {
             return \Illuminate\Support\Facades\DB::transaction(function () use ($tenant, $callback) {
+                // Force sticky-write mode: marks the connection as having modified records
+                // so Laravel routes all subsequent SELECT queries through the write PDO
+                // for the duration of this transaction. This is critical for PgBouncer
+                // transaction pooling: SET LOCAL search_path is transaction-scoped and
+                // only persists on the write PDO (the one inside DB::transaction()).
+                // Without sticky mode, Eloquent SELECT queries use the read PDO which
+                // has no open transaction, causing PgBouncer to reset search_path.
+                \Illuminate\Support\Facades\DB::connection()->recordsHaveBeenModified();
+
                 \Illuminate\Support\Facades\DB::statement("SET LOCAL search_path TO {$tenant->schema_name}, public");
-
-                $connection = \Illuminate\Support\Facades\DB::connection();
-                $readPdo = $connection->getReadPdo();
-
-                if ($readPdo) {
-                    $readPdo->exec("SET LOCAL search_path TO {$tenant->schema_name}, public");
-                }
 
                 return $callback();
             });
