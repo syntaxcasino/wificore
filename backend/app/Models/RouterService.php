@@ -7,12 +7,13 @@ use Illuminate\Database\Eloquent\Model;
 use App\Models\IpAllocation;
 use App\Models\TenantIpPool;
 use App\Traits\HasUuid;
+use App\Traits\TenantRouteBindable;
 use App\Traits\BelongsToTenant;
 use App\Models\Scopes\TenantScope;
 
 class RouterService extends Model
 {
-    use HasFactory, HasUuid;
+    use HasFactory, HasUuid, TenantRouteBindable;
 
     /**
      * Boot the model

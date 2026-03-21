@@ -5,12 +5,13 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use App\Traits\HasUuid;
+use App\Traits\TenantRouteBindable;
 use App\Traits\BelongsToTenant;
 use App\Models\Scopes\TenantScope;
 
 class AccessPoint extends Model
 {
-    use HasFactory, HasUuid;
+    use HasFactory, HasUuid, TenantRouteBindable;
 
     protected $fillable = [
         // tenant_id removed
