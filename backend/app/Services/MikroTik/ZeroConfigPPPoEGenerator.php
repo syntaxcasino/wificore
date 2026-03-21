@@ -129,7 +129,8 @@ class ZeroConfigPPPoEGenerator
         $s[] = ":do { :if ([:len [/interface list find name={$p['pppoe_list']}]] = 0) do={ /interface list add name={$p['pppoe_list']} } } on-error={}";
         // PPPOE-ACTIVE list: PPP profile assigns authenticated dynamic interfaces here
         $s[] = ":do { :if ([:len [/interface list find name={$p['pppoe_active_list']}]] = 0) do={ /interface list add name={$p['pppoe_active_list']} } } on-error={}";
-        $s[] = ":do { :if ([:len [/interface find name=\"ether1\"]] > 0) do={ :if ([:len [/interface list member find list={$p['wan_list']} interface=\"ether1\"]] = 0) do={ /interface list member add list={$p['wan_list']} interface=\"ether1\" } } } on-error={}";
+        $s[] = ":local pWan \"{$p['wan_list']}\"";
+        $s[] = ":do { :if ([:len [/interface list member find list=\$pWan interface=\"ether1\"]] = 0) do={ /interface list member add list=\$pWan interface=\"ether1\" } } on-error={}";
 
         // ============ PPP PROFILE (ISP-GRADE) ============
         // :local variables keep lines <255 chars — RouterOS SSH /import truncates at ~330 chars
@@ -139,7 +140,8 @@ class ZeroConfigPPPoEGenerator
         $s[] = ":local pDns \"{$p['dns_primary']},{$p['dns_secondary']}\"";
         $s[] = ":local pList \"{$p['pppoe_active_list']}\"";
         $s[] = ":do { :if ([:len [/ppp profile find name=\$pProf]] = 0) do={ /ppp profile add name=\$pProf comment=\"PPPoE-$id\" } } on-error={}";
-        $s[] = ":do { /ppp profile set [find name=\$pProf] local-address=\$pGw remote-address=\$pPool dns-server=\$pDns interface-list=\$pList only-one=yes change-tcp-mss=yes use-compression=no use-encryption=no session-timeout=0 add-default-route=no } on-error={}";
+        $s[] = ":do { /ppp profile set [find name=\$pProf] local-address=\$pGw remote-address=\$pPool dns-server=\$pDns interface-list=\$pList only-one=yes } on-error={}";
+        $s[] = ":do { /ppp profile set [find name=\$pProf] change-tcp-mss=yes use-compression=no use-encryption=no session-timeout=0 add-default-route=no } on-error={}";
 
         // ============ PPPoE BRIDGE SETUP ============
         // :local pBr declared here — used by bridge, server, and list-member lines
@@ -164,7 +166,8 @@ class ZeroConfigPPPoEGenerator
         // ============ PPPoE SERVER ============
         $s[] = ":local pSvc \"{$p['service']}\"";
         $s[] = ":do { :if ([:len [/interface pppoe-server server find service-name=\$pSvc]] = 0) do={ /interface pppoe-server server add service-name=\$pSvc interface=\$pBr disabled=no comment=\"PPPoE-$id\" } } on-error={}";
-        $s[] = ":do { /interface pppoe-server server set [find service-name=\$pSvc] interface=\$pBr default-profile=\$pProf authentication=chap,mschap2 one-session-per-host=yes keepalive-timeout=30 max-mtu=1480 max-mru=1480 disabled=no comment=\"PPPoE-$id\" } on-error={}";
+        $s[] = ":do { /interface pppoe-server server set [find service-name=\$pSvc] interface=\$pBr default-profile=\$pProf disabled=no comment=\"PPPoE-$id\" } on-error={}";
+        $s[] = ":do { /interface pppoe-server server set [find service-name=\$pSvc] authentication=chap,mschap2 one-session-per-host=yes keepalive-timeout=30 max-mtu=1480 max-mru=1480 } on-error={}";
         $s[] = ":if ([:len [/interface pppoe-server server find service-name=\$pSvc]] = 0) do={ :error \"PPPoE-$id: PPPoE server missing\" }";
         $s[] = ":local pPList \"{$p['pppoe_list']}\"";
         $s[] = ":do { :if ([:len [/interface list member find list=\$pPList interface=\$pBr]] = 0) do={ /interface list member add list=\$pPList interface=\$pBr } } on-error={}";
@@ -194,7 +197,7 @@ class ZeroConfigPPPoEGenerator
         $s[] = "/ip firewall filter add chain=input in-interface={$bridge} connection-state=invalid action=drop place-before=0 comment=\"PPPoE-$id-INV-IN\"";
         $s[] = "/ip firewall filter add chain=input in-interface={$bridge} connection-state=established,related action=accept place-before=0 comment=\"PPPoE-$id-EST-IN\"";
         $s[] = "/ip firewall filter add chain=input in-interface={$bridge} protocol=udp dst-port=8863-8864 action=accept place-before=0 comment=\"PPPoE-$id-DISC\"";
-        $s[] = ":do { /ip firewall filter add chain=input protocol=udp dst-port=161 src-address={$p['management_subnet']} action=accept place-before=0 comment=\"PPPoE-$id-SNMP-ALLOW\" } on-error={ /log warning \"PPPoE-$id-SNMP-ALLOW skipped\" }";
+        $s[] = "/ip firewall filter add chain=input protocol=udp dst-port=161 src-address={$p['management_subnet']} action=accept place-before=0 comment=\"PPPoE-$id-SNMP-ALLOW\"";
         $s[] = "/ip firewall filter add chain=input protocol=tcp dst-port={$managementPorts} src-address={$p['management_subnet']} action=accept place-before=0 comment=\"PPPoE-$id-MGMT-ALLOW\"";
         // Allow PPPoE clients to ping the gateway for diagnostics (from authenticated sessions only)
         $s[] = "/ip firewall filter add chain=input in-interface-list={$p['pppoe_active_list']} protocol=icmp action=accept place-before=0 comment=\"PPPoE-$id-ICMP\"";
