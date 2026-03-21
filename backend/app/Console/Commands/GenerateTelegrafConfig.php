@@ -128,13 +128,16 @@ class GenerateTelegrafConfig extends Command
                 try {
                     /** @var TenantContext $tenantContext */
                     $tenantContext = app(TenantContext::class);
-                    $routers = $tenantContext->runInTenantContext($tenant, function () use ($routerColumns) {
-                        return DB::table('routers')
-                            ->where(function ($query) {
-                                $query->where('snmp_enabled', true)
-                                    ->orWhereNull('snmp_enabled');
-                            })
-                            ->get($routerColumns);
+                    $routers = DB::transaction(function () use ($tenantContext, $tenant, $routerColumns) {
+                        DB::connection()->recordsHaveBeenModified();
+                        return $tenantContext->runInTenantContext($tenant, function () use ($routerColumns) {
+                            return DB::table('routers')
+                                ->where(function ($query) {
+                                    $query->where('snmp_enabled', true)
+                                        ->orWhereNull('snmp_enabled');
+                                })
+                                ->get($routerColumns);
+                        });
                     });
 
                     foreach ($routers as $router) {
