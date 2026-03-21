@@ -99,24 +99,39 @@ class Router extends Model
     {
         // Get the authenticated user and set tenant context before query
         $user = request()->user();
-        
+
         if ($user && $user->tenant_id) {
             $tenant = Tenant::find($user->tenant_id);
-            
+
             if ($tenant && $tenant->schema_name) {
                 $tenantContext = app(\App\Services\TenantContext::class);
-                
-                // Only set if not already set
-                if (!$tenantContext->getTenant()) {
-                    $tenantContext->setTenant($tenant);
-                    Log::debug('Router route binding: Set tenant context', [
-                        'tenant_id' => $tenant->id,
-                        'schema_name' => $tenant->schema_name,
-                    ]);
-                }
+
+                // SubstituteBindings middleware fires before SetTenantContext, so there is
+                // no outer DB::transaction() yet. We must open one here so that
+                // SET LOCAL search_path (issued by setTenant below) is scoped to a
+                // transaction and PgBouncer does not release the backend connection
+                // between the SET LOCAL and the SELECT, which would lose search_path.
+                // recordsHaveBeenModified() forces sticky-write mode so the SELECT
+                // uses the write PDO (the one holding the open transaction) instead of
+                // routing to the read PDO which has no transaction.
+                return \Illuminate\Support\Facades\DB::transaction(
+                    function () use ($tenantContext, $tenant, $value, $field) {
+                        \Illuminate\Support\Facades\DB::connection()->recordsHaveBeenModified();
+
+                        if (!$tenantContext->getTenant()) {
+                            $tenantContext->setTenant($tenant);
+                            Log::debug('Router route binding: Set tenant context', [
+                                'tenant_id'   => $tenant->id,
+                                'schema_name' => $tenant->schema_name,
+                            ]);
+                        }
+
+                        return parent::resolveRouteBinding($value, $field);
+                    }
+                );
             }
         }
-        
+
         return parent::resolveRouteBinding($value, $field);
     }
 
