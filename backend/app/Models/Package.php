@@ -5,11 +5,12 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use App\Traits\HasUuid;
+use App\Traits\TenantRouteBindable;
 
 class Package extends Model
 {
     /** @use HasFactory<\Database\Factories\PackageFactory> */
-    use HasFactory, HasUuid;
+    use HasFactory, HasUuid, TenantRouteBindable;
 
     /**
      * The "booted" method of the model.
