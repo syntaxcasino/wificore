@@ -132,19 +132,19 @@ class ZeroConfigPPPoEGenerator
         $s[] = ":do { :if ([:len [/interface find name=\"ether1\"]] > 0) do={ :if ([:len [/interface list member find list={$p['wan_list']} interface=\"ether1\"]] = 0) do={ /interface list member add list={$p['wan_list']} interface=\"ether1\" } } } on-error={}";
 
         // ============ PPP PROFILE (ISP-GRADE) ============
-        // No static rate-limit - RADIUS sets Mikrotik-Rate-Limit dynamically per-session
-        // session-timeout=0: explicit no-timeout (RADIUS Acct-Session-Time handles expiry)
-        // add-default-route=no: prevent PPPoE clients from injecting routes into the router
-        // interface-list=PPPOE-ACTIVE: dynamic <pppoe-*> interfaces auto-join this list on auth
-        // This is CRITICAL for security: firewall rules match on this list, not src-address
-        $s[] = ":do { :if ([:len [/ppp profile find name=\"{$p['profile']}\"]] = 0) do={ /ppp profile add name=\"{$p['profile']}\" local-address={$p['gateway_ip']} remote-address={$p['pool']} dns-server={$p['dns_primary']},{$p['dns_secondary']} interface-list={$p['pppoe_active_list']} only-one=yes change-tcp-mss=yes use-compression=no use-encryption=no session-timeout=0 add-default-route=no comment=\"PPPoE-$id\" } } on-error={}";
-        $s[] = ":do { /ppp profile set [find name=\"{$p['profile']}\"] local-address={$p['gateway_ip']} remote-address={$p['pool']} dns-server={$p['dns_primary']},{$p['dns_secondary']} interface-list={$p['pppoe_active_list']} only-one=yes change-tcp-mss=yes use-compression=no use-encryption=no session-timeout=0 add-default-route=no } on-error={}";
+        // :local variables keep lines <255 chars — RouterOS SSH /import truncates at ~330 chars
+        $s[] = ":local pProf \"{$p['profile']}\"";
+        $s[] = ":local pPool \"{$p['pool']}\"";
+        $s[] = ":local pGw \"{$p['gateway_ip']}\"";
+        $s[] = ":local pDns \"{$p['dns_primary']},{$p['dns_secondary']}\"";
+        $s[] = ":local pList \"{$p['pppoe_active_list']}\"";
+        $s[] = ":do { :if ([:len [/ppp profile find name=\$pProf]] = 0) do={ /ppp profile add name=\$pProf comment=\"PPPoE-$id\" } } on-error={}";
+        $s[] = ":do { /ppp profile set [find name=\$pProf] local-address=\$pGw remote-address=\$pPool dns-server=\$pDns interface-list=\$pList only-one=yes change-tcp-mss=yes use-compression=no use-encryption=no session-timeout=0 add-default-route=no } on-error={}";
 
         // ============ PPPoE BRIDGE SETUP ============
-        // Bridge isolates PPPoE discovery/session traffic from other networks
-        // Idempotent: only create bridge if missing (avoid disconnecting existing PPPoE sessions)
-        // Use RSTP to prevent bridge loops; frame-types=admit-only-untagged-and-priority-tagged for PPPoE
-        $s[] = ":do { :if ([:len [/interface bridge find name=\"{$bridge}\"]] = 0) do={ /interface bridge add name=\"{$bridge}\" protocol-mode=rstp comment=\"PPPoE-$id\" } } on-error={}";
+        // :local pBr declared here — used by bridge, server, and list-member lines
+        $s[] = ":local pBr \"{$bridge}\"";
+        $s[] = ":do { :if ([:len [/interface bridge find name=\$pBr]] = 0) do={ /interface bridge add name=\$pBr protocol-mode=rstp comment=\"PPPoE-$id\" } } on-error={}";
 
         // Add client-facing ports to bridge
         foreach ($p['interfaces'] as $iface) {
@@ -155,19 +155,19 @@ class ZeroConfigPPPoEGenerator
                 $s[] = "/interface vlan add name=\"{$access}\" vlan-id={$p['vlan_id']} interface=\"{$iface}\" comment=\"PPPoE-$id\"";
             }
             // Only add port if not already in bridge
-            $s[] = ":do { :if ([:len [/interface bridge port find bridge=\"{$bridge}\" interface=\"{$access}\"]] = 0) do={ /interface bridge port add bridge=\"{$bridge}\" interface=\"{$access}\" comment=\"PPPoE-$id\" } } on-error={}";
+            $s[] = ":do { :if ([:len [/interface bridge port find bridge=\$pBr interface=\"{$access}\"]] = 0) do={ /interface bridge port add bridge=\$pBr interface=\"{$access}\" comment=\"PPPoE-$id\" } } on-error={}";
         }
 
         // Ensure DHCP is disabled on the PPPoE bridge (PPPoE handles auth/IP assignment)
         $s[] = ":do { /ip dhcp-server remove [find interface=\"{$bridge}\"]; } on-error={}";
 
         // ============ PPPoE SERVER ============
-        // ISP-grade settings: MSS clamping, keepalive, proper MTU
-        // Idempotent: only create if missing
-        $s[] = ":do { :if ([:len [/interface pppoe-server server find service-name=\"{$p['service']}\"]] = 0) do={ /interface pppoe-server server add service-name=\"{$p['service']}\" interface=\"{$bridge}\" default-profile=\"{$p['profile']}\" authentication=chap,mschap2 one-session-per-host=yes keepalive-timeout=30 max-mtu=1480 max-mru=1480 disabled=no comment=\"PPPoE-$id\" } } on-error={ :error \"PPPoE-$id: PPPoE server create failed ({$p['service']})\" }";
-        $s[] = ":do { /interface pppoe-server server set [find service-name=\"{$p['service']}\"] interface=\"{$bridge}\" default-profile=\"{$p['profile']}\" authentication=chap,mschap2 one-session-per-host=yes keepalive-timeout=30 max-mtu=1480 max-mru=1480 disabled=no comment=\"PPPoE-$id\" } on-error={ :error \"PPPoE-$id: PPPoE server set failed ({$p['service']})\" }";
-        $s[] = ":if ([:len [/interface pppoe-server server find service-name=\"{$p['service']}\"]] = 0) do={ :error \"PPPoE-$id: PPPoE server missing ({$p['service']})\" }";
-        $s[] = ":do { :if ([:len [/interface list member find list={$p['pppoe_list']} interface=\"{$bridge}\"]] = 0) do={ /interface list member add list={$p['pppoe_list']} interface=\"{$bridge}\" } } on-error={}";
+        $s[] = ":local pSvc \"{$p['service']}\"";
+        $s[] = ":do { :if ([:len [/interface pppoe-server server find service-name=\$pSvc]] = 0) do={ /interface pppoe-server server add service-name=\$pSvc interface=\$pBr disabled=no comment=\"PPPoE-$id\" } } on-error={}";
+        $s[] = ":do { /interface pppoe-server server set [find service-name=\$pSvc] interface=\$pBr default-profile=\$pProf authentication=chap,mschap2 one-session-per-host=yes keepalive-timeout=30 max-mtu=1480 max-mru=1480 disabled=no comment=\"PPPoE-$id\" } on-error={}";
+        $s[] = ":if ([:len [/interface pppoe-server server find service-name=\$pSvc]] = 0) do={ :error \"PPPoE-$id: PPPoE server missing\" }";
+        $s[] = ":local pPList \"{$p['pppoe_list']}\"";
+        $s[] = ":do { :if ([:len [/interface list member find list=\$pPList interface=\$pBr]] = 0) do={ /interface list member add list=\$pPList interface=\$pBr } } on-error={}";
 
         // ============ FIREWALL CONFIGURATION ============
         // Idempotent: only add rules if not present (check by comment)
