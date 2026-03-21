@@ -4,10 +4,11 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use App\Traits\TenantRouteBindable;
 
 class UserSubscription extends Model
 {
-    use HasFactory;
+    use HasFactory, TenantRouteBindable;
 
     protected $fillable = [
         'user_id',
