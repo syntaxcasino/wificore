@@ -37,13 +37,16 @@ trait TenantRouteBindable
                     function () use ($tenantContext, $tenant, $value, $field) {
                         DB::connection()->recordsHaveBeenModified();
 
-                        if (!$tenantContext->getTenant()) {
-                            $tenantContext->setTenant($tenant);
-                            Log::debug(static::class . ' route binding: Set tenant context', [
-                                'tenant_id'   => $tenant->id,
-                                'schema_name' => $tenant->schema_name,
-                            ]);
-                        }
+                        // Always call setTenant() inside every transaction even if the
+                        // TenantContext object already holds this tenant. Each binding
+                        // runs in its own transaction on a potentially different PgBouncer
+                        // backend connection; SET LOCAL search_path must be re-issued on
+                        // every new connection or it defaults to public (42P01).
+                        $tenantContext->setTenant($tenant);
+                        Log::debug(static::class . ' route binding: Set tenant context', [
+                            'tenant_id'   => $tenant->id,
+                            'schema_name' => $tenant->schema_name,
+                        ]);
 
                         return parent::resolveRouteBinding($value, $field);
                     }
