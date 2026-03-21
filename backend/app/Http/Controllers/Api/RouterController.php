@@ -11,6 +11,7 @@ use App\Models\Tenant;
 use App\Services\MikrotikProvisioningService;
 use App\Services\RouterMetricsService;
 use App\Services\TenantContext;
+use App\Services\TenantMigrationManager;
 use App\Services\VictoriaMetricsClient;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -1173,13 +1174,21 @@ class RouterController extends Controller
         $router = null;
         $foundTenant = null;
 
+        $migrationManager = app(TenantMigrationManager::class);
+
         try {
             $mappedTenantId = RouterTenantMap::findTenantByConfigToken($configToken);
             if ($mappedTenantId) {
                 $mappedTenant = Tenant::find($mappedTenantId);
                 if ($mappedTenant && $mappedTenant->schema_created && $mappedTenant->schema_name) {
-                    $tenantContext->setTenant($mappedTenant);
-                    $router = Router::where('config_token', $configToken)->useWritePdo()->first();
+                    if ($migrationManager->hasPendingMigrations($mappedTenant)) {
+                        $migrationManager->runMigrationsForTenant($mappedTenant);
+                    }
+                    $router = DB::transaction(function () use ($tenantContext, $mappedTenant, $configToken) {
+                        DB::connection()->recordsHaveBeenModified();
+                        $tenantContext->setTenant($mappedTenant);
+                        return Router::where('config_token', $configToken)->first();
+                    });
                     if ($router) {
                         $foundTenant = $mappedTenant;
                     }
@@ -1197,16 +1206,23 @@ class RouterController extends Controller
                     }
 
                     try {
-                        $tenantContext->setTenant($tenant);
-                        $router = Router::where('config_token', $configToken)->useWritePdo()->first();
+                        if ($migrationManager->hasPendingMigrations($tenant)) {
+                            $migrationManager->runMigrationsForTenant($tenant);
+                        }
+                        $found = DB::transaction(function () use ($tenantContext, $tenant, $configToken) {
+                            DB::connection()->recordsHaveBeenModified();
+                            $tenantContext->setTenant($tenant);
+                            return Router::where('config_token', $configToken)->first();
+                        });
 
-                        if ($router) {
+                        if ($found) {
+                            $router      = $found;
                             $foundTenant = $tenant;
                             Log::info('Router found in tenant schema', [
-                                'tenant_id' => $tenant->id,
-                                'tenant_slug' => $tenant->slug,
-                                'schema_name' => $tenant->schema_name,
-                                'router_id' => $router->id,
+                                'tenant_id'    => $tenant->id,
+                                'tenant_slug'  => $tenant->slug,
+                                'schema_name'  => $tenant->schema_name,
+                                'router_id'    => $router->id,
                                 'config_token' => $configToken,
                             ]);
                             break;
@@ -1214,9 +1230,9 @@ class RouterController extends Controller
                     } catch (\Exception $e) {
                         // Schema might not exist or have issues, continue to next tenant
                         Log::debug('Could not search tenant schema', [
-                            'tenant_id' => $tenant->id,
+                            'tenant_id'   => $tenant->id,
                             'schema_name' => $tenant->schema_name,
-                            'error' => $e->getMessage(),
+                            'error'       => $e->getMessage(),
                         ]);
                         continue;
                     }
@@ -1224,7 +1240,7 @@ class RouterController extends Controller
 
                 if (isset($tenants) && (!$router || !$foundTenant)) {
                     Log::warning('Router not found with config token', [
-                        'config_token' => $configToken,
+                        'config_token'     => $configToken,
                         'tenants_searched' => $tenants->count(),
                     ]);
                 }
@@ -1244,44 +1260,45 @@ class RouterController extends Controller
                 return response('# ERROR: Configuration not found. Please verify your config token.', 404)
                     ->header('Content-Type', 'text/plain; charset=utf-8');
             }
-            
-            // Get VPN configuration
-            $vpnConfig = $router->vpnConfiguration;
-            
-            if (!$vpnConfig) {
-                return response('# ERROR: VPN configuration not found. Please contact support.', 404)
-                    ->header('Content-Type', 'text/plain; charset=utf-8');
-            }
-            
-            // Always regenerate the latest complete configuration script
-            $vpnService = app(\App\Services\VpnService::class);
-            $vpnScript = $vpnService->generateMikroTikScript($vpnConfig);
 
-            $decryptedPassword = Crypt::decrypt($router->password);
+            $completeScript = DB::transaction(function () use ($tenantContext, $foundTenant, $router) {
+                DB::connection()->recordsHaveBeenModified();
+                $tenantContext->setTenant($foundTenant);
 
-            // SNMP configuration is now handled separately via provisioning service
-            // to avoid conflicts and ensure proper SNMPv3 setup
-            
-            $completeScript = $this->buildBootstrapCompleteScript($router, $vpnScript, false);
+                // Get VPN configuration
+                $vpnConfig = $router->vpnConfiguration;
 
-            // Persist the latest generated script in the tenant DB
-            RouterConfig::updateOrCreate(
-                [
-                    'router_id'   => $router->id,
-                    'config_type' => 'complete',
-                ],
-                [
-                    'config_content' => $completeScript,
-                ]
-            );
-            
+                if (!$vpnConfig) {
+                    throw new \RuntimeException('VPN configuration not found');
+                }
+
+                // Always regenerate the latest complete configuration script
+                $vpnService    = app(\App\Services\VpnService::class);
+                $vpnScript     = $vpnService->generateMikroTikScript($vpnConfig);
+
+                $completeScript = $this->buildBootstrapCompleteScript($router, $vpnScript, false);
+
+                // Persist the latest generated script in the tenant DB
+                RouterConfig::updateOrCreate(
+                    [
+                        'router_id'   => $router->id,
+                        'config_type' => 'complete',
+                    ],
+                    [
+                        'config_content' => $completeScript,
+                    ]
+                );
+
+                return $completeScript;
+            });
+
             Log::info('Router configuration fetched successfully', [
-                'tenant_id' => $foundTenant->id,
-                'router_id' => $router->id,
-                'router_name' => $router->name,
+                'tenant_id'    => $foundTenant->id,
+                'router_id'    => $router->id,
+                'router_name'  => $router->name,
                 'config_token' => $configToken,
             ]);
-            
+
             // Return as .rsc file for MikroTik /tool fetch
             // CRITICAL: MikroTik requires Content-Disposition for dst-path to work
             return response($completeScript, 200)
