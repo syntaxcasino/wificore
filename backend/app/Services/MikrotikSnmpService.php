@@ -23,10 +23,10 @@ class MikrotikSnmpService
             throw new \Exception('Router IP is missing', 422);
         }
 
-        $host = 'udp:' . $ip . ':' . (int) env('MIKROTIK_SNMP_PORT', 161);
-        $community = (string) env('MIKROTIK_SNMP_COMMUNITY', 'traidnet-monitor');
-        $timeoutSeconds = (int) env('MIKROTIK_SNMP_TIMEOUT', 2);
-        $retries = (int) env('MIKROTIK_SNMP_RETRIES', 1);
+        $host = 'udp:' . $ip . ':' . (int) config('mikrotik.snmp_port', 161);
+        $community = (string) config('mikrotik.snmp_community', 'traidnet-monitor');
+        $timeoutSeconds = (int) config('mikrotik.snmp_timeout', 2);
+        $retries = (int) config('mikrotik.snmp_retries', 1);
 
         $versionRaw = strtolower((string) ($router->snmp_version ?? '2c'));
         $version = match (true) {

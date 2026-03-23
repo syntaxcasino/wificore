@@ -25,8 +25,11 @@ class ZeroConfigHotspotGenerator
 
         $interfaces = $this->normalizeInterfaces($service);
 
+        // Short ID (8 hex chars) — RouterOS names max 32 chars; full UUIDs exceed that
+        $shortId = substr(str_replace('-', '', (string) $router->id), 0, 8);
+
         // Hotspot multi-interface mode A: single Hotspot instance on a shared bridge
-        $bridgeName = "br-hotspot-{$router->id}";
+        $bridgeName = "br-hs-{$shortId}";
 
         $radiusServer = config('radius.server_ip', config('services.radius.host', 'wificore-freeradius'));
         $resolvedRadiusServer = $radiusServer;
@@ -169,27 +172,27 @@ class ZeroConfigHotspotGenerator
         // Create shared bridge and attach all access interfaces
         $script = array_merge($script, [
             "# Hotspot Access Bridge (Mode A)",
-            ":do { :if ([:len [/interface bridge find name=\"{$bridgeName}\"]] = 0) do={ /interface bridge add name=\"{$bridgeName}\" comment=\"Hotspot Bridge ({$router->id})\" } } on-error={}",
-            ":do { /interface bridge port remove [find bridge=\"{$bridgeName}\" comment=\"Hotspot Access Port ({$router->id})\"] } on-error={}",
+            ":do { :if ([:len [/interface bridge find name=\"{$bridgeName}\"]] = 0) do={ /interface bridge add name=\"{$bridgeName}\" comment=\"hs-br-{$shortId}\" } } on-error={}",
+            ":do { /interface bridge port remove [find bridge=\"{$bridgeName}\" comment=\"hs-port-{$shortId}\"] } on-error={}",
         ]);
 
         foreach ($accessIfaces as $iface) {
-            $script[] = ":if ([:len [/interface find name=\"{$iface}\"]] = 0) do={ :error \"Hotspot: interface not found ({$iface})\" }";
-            // CRITICAL: Verify interface is not a WireGuard type before adding to bridge
-            $script[] = ":if ([:len [/interface wireguard find name=\"{$iface}\"]] > 0) do={ /log error \"Hotspot: REFUSING to add WireGuard interface to bridge ({$iface})\"; :error \"Cannot add WireGuard interface to hotspot bridge\" }";
+            $script[] = ":if ([:len [/interface find name=\"{$iface}\"]] = 0) do={ :error \"hs-iface-miss-{$iface}\" }";
+            $script[] = ":if ([:len [/interface wireguard find name=\"{$iface}\"]] > 0) do={ :error \"hs-wg-refuse-{$iface}\" }";
             $script[] = ":do { /interface bridge port remove [find bridge=\"{$bridgeName}\" interface=\"{$iface}\"] } on-error={}";
-            $script[] = ":do { /interface bridge port add bridge=\"{$bridgeName}\" interface=\"{$iface}\" comment=\"Hotspot Access Port ({$router->id})\" } on-error={ :error \"Hotspot: bridge port add failed ({$iface})\" }";
+            $script[] = ":do { /interface bridge port add bridge=\"{$bridgeName}\" interface=\"{$iface}\" comment=\"hs-port-{$shortId}\" } on-error={ :error \"hs-port-fail-{$iface}\" }";
         }
 
         // Verify ALL expected bridge ports were added
         $expectedPortCount = count($accessIfaces);
-        $script[] = ":local actualPorts [:len [/interface bridge port find bridge=\"{$bridgeName}\" comment~\"Hotspot Access Port\"]]";
-        $script[] = ":if (\$actualPorts < {$expectedPortCount}) do={ /log error \"Hotspot: Bridge port count mismatch (expected {$expectedPortCount}, got \$actualPorts)\"; :error \"Hotspot bridge port count mismatch\" }";
-        $script[] = "/log info \"Hotspot: Bridge {$bridgeName} has \$actualPorts ports (expected {$expectedPortCount})\"";
+        $script[] = ":local actualPorts [:len [/interface bridge port find bridge=\"{$bridgeName}\" comment~\"hs-port\"]]";  
+        $script[] = ":if (\$actualPorts < {$expectedPortCount}) do={ :error \"hs-port-count-mismatch-{$shortId}\" }";
+        $script[] = "/log info \"hs-{$shortId}-ports-ok\"";
         $script[] = "";
 
         $params = [
             'router_id' => $router->id,
+            'short_id'  => $shortId,
             'interface' => $bridgeName,
             'parent_interface' => null,
             'vlan_required' => false,
@@ -338,65 +341,70 @@ class ZeroConfigHotspotGenerator
 
     private function generatePoolSetup(array $params): array
     {
-        $poolName = "pool-{$params['router_id']}-{$params['interface_index']}";
+        $sid = $params['short_id'] ?? substr(str_replace('-', '', $params['router_id']), 0, 8);
+        $poolName = "hs-pool-{$sid}";
         return [
             "# IP Pool",
-            ":if ([:len [/ip pool find name=\"{$poolName}\"]] = 0) do={ /ip pool add name={$poolName} ranges={$params['range_start']}-{$params['range_end']} comment=\"Tenant {$params['tenant_id']}\" }",
+            ":if ([:len [/ip pool find name=\"{$poolName}\"]] = 0) do={ /ip pool add name={$poolName} ranges={$params['range_start']}-{$params['range_end']} comment=\"hs-{$sid}\" }",
             ""
         ];
     }
 
     private function generateDhcpSetup(array $params): array
     {
-        $dhcpName = "dhcp-{$params['router_id']}-{$params['interface_index']}";
-        $poolName = "pool-{$params['router_id']}-{$params['interface_index']}";
+        $sid = $params['short_id'] ?? substr(str_replace('-', '', $params['router_id']), 0, 8);
+        $dhcpName = "hs-dhcp-{$sid}";
+        $poolName = "hs-pool-{$sid}";
         $network = explode('/', $params['network_cidr'])[0];
         $cidr = explode('/', $params['network_cidr'])[1] ?? '24';
         $dns = "{$params['dns_primary']},{$params['dns_secondary']}";
         $iface = $params['bridge_name'] ?? $params['interface'];
 
         return [
-            "# DHCP Server - CPU-Friendly",
+            "# DHCP Server",
             ":if ([:len [/ip dhcp-server find name=\"{$dhcpName}\"]] = 0) do={ /ip dhcp-server add name={$dhcpName} interface=\"{$iface}\" address-pool={$poolName} lease-time=1h disabled=no authoritative=yes }",
-            ":if ([:len [/ip dhcp-server network find comment~\"Hotspot.*\"]] = 0) do={ /ip dhcp-server network add address={$network}/{$cidr} gateway={$params['gateway_ip']} dns-server=\"{$dns}\" comment=\"Hotspot Network\" }",
+            ":if ([:len [/ip dhcp-server network find comment~\"hs-net-{$sid}\"]] = 0) do={ /ip dhcp-server network add address={$network}/{$cidr} gateway={$params['gateway_ip']} dns-server=\"{$dns}\" comment=\"hs-net-{$sid}\" }",
             ""
         ];
     }
 
     private function generateHotspotSetup(array $params): array
     {
-        $profile = "hs-profile-{$params['router_id']}-{$params['interface_index']}";
-        $server = "hs-server-{$params['router_id']}-{$params['interface_index']}";
-        $poolName = "pool-{$params['router_id']}-{$params['interface_index']}";
+        $sid = $params['short_id'] ?? substr(str_replace('-', '', $params['router_id']), 0, 8);
+        $profile = "hs-prof-{$sid}";
+        $server  = "hs-srv-{$sid}";
+        $poolName = "hs-pool-{$sid}";
+        $userProf = "hs-usr-{$sid}";
         $iface = $params['bridge_name'] ?? $params['interface'];
 
-        // CAPTIVE PORTAL: Escape URL for MikroTik script
         $portalUrl = $params['captive_portal_url']
             ? str_replace(['\\', '"'], ['\\\\', '\\"'], (string) $params['captive_portal_url'])
             : null;
 
         return array_values(array_filter([
-            "# Hotspot Profile - ISP & hAP Lite Optimized with Captive Portal",
+            "# Hotspot Profile",
             ":do { /ip hotspot profile remove [find name=\"{$profile}\"] } on-error={}",
             ":do { /ip hotspot profile add name=\"{$profile}\" hotspot-address={$params['gateway_ip']} login-by=http-chap,http-pap use-radius=yes html-directory=hotspot dns-name=hotspot.local http-cookie-lifetime=1d } on-error={}",
-            // CAPTIVE PORTAL: Redirect to tenant-specific portal for package selection and payment
-            ($portalUrl ? ":do { /file set hotspot/login.html contents=\"<html><head><meta http-equiv='refresh' content='0;url={$portalUrl}'></head><body>Redirecting to portal...</body></html>\" } on-error={}" : null),
-            "# Hotspot Server - CPU Optimized for hAP Lite",
+            ($portalUrl ? ":do { /file set hotspot/login.html contents=\"{$portalUrl}\" } on-error={}" : null),
+            "# Hotspot Server",
             ":do { /ip hotspot remove [find name=\"{$server}\"] } on-error={}",
             ":do { /ip hotspot add name=\"{$server}\" interface=\"{$iface}\" profile=\"{$profile}\" address-pool={$poolName} addresses-per-mac=2 idle-timeout=5m keepalive-timeout=2m disabled=no } on-error={}",
-            "# User Profile - Default CPU-Friendly",
-            ":do { /ip hotspot user profile remove [find name=\"default-hotspot-{$params['router_id']}-{$params['interface_index']}\"] } on-error={}",
-            ":do { /ip hotspot user profile add name=\"default-hotspot-{$params['router_id']}-{$params['interface_index']}\" add-mac-cookie=yes shared-users=1 session-timeout=6h } on-error={}",
+            "# User Profile",
+            ":do { /ip hotspot user profile remove [find name=\"{$userProf}\"] } on-error={}",
+            ":do { /ip hotspot user profile add name=\"{$userProf}\" add-mac-cookie=yes shared-users=1 session-timeout=6h } on-error={}",
             ""
         ], fn ($line) => $line !== null && $line !== ''));
     }
 
     private function generateRadiusSetup(array $params): array
     {
-        $profile = "hs-profile-{$params['router_id']}-{$params['interface_index']}";
+        $sid = $params['short_id'] ?? substr(str_replace('-', '', $params['router_id']), 0, 8);
+        $profile = "hs-prof-{$sid}";
+        $rs  = $params['radius_server'];
+        $sec = $params['radius_secret'];
         return [
-            "# RADIUS Configuration",
-            ":if ([:len [/radius find service=hotspot comment~\"Hotspot.*\"]] = 0) do={ /radius add service=hotspot address={$params['radius_server']} secret=\"{$params['radius_secret']}\" authentication-port=1812 accounting-port=1813 timeout=3s comment=\"Hotspot RADIUS\" }",
+            "# RADIUS",
+            ":if ([:len [/radius find service=hotspot comment~\"hs-radius-{$sid}\"]] = 0) do={ /radius add service=hotspot address={$rs} secret=\"{$sec}\" authentication-port=1812 accounting-port=1813 timeout=3s comment=\"hs-radius-{$sid}\" }",
             ":do { /ip hotspot profile set [find name=\"{$profile}\"] use-radius=yes } on-error={}",
             ":do { /ip hotspot user remove [find] } on-error={}",
             ""
@@ -405,66 +413,52 @@ class ZeroConfigHotspotGenerator
 
     private function generateFirewallRules(array $params): array
     {
+        $sid   = $params['short_id'] ?? substr(str_replace('-', '', $params['router_id']), 0, 8);
         $iface = $params['bridge_name'] ?? $params['interface'];
-        $networkCidr = $params['network_cidr'];
-        $routerId = $params['router_id'];
 
         return [
-            "# Firewall Rules - Authentication Enforcement",
-            "# CRITICAL: ALL rules scoped to in-interface={$iface} to avoid affecting other router traffic",
-            "# Without in-interface scoping, established/related accept matches ALL traffic on the router",
-            ":do { /ip firewall filter remove [find comment~\"Hotspot-{$routerId}-FW\"] } on-error={}",
-            // Insert in reverse order with place-before=0 so rules end up in the correct order at the top
-            // 5. DROP all traffic from bridge (unauthenticated devices cannot pass)
-            "/ip firewall filter add chain=forward in-interface={$iface} action=drop place-before=0 comment=\"Hotspot-{$routerId}-FW-DROP\"",
-            // 4. Allow ONLY authenticated hotspot users to reach WAN
-            "/ip firewall filter add chain=forward in-interface={$iface} hotspot=auth out-interface-list=WAN action=accept place-before=0 comment=\"Hotspot-{$routerId}-FW-INET\"",
-            // 3. Drop invalid
-            "/ip firewall filter add chain=forward in-interface={$iface} connection-state=invalid action=drop place-before=0 comment=\"Hotspot-{$routerId}-FW-INV\"",
-            // 2. Accept established/related from hotspot clients
-            "/ip firewall filter add chain=forward in-interface={$iface} connection-state=established,related action=accept place-before=0 comment=\"Hotspot-{$routerId}-FW-EST\"",
-            // 1. Accept established/related return traffic FROM WAN back to hotspot clients
-            "/ip firewall filter add chain=forward in-interface-list=WAN out-interface={$iface} connection-state=established,related action=accept place-before=0 comment=\"Hotspot-{$routerId}-FW-WAN-EST\"",
+            "# Firewall - Auth Enforcement (in-interface scoped)",
+            ":do { /ip firewall filter remove [find comment~\"hs-fw-{$sid}\"] } on-error={}",
+            "/ip firewall filter add chain=forward in-interface={$iface} action=drop place-before=0 comment=\"hs-fw-{$sid}-drop\"",
+            "/ip firewall filter add chain=forward in-interface={$iface} hotspot=auth out-interface-list=WAN action=accept place-before=0 comment=\"hs-fw-{$sid}-inet\"",
+            "/ip firewall filter add chain=forward in-interface={$iface} connection-state=invalid action=drop place-before=0 comment=\"hs-fw-{$sid}-inv\"",
+            "/ip firewall filter add chain=forward in-interface={$iface} connection-state=established,related action=accept place-before=0 comment=\"hs-fw-{$sid}-est\"",
+            "/ip firewall filter add chain=forward in-interface-list=WAN out-interface={$iface} connection-state=established,related action=accept place-before=0 comment=\"hs-fw-{$sid}-wan\"",
             ""
         ];
     }
 
     private function generateManagementInputRules(array $params): array
     {
-        $routerId = $params['router_id'];
-        $managementSubnet = $params['management_subnet'] ?? '10.0.0.0/8';
-        $managementPorts = '22,8291,8728,8729';
-
-        $radiusServer = $params['radius_server'] ?? '10.8.0.1';
+        $sid   = $params['short_id'] ?? substr(str_replace('-', '', $params['router_id']), 0, 8);
+        $mgmt  = $params['management_subnet'] ?? '10.0.0.0/8';
+        $mport = '22,8291,8728,8729';
+        $rs    = $params['radius_server'] ?? '10.8.0.1';
 
         return [
-            "# Management Access - VPN/Management Subnet Only",
-            ":do { /ip firewall filter remove [find comment~\"Hotspot-{$routerId}-MGMT\"]; } on-error={}",
-            ":do { /ip firewall filter remove [find comment=\"Hotspot-{$routerId}-SNMP-ALLOW\"]; } on-error={}",
-            // Insert in reverse order with place-before=0 for correct ordering at the top
-            // Final order: MGMT-EST → MGMT-ALLOW → SNMP-ALLOW → MGMT-DROP
-            "/ip firewall filter add chain=input protocol=tcp dst-port={$managementPorts} action=drop place-before=0 comment=\"Hotspot-{$routerId}-MGMT-DROP\"",
-            "/ip firewall filter add chain=input protocol=udp dst-port=161 src-address={$radiusServer} action=accept place-before=0 comment=\"Hotspot-{$routerId}-SNMP-ALLOW\"",
-            "/ip firewall filter add chain=input protocol=tcp dst-port={$managementPorts} src-address={$managementSubnet} action=accept place-before=0 comment=\"Hotspot-{$routerId}-MGMT-ALLOW\"",
-            "/ip firewall filter add chain=input connection-state=established,related action=accept place-before=0 comment=\"Hotspot-{$routerId}-MGMT-EST\"",
+            "# Management Input Rules",
+            ":do { /ip firewall filter remove [find comment~\"hs-mgmt-{$sid}\"]; } on-error={}",
+            "/ip firewall filter add chain=input protocol=tcp dst-port={$mport} action=drop place-before=0 comment=\"hs-mgmt-{$sid}-drop\"",
+            "/ip firewall filter add chain=input protocol=udp dst-port=161 src-address={$rs} action=accept place-before=0 comment=\"hs-mgmt-{$sid}-snmp\"",
+            "/ip firewall filter add chain=input protocol=tcp dst-port={$mport} src-address={$mgmt} action=accept place-before=0 comment=\"hs-mgmt-{$sid}-allow\"",
+            "/ip firewall filter add chain=input connection-state=established,related action=accept place-before=0 comment=\"hs-mgmt-{$sid}-est\"",
             ""
         ];
     }
 
     private function generateNatRules(array $params): array
     {
+        $sid     = $params['short_id'] ?? substr(str_replace('-', '', $params['router_id']), 0, 8);
         $network = explode('/', $params['network_cidr'])[0];
-        $cidr = explode('/', $params['network_cidr'])[1] ?? '24';
-        $iface = $params['bridge_name'] ?? $params['interface'];
+        $cidr    = explode('/', $params['network_cidr'])[1] ?? '24';
+        $iface   = $params['bridge_name'] ?? $params['interface'];
 
         return [
             "# NAT Rules",
-            ":do { /ip firewall nat remove [find comment=\"Hotspot: Internet Access\"] } on-error={}",
-            ":do { /ip firewall nat add chain=srcnat action=masquerade src-address={$network}/{$cidr} out-interface-list=WAN comment=\"Hotspot: Internet Access\" } on-error={}",
-            ":do { /ip firewall nat remove [find comment=\"Hotspot: HTTP Redirect\"] } on-error={}",
-            ":do { /ip firewall nat add chain=dstnat action=redirect to-ports=64872 protocol=tcp dst-port=80 in-interface={$iface} comment=\"Hotspot: HTTP Redirect\" } on-error={}",
-            ":do { /ip firewall nat remove [find comment=\"Hotspot: HTTPS Redirect\"] } on-error={}",
-            ":do { /ip firewall nat add chain=dstnat action=redirect to-ports=64875 protocol=tcp dst-port=443 in-interface={$iface} comment=\"Hotspot: HTTPS Redirect\" } on-error={}",
+            ":do { /ip firewall nat remove [find comment=\"hs-nat-{$sid}\"] } on-error={}",
+            ":do { /ip firewall nat add chain=srcnat action=masquerade src-address={$network}/{$cidr} out-interface-list=WAN comment=\"hs-nat-{$sid}\" } on-error={}",
+            ":do { /ip firewall nat add chain=dstnat action=redirect to-ports=64872 protocol=tcp dst-port=80 in-interface={$iface} comment=\"hs-redir80-{$sid}\" } on-error={}",
+            ":do { /ip firewall nat add chain=dstnat action=redirect to-ports=64875 protocol=tcp dst-port=443 in-interface={$iface} comment=\"hs-redir443-{$sid}\" } on-error={}",
             ""
         ];
     }

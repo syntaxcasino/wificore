@@ -92,6 +92,20 @@ class Router extends Model
         return RouterTenantMap::findTenantByRouterId($this->id);
     }
 
+    /**
+     * Get the Tenant model for this router.
+     * Resolves via router_tenant_map (public schema cross-schema lookup).
+     * Used by hotspot/hybrid generators to build captive portal URLs.
+     */
+    public function getTenantAttribute(): ?\App\Models\Tenant
+    {
+        $tenantId = $this->getTenantIdAttribute();
+        if (!$tenantId) {
+            return null;
+        }
+        return \App\Models\Tenant::find($tenantId);
+    }
+
     protected $fillable = [
         // tenant_id removed for schema isolation
         'name',

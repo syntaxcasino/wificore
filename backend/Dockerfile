@@ -29,16 +29,16 @@ COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 # Copy composer files first (for better layer caching)
 COPY composer.json ./
 
-# Install dependencies (no dev dependencies)
-# Note: composer.lock will be generated if it doesn't exist
-RUN composer install --optimize-autoloader --no-interaction --no-progress --no-scripts --no-dev \
+# Install all dependencies (including dev) so package:discover can load all providers.
+# Dev deps are not copied to the production stage — they are stripped at the OS/copy level.
+RUN composer install --optimize-autoloader --no-interaction --no-progress --no-scripts \
  && composer clear-cache
 
 # Copy application source
 COPY . .
 
 # Regenerate autoloader after copying all files
-RUN composer dump-autoload --optimize --no-dev
+RUN composer dump-autoload --optimize
 
 # Verify critical files exist in builder
 RUN test -f app/Providers/RouteServiceProvider.php || (echo "ERROR: RouteServiceProvider.php not found in builder!" && exit 1) \
