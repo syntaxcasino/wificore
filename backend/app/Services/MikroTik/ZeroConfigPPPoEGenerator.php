@@ -100,8 +100,8 @@ class ZeroConfigPPPoEGenerator
             'pool'              => "pppoe-pool-$id",
             'profile'           => "pppoe-prof-$id",
             'service'           => "pppoe-svc-$id",
-            'pppoe_list'        => "PPPOE-$id",
-            'pppoe_active_list' => "PPPOE-ACTIVE-$id",
+            'pppoe_list'        => "PL-$id",
+            'pppoe_active_list' => "PA-$id",
             'wan_list'          => "WAN",
         ];
 
@@ -184,7 +184,7 @@ class ZeroConfigPPPoEGenerator
         $s[] = "/ip firewall filter add chain=input in-interface=\"$bridge\" action=drop place-before=0 comment=\"PPPoE-$id-DROP-IN\"";
         $s[] = "/ip firewall filter add chain=input protocol=tcp dst-port=$mports src-address=!$mgmt action=drop place-before=0 comment=\"PPPoE-$id-MGMT-DROP\"";
         // FORWARD rules (added in reverse order)
-        $s[] = "/ip firewall filter add chain=forward in-interface-list=$wan out-interface-list=$pal connection-state=established,related action=accept place-before=0 comment=\"PPPoE-$id-WAN-EST\"";
+        $s[] = "/ip firewall filter add chain=forward in-interface-list=$wan out-interface-list=$pal connection-state=established,related action=accept place-before=0 comment=\"pp-wan-est-$id\"";
         $s[] = "/ip firewall filter add chain=forward in-interface-list=$pal connection-state=established,related action=accept place-before=0 comment=\"PPPoE-$id-EST\"";
         $s[] = "/ip firewall filter add chain=forward in-interface-list=$pal connection-state=invalid action=drop place-before=0 comment=\"PPPoE-$id-INV\"";
         $s[] = "/ip firewall filter add chain=forward in-interface-list=$pal out-interface-list=$wan action=accept place-before=0 comment=\"PPPoE-$id-INET\"";
