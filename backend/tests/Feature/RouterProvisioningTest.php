@@ -37,20 +37,34 @@ const RPT_DNS1      = 'cc000021-0000-4000-8000-000000000021';
 // ─────────────────────────────────────────────────────────────────────────────
 function rptBootstrap(): void
 {
-    DB::statement('SET search_path TO ' . RPT_SCHEMA . ',public');
-
+    // Ensure tenant row exists first (needed by TenantMigrationManager)
     DB::table('public.tenants')->insertOrIgnore([
         'id'             => RPT_TENANT_ID,
         'name'           => 'Test Tenant',
-        'slug'           => 'test-tenant',
+        'slug'           => 'test-tenant-rpt',
         'subdomain'      => 'testtenant',
         'schema_name'    => RPT_SCHEMA,
-        'schema_created' => true,
+        'schema_created' => false,
         'is_active'      => true,
-        'email'          => 'test@example.com',
+        'email'          => 'test-rpt@example.com',
         'created_at'     => now(),
         'updated_at'     => now(),
     ]);
+
+    // Only run full schema setup when the routers table doesn't yet exist
+    $schemaExists = DB::selectOne(
+        "SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_schema = ? AND table_name = 'routers') AS ex",
+        [RPT_SCHEMA]
+    );
+
+    if (!($schemaExists->ex ?? false)) {
+        /** @var \App\Services\TenantMigrationManager $mgr */
+        $mgr    = app(\App\Services\TenantMigrationManager::class);
+        $tenant = \App\Models\Tenant::find(RPT_TENANT_ID);
+        $mgr->setupTenantSchema($tenant);
+    }
+
+    DB::statement('SET search_path TO ' . RPT_SCHEMA . ',public');
 }
 
 function rptRouter(string $id = RPT_ROUTER_ID): Router
@@ -82,8 +96,8 @@ function rptPool(string $id, array $overrides = []): TenantIpPool
 {
     // Derive a deterministic octet from the pool ID so each pool ID maps to a
     // unique CIDR without using mutable static state that leaks across tests.
-    $octet3 = (crc32($id) & 0x7F) + 1;          // 1-128
-    $octet4Base = (crc32(strrev($id)) & 0x3F) + 1; // 1-64 (offset for base)
+    $octet3 = (abs(crc32($id)) % 127) + 1;          // 1-128
+    $octet4Base = (abs(crc32(strrev($id))) % 63) + 1; // 1-64
     $defaults = [
         'id'            => $id,
         'tenant_id'     => RPT_TENANT_ID,
@@ -103,9 +117,21 @@ function rptPool(string $id, array $overrides = []): TenantIpPool
         'updated_at'    => now(),
     ];
     $attrs = array_merge($defaults, $overrides);
-    DB::table('public.tenant_ip_pools')->insertOrIgnore($attrs);
+    // Build DB-safe attributes: null gateway_ip must not hit the NOT NULL column.
+    // The in-memory model keeps the null so generators can test their fallback logic.
+    $dbAttrs = $attrs;
+    if ($dbAttrs['gateway_ip'] === null) {
+        // Derive a safe fallback from the CIDR so the DB row is valid
+        $cidr = $dbAttrs['network_cidr'] ?? '192.168.99.0/24';
+        $base = explode('/', $cidr)[0];
+        $parts = explode('.', $base);
+        $parts[3] = 1;
+        $dbAttrs['gateway_ip'] = implode('.', $parts);
+    }
+    // updateOrInsert overwrites stale rows from previous test runs
+    DB::table('public.tenant_ip_pools')->updateOrInsert(['id' => $dbAttrs['id']], $dbAttrs);
     $pool = new TenantIpPool();
-    $pool->setRawAttributes($attrs);
+    $pool->setRawAttributes($attrs);  // full attrs (may contain null) for in-memory use
     $pool->exists = true;
     return $pool;
 }
@@ -237,8 +263,7 @@ describe('Database connection routing', function () {
     });
 
     it('useWritePdo forces write connection for sensitive reads', function () {
-        uses(DatabaseTransactions::class);
-        DB::statement('SET search_path TO ' . RPT_SCHEMA . ',public');
+        rptBootstrap(); // ensure schema + tables exist
         // useWritePdo() should not throw — confirms sticky write connection works
         $count = DB::table(RPT_SCHEMA . '.routers')->useWritePdo()->count();
         expect($count)->toBeGreaterThanOrEqual(0);
