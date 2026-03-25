@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+ <head>
+  <meta charset="UTF-8">
+  <title>Dashboard for /var/www/html/app/Jobs</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link href="../_css/bootstrap.min.css?v=12.5.3" rel="stylesheet" type="text/css">
+  <link href="../_css/billboard.min.css?v=12.5.3" rel="stylesheet" type="text/css">
+  <link href="../_css/style.css?v=12.5.3" rel="stylesheet" type="text/css">
+  <link href="../_css/custom.css" rel="stylesheet" type="text/css">
+ </head>
+ <body>
+  <header>
+   <div class="container-fluid">
+    <div class="row">
+     <div class="col-md-12">
+      <nav aria-label="breadcrumb">
+       <ol class="breadcrumb">
+         <li class="breadcrumb-item"><a href="../index.html">/var/www/html/app</a></li>
+         <li class="breadcrumb-item"><a href="index.html">Jobs</a></li>
+         <li class="breadcrumb-item active">(Dashboard)</li>
+
+       </ol>
+      </nav>
+     </div>
+    </div>
+   </div>
+  </header>
+  <div class="container-fluid">
+   <div class="row">
+    <div class="col-md-12">
+     <h2>Classes</h2>
+    </div>
+   </div>
+   <div class="row">
+    <div class="col-md-6">
+     <h3>Coverage Distribution</h3>
+     <div id="classesCoverageDistribution" style="height: 300px;">
+       <svg></svg>
+     </div>
+    </div>
+    <div class="col-md-6">
+     <h3>Complexity</h3>
+     <div id="classComplexity" style="height: 300px;">
+       <svg></svg>
+     </div>
+    </div>
+   </div>
+   <div class="row">
+    <div class="col-md-6">
+     <h3 style="margin-top: 2rem;">Insufficient Coverage</h3>
+     <div class="scrollbox">
+      <table class="table">
+       <thead>
+        <tr>
+         <th>Class</th>
+         <th class="text-right">Coverage</th>
+        </tr>
+       </thead>
+       <tbody>
+       <tr><td><a href="SendPppoePaymentReceiptJob.php.html#18">App\Jobs\SendPppoePaymentReceiptJob</a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="SendPppoePaymentRemindersJob.php.html#20">App\Jobs\SendPppoePaymentRemindersJob</a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="SendTenantCredentialsEmailJob.php.html#14">App\Jobs\SendTenantCredentialsEmailJob</a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="SendTenantVerificationEmailJob.php.html#13">App\Jobs\SendTenantVerificationEmailJob</a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="SendTestMessageJob.php.html#16">App\Jobs\SendTestMessageJob</a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="SendVerificationEmailJob.php.html#14">App\Jobs\SendVerificationEmailJob</a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="TrackFailedLoginJob.php.html#17">App\Jobs\TrackFailedLoginJob</a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="UpdateDashboardStatsJob.php.html#23">App\Jobs\UpdateDashboardStatsJob</a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="UpdateLoginStatsJob.php.html#16">App\Jobs\UpdateLoginStatsJob</a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="UpdatePasswordJob.php.html#21">App\Jobs\UpdatePasswordJob</a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="UpdateUserJob.php.html#18">App\Jobs\UpdateUserJob</a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="VerifyVpnConnectivityJob.php.html#20">App\Jobs\VerifyVpnConnectivityJob</a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="SendTenantExpiryWarningJob.php.html#18">App\Jobs\SendTenantExpiryWarningJob</a></td><td class="text-right">1%</td></tr>
+       <tr><td><a href="SyncRadiusAccountingJob.php.html#17">App\Jobs\SyncRadiusAccountingJob</a></td><td class="text-right">2%</td></tr>
+       <tr><td><a href="UnsuspendExpiredAccountsJob.php.html#16">App\Jobs\UnsuspendExpiredAccountsJob</a></td><td class="text-right">3%</td></tr>
+       <tr><td><a href="SyncAccessPointStatusJob.php.html#16">App\Jobs\SyncAccessPointStatusJob</a></td><td class="text-right">3%</td></tr>
+       <tr><td><a href="UpdateVpnStatusJob.php.html#16">App\Jobs\UpdateVpnStatusJob</a></td><td class="text-right">7%</td></tr>
+
+       </tbody>
+      </table>
+     </div>
+    </div>
+    <div class="col-md-6">
+     <h3 style="margin-top: 2rem;">Project Risks</h3>
+     <div class="scrollbox">
+      <table class="table">
+       <thead>
+        <tr>
+         <th>Class</th>
+         <th class="text-right">Coverage</th>
+         <th class="text-right">Complexity</th>
+         <th class="text-right"><abbr title="Change Risk Anti-Patterns (CRAP) Index">CRAP</abbr></th>
+        </tr>
+       </thead>
+       <tbody>
+       <tr><td><a href="UpdateDashboardStatsJob.php.html#23">App\Jobs\UpdateDashboardStatsJob</a></td><td class="text-right">0.0%</td><td class="text-right">45</td><td class="text-right">2070</td></tr>
+       <tr><td><a href="VerifyVpnConnectivityJob.php.html#20">App\Jobs\VerifyVpnConnectivityJob</a></td><td class="text-right">0.0%</td><td class="text-right">23</td><td class="text-right">552</td></tr>
+       <tr><td><a href="SendVerificationEmailJob.php.html#14">App\Jobs\SendVerificationEmailJob</a></td><td class="text-right">0.0%</td><td class="text-right">19</td><td class="text-right">380</td></tr>
+       <tr><td><a href="SyncRadiusAccountingJob.php.html#17">App\Jobs\SyncRadiusAccountingJob</a></td><td class="text-right">2.4%</td><td class="text-right">12</td><td class="text-right">145</td></tr>
+       <tr><td><a href="SendTenantExpiryWarningJob.php.html#18">App\Jobs\SendTenantExpiryWarningJob</a></td><td class="text-right">1.3%</td><td class="text-right">11</td><td class="text-right">127</td></tr>
+       <tr><td><a href="SendPppoePaymentRemindersJob.php.html#20">App\Jobs\SendPppoePaymentRemindersJob</a></td><td class="text-right">0.0%</td><td class="text-right">10</td><td class="text-right">110</td></tr>
+       <tr><td><a href="SendPppoePaymentReceiptJob.php.html#18">App\Jobs\SendPppoePaymentReceiptJob</a></td><td class="text-right">0.0%</td><td class="text-right">9</td><td class="text-right">90</td></tr>
+       <tr><td><a href="SendTestMessageJob.php.html#16">App\Jobs\SendTestMessageJob</a></td><td class="text-right">0.0%</td><td class="text-right">8</td><td class="text-right">72</td></tr>
+       <tr><td><a href="SyncAccessPointStatusJob.php.html#16">App\Jobs\SyncAccessPointStatusJob</a></td><td class="text-right">3.9%</td><td class="text-right">8</td><td class="text-right">64</td></tr>
+       <tr><td><a href="UnsuspendExpiredAccountsJob.php.html#16">App\Jobs\UnsuspendExpiredAccountsJob</a></td><td class="text-right">3.8%</td><td class="text-right">7</td><td class="text-right">50</td></tr>
+       <tr><td><a href="UpdateVpnStatusJob.php.html#16">App\Jobs\UpdateVpnStatusJob</a></td><td class="text-right">7.1%</td><td class="text-right">7</td><td class="text-right">46</td></tr>
+       <tr><td><a href="SendTenantCredentialsEmailJob.php.html#14">App\Jobs\SendTenantCredentialsEmailJob</a></td><td class="text-right">0.0%</td><td class="text-right">6</td><td class="text-right">42</td></tr>
+       <tr><td><a href="SendTenantVerificationEmailJob.php.html#13">App\Jobs\SendTenantVerificationEmailJob</a></td><td class="text-right">0.0%</td><td class="text-right">6</td><td class="text-right">42</td></tr>
+       <tr><td><a href="TrackFailedLoginJob.php.html#17">App\Jobs\TrackFailedLoginJob</a></td><td class="text-right">0.0%</td><td class="text-right">5</td><td class="text-right">30</td></tr>
+       <tr><td><a href="UpdatePasswordJob.php.html#21">App\Jobs\UpdatePasswordJob</a></td><td class="text-right">0.0%</td><td class="text-right">5</td><td class="text-right">30</td></tr>
+       <tr><td><a href="UpdateUserJob.php.html#18">App\Jobs\UpdateUserJob</a></td><td class="text-right">0.0%</td><td class="text-right">5</td><td class="text-right">30</td></tr>
+       <tr><td><a href="UpdateLoginStatsJob.php.html#16">App\Jobs\UpdateLoginStatsJob</a></td><td class="text-right">0.0%</td><td class="text-right">4</td><td class="text-right">20</td></tr>
+
+       </tbody>
+      </table>
+     </div>
+    </div>
+   </div>
+   <div class="row">
+    <div class="col-md-12">
+     <h2 style="margin-top: 3rem;">Methods</h2>
+    </div>
+   </div>
+   <div class="row">
+    <div class="col-md-6">
+     <h3>Coverage Distribution</h3>
+     <div id="methodsCoverageDistribution" style="height: 300px;">
+       <svg></svg>
+     </div>
+    </div>
+    <div class="col-md-6">
+     <h3>Complexity</h3>
+     <div id="methodComplexity" style="height: 300px;">
+       <svg></svg>
+     </div>
+    </div>
+   </div>
+   <div class="row">
+    <div class="col-md-6">
+     <h3 style="margin-top: 2rem;">Insufficient Coverage</h3>
+     <div class="scrollbox">
+      <table class="table">
+       <thead>
+        <tr>
+         <th>Method</th>
+         <th class="text-right">Coverage</th>
+        </tr>
+       </thead>
+       <tbody>
+       <tr><td><a href="SendPppoePaymentReceiptJob.php.html#27"><abbr title="App\Jobs\SendPppoePaymentReceiptJob::__construct">__construct</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="SendPppoePaymentReceiptJob.php.html#36"><abbr title="App\Jobs\SendPppoePaymentReceiptJob::handle">handle</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="SendPppoePaymentRemindersJob.php.html#29"><abbr title="App\Jobs\SendPppoePaymentRemindersJob::__construct">__construct</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="SendPppoePaymentRemindersJob.php.html#35"><abbr title="App\Jobs\SendPppoePaymentRemindersJob::handle">handle</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="SendPppoePaymentRemindersJob.php.html#113"><abbr title="App\Jobs\SendPppoePaymentRemindersJob::failed">failed</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="SendTenantCredentialsEmailJob.php.html#26"><abbr title="App\Jobs\SendTenantCredentialsEmailJob::__construct">__construct</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="SendTenantCredentialsEmailJob.php.html#34"><abbr title="App\Jobs\SendTenantCredentialsEmailJob::handle">handle</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="SendTenantCredentialsEmailJob.php.html#83"><abbr title="App\Jobs\SendTenantCredentialsEmailJob::failed">failed</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="SendTenantExpiryWarningJob.php.html#39"><abbr title="App\Jobs\SendTenantExpiryWarningJob::handle">handle</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="SendTenantExpiryWarningJob.php.html#126"><abbr title="App\Jobs\SendTenantExpiryWarningJob::sendExpiryWarning">sendExpiryWarning</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="SendTenantExpiryWarningJob.php.html#156"><abbr title="App\Jobs\SendTenantExpiryWarningJob::tags">tags</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="SendTenantExpiryWarningJob.php.html#164"><abbr title="App\Jobs\SendTenantExpiryWarningJob::failed">failed</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="SendTenantVerificationEmailJob.php.html#25"><abbr title="App\Jobs\SendTenantVerificationEmailJob::__construct">__construct</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="SendTenantVerificationEmailJob.php.html#33"><abbr title="App\Jobs\SendTenantVerificationEmailJob::handle">handle</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="SendTenantVerificationEmailJob.php.html#71"><abbr title="App\Jobs\SendTenantVerificationEmailJob::failed">failed</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="SendTestMessageJob.php.html#27"><abbr title="App\Jobs\SendTestMessageJob::__construct">__construct</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="SendTestMessageJob.php.html#35"><abbr title="App\Jobs\SendTestMessageJob::handle">handle</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="SendTestMessageJob.php.html#92"><abbr title="App\Jobs\SendTestMessageJob::failed">failed</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="SendVerificationEmailJob.php.html#26"><abbr title="App\Jobs\SendVerificationEmailJob::__construct">__construct</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="SendVerificationEmailJob.php.html#34"><abbr title="App\Jobs\SendVerificationEmailJob::handle">handle</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="SyncAccessPointStatusJob.php.html#35"><abbr title="App\Jobs\SyncAccessPointStatusJob::handle">handle</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="SyncAccessPointStatusJob.php.html#114"><abbr title="App\Jobs\SyncAccessPointStatusJob::failed">failed</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="SyncRadiusAccountingJob.php.html#37"><abbr title="App\Jobs\SyncRadiusAccountingJob::handle">handle</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="SyncRadiusAccountingJob.php.html#159"><abbr title="App\Jobs\SyncRadiusAccountingJob::failed">failed</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="TrackFailedLoginJob.php.html#31"><abbr title="App\Jobs\TrackFailedLoginJob::__construct">__construct</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="TrackFailedLoginJob.php.html#42"><abbr title="App\Jobs\TrackFailedLoginJob::handle">handle</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="TrackFailedLoginJob.php.html#99"><abbr title="App\Jobs\TrackFailedLoginJob::failed">failed</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="UnsuspendExpiredAccountsJob.php.html#44"><abbr title="App\Jobs\UnsuspendExpiredAccountsJob::handle">handle</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="UpdateDashboardStatsJob.php.html#41"><abbr title="App\Jobs\UpdateDashboardStatsJob::__construct">__construct</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="UpdateDashboardStatsJob.php.html#50"><abbr title="App\Jobs\UpdateDashboardStatsJob::handle">handle</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="UpdateDashboardStatsJob.php.html#666"><abbr title="App\Jobs\UpdateDashboardStatsJob::failed">failed</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="UpdateLoginStatsJob.php.html#30"><abbr title="App\Jobs\UpdateLoginStatsJob::__construct">__construct</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="UpdateLoginStatsJob.php.html#41"><abbr title="App\Jobs\UpdateLoginStatsJob::handle">handle</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="UpdateLoginStatsJob.php.html#75"><abbr title="App\Jobs\UpdateLoginStatsJob::failed">failed</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="UpdatePasswordJob.php.html#36"><abbr title="App\Jobs\UpdatePasswordJob::__construct">__construct</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="UpdatePasswordJob.php.html#48"><abbr title="App\Jobs\UpdatePasswordJob::handle">handle</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="UpdatePasswordJob.php.html#111"><abbr title="App\Jobs\UpdatePasswordJob::failed">failed</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="UpdateUserJob.php.html#33"><abbr title="App\Jobs\UpdateUserJob::__construct">__construct</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="UpdateUserJob.php.html#45"><abbr title="App\Jobs\UpdateUserJob::handle">handle</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="UpdateUserJob.php.html#87"><abbr title="App\Jobs\UpdateUserJob::failed">failed</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="UpdateVpnStatusJob.php.html#36"><abbr title="App\Jobs\UpdateVpnStatusJob::handle">handle</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="UpdateVpnStatusJob.php.html#80"><abbr title="App\Jobs\UpdateVpnStatusJob::failed">failed</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="VerifyVpnConnectivityJob.php.html#31"><abbr title="App\Jobs\VerifyVpnConnectivityJob::__construct">__construct</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="VerifyVpnConnectivityJob.php.html#43"><abbr title="App\Jobs\VerifyVpnConnectivityJob::handle">handle</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="VerifyVpnConnectivityJob.php.html#193"><abbr title="App\Jobs\VerifyVpnConnectivityJob::discoverRouterInterfaces">discoverRouterInterfaces</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="VerifyVpnConnectivityJob.php.html#238"><abbr title="App\Jobs\VerifyVpnConnectivityJob::failed">failed</abbr></a></td><td class="text-right">0%</td></tr>
+
+       </tbody>
+      </table>
+     </div>
+    </div>
+    <div class="col-md-6">
+     <h3 style="margin-top: 2rem;">Project Risks</h3>
+     <div class="scrollbox">
+      <table class="table">
+       <thead>
+        <tr>
+         <th>Method</th>
+         <th class="text-right">Coverage</th>
+         <th class="text-right">Complexity</th>
+         <th class="text-right"><abbr title="Change Risk Anti-Patterns (CRAP) Index">CRAP</abbr></th>
+        </tr>
+       </thead>
+       <tbody>
+       <tr><td><a href="UpdateDashboardStatsJob.php.html#50"><abbr title="App\Jobs\UpdateDashboardStatsJob::handle">handle</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">43</td><td class="text-right">1892</td></tr>
+       <tr><td><a href="SendVerificationEmailJob.php.html#34"><abbr title="App\Jobs\SendVerificationEmailJob::handle">handle</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">18</td><td class="text-right">342</td></tr>
+       <tr><td><a href="VerifyVpnConnectivityJob.php.html#43"><abbr title="App\Jobs\VerifyVpnConnectivityJob::handle">handle</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">15</td><td class="text-right">240</td></tr>
+       <tr><td><a href="SyncRadiusAccountingJob.php.html#37"><abbr title="App\Jobs\SyncRadiusAccountingJob::handle">handle</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">10</td><td class="text-right">110</td></tr>
+       <tr><td><a href="SendPppoePaymentReceiptJob.php.html#36"><abbr title="App\Jobs\SendPppoePaymentReceiptJob::handle">handle</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">8</td><td class="text-right">72</td></tr>
+       <tr><td><a href="SendPppoePaymentRemindersJob.php.html#35"><abbr title="App\Jobs\SendPppoePaymentRemindersJob::handle">handle</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">8</td><td class="text-right">72</td></tr>
+       <tr><td><a href="SendTenantExpiryWarningJob.php.html#39"><abbr title="App\Jobs\SendTenantExpiryWarningJob::handle">handle</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">6</td><td class="text-right">42</td></tr>
+       <tr><td><a href="SendTestMessageJob.php.html#35"><abbr title="App\Jobs\SendTestMessageJob::handle">handle</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">6</td><td class="text-right">42</td></tr>
+       <tr><td><a href="SyncAccessPointStatusJob.php.html#35"><abbr title="App\Jobs\SyncAccessPointStatusJob::handle">handle</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">6</td><td class="text-right">42</td></tr>
+       <tr><td><a href="UnsuspendExpiredAccountsJob.php.html#44"><abbr title="App\Jobs\UnsuspendExpiredAccountsJob::handle">handle</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">6</td><td class="text-right">42</td></tr>
+       <tr><td><a href="UpdateVpnStatusJob.php.html#36"><abbr title="App\Jobs\UpdateVpnStatusJob::handle">handle</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">5</td><td class="text-right">30</td></tr>
+       <tr><td><a href="SendTenantCredentialsEmailJob.php.html#34"><abbr title="App\Jobs\SendTenantCredentialsEmailJob::handle">handle</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">4</td><td class="text-right">20</td></tr>
+       <tr><td><a href="SendTenantVerificationEmailJob.php.html#33"><abbr title="App\Jobs\SendTenantVerificationEmailJob::handle">handle</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">4</td><td class="text-right">20</td></tr>
+       <tr><td><a href="VerifyVpnConnectivityJob.php.html#193"><abbr title="App\Jobs\VerifyVpnConnectivityJob::discoverRouterInterfaces">discoverRouterInterfaces</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">4</td><td class="text-right">20</td></tr>
+       <tr><td><a href="TrackFailedLoginJob.php.html#42"><abbr title="App\Jobs\TrackFailedLoginJob::handle">handle</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">3</td><td class="text-right">12</td></tr>
+       <tr><td><a href="UpdatePasswordJob.php.html#48"><abbr title="App\Jobs\UpdatePasswordJob::handle">handle</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">3</td><td class="text-right">12</td></tr>
+       <tr><td><a href="UpdateUserJob.php.html#45"><abbr title="App\Jobs\UpdateUserJob::handle">handle</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">3</td><td class="text-right">12</td></tr>
+       <tr><td><a href="VerifyVpnConnectivityJob.php.html#238"><abbr title="App\Jobs\VerifyVpnConnectivityJob::failed">failed</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">3</td><td class="text-right">12</td></tr>
+       <tr><td><a href="SendTenantExpiryWarningJob.php.html#126"><abbr title="App\Jobs\SendTenantExpiryWarningJob::sendExpiryWarning">sendExpiryWarning</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">2</td><td class="text-right">6</td></tr>
+       <tr><td><a href="UpdateLoginStatsJob.php.html#41"><abbr title="App\Jobs\UpdateLoginStatsJob::handle">handle</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">2</td><td class="text-right">6</td></tr>
+
+       </tbody>
+      </table>
+     </div>
+    </div>
+   </div>
+   <footer>
+    <hr/>
+    <p>
+     <small>Generated by <a href="https://github.com/sebastianbergmann/php-code-coverage" target="_top">php-code-coverage 12.5.3</a> using <a href="https://www.php.net/" target="_top">PHP 8.4.14</a> and <a href="https://phpunit.de/">PHPUnit 12.5.14</a> at Mon Mar 23 2:34:34 EAT 2026.</small>
+    </p>
+   </footer>
+  </div>
+  <script src="../_js/billboard.pkgd.min.js?v=12.5.3" type="text/javascript"></script>
+  <script type="application/json" id="complexity_class">[[0,9,"SendPppoePaymentReceiptJob.php.html#18","App\\Jobs\\SendPppoePaymentReceiptJob","90"],[0,10,"SendPppoePaymentRemindersJob.php.html#20","App\\Jobs\\SendPppoePaymentRemindersJob","110"],[0,6,"SendTenantCredentialsEmailJob.php.html#14","App\\Jobs\\SendTenantCredentialsEmailJob","42"],[0,6,"SendTenantVerificationEmailJob.php.html#13","App\\Jobs\\SendTenantVerificationEmailJob","42"],[0,8,"SendTestMessageJob.php.html#16","App\\Jobs\\SendTestMessageJob","72"],[0,19,"SendVerificationEmailJob.php.html#14","App\\Jobs\\SendVerificationEmailJob","380"],[0,5,"TrackFailedLoginJob.php.html#17","App\\Jobs\\TrackFailedLoginJob","30"],[0,45,"UpdateDashboardStatsJob.php.html#23","App\\Jobs\\UpdateDashboardStatsJob","2070"],[0,4,"UpdateLoginStatsJob.php.html#16","App\\Jobs\\UpdateLoginStatsJob","20"],[0,5,"UpdatePasswordJob.php.html#21","App\\Jobs\\UpdatePasswordJob","30"],[0,5,"UpdateUserJob.php.html#18","App\\Jobs\\UpdateUserJob","30"],[0,23,"VerifyVpnConnectivityJob.php.html#20","App\\Jobs\\VerifyVpnConnectivityJob","552"],[1.2658227848101267,11,"SendTenantExpiryWarningJob.php.html#18","App\\Jobs\\SendTenantExpiryWarningJob","127.46"],[2.4390243902439024,12,"SyncRadiusAccountingJob.php.html#17","App\\Jobs\\SyncRadiusAccountingJob","145.72"],[3.7735849056603774,7,"UnsuspendExpiredAccountsJob.php.html#16","App\\Jobs\\UnsuspendExpiredAccountsJob","50.66"],[3.9215686274509802,8,"SyncAccessPointStatusJob.php.html#16","App\\Jobs\\SyncAccessPointStatusJob","64.76"],[7.142857142857142,7,"UpdateVpnStatusJob.php.html#16","App\\Jobs\\UpdateVpnStatusJob","46.23"]]</script>
+  <script type="application/json" id="complexity_method">[[0,1,"SendPppoePaymentReceiptJob.php.html#27","App\\Jobs\\SendPppoePaymentReceiptJob::__construct","2"],[0,8,"SendPppoePaymentReceiptJob.php.html#36","App\\Jobs\\SendPppoePaymentReceiptJob::handle","72"],[0,1,"SendPppoePaymentRemindersJob.php.html#29","App\\Jobs\\SendPppoePaymentRemindersJob::__construct","2"],[0,8,"SendPppoePaymentRemindersJob.php.html#35","App\\Jobs\\SendPppoePaymentRemindersJob::handle","72"],[0,1,"SendPppoePaymentRemindersJob.php.html#113","App\\Jobs\\SendPppoePaymentRemindersJob::failed","2"],[0,1,"SendTenantCredentialsEmailJob.php.html#26","App\\Jobs\\SendTenantCredentialsEmailJob::__construct","2"],[0,4,"SendTenantCredentialsEmailJob.php.html#34","App\\Jobs\\SendTenantCredentialsEmailJob::handle","20"],[0,1,"SendTenantCredentialsEmailJob.php.html#83","App\\Jobs\\SendTenantCredentialsEmailJob::failed","2"],[0,6,"SendTenantExpiryWarningJob.php.html#39","App\\Jobs\\SendTenantExpiryWarningJob::handle","42"],[0,2,"SendTenantExpiryWarningJob.php.html#126","App\\Jobs\\SendTenantExpiryWarningJob::sendExpiryWarning","6"],[0,1,"SendTenantExpiryWarningJob.php.html#156","App\\Jobs\\SendTenantExpiryWarningJob::tags","2"],[0,1,"SendTenantExpiryWarningJob.php.html#164","App\\Jobs\\SendTenantExpiryWarningJob::failed","2"],[0,1,"SendTenantVerificationEmailJob.php.html#25","App\\Jobs\\SendTenantVerificationEmailJob::__construct","2"],[0,4,"SendTenantVerificationEmailJob.php.html#33","App\\Jobs\\SendTenantVerificationEmailJob::handle","20"],[0,1,"SendTenantVerificationEmailJob.php.html#71","App\\Jobs\\SendTenantVerificationEmailJob::failed","2"],[0,1,"SendTestMessageJob.php.html#27","App\\Jobs\\SendTestMessageJob::__construct","2"],[0,6,"SendTestMessageJob.php.html#35","App\\Jobs\\SendTestMessageJob::handle","42"],[0,1,"SendTestMessageJob.php.html#92","App\\Jobs\\SendTestMessageJob::failed","2"],[0,1,"SendVerificationEmailJob.php.html#26","App\\Jobs\\SendVerificationEmailJob::__construct","2"],[0,18,"SendVerificationEmailJob.php.html#34","App\\Jobs\\SendVerificationEmailJob::handle","342"],[0,6,"SyncAccessPointStatusJob.php.html#35","App\\Jobs\\SyncAccessPointStatusJob::handle","42"],[0,1,"SyncAccessPointStatusJob.php.html#114","App\\Jobs\\SyncAccessPointStatusJob::failed","2"],[0,10,"SyncRadiusAccountingJob.php.html#37","App\\Jobs\\SyncRadiusAccountingJob::handle","110"],[0,1,"SyncRadiusAccountingJob.php.html#159","App\\Jobs\\SyncRadiusAccountingJob::failed","2"],[0,1,"TrackFailedLoginJob.php.html#31","App\\Jobs\\TrackFailedLoginJob::__construct","2"],[0,3,"TrackFailedLoginJob.php.html#42","App\\Jobs\\TrackFailedLoginJob::handle","12"],[0,1,"TrackFailedLoginJob.php.html#99","App\\Jobs\\TrackFailedLoginJob::failed","2"],[0,6,"UnsuspendExpiredAccountsJob.php.html#44","App\\Jobs\\UnsuspendExpiredAccountsJob::handle","42"],[0,1,"UpdateDashboardStatsJob.php.html#41","App\\Jobs\\UpdateDashboardStatsJob::__construct","2"],[0,43,"UpdateDashboardStatsJob.php.html#50","App\\Jobs\\UpdateDashboardStatsJob::handle","1892"],[0,1,"UpdateDashboardStatsJob.php.html#666","App\\Jobs\\UpdateDashboardStatsJob::failed","2"],[0,1,"UpdateLoginStatsJob.php.html#30","App\\Jobs\\UpdateLoginStatsJob::__construct","2"],[0,2,"UpdateLoginStatsJob.php.html#41","App\\Jobs\\UpdateLoginStatsJob::handle","6"],[0,1,"UpdateLoginStatsJob.php.html#75","App\\Jobs\\UpdateLoginStatsJob::failed","2"],[0,1,"UpdatePasswordJob.php.html#36","App\\Jobs\\UpdatePasswordJob::__construct","2"],[0,3,"UpdatePasswordJob.php.html#48","App\\Jobs\\UpdatePasswordJob::handle","12"],[0,1,"UpdatePasswordJob.php.html#111","App\\Jobs\\UpdatePasswordJob::failed","2"],[0,1,"UpdateUserJob.php.html#33","App\\Jobs\\UpdateUserJob::__construct","2"],[0,3,"UpdateUserJob.php.html#45","App\\Jobs\\UpdateUserJob::handle","12"],[0,1,"UpdateUserJob.php.html#87","App\\Jobs\\UpdateUserJob::failed","2"],[0,5,"UpdateVpnStatusJob.php.html#36","App\\Jobs\\UpdateVpnStatusJob::handle","30"],[0,1,"UpdateVpnStatusJob.php.html#80","App\\Jobs\\UpdateVpnStatusJob::failed","2"],[0,1,"VerifyVpnConnectivityJob.php.html#31","App\\Jobs\\VerifyVpnConnectivityJob::__construct","2"],[0,15,"VerifyVpnConnectivityJob.php.html#43","App\\Jobs\\VerifyVpnConnectivityJob::handle","240"],[0,4,"VerifyVpnConnectivityJob.php.html#193","App\\Jobs\\VerifyVpnConnectivityJob::discoverRouterInterfaces","20"],[0,3,"VerifyVpnConnectivityJob.php.html#238","App\\Jobs\\VerifyVpnConnectivityJob::failed","12"],[100,1,"SendTenantExpiryWarningJob.php.html#31","App\\Jobs\\SendTenantExpiryWarningJob::__construct","1"],[100,1,"SyncAccessPointStatusJob.php.html#26","App\\Jobs\\SyncAccessPointStatusJob::__construct","1"],[100,1,"SyncRadiusAccountingJob.php.html#28","App\\Jobs\\SyncRadiusAccountingJob::__construct","1"],[100,1,"UnsuspendExpiredAccountsJob.php.html#34","App\\Jobs\\UnsuspendExpiredAccountsJob::__construct","1"],[100,1,"UpdateVpnStatusJob.php.html#27","App\\Jobs\\UpdateVpnStatusJob::__construct","1"]]</script>
+  <script type="text/javascript" defer>
+  const barLabels = [
+    '0%',
+    '0-10%',
+    '10-20%',
+    '20-30%',
+    '30-40%',
+    '40-50%',
+    '50-60%',
+    '60-70%',
+    '70-80%',
+    '80-90%',
+    '90-100%',
+    '100%'
+  ];
+  const barConfig = (name, fullName, values) => ({
+    axis: {
+      x: {
+        type: "category",
+        categories: barLabels,
+      },
+      y: {
+        label: {
+          text: `#${name}`,
+          position: 'outer-top',
+        },
+      },
+    },
+    bindto: `#${name}CoverageDistribution`,
+    data: {
+      columns: [
+        [fullName].concat(values),
+      ],
+      colors: {
+        [fullName]: "rgba(69, 114, 167, 0.75)",
+      },
+      type: "bar",
+    },
+    bar: {
+      width: {
+        ratio: 0.9,
+      },
+    },
+    grid: {
+      focus: {
+        show: false,
+      },
+      x: {
+        show: true,
+      },
+      y: {
+        show: true,
+      },
+    },
+    legend: {
+      show: false,
+    },
+    tooltip: {
+      contents: function (data) {
+        return `<table class="bb-tooltip"><tbody>
+            <tr><th colspan="2">Coverage ${barLabels[data[0].x]}</th></tr>
+            <tr><td class="value">${data[0].value} ${name}</td></tr>
+          </tbody></table>`;
+      },
+      grouped: false,
+    },
+  });
+  bb.generate(
+    barConfig('classes', "Class Coverage", [12,5,0,0,0,0,0,0,0,0,0,0])
+  );
+  bb.generate(
+    barConfig('methods', "Method Coverage", [46,0,0,0,0,0,0,0,0,0,0,5])
+  );
+
+  const scatterConfig = (name, complexityData) => ({
+    axis: {
+      x: {
+        label: {
+          text: 'Code Coverage (in percent)',
+          position: 'outer-right',
+        },
+        tick: {
+          values: [0, 20, 40, 60, 80, 100],
+        },
+      },
+      y: {
+        label: {
+          text: 'Cyclomatic Complexity',
+          position: 'outer-top',
+        },
+        min: 0,
+        padding: {
+          bottom: 0,
+          top: 5,
+        },
+      },
+    },
+    bindto: `#${name}Complexity`,
+    data: {
+      columns: [
+        ["complexity_x"].concat(complexityData.map(d => d[0])),
+        ["complexity"].concat(complexityData.map(d => d[1])),
+      ],
+      onclick: function(data, element) {
+        window.location = complexityData[data.index][2];
+      },
+      type: "scatter",
+      xs: {
+        "complexity": "complexity_x",
+      },
+    },
+    grid: {
+      focus: {
+        show: true,
+        y: true,
+      },
+      x: {
+        show: true,
+      },
+      y: {
+        show: true,
+      },
+    },
+    legend: {
+      show: false,
+    },
+    tooltip: {
+      contents: function (data) {
+        const coverage = Math.round(data[0].x);
+        const complexity = data[0].value;
+        const targetName = complexityData[data[0].index][3];
+        const crap = complexityData[data[0].index][4];
+        return `<table class="bb-tooltip"><tbody>
+            <tr><th colspan="2">${targetName}</th></tr>
+            <tr class="bb-tooltip-name-complexity"><td>Coverage</td><td class="name">${coverage}%</td></tr>
+            <tr class="bb-tooltip-name-complexity"><td>Complexity</td><td class="value">${complexity}</td></tr>
+            <tr class="bb-tooltip-name-complexity"><td>Crap</td><td class="value">${crap}</td></tr>
+          </tbody></table>`;
+      },
+      grouped: false,
+    },
+  });
+  const classComplexityData = JSON.parse(document.getElementById('complexity_class').textContent);
+  bb.generate(
+    scatterConfig("class", classComplexityData)
+  );
+  const methodComplexityData = JSON.parse(document.getElementById('complexity_method').textContent);
+  bb.generate(
+    scatterConfig("method", methodComplexityData),
+  );
+  </script>
+ </body>
+</html>

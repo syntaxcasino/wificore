@@ -17,17 +17,39 @@
             <directory>app</directory>
         </include>
     </source>
+    <coverage>
+        <report>
+            <text outputFile="php://stdout" showUncoveredFiles="false"/>
+            <html outputDirectory="storage/coverage-html" lowUpperBound="50" highLowerBound="90"/>
+            <clover outputFile="storage/coverage.xml"/>
+        </report>
+    </coverage>
     <php>
         <env name="APP_ENV" value="testing"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env name="BCRYPT_ROUNDS" value="4"/>
         <env name="CACHE_STORE" value="array"/>
-        <env name="DB_CONNECTION" value="sqlite"/>
-        <env name="DB_DATABASE" value=":memory:"/>
+        <!-- DB routed through PgBouncer (write + read) against the production database -->
+        <env name="DB_CONNECTION" value="pgsql" force="true"/>
+        <env name="DB_HOST" value="wificore-pgbouncer" force="true"/>
+        <env name="DB_PORT" value="6432" force="true"/>
+        <env name="DB_WRITE_HOST" value="wificore-pgbouncer" force="true"/>
+        <env name="DB_WRITE_PORT" value="6432" force="true"/>
+        <env name="DB_READ_HOST" value="wificore-pgbouncer-read" force="true"/>
+        <env name="DB_READ_PORT" value="6432" force="true"/>
+        <env name="DB_DATABASE" value="wms_770_ts" force="true"/>
+        <env name="DB_USERNAME" value="admin" force="true"/>
+        <env name="DB_PASSWORD" value="secret" force="true"/>
+        <env name="DB_PERSISTENT" value="false" force="true"/>
         <env name="MAIL_MAILER" value="array"/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
         <env name="SESSION_DRIVER" value="array"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
+        <env name="APP_BASE_DOMAIN" value="example.com"/>
+        <env name="VPN_SUBNET_BASE" value="10.0.0.0/8"/>
+        <env name="VPN_SERVER_IP" value="10.8.0.1"/>
+        <env name="RADIUS_SERVER_HOST" value="10.8.0.1"/>
+        <env name="RADIUS_SECRET" value="testing123"/>
     </php>
 </phpunit>

@@ -2,9 +2,13 @@
 # NON-APPLICATION DOCUMENTS AND FILES
 # ============================================================================
 
-# Documentation (exclude non-application docs, keep only essential)
-*.md
-docs/
+# Documentation — keep project docs, exclude only common root noise files
+README.md
+CHANGELOG.md
+LICENSE.md
+CONTRIBUTING.md
+!docs/
+!docs/**
 
 # Text files and notes
 *.txt
@@ -192,9 +196,13 @@ scripts/test*.js
 scripts/test-*/
 scripts/*-test.*
 scripts/websocket-test.*
-tests/
-test/
-__tests__/
+/tests/
+/test/
+# Allow backend and frontend test directories
+!backend/tests/
+!backend/tests/**
+!frontend/e2e/
+!frontend/e2e/**
 
 # ============================================================================
 # TESTING AND COVERAGE

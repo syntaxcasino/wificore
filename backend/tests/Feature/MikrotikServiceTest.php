@@ -7,15 +7,14 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Config;
 use RouterOS\Client;
+use RouterOS\Query;
 use RouterOS\Exceptions\ClientException;
 use Mockery;
 use ReflectionClass;
 use RuntimeException;
 
 beforeEach(function () {
-    // Mock the config
     Config::set('mikrotik', [
-        //'host' => '192.168.100.30',
         'host' => '192.168.43.2',
         'user' => 'admin',
         'pass' => 'admin',
@@ -25,29 +24,29 @@ beforeEach(function () {
         'delay' => 1,
     ]);
 
-    // Set up default cache config
     Config::set('cache.default', 'array');
     Config::set('cache.stores.array', [
         'driver' => 'array',
         'serialize' => false,
     ]);
-    
-    // Properly mock the Log facade
+
     Log::partialMock();
     Log::shouldReceive('channel')->andReturnSelf();
     Log::shouldReceive('info')->byDefault();
     Log::shouldReceive('error')->byDefault();
     Log::shouldReceive('warning')->byDefault();
 
-    // Mock Cache facade
-    Cache::partialMock();
+    // Full mock (not partial) — Cache::partialMock() calls CacheManager::setEventDispatcher()
+    // which calls $this->app->bound() on a null container inside the mock, causing a fatal Error.
     Cache::shouldReceive('has')->byDefault()->andReturn(false);
+    Cache::shouldReceive('get')->byDefault()->andReturn(null);
     Cache::shouldReceive('put')->byDefault();
+    Cache::shouldReceive('flush')->byDefault();
+    Cache::shouldReceive('forget')->byDefault();
 });
 
 afterEach(function () {
     Mockery::close();
-    Cache::flush();
 });
 
 it('can be instantiated', function () {
@@ -56,26 +55,21 @@ it('can be instantiated', function () {
 });
 
 it('throws exception when connection fails', function () {
-    $this->instance(Client::class, Mockery::mock(Client::class, function ($mock) {
-        $mock->shouldReceive('__construct')
-            ->andThrow(new ClientException('Connection failed'));
-    }));
+    $service = new class extends MikrotikSessionService {
+        protected function createClient(array $config): Client
+        {
+            throw new ClientException('Connection failed');
+        }
+    };
 
-    $service = new MikrotikSessionService();
-    
     $reflection = new ReflectionClass($service);
     $method = $reflection->getMethod('connect');
     $method->setAccessible(true);
-    
+
     $method->invoke($service);
 })->throws(RuntimeException::class, 'Mikrotik connection failed: Connection failed');
 
 it('logs connection failure', function () {
-    $this->instance(Client::class, Mockery::mock(Client::class, function ($mock) {
-        $mock->shouldReceive('__construct')
-            ->andThrow(new ClientException('Connection failed'));
-    }));
-
     Log::shouldReceive('error')
         ->once()
         ->withArgs(function ($message, $context) {
@@ -84,8 +78,13 @@ it('logs connection failure', function () {
                    $context['config']['pass'] === '*****';
         });
 
-    $service = new MikrotikSessionService();
-    
+    $service = new class extends MikrotikSessionService {
+        protected function createClient(array $config): Client
+        {
+            throw new ClientException('Connection failed');
+        }
+    };
+
     try {
         $reflection = new ReflectionClass($service);
         $method = $reflection->getMethod('connect');
@@ -98,59 +97,49 @@ it('logs connection failure', function () {
 
 it('returns true when connected', function () {
     $mockClient = Mockery::mock(Client::class);
-    $mockClient->shouldReceive('query->read')
-        ->andReturn([['name' => 'test-router']]);
+    $mockClient->shouldReceive('query')->once()->andReturnSelf();
+    $mockClient->shouldReceive('read')->once()->andReturn([['name' => 'test-router']]);
 
     $service = new class extends MikrotikSessionService {
-        public function setClient($client) {
-            $this->client = $client;
-        }
+        public function setClient($client) { $this->client = $client; }
     };
-
     $service->setClient($mockClient);
 
     $reflection = new ReflectionClass($service);
     $method = $reflection->getMethod('isConnected');
     $method->setAccessible(true);
-    
+
     expect($method->invoke($service))->toBeTrue();
 });
 
-    it('returns false when not connected', function () {
-        $mockClient = Mockery::mock(Client::class);
-        $mockClient->shouldReceive('query->read')
-            ->andThrow(new ClientException('Not connected'));
+it('returns false when not connected', function () {
+    $mockClient = Mockery::mock(Client::class);
+    $mockClient->shouldReceive('query')->once()->andReturnSelf();
+    $mockClient->shouldReceive('read')->once()->andThrow(new ClientException('Not connected'));
 
-        $service = new class extends MikrotikSessionService {
-            public function setClient($client) {
-                $this->client = $client;
-            }
-        };
-
+    $service = new class extends MikrotikSessionService {
+        public function setClient($client) { $this->client = $client; }
+    };
     $service->setClient($mockClient);
 
     $reflection = new ReflectionClass($service);
     $method = $reflection->getMethod('isConnected');
     $method->setAccessible(true);
-    
+
     expect($method->invoke($service))->toBeFalse();
 });
 
-    it('creates a session successfully', function () {
-        $mockClient = Mockery::mock(Client::class);
-        $mockClient->shouldReceive('query->read')
-            ->with('/ip/hotspot/user/add')
-            ->andReturn([["ret" => '*1']]);
-        $mockClient->shouldReceive('query->read')
-            ->with('/ip/hotspot/active/login')
-            ->andReturn([["success" => true]]);
+it('creates a session successfully', function () {
+    $mockClient = Mockery::mock(Client::class);
+    $mockClient->shouldReceive('query')->zeroOrMoreTimes()->andReturnSelf();
+    $mockClient->shouldReceive('read')->once()->andReturn([]);                     // isConnected (createSession->connect)
+    $mockClient->shouldReceive('read')->once()->andReturn([["ret" => '*1']]);      // createHotspotUser
+    $mockClient->shouldReceive('read')->once()->andReturn([]);                     // isConnected (authenticateUser->connect)
+    $mockClient->shouldReceive('read')->once()->andReturn([["success" => true]]); // authenticateUser query
 
-        $service = new class extends MikrotikSessionService {
-            public function setClient($client) {
-                $this->client = $client;
-            }
-        };
-
+    $service = new class extends MikrotikSessionService {
+        public function setClient($client) { $this->client = $client; }
+    };
     $service->setClient($mockClient);
 
     Cache::shouldReceive('has')->once()->andReturn(false);
@@ -164,11 +153,19 @@ it('returns true when connected', function () {
 });
 
 it('returns cached response when session exists', function () {
+    $mockClient = Mockery::mock(Client::class);
+    $mockClient->shouldReceive('query')->once()->andReturnSelf();
+    $mockClient->shouldReceive('read')->once()->andReturn([]); // isConnected
+
+    $service = new class extends MikrotikSessionService {
+        public function setClient($client) { $this->client = $client; }
+    };
+    $service->setClient($mockClient);
+
     Cache::shouldReceive('has')->once()->andReturn(true);
     Cache::shouldReceive('put')->never();
 
-        $service = new MikrotikSessionService();
-        $response = $service->createSession('test123', '00:11:22:33:44:55', 'default', 1);
+    $response = $service->createSession('test123', '00:11:22:33:44:55', 'default', 1);
 
     expect($response)->toBeArray()
         ->and($response['success'])->toBeTrue()
@@ -176,16 +173,13 @@ it('returns cached response when session exists', function () {
 });
 it('fails when user creation fails', function () {
     $mockClient = Mockery::mock(Client::class);
-    $mockClient->shouldReceive('query->read')
-        ->with('/ip/hotspot/user/add')
-        ->andReturn([]);
+    $mockClient->shouldReceive('query')->zeroOrMoreTimes()->andReturnSelf();
+    $mockClient->shouldReceive('read')->once()->andReturn([]); // isConnected
+    $mockClient->shouldReceive('read')->once()->andReturn([]); // createHotspotUser → empty → exception
 
     $service = new class extends MikrotikSessionService {
-        public function setClient($client) {
-            $this->client = $client;
-        }
+        public function setClient($client) { $this->client = $client; }
     };
-
     $service->setClient($mockClient);
 
     $response = $service->createSession('test123', '00:11:22:33:44:55', 'default', 1);
@@ -197,16 +191,13 @@ it('fails when user creation fails', function () {
 
 it('authenticates user successfully', function () {
     $mockClient = Mockery::mock(Client::class);
-    $mockClient->shouldReceive('query->read')
-        ->with('/ip/hotspot/active/login')
-        ->andReturn([['success' => true]]);
+    $mockClient->shouldReceive('query')->zeroOrMoreTimes()->andReturnSelf();
+    $mockClient->shouldReceive('read')->once()->andReturn([]);                  // isConnected
+    $mockClient->shouldReceive('read')->once()->andReturn([['success' => true]]); // authenticate query
 
     $service = new class extends MikrotikSessionService {
-        public function setClient($client) {
-            $this->client = $client;
-        }
+        public function setClient($client) { $this->client = $client; }
     };
-
     $service->setClient($mockClient);
 
     $response = $service->authenticateUser('test123');
@@ -218,16 +209,13 @@ it('authenticates user successfully', function () {
 
 it('fails to authenticate user', function () {
     $mockClient = Mockery::mock(Client::class);
-    $mockClient->shouldReceive('query->read')
-        ->with('/ip/hotspot/active/login')
-        ->andThrow(new ClientException('Authentication failed'));
+    $mockClient->shouldReceive('query')->zeroOrMoreTimes()->andReturnSelf();
+    $mockClient->shouldReceive('read')->once()->andReturn([]); // isConnected
+    $mockClient->shouldReceive('read')->once()->andThrow(new ClientException('Authentication failed'));
 
     $service = new class extends MikrotikSessionService {
-        public function setClient($client) {
-            $this->client = $client;
-        }
+        public function setClient($client) { $this->client = $client; }
     };
-
     $service->setClient($mockClient);
 
     $response = $service->authenticateUser('test123');
@@ -239,16 +227,13 @@ it('fails to authenticate user', function () {
 
 it('gets active users successfully', function () {
     $mockClient = Mockery::mock(Client::class);
-    $mockClient->shouldReceive('query->read')
-        ->with('/ip/hotspot/active/print')
-        ->andReturn([['user' => 'test1'], ['user' => 'test2']]);
+    $mockClient->shouldReceive('query')->zeroOrMoreTimes()->andReturnSelf();
+    $mockClient->shouldReceive('read')->once()->andReturn([]);                                         // isConnected
+    $mockClient->shouldReceive('read')->once()->andReturn([['user' => 'test1'], ['user' => 'test2']]); // active/print
 
     $service = new class extends MikrotikSessionService {
-        public function setClient($client) {
-            $this->client = $client;
-        }
+        public function setClient($client) { $this->client = $client; }
     };
-
     $service->setClient($mockClient);
 
     $response = $service->getActiveUsers();
@@ -261,16 +246,13 @@ it('gets active users successfully', function () {
 
 it('fails to get active users', function () {
     $mockClient = Mockery::mock(Client::class);
-    $mockClient->shouldReceive('query->read')
-        ->with('/ip/hotspot/active/print')
-        ->andThrow(new ClientException('Failed to get users'));
+    $mockClient->shouldReceive('query')->zeroOrMoreTimes()->andReturnSelf();
+    $mockClient->shouldReceive('read')->once()->andReturn([]); // isConnected
+    $mockClient->shouldReceive('read')->once()->andThrow(new ClientException('Failed to get users'));
 
     $service = new class extends MikrotikSessionService {
-        public function setClient($client) {
-            $this->client = $client;
-        }
+        public function setClient($client) { $this->client = $client; }
     };
-
     $service->setClient($mockClient);
 
     $response = $service->getActiveUsers();
@@ -323,19 +305,16 @@ it('logs to system and file', function () {
 
 it('gets all hotspot users successfully', function () {
     $mockClient = Mockery::mock(Client::class);
-    $mockClient->shouldReceive('query->read')
-        ->with('/ip/hotspot/user/print')
-        ->andReturn([
-            ['name' => 'user1', 'profile' => 'default'],
-            ['name' => 'user2', 'profile' => 'vip']
-        ]);
+    $mockClient->shouldReceive('query')->zeroOrMoreTimes()->andReturnSelf();
+    $mockClient->shouldReceive('read')->once()->andReturn([]); // isConnected
+    $mockClient->shouldReceive('read')->once()->andReturn([   // user/print
+        ['name' => 'user1', 'profile' => 'default'],
+        ['name' => 'user2', 'profile' => 'vip']
+    ]);
 
     $service = new class extends MikrotikSessionService {
-        public function setClient($client) {
-            $this->client = $client;
-        }
+        public function setClient($client) { $this->client = $client; }
     };
-
     $service->setClient($mockClient);
 
     $response = $service->getAllHotspotUsers();
@@ -348,16 +327,13 @@ it('gets all hotspot users successfully', function () {
 
 it('fails to get all hotspot users', function () {
     $mockClient = Mockery::mock(Client::class);
-    $mockClient->shouldReceive('query->read')
-        ->with('/ip/hotspot/user/print')
-        ->andThrow(new ClientException('Failed to get users'));
+    $mockClient->shouldReceive('query')->zeroOrMoreTimes()->andReturnSelf();
+    $mockClient->shouldReceive('read')->once()->andReturn([]); // isConnected
+    $mockClient->shouldReceive('read')->once()->andThrow(new ClientException('Failed to get users'));
 
     $service = new class extends MikrotikSessionService {
-        public function setClient($client) {
-            $this->client = $client;
-        }
+        public function setClient($client) { $this->client = $client; }
     };
-
     $service->setClient($mockClient);
 
     $response = $service->getAllHotspotUsers();

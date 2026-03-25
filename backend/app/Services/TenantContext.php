@@ -31,11 +31,6 @@ class TenantContext
     protected ?string $originalSearchPath = null;
 
     /**
-     * Original read connection search path before tenant context was set
-     */
-    protected ?string $originalReadSearchPath = null;
-    
-    /**
      * Set tenant context by tenant object
      * 
      * @param Tenant|null $tenant
@@ -149,18 +144,6 @@ class TenantContext
         } else {
             DB::statement("SET LOCAL search_path TO {$this->systemSchema}");
         }
-
-        $connection = DB::connection();
-        $readPdo = $connection->getReadPdo();
-
-        if ($readPdo) {
-            if ($this->originalReadSearchPath) {
-                $readPdo->exec("SET LOCAL search_path TO {$this->originalReadSearchPath}");
-                $this->originalReadSearchPath = null;
-            } else {
-                $readPdo->exec("SET LOCAL search_path TO {$this->systemSchema}");
-            }
-        }
         
         $this->tenant = null;
         
@@ -186,24 +169,15 @@ class TenantContext
             $this->originalSearchPath = $result->search_path ?? 'public';
         }
 
-        $connection = DB::connection();
-        $readPdo = $connection->getReadPdo();
-
-        if ($readPdo && !$this->originalReadSearchPath) {
-            $statement = $readPdo->query('SHOW search_path');
-            $this->originalReadSearchPath = $statement ? ($statement->fetchColumn() ?: 'public') : 'public';
-        }
-        
         // Use SET LOCAL so the search_path is scoped to the current transaction.
         // This is required for PgBouncer transaction pooling compatibility:
         // plain SET is session-level but PgBouncer rotates the backend connection
         // between statements in transaction mode, losing session-level settings.
-        // Callers that span multiple statements MUST wrap in DB::transaction().
+        // Callers MUST: (1) wrap in DB::transaction(), and (2) call
+        // DB::connection()->recordsHaveBeenModified() to force sticky-write mode
+        // so all SELECT queries use the write PDO (the one inside the transaction).
+        // The read PDO has no open transaction so SET LOCAL on it is immediately lost.
         DB::statement("SET LOCAL search_path TO {$schemaName}, {$this->systemSchema}");
-
-        if ($readPdo) {
-            $readPdo->exec("SET LOCAL search_path TO {$schemaName}, {$this->systemSchema}");
-        }
         
         Log::debug('Search path set', [
             'schema_name' => $schemaName,
@@ -303,5 +277,15 @@ class TenantContext
     public function isInSystemContext(): bool
     {
         return !$this->isInTenantContext();
+    }
+
+    /**
+     * Reset tenant context (alias for clearTenant)
+     * 
+     * @return void
+     */
+    public function reset(): void
+    {
+        $this->clearTenant();
     }
 }

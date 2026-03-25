@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\PppoePayment;
 use App\Models\PppoeUser;
+use App\Services\PppoeBillingLifecycleService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -75,7 +76,7 @@ class PppoePaymentController extends Controller
                 $payment->markAsCompleted($request->user()->id);
                 
                 // Update user payment status
-                $this->activateUserAfterPayment($pppoeUser, $payment);
+                $this->activateUserAfterPayment($pppoeUser, $payment, $tenantId);
                 
                 Log::info('Payment auto-verified', [
                     'payment_id' => $payment->id,
@@ -127,7 +128,7 @@ class PppoePaymentController extends Controller
             $payment->markAsCompleted($request->user()->id);
             
             // Activate user after payment verification
-            $this->activateUserAfterPayment($payment->pppoeUser, $payment);
+            $this->activateUserAfterPayment($payment->pppoeUser, $payment, $tenantId);
 
             DB::commit();
 
@@ -153,10 +154,10 @@ class PppoePaymentController extends Controller
         }
     }
 
-    private function activateUserAfterPayment(PppoeUser $user, PppoePayment $payment): void
+    private function activateUserAfterPayment(PppoeUser $user, PppoePayment $payment, string $tenantId): void
     {
         app(PppoeBillingLifecycleService::class)
-            ->handleSuccessfulPayment($user, $payment, request()->user()->tenant_id, 'pppoe_payment_controller');
+            ->handleSuccessfulPayment($user, $payment, $tenantId, 'pppoe_payment_controller');
     }
 
     public function getPendingPayments(Request $request)

@@ -110,8 +110,9 @@ trait TenantAwareJob
                 return $callback();
             });
         } finally {
-            // Clear auth context
-            Auth::logout();
+            // Clear auth context — Auth::logout() is not available on token-based guards
+            // (Sanctum RequestGuard), so use forgetGuards() to reset the resolved instances.
+            Auth::forgetGuards();
         }
     }
 

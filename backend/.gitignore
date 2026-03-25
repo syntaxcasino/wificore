@@ -26,5 +26,4 @@ Thumbs.db
 .env.*
 !.env.example
 
-# Documentation
-/docs
+# Documentation lives in backend/docs/ — not excluded

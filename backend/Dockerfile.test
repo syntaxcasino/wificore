@@ -1,29 +1,16 @@
-FROM php:8.4-fpm-alpine
+FROM php:8.4-cli-bookworm
 
 WORKDIR /var/www/html
 
-# Install runtime + build deps
-RUN apk add --no-cache --virtual .build-deps \
-    postgresql-dev \
+# Install only the extensions needed for testing (pdo_pgsql, sockets, zip)
+RUN apt-get update -qq && apt-get install -y --no-install-recommends \
+    libpq-dev \
     libzip-dev \
-    icu-dev \
-    net-snmp-dev \
-    linux-headers \
-    autoconf \
-    g++ \
-    make \
- && apk add --no-cache \
-    libpq \
-    libzip \
-    icu-libs \
-    net-snmp \
-    bash \
     unzip \
     git \
     curl \
- && docker-php-ext-install -j$(nproc) pdo pdo_pgsql sockets zip snmp intl \
- && apk del .build-deps \
- && rm -rf /tmp/* /var/cache/apk/*
+ && docker-php-ext-install -j$(nproc) pdo pdo_pgsql sockets zip \
+ && rm -rf /var/lib/apt/lists/*
 
 # Install Composer
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
