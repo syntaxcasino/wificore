@@ -19,11 +19,13 @@ export function useUsers() {
     
     try {
       const response = await axios.get('/users')
-      users.value = response.data.data || response.data
+      const data = response.data.data || response.data
+      users.value = Array.isArray(data) ? data : []
       return users.value
     } catch (err) {
       error.value = err.response?.data?.message || 'Failed to fetch users'
       console.error('Error fetching users:', err)
+      users.value = []
       throw err
     } finally {
       loading.value = false
@@ -189,18 +191,18 @@ export function useUsers() {
 
   // Computed properties
   const activeUsers = computed(() => 
-    users.value.filter(u => u.status === 'active')
+    Array.isArray(users.value) ? users.value.filter(u => u.status === 'active') : []
   )
 
   const inactiveUsers = computed(() => 
-    users.value.filter(u => u.status === 'inactive')
+    Array.isArray(users.value) ? users.value.filter(u => u.status === 'inactive') : []
   )
 
   const blockedUsers = computed(() => 
-    users.value.filter(u => u.status === 'blocked')
+    Array.isArray(users.value) ? users.value.filter(u => u.status === 'blocked') : []
   )
 
-  const totalUsers = computed(() => users.value.length)
+  const totalUsers = computed(() => Array.isArray(users.value) ? users.value.length : 0)
 
   return {
     // State

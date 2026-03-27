@@ -159,7 +159,7 @@
       </div>
 
       <div v-else class="flex flex-col min-h-0 flex-1">
-        <div v-if="paginatedPackages.length" class="px-4 md:px-6 pt-4 md:pt-6 pb-2 flex flex-col min-h-0 flex-1">
+        <div v-if="paginatedPackages.length" class="px-4 md:px-6 pt-2 pb-2 flex flex-col min-h-0 flex-1">
           <div class="flex-1 min-h-0 overflow-y-auto">
             <!-- Mobile Cards -->
             <div class="md:hidden space-y-3">
@@ -217,7 +217,7 @@
             </div>
 
             <!-- Desktop Table -->
-            <div class="hidden md:flex bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden flex-col min-h-0">
+            <div class="hidden md:flex bg-white border border-slate-200 shadow-sm overflow-hidden flex-col min-h-0">
               <div class="overflow-x-auto overflow-y-auto flex-1 min-h-0">
                 <table class="w-full">
                   <thead class="bg-slate-50 border-b border-slate-200 sticky top-0 z-[5]">

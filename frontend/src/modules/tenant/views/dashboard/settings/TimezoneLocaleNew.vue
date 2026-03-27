@@ -52,7 +52,7 @@
     </PageContent>
 
     <!-- Edit Overlay -->
-    <SlideOverlay v-model="showEditOverlay" title="Edit Timezone & Locale" subtitle="Update regional display settings" icon="Globe" width="40%">
+    <SlideOverlay v-model="showEditOverlay" title="Edit Timezone & Locale" subtitle="Update regional display settings" icon="Globe" width="480px">
       <div class="space-y-4">
         <div>
           <label class="block text-sm font-medium text-slate-700 mb-1">Timezone *</label>
@@ -114,12 +114,20 @@
       </div>
 
       <template #footer>
-        <div class="flex justify-end gap-2">
-          <BaseButton @click="showEditOverlay = false" variant="ghost">Cancel</BaseButton>
-          <BaseButton @click="saveSettings" variant="primary" :loading="saving">
-            <Save class="w-4 h-4 mr-1" />
-            Save Changes
-          </BaseButton>
+        <div class="flex gap-3">
+          <button
+            @click="showEditOverlay = false"
+            class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+          >
+            Cancel
+          </button>
+          <button
+            @click="saveSettings"
+            :disabled="saving"
+            class="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors disabled:opacity-50"
+          >
+            {{ saving ? 'Saving...' : 'Save Changes' }}
+          </button>
         </div>
       </template>
     </SlideOverlay>

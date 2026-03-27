@@ -24,19 +24,19 @@ export function useExpenses() {
   // Computed filters
   
   const pendingExpenses = computed(() => 
-    expenses.value.filter(item => item.status === 'pending')
+    Array.isArray(expenses.value) ? expenses.value.filter(item => item.status === 'pending') : []
   )
   
   const approvedExpenses = computed(() => 
-    expenses.value.filter(item => item.status === 'approved')
+    Array.isArray(expenses.value) ? expenses.value.filter(item => item.status === 'approved') : []
   )
   
   const rejectedExpenses = computed(() => 
-    expenses.value.filter(item => item.status === 'rejected')
+    Array.isArray(expenses.value) ? expenses.value.filter(item => item.status === 'rejected') : []
   )
   
   const paidExpenses = computed(() => 
-    expenses.value.filter(item => item.status === 'paid')
+    Array.isArray(expenses.value) ? expenses.value.filter(item => item.status === 'paid') : []
   )
 
   // API Functions
@@ -49,7 +49,8 @@ export function useExpenses() {
       const url = params ? `/expenses?${params}` : '/expenses'
       const response = await axios.get(url)
       
-      expenses.value = response.data.data || response.data
+      const data = response.data.data || response.data
+      expenses.value = Array.isArray(data) ? data : []
       return response.data
     } catch (err) {
       error.value = err.response?.data?.message || 'Failed to fetch expenses'
@@ -219,44 +220,36 @@ export function useExpenses() {
     )
   }
 
-  // Event handlers for WebSocket
-  const handleExpenseCreated = (expense) => {
+  // Event handlers for WebSocket - accept event and extract data internally
+  const handleExpenseCreated = (event) => {
+    const expense = event.detail?.expense
+    if (!expense) return
     const exists = expenses.value.find(item => item.id === expense.id)
     if (!exists) {
       expenses.value.unshift(expense)
     }
   }
 
-  const handleExpenseUpdated = (expense) => {
+  const handleExpenseUpdated = (event) => {
+    const expense = event.detail?.expense
+    if (!expense) return
     const index = expenses.value.findIndex(item => item.id === expense.id)
     if (index !== -1) {
       expenses.value[index] = { ...expenses.value[index], ...expense }
     }
   }
 
-  const handleExpenseDeleted = (expenseId) => {
+  const handleExpenseDeleted = (event) => {
+    const expenseId = event.detail?.expenseId
+    if (!expenseId) return
     expenses.value = expenses.value.filter(item => item.id !== expenseId)
   }
 
-  // Setup WebSocket event listeners
+  // Setup WebSocket event listeners - use named handlers
   const setupWebSocketListeners = () => {
-    window.addEventListener('expense-created', (event) => {
-      if (event.detail?.expense) {
-        handleExpenseCreated(event.detail.expense)
-      }
-    })
-
-    window.addEventListener('expense-updated', (event) => {
-      if (event.detail?.expense) {
-        handleExpenseUpdated(event.detail.expense)
-      }
-    })
-
-    window.addEventListener('expense-deleted', (event) => {
-      if (event.detail?.expenseId) {
-        handleExpenseDeleted(event.detail.expenseId)
-      }
-    })
+    window.addEventListener('expense-created', handleExpenseCreated)
+    window.addEventListener('expense-updated', handleExpenseUpdated)
+    window.addEventListener('expense-deleted', handleExpenseDeleted)
   }
 
   // Cleanup WebSocket listeners

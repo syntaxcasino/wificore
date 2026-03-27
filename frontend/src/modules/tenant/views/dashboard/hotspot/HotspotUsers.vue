@@ -1,456 +1,432 @@
 <template>
-  <PageContainer>
-    <!-- Header with Filters -->
-    <div class="bg-white border-b border-slate-200">
-      <!-- Title, Filters and Actions -->
-      <div class="px-3 py-3 sm:px-6 sm:py-4">
-        <div class="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 flex-wrap">
-          <!-- Title + Action row -->
-          <div class="flex items-center justify-between sm:justify-start gap-3">
-            <h1 class="text-lg sm:text-2xl font-bold text-slate-900">Hotspot Users</h1>
-            <div class="flex sm:hidden items-center gap-2">
-              <BaseButton @click="handleRefresh" variant="ghost" size="sm" :disabled="loading">
-                <RefreshCw class="w-4 h-4" :class="{ 'animate-spin': loading }" />
-              </BaseButton>
-              <BaseButton @click="$router.push('/dashboard/hotspot/vouchers')" variant="primary" size="sm">
-                <Ticket class="w-4 h-4 mr-1" />
-                Voucher
-              </BaseButton>
-            </div>
-          </div>
-          
-          <!-- Search Box -->
-          <div class="flex-1 min-w-0 sm:min-w-[250px] max-w-md">
-            <BaseSearch v-model="searchQuery" placeholder="Search hotspot users..." />
-          </div>
-          
-          <!-- Filters Group -->
-          <div class="flex items-center gap-2 flex-wrap">
-            <BaseSelect v-model="filters.status" placeholder="All Status" class="w-28 sm:w-36">
-              <option value="">All Status</option>
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-              <option value="expired">Expired</option>
-            </BaseSelect>
-            
-            <BaseSelect v-model="filters.package" placeholder="All Packages" class="w-32 sm:w-40">
-              <option value="">All Packages</option>
-              <option v-for="pkg in packages" :key="pkg.id" :value="pkg.id">{{ pkg.name }}</option>
-            </BaseSelect>
-            
-            <BaseButton v-if="hasActiveFilters" @click="clearFilters" variant="ghost" size="sm">
-              <X class="w-4 h-4 mr-1" />
-              Clear
-            </BaseButton>
-          </div>
-          
-          <!-- Stats Badges -->
-          <div class="flex items-center gap-2 flex-wrap">
-            <BaseBadge variant="info">{{ totalUsers }} Total</BaseBadge>
-            <BaseBadge variant="success" dot pulse>{{ activeUsers.length }} Active</BaseBadge>
-            <BaseBadge variant="warning">{{ expiredUsers.length }} Expired</BaseBadge>
-          </div>
-          
-          <!-- Action Buttons (desktop) -->
-          <div class="hidden sm:flex ml-auto items-center gap-2">
-            <BaseButton @click="handleRefresh" variant="ghost" size="sm" :disabled="loading">
-              <RefreshCw class="w-4 h-4" :class="{ 'animate-spin': loading }" />
-            </BaseButton>
-            <BaseButton @click="$router.push('/dashboard/hotspot/vouchers')" variant="primary">
-              <Ticket class="w-4 h-4 mr-1" />
-              Create Voucher
-            </BaseButton>
-          </div>
-        </div>
-        
-        <!-- Subtitle -->
-        <p class="text-xs sm:text-sm text-slate-600 mt-2">View and manage hotspot customer accounts (auto-created on payment)</p>
-      </div>
+  <DataViewContainer
+    title="Hotspot Users"
+    subtitle="View and manage hotspot customer accounts (auto-created on payment)"
+    color-theme="cyan"
+    v-model:search-model="searchQuery"
+    search-placeholder="Search hotspot users..."
+    :stats="[
+      { color: 'bg-cyan-500', value: totalUsers },
+      { color: 'bg-emerald-500', value: activeUsers.length },
+      { color: 'bg-amber-500', value: expiredUsers.length },
+      { color: 'bg-slate-500', value: totalDataUsage }
+    ]"
+    :total="filteredData.length"
+    :loading="loading"
+    @refresh="fetchUsers"
+    @search-clear="searchQuery = ''"
+  >
+    <!-- Icon Slot -->
+    <template #icon>
+      <Wifi class="h-5 w-5 md:h-6 md:w-6 text-white" />
+    </template>
+
+    <!-- Action Buttons -->
+    <template #actions>
+      <BaseButton @click="$router.push('/dashboard/hotspot/vouchers')" variant="primary" size="sm" class="shrink-0">
+        <Ticket class="w-4 h-4 mr-1" /> Create Voucher
+      </BaseButton>
+    </template>
+
+    <!-- Filters -->
+    <template #filters>
+      <BaseSelect v-model="filters.status" placeholder="All Status" class="w-36">
+        <option value="">All Status</option>
+        <option value="active">Active</option>
+        <option value="inactive">Inactive</option>
+        <option value="expired">Expired</option>
+      </BaseSelect>
+      <BaseSelect v-model="filters.package" placeholder="All Packages" class="w-40">
+        <option value="">All Packages</option>
+        <option v-for="pkg in packages" :key="pkg.id" :value="pkg.id">{{ pkg.name }}</option>
+      </BaseSelect>
+    </template>
+
+    <!-- Error State -->
+    <div v-if="error" class="flex flex-col items-center justify-center gap-4 p-8 text-red-500">
+      <AlertCircle class="w-10 h-10" />
+      <p class="text-center">{{ error }}</p>
+      <button @click="fetchUsers" class="px-4 py-2 text-sm font-medium text-white bg-red-500 rounded-md hover:bg-red-600 transition-colors">Retry</button>
     </div>
 
-    <!-- Content -->
-    <PageContent :padding="false">
-      <!-- Loading State -->
-      <div v-if="loading" class="p-6">
-        <BaseLoading type="table" :rows="5" />
-      </div>
+    <!-- Loading Skeleton -->
+    <DataSkeleton v-else-if="loading" :count="5" />
 
-      <!-- Error State -->
-      <div v-else-if="error" class="p-6">
-        <BaseAlert variant="danger" :title="error" dismissible>
-          <div class="mt-2">
-            <BaseButton @click="fetchUsers" variant="danger" size="sm">
-              <RefreshCw class="w-4 h-4 mr-1" />
-              Retry
-            </BaseButton>
-          </div>
-        </BaseAlert>
-      </div>
-
-      <!-- Empty State -->
-      <div v-else-if="!filteredData.length">
-        <BaseEmpty
-          :title="searchQuery ? 'No hotspot users found' : 'No hotspot users yet'"
-          :description="searchQuery ? 'No users match your search criteria.' : 'Hotspot users are automatically created when customers make payments.'"
-          icon="Wifi"
-          actionText="View Vouchers"
-          actionIcon="Ticket"
-          @action="$router.push('/dashboard/hotspot/vouchers')"
+    <!-- Data Content -->
+    <div v-else-if="filteredData.length" class="flex flex-col h-full px-4 md:px-6 pt-2 pb-2 min-h-0">
+      <!-- Mobile Cards -->
+      <div class="md:hidden space-y-3 overflow-y-auto flex-1 min-h-0">
+        <MobileDataCard
+          v-for="user in paginatedData"
+          :key="user.id"
+          :title="user.username"
+          :subtitle="user.phone || user.email || 'No contact info'"
+          :meta-lines="[{ text: user.package_name }, { text: formatDataUsage(user.data_usage), class: 'text-slate-600' }]"
+          :status="user.status"
+          :badges="[{ text: formatExpiry(user.expiry), class: getExpiryClass(user.expiry) }]"
+          :actions="getUserActions(user)"
+          hoverable
         />
       </div>
 
-      <!-- Data Table -->
-      <div v-else class="p-6">
-        <BaseCard :padding="false">
-          <div class="overflow-x-auto">
-            <table class="w-full">
-              <thead class="bg-slate-50 border-b border-slate-200">
-                <tr>
-                  <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">User</th>
-                  <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Voucher Code</th>
-                  <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Package</th>
-                  <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Status</th>
-                  <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Expiry</th>
-                  <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Data Used</th>
-                  <th class="px-6 py-3 text-right text-xs font-semibold text-slate-700 uppercase tracking-wider">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr
-                  v-for="user in paginatedData"
-                  :key="user.id"
-                  class="border-b border-slate-100 hover:bg-blue-50/50 transition-colors cursor-pointer"
-                  @click="openUserDetails(user)"
-                >
-                  <td class="px-6 py-4">
-                    <div class="flex items-center gap-3">
-                      <div class="w-10 h-10 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-full flex items-center justify-center text-white text-sm font-semibold">
-                        {{ getUserInitials(user) }}
-                      </div>
-                      <div>
-                        <div class="text-sm font-medium text-slate-900">{{ user.name || user.username }}</div>
-                        <div class="text-xs text-slate-500">{{ user.phone || 'No phone' }}</div>
-                      </div>
+      <!-- Desktop Table -->
+      <div class="hidden md:flex bg-white border border-slate-200 shadow-sm overflow-hidden flex-col min-h-0 flex-1">
+        <div class="overflow-x-auto overflow-y-auto flex-1 min-h-0">
+          <table class="w-full">
+            <thead class="bg-slate-50 border-b border-slate-200 sticky top-0 z-[5]">
+              <tr>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Username</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Contact</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Package</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Status</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Data Usage</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Expires</th>
+                <th class="px-6 py-3 text-right text-xs font-semibold text-slate-700 uppercase tracking-wider">Actions</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              <tr v-for="user in paginatedData" :key="user.id" class="hover:bg-cyan-50/50 transition-colors">
+                <td class="px-6 py-4">
+                  <div class="flex items-center gap-2">
+                    <User class="w-4 h-4 text-cyan-600" />
+                    <span class="text-sm font-medium text-slate-900">{{ user.username }}</span>
+                  </div>
+                </td>
+                <td class="px-6 py-4">
+                  <div class="text-sm text-slate-600">{{ user.phone || user.email || '—' }}</div>
+                </td>
+                <td class="px-6 py-4">
+                  <span class="text-sm text-slate-700">{{ user.package_name || '—' }}</span>
+                </td>
+                <td class="px-6 py-4">
+                  <EntityStatusBadge :status="user.status" size="sm" />
+                </td>
+                <td class="px-6 py-4">
+                  <div class="flex items-center gap-2">
+                    <div class="flex-1 h-1.5 bg-slate-200 rounded-full overflow-hidden w-24">
+                      <div class="h-full rounded-full transition-all" :class="getDataUsageColor(user.data_usage, user.data_limit)" :style="{ width: getDataUsagePercent(user.data_usage, user.data_limit) }"></div>
                     </div>
-                  </td>
-                  <td class="px-6 py-4">
-                    <div class="text-sm font-mono text-slate-900">{{ user.voucher_code || 'N/A' }}</div>
-                  </td>
-                  <td class="px-6 py-4">
-                    <div class="text-sm font-medium text-slate-900">{{ user.package?.name || 'No package' }}</div>
-                    <div class="text-xs text-slate-500">{{ user.package?.duration || 'N/A' }}</div>
-                  </td>
-                  <td class="px-6 py-4">
-                    <BaseBadge 
-                      :variant="getStatusVariant(user.status)" 
-                      :dot="user.status === 'active'"
-                      :pulse="user.status === 'active'"
-                    >
-                      {{ user.status || 'inactive' }}
-                    </BaseBadge>
-                  </td>
-                  <td class="px-6 py-4 text-sm text-slate-600">
-                    {{ formatDate(user.expiry_date) }}
-                  </td>
-                  <td class="px-6 py-4 text-sm text-slate-600">
-                    {{ formatBytes(user.data_used) }}
-                  </td>
-                  <td class="px-6 py-4 text-right" @click.stop>
-                    <div class="flex items-center justify-end gap-1">
-                      <BaseButton @click="viewSessions(user)" variant="ghost" size="sm">
-                        <Activity class="w-3 h-3" />
-                      </BaseButton>
-                      <BaseButton 
-                        @click="handleDisconnect(user)" 
-                        variant="warning" 
-                        size="sm" 
-                        v-if="user.status === 'active'"
-                        :disabled="disconnecting[user.id]"
-                      >
-                        <template v-if="disconnecting[user.id]">
-                          <RefreshCw class="w-3 h-3 animate-spin mr-1" />
-                          Disconnecting...
-                        </template>
-                        <template v-else>
-                          <WifiOff class="w-3 h-3 mr-1" />
-                          Disconnect
-                        </template>
-                      </BaseButton>
-                    </div>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </BaseCard>
+                    <span class="text-xs text-slate-600 w-20">{{ formatDataUsage(user.data_usage) }}</span>
+                  </div>
+                </td>
+                <td class="px-6 py-4">
+                  <span :class="getExpiryClass(user.expiry)">{{ formatExpiry(user.expiry) }}</span>
+                </td>
+                <td class="px-6 py-4 text-right">
+                  <div class="flex items-center justify-end gap-1">
+                    <button v-if="user.status === 'active'" @click="disconnectUser(user)" class="px-2 py-1 text-xs font-medium text-amber-700 bg-amber-50 rounded hover:bg-amber-100 transition-colors">Disconnect</button>
+                    <button @click="viewDetails(user)" class="px-2 py-1 text-xs font-medium text-blue-700 bg-blue-50 rounded hover:bg-blue-100 transition-colors">Details</button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
-    </PageContent>
 
-    <!-- Footer -->
-    <PageFooter>
-      <div class="text-sm text-slate-600">
-        Showing {{ paginationInfo.start }} to {{ paginationInfo.end }} of {{ paginationInfo.total }} users
-      </div>
-      <BasePagination
-        v-model="currentPage"
-        :total-pages="totalPages"
-        :items-per-page="itemsPerPage"
-        @update:items-per-page="itemsPerPage = $event"
-      />
-    </PageFooter>
+      <!-- Pagination -->
+      <DataPagination v-model:current-page="currentPage" v-model:items-per-page="itemsPerPage" :total-pages="totalPages" :total-items="filteredData.length" item-name="users" class="mt-auto" />
+    </div>
 
-    <!-- User Details Slide-Over -->
-    <SlideOverlay
-      v-model="showUserDetails"
-      title="Hotspot User Details"
-      subtitle="View user account information and sessions"
-      icon="Wifi"
-      width="50%"
-      @close="closeUserDetails"
+    <!-- Empty State -->
+    <DataEmptyState
+      v-else
+      :title="searchQuery ? 'No Users Found' : 'No Hotspot Users'"
+      :description="searchQuery ? 'No users match your search criteria.' : 'Hotspot users are automatically created when customers make payments.'"
+      icon="wifi"
+      color-theme="cyan"
+      :show-clear="!!searchQuery"
+      :has-filters="hasActiveFilters"
+      @clear="searchQuery = ''"
     >
-      <div v-if="selectedUser" class="space-y-6">
-        <!-- User Info Card -->
-        <div class="bg-gradient-to-br from-blue-50 to-cyan-50 rounded-xl p-6">
-          <div class="flex items-center gap-4">
-            <div class="w-16 h-16 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-full flex items-center justify-center text-white text-xl font-bold">
-              {{ getUserInitials(selectedUser) }}
-            </div>
-            <div>
-              <h3 class="text-lg font-semibold text-slate-900">{{ selectedUser.name || selectedUser.username }}</h3>
-              <p class="text-sm text-slate-600">{{ selectedUser.phone || 'No phone' }}</p>
-              <BaseBadge 
-                :variant="getStatusVariant(selectedUser.status)" 
-                :dot="selectedUser.status === 'active'"
-                :pulse="selectedUser.status === 'active'"
-                class="mt-2"
-              >
-                {{ selectedUser.status || 'inactive' }}
-              </BaseBadge>
-            </div>
-          </div>
-        </div>
+      <template #action>
+        <BaseButton @click="$router.push('/dashboard/hotspot/vouchers')" variant="primary" size="sm">
+          <Ticket class="w-4 h-4 mr-1" /> Create Voucher
+        </BaseButton>
+      </template>
+    </DataEmptyState>
+  </DataViewContainer>
 
-        <!-- User Details Grid -->
-        <div class="grid grid-cols-2 gap-4">
-          <div class="bg-white rounded-lg border border-slate-200 p-4">
-            <p class="text-xs text-slate-500 uppercase tracking-wide">Voucher Code</p>
-            <p class="text-sm font-mono font-medium text-slate-900 mt-1">{{ selectedUser.voucher_code || 'N/A' }}</p>
-          </div>
-          <div class="bg-white rounded-lg border border-slate-200 p-4">
-            <p class="text-xs text-slate-500 uppercase tracking-wide">Package</p>
-            <p class="text-sm font-medium text-slate-900 mt-1">{{ selectedUser.package?.name || 'No package' }}</p>
-          </div>
-          <div class="bg-white rounded-lg border border-slate-200 p-4">
-            <p class="text-xs text-slate-500 uppercase tracking-wide">Expiry Date</p>
-            <p class="text-sm font-medium text-slate-900 mt-1">{{ formatDate(selectedUser.expiry_date) }}</p>
-          </div>
-          <div class="bg-white rounded-lg border border-slate-200 p-4">
-            <p class="text-xs text-slate-500 uppercase tracking-wide">Data Used</p>
-            <p class="text-sm font-medium text-slate-900 mt-1">{{ formatBytes(selectedUser.data_used) }}</p>
-          </div>
+  <!-- User Details SlideOverlay -->
+  <SlideOverlay v-model="showDetailsOverlay" title="User Details" subtitle="Hotspot user information" icon="User" width="480px" @close="closeDetails">
+    <div v-if="selectedUser" class="p-6 space-y-6">
+      <div class="flex items-center gap-4">
+        <div class="w-16 h-16 bg-cyan-100 rounded-full flex items-center justify-center text-cyan-700 text-2xl font-bold">
+          {{ selectedUser.username.charAt(0).toUpperCase() }}
         </div>
-
-        <!-- Quick Actions -->
-        <div class="flex items-center gap-3">
-          <BaseButton 
-            @click="viewUserSessions" 
-            variant="secondary" 
-            class="flex-1"
-          >
-            <Activity class="w-4 h-4 mr-2" />
-            View Sessions
-          </BaseButton>
-          <BaseButton 
-            v-if="selectedUser.status === 'active'"
-            @click="handleDisconnectFromModal" 
-            variant="warning" 
-            class="flex-1"
-            :loading="disconnecting[selectedUser.id]"
-          >
-            <WifiOff class="w-4 h-4 mr-2" />
-            Disconnect
-          </BaseButton>
+        <div>
+          <h3 class="text-lg font-semibold text-slate-900">{{ selectedUser.username }}</h3>
+          <EntityStatusBadge :status="selectedUser.status" size="sm" />
         </div>
       </div>
 
-      <template #footer>
-        <div class="flex items-center justify-end">
-          <BaseButton variant="secondary" @click="closeUserDetails">
-            Close
-          </BaseButton>
+      <div class="grid grid-cols-2 gap-4">
+        <div class="bg-slate-50 rounded-lg p-4">
+          <div class="text-xs text-slate-500 uppercase tracking-wider">Phone</div>
+          <div class="text-sm font-medium text-slate-900">{{ selectedUser.phone || '—' }}</div>
         </div>
-      </template>
-    </SlideOverlay>
-  </PageContainer>
+        <div class="bg-slate-50 rounded-lg p-4">
+          <div class="text-xs text-slate-500 uppercase tracking-wider">Email</div>
+          <div class="text-sm font-medium text-slate-900">{{ selectedUser.email || '—' }}</div>
+        </div>
+        <div class="bg-slate-50 rounded-lg p-4">
+          <div class="text-xs text-slate-500 uppercase tracking-wider">Package</div>
+          <div class="text-sm font-medium text-slate-900">{{ selectedUser.package_name || '—' }}</div>
+        </div>
+        <div class="bg-slate-50 rounded-lg p-4">
+          <div class="text-xs text-slate-500 uppercase tracking-wider">IP Address</div>
+          <div class="text-sm font-medium text-slate-900 font-mono">{{ selectedUser.ip_address || '—' }}</div>
+        </div>
+      </div>
+
+      <div class="bg-slate-50 rounded-lg p-4">
+        <div class="text-xs text-slate-500 uppercase tracking-wider mb-2">Data Usage</div>
+        <div class="flex items-center gap-4">
+          <div class="flex-1 h-2 bg-slate-200 rounded-full overflow-hidden">
+            <div class="h-full rounded-full transition-all" :class="getDataUsageColor(selectedUser.data_usage, selectedUser.data_limit)" :style="{ width: getDataUsagePercent(selectedUser.data_usage, selectedUser.data_limit) }"></div>
+          </div>
+          <span class="text-sm font-medium text-slate-900">{{ formatDataUsage(selectedUser.data_usage) }} / {{ formatDataUsage(selectedUser.data_limit) }}</span>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 gap-4">
+        <div class="bg-slate-50 rounded-lg p-4">
+          <div class="text-xs text-slate-500 uppercase tracking-wider">Created</div>
+          <div class="text-sm font-medium text-slate-900">{{ formatDateTime(selectedUser.created_at) }}</div>
+        </div>
+        <div class="bg-slate-50 rounded-lg p-4">
+          <div class="text-xs text-slate-500 uppercase tracking-wider">Expires</div>
+          <div class="text-sm font-medium text-slate-900" :class="getExpiryClass(selectedUser.expiry)">{{ formatExpiry(selectedUser.expiry) }}</div>
+        </div>
+      </div>
+
+      <div class="bg-slate-50 rounded-lg p-4">
+        <div class="text-xs text-slate-500 uppercase tracking-wider mb-2">MAC Address</div>
+        <div class="text-sm font-medium text-slate-900 font-mono">{{ selectedUser.mac_address || '—' }}</div>
+      </div>
+    </div>
+    <template #footer>
+      <div class="flex gap-3">
+        <button
+          @click="closeDetails"
+          class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+        >
+          Close
+        </button>
+        <button
+          v-if="selectedUser?.status === 'active'"
+          @click="disconnectUser(selectedUser); closeDetails()"
+          class="flex-1 px-4 py-2 text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 rounded-lg transition-colors"
+        >
+          Disconnect
+        </button>
+      </div>
+    </template>
+  </SlideOverlay>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { Ticket, X, RefreshCw, Activity, Wifi, WifiOff } from 'lucide-vue-next'
-import PageContainer from '@/modules/common/components/layout/templates/PageContainer.vue'
-import PageContent from '@/modules/common/components/layout/templates/PageContent.vue'
-import PageFooter from '@/modules/common/components/layout/templates/PageFooter.vue'
-import BaseButton from '@/modules/common/components/base/BaseButton.vue'
-import BaseCard from '@/modules/common/components/base/BaseCard.vue'
-import BaseBadge from '@/modules/common/components/base/BaseBadge.vue'
-import BaseSearch from '@/modules/common/components/base/BaseSearch.vue'
-import BaseSelect from '@/modules/common/components/base/BaseSelect.vue'
-import BasePagination from '@/modules/common/components/base/BasePagination.vue'
-import BaseLoading from '@/modules/common/components/base/BaseLoading.vue'
-import BaseEmpty from '@/modules/common/components/base/BaseEmpty.vue'
-import BaseAlert from '@/modules/common/components/base/BaseAlert.vue'
+import { ref, computed, onMounted } from 'vue'
+import { Wifi, Ticket, AlertCircle, User } from 'lucide-vue-next'
+import axios from 'axios'
+import DataViewContainer from '@/modules/common/components/base/DataViewContainer.vue'
+import DataSkeleton from '@/modules/common/components/base/DataSkeleton.vue'
+import MobileDataCard from '@/modules/common/components/base/MobileDataCard.vue'
+import DataPagination from '@/modules/common/components/base/DataPagination.vue'
+import DataEmptyState from '@/modules/common/components/base/DataEmptyState.vue'
+import EntityStatusBadge from '@/modules/common/components/base/EntityStatusBadge.vue'
 import SlideOverlay from '@/modules/common/components/base/SlideOverlay.vue'
+import BaseButton from '@/modules/common/components/base/BaseButton.vue'
+import BaseSelect from '@/modules/common/components/base/BaseSelect.vue'
 
-import { useFilters } from '@/modules/common/composables/utils/useFilters'
-import { usePagination } from '@/modules/common/composables/utils/usePagination'
-import { usePackages } from '@/modules/tenant/composables/data/usePackages'
-import { useHotspot } from '@/modules/tenant/composables/useHotspot'
-import { useBroadcasting } from '@/modules/common/composables/websocket/useBroadcasting'
-import { useAuthStore } from '@/stores/auth'
-
-const authStore = useAuthStore()
-const { subscribeToPrivateChannel } = useBroadcasting()
-
-// Use the WebSocket-enabled hotspot composable
-const {
-  users,
-  loading,
-  error,
-  pagination,
-  activeUsers,
-  expiredUsers,
-  totalUsers,
-  fetchUsers,
-  disconnectUser,
-  setPage,
-  setPerPage,
-} = useHotspot()
-
-const { packages, fetchPackages } = usePackages()
-
-// Local state for disconnect confirmation
-const disconnecting = ref({})
-
-// Slide-over state for user details
-const showUserDetails = ref(false)
+// State
+const loading = ref(false)
+const users = ref([])
+const packages = ref([])
+const searchQuery = ref('')
+const currentPage = ref(1)
+const itemsPerPage = ref(10)
+const showDetailsOverlay = ref(false)
 const selectedUser = ref(null)
+const error = ref(null)
 
-// Filtering
-const { 
-  filters, 
-  searchQuery, 
-  filteredData, 
-  hasActiveFilters, 
-  clearFilters 
-} = useFilters(users, { status: '', package: '' })
+const filters = ref({ status: '', package: '' })
 
-// Pagination (local filtering on top of server pagination)
-const { 
-  currentPage, 
-  itemsPerPage, 
-  paginatedData, 
-  totalPages, 
-  paginationInfo 
-} = usePagination(filteredData, 10)
+// Computed
+const totalUsers = computed(() => users.value.length)
 
+const activeUsers = computed(() => users.value.filter(u => u.status === 'active'))
+const expiredUsers = computed(() => users.value.filter(u => u.status === 'expired'))
 
-// Methods
-const getUserInitials = (user) => {
-  const name = user.name || user.username || 'U'
-  return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
-}
+const totalDataUsage = computed(() => {
+  const total = users.value.reduce((sum, u) => sum + (u.data_usage || 0), 0)
+  return formatDataUsageCompact(total)
+})
 
-const getStatusVariant = (status) => {
-  const variants = {
-    active: 'success',
-    inactive: 'warning',
-    expired: 'danger',
-    revoked: 'danger',
-    disconnecting: 'warning',
+const filteredData = computed(() => {
+  let data = users.value
+  if (searchQuery.value) {
+    const query = searchQuery.value.toLowerCase()
+    data = data.filter(u =>
+      u.username.toLowerCase().includes(query) ||
+      (u.phone && u.phone.includes(query)) ||
+      (u.email && u.email.toLowerCase().includes(query))
+    )
   }
-  return variants[status] || 'default'
+  if (filters.value.status) {
+    data = data.filter(u => u.status === filters.value.status)
+  }
+  if (filters.value.package) {
+    data = data.filter(u => u.package_id === filters.value.package)
+  }
+  return data
+})
+
+const paginatedData = computed(() => {
+  const start = (currentPage.value - 1) * itemsPerPage.value
+  return filteredData.value.slice(start, start + itemsPerPage.value)
+})
+
+const totalPages = computed(() => Math.ceil(filteredData.value.length / itemsPerPage.value))
+const hasActiveFilters = computed(() => filters.value.status || filters.value.package || searchQuery.value)
+
+// Helpers
+const formatDataUsage = (bytes) => {
+  if (!bytes || bytes === 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  let size = bytes
+  let unitIndex = 0
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024
+    unitIndex++
+  }
+  return `${size.toFixed(2)} ${units[unitIndex]}`
 }
 
-const formatDate = (date) => {
-  if (!date) return 'N/A'
-  return new Date(date).toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric'
-  })
+const formatDataUsageCompact = (bytes) => {
+  if (!bytes || bytes === 0) return '0'
+  if (bytes >= 1099511627776) return `${(bytes / 1099511627776).toFixed(1)}T`
+  if (bytes >= 1073741824) return `${(bytes / 1073741824).toFixed(1)}G`
+  if (bytes >= 1048576) return `${(bytes / 1048576).toFixed(1)}M`
+  return `${(bytes / 1024).toFixed(1)}K`
 }
 
-const formatBytes = (bytes) => {
-  if (!bytes) return '0 B'
-  const k = 1024
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i]
+const getDataUsagePercent = (usage, limit) => {
+  if (!limit || limit === 0) return '0%'
+  const percent = Math.min((usage || 0) / limit * 100, 100)
+  return `${percent}%`
 }
 
-const openUserDetails = (user) => {
+const getDataUsageColor = (usage, limit) => {
+  if (!limit) return 'bg-slate-400'
+  const percent = (usage || 0) / limit
+  if (percent > 0.9) return 'bg-red-500'
+  if (percent > 0.7) return 'bg-amber-500'
+  return 'bg-emerald-500'
+}
+
+const formatExpiry = (expiry) => {
+  if (!expiry) return 'Never'
+  const expiryDate = new Date(expiry)
+  const now = new Date()
+  const diffMs = expiryDate - now
+  const diffHours = Math.ceil(diffMs / (1000 * 60 * 60))
+  const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24))
+  if (diffHours < 0) return 'Expired'
+  if (diffHours < 24) return `${diffHours}h left`
+  if (diffDays === 1) return '1 day left'
+  if (diffDays < 30) return `${diffDays} days left`
+  return expiryDate.toLocaleDateString()
+}
+
+const getExpiryClass = (expiry) => {
+  if (!expiry) return 'text-slate-500'
+  const expiryDate = new Date(expiry)
+  const now = new Date()
+  const diffHours = (expiryDate - now) / (1000 * 60 * 60)
+  if (diffHours < 0) return 'text-red-600'
+  if (diffHours < 24) return 'text-amber-600'
+  return 'text-emerald-600'
+}
+
+const formatDateTime = (date) => {
+  if (!date) return '—'
+  return new Date(date).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
+const getUserActions = (user) => [
+  ...(user.status === 'active' ? [{ label: 'Disconnect', onClick: () => disconnectUser(user), class: 'text-amber-700 bg-amber-50 hover:bg-amber-100' }] : []),
+  { label: 'Details', onClick: () => viewDetails(user), class: 'text-blue-700 bg-blue-50 hover:bg-blue-100' }
+]
+
+// Actions
+const fetchUsers = async () => {
+  loading.value = true
+  error.value = null
+  try {
+    const response = await axios.get('/hotspot/users')
+    const data = response.data?.users?.data || response.data?.users || response.data?.data || []
+    users.value = data.map(u => ({
+      id: u.id,
+      username: u.username || 'Unknown',
+      phone: u.phone || null,
+      email: u.email || null,
+      package_id: u.package_id || null,
+      package_name: u.package_name || u.package?.name || null,
+      status: u.status || 'inactive',
+      data_usage: u.data_usage || u.data_used || 0,
+      data_limit: u.data_limit || u.package?.data_limit || 0,
+      ip_address: u.ip_address || null,
+      mac_address: u.mac_address || null,
+      expiry: u.expires_at || u.expiry || null,
+      created_at: u.created_at || new Date().toISOString()
+    }))
+  } catch (err) {
+    error.value = err.response?.data?.message || 'Failed to load hotspot users'
+    console.error('fetchUsers error:', err)
+  } finally {
+    loading.value = false
+  }
+}
+
+const fetchPackages = async () => {
+  try {
+    const response = await axios.get('/hotspot/packages', { params: { per_page: 100 } })
+    packages.value = response.data?.packages?.data || response.data?.packages || []
+  } catch (err) {
+    console.error('fetchPackages error:', err)
+  }
+}
+
+const disconnectUser = async (user) => {
+  try {
+    await axios.post(`/hotspot/users/${user.id}/disconnect`)
+    await fetchUsers()
+  } catch (err) {
+    console.error('disconnectUser error:', err)
+    alert(err.response?.data?.message || 'Failed to disconnect user')
+  }
+}
+
+const viewDetails = (user) => {
   selectedUser.value = user
-  showUserDetails.value = true
+  showDetailsOverlay.value = true
 }
 
-const closeUserDetails = () => {
-  showUserDetails.value = false
+const closeDetails = () => {
+  showDetailsOverlay.value = false
   selectedUser.value = null
 }
 
-const viewUserSessions = () => {
-  if (selectedUser.value) {
-    console.log('View sessions for:', selectedUser.value)
-    // Future: Navigate to sessions filtered by this user
-  }
-}
-
-const handleDisconnectFromModal = async () => {
-  if (selectedUser.value) {
-    await handleDisconnect(selectedUser.value)
-  }
-}
-
-const viewSessions = (user) => {
-  openUserDetails(user)
-}
-
-const handleDisconnect = async (user) => {
-  const confirmed = confirm(`Are you sure you want to disconnect ${user.name || user.username}?`)
-  
-  if (confirmed) {
-    try {
-      disconnecting.value[user.id] = true
-      await disconnectUser(user.id, 'Admin disconnect')
-    } catch (err) {
-      console.error('Failed to disconnect user:', err)
-    } finally {
-      disconnecting.value[user.id] = false
-    }
-  }
-}
-
-const handleRefresh = () => {
-  fetchUsers()
-}
-
-// Lifecycle - fetch initial data + subscribe to WebSocket events
 onMounted(() => {
   fetchUsers()
   fetchPackages()
-
-  // Subscribe to tenant-scoped hotspot events
-  const tenantId = authStore.tenantId
-  if (tenantId) {
-    subscribeToPrivateChannel(`tenant.${tenantId}.hotspot`, {
-      '.HotspotUserCreated': () => fetchUsers(),
-      '.hotspot.access.granted': () => fetchUsers(),
-      '.hotspot.access.revoked': () => fetchUsers(),
-      '.hotspot.package.expired': () => fetchUsers(),
-      '.hotspot.provisioned': () => fetchUsers(),
-      '.hotspot.login.attempted': () => fetchUsers(),
-      HotspotUserCreated: () => fetchUsers(),
-    })
-  }
 })
 </script>
+
+<style scoped>
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+</style>

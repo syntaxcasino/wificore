@@ -1,121 +1,149 @@
 <template>
-  <PageContainer>
-    <PageHeader title="Activity Logs" subtitle="Monitor system activities" icon="Activity" :breadcrumbs="breadcrumbs">
-      <template #actions>
-        <BaseButton @click="refreshLogs" variant="ghost" :loading="refreshing">
-          <RefreshCw class="w-4 h-4 mr-1" :class="{ 'animate-spin': refreshing }" />
-          Refresh
-        </BaseButton>
-        <BaseButton @click="exportLogs" variant="ghost">
-          <Download class="w-4 h-4 mr-1" />
-          Export
-        </BaseButton>
-      </template>
-    </PageHeader>
+  <DataViewContainer
+    title="Activity Logs"
+    subtitle="Monitor system activity and user actions"
+    color-theme="purple"
+    v-model:search-model="searchQuery"
+    search-placeholder="Search logs..."
+    :loading="loading"
+    @refresh="fetchLogs"
+    @search-clear="searchQuery = ''"
+  >
+    <!-- Icon Slot -->
+    <template #icon>
+      <History class="h-5 w-5 md:h-6 md:w-6 text-white" />
+    </template>
 
-    <div class="px-3 py-3 sm:px-6 sm:py-4 bg-white border-b border-slate-200">
-      <div class="flex flex-col sm:flex-row sm:items-center gap-3 flex-wrap">
-        <div class="flex-1 min-w-0 sm:min-w-[250px] max-w-md">
-          <BaseSearch v-model="searchQuery" placeholder="Search logs..." />
-        </div>
-        
-        <div class="flex items-center gap-2">
-          <BaseSelect v-model="filters.action" class="w-36">
-            <option value="">All Actions</option>
-            <option value="create">Create</option>
-            <option value="update">Update</option>
-            <option value="delete">Delete</option>
-            <option value="login">Login</option>
-          </BaseSelect>
-          
-          <BaseSelect v-model="filters.user" class="w-36">
-            <option value="">All Users</option>
-            <option value="admin">Admin</option>
-            <option value="support">Support</option>
-          </BaseSelect>
-        </div>
-      </div>
-    </div>
+    <!-- Action Buttons -->
+    <template #actions>
+      <BaseButton @click="exportLogs" variant="outline" size="sm">
+        <Download class="w-4 h-4 mr-1.5" /> Export
+      </BaseButton>
+    </template>
 
-    <PageContent :padding="false">
-      <div v-if="loading" class="p-6">
-        <BaseLoading type="list" :rows="10" />
-      </div>
+    <!-- Filters -->
+    <template #filters>
+      <BaseSelect v-model="filters.action" placeholder="All Actions" class="w-36">
+        <option value="">All Actions</option>
+        <option value="create">Create</option>
+        <option value="update">Update</option>
+        <option value="delete">Delete</option>
+        <option value="login">Login</option>
+      </BaseSelect>
+      <BaseSelect v-model="filters.user" placeholder="All Users" class="w-36">
+        <option value="">All Users</option>
+        <option value="admin">Admin</option>
+        <option value="support">Support</option>
+        <option value="user">User</option>
+      </BaseSelect>
+      <BaseSelect v-model="filters.timeRange" placeholder="Time Range" class="w-36">
+        <option value="">All Time</option>
+        <option value="today">Today</option>
+        <option value="week">Last 7 Days</option>
+        <option value="month">Last 30 Days</option>
+      </BaseSelect>
+    </template>
 
-      <div v-else class="p-6">
-        <BaseCard :padding="false">
-          <div class="divide-y divide-slate-100">
-            <div v-for="log in paginatedData" :key="log.id" class="p-4 hover:bg-slate-50">
-              <div class="flex items-start gap-4">
-                <div class="flex-shrink-0 mt-1">
-                  <div class="p-2 rounded-lg" :class="getActionBg(log.action)">
-                    <component :is="getActionIcon(log.action)" class="w-4 h-4" :class="getActionColor(log.action)" />
+    <!-- Data Content -->
+    <div v-if="filteredData.length" class="flex flex-col h-full px-4 md:px-6 pt-2 pb-2 min-h-0">
+      <!-- Desktop Timeline -->
+      <div class="hidden md:flex bg-white border border-slate-200 shadow-sm overflow-hidden flex-col min-h-0 flex-1">
+        <div class="overflow-y-auto flex-1 min-h-0">
+          <div class="relative">
+            <div class="absolute left-8 top-0 bottom-0 w-px bg-slate-200"></div>
+            <div v-for="(log, index) in paginatedData" :key="log.id" class="relative pl-8 pr-6 py-4 hover:bg-slate-50 transition-colors">
+              <div class="absolute left-6 top-5 w-5 h-5 rounded-full bg-white border-2 z-10" :class="getActionBorder(log.action)">
+                <div class="w-full h-full rounded-full flex items-center justify-center">
+                  <component :is="getActionIcon(log.action)" class="w-3 h-3" :class="getActionColor(log.action)" />
+                </div>
+              </div>
+              <div class="flex items-start justify-between gap-4">
+                <div class="flex-1 min-w-0">
+                  <p class="text-sm font-medium text-slate-900">{{ log.description }}</p>
+                  <div class="flex items-center gap-2 mt-1">
+                    <span class="px-2 py-0.5 text-xs rounded-full bg-slate-100 text-slate-600">{{ log.action }}</span>
+                    <span class="text-xs text-slate-500">by {{ log.user }}</span>
+                    <span v-if="log.ip_address" class="text-xs text-slate-400 font-mono">{{ log.ip_address }}</span>
                   </div>
                 </div>
-                
-                <div class="flex-1">
-                  <div class="flex items-center gap-2 mb-1">
-                    <BaseBadge :variant="getActionVariant(log.action)" size="sm">{{ log.action }}</BaseBadge>
-                    <span class="text-xs text-slate-500">{{ formatDateTime(log.timestamp) }}</span>
-                  </div>
-                  
-                  <div class="text-sm font-medium text-slate-900 mb-1">{{ log.description }}</div>
-                  
-                  <div class="flex items-center gap-4 text-xs text-slate-500">
-                    <span>User: {{ log.user }}</span>
-                    <span>IP: {{ log.ip_address }}</span>
-                  </div>
-                </div>
+                <span class="text-xs text-slate-500 whitespace-nowrap">{{ formatDateTime(log.timestamp) }}</span>
               </div>
             </div>
           </div>
-        </BaseCard>
+        </div>
       </div>
-    </PageContent>
 
-    <PageFooter>
-      <div class="text-sm text-slate-600">
-        Showing {{ paginationInfo.start }} to {{ paginationInfo.end }} of {{ paginationInfo.total }} logs
+      <!-- Mobile Cards -->
+      <div class="md:hidden space-y-3 overflow-y-auto flex-1 min-h-0">
+        <div v-for="log in paginatedData" :key="log.id" class="bg-white rounded-lg border border-slate-200 shadow-sm p-4">
+          <div class="flex items-start gap-3">
+            <div class="w-10 h-10 rounded-full flex items-center justify-center" :class="getActionBg(log.action)">
+              <component :is="getActionIcon(log.action)" class="w-5 h-5" :class="getActionColor(log.action)" />
+            </div>
+            <div class="flex-1 min-w-0">
+              <p class="text-sm font-medium text-slate-900">{{ log.description }}</p>
+              <div class="flex items-center gap-2 mt-1 flex-wrap">
+                <span class="px-2 py-0.5 text-xs rounded-full bg-slate-100 text-slate-600">{{ log.action }}</span>
+                <span class="text-xs text-slate-500">by {{ log.user }}</span>
+              </div>
+              <div class="flex items-center justify-between mt-2">
+                <span v-if="log.ip_address" class="text-xs text-slate-400 font-mono">{{ log.ip_address }}</span>
+                <span class="text-xs text-slate-500">{{ formatDateTime(log.timestamp) }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
-      <BasePagination v-model="currentPage" :total-pages="totalPages" :total-items="filteredData.length" />
-    </PageFooter>
-  </PageContainer>
+
+      <!-- Pagination -->
+      <DataPagination v-model:current-page="currentPage" v-model:items-per-page="itemsPerPage" :total-pages="totalPages" :total-items="filteredData.length" item-name="logs" class="mt-auto" />
+    </div>
+
+    <!-- Loading Skeleton -->
+    <DataSkeleton v-else-if="loading" :count="5" />
+
+    <!-- Empty State -->
+    <DataEmptyState
+      v-else
+      :title="searchQuery || hasActiveFilters ? 'No Logs Found' : 'No Activity Logs'"
+      :description="searchQuery || hasActiveFilters ? 'No activity logs match your search criteria.' : 'System activity logs will appear here.'"
+      icon="history"
+      color-theme="purple"
+      :show-clear="!!searchQuery || hasActiveFilters"
+      :has-filters="hasActiveFilters"
+      @clear="clearFilters"
+    />
+  </DataViewContainer>
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
-import { Activity, RefreshCw, Download, Plus, Edit2, Trash2, LogIn } from 'lucide-vue-next'
-import PageContainer from '@/modules/common/components/layout/templates/PageContainer.vue'
-import PageHeader from '@/modules/common/components/layout/templates/PageHeader.vue'
-import PageContent from '@/modules/common/components/layout/templates/PageContent.vue'
-import PageFooter from '@/modules/common/components/layout/templates/PageFooter.vue'
+import { ref, computed, onMounted } from 'vue'
+import { History, Plus, Edit2, Trash2, LogIn, Download } from 'lucide-vue-next'
+import DataViewContainer from '@/modules/common/components/base/DataViewContainer.vue'
+import DataSkeleton from '@/modules/common/components/base/DataSkeleton.vue'
+import DataPagination from '@/modules/common/components/base/DataPagination.vue'
+import DataEmptyState from '@/modules/common/components/base/DataEmptyState.vue'
 import BaseButton from '@/modules/common/components/base/BaseButton.vue'
-import BaseCard from '@/modules/common/components/base/BaseCard.vue'
-import BaseBadge from '@/modules/common/components/base/BaseBadge.vue'
-import BaseSearch from '@/modules/common/components/base/BaseSearch.vue'
 import BaseSelect from '@/modules/common/components/base/BaseSelect.vue'
-import BasePagination from '@/modules/common/components/base/BasePagination.vue'
-import BaseLoading from '@/modules/common/components/base/BaseLoading.vue'
 
-const breadcrumbs = [{ label: 'Dashboard', to: '/dashboard' }, { label: 'Admin', to: '/dashboard/admin' }, { label: 'Activity Logs' }]
-
+// State
 const loading = ref(false)
-const refreshing = ref(false)
 const searchQuery = ref('')
 const currentPage = ref(1)
 const itemsPerPage = ref(15)
 
-const filters = ref({ action: '', user: '' })
+const filters = ref({ action: '', user: '', timeRange: '' })
 
-const logs = ref(Array.from({ length: 50 }, (_, i) => ({
-  id: i + 1,
-  action: ['create', 'update', 'delete', 'login'][Math.floor(Math.random() * 4)],
-  description: ['Created new user', 'Updated package', 'Deleted invoice', 'User logged in'][Math.floor(Math.random() * 4)],
-  user: ['admin', 'support'][Math.floor(Math.random() * 2)],
-  ip_address: `192.168.1.${Math.floor(Math.random() * 255)}`,
-  timestamp: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString()
-})))
+// Mock data for now - in production, fetch from API
+const logs = ref([
+  { id: 1, action: 'create', description: 'Created new user John Doe', user: 'admin', ip_address: '192.168.1.10', timestamp: new Date().toISOString() },
+  { id: 2, action: 'update', description: 'Updated package Premium', user: 'support', ip_address: '192.168.1.15', timestamp: new Date(Date.now() - 3600000).toISOString() },
+  { id: 3, action: 'delete', description: 'Deleted invoice #1234', user: 'admin', ip_address: '192.168.1.10', timestamp: new Date(Date.now() - 7200000).toISOString() },
+  { id: 4, action: 'login', description: 'User logged in', user: 'support', ip_address: '192.168.1.20', timestamp: new Date(Date.now() - 86400000).toISOString() },
+  { id: 5, action: 'create', description: 'Added new router MikroTik', user: 'admin', ip_address: '192.168.1.10', timestamp: new Date(Date.now() - 9000000).toISOString() }
+])
 
+// Computed
 const filteredData = computed(() => {
   let data = logs.value
   if (searchQuery.value) {
@@ -124,34 +152,58 @@ const filteredData = computed(() => {
   }
   if (filters.value.action) data = data.filter(l => l.action === filters.value.action)
   if (filters.value.user) data = data.filter(l => l.user === filters.value.user)
+  if (filters.value.timeRange) {
+    const now = new Date()
+    data = data.filter(l => {
+      const logDate = new Date(l.timestamp)
+      if (filters.value.timeRange === 'today') return logDate.toDateString() === now.toDateString()
+      if (filters.value.timeRange === 'week') return now - logDate <= 7 * 24 * 60 * 60 * 1000
+      if (filters.value.timeRange === 'month') return now - logDate <= 30 * 24 * 60 * 60 * 1000
+      return true
+    })
+  }
   return data
 })
-
-const totalPages = computed(() => Math.ceil(filteredData.value.length / itemsPerPage.value))
 
 const paginatedData = computed(() => {
   const start = (currentPage.value - 1) * itemsPerPage.value
   return filteredData.value.slice(start, start + itemsPerPage.value)
 })
 
-const paginationInfo = computed(() => {
-  const start = (currentPage.value - 1) * itemsPerPage.value + 1
-  const end = Math.min(start + itemsPerPage.value - 1, filteredData.value.length)
-  return { start, end, total: filteredData.value.length }
-})
+const totalPages = computed(() => Math.ceil(filteredData.value.length / itemsPerPage.value))
+const hasActiveFilters = computed(() => filters.value.action || filters.value.user || filters.value.timeRange)
 
-const getActionBg = (action) => ({ create: 'bg-green-100', update: 'bg-blue-100', delete: 'bg-red-100', login: 'bg-purple-100' }[action])
-const getActionColor = (action) => ({ create: 'text-green-600', update: 'text-blue-600', delete: 'text-red-600', login: 'text-purple-600' }[action])
-const getActionIcon = (action) => ({ create: Plus, update: Edit2, delete: Trash2, login: LogIn }[action])
-const getActionVariant = (action) => ({ create: 'success', update: 'info', delete: 'danger', login: 'secondary' }[action])
+// Helpers
+const getActionBg = (action) => ({ create: 'bg-emerald-100', update: 'bg-blue-100', delete: 'bg-red-100', login: 'bg-purple-100' }[action] || 'bg-slate-100')
+const getActionColor = (action) => ({ create: 'text-emerald-600', update: 'text-blue-600', delete: 'text-red-600', login: 'text-purple-600' }[action] || 'text-slate-600')
+const getActionIcon = (action) => ({ create: Plus, update: Edit2, delete: Trash2, login: LogIn }[action] || Plus)
+const getActionBorder = (action) => ({ create: 'border-emerald-500', update: 'border-blue-500', delete: 'border-red-500', login: 'border-purple-500' }[action] || 'border-slate-400')
 
-const formatDateTime = (date) => new Date(date).toLocaleString()
+const formatDateTime = (date) => {
+  if (!date) return ''
+  const d = new Date(date)
+  return d.toLocaleDateString('en-GB') + ' ' + d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+}
 
-const refreshLogs = async () => {
-  refreshing.value = true
+const clearFilters = () => {
+  searchQuery.value = ''
+  filters.value = { action: '', user: '', timeRange: '' }
+}
+
+const fetchLogs = async () => {
+  loading.value = true
   await new Promise(resolve => setTimeout(resolve, 500))
-  refreshing.value = false
+  loading.value = false
 }
 
 const exportLogs = () => alert('Export feature coming soon!')
+
+onMounted(fetchLogs)
 </script>
+
+<style scoped>
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+</style>

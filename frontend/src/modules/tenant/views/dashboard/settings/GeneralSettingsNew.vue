@@ -122,7 +122,7 @@
     </PageContent>
 
     <!-- Edit Settings Overlay -->
-    <SlideOverlay v-model="showEditOverlay" :title="editOverlayTitle" subtitle="Update organization settings" icon="Settings" width="50%">
+    <SlideOverlay v-model="showEditOverlay" :title="editOverlayTitle" subtitle="Update organization settings" icon="Settings" width="480px">
       <div class="space-y-6">
         <!-- Company Information Section -->
         <div v-if="editSection === 'all' || editSection === 'company'" class="space-y-4">
@@ -252,18 +252,20 @@
       </div>
 
       <template #footer>
-        <div class="flex items-center justify-between">
-          <BaseButton @click="resetToDefaults" variant="ghost" size="sm">
-            <RotateCcw class="w-4 h-4 mr-1" />
-            Reset Defaults
-          </BaseButton>
-          <div class="flex gap-2">
-            <BaseButton @click="showEditOverlay = false" variant="ghost">Cancel</BaseButton>
-            <BaseButton @click="saveSettings" variant="primary" :loading="saving">
-              <Save class="w-4 h-4 mr-1" />
-              Save Changes
-            </BaseButton>
-          </div>
+        <div class="flex gap-3">
+          <button
+            @click="showEditOverlay = false"
+            class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+          >
+            Cancel
+          </button>
+          <button
+            @click="saveSettings"
+            :disabled="saving"
+            class="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors disabled:opacity-50"
+          >
+            {{ saving ? 'Saving...' : 'Save Changes' }}
+          </button>
         </div>
       </template>
     </SlideOverlay>

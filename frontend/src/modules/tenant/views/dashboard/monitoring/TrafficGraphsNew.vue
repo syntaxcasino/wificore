@@ -1,19 +1,22 @@
 <template>
-  <PageContainer>
-    <PageHeader title="Traffic Graphs" subtitle="Real-time network traffic visualization" icon="BarChart3" :breadcrumbs="breadcrumbs">
-      <template #actions>
-        <BaseButton @click="refreshData" variant="ghost" :loading="refreshing">
-          <RefreshCw class="w-4 h-4 mr-1" :class="{ 'animate-spin': refreshing }" />
-          Refresh
-        </BaseButton>
-        <BaseButton @click="exportData" variant="ghost">
-          <Download class="w-4 h-4 mr-1" />
-          Export
-        </BaseButton>
-      </template>
-    </PageHeader>
+  <DataViewContainer
+    title="Traffic Graphs"
+    subtitle="Real-time network traffic visualization"
+    icon="BarChart3"
+    :breadcrumbs="breadcrumbs"
+  >
+    <template #actions>
+      <BaseButton @click="refreshData" variant="ghost" :loading="refreshing">
+        <RefreshCw class="w-4 h-4 mr-1" :class="{ 'animate-spin': refreshing }" />
+        Refresh
+      </BaseButton>
+      <BaseButton @click="exportData" variant="ghost">
+        <Download class="w-4 h-4 mr-1" />
+        Export
+      </BaseButton>
+    </template>
 
-    <div class="px-3 py-3 sm:px-6 sm:py-4 bg-white border-b border-slate-200">
+    <template #stats>
       <div class="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
         <div class="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200">
           <div class="flex items-center justify-between">
@@ -55,9 +58,9 @@
           </div>
         </div>
       </div>
-    </div>
+    </template>
 
-    <div class="px-3 py-3 sm:px-6 sm:py-4 bg-white border-b border-slate-200">
+    <template #filters>
       <div class="flex items-center gap-3 flex-wrap">
         <BaseSelect v-model="filters.timeRange" class="w-36 sm:w-40">
           <option value="1h">Last Hour</option>
@@ -70,10 +73,9 @@
           <option v-for="r in routerOptions" :key="r.id" :value="r.id">{{ r.name }}</option>
         </BaseSelect>
       </div>
-    </div>
+    </template>
 
-    <PageContent>
-      <div class="space-y-6">
+    <div class="space-y-6">
         <BaseCard>
           <div class="p-6">
             <h3 class="text-lg font-semibold text-slate-900 mb-4">Real-time Traffic</h3>
@@ -132,17 +134,14 @@
           </BaseCard>
         </div>
       </div>
-    </PageContent>
-  </PageContainer>
+  </DataViewContainer>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import axios from 'axios'
 import { BarChart3, RefreshCw, Download, Activity, ArrowDown, ArrowUp, TrendingUp } from 'lucide-vue-next'
-import PageContainer from '@/modules/common/components/layout/templates/PageContainer.vue'
-import PageHeader from '@/modules/common/components/layout/templates/PageHeader.vue'
-import PageContent from '@/modules/common/components/layout/templates/PageContent.vue'
+import DataViewContainer from '@/modules/common/components/base/DataViewContainer.vue'
 import BaseButton from '@/modules/common/components/base/BaseButton.vue'
 import BaseCard from '@/modules/common/components/base/BaseCard.vue'
 import BaseSelect from '@/modules/common/components/base/BaseSelect.vue'

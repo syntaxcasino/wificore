@@ -143,7 +143,7 @@
     </div>
 
     <!-- Create Voucher Overlay -->
-    <SlideOverlay v-model="showCreateOverlay" title="Create Voucher" subtitle="Generate new hotspot vouchers" icon="Ticket" width="40%" @close="showCreateOverlay = false">
+    <SlideOverlay v-model="showCreateOverlay" title="Create Voucher" subtitle="Generate new hotspot vouchers" icon="Ticket" width="480px" @close="showCreateOverlay = false">
       <form @submit.prevent="generateVouchers" class="space-y-5">
         <!-- Package Selection -->
         <div>
@@ -198,9 +198,19 @@
       </form>
 
       <template #footer>
-        <div class="flex items-center justify-end gap-3">
-          <button type="button" @click="showCreateOverlay = false" class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">Cancel</button>
-          <button @click="generateVouchers" :disabled="generating || !formData.package_id || !formData.quantity" class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50">
+        <div class="flex gap-3">
+          <button
+            type="button"
+            @click="showCreateOverlay = false"
+            class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            @click="generateVouchers"
+            :disabled="generating || !formData.package_id || !formData.quantity"
+            class="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-50"
+          >
             <Ticket class="w-4 h-4" />
             {{ generating ? 'Generating...' : `Generate ${formData.quantity || 0} Voucher${formData.quantity !== 1 ? 's' : ''}` }}
           </button>
@@ -209,7 +219,7 @@
     </SlideOverlay>
 
     <!-- Voucher Detail Overlay -->
-    <SlideOverlay v-model="showDetailOverlay" title="Voucher Details" subtitle="View voucher information" icon="Ticket" width="40%" @close="showDetailOverlay = false">
+    <SlideOverlay v-model="showDetailOverlay" title="Voucher Details" subtitle="View voucher information" icon="Ticket" width="480px" @close="showDetailOverlay = false">
       <div v-if="selectedVoucher" class="space-y-3">
         <div class="flex items-center justify-center p-4 bg-blue-50 rounded-lg">
           <span class="font-mono text-xl font-bold text-blue-700">{{ selectedVoucher.code }}</span>
@@ -252,13 +262,22 @@
         </div>
       </div>
       <template #footer>
-        <div class="flex items-center justify-between">
-          <button v-if="selectedVoucher?.status === 'unused'" @click="revokeVoucher(selectedVoucher)" class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-colors">
+        <div class="flex gap-3">
+          <button
+            type="button"
+            @click="showDetailOverlay = false"
+            class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
+          >
+            Close
+          </button>
+          <button
+            v-if="selectedVoucher?.status === 'unused'"
+            @click="revokeVoucher(selectedVoucher)"
+            class="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors"
+          >
             <Ban class="w-4 h-4" />
             Revoke
           </button>
-          <div v-else></div>
-          <button type="button" @click="showDetailOverlay = false" class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">Close</button>
         </div>
       </template>
     </SlideOverlay>

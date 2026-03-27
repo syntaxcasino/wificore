@@ -1,12 +1,12 @@
 import { ref } from 'vue'
 import axios from 'axios'
 
-const loading = ref(false)
-const paymentStatus = ref(null)
-const error = ref(null)
-const transactions = ref([]) // Added to store transaction data
-
 export function usePayment() {
+  const loading = ref(false)
+  const paymentStatus = ref(null)
+  const error = ref(null)
+  const transactions = ref([])
+
   const initiatePayment = async ({ package: selectedPackage, phoneNumber, macAddress }) => {
     loading.value = true
     error.value = null

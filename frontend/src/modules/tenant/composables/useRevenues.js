@@ -24,15 +24,15 @@ export function useRevenues() {
   // Computed filters
   
   const pendingRevenues = computed(() => 
-    revenues.value.filter(item => item.status === 'pending')
+    Array.isArray(revenues.value) ? revenues.value.filter(item => item.status === 'pending') : []
   )
   
   const confirmedRevenues = computed(() => 
-    revenues.value.filter(item => item.status === 'confirmed')
+    Array.isArray(revenues.value) ? revenues.value.filter(item => item.status === 'confirmed') : []
   )
   
   const cancelledRevenues = computed(() => 
-    revenues.value.filter(item => item.status === 'cancelled')
+    Array.isArray(revenues.value) ? revenues.value.filter(item => item.status === 'cancelled') : []
   )
 
   // API Functions
@@ -45,7 +45,8 @@ export function useRevenues() {
       const url = params ? `/revenues?${params}` : '/revenues'
       const response = await axios.get(url)
       
-      revenues.value = response.data.data || response.data
+      const data = response.data.data || response.data
+      revenues.value = Array.isArray(data) ? data : []
       return response.data
     } catch (err) {
       error.value = err.response?.data?.message || 'Failed to fetch revenues'
@@ -192,43 +193,35 @@ export function useRevenues() {
   }
 
   // Event handlers for WebSocket
-  const handleRevenueCreated = (revenue) => {
+  const handleRevenueCreated = (event) => {
+    const revenue = event.detail?.revenue
+    if (!revenue) return
     const exists = revenues.value.find(item => item.id === revenue.id)
     if (!exists) {
       revenues.value.unshift(revenue)
     }
   }
 
-  const handleRevenueUpdated = (revenue) => {
+  const handleRevenueUpdated = (event) => {
+    const revenue = event.detail?.revenue
+    if (!revenue) return
     const index = revenues.value.findIndex(item => item.id === revenue.id)
     if (index !== -1) {
       revenues.value[index] = { ...revenues.value[index], ...revenue }
     }
   }
 
-  const handleRevenueDeleted = (revenueId) => {
+  const handleRevenueDeleted = (event) => {
+    const revenueId = event.detail?.revenueId
+    if (!revenueId) return
     revenues.value = revenues.value.filter(item => item.id !== revenueId)
   }
 
-  // Setup WebSocket event listeners
+  // Setup WebSocket event listeners - use named handlers
   const setupWebSocketListeners = () => {
-    window.addEventListener('revenue-created', (event) => {
-      if (event.detail?.revenue) {
-        handleRevenueCreated(event.detail.revenue)
-      }
-    })
-
-    window.addEventListener('revenue-updated', (event) => {
-      if (event.detail?.revenue) {
-        handleRevenueUpdated(event.detail.revenue)
-      }
-    })
-
-    window.addEventListener('revenue-deleted', (event) => {
-      if (event.detail?.revenueId) {
-        handleRevenueDeleted(event.detail.revenueId)
-      }
-    })
+    window.addEventListener('revenue-created', handleRevenueCreated)
+    window.addEventListener('revenue-updated', handleRevenueUpdated)
+    window.addEventListener('revenue-deleted', handleRevenueDeleted)
   }
 
   // Cleanup WebSocket listeners

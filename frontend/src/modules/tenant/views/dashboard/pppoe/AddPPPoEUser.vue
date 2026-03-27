@@ -96,7 +96,7 @@
       title="PPPoE User Created"
       subtitle="Account credentials generated successfully"
       icon="Key"
-      width="40%"
+      width="480px"
       :closeOnBackdrop="false"
       :closeOnEscape="false"
     >
@@ -121,10 +121,13 @@
       </div>
 
       <template #footer>
-        <div class="flex items-center justify-end gap-3">
-          <BaseButton variant="primary" @click="finish">
+        <div class="flex gap-3">
+          <button
+            @click="finish"
+            class="flex-1 px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors"
+          >
             Done
-          </BaseButton>
+          </button>
         </div>
       </template>
     </SlideOverlay>

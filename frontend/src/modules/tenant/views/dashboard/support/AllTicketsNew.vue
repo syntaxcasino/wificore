@@ -1,247 +1,232 @@
 <template>
-  <PageContainer>
-    <PageHeader title="Support Tickets" subtitle="Manage customer support requests" icon="MessageSquare" :breadcrumbs="breadcrumbs">
-      <template #actions>
-        <BaseButton @click="refreshTickets" variant="ghost" :loading="refreshing">
-          <RefreshCw class="w-4 h-4 mr-1" :class="{ 'animate-spin': refreshing }" />
-          Refresh
-        </BaseButton>
-        <BaseButton @click="openCreateModal" variant="primary">
-          <Plus class="w-4 h-4 mr-1" />
-          New Ticket
-        </BaseButton>
-      </template>
-    </PageHeader>
+  <DataViewContainer
+    title="All Tickets"
+    subtitle="View and manage support tickets"
+    color-theme="blue"
+    v-model:search-model="searchQuery"
+    search-placeholder="Search tickets..."
+    :stats="[
+      { color: 'bg-blue-500', value: stats.total },
+      { color: 'bg-amber-500', value: stats.open },
+      { color: 'bg-indigo-500', value: stats.inProgress },
+      { color: 'bg-emerald-500', value: stats.resolved }
+    ]"
+    :total="filteredData.length"
+    :loading="loading"
+    @refresh="fetchTickets"
+    @search-clear="searchQuery = ''"
+  >
+    <!-- Icon Slot -->
+    <template #icon>
+      <MessageSquare class="h-5 w-5 md:h-6 md:w-6 text-white" />
+    </template>
 
-    <div class="px-3 py-3 sm:px-6 sm:py-4 bg-white border-b border-slate-200">
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
-        <div class="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200">
-          <div class="flex items-center justify-between">
-            <div>
-              <div class="text-xs text-blue-600 font-medium mb-1">Total Tickets</div>
-              <div class="text-2xl font-bold text-blue-900">{{ stats.total }}</div>
-            </div>
-            <MessageSquare class="w-6 h-6 text-blue-600" />
-          </div>
-        </div>
+    <!-- Action Buttons -->
+    <template #actions>
+      <BaseButton @click="openCreateOverlay" variant="primary" size="sm" class="shrink-0">
+        <Plus class="w-4 h-4 mr-1" /> New Ticket
+      </BaseButton>
+    </template>
 
-        <div class="bg-gradient-to-br from-amber-50 to-yellow-50 rounded-lg p-4 border border-amber-200">
-          <div class="flex items-center justify-between">
-            <div>
-              <div class="text-xs text-amber-600 font-medium mb-1">Open</div>
-              <div class="text-2xl font-bold text-amber-900">{{ stats.open }}</div>
-            </div>
-            <AlertCircle class="w-6 h-6 text-amber-600" />
-          </div>
-        </div>
+    <!-- Filters -->
+    <template #filters>
+      <BaseSelect v-model="filters.status" placeholder="All Status" class="w-36">
+        <option value="">All Status</option>
+        <option value="open">Open</option>
+        <option value="in_progress">In Progress</option>
+        <option value="resolved">Resolved</option>
+        <option value="closed">Closed</option>
+      </BaseSelect>
+      <BaseSelect v-model="filters.priority" placeholder="All Priority" class="w-36">
+        <option value="">All Priority</option>
+        <option value="low">Low</option>
+        <option value="medium">Medium</option>
+        <option value="high">High</option>
+        <option value="urgent">Urgent</option>
+      </BaseSelect>
+    </template>
 
-        <div class="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-lg p-4 border border-purple-200">
-          <div class="flex items-center justify-between">
-            <div>
-              <div class="text-xs text-purple-600 font-medium mb-1">In Progress</div>
-              <div class="text-2xl font-bold text-purple-900">{{ stats.inProgress }}</div>
-            </div>
-            <Clock class="w-6 h-6 text-purple-600" />
-          </div>
-        </div>
+    <!-- Loading Skeleton -->
+    <DataSkeleton v-if="loading" :count="5" />
 
-        <div class="bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg p-4 border border-green-200">
-          <div class="flex items-center justify-between">
-            <div>
-              <div class="text-xs text-green-600 font-medium mb-1">Resolved</div>
-              <div class="text-2xl font-bold text-green-900">{{ stats.resolved }}</div>
-            </div>
-            <CheckCircle class="w-6 h-6 text-green-600" />
-          </div>
+    <!-- Data Content -->
+    <div v-else-if="filteredData.length" class="flex flex-col h-full px-4 md:px-6 pt-2 pb-2 min-h-0">
+      <!-- Mobile Cards -->
+      <div class="md:hidden space-y-3 overflow-y-auto flex-1 min-h-0">
+        <MobileDataCard
+          v-for="ticket in paginatedData"
+          :key="ticket.id"
+          :title="`#${ticket.id}: ${ticket.subject}`"
+          :subtitle="ticket.customer_name"
+          :meta-lines="[{ text: ticket.category }, { text: formatDate(ticket.created_at) }]"
+          :status="ticket.status"
+          :badges="[{ text: ticket.priority, class: getPriorityBadgeClass(ticket.priority) }]"
+          :actions="getTicketActions(ticket)"
+          hoverable
+        />
+      </div>
+
+      <!-- Desktop Table -->
+      <div class="hidden md:flex bg-white border border-slate-200 shadow-sm overflow-hidden flex-col min-h-0 flex-1">
+        <div class="overflow-x-auto overflow-y-auto flex-1 min-h-0">
+          <table class="w-full">
+            <thead class="bg-slate-50 border-b border-slate-200 sticky top-0 z-[5]">
+              <tr>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Ticket</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Customer</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Status</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Priority</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Category</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Assigned</th>
+                <th class="px-6 py-3 text-right text-xs font-semibold text-slate-700 uppercase tracking-wider">Actions</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              <tr v-for="ticket in paginatedData" :key="ticket.id" class="hover:bg-slate-50/50 transition-colors cursor-pointer" @click="viewTicket(ticket)">
+                <td class="px-6 py-4">
+                  <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center shrink-0">
+                      <MessageSquare class="w-4 h-4 text-blue-600" />
+                    </div>
+                    <div>
+                      <div class="text-sm font-medium text-slate-900">#{{ ticket.id }}</div>
+                      <div class="text-sm text-slate-600 max-w-xs truncate">{{ ticket.subject }}</div>
+                    </div>
+                  </div>
+                </td>
+                <td class="px-6 py-4">
+                  <div class="text-sm font-medium text-slate-900">{{ ticket.customer_name }}</div>
+                  <div class="text-xs text-slate-500">{{ formatDate(ticket.created_at) }}</div>
+                </td>
+                <td class="px-6 py-4">
+                  <EntityStatusBadge :status="ticket.status" size="sm" />
+                </td>
+                <td class="px-6 py-4">
+                  <BaseBadge :variant="getPriorityVariant(ticket.priority)" size="sm">{{ ticket.priority }}</BaseBadge>
+                </td>
+                <td class="px-6 py-4 text-sm text-slate-600">{{ ticket.category }}</td>
+                <td class="px-6 py-4 text-sm text-slate-600">{{ ticket.assigned_to || 'Unassigned' }}</td>
+                <td class="px-6 py-4 text-right" @click.stop>
+                  <div class="flex items-center justify-end gap-1">
+                    <button @click="viewTicket(ticket)" class="px-2 py-1 text-xs font-medium text-slate-700 bg-slate-100 rounded hover:bg-slate-200 transition-colors">View</button>
+                    <button v-if="ticket.status !== 'closed'" @click="closeTicket(ticket)" class="px-2 py-1 text-xs font-medium text-green-700 bg-green-50 rounded hover:bg-green-100 transition-colors">Close</button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </div>
+
+      <!-- Pagination -->
+      <DataPagination v-model:current-page="currentPage" v-model:items-per-page="itemsPerPage" :total-pages="totalPages" :total-items="filteredData.length" item-name="tickets" class="mt-auto" />
     </div>
 
-    <div class="px-3 py-3 sm:px-6 sm:py-4 bg-white border-b border-slate-200">
-      <div class="flex flex-col sm:flex-row sm:items-center gap-3 flex-wrap">
-        <div class="flex-1 min-w-0 sm:min-w-[250px] max-w-md">
-          <BaseSearch v-model="searchQuery" placeholder="Search tickets..." />
-        </div>
-        
-        <div class="flex items-center gap-2">
-          <BaseSelect v-model="filters.status" class="w-36">
-            <option value="">All Status</option>
-            <option value="open">Open</option>
-            <option value="in_progress">In Progress</option>
-            <option value="resolved">Resolved</option>
-            <option value="closed">Closed</option>
-          </BaseSelect>
-          
-          <BaseSelect v-model="filters.priority" class="w-36">
-            <option value="">All Priority</option>
-            <option value="low">Low</option>
-            <option value="medium">Medium</option>
-            <option value="high">High</option>
-            <option value="urgent">Urgent</option>
-          </BaseSelect>
-          
-          <BaseButton v-if="hasActiveFilters" @click="clearFilters" variant="ghost" size="sm">
-            <X class="w-4 h-4 mr-1" />
-            Clear
-          </BaseButton>
-        </div>
-        
-        <div class="ml-auto">
-          <BaseBadge variant="info">{{ filteredData.length }} tickets</BaseBadge>
-        </div>
+    <!-- Empty State -->
+    <DataEmptyState
+      v-else
+      :title="searchQuery ? 'No Tickets Found' : 'No Support Tickets'"
+      :description="searchQuery ? 'No tickets match your search criteria.' : 'No support tickets have been created yet.'"
+      icon="message-square"
+      color-theme="blue"
+      :show-clear="!!searchQuery"
+      :has-filters="hasActiveFilters"
+      @clear="searchQuery = ''"
+    />
+  </DataViewContainer>
+
+  <!-- View Ticket SlideOverlay -->
+  <SlideOverlay v-model="showViewOverlay" title="Ticket Details" :subtitle="selectedTicket ? `#${selectedTicket.id}` : ''" icon="MessageSquare" width="480px" @close="closeViewOverlay">
+    <div v-if="selectedTicket" class="p-6 space-y-6">
+      <div class="flex items-center gap-2 mb-4">
+        <EntityStatusBadge :status="selectedTicket.status" size="sm" />
+        <BaseBadge :variant="getPriorityVariant(selectedTicket.priority)" size="sm">{{ selectedTicket.priority }}</BaseBadge>
+      </div>
+      <div>
+        <h3 class="text-lg font-semibold text-slate-900 mb-2">{{ selectedTicket.subject }}</h3>
+        <p class="text-sm text-slate-600">{{ selectedTicket.description }}</p>
+      </div>
+      <div class="grid grid-cols-2 gap-4">
+        <div><span class="text-xs text-slate-500">Customer</span><div class="text-sm font-medium text-slate-900">{{ selectedTicket.customer_name }}</div></div>
+        <div><span class="text-xs text-slate-500">Category</span><div class="text-sm font-medium text-slate-900">{{ selectedTicket.category }}</div></div>
+        <div><span class="text-xs text-slate-500">Assigned To</span><div class="text-sm font-medium text-slate-900">{{ selectedTicket.assigned_to || 'Unassigned' }}</div></div>
+        <div><span class="text-xs text-slate-500">Created</span><div class="text-sm font-medium text-slate-900">{{ formatDateTime(selectedTicket.created_at) }}</div></div>
       </div>
     </div>
-
-    <PageContent :padding="false">
-      <div v-if="loading" class="p-6">
-        <BaseLoading type="list" :rows="8" />
+    <template #footer>
+      <div class="flex gap-3">
+        <button v-if="selectedTicket?.status !== 'closed'" @click="closeTicket(selectedTicket)" class="flex-1 px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors">Close Ticket</button>
+        <button @click="closeViewOverlay" class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50">Dismiss</button>
       </div>
+    </template>
+  </SlideOverlay>
 
-      <div v-else-if="!filteredData.length" class="p-6">
-        <BaseEmpty title="No tickets found" description="No support tickets match your criteria." icon="MessageSquare" actionText="Create Ticket" @action="openCreateModal" />
+  <!-- Create Ticket SlideOverlay -->
+  <SlideOverlay v-model="showCreateOverlay" title="New Ticket" subtitle="Create a new support ticket" icon="Plus" width="480px" @close="closeCreateOverlay">
+    <div class="p-6 space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">Subject</label>
+        <BaseInput v-model="form.subject" placeholder="Brief description of the issue" />
       </div>
-
-      <div v-else class="p-6">
-        <BaseCard :padding="false">
-          <div class="divide-y divide-slate-100">
-            <div v-for="ticket in paginatedData" :key="ticket.id" class="p-4 hover:bg-slate-50 transition-colors cursor-pointer" @click="viewTicket(ticket)">
-              <div class="flex items-start gap-4">
-                <div class="flex-1 min-w-0">
-                  <div class="flex items-center gap-2 mb-2">
-                    <span class="text-sm font-semibold text-slate-900">#{{ ticket.id }}</span>
-                    <BaseBadge :variant="getStatusVariant(ticket.status)" size="sm">{{ ticket.status }}</BaseBadge>
-                    <BaseBadge :variant="getPriorityVariant(ticket.priority)" size="sm">{{ ticket.priority }}</BaseBadge>
-                    <span class="text-xs text-slate-500">{{ formatDateTime(ticket.created_at) }}</span>
-                  </div>
-                  
-                  <h3 class="text-base font-medium text-slate-900 mb-1">{{ ticket.subject }}</h3>
-                  <p class="text-sm text-slate-600 mb-2">{{ ticket.description }}</p>
-                  
-                  <div class="flex items-center gap-4 text-xs text-slate-500">
-                    <span>Customer: {{ ticket.customer_name }}</span>
-                    <span>Category: {{ ticket.category }}</span>
-                    <span v-if="ticket.assigned_to">Assigned: {{ ticket.assigned_to }}</span>
-                  </div>
-                </div>
-                
-                <div class="flex items-center gap-2">
-                  <BaseButton @click.stop="replyTicket(ticket)" variant="ghost" size="sm">
-                    <MessageCircle class="w-3 h-3" />
-                  </BaseButton>
-                  <BaseButton @click.stop="closeTicket(ticket)" variant="success" size="sm" v-if="ticket.status !== 'closed'">
-                    Close
-                  </BaseButton>
-                </div>
-              </div>
-            </div>
-          </div>
-        </BaseCard>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">Customer Name</label>
+        <BaseInput v-model="form.customer_name" placeholder="Customer name" />
       </div>
-    </PageContent>
-
-    <PageFooter>
-      <div class="text-sm text-slate-600">
-        Showing {{ paginationInfo.start }} to {{ paginationInfo.end }} of {{ paginationInfo.total }} tickets
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">Category</label>
+        <BaseSelect v-model="form.category" placeholder="Select category">
+          <option value="">Select category</option>
+          <option value="Technical">Technical</option>
+          <option value="Billing">Billing</option>
+          <option value="General">General</option>
+        </BaseSelect>
       </div>
-      <BasePagination v-model="currentPage" :total-pages="totalPages" :total-items="filteredData.length" />
-    </PageFooter>
-
-    <!-- View Ticket Overlay -->
-    <SlideOverlay v-model="showViewOverlay" title="Ticket Details" :subtitle="selectedTicket ? `#${selectedTicket.id}` : ''" icon="MessageSquare" width="lg">
-      <div v-if="selectedTicket" class="p-6 space-y-6">
-        <div class="flex items-center gap-2 mb-4">
-          <BaseBadge :variant="getStatusVariant(selectedTicket.status)" size="sm">{{ selectedTicket.status }}</BaseBadge>
-          <BaseBadge :variant="getPriorityVariant(selectedTicket.priority)" size="sm">{{ selectedTicket.priority }}</BaseBadge>
-        </div>
-        <div>
-          <h3 class="text-lg font-semibold text-slate-900 mb-2">{{ selectedTicket.subject }}</h3>
-          <p class="text-sm text-slate-600">{{ selectedTicket.description }}</p>
-        </div>
-        <div class="grid grid-cols-2 gap-4">
-          <div><span class="text-xs text-slate-500">Customer</span><div class="text-sm font-medium text-slate-900">{{ selectedTicket.customer_name }}</div></div>
-          <div><span class="text-xs text-slate-500">Category</span><div class="text-sm font-medium text-slate-900">{{ selectedTicket.category }}</div></div>
-          <div><span class="text-xs text-slate-500">Assigned To</span><div class="text-sm font-medium text-slate-900">{{ selectedTicket.assigned_to || 'Unassigned' }}</div></div>
-          <div><span class="text-xs text-slate-500">Created</span><div class="text-sm font-medium text-slate-900">{{ formatDateTime(selectedTicket.created_at) }}</div></div>
-        </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">Priority</label>
+        <BaseSelect v-model="form.priority" placeholder="Select priority">
+          <option value="low">Low</option>
+          <option value="medium">Medium</option>
+          <option value="high">High</option>
+          <option value="urgent">Urgent</option>
+        </BaseSelect>
       </div>
-      <template #footer>
-        <div class="flex items-center gap-2">
-          <BaseButton v-if="selectedTicket?.status !== 'closed'" @click="closeTicket(selectedTicket)" variant="success" size="sm">Close Ticket</BaseButton>
-          <BaseButton @click="showViewOverlay = false" variant="ghost" size="sm">Dismiss</BaseButton>
-        </div>
-      </template>
-    </SlideOverlay>
-
-    <!-- Create Ticket Overlay -->
-    <SlideOverlay v-model="showCreateOverlay" title="New Ticket" subtitle="Create a new support ticket" icon="Plus" width="lg">
-      <div class="p-6 space-y-4">
-        <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Subject</label>
-          <input v-model="newTicket.subject" type="text" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="Brief description of the issue" />
-        </div>
-        <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Customer Name</label>
-          <input v-model="newTicket.customer_name" type="text" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="Customer name" />
-        </div>
-        <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Category</label>
-          <select v-model="newTicket.category" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-            <option value="">Select category</option>
-            <option value="Technical">Technical</option>
-            <option value="Billing">Billing</option>
-            <option value="General">General</option>
-          </select>
-        </div>
-        <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Priority</label>
-          <select v-model="newTicket.priority" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-            <option value="low">Low</option>
-            <option value="medium">Medium</option>
-            <option value="high">High</option>
-            <option value="urgent">Urgent</option>
-          </select>
-        </div>
-        <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Description</label>
-          <textarea v-model="newTicket.description" rows="4" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="Describe the issue in detail..."></textarea>
-        </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">Description</label>
+        <textarea v-model="form.description" rows="4" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="Describe the issue in detail..."></textarea>
       </div>
-      <template #footer>
-        <div class="flex items-center gap-2">
-          <BaseButton @click="submitTicket" variant="primary" :loading="submitting">Create Ticket</BaseButton>
-          <BaseButton @click="showCreateOverlay = false" variant="ghost">Cancel</BaseButton>
-        </div>
-      </template>
-    </SlideOverlay>
-  </PageContainer>
+    </div>
+    <template #footer>
+      <div class="flex gap-3">
+        <button @click="closeCreateOverlay" class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50">Cancel</button>
+        <button @click="submitTicket" :disabled="submitting" class="flex-1 px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors disabled:opacity-50">
+          {{ submitting ? 'Creating...' : 'Create Ticket' }}
+        </button>
+      </div>
+    </template>
+  </SlideOverlay>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { MessageSquare, RefreshCw, Plus, X, AlertCircle, Clock, CheckCircle, MessageCircle } from 'lucide-vue-next'
+import { MessageSquare, Plus, RefreshCw } from 'lucide-vue-next'
 import axios from 'axios'
-import PageContainer from '@/modules/common/components/layout/templates/PageContainer.vue'
-import PageHeader from '@/modules/common/components/layout/templates/PageHeader.vue'
-import PageContent from '@/modules/common/components/layout/templates/PageContent.vue'
-import PageFooter from '@/modules/common/components/layout/templates/PageFooter.vue'
-import BaseButton from '@/modules/common/components/base/BaseButton.vue'
-import BaseCard from '@/modules/common/components/base/BaseCard.vue'
-import BaseBadge from '@/modules/common/components/base/BaseBadge.vue'
-import BaseSearch from '@/modules/common/components/base/BaseSearch.vue'
-import BaseSelect from '@/modules/common/components/base/BaseSelect.vue'
-import BasePagination from '@/modules/common/components/base/BasePagination.vue'
-import BaseLoading from '@/modules/common/components/base/BaseLoading.vue'
-import BaseEmpty from '@/modules/common/components/base/BaseEmpty.vue'
+import DataViewContainer from '@/modules/common/components/base/DataViewContainer.vue'
+import DataSkeleton from '@/modules/common/components/base/DataSkeleton.vue'
+import MobileDataCard from '@/modules/common/components/base/MobileDataCard.vue'
+import DataPagination from '@/modules/common/components/base/DataPagination.vue'
+import DataEmptyState from '@/modules/common/components/base/DataEmptyState.vue'
+import EntityStatusBadge from '@/modules/common/components/base/EntityStatusBadge.vue'
 import SlideOverlay from '@/modules/common/components/base/SlideOverlay.vue'
+import BaseButton from '@/modules/common/components/base/BaseButton.vue'
+import BaseBadge from '@/modules/common/components/base/BaseBadge.vue'
+import BaseSelect from '@/modules/common/components/base/BaseSelect.vue'
+import BaseInput from '@/modules/common/components/base/BaseInput.vue'
+import { useConfirmStore } from '@/stores/confirm'
 
-const breadcrumbs = [
-  { label: 'Dashboard', to: '/dashboard' },
-  { label: 'Support', to: '/dashboard/support' },
-  { label: 'All Tickets' }
-]
+const confirmStore = useConfirmStore()
 
+// State
 const loading = ref(false)
-const refreshing = ref(false)
 const tickets = ref([])
 const searchQuery = ref('')
 const currentPage = ref(1)
@@ -251,7 +236,7 @@ const showCreateOverlay = ref(false)
 const selectedTicket = ref(null)
 const submitting = ref(false)
 
-const newTicket = ref({
+const form = ref({
   subject: '',
   customer_name: '',
   category: '',
@@ -259,11 +244,9 @@ const newTicket = ref({
   description: ''
 })
 
-const filters = ref({
-  status: '',
-  priority: ''
-})
+const filters = ref({ status: '', priority: '' })
 
+// Computed
 const stats = computed(() => ({
   total: tickets.value.length,
   open: tickets.value.filter(t => t.status === 'open').length,
@@ -273,53 +256,48 @@ const stats = computed(() => ({
 
 const filteredData = computed(() => {
   let data = tickets.value
-
   if (searchQuery.value) {
     const query = searchQuery.value.toLowerCase()
-    data = data.filter(t => t.subject.toLowerCase().includes(query) || t.description.toLowerCase().includes(query))
+    data = data.filter(t =>
+      t.subject.toLowerCase().includes(query) ||
+      t.description.toLowerCase().includes(query) ||
+      t.customer_name.toLowerCase().includes(query)
+    )
   }
-
   if (filters.value.status) data = data.filter(t => t.status === filters.value.status)
   if (filters.value.priority) data = data.filter(t => t.priority === filters.value.priority)
-
   return data
 })
-
-const totalPages = computed(() => Math.ceil(filteredData.value.length / itemsPerPage.value))
 
 const paginatedData = computed(() => {
   const start = (currentPage.value - 1) * itemsPerPage.value
   return filteredData.value.slice(start, start + itemsPerPage.value)
 })
 
-const paginationInfo = computed(() => {
-  const start = (currentPage.value - 1) * itemsPerPage.value + 1
-  const end = Math.min(start + itemsPerPage.value - 1, filteredData.value.length)
-  return { start, end, total: filteredData.value.length }
-})
-
+const totalPages = computed(() => Math.ceil(filteredData.value.length / itemsPerPage.value))
 const hasActiveFilters = computed(() => filters.value.status || filters.value.priority || searchQuery.value)
 
-const getStatusVariant = (status) => {
-  const variants = { open: 'warning', in_progress: 'info', resolved: 'success', closed: 'secondary' }
-  return variants[status] || 'default'
-}
+// Helpers
+const formatDate = (date) => new Date(date).toLocaleDateString()
+const formatDateTime = (date) => new Date(date).toLocaleString()
 
 const getPriorityVariant = (priority) => {
   const variants = { low: 'secondary', medium: 'info', high: 'warning', urgent: 'danger' }
   return variants[priority] || 'default'
 }
 
-const formatDateTime = (date) => new Date(date).toLocaleString()
+const getPriorityBadgeClass = (priority) => {
+  const classes = { low: 'bg-slate-100 text-slate-700', medium: 'bg-blue-100 text-blue-700', high: 'bg-amber-100 text-amber-700', urgent: 'bg-red-100 text-red-700' }
+  return classes[priority] || 'bg-slate-100 text-slate-700'
+}
+
+const getTicketActions = (ticket) => [
+  { label: 'View', onClick: () => viewTicket(ticket) },
+  ...(ticket.status !== 'closed' ? [{ label: 'Close', onClick: () => closeTicket(ticket), class: 'text-green-700 bg-green-50 hover:bg-green-100' }] : [])
+]
 
 const fetchTickets = async () => {
-  const isInitial = tickets.value.length === 0
-  if (isInitial) {
-    loading.value = true
-  } else {
-    refreshing.value = true
-  }
-  
+  loading.value = true
   try {
     const response = await axios.get('/support/tickets')
     const data = response.data?.tickets?.data || response.data?.tickets || response.data?.data || []
@@ -338,22 +316,7 @@ const fetchTickets = async () => {
     console.error('fetchTickets error:', err)
   } finally {
     loading.value = false
-    refreshing.value = false
   }
-}
-
-const refreshTickets = async () => {
-  await fetchTickets()
-}
-
-const clearFilters = () => {
-  filters.value = { status: '', priority: '' }
-  searchQuery.value = ''
-}
-
-const openCreateModal = () => {
-  newTicket.value = { subject: '', customer_name: '', category: '', priority: 'medium', description: '' }
-  showCreateOverlay.value = true
 }
 
 const viewTicket = (ticket) => {
@@ -361,20 +324,29 @@ const viewTicket = (ticket) => {
   showViewOverlay.value = true
 }
 
-const replyTicket = (ticket) => {
-  selectedTicket.value = ticket
-  showViewOverlay.value = true
+const closeViewOverlay = () => {
+  showViewOverlay.value = false
+  selectedTicket.value = null
+}
+
+const openCreateOverlay = () => {
+  form.value = { subject: '', customer_name: '', category: '', priority: 'medium', description: '' }
+  showCreateOverlay.value = true
+}
+
+const closeCreateOverlay = () => {
+  showCreateOverlay.value = false
 }
 
 const submitTicket = async () => {
-  if (!newTicket.value.subject || !newTicket.value.description) {
+  if (!form.value.subject || !form.value.description) {
     alert('Subject and description are required.')
     return
   }
   submitting.value = true
   try {
-    await axios.post('/support/tickets', newTicket.value)
-    showCreateOverlay.value = false
+    await axios.post('/support/tickets', form.value)
+    closeCreateOverlay()
     await fetchTickets()
   } catch (err) {
     console.error('submitTicket error:', err)
@@ -385,7 +357,9 @@ const submitTicket = async () => {
 }
 
 const closeTicket = async (ticket) => {
-  if (!ticket || !confirm(`Close ticket #${ticket.id}?`)) return
+  if (!ticket) return
+  const confirmed = await confirmStore.confirm(`Close ticket #${ticket.id}?`)
+  if (!confirmed) return
   try {
     await axios.patch(`/support/tickets/${ticket.id}`, { status: 'closed' })
     const idx = tickets.value.findIndex(t => t.id === ticket.id)
@@ -397,5 +371,12 @@ const closeTicket = async (ticket) => {
   }
 }
 
-onMounted(() => fetchTickets())
+onMounted(fetchTickets)
 </script>
+
+<style scoped>
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+</style>

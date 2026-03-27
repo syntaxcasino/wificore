@@ -193,41 +193,49 @@ export function useRouters() {
     } else {
       refreshing.value = true
     }
+
     try {
       const response = await axios.get('/routers')
-      // API returns array directly, not wrapped in data property
+      
       const fetchedRouters = Array.isArray(response.data) ? response.data : (response.data.data || [])
-
+      
+      // Filter out null/undefined entries that may occur after delete operations
+      const validRouters = fetchedRouters.filter(r => r != null && typeof r === 'object')
+      
       // Sort deterministically so order does not reshuffle between refreshes
-      const normalizeName = (router) => String(router?.name ?? '').trim()
-      const normalizeId = (router) => String(router?.id ?? '')
-
-      const parseIp = (ipAddress) => {
-        const ip = String(ipAddress ?? '').split('/')[0].trim()
-        if (!ip) return null
-        const parts = ip.split('.').map((p) => Number(p))
-        if (parts.length !== 4 || parts.some((n) => Number.isNaN(n))) return null
-        return parts
-      }
-
-      const compareIp = (aIp, bIp) => {
-        if (!aIp && !bIp) return 0
-        if (!aIp) return 1
-        if (!bIp) return -1
-        for (let i = 0; i < 4; i++) {
-          if (aIp[i] !== bIp[i]) return aIp[i] - bIp[i]
-        }
-        return 0
-      }
-
-      const sortedRouters = [...fetchedRouters].sort((a, b) => {
-        const byName = normalizeName(a).localeCompare(normalizeName(b), undefined, { numeric: true, sensitivity: 'base' })
+      const sortedRouters = [...validRouters].sort((a, b) => {
+        // Compare by name
+        const nameA = String(a?.name ?? '').trim()
+        const nameB = String(b?.name ?? '').trim()
+        const byName = nameA.localeCompare(nameB, 'en', { numeric: true, sensitivity: 'base' })
         if (byName !== 0) return byName
 
-        const byIp = compareIp(parseIp(a?.ip_address), parseIp(b?.ip_address))
-        if (byIp !== 0) return byIp
+        // Compare by IP address
+        const parseIp = (ip) => {
+          const cleanIp = String(ip ?? '').split('/')[0].trim()
+          if (!cleanIp) return null
+          const parts = cleanIp.split('.').map(p => Number(p))
+          if (parts.length !== 4 || parts.some(n => Number.isNaN(n))) return null
+          return parts
+        }
+        const aIp = parseIp(a?.ip_address)
+        const bIp = parseIp(b?.ip_address)
+        if (!aIp && !bIp) {
+          // fall through to id comparison
+        } else if (!aIp) {
+          return 1
+        } else if (!bIp) {
+          return -1
+        } else {
+          for (let i = 0; i < 4; i++) {
+            if (aIp[i] !== bIp[i]) return aIp[i] - bIp[i]
+          }
+        }
 
-        return normalizeId(a).localeCompare(normalizeId(b), undefined, { numeric: true, sensitivity: 'base' })
+        // Compare by ID as final tiebreaker
+        const idA = String(a?.id ?? '')
+        const idB = String(b?.id ?? '')
+        return idA.localeCompare(idB, 'en', { numeric: true, sensitivity: 'base' })
       })
 
       routers.value = sortedRouters
