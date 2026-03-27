@@ -1,26 +1,22 @@
 <template>
-  <PageContainer>
-    <!-- Header -->
-    <PageHeader
-      title="Live Connections"
-      subtitle="Real-time monitoring of active network connections"
-      icon="Activity"
-      :breadcrumbs="breadcrumbs"
-    >
-      <template #actions>
-        <BaseButton @click="refreshConnections" variant="ghost" :loading="refreshing">
-          <RefreshCw class="w-4 h-4 mr-1" :class="{ 'animate-spin': refreshing }" />
-          Refresh
-        </BaseButton>
-        <BaseButton @click="exportData" variant="ghost">
-          <Download class="w-4 h-4 mr-1" />
-          Export
-        </BaseButton>
-      </template>
-    </PageHeader>
+  <DataViewContainer
+    title="Live Connections"
+    subtitle="Real-time monitoring of active network connections"
+    icon="Activity"
+    :breadcrumbs="breadcrumbs"
+  >
+    <template #actions>
+      <BaseButton @click="refreshConnections" variant="ghost" :loading="refreshing">
+        <RefreshCw class="w-4 h-4 mr-1" :class="{ 'animate-spin': refreshing }" />
+        Refresh
+      </BaseButton>
+      <BaseButton @click="exportData" variant="ghost">
+        <Download class="w-4 h-4 mr-1" />
+        Export
+      </BaseButton>
+    </template>
 
-    <!-- Real-time Stats -->
-    <div class="px-3 py-3 sm:px-6 sm:py-4 bg-white border-b border-slate-200">
+    <template #stats>
       <div class="grid grid-cols-2 md:grid-cols-5 gap-3 sm:gap-4">
         <div class="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200">
           <div class="flex items-center justify-between">
@@ -82,15 +78,13 @@
           </div>
         </div>
       </div>
-    </div>
+    </template>
 
-    <!-- Filters -->
-    <div class="px-3 py-3 sm:px-6 sm:py-4 bg-white border-b border-slate-200">
+    <template #filters>
       <div class="flex flex-col sm:flex-row sm:items-center gap-3 flex-wrap">
         <div class="flex-1 min-w-0 sm:min-w-[250px] max-w-md">
           <BaseSearch v-model="searchQuery" placeholder="Search by IP, MAC, user..." />
         </div>
-        
         <div class="flex items-center gap-2">
           <BaseSelect v-model="filters.type" placeholder="All Types" class="w-36">
             <option value="">All Types</option>
@@ -113,7 +107,7 @@
           <BaseBadge variant="info">{{ filteredData.length }} connections</BaseBadge>
         </div>
       </div>
-    </div>
+    </template>
 
     <!-- Content -->
     <PageContent :padding="false">
@@ -233,7 +227,7 @@
     </PageFooter>
 
     <!-- Connection Details Overlay -->
-    <SlideOverlay v-model="showDetailsOverlay" title="Connection Details" :subtitle="selectedConnection?.username" icon="Activity" width="lg">
+    <SlideOverlay v-model="showDetailsOverlay" title="Connection Details" :subtitle="selectedConnection?.username" icon="Activity" width="480px">
       <div v-if="selectedConnection" class="space-y-6 p-6">
         <div class="grid grid-cols-2 gap-4">
           <div>
@@ -292,16 +286,23 @@
       </div>
 
       <template #footer>
-        <div class="flex items-center justify-between w-full">
-          <BaseButton @click="closeDetails" variant="ghost">Close</BaseButton>
-          <BaseButton @click="disconnectUser(selectedConnection); closeDetails()" variant="danger">
-            <Power class="w-4 h-4 mr-1" />
+        <div class="flex gap-3">
+          <button
+            @click="closeDetails"
+            class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+          >
+            Close
+          </button>
+          <button
+            @click="disconnectUser(selectedConnection); closeDetails()"
+            class="flex-1 px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors"
+          >
             Disconnect
-          </BaseButton>
+          </button>
         </div>
       </template>
     </SlideOverlay>
-  </PageContainer>
+  </DataViewContainer>
 </template>
 
 <script setup>
@@ -311,8 +312,7 @@ import {
   Wifi, Zap, ArrowDown, ArrowUp
 } from 'lucide-vue-next'
 import axios from 'axios'
-import PageContainer from '@/modules/common/components/layout/templates/PageContainer.vue'
-import PageHeader from '@/modules/common/components/layout/templates/PageHeader.vue'
+import DataViewContainer from '@/modules/common/components/base/DataViewContainer.vue'
 import PageContent from '@/modules/common/components/layout/templates/PageContent.vue'
 import PageFooter from '@/modules/common/components/layout/templates/PageFooter.vue'
 import BaseButton from '@/modules/common/components/base/BaseButton.vue'

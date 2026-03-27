@@ -36,17 +36,17 @@ export function useHotspot() {
   
   // Computed
   const activeUsers = computed(() => 
-    users.value.filter(u => u.status === 'active' && u.has_active_subscription)
+    Array.isArray(users.value) ? users.value.filter(u => u.status === 'active' && u.has_active_subscription) : []
   )
   
   const expiredUsers = computed(() => 
-    users.value.filter(u => u.status === 'expired' || !u.has_active_subscription)
+    Array.isArray(users.value) ? users.value.filter(u => u.status === 'expired' || !u.has_active_subscription) : []
   )
   
   const totalUsers = computed(() => pagination.value.total)
   
   const activeSessions = computed(() => 
-    sessions.value.filter(s => s.status === 'active')
+    Array.isArray(sessions.value) ? sessions.value.filter(s => s.status === 'active') : []
   )
   
   /**
@@ -173,7 +173,7 @@ export function useHotspot() {
    */
   function subscribeToWebSocket() {
     const tenantId = authStore.user?.tenant_id
-    if (!tenantId || !window.Echo) {
+    if (typeof window === 'undefined' || !tenantId || !window.Echo) {
       console.warn('WebSocket not available or no tenant context')
       return
     }
@@ -220,7 +220,7 @@ export function useHotspot() {
    */
   function unsubscribeFromWebSocket() {
     const tenantId = authStore.user?.tenant_id
-    if (!tenantId || !window.Echo) return
+    if (typeof window === 'undefined' || !tenantId || !window.Echo) return
     
     window.Echo.leave(`tenant.${tenantId}.hotspot`)
     window.Echo.leave(`tenant.${tenantId}.hotspot-users`)
@@ -267,7 +267,9 @@ export function useHotspot() {
   
   function handleLoginAttempted(event) {
     // Emit custom event for UI notification
-    window.dispatchEvent(new CustomEvent('hotspot:login-attempted', { detail: event }))
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('hotspot:login-attempted', { detail: event }))
+    }
   }
   
   function handleUserCreated(event) {
@@ -287,7 +289,9 @@ export function useHotspot() {
       timestamp: event.timestamp,
     }
     
-    window.dispatchEvent(new CustomEvent('hotspot:provisioned', { detail: event }))
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('hotspot:provisioned', { detail: event }))
+    }
   }
   
   function handleProvisionRequested(event) {
@@ -316,11 +320,15 @@ export function useHotspot() {
   
   // Lifecycle
   onMounted(() => {
-    subscribeToWebSocket()
+    if (typeof window !== 'undefined') {
+      subscribeToWebSocket()
+    }
   })
   
   onUnmounted(() => {
-    unsubscribeFromWebSocket()
+    if (typeof window !== 'undefined') {
+      unsubscribeFromWebSocket()
+    }
   })
   
   // Watch for auth changes

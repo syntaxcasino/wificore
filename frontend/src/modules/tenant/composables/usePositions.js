@@ -24,11 +24,11 @@ export function usePositions() {
   // Computed filters
   
   const activePositions = computed(() => 
-    positions.value.filter(item => item.status === 'active')
+    Array.isArray(positions.value) ? positions.value.filter(item => item.status === 'active') : []
   )
   
   const inactivePositions = computed(() => 
-    positions.value.filter(item => item.status === 'inactive')
+    Array.isArray(positions.value) ? positions.value.filter(item => item.status === 'inactive') : []
   )
 
   // API Functions
@@ -41,7 +41,8 @@ export function usePositions() {
       const url = params ? `/positions?${params}` : '/positions'
       const response = await axios.get(url)
       
-      positions.value = response.data.data || response.data
+      const data = response.data.data || response.data
+      positions.value = Array.isArray(data) ? data : []
       return response.data
     } catch (err) {
       error.value = err.response?.data?.message || 'Failed to fetch positions'
@@ -140,44 +141,36 @@ export function usePositions() {
     )
   }
 
-  // Event handlers for WebSocket
-  const handlePositionCreated = (position) => {
+  // Event handlers for WebSocket - accept event and extract data internally
+  const handlePositionCreated = (event) => {
+    const position = event.detail?.position
+    if (!position) return
     const exists = positions.value.find(item => item.id === position.id)
     if (!exists) {
       positions.value.unshift(position)
     }
   }
 
-  const handlePositionUpdated = (position) => {
+  const handlePositionUpdated = (event) => {
+    const position = event.detail?.position
+    if (!position) return
     const index = positions.value.findIndex(item => item.id === position.id)
     if (index !== -1) {
       positions.value[index] = { ...positions.value[index], ...position }
     }
   }
 
-  const handlePositionDeleted = (positionId) => {
+  const handlePositionDeleted = (event) => {
+    const positionId = event.detail?.positionId
+    if (!positionId) return
     positions.value = positions.value.filter(item => item.id !== positionId)
   }
 
-  // Setup WebSocket event listeners
+  // Setup WebSocket event listeners - use named handlers
   const setupWebSocketListeners = () => {
-    window.addEventListener('position-created', (event) => {
-      if (event.detail?.position) {
-        handlePositionCreated(event.detail.position)
-      }
-    })
-
-    window.addEventListener('position-updated', (event) => {
-      if (event.detail?.position) {
-        handlePositionUpdated(event.detail.position)
-      }
-    })
-
-    window.addEventListener('position-deleted', (event) => {
-      if (event.detail?.positionId) {
-        handlePositionDeleted(event.detail.positionId)
-      }
-    })
+    window.addEventListener('position-created', handlePositionCreated)
+    window.addEventListener('position-updated', handlePositionUpdated)
+    window.addEventListener('position-deleted', handlePositionDeleted)
   }
 
   // Cleanup WebSocket listeners
@@ -202,7 +195,6 @@ export function usePositions() {
     createPosition,
     updatePosition,
     deletePosition,
-    ,
 
     // Utility functions
     getPositionById,

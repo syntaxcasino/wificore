@@ -109,7 +109,7 @@
     </PageContent>
 
     <!-- Edit Method Overlay -->
-    <SlideOverlay v-model="showEditOverlay" title="Edit Payment Method" :subtitle="selectedMethod?.name" icon="CreditCard" width="md">
+    <SlideOverlay v-model="showEditOverlay" title="Edit Payment Method" :subtitle="selectedMethod?.name" icon="CreditCard" width="480px">
       <div v-if="selectedMethod" class="p-6 space-y-4">
         <div>
           <label class="block text-sm font-medium text-slate-700 mb-1">Name</label>
@@ -125,15 +125,26 @@
         </div>
       </div>
       <template #footer>
-        <div class="flex items-center gap-2">
-          <BaseButton @click="saveMethod" variant="primary" :loading="saving">Save Changes</BaseButton>
-          <BaseButton @click="showEditOverlay = false" variant="ghost">Cancel</BaseButton>
+        <div class="flex gap-3">
+          <button
+            @click="showEditOverlay = false"
+            class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+          >
+            Cancel
+          </button>
+          <button
+            @click="saveMethod"
+            :disabled="saving"
+            class="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors disabled:opacity-50"
+          >
+            {{ saving ? 'Saving...' : 'Save Changes' }}
+          </button>
         </div>
       </template>
     </SlideOverlay>
 
     <!-- Add Method Overlay -->
-    <SlideOverlay v-model="showAddOverlay" title="Add Payment Method" subtitle="Configure a new payment method" icon="Plus" width="md">
+    <SlideOverlay v-model="showAddOverlay" title="Add Payment Method" subtitle="Configure a new payment method" icon="Plus" width="480px">
       <div class="p-6 space-y-4">
         <div>
           <label class="block text-sm font-medium text-slate-700 mb-1">Name</label>
@@ -149,9 +160,20 @@
         </div>
       </div>
       <template #footer>
-        <div class="flex items-center gap-2">
-          <BaseButton @click="createMethod" variant="primary" :loading="saving">Add Method</BaseButton>
-          <BaseButton @click="showAddOverlay = false" variant="ghost">Cancel</BaseButton>
+        <div class="flex gap-3">
+          <button
+            @click="showAddOverlay = false"
+            class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+          >
+            Cancel
+          </button>
+          <button
+            @click="createMethod"
+            :disabled="saving"
+            class="flex-1 px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors disabled:opacity-50"
+          >
+            {{ saving ? 'Adding...' : 'Add Method' }}
+          </button>
         </div>
       </template>
     </SlideOverlay>

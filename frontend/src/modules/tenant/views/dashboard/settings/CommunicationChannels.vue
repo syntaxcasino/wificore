@@ -78,9 +78,9 @@
       </div>
 
       <!-- Channels Table -->
-      <div v-else class="px-4 md:px-6 pt-4 md:pt-6 pb-2">
+      <div v-else class="px-4 md:px-6 pt-2 pb-2">
         <!-- Desktop Table -->
-        <div class="hidden md:block bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
+        <div class="hidden md:block bg-white border border-slate-200 shadow-sm overflow-hidden flex-col">
           <table class="w-full">
             <thead>
               <tr class="bg-slate-50 border-b border-slate-200">
@@ -162,7 +162,7 @@
     </div>
 
     <!-- CREATE OVERLAY -->
-    <SlideOverlay v-model="showCreateOverlay" title="Add Communication Channel" subtitle="Configure a new messaging channel" icon="Plus" width="50%">
+    <SlideOverlay v-model="showCreateOverlay" title="Add Communication Channel" subtitle="Configure a new messaging channel" icon="Plus" width="480px">
       <form @submit.prevent="handleCreate" class="space-y-5">
         <div>
           <label class="block text-sm font-medium text-slate-700 mb-1">Channel Name *</label>
@@ -225,18 +225,27 @@
       </form>
 
       <template #footer>
-        <div class="flex justify-end gap-3">
-          <button @click="showCreateOverlay = false" type="button" class="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50">Cancel</button>
-          <button @click="handleCreate" :disabled="formSubmitting" class="px-4 py-2 text-sm font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition-colors">
-            <span v-if="formSubmitting">Creating...</span>
-            <span v-else>Create Channel</span>
+        <div class="flex gap-3">
+          <button
+            @click="showCreateOverlay = false"
+            type="button"
+            class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+          >
+            Cancel
+          </button>
+          <button
+            @click="handleCreate"
+            :disabled="formSubmitting"
+            class="flex-1 px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors disabled:opacity-50"
+          >
+            {{ formSubmitting ? 'Creating...' : 'Create Channel' }}
           </button>
         </div>
       </template>
     </SlideOverlay>
 
     <!-- EDIT OVERLAY -->
-    <SlideOverlay v-model="showEditOverlay" title="Edit Communication Channel" subtitle="Update channel configuration" icon="Pencil" width="50%">
+    <SlideOverlay v-model="showEditOverlay" title="Edit Communication Channel" subtitle="Update channel configuration" icon="Pencil" width="480px">
       <form @submit.prevent="handleUpdate" class="space-y-5">
         <div>
           <label class="block text-sm font-medium text-slate-700 mb-1">Channel Name *</label>
@@ -297,18 +306,27 @@
       </form>
 
       <template #footer>
-        <div class="flex justify-end gap-3">
-          <button @click="showEditOverlay = false" type="button" class="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50">Cancel</button>
-          <button @click="handleUpdate" :disabled="formSubmitting" class="px-4 py-2 text-sm font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition-colors">
-            <span v-if="formSubmitting">Saving...</span>
-            <span v-else>Save Changes</span>
+        <div class="flex gap-3">
+          <button
+            @click="showEditOverlay = false"
+            type="button"
+            class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+          >
+            Cancel
+          </button>
+          <button
+            @click="handleUpdate"
+            :disabled="formSubmitting"
+            class="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors disabled:opacity-50"
+          >
+            {{ formSubmitting ? 'Saving...' : 'Save Changes' }}
           </button>
         </div>
       </template>
     </SlideOverlay>
 
     <!-- VIEW OVERLAY -->
-    <SlideOverlay v-model="showViewOverlay" title="Channel Details" :subtitle="selectedChannel?.name || ''" icon="Eye" width="50%">
+    <SlideOverlay v-model="showViewOverlay" title="Channel Details" :subtitle="selectedChannel?.name || ''" icon="Eye" width="480px">
       <div v-if="selectedChannel" class="space-y-6">
         <div class="grid grid-cols-2 gap-4">
           <div>
@@ -376,11 +394,19 @@
       </div>
 
       <template #footer>
-        <div class="flex justify-between">
-          <button @click="openEditOverlay(selectedChannel)" class="px-4 py-2 text-sm font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition-colors">
+        <div class="flex gap-3">
+          <button
+            @click="showViewOverlay = false"
+            class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+          >
+            Close
+          </button>
+          <button
+            @click="openEditOverlay(selectedChannel)"
+            class="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
+          >
             <Pencil class="w-4 h-4 inline mr-1" /> Edit
           </button>
-          <button @click="showViewOverlay = false" class="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50">Close</button>
         </div>
       </template>
     </SlideOverlay>

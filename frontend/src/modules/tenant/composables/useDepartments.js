@@ -24,15 +24,15 @@ export function useDepartments() {
 
   // Computed filters
   const activeDepartments = computed(() => 
-    departments.value.filter(dept => dept.status === 'active')
+    Array.isArray(departments.value) ? departments.value.filter(dept => dept.status === 'active') : []
   )
   
   const pendingDepartments = computed(() => 
-    departments.value.filter(dept => dept.status === 'pending_approval')
+    Array.isArray(departments.value) ? departments.value.filter(dept => dept.status === 'pending_approval') : []
   )
   
   const inactiveDepartments = computed(() => 
-    departments.value.filter(dept => dept.status === 'inactive')
+    Array.isArray(departments.value) ? departments.value.filter(dept => dept.status === 'inactive') : []
   )
 
   // API Functions
@@ -45,7 +45,8 @@ export function useDepartments() {
       const url = params ? `/departments?${params}` : '/departments'
       const response = await axios.get(url)
       
-      departments.value = response.data.data || response.data
+      const data = response.data.data || response.data
+      departments.value = Array.isArray(data) ? data : []
       return response.data
     } catch (err) {
       error.value = err.response?.data?.message || 'Failed to fetch departments'
@@ -167,44 +168,36 @@ export function useDepartments() {
     )
   }
 
-  // Event handlers for WebSocket
-  const handleDepartmentCreated = (department) => {
+  // Event handlers for WebSocket - accept event and extract data internally
+  const handleDepartmentCreated = (event) => {
+    const department = event.detail?.department
+    if (!department) return
     const exists = departments.value.find(d => d.id === department.id)
     if (!exists) {
       departments.value.unshift(department)
     }
   }
 
-  const handleDepartmentUpdated = (department) => {
+  const handleDepartmentUpdated = (event) => {
+    const department = event.detail?.department
+    if (!department) return
     const index = departments.value.findIndex(d => d.id === department.id)
     if (index !== -1) {
       departments.value[index] = { ...departments.value[index], ...department }
     }
   }
 
-  const handleDepartmentDeleted = (departmentId) => {
+  const handleDepartmentDeleted = (event) => {
+    const departmentId = event.detail?.departmentId
+    if (!departmentId) return
     departments.value = departments.value.filter(d => d.id !== departmentId)
   }
 
-  // Setup WebSocket event listeners
+  // Setup WebSocket event listeners - use named handlers
   const setupWebSocketListeners = () => {
-    window.addEventListener('department-created', (event) => {
-      if (event.detail?.department) {
-        handleDepartmentCreated(event.detail.department)
-      }
-    })
-
-    window.addEventListener('department-updated', (event) => {
-      if (event.detail?.department) {
-        handleDepartmentUpdated(event.detail.department)
-      }
-    })
-
-    window.addEventListener('department-deleted', (event) => {
-      if (event.detail?.departmentId) {
-        handleDepartmentDeleted(event.detail.departmentId)
-      }
-    })
+    window.addEventListener('department-created', handleDepartmentCreated)
+    window.addEventListener('department-updated', handleDepartmentUpdated)
+    window.addEventListener('department-deleted', handleDepartmentDeleted)
   }
 
   // Cleanup WebSocket listeners

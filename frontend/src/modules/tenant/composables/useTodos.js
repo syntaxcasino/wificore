@@ -25,22 +25,22 @@ export function useTodos() {
 
   // Computed filters
   const pendingTodos = computed(() => 
-    todos.value.filter(todo => todo.status === 'pending')
+    Array.isArray(todos.value) ? todos.value.filter(todo => todo.status === 'pending') : []
   )
   
   const completedTodos = computed(() => 
-    todos.value.filter(todo => todo.status === 'completed')
+    Array.isArray(todos.value) ? todos.value.filter(todo => todo.status === 'completed') : []
   )
   
   const inProgressTodos = computed(() => 
-    todos.value.filter(todo => todo.status === 'in_progress')
+    Array.isArray(todos.value) ? todos.value.filter(todo => todo.status === 'in_progress') : []
   )
   
   const overdueTodos = computed(() => 
-    todos.value.filter(todo => {
+    Array.isArray(todos.value) ? todos.value.filter(todo => {
       if (todo.status === 'completed' || !todo.due_date) return false
       return new Date(todo.due_date) < new Date()
-    })
+    }) : []
   )
 
   // API Functions (trigger events, no polling needed)
@@ -237,7 +237,9 @@ export function useTodos() {
   }
 
   // Event handlers for WebSocket updates
-  const handleTodoCreated = (todoData) => {
+  const handleTodoCreated = (event) => {
+    const todoData = event.detail?.todo
+    if (!todoData) return
     // Check if todo already exists
     const exists = todos.value.some(t => t.id === todoData.id)
     if (!exists) {
@@ -246,7 +248,9 @@ export function useTodos() {
     }
   }
 
-  const handleTodoUpdated = (todoData) => {
+  const handleTodoUpdated = (event) => {
+    const todoData = event.detail?.todo
+    if (!todoData) return
     const index = todos.value.findIndex(t => t.id === todoData.id)
     if (index !== -1) {
       todos.value[index] = todoData
@@ -254,33 +258,18 @@ export function useTodos() {
     }
   }
 
-  const handleTodoDeleted = (todoId) => {
+  const handleTodoDeleted = (event) => {
+    const todoId = event.detail?.todoId
+    if (!todoId) return
     todos.value = todos.value.filter(t => t.id !== todoId)
     updateStats()
   }
 
-  // Setup WebSocket event listeners
+  // Setup WebSocket event listeners - use named handlers
   const setupWebSocketListeners = () => {
-    // Listen for todo-created event
-    window.addEventListener('todo-created', (event) => {
-      if (event.detail?.todo) {
-        handleTodoCreated(event.detail.todo)
-      }
-    })
-
-    // Listen for todo-updated event
-    window.addEventListener('todo-updated', (event) => {
-      if (event.detail?.todo) {
-        handleTodoUpdated(event.detail.todo)
-      }
-    })
-
-    // Listen for todo-deleted event
-    window.addEventListener('todo-deleted', (event) => {
-      if (event.detail?.todoId) {
-        handleTodoDeleted(event.detail.todoId)
-      }
-    })
+    window.addEventListener('todo-created', handleTodoCreated)
+    window.addEventListener('todo-updated', handleTodoUpdated)
+    window.addEventListener('todo-deleted', handleTodoDeleted)
   }
 
   // Cleanup WebSocket listeners

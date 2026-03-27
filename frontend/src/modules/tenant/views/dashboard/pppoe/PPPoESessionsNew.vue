@@ -1,249 +1,182 @@
 <template>
-  <PageContainer>
-    <!-- Header -->
-    <PageHeader
-      title="PPPoE Sessions"
-      subtitle="Monitor and manage active PPPoE connections in real-time"
-      icon="Network"
-      :breadcrumbs="breadcrumbs"
-    >
-      <template #actions>
-        <BaseButton @click="refreshSessions" variant="ghost" size="sm" :loading="refreshing">
-          <RefreshCw class="w-4 h-4 mr-1" :class="{ 'animate-spin': refreshing }" />
-          Refresh
-        </BaseButton>
-        <BaseButton @click="disconnectAll" variant="danger" :disabled="!filteredData.length">
-          <Power class="w-4 h-4 mr-1" />
-          Disconnect All
-        </BaseButton>
-      </template>
-    </PageHeader>
+  <DataViewContainer
+    title="Active Sessions"
+    subtitle="Monitor real-time PPPoE connections"
+    color-theme="purple"
+    v-model:search-model="searchQuery"
+    search-placeholder="Search sessions..."
+    :stats="[
+      { color: 'bg-purple-500', value: totalSessions },
+      { color: 'bg-emerald-500', value: totalUsers },
+      { color: 'bg-blue-500', value: formatBytes(totalBandwidth) }
+    ]"
+    :total="sessions.length"
+    :loading="loading"
+    @refresh="refreshSessions"
+    @search-clear="searchQuery = ''"
+  >
+    <!-- Icon Slot -->
+    <template #icon>
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 md:h-6 md:w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+      </svg>
+    </template>
 
-    <!-- Search and Filters Bar -->
-    <div class="px-3 py-3 sm:px-6 sm:py-4 bg-white border-b border-slate-200">
-      <div class="flex flex-col sm:flex-row sm:items-center gap-3 flex-wrap">
-        <!-- Search Box -->
-        <div class="flex-1 min-w-0 sm:min-w-[250px] max-w-md">
-          <BaseSearch v-model="searchQuery" placeholder="Search sessions by username, IP..." />
-        </div>
-        
-        <!-- Filters Group -->
-        <div class="flex items-center gap-2">
-          <BaseSelect v-model="filters.router" placeholder="All Routers" class="w-40">
-            <option value="">All Routers</option>
-            <option v-for="router in routers" :key="router.id" :value="router.id">{{ router.name }}</option>
-          </BaseSelect>
-          
-          <BaseSelect v-model="filters.duration" placeholder="Session Duration" class="w-44">
-            <option value="">All Durations</option>
-            <option value="short">< 1 hour</option>
-            <option value="medium">1-6 hours</option>
-            <option value="long">> 6 hours</option>
-          </BaseSelect>
-          
-          <BaseButton v-if="hasActiveFilters" @click="clearFilters" variant="ghost" size="sm">
-            <X class="w-4 h-4 mr-1" />
-            Clear
-          </BaseButton>
-        </div>
-        
-        <!-- Stats Badges -->
-        <div class="ml-auto flex items-center gap-2">
-          <BaseBadge variant="success" dot pulse>{{ totalSessions }} Active</BaseBadge>
-          <BaseBadge variant="info">{{ formatBytes(totalBandwidth) }}/s</BaseBadge>
-          <BaseBadge variant="warning">{{ totalUsers }} Users</BaseBadge>
-        </div>
-      </div>
+    <!-- Filters -->
+    <template #filters>
+      <BaseSelect v-model="filters.router" placeholder="All Routers" class="w-44">
+        <option value="">All Routers</option>
+        <option v-for="router in routers" :key="router.id" :value="router.id">{{ router.name }}</option>
+      </BaseSelect>
+      <BaseSelect v-model="filters.duration" placeholder="All Durations" class="w-40">
+        <option value="">All Durations</option>
+        <option value="short">&lt; 1 hour</option>
+        <option value="medium">1-6 hours</option>
+        <option value="long">&gt; 6 hours</option>
+      </BaseSelect>
+      <button v-if="hasActiveFilters" @click="clearFilters" class="text-xs text-purple-600 hover:text-purple-700 font-medium">Clear filters</button>
+    </template>
+
+    <!-- Error State -->
+    <div v-if="error" class="flex flex-col items-center justify-center gap-4 p-8 text-red-500">
+      <X class="w-10 h-10" />
+      <p class="text-center">{{ error }}</p>
+      <button @click="fetchSessions" class="px-4 py-2 text-sm font-medium text-white bg-red-500 rounded-md hover:bg-red-600 transition-colors">Retry</button>
     </div>
 
-    <!-- Content -->
-    <PageContent :padding="false">
-      <!-- Loading State -->
-      <div v-if="loading" class="p-6">
-        <BaseLoading type="table" :rows="5" />
-      </div>
+    <!-- Loading Skeleton -->
+    <DataSkeleton v-else-if="loading" :count="5" />
 
-      <!-- Error State -->
-      <div v-else-if="error" class="p-6">
-        <BaseAlert variant="danger" :title="error" dismissible>
-          <div class="mt-2">
-            <BaseButton @click="refreshSessions" variant="danger" size="sm">
-              <RefreshCw class="w-4 h-4 mr-1" />
-              Retry
-            </BaseButton>
-          </div>
-        </BaseAlert>
-      </div>
-
-      <!-- Empty State -->
-      <div v-else-if="!filteredData.length">
-        <BaseEmpty
-          :title="searchQuery ? 'No sessions found' : 'No active sessions'"
-          :description="searchQuery ? 'No sessions match your search criteria.' : 'There are currently no active PPPoE sessions.'"
-          icon="Network"
-          :actionText="searchQuery ? 'Clear Search' : 'Refresh'"
-          actionIcon="RefreshCw"
-          @action="searchQuery ? (searchQuery = '') : refreshSessions()"
+    <!-- Data Content -->
+    <div v-else-if="filteredData.length" class="flex flex-col h-full px-4 md:px-6 pt-2 pb-2 min-h-0">
+      <!-- Mobile Cards -->
+      <div class="md:hidden space-y-3 overflow-y-auto flex-1 min-h-0">
+        <MobileDataCard
+          v-for="session in paginatedData"
+          :key="session.id"
+          :title="session.username"
+          :subtitle="session.user?.phone || 'No phone'"
+          :meta-lines="[
+            { text: `${session.ip_address || session.framed_ip} | ${session.router_name || 'N/A'}` },
+            { text: `↓ ${formatBytes(session.download_rate || session.download_speed)}/s | ↑ ${formatBytes(session.upload_rate || session.upload_speed)}/s` },
+            { text: `${formatDuration(session.uptime || session.duration)} | ${formatDateTime(session.connected_at || session.start_time)}` }
+          ]"
+          :status="'online'"
+          :actions="getSessionActions(session)"
+          hoverable
         />
       </div>
 
-      <!-- Data Table -->
-      <div v-else class="p-6">
-        <BaseCard :padding="false">
-          <div class="overflow-x-auto">
-            <table class="w-full">
-              <thead class="bg-slate-50 border-b border-slate-200">
-                <tr>
-                  <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">User</th>
-                  <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Connection</th>
-                  <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Router</th>
-                  <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Bandwidth</th>
-                  <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Duration</th>
-                  <th class="px-6 py-3 text-right text-xs font-semibold text-slate-700 uppercase tracking-wider">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr
-                  v-for="session in paginatedData"
-                  :key="session.id"
-                  class="border-b border-slate-100 hover:bg-purple-50/50 transition-colors"
-                >
-                  <td class="px-6 py-4">
-                    <div class="flex items-center gap-3">
-                      <div class="w-10 h-10 bg-gradient-to-br from-purple-500 to-indigo-500 rounded-full flex items-center justify-center text-white text-sm font-semibold">
-                        {{ getUserInitials(session) }}
-                      </div>
-                      <div>
-                        <div class="text-sm font-medium text-slate-900">{{ session.username }}</div>
-                        <div class="text-xs text-slate-500">{{ session.user?.phone || 'No phone' }}</div>
-                      </div>
+      <!-- Desktop Table -->
+      <div class="hidden md:flex bg-white border border-slate-200 shadow-sm overflow-hidden flex-col min-h-0 flex-1">
+        <div class="overflow-x-auto overflow-y-auto flex-1 min-h-0">
+          <table class="w-full">
+            <thead class="bg-slate-50 border-b border-slate-200 sticky top-0 z-[5]">
+              <tr>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">User</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">IP & MAC</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Router</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Bandwidth</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Duration</th>
+                <th class="px-6 py-3 text-right text-xs font-semibold text-slate-700 uppercase tracking-wider">Actions</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              <tr v-for="session in paginatedData" :key="session.id" class="hover:bg-purple-50/50 transition-colors cursor-pointer" @click="viewSessionDetails(session)">
+                <td class="px-6 py-4">
+                  <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 bg-gradient-to-br from-purple-500 to-indigo-500 rounded-full flex items-center justify-center text-white text-sm font-semibold">{{ getUserInitials(session) }}</div>
+                    <div>
+                      <div class="text-sm font-medium text-slate-900">{{ session.username }}</div>
+                      <div class="text-xs text-slate-500">{{ session.user?.phone || 'No phone' }}</div>
                     </div>
-                  </td>
-                  <td class="px-6 py-4">
-                    <div class="text-sm text-slate-900">{{ session.ip_address || session.framed_ip }}</div>
-                    <div class="text-xs text-slate-500">{{ session.mac_address || session.calling_station_id }}</div>
-                  </td>
-                  <td class="px-6 py-4">
-                    <div class="text-sm font-medium text-slate-900">{{ session.router_name || 'N/A' }}</div>
-                  </td>
-                  <td class="px-6 py-4">
-                    <div class="space-y-1">
-                      <div class="text-xs">
-                        <span class="text-green-600 font-medium">↓ {{ formatBytes(session.download_rate || session.download_speed) }}/s</span>
-                      </div>
-                      <div class="text-xs">
-                        <span class="text-blue-600 font-medium">↑ {{ formatBytes(session.upload_rate || session.upload_speed) }}/s</span>
-                      </div>
-                    </div>
-                  </td>
-                  <td class="px-6 py-4">
-                    <div class="text-sm text-slate-900">{{ formatDuration(session.uptime || session.duration) }}</div>
-                    <div class="text-xs text-slate-500">{{ formatDateTime(session.connected_at || session.start_time) }}</div>
-                  </td>
-                  <td class="px-6 py-4">
-                    <div class="flex items-center justify-end gap-2" @click.stop>
-                      <BaseButton @click="viewSessionDetails(session)" variant="ghost" size="sm">
-                        <Eye class="w-4 h-4" />
-                      </BaseButton>
-                      <BaseButton @click="disconnectSession(session)" variant="danger" size="sm">
-                        <Power class="w-4 h-4" />
-                      </BaseButton>
-                      <BaseButton
-                        data-menu-button
-                        @click="toggleMenu(session.id, $event)"
-                        variant="ghost"
-                        size="sm"
-                        title="More Actions"
-                      >
-                        <MoreVertical class="w-4 h-4 text-slate-600" />
-                      </BaseButton>
-                    </div>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </BaseCard>
-
-        <Teleport to="body">
-          <div
-            v-if="activeMenu !== null"
-            data-dropdown-menu
-            :style="menuPosition"
-            class="fixed w-44 bg-white rounded-lg shadow-2xl border border-slate-200 py-1 z-[9999] overflow-hidden"
-          >
-            <button
-              @click="handleViewFromMenu"
-              class="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
-            >
-              <Eye class="w-4 h-4" />
-              View details
-            </button>
-            <button
-              @click="handleDisconnectFromMenu"
-              class="w-full px-4 py-2 text-left text-sm text-rose-600 hover:bg-rose-50 flex items-center gap-2"
-            >
-              <Power class="w-4 h-4" />
-              Disconnect session
-            </button>
-          </div>
-        </Teleport>
-
-        <!-- Pagination -->
-        <div class="mt-4 flex items-center justify-between">
-          <div class="text-sm text-slate-600">
-            Showing {{ paginationStart }} to {{ paginationEnd }} of {{ filteredData.length }} sessions
-          </div>
-          <BasePagination
-            v-model="currentPage"
-            :total-pages="totalPages"
-            :total-items="filteredData.length"
-          />
+                  </div>
+                </td>
+                <td class="px-6 py-4">
+                  <div class="text-sm text-slate-900">{{ session.ip_address || session.framed_ip }}</div>
+                  <div class="text-xs text-slate-500">{{ session.mac_address || session.calling_station_id }}</div>
+                </td>
+                <td class="px-6 py-4">
+                  <div class="text-sm font-medium text-slate-900">{{ session.router_name || 'N/A' }}</div>
+                </td>
+                <td class="px-6 py-4">
+                  <div class="space-y-1">
+                    <div class="text-xs"><span class="text-green-600 font-medium">↓ {{ formatBytes(session.download_rate || session.download_speed) }}/s</span></div>
+                    <div class="text-xs"><span class="text-blue-600 font-medium">↑ {{ formatBytes(session.upload_rate || session.upload_speed) }}/s</span></div>
+                  </div>
+                </td>
+                <td class="px-6 py-4">
+                  <div class="text-sm text-slate-900">{{ formatDuration(session.uptime || session.duration) }}</div>
+                  <div class="text-xs text-slate-500">{{ formatDateTime(session.connected_at || session.start_time) }}</div>
+                </td>
+                <td class="px-6 py-4 text-right" @click.stop>
+                  <div class="flex items-center justify-end gap-1">
+                    <button @click="viewSessionDetails(session)" class="px-2 py-1 text-xs font-medium text-slate-700 bg-slate-100 rounded hover:bg-slate-200 transition-colors"><Eye class="w-3 h-3 mr-1" /> View</button>
+                    <button @click="disconnectSession(session)" class="px-2 py-1 text-xs font-medium text-red-700 bg-red-50 rounded hover:bg-red-100 transition-colors"><Power class="w-3 h-3 mr-1" /> Disconnect</button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </div>
-    </PageContent>
 
-    <!-- Session Details Overlay -->
-    <SessionDetailsOverlay
-      :show="showDetailsOverlay"
-      :session="selectedSession"
-      :icon="Network"
-      @close="closeDetailsOverlay"
-      @disconnect="disconnectSession"
+      <!-- Pagination -->
+      <DataPagination v-model:current-page="currentPage" v-model:items-per-page="itemsPerPage" :total-pages="totalPages" :total-items="filteredData.length" item-name="sessions" class="mt-auto" />
+    </div>
+
+    <!-- Empty State -->
+    <DataEmptyState
+      v-else
+      :title="searchQuery || hasActiveFilters ? 'No Matches Found' : 'No Active Sessions'"
+      :description="searchQuery || hasActiveFilters ? 'No sessions match your criteria.' : 'No PPPoE users are currently connected.'"
+      icon="zap"
+      color-theme="purple"
+      :show-clear="!!searchQuery"
+      :has-filters="hasActiveFilters"
+      clear-text="Clear Filters"
+      @clear="clearFilters"
     />
-  </PageContainer>
+
+    <!-- Stats Bar (only on desktop) -->
+    <template #footer-left>
+      <div class="hidden md:flex gap-4">
+        <div class="flex items-center gap-2"><div class="w-2 h-2 rounded-full bg-emerald-500"></div><span class="text-xs text-slate-600">{{ totalSessions }} sessions</span></div>
+        <div class="flex items-center gap-2"><div class="w-2 h-2 rounded-full bg-blue-500"></div><span class="text-xs text-slate-600">{{ totalUsers }} unique users</span></div>
+      </div>
+    </template>
+  </DataViewContainer>
+
+  <!-- Session Details Overlay -->
+  <SessionDetailsOverlay
+    v-model="showDetailsOverlay"
+    :session="selectedSession"
+    :icon="Network"
+    @close="closeDetailsOverlay"
+    @disconnect="disconnectSession"
+  />
 </template>
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import {
-  RefreshCw, Power, Eye, X, Network, MoreVertical
-} from 'lucide-vue-next'
+import { X, Eye, Power, Network } from 'lucide-vue-next'
 import axios from 'axios'
+import DataViewContainer from '@/modules/common/components/base/DataViewContainer.vue'
+import DataSkeleton from '@/modules/common/components/base/DataSkeleton.vue'
+import MobileDataCard from '@/modules/common/components/base/MobileDataCard.vue'
+import DataPagination from '@/modules/common/components/base/DataPagination.vue'
+import DataEmptyState from '@/modules/common/components/base/DataEmptyState.vue'
+import BaseSelect from '@/modules/common/components/base/BaseSelect.vue'
+import SessionDetailsOverlay from '@/modules/tenant/components/sessions/SessionDetailsOverlay.vue'
 import { useBroadcasting } from '@/modules/common/composables/websocket/useBroadcasting'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/modules/common/composables/useToast'
-import PageContainer from '@/modules/common/components/layout/templates/PageContainer.vue'
-import PageHeader from '@/modules/common/components/layout/templates/PageHeader.vue'
-import PageContent from '@/modules/common/components/layout/templates/PageContent.vue'
-import BaseButton from '@/modules/common/components/base/BaseButton.vue'
-import BaseSearch from '@/modules/common/components/base/BaseSearch.vue'
-import BaseSelect from '@/modules/common/components/base/BaseSelect.vue'
-import BaseBadge from '@/modules/common/components/base/BaseBadge.vue'
-import BaseCard from '@/modules/common/components/base/BaseCard.vue'
-import BaseLoading from '@/modules/common/components/base/BaseLoading.vue'
-import BaseAlert from '@/modules/common/components/base/BaseAlert.vue'
-import BaseEmpty from '@/modules/common/components/base/BaseEmpty.vue'
-import BasePagination from '@/modules/common/components/base/BasePagination.vue'
-import SessionDetailsOverlay from '@/modules/tenant/components/sessions/SessionDetailsOverlay.vue'
 import { useConfirmStore } from '@/stores/confirm'
 
-// Breadcrumbs
-const breadcrumbs = [
-  { label: 'Dashboard', to: '/dashboard' },
-  { label: 'PPPoE', to: '/dashboard/pppoe' },
-  { label: 'Active Sessions' }
-]
+const confirmStore = useConfirmStore()
+const authStore = useAuthStore()
+const toast = useToast()
+const { subscribeToPrivateChannel, unsubscribeFromChannel } = useBroadcasting()
 
 // State
 const loading = ref(false)
@@ -255,49 +188,26 @@ const currentPage = ref(1)
 const itemsPerPage = ref(10)
 const showDetailsOverlay = ref(false)
 const selectedSession = ref(null)
-const activeMenu = ref(null)
-const menuPosition = ref({})
-const selectedMenuSession = ref(null)
-
-const confirmStore = useConfirmStore()
-const authStore = useAuthStore()
-const toast = useToast()
-const { subscribeToPrivateChannel, unsubscribeFromChannel } = useBroadcasting()
 
 // Filters
-const filters = ref({
-  router: '',
-  duration: ''
-})
+const filters = ref({ router: '', duration: '' })
 
 const routers = computed(() => {
   const byId = new Map()
-
   for (const s of sessions.value) {
-    const id = s?.router_id
-    const name = s?.router_name
-
-    if (!id) continue
-
-    if (!byId.has(id)) {
-      byId.set(id, {
-        id,
-        name: name || 'N/A',
-      })
+    if (!s?.router_id) continue
+    if (!byId.has(s.router_id)) {
+      byId.set(s.router_id, { id: s.router_id, name: s.router_name || 'N/A' })
     }
   }
-
   return Array.from(byId.values())
 })
 
-// Computed
 const filteredData = computed(() => {
   let result = sessions.value
-
-  // Search filter
   if (searchQuery.value) {
     const query = searchQuery.value.toLowerCase()
-    result = result.filter(session => 
+    result = result.filter(session =>
       session.username?.toLowerCase().includes(query) ||
       session.ip_address?.includes(query) ||
       session.framed_ip?.includes(query) ||
@@ -305,13 +215,9 @@ const filteredData = computed(() => {
       session.calling_station_id?.toLowerCase().includes(query)
     )
   }
-
-  // Router filter
   if (filters.value.router) {
     result = result.filter(session => String(session.router_id ?? '') === String(filters.value.router))
   }
-
-  // Duration filter
   if (filters.value.duration) {
     result = result.filter(session => {
       const hours = session.duration / 3600
@@ -321,7 +227,6 @@ const filteredData = computed(() => {
       return true
     })
   }
-
   return result
 })
 
@@ -332,55 +237,12 @@ const paginatedData = computed(() => {
 })
 
 const totalPages = computed(() => Math.ceil(filteredData.value.length / itemsPerPage.value))
-const paginationStart = computed(() => (currentPage.value - 1) * itemsPerPage.value + 1)
-const paginationEnd = computed(() => Math.min(currentPage.value * itemsPerPage.value, filteredData.value.length))
-
 const hasActiveFilters = computed(() => filters.value.router || filters.value.duration)
-
 const totalSessions = computed(() => sessions.value.length)
 const totalUsers = computed(() => new Set(sessions.value.map(s => s.username)).size)
 const totalBandwidth = computed(() => sessions.value.reduce((sum, s) => sum + (s.download_rate || s.download_speed || 0) + (s.upload_rate || s.upload_speed || 0), 0))
 
-// Methods
-const fetchSessions = async () => {
-  loading.value = true
-  error.value = null
-  
-  try {
-    const response = await axios.get('pppoe/sessions')
-    const payload = response.data?.data ?? response.data
-    sessions.value = Array.isArray(payload) ? payload : (payload?.data ?? [])
-  } catch (err) {
-    error.value = 'Failed to load active sessions. Please try again.'
-    console.error('Error fetching sessions:', err)
-  } finally {
-    loading.value = false
-  }
-}
-
-const refreshSessions = async () => {
-  refreshing.value = true
-  error.value = null
-  
-  try{
-    const response = await axios.get('pppoe/sessions')
-    const payload = response.data?.data ?? response.data
-    sessions.value = Array.isArray(payload) ? payload : (payload?.data ?? [])
-  } catch (err) {
-    error.value = 'Failed to load active sessions. Please try again.'
-    console.error('Error fetching sessions:', err)
-  } finally {
-    refreshing.value = false
-  }
-}
-
-const clearFilters = () => {
-  filters.value = {
-    router: '',
-    duration: ''
-  }
-}
-
+// Helpers
 const getUserInitials = (session) => {
   if (!session.username) return '?'
   return session.username.slice(0, 2).toUpperCase()
@@ -398,14 +260,8 @@ const formatDuration = (seconds) => {
   if (!seconds) return '0s'
   const hours = Math.floor(seconds / 3600)
   const minutes = Math.floor((seconds % 3600) / 60)
-  
   if (hours > 0) return `${hours}h ${minutes}m`
   return `${minutes}m`
-}
-
-const formatTime = (date) => {
-  if (!date) return 'N/A'
-  return new Date(date).toLocaleTimeString()
 }
 
 const formatDateTime = (date) => {
@@ -413,9 +269,44 @@ const formatDateTime = (date) => {
   return new Date(date).toLocaleString()
 }
 
-const getSpeedPercentage = (current, max) => {
-  if (!max) return 0
-  return Math.min((current / max) * 100, 100)
+const getSessionActions = (session) => [
+  { label: 'View', onClick: () => viewSessionDetails(session), class: 'text-slate-700 bg-slate-100 hover:bg-slate-200' },
+  { label: 'Disconnect', onClick: () => disconnectSession(session), class: 'text-red-700 bg-red-50 hover:bg-red-100' }
+]
+
+const clearFilters = () => {
+  filters.value = { router: '', duration: '' }
+  searchQuery.value = ''
+}
+
+const fetchSessions = async () => {
+  loading.value = true
+  error.value = null
+  try {
+    const response = await axios.get('pppoe/sessions')
+    const payload = response.data?.data ?? response.data
+    sessions.value = Array.isArray(payload) ? payload : (payload?.data ?? [])
+  } catch (err) {
+    error.value = 'Failed to load active sessions. Please try again.'
+    console.error('Error fetching sessions:', err)
+  } finally {
+    loading.value = false
+  }
+}
+
+const refreshSessions = async () => {
+  refreshing.value = true
+  error.value = null
+  try {
+    const response = await axios.get('pppoe/sessions')
+    const payload = response.data?.data ?? response.data
+    sessions.value = Array.isArray(payload) ? payload : (payload?.data ?? [])
+  } catch (err) {
+    error.value = 'Failed to refresh sessions. Please try again.'
+    console.error('Error refreshing sessions:', err)
+  } finally {
+    refreshing.value = false
+  }
 }
 
 const viewSessionDetails = (session) => {
@@ -425,71 +316,7 @@ const viewSessionDetails = (session) => {
 
 const closeDetailsOverlay = () => {
   showDetailsOverlay.value = false
-}
-
-const closeMenu = () => {
-  activeMenu.value = null
-  menuPosition.value = {}
-  selectedMenuSession.value = null
-}
-
-const toggleMenu = (sessionId, event) => {
-  event.stopPropagation()
-
-  if (activeMenu.value === sessionId) {
-    closeMenu()
-    return
-  }
-
-  activeMenu.value = sessionId
-  selectedMenuSession.value = sessions.value.find((session) => session.id === sessionId) || null
-
-  const button = event.currentTarget
-  const rect = button.getBoundingClientRect()
-  const viewportWidth = window.innerWidth
-  const viewportHeight = window.innerHeight
-  const menuWidth = 176
-  const menuHeight = 96
-
-  let top = rect.bottom + 6
-  let left = rect.right - menuWidth
-
-  if (left < 8) {
-    left = 8
-  } else if (left + menuWidth > viewportWidth - 8) {
-    left = viewportWidth - menuWidth - 8
-  }
-
-  if (top + menuHeight > viewportHeight - 8) {
-    top = rect.top - menuHeight - 6
-  }
-
-  menuPosition.value = {
-    top: `${top}px`,
-    left: `${left}px`,
-  }
-}
-
-const handleViewFromMenu = () => {
-  if (!selectedMenuSession.value) return
-  viewSessionDetails(selectedMenuSession.value)
-  closeMenu()
-}
-
-const handleDisconnectFromMenu = () => {
-  if (!selectedMenuSession.value) return
-  disconnectSession(selectedMenuSession.value)
-  closeMenu()
-}
-
-const handleClickOutside = (event) => {
-  if (!activeMenu.value) return
-  const isMenuButton = event.target.closest('[data-menu-button]')
-  const isDropdownMenu = event.target.closest('[data-dropdown-menu]')
-
-  if (!isMenuButton && !isDropdownMenu) {
-    closeMenu()
-  }
+  selectedSession.value = null
 }
 
 const disconnectSession = async (session) => {
@@ -500,9 +327,7 @@ const disconnectSession = async (session) => {
     cancelText: 'Cancel',
     variant: 'danger',
   })
-
   if (!confirmed) return
-  
   try {
     const response = await axios.post('pppoe/sessions/disconnect', { username: session.username })
     if (response.data?.success) {
@@ -518,51 +343,20 @@ const disconnectSession = async (session) => {
   }
 }
 
-const disconnectAll = async () => {
-  const confirmed = await confirmStore.open({
-    title: 'Confirm Disconnect All',
-    message: `Disconnect all ${totalSessions.value} active sessions?`,
-    confirmText: 'Disconnect All',
-    cancelText: 'Cancel',
-    variant: 'danger',
-  })
-
-  if (!confirmed) return
-  
-  try {
-    const usernames = sessions.value.map(s => s.username).filter(Boolean)
-    const response = await axios.post('pppoe/sessions/disconnect-all', { usernames })
-    if (response.data?.success) {
-      toast.success(`Disconnected ${response.data.disconnected} sessions`)
-      await refreshSessions()
-    } else {
-      toast.error(response.data?.message || 'Failed to disconnect sessions')
-    }
-  } catch (err) {
-    console.error('Error disconnecting all sessions:', err)
-    toast.error(err.response?.data?.message || 'Failed to disconnect all sessions')
-  }
-}
-
-// Channel name for cleanup
+// WebSocket
 let sessionChannel = null
 let pollingInterval = null
 
 const startPolling = () => {
   stopPolling()
   pollingInterval = setInterval(() => {
-    // Silent refresh (no loading indicator)
     axios.get('pppoe/sessions')
       .then(response => {
         const payload = response.data?.data ?? response.data
-        const newSessions = Array.isArray(payload) ? payload : (payload?.data ?? [])
-        
-        // Update sessions while preserving order/selection if possible?
-        // Simple replacement is usually fine for metrics
-        sessions.value = newSessions
+        sessions.value = Array.isArray(payload) ? payload : (payload?.data ?? [])
       })
       .catch(err => console.error('Silent session refresh failed:', err))
-  }, 10000) // Poll every 10 seconds
+  }, 10000)
 }
 
 const stopPolling = () => {
@@ -572,50 +366,34 @@ const stopPolling = () => {
   }
 }
 
-// EVENT-BASED: Subscribe to WebSocket for real-time updates (NO POLLING)
 onMounted(() => {
-  // Fetch initial sessions ONCE
-  fetchSessions().then(() => {
-    startPolling() // Start polling for live metrics updates
-  })
-
-  document.addEventListener('click', handleClickOutside)
-  
-  // Subscribe to WebSocket events for PPPoE sessions
+  fetchSessions().then(() => startPolling())
   const tenantId = authStore.tenantId
   if (tenantId) {
     sessionChannel = `tenant.${tenantId}.pppoe-sessions`
-    
     subscribeToPrivateChannel(sessionChannel, {
-      PppoeSessionStarted: (event) => {
-        console.log('✨ Session started:', event)
-        // Refresh immediately to get full data with metrics
-        refreshSessions()
-      },
+      PppoeSessionStarted: () => refreshSessions(),
       PppoeSessionEnded: (event) => {
-        console.log('👋 Session ended:', event)
         if (event.session) {
-          // Remove session from the list
-          sessions.value = sessions.value.filter(s => 
+          sessions.value = sessions.value.filter(s =>
             !(s.username === event.session.username && s.router_id === event.session.router_id)
           )
         }
       },
-      // PppoeSessionUpdated usually doesn't carry live metrics, so we rely on polling/refresh
-      PppoeSessionUpdated: (event) => {
-        console.log('🔄 Session updated:', event)
-        refreshSessions()
-      }
+      PppoeSessionUpdated: () => refreshSessions()
     })
   }
 })
 
-// Cleanup WebSocket subscription on unmount
 onUnmounted(() => {
   stopPolling()
-  if (sessionChannel) {
-    unsubscribeFromChannel(sessionChannel)
-  }
-  document.removeEventListener('click', handleClickOutside)
+  if (sessionChannel) unsubscribeFromChannel(sessionChannel)
 })
 </script>
+
+<style scoped>
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+</style>

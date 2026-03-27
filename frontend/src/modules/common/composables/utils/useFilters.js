@@ -11,10 +11,11 @@ export function useFilters(data, initialFilters = {}) {
    * Apply filters to the data
    */
   const filteredData = computed(() => {
-    let result = data.value || []
+    // Ensure we always work with an array
+    let result = Array.isArray(data.value) ? data.value : []
 
     // Apply search query
-    if (searchQuery.value) {
+    if (searchQuery.value && result.length > 0) {
       const query = searchQuery.value.toLowerCase()
       result = result.filter(item => {
         return Object.values(item).some(value => {
@@ -25,16 +26,18 @@ export function useFilters(data, initialFilters = {}) {
     }
 
     // Apply custom filters
-    Object.entries(filters.value).forEach(([key, value]) => {
-      if (value !== '' && value !== null && value !== undefined) {
-        result = result.filter(item => {
-          if (Array.isArray(value)) {
-            return value.includes(item[key])
-          }
-          return item[key] === value
-        })
-      }
-    })
+    if (result.length > 0) {
+      Object.entries(filters.value).forEach(([key, value]) => {
+        if (value !== '' && value !== null && value !== undefined) {
+          result = result.filter(item => {
+            if (Array.isArray(value)) {
+              return value.includes(item[key])
+            }
+            return item[key] === value
+          })
+        }
+      })
+    }
 
     return result
   })

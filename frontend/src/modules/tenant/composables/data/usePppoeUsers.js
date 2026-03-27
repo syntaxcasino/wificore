@@ -116,9 +116,9 @@ export function usePppoeUsers() {
     }
   }
 
-  const activeUsers = computed(() => users.value.filter((u) => u.status === 'active'))
-  const inactiveUsers = computed(() => users.value.filter((u) => u.status === 'inactive'))
-  const totalUsers = computed(() => users.value.length)
+  const activeUsers = computed(() => Array.isArray(users.value) ? users.value.filter((u) => u.status === 'active') : [])
+  const inactiveUsers = computed(() => Array.isArray(users.value) ? users.value.filter((u) => u.status === 'inactive') : [])
+  const totalUsers = computed(() => Array.isArray(users.value) ? users.value.length : 0)
 
   return {
     users,

@@ -1,5 +1,5 @@
 <template>
-  <div class="bg-gray-900 text-gray-200 min-h-[calc(100vh-4rem)]">
+  <div class="min-h-[calc(100vh-4rem)]">
     <router-view />
   </div>
 </template>

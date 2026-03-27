@@ -128,7 +128,7 @@
     </PageContent>
 
     <!-- Configure Gateway Overlay -->
-    <SlideOverlay v-model="showConfigOverlay" title="Configure Payment Gateway" subtitle="M-Pesa Paybill Settings" icon="CreditCard" width="50%">
+    <SlideOverlay v-model="showConfigOverlay" title="Configure Payment Gateway" subtitle="M-Pesa Paybill Settings" icon="CreditCard" width="480px">
       <div class="space-y-6">
         <BaseAlert v-if="landlordPaybillAvailable" variant="info" title="System Paybill Available">
           A system-wide Paybill ({{ landlordShortcode }}) is available. You can use it or configure your own.
@@ -203,24 +203,26 @@
       </div>
 
       <template #footer>
-        <div class="flex items-center justify-between">
-          <BaseButton @click="testConnection" variant="ghost" :loading="testing" size="sm">
-            <Zap class="w-4 h-4 mr-1" />
-            Test Connection
-          </BaseButton>
-          <div class="flex gap-2">
-            <BaseButton @click="showConfigOverlay = false" variant="ghost">Cancel</BaseButton>
-            <BaseButton @click="saveSettings" variant="primary" :loading="saving">
-              <Save class="w-4 h-4 mr-1" />
-              Save Settings
-            </BaseButton>
-          </div>
+        <div class="flex gap-3">
+          <button
+            @click="showConfigOverlay = false"
+            class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+          >
+            Cancel
+          </button>
+          <button
+            @click="saveSettings"
+            :disabled="saving"
+            class="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors disabled:opacity-50"
+          >
+            {{ saving ? 'Saving...' : 'Save Settings' }}
+          </button>
         </div>
       </template>
     </SlideOverlay>
 
     <!-- Gateway Detail Overlay -->
-    <SlideOverlay v-model="showDetailOverlay" title="Payment Gateway Details" subtitle="M-Pesa Paybill Configuration" icon="Eye" width="40%">
+    <SlideOverlay v-model="showDetailOverlay" title="Payment Gateway Details" subtitle="M-Pesa Paybill Configuration" icon="Eye" width="480px">
       <div v-if="settingsData" class="space-y-5">
         <div class="grid grid-cols-2 gap-4">
           <div>
@@ -274,20 +276,19 @@
       </div>
 
       <template #footer>
-        <div class="flex items-center justify-between">
-          <BaseButton @click="testConnection" variant="ghost" :loading="testing" size="sm">
-            <Zap class="w-4 h-4 mr-1" />
-            Test Connection
-          </BaseButton>
-          <div class="flex gap-2">
-            <BaseButton v-if="!settingsData?.use_landlord_paybill && !settingsData?.is_active" @click="activateGateway" variant="primary" :loading="activating" size="sm">
-              Activate
-            </BaseButton>
-            <BaseButton @click="showDetailOverlay = false; showConfigOverlay = true" variant="primary" size="sm">
-              <Settings2 class="w-4 h-4 mr-1" />
-              Edit
-            </BaseButton>
-          </div>
+        <div class="flex gap-3">
+          <button
+            @click="showDetailOverlay = false"
+            class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+          >
+            Close
+          </button>
+          <button
+            @click="showDetailOverlay = false; showConfigOverlay = true"
+            class="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
+          >
+            Edit
+          </button>
         </div>
       </template>
     </SlideOverlay>

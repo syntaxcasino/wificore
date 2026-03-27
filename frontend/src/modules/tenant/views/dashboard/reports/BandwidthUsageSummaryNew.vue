@@ -1,19 +1,22 @@
 <template>
-  <PageContainer>
-    <PageHeader title="Bandwidth Usage Summary" subtitle="Analyze network bandwidth consumption" icon="Activity" :breadcrumbs="breadcrumbs">
-      <template #actions>
-        <BaseButton @click="refreshData" variant="ghost" :loading="refreshing">
-          <RefreshCw class="w-4 h-4 mr-1" :class="{ 'animate-spin': refreshing }" />
-          Refresh
-        </BaseButton>
-        <BaseButton @click="exportReport" variant="primary">
-          <Download class="w-4 h-4 mr-1" />
-          Export
-        </BaseButton>
-      </template>
-    </PageHeader>
+  <DataViewContainer
+    title="Bandwidth Usage Summary"
+    subtitle="Analyze network bandwidth consumption"
+    icon="Activity"
+    :breadcrumbs="breadcrumbs"
+  >
+    <template #actions>
+      <BaseButton @click="refreshData" variant="ghost" :loading="refreshing">
+        <RefreshCw class="w-4 h-4 mr-1" :class="{ 'animate-spin': refreshing }" />
+        Refresh
+      </BaseButton>
+      <BaseButton @click="exportReport" variant="primary">
+        <Download class="w-4 h-4 mr-1" />
+        Export
+      </BaseButton>
+    </template>
 
-    <div class="px-3 py-3 sm:px-6 sm:py-4 bg-white border-b border-slate-200">
+    <template #stats>
       <div class="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
         <div class="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200">
           <div class="flex items-center justify-between">
@@ -55,9 +58,9 @@
           </div>
         </div>
       </div>
-    </div>
+    </template>
 
-    <div class="px-3 py-3 sm:px-6 sm:py-4 bg-white border-b border-slate-200">
+    <template #filters>
       <div class="flex items-center gap-3 flex-wrap">
         <BaseSelect v-model="filters.period" class="w-36 sm:w-40">
           <option value="today">Today</option>
@@ -70,7 +73,7 @@
           <option value="pppoe">PPPoE</option>
         </BaseSelect>
       </div>
-    </div>
+    </template>
 
     <PageContent>
       <div class="space-y-6">
@@ -119,15 +122,14 @@
         </BaseCard>
       </div>
     </PageContent>
-  </PageContainer>
+  </DataViewContainer>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { Activity, RefreshCw, Download, ArrowDown, ArrowUp, Users } from 'lucide-vue-next'
 import axios from 'axios'
-import PageContainer from '@/modules/common/components/layout/templates/PageContainer.vue'
-import PageHeader from '@/modules/common/components/layout/templates/PageHeader.vue'
+import DataViewContainer from '@/modules/common/components/base/DataViewContainer.vue'
 import PageContent from '@/modules/common/components/layout/templates/PageContent.vue'
 import BaseButton from '@/modules/common/components/base/BaseButton.vue'
 import BaseCard from '@/modules/common/components/base/BaseCard.vue'

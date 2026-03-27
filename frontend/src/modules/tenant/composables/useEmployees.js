@@ -26,19 +26,19 @@ export function useEmployees() {
   // Computed filters
   
   const activeEmployees = computed(() => 
-    employees.value.filter(item => item.status === 'active')
+    Array.isArray(employees.value) ? employees.value.filter(item => item.status === 'active') : []
   )
   
   const on_leaveEmployees = computed(() => 
-    employees.value.filter(item => item.status === 'on_leave')
+    Array.isArray(employees.value) ? employees.value.filter(item => item.status === 'on_leave') : []
   )
   
   const suspendedEmployees = computed(() => 
-    employees.value.filter(item => item.status === 'suspended')
+    Array.isArray(employees.value) ? employees.value.filter(item => item.status === 'suspended') : []
   )
   
   const terminatedEmployees = computed(() => 
-    employees.value.filter(item => item.status === 'terminated')
+    Array.isArray(employees.value) ? employees.value.filter(item => item.status === 'terminated') : []
   )
 
   // API Functions
@@ -51,7 +51,8 @@ export function useEmployees() {
       const url = params ? `/employees?${params}` : '/employees'
       const response = await axios.get(url)
       
-      employees.value = response.data.data || response.data
+      const data = response.data.data || response.data
+      employees.value = Array.isArray(data) ? data : []
       return response.data
     } catch (err) {
       error.value = err.response?.data?.message || 'Failed to fetch employees'
@@ -174,44 +175,36 @@ export function useEmployees() {
     )
   }
 
-  // Event handlers for WebSocket
-  const handleEmployeeCreated = (employee) => {
+  // Event handlers for WebSocket - accept event and extract data internally
+  const handleEmployeeCreated = (event) => {
+    const employee = event.detail?.employee
+    if (!employee) return
     const exists = employees.value.find(item => item.id === employee.id)
     if (!exists) {
       employees.value.unshift(employee)
     }
   }
 
-  const handleEmployeeUpdated = (employee) => {
+  const handleEmployeeUpdated = (event) => {
+    const employee = event.detail?.employee
+    if (!employee) return
     const index = employees.value.findIndex(item => item.id === employee.id)
     if (index !== -1) {
       employees.value[index] = { ...employees.value[index], ...employee }
     }
   }
 
-  const handleEmployeeDeleted = (employeeId) => {
+  const handleEmployeeDeleted = (event) => {
+    const employeeId = event.detail?.employeeId
+    if (!employeeId) return
     employees.value = employees.value.filter(item => item.id !== employeeId)
   }
 
-  // Setup WebSocket event listeners
+  // Setup WebSocket event listeners - use named handlers
   const setupWebSocketListeners = () => {
-    window.addEventListener('employee-created', (event) => {
-      if (event.detail?.employee) {
-        handleEmployeeCreated(event.detail.employee)
-      }
-    })
-
-    window.addEventListener('employee-updated', (event) => {
-      if (event.detail?.employee) {
-        handleEmployeeUpdated(event.detail.employee)
-      }
-    })
-
-    window.addEventListener('employee-deleted', (event) => {
-      if (event.detail?.employeeId) {
-        handleEmployeeDeleted(event.detail.employeeId)
-      }
-    })
+    window.addEventListener('employee-created', handleEmployeeCreated)
+    window.addEventListener('employee-updated', handleEmployeeUpdated)
+    window.addEventListener('employee-deleted', handleEmployeeDeleted)
   }
 
   // Cleanup WebSocket listeners

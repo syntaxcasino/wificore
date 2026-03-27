@@ -161,7 +161,7 @@
     </PageFooter>
 
     <!-- View History Overlay -->
-    <SlideOverlay v-model="showHistoryOverlay" title="Wallet History" :subtitle="selectedWallet?.username" icon="Wallet" width="lg">
+    <SlideOverlay v-model="showHistoryOverlay" title="Wallet History" :subtitle="selectedWallet?.username" icon="Wallet" width="480px">
       <div v-if="selectedWallet" class="p-6 space-y-4">
         <div class="grid grid-cols-2 gap-4">
           <div><span class="text-xs text-slate-500">Username</span><div class="text-sm font-semibold text-slate-900">{{ selectedWallet.username }}</div></div>
@@ -184,12 +184,19 @@
         <div v-else class="text-sm text-slate-500 text-center py-4">No transaction history available.</div>
       </div>
       <template #footer>
-        <BaseButton @click="showHistoryOverlay = false" variant="ghost">Close</BaseButton>
+        <div class="flex gap-3">
+          <button
+            @click="showHistoryOverlay = false"
+            class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+          >
+            Close
+          </button>
+        </div>
       </template>
     </SlideOverlay>
 
     <!-- Add Balance Overlay -->
-    <SlideOverlay v-model="showAddBalanceOverlay" title="Add Balance" :subtitle="balanceTarget?.username || 'Select a user'" icon="Plus" width="md">
+    <SlideOverlay v-model="showAddBalanceOverlay" title="Add Balance" :subtitle="balanceTarget?.username || 'Select a user'" icon="Plus" width="480px">
       <div class="p-6 space-y-4">
         <div>
           <label class="block text-sm font-medium text-slate-700 mb-1">Amount (KES)</label>
@@ -201,9 +208,20 @@
         </div>
       </div>
       <template #footer>
-        <div class="flex items-center gap-2">
-          <BaseButton @click="submitBalance('credit')" variant="success" :loading="submitting">Add Balance</BaseButton>
-          <BaseButton @click="showAddBalanceOverlay = false" variant="ghost">Cancel</BaseButton>
+        <div class="flex gap-3">
+          <button
+            @click="showAddBalanceOverlay = false"
+            class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+          >
+            Cancel
+          </button>
+          <button
+            @click="submitBalance('credit')"
+            :disabled="submitting"
+            class="flex-1 px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors disabled:opacity-50"
+          >
+            {{ submitting ? 'Adding...' : 'Add Balance' }}
+          </button>
         </div>
       </template>
     </SlideOverlay>
