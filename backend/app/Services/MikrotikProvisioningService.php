@@ -1130,7 +1130,21 @@ SCRIPT;
                 }
 
                 try {
-                    file_put_contents($tempFile, $serviceScript);
+                    // Ensure Unix line endings (LF) and remove BOM if present
+                    $cleanScript = str_replace(["\r\n", "\r"], "\n", $serviceScript);
+                    $cleanScript = preg_replace('/^\xEF\xBB\xBF/', '', $cleanScript); // Remove BOM
+                    file_put_contents($tempFile, $cleanScript);
+                    
+                    // DEBUG: Log first 25 lines of script with line numbers
+                    $lines = explode("\n", $cleanScript);
+                    $debugLines = [];
+                    for ($i = 0; $i < min(25, count($lines)); $i++) {
+                        $debugLines[] = ($i + 1) . ": " . $lines[$i];
+                    }
+                    Log::info('Generated script preview (first 25 lines):', [
+                        'router_id' => $router->id,
+                        'lines' => $debugLines,
+                    ]);
 
                     if ($broadcast) {
                         RouterProvisioningProgress::dispatch(
