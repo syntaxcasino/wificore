@@ -172,7 +172,7 @@ class ZeroConfigHotspotGenerator
         // Create shared bridge and attach all access interfaces
         $script = array_merge($script, [
             "# Hotspot Access Bridge (Mode A)",
-            ":do { :if ([:len [/interface bridge find name=\"{$bridgeName}\"]] = 0) do={ /interface bridge add name=\"{$bridgeName}\" comment=\"hs-br-{$shortId}\" } } on-error={}",
+            ":do { /interface bridge add name=\"{$bridgeName}\" comment=\"hs-br-{$shortId}\" } on-error={}",
             ":do { /interface bridge port remove [/interface bridge port find bridge=\"{$bridgeName}\" comment=\"hs-port-{$shortId}\"] } on-error={}",
         ]);
 
@@ -322,7 +322,7 @@ class ZeroConfigHotspotGenerator
     {
         return [
             "# VLAN Setup",
-            ":if ([:len [/interface vlan find name=\"{$params['interface']}\"]] = 0) do={ /interface vlan add name={$params['interface']} vlan-id={$params['vlan_id']} interface={$params['parent_interface']} comment=\"Hotspot VLAN\" }",
+            ":do { /interface vlan add name={$params['interface']} vlan-id={$params['vlan_id']} interface={$params['parent_interface']} comment=\"Hotspot VLAN\" } on-error={}",
             ""
         ];
     }
@@ -334,7 +334,7 @@ class ZeroConfigHotspotGenerator
 
         return [
             "# IP Addressing",
-            ":if ([:len [/ip address find interface=\"{$iface}\" address~\"^{$params['gateway_ip']}/\"]] = 0) do={ /ip address add address={$params['gateway_ip']}/{$cidr} interface=\"{$iface}\" comment=\"Hotspot Gateway\" }",
+            ":do { /ip address add address={$params['gateway_ip']}/{$cidr} interface=\"{$iface}\" comment=\"Hotspot Gateway\" } on-error={}",
             ""
         ];
     }
@@ -345,7 +345,7 @@ class ZeroConfigHotspotGenerator
         $poolName = "hs-pool-{$sid}";
         return [
             "# IP Pool",
-            ":if ([:len [/ip pool find name=\"{$poolName}\"]] = 0) do={ /ip pool add name={$poolName} ranges={$params['range_start']}-{$params['range_end']} comment=\"hs-{$sid}\" }",
+            ":do { /ip pool add name={$poolName} ranges={$params['range_start']}-{$params['range_end']} comment=\"hs-{$sid}\" } on-error={}",
             ""
         ];
     }
@@ -362,8 +362,8 @@ class ZeroConfigHotspotGenerator
 
         return [
             "# DHCP Server",
-            ":if ([:len [/ip dhcp-server find name=\"{$dhcpName}\"]] = 0) do={ /ip dhcp-server add name={$dhcpName} interface=\"{$iface}\" address-pool={$poolName} lease-time=1h disabled=no authoritative=yes }",
-            ":if ([:len [/ip dhcp-server network find comment~\"hs-net-{$sid}\"]] = 0) do={ /ip dhcp-server network add address={$network}/{$cidr} gateway={$params['gateway_ip']} dns-server=\"{$dns}\" comment=\"hs-net-{$sid}\" }",
+            ":do { /ip dhcp-server add name={$dhcpName} interface=\"{$iface}\" address-pool={$poolName} lease-time=1h disabled=no authoritative=yes } on-error={}",
+            ":do { /ip dhcp-server network add address={$network}/{$cidr} gateway={$params['gateway_ip']} dns-server=\"{$dns}\" comment=\"hs-net-{$sid}\" } on-error={}",
             ""
         ];
     }
@@ -404,7 +404,7 @@ class ZeroConfigHotspotGenerator
         $sec = $params['radius_secret'];
         return [
             "# RADIUS",
-            ":if ([:len [/radius find service=hotspot comment~\"hs-radius-{$sid}\"]] = 0) do={ /radius add service=hotspot address={$rs} secret=\"{$sec}\" authentication-port=1812 accounting-port=1813 timeout=3s comment=\"hs-radius-{$sid}\" }",
+            ":do { /radius add service=hotspot address={$rs} secret=\"{$sec}\" authentication-port=1812 accounting-port=1813 timeout=3s comment=\"hs-radius-{$sid}\" } on-error={}",
             ":do { /ip hotspot profile set [/ip hotspot profile find name=\"{$profile}\"] use-radius=yes } on-error={}",
             ":do { /ip hotspot user remove [/ip hotspot user find] } on-error={}",
             ""
