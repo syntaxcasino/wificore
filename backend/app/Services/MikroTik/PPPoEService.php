@@ -169,7 +169,7 @@ class PPPoEService extends BaseMikroTikService
         // 4. Accept established/related FROM WAN (return traffic)
         // 5. DROP everything from bridge (unauthenticated devices)
         $script[] = "# Forward chain - authentication enforcement";
-        $script[] = ":do { /ip firewall filter remove [find comment~\"WiFiCore PPPoE FW\"]; } on-error={}";
+        $script[] = ":do { /ip firewall filter remove [/ip firewall filter find comment~\"WiFiCore PPPoE FW\"]; } on-error={}";
         // 5. DROP all traffic from bridge (unauthenticated devices cannot pass)
         $script[] = ":do { /ip firewall filter add chain=forward in-interface=\"{$bridgeName}\" action=drop place-before=0 comment=\"WiFiCore PPPoE FW-DROP ({$routerId})\"; } on-error={}";
         // 4. Accept established/related from WAN (return traffic)
