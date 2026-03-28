@@ -130,17 +130,17 @@ class ZeroConfigPPPoEGenerator
         $s[] = "/ppp aaa set use-radius=yes accounting=yes interim-update=5m";
 
         // IP POOL
-        $s[] = ":do { :if ([:len [/ip pool find name=\"$pool\"]] = 0) do={ /ip pool add name=\"$pool\" comment=\"PPPoE-$id\" } } on-error={}";
+        $s[] = ":do { /ip pool add name=\"$pool\" comment=\"PPPoE-$id\" } on-error={}";
         $s[] = ":do { /ip pool set [/ip pool find name=\"$pool\"] ranges={$p['range_start']}-{$p['range_end']} } on-error={}";
 
         // INTERFACE LISTS
-        $s[] = ":do { :if ([:len [/interface list find name=$wan]] = 0) do={ /interface list add name=$wan } } on-error={}";
-        $s[] = ":do { :if ([:len [/interface list find name=$pl]] = 0) do={ /interface list add name=$pl } } on-error={}";
-        $s[] = ":do { :if ([:len [/interface list find name=$pal]] = 0) do={ /interface list add name=$pal } } on-error={}";
-        $s[] = ":do { :if ([:len [/interface list member find list=$wan interface=ether1]] = 0) do={ /interface list member add list=$wan interface=ether1 } } on-error={}";
+        $s[] = ":do { /interface list add name=$wan } on-error={}";
+        $s[] = ":do { /interface list add name=$pl } on-error={}";
+        $s[] = ":do { /interface list add name=$pal } on-error={}";
+        $s[] = ":do { /interface list member add list=$wan interface=ether1 } on-error={}";
 
         // PPP PROFILE — add minimal then set in short chunks
-        $s[] = ":do { :if ([:len [/ppp profile find name=\"$prof\"]] = 0) do={ /ppp profile add name=\"$prof\" comment=\"PPPoE-$id\" } } on-error={}";
+        $s[] = ":do { /ppp profile add name=\"$prof\" comment=\"PPPoE-$id\" } on-error={}";
         $s[] = ":do { /ppp profile set [/ppp profile find name=\"$prof\"] local-address=$gw remote-address=\"$pool\" } on-error={}";
         $s[] = ":do { /ppp profile set [/ppp profile find name=\"$prof\"] dns-server=$dns only-one=yes } on-error={}";
         $s[] = ":do { /ppp profile set [/ppp profile find name=\"$prof\"] interface-list=$pal } on-error={}";
@@ -148,7 +148,7 @@ class ZeroConfigPPPoEGenerator
         $s[] = ":do { /ppp profile set [/ppp profile find name=\"$prof\"] add-default-route=no } on-error={}";
 
         // BRIDGE
-        $s[] = ":do { :if ([:len [/interface bridge find name=\"$bridge\"]] = 0) do={ /interface bridge add name=\"$bridge\" comment=\"PPPoE-$id\" } } on-error={}";
+        $s[] = ":do { /interface bridge add name=\"$bridge\" comment=\"PPPoE-$id\" } on-error={}";
         $s[] = ":do { /interface bridge set [/interface bridge find name=\"$bridge\"] protocol-mode=rstp } on-error={}";
 
         foreach ($p['interfaces'] as $iface) {
@@ -158,19 +158,19 @@ class ZeroConfigPPPoEGenerator
                 $s[] = ":do { /interface vlan remove [/interface vlan find name=\"$access\"]; } on-error={}";
                 $s[] = "/interface vlan add name=\"$access\" vlan-id={$p['vlan_id']} interface=\"$iface\" comment=\"PPPoE-$id\"";
             }
-            $s[] = ":do { :if ([:len [/interface bridge port find bridge=\"$bridge\" interface=\"$access\"]] = 0) do={ /interface bridge port add bridge=\"$bridge\" interface=\"$access\" } } on-error={}";
+            $s[] = ":do { /interface bridge port add bridge=\"$bridge\" interface=\"$access\" } on-error={}";
         }
 
         $s[] = ":do { /ip dhcp-server remove [/ip dhcp-server find interface=\"$bridge\"]; } on-error={}";
 
         // PPPoE SERVER — add minimal then set in short chunks
-        $s[] = ":do { :if ([:len [/interface pppoe-server server find service-name=\"$svc\"]] = 0) do={ /interface pppoe-server server add service-name=\"$svc\" disabled=no } } on-error={}";
+        $s[] = ":do { /interface pppoe-server server add service-name=\"$svc\" disabled=no } on-error={}";
         $s[] = ":do { /interface pppoe-server server set [/interface pppoe-server server find service-name=\"$svc\"] interface=\"$bridge\" } on-error={}";
         $s[] = ":do { /interface pppoe-server server set [/interface pppoe-server server find service-name=\"$svc\"] default-profile=\"$prof\" disabled=no } on-error={}";
         $s[] = ":do { /interface pppoe-server server set [/interface pppoe-server server find service-name=\"$svc\"] authentication=chap,mschap2 } on-error={}";
         $s[] = ":do { /interface pppoe-server server set [/interface pppoe-server server find service-name=\"$svc\"] one-session-per-host=yes keepalive-timeout=30 } on-error={}";
         $s[] = ":do { /interface pppoe-server server set [/interface pppoe-server server find service-name=\"$svc\"] max-mtu=1480 max-mru=1480 } on-error={}";
-        $s[] = ":do { :if ([:len [/interface list member find list=$pl interface=\"$bridge\"]] = 0) do={ /interface list member add list=$pl interface=\"$bridge\" } } on-error={}";
+        $s[] = ":do { /interface list member add list=$pl interface=\"$bridge\" } on-error={}";
 
         // FIREWALL — clean up old rules then re-add
         $s[] = ":do { /ip firewall filter remove [/ip firewall filter find comment~\"PPPoE-$id\"]; } on-error={}";
