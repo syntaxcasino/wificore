@@ -307,6 +307,7 @@ class ZeroConfigHybridGenerator
             "",
             "# Bridge Setup",
             ":do { /interface bridge add name=\"{$bridge}\" protocol-mode=rstp comment=\"hyb-br-{$id}\" } on-error={ :error \"hyb-bridge-fail\" }",
+            ":delay 500ms",
         ];
 
         foreach ($interfaces as $iface) {
