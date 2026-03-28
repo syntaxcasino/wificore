@@ -137,11 +137,9 @@ class ZeroConfigHybridGenerator
             "# VLAN Setup - Traffic Separation",
             ":do { /interface vlan remove [/interface vlan find name=\"vlan-hs-{$hsVlan}\"]; } on-error={}",
             ":do { /interface vlan add name=vlan-hs-{$hsVlan} vlan-id={$hsVlan} interface={$parent} comment=\"hyb-hs-vlan\"; } on-error={ :error \"hyb-hs-vlan-fail\" }",
-            ":if ([:len [/interface vlan find name=\"vlan-hs-{$hsVlan}\"]] = 0) do={ :error \"hyb-hs-vlan-miss\" }",
             "",
             ":do { /interface vlan remove [/interface vlan find name=\"vlan-pp-{$ppVlan}\"]; } on-error={}",
             ":do { /interface vlan add name=vlan-pp-{$ppVlan} vlan-id={$ppVlan} interface={$parent} comment=\"hyb-pp-vlan\"; } on-error={ :error \"hyb-pp-vlan-fail\" }",
-            ":if ([:len [/interface vlan find name=\"vlan-pp-{$ppVlan}\"]] = 0) do={ :error \"hyb-pp-vlan-miss\" }",
             "",
         ];
     }
@@ -167,7 +165,6 @@ class ZeroConfigHybridGenerator
         $s[] = ":do { /ip address add address={$gateway}/{$cidr} interface=\"{$iface}\" comment=\"hyb-hs-gw-{$id}\"; } on-error={ :error \"hyb-hs-ip-fail\" }";
         $s[] = ":do { /ip pool remove [/ip pool find name=\"{$poolName}\"]; } on-error={}";
         $s[] = ":do { /ip pool add name={$poolName} ranges={$pool->range_start}-{$pool->range_end} comment=\"hyb-hs-{$id}\"; } on-error={ :error \"hyb-hs-pool-fail\" }";
-        $s[] = ":if ([:len [/ip pool find name=\"{$poolName}\"]] = 0) do={ :error \"hyb-hs-pool-miss\" }";
         $s[] = ":do { /ip dhcp-server remove [/ip dhcp-server find name=\"{$dhcpName}\"]; } on-error={}";
         $s[] = ":do { /ip dhcp-server add name={$dhcpName} interface=\"{$iface}\" address-pool={$poolName} lease-time=1h disabled=no; } on-error={ :error \"hyb-hs-dhcp-fail\" }";
         $s[] = ":do { /ip dhcp-server network remove [/ip dhcp-server network find comment~\"hyb-hs-net-{$id}\"]; } on-error={}";
@@ -175,10 +172,8 @@ class ZeroConfigHybridGenerator
         $s[] = ":do { /ip hotspot profile remove [/ip hotspot profile find name=\"{$profile}\"]; } on-error={}";
         $s[] = ":do { /ip hotspot profile add name=\"{$profile}\" hotspot-address={$gateway} use-radius=yes html-directory=hotspot http-cookie-lifetime=1d dns-name=hotspot.local; } on-error={ :error \"hyb-hs-prof-fail\" }";
         $s[] = ":do { /ip hotspot profile set [/ip hotspot profile find name=\"{$profile}\"] login-by=http-chap,http-pap; } on-error={}";
-        $s[] = ":if ([:len [/ip hotspot profile find name=\"{$profile}\"]] = 0) do={ :error \"hyb-hs-prof-miss\" }";
         $s[] = ":do { /ip hotspot remove [/ip hotspot find name=\"{$server}\"]; } on-error={}";
         $s[] = ":do { /ip hotspot add name=\"{$server}\" interface=\"{$iface}\" profile=\"{$profile}\" address-pool={$poolName} addresses-per-mac=2 idle-timeout=5m keepalive-timeout=2m disabled=no; } on-error={ :error \"hyb-hs-srv-fail\" }";
-        $s[] = ":if ([:len [/ip hotspot find name=\"{$server}\"]] = 0) do={ :error \"hyb-hs-srv-miss\" }";
         if ($portalHost) {
             $s[] = ":do { /ip hotspot walled-garden remove [/ip hotspot walled-garden find comment=\"hyb-wg-{$id}\"]; } on-error={}";
             $s[] = ":do { /ip hotspot walled-garden add dst-host={$portalHost} action=allow comment=\"hyb-wg-{$id}\"; } on-error={}";
@@ -202,17 +197,14 @@ class ZeroConfigHybridGenerator
         $s           = [];
 
         $s[] = "# PPPoE Config (VLAN {$vlanId})";
-        $s[] = ":do { :if ([:len [/interface list find name={$pal}]] = 0) do={ /interface list add name={$pal} } } on-error={}";
+        $s[] = ":do { /interface list add name={$pal} } on-error={}";
         $s[] = ":do { /ip pool remove [/ip pool find name=\"{$poolName}\"]; } on-error={}";
         $s[] = ":do { /ip pool add name={$poolName} ranges={$pool->range_start}-{$pool->range_end} comment=\"hyb-pp-{$id}\"; } on-error={ :error \"hyb-pp-pool-fail\" }";
-        $s[] = ":if ([:len [/ip pool find name=\"{$poolName}\"]] = 0) do={ :error \"hyb-pp-pool-miss\" }";
         $s[] = ":do { /ppp profile remove [/ppp profile find name=\"{$profile}\"]; } on-error={}";
         $s[] = ":do { /ppp profile add name=\"{$profile}\" local-address={$gateway} remote-address=\"{$poolName}\" dns-server=\"{$dns}\"; } on-error={ :error \"hyb-pp-prof-fail\" }";
         $s[] = ":do { /ppp profile set [/ppp profile find name=\"{$profile}\"] interface-list={$pal}; } on-error={}";
-        $s[] = ":if ([:len [/ppp profile find name=\"{$profile}\"]] = 0) do={ :error \"hyb-pp-prof-miss\" }";
         $s[] = ":do { /interface pppoe-server server remove [/interface pppoe-server server find service-name=\"{$serviceName}\"]; } on-error={}";
         $s[] = ":do { /interface pppoe-server server add service-name=\"{$serviceName}\" interface=\"{$iface}\" default-profile=\"{$profile}\" authentication=pap,chap,mschap2 keepalive-timeout=10 max-mtu=1480 max-mru=1480 disabled=no; } on-error={ :error \"hyb-pp-srv-fail\" }";
-        $s[] = ":if ([:len [/interface pppoe-server server find service-name=\"{$serviceName}\"]] = 0) do={ :error \"hyb-pp-srv-miss\" }";
         $s[] = "";
         return $s;
     }
@@ -309,17 +301,17 @@ class ZeroConfigHybridGenerator
 
         $script = [
             "# Interface Lists",
-            ":if ([:len [/interface list find name=\"LAN\"]] = 0) do={ /interface list add name=LAN comment=\"Local Area Network\" }",
-            ":if ([:len [/interface list find name=\"WAN\"]] = 0) do={ /interface list add name=WAN comment=\"Wide Area Network\" }",
-            ":if ([:len [/interface list member find list=WAN interface=ether1]] = 0) do={ /interface list member add list=WAN interface=ether1 }",
+            ":do { /interface list add name=LAN comment=\"Local Area Network\" } on-error={}",
+            ":do { /interface list add name=WAN comment=\"Wide Area Network\" } on-error={}",
+            ":do { /interface list member add list=WAN interface=ether1 } on-error={}",
             "",
             "# Bridge Setup",
-            ":do { :if ([:len [/interface bridge find name=\"{$bridge}\"]] = 0) do={ /interface bridge add name=\"{$bridge}\" protocol-mode=rstp comment=\"hyb-br-{$id}\" } } on-error={ :error \"hyb-bridge-fail\" }",
+            ":do { /interface bridge add name=\"{$bridge}\" protocol-mode=rstp comment=\"hyb-br-{$id}\" } on-error={ :error \"hyb-bridge-fail\" }",
         ];
 
         foreach ($interfaces as $iface) {
-            $script[] = ":do { :if ([:len [/interface bridge port find bridge=\"{$bridge}\" interface=\"{$iface}\"]] = 0) do={ /interface bridge port add bridge=\"{$bridge}\" interface=\"{$iface}\" comment=\"hyb-port-{$id}\" } } on-error={}";
-            $script[] = ":do { :if ([:len [/interface list member find list=LAN interface=\"{$iface}\"]] = 0) do={ /interface list member add list=LAN interface=\"{$iface}\" } } on-error={}";
+            $script[] = ":do { /interface bridge port add bridge=\"{$bridge}\" interface=\"{$iface}\" comment=\"hyb-port-{$id}\" } on-error={}";
+            $script[] = ":do { /interface list member add list=LAN interface=\"{$iface}\" } on-error={}";
         }
 
         $script[] = "";
@@ -342,7 +334,7 @@ class ZeroConfigHybridGenerator
         $s          = [];
 
         $s[] = "# Hotspot Config (Bridge)";
-        $s[] = ":do { :if ([:len [/ip address find interface=\"{$bridge}\" address~\"^{$gateway}/\"]] = 0) do={ /ip address add address={$gateway}/{$cidr} interface=\"{$bridge}\" comment=\"hyb-hs-gw-{$id}\" } } on-error={}";
+        $s[] = ":do { /ip address add address={$gateway}/{$cidr} interface=\"{$bridge}\" comment=\"hyb-hs-gw-{$id}\" } on-error={}";
         $s[] = ":do { /ip pool remove [/ip pool find name=\"{$poolName}\"]; } on-error={}";
         $s[] = ":do { /ip pool add name=\"{$poolName}\" ranges={$pool->range_start}-{$pool->range_end} comment=\"hyb-hs-{$id}\"; } on-error={ :error \"hyb-hs-pool-fail\" }";
         $s[] = ":do { /ip dhcp-server remove [/ip dhcp-server find name=\"{$dhcpName}\"]; } on-error={}";
@@ -376,7 +368,7 @@ class ZeroConfigHybridGenerator
         $s           = [];
 
         $s[] = "# PPPoE Config (Bridge)";
-        $s[] = ":do { :if ([:len [/interface list find name={$pal}]] = 0) do={ /interface list add name={$pal} } } on-error={}";
+        $s[] = ":do { /interface list add name={$pal} } on-error={}";
         $s[] = ":do { /ip pool remove [/ip pool find name=\"{$poolName}\"]; } on-error={}";
         $s[] = ":do { /ip pool add name=\"{$poolName}\" ranges={$pool->range_start}-{$pool->range_end} comment=\"hyb-pp-{$id}\"; } on-error={ :error \"hyb-pp-pool-fail\" }";
         $s[] = ":do { /ppp profile remove [/ppp profile find name=\"{$profile}\"]; } on-error={}";
