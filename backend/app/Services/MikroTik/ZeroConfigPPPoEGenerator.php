@@ -145,7 +145,6 @@ class ZeroConfigPPPoEGenerator
         $s[] = ":do { /ppp profile set [/ppp profile find name=\"$prof\"] dns-server=$dns only-one=yes } on-error={}";
         $s[] = ":do { /ppp profile set [/ppp profile find name=\"$prof\"] interface-list=$pal } on-error={}";
         $s[] = ":do { /ppp profile set [/ppp profile find name=\"$prof\"] change-tcp-mss=yes use-compression=no } on-error={}";
-        $s[] = ":do { /ppp profile set [/ppp profile find name=\"$prof\"] add-default-route=no } on-error={}";
 
         // BRIDGE
         $s[] = ":do { /interface bridge add name=\"$bridge\" comment=\"PPPoE-$id\" } on-error={}";
