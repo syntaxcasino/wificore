@@ -126,7 +126,7 @@ class ZeroConfigPPPoEGenerator
         // RADIUS
         $s[] = ":do { /radius remove [/radius find comment~\"PPPoE-$id\"]; } on-error={}";
         $s[] = "/radius add service=ppp address=$rs secret=\"$rsec\" timeout=3s comment=\"PPPoE-$id\"";
-        $s[] = "/radius set [find comment=\"PPPoE-$id\"] authentication-port=1812 accounting-port=1813";
+        $s[] = "/radius set [/radius find comment=\"PPPoE-$id\"] authentication-port=1812 accounting-port=1813";
         $s[] = "/ppp aaa set use-radius=yes accounting=yes interim-update=5m";
 
         // IP POOL
