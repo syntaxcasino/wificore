@@ -135,11 +135,11 @@ class ZeroConfigHybridGenerator
 
         return [
             "# VLAN Setup - Traffic Separation",
-            ":do { /interface vlan remove [find name=\"vlan-hs-{$hsVlan}\"]; } on-error={}",
+            ":do { /interface vlan remove [/interface vlan find name=\"vlan-hs-{$hsVlan}\"]; } on-error={}",
             ":do { /interface vlan add name=vlan-hs-{$hsVlan} vlan-id={$hsVlan} interface={$parent} comment=\"hyb-hs-vlan\"; } on-error={ :error \"hyb-hs-vlan-fail\" }",
             ":if ([:len [/interface vlan find name=\"vlan-hs-{$hsVlan}\"]] = 0) do={ :error \"hyb-hs-vlan-miss\" }",
             "",
-            ":do { /interface vlan remove [find name=\"vlan-pp-{$ppVlan}\"]; } on-error={}",
+            ":do { /interface vlan remove [/interface vlan find name=\"vlan-pp-{$ppVlan}\"]; } on-error={}",
             ":do { /interface vlan add name=vlan-pp-{$ppVlan} vlan-id={$ppVlan} interface={$parent} comment=\"hyb-pp-vlan\"; } on-error={ :error \"hyb-pp-vlan-fail\" }",
             ":if ([:len [/interface vlan find name=\"vlan-pp-{$ppVlan}\"]] = 0) do={ :error \"hyb-pp-vlan-miss\" }",
             "",
@@ -163,24 +163,24 @@ class ZeroConfigHybridGenerator
         $s          = [];
 
         $s[] = "# Hotspot Config (VLAN {$vlanId})";
-        $s[] = ":do { /ip address remove [find interface=\"{$iface}\"]; } on-error={}";
+        $s[] = ":do { /ip address remove [/ip address find interface=\"{$iface}\"]; } on-error={}";
         $s[] = ":do { /ip address add address={$gateway}/{$cidr} interface=\"{$iface}\" comment=\"hyb-hs-gw-{$id}\"; } on-error={ :error \"hyb-hs-ip-fail\" }";
-        $s[] = ":do { /ip pool remove [find name=\"{$poolName}\"]; } on-error={}";
+        $s[] = ":do { /ip pool remove [/ip pool find name=\"{$poolName}\"]; } on-error={}";
         $s[] = ":do { /ip pool add name={$poolName} ranges={$pool->range_start}-{$pool->range_end} comment=\"hyb-hs-{$id}\"; } on-error={ :error \"hyb-hs-pool-fail\" }";
         $s[] = ":if ([:len [/ip pool find name=\"{$poolName}\"]] = 0) do={ :error \"hyb-hs-pool-miss\" }";
-        $s[] = ":do { /ip dhcp-server remove [find name=\"{$dhcpName}\"]; } on-error={}";
+        $s[] = ":do { /ip dhcp-server remove [/ip dhcp-server find name=\"{$dhcpName}\"]; } on-error={}";
         $s[] = ":do { /ip dhcp-server add name={$dhcpName} interface=\"{$iface}\" address-pool={$poolName} lease-time=1h disabled=no; } on-error={ :error \"hyb-hs-dhcp-fail\" }";
-        $s[] = ":do { /ip dhcp-server network remove [find comment~\"hyb-hs-net-{$id}\"]; } on-error={}";
+        $s[] = ":do { /ip dhcp-server network remove [/ip dhcp-server network find comment~\"hyb-hs-net-{$id}\"]; } on-error={}";
         $s[] = ":do { /ip dhcp-server network add address={$network}/{$cidr} gateway={$gateway} dns-server=\"{$dns}\" comment=\"hyb-hs-net-{$id}\"; } on-error={ :error \"hyb-hs-net-fail\" }";
-        $s[] = ":do { /ip hotspot profile remove [find name=\"{$profile}\"]; } on-error={}";
+        $s[] = ":do { /ip hotspot profile remove [/ip hotspot profile find name=\"{$profile}\"]; } on-error={}";
         $s[] = ":do { /ip hotspot profile add name=\"{$profile}\" hotspot-address={$gateway} use-radius=yes html-directory=hotspot http-cookie-lifetime=1d dns-name=hotspot.local; } on-error={ :error \"hyb-hs-prof-fail\" }";
-        $s[] = ":do { /ip hotspot profile set [find name=\"{$profile}\"] login-by=http-chap,http-pap; } on-error={}";
+        $s[] = ":do { /ip hotspot profile set [/ip hotspot profile find name=\"{$profile}\"] login-by=http-chap,http-pap; } on-error={}";
         $s[] = ":if ([:len [/ip hotspot profile find name=\"{$profile}\"]] = 0) do={ :error \"hyb-hs-prof-miss\" }";
-        $s[] = ":do { /ip hotspot remove [find name=\"{$server}\"]; } on-error={}";
+        $s[] = ":do { /ip hotspot remove [/ip hotspot find name=\"{$server}\"]; } on-error={}";
         $s[] = ":do { /ip hotspot add name=\"{$server}\" interface=\"{$iface}\" profile=\"{$profile}\" address-pool={$poolName} addresses-per-mac=2 idle-timeout=5m keepalive-timeout=2m disabled=no; } on-error={ :error \"hyb-hs-srv-fail\" }";
         $s[] = ":if ([:len [/ip hotspot find name=\"{$server}\"]] = 0) do={ :error \"hyb-hs-srv-miss\" }";
         if ($portalHost) {
-            $s[] = ":do { /ip hotspot walled-garden remove [find comment=\"hyb-wg-{$id}\"]; } on-error={}";
+            $s[] = ":do { /ip hotspot walled-garden remove [/ip hotspot walled-garden find comment=\"hyb-wg-{$id}\"]; } on-error={}";
             $s[] = ":do { /ip hotspot walled-garden add dst-host={$portalHost} action=allow comment=\"hyb-wg-{$id}\"; } on-error={}";
         }
         $s[] = "";
@@ -203,14 +203,14 @@ class ZeroConfigHybridGenerator
 
         $s[] = "# PPPoE Config (VLAN {$vlanId})";
         $s[] = ":do { :if ([:len [/interface list find name={$pal}]] = 0) do={ /interface list add name={$pal} } } on-error={}";
-        $s[] = ":do { /ip pool remove [find name=\"{$poolName}\"]; } on-error={}";
+        $s[] = ":do { /ip pool remove [/ip pool find name=\"{$poolName}\"]; } on-error={}";
         $s[] = ":do { /ip pool add name={$poolName} ranges={$pool->range_start}-{$pool->range_end} comment=\"hyb-pp-{$id}\"; } on-error={ :error \"hyb-pp-pool-fail\" }";
         $s[] = ":if ([:len [/ip pool find name=\"{$poolName}\"]] = 0) do={ :error \"hyb-pp-pool-miss\" }";
-        $s[] = ":do { /ppp profile remove [find name=\"{$profile}\"]; } on-error={}";
+        $s[] = ":do { /ppp profile remove [/ppp profile find name=\"{$profile}\"]; } on-error={}";
         $s[] = ":do { /ppp profile add name=\"{$profile}\" local-address={$gateway} remote-address=\"{$poolName}\" dns-server=\"{$dns}\"; } on-error={ :error \"hyb-pp-prof-fail\" }";
-        $s[] = ":do { /ppp profile set [find name=\"{$profile}\"] interface-list={$pal}; } on-error={}";
+        $s[] = ":do { /ppp profile set [/ppp profile find name=\"{$profile}\"] interface-list={$pal}; } on-error={}";
         $s[] = ":if ([:len [/ppp profile find name=\"{$profile}\"]] = 0) do={ :error \"hyb-pp-prof-miss\" }";
-        $s[] = ":do { /interface pppoe-server server remove [find service-name=\"{$serviceName}\"]; } on-error={}";
+        $s[] = ":do { /interface pppoe-server server remove [/interface pppoe-server server find service-name=\"{$serviceName}\"]; } on-error={}";
         $s[] = ":do { /interface pppoe-server server add service-name=\"{$serviceName}\" interface=\"{$iface}\" default-profile=\"{$profile}\" authentication=pap,chap,mschap2 keepalive-timeout=10 max-mtu=1480 max-mru=1480 disabled=no; } on-error={ :error \"hyb-pp-srv-fail\" }";
         $s[] = ":if ([:len [/interface pppoe-server server find service-name=\"{$serviceName}\"]] = 0) do={ :error \"hyb-pp-srv-miss\" }";
         $s[] = "";
@@ -228,7 +228,7 @@ class ZeroConfigHybridGenerator
 
         return [
             "# Firewall - VLAN Separation (in-interface scoped)",
-            ":do { /ip firewall filter remove [find comment~\"hyb-fw-{$id}\"]; } on-error={}",
+            ":do { /ip firewall filter remove [/ip firewall filter find comment~\"hyb-fw-{$id}\"]; } on-error={}",
             "/ip firewall filter add chain=forward in-interface={$ppIface} action=drop place-before=0 comment=\"hyb-fw-{$id}-pp-drop\"",
             "/ip firewall filter add chain=forward in-interface={$hsIface} action=drop place-before=0 comment=\"hyb-fw-{$id}-hs-drop\"",
             "/ip firewall filter add chain=forward in-interface={$hsIface} hotspot=auth out-interface-list=WAN action=accept place-before=0 comment=\"hyb-fw-{$id}-hs-inet\"",
@@ -257,7 +257,7 @@ class ZeroConfigHybridGenerator
 
         return [
             "# NAT Rules",
-            ":do { /ip firewall nat remove [find comment~\"hyb-nat-{$id}\"]; } on-error={}",
+            ":do { /ip firewall nat remove [/ip firewall nat find comment~\"hyb-nat-{$id}\"]; } on-error={}",
             ":do { /ip firewall nat add chain=srcnat action=masquerade src-address={$hsNet}/{$hsCidr} out-interface=!{$hsIface} comment=\"hyb-nat-{$id}-hs\"; } on-error={ :error \"hyb-nat-hs-fail\" }",
             ":do { /ip firewall nat add chain=srcnat action=masquerade in-interface-list={$pal} out-interface-list=WAN comment=\"hyb-nat-{$id}-pp\"; } on-error={ :error \"hyb-nat-pp-fail\" }",
             ":do { /ip firewall nat add chain=dstnat action=redirect to-ports=64872 protocol=tcp dst-port=80 in-interface={$hsIface} comment=\"hyb-redir80-{$id}\"; } on-error={ :error \"hyb-redir80-fail\" }",
@@ -343,19 +343,19 @@ class ZeroConfigHybridGenerator
 
         $s[] = "# Hotspot Config (Bridge)";
         $s[] = ":do { :if ([:len [/ip address find interface=\"{$bridge}\" address~\"^{$gateway}/\"]] = 0) do={ /ip address add address={$gateway}/{$cidr} interface=\"{$bridge}\" comment=\"hyb-hs-gw-{$id}\" } } on-error={}";
-        $s[] = ":do { /ip pool remove [find name=\"{$poolName}\"]; } on-error={}";
+        $s[] = ":do { /ip pool remove [/ip pool find name=\"{$poolName}\"]; } on-error={}";
         $s[] = ":do { /ip pool add name=\"{$poolName}\" ranges={$pool->range_start}-{$pool->range_end} comment=\"hyb-hs-{$id}\"; } on-error={ :error \"hyb-hs-pool-fail\" }";
-        $s[] = ":do { /ip dhcp-server remove [find name=\"{$dhcpName}\"]; } on-error={}";
+        $s[] = ":do { /ip dhcp-server remove [/ip dhcp-server find name=\"{$dhcpName}\"]; } on-error={}";
         $s[] = ":do { /ip dhcp-server add name=\"{$dhcpName}\" interface=\"{$bridge}\" address-pool=\"{$poolName}\" lease-time=1h disabled=no; } on-error={ :error \"hyb-hs-dhcp-fail\" }";
-        $s[] = ":do { /ip dhcp-server network remove [find comment~\"hyb-hs-net-{$id}\"]; } on-error={}";
+        $s[] = ":do { /ip dhcp-server network remove [/ip dhcp-server network find comment~\"hyb-hs-net-{$id}\"]; } on-error={}";
         $s[] = ":do { /ip dhcp-server network add address={$network}/{$cidr} gateway={$gateway} dns-server=\"{$dns}\" comment=\"hyb-hs-net-{$id}\"; } on-error={ :error \"hyb-hs-net-fail\" }";
-        $s[] = ":do { /ip hotspot profile remove [find name=\"{$profile}\"]; } on-error={}";
+        $s[] = ":do { /ip hotspot profile remove [/ip hotspot profile find name=\"{$profile}\"]; } on-error={}";
         $s[] = ":do { /ip hotspot profile add name=\"{$profile}\" hotspot-address={$gateway} use-radius=yes html-directory=hotspot http-cookie-lifetime=1d dns-name=hotspot.local; } on-error={ :error \"hyb-hs-prof-fail\" }";
-        $s[] = ":do { /ip hotspot profile set [find name=\"{$profile}\"] login-by=http-chap,http-pap; } on-error={}";
-        $s[] = ":do { /ip hotspot remove [find name=\"{$server}\"]; } on-error={}";
+        $s[] = ":do { /ip hotspot profile set [/ip hotspot profile find name=\"{$profile}\"] login-by=http-chap,http-pap; } on-error={}";
+        $s[] = ":do { /ip hotspot remove [/ip hotspot find name=\"{$server}\"]; } on-error={}";
         $s[] = ":do { /ip hotspot add name=\"{$server}\" interface=\"{$bridge}\" profile=\"{$profile}\" address-pool=\"{$poolName}\" addresses-per-mac=2 idle-timeout=5m keepalive-timeout=2m disabled=no; } on-error={ :error \"hyb-hs-srv-fail\" }";
         if ($portalHost) {
-            $s[] = ":do { /ip hotspot walled-garden remove [find comment=\"hyb-wg-{$id}\"]; } on-error={}";
+            $s[] = ":do { /ip hotspot walled-garden remove [/ip hotspot walled-garden find comment=\"hyb-wg-{$id}\"]; } on-error={}";
             $s[] = ":do { /ip hotspot walled-garden add dst-host={$portalHost} action=allow comment=\"hyb-wg-{$id}\"; } on-error={}";
         }
         $s[] = "";
@@ -377,12 +377,12 @@ class ZeroConfigHybridGenerator
 
         $s[] = "# PPPoE Config (Bridge)";
         $s[] = ":do { :if ([:len [/interface list find name={$pal}]] = 0) do={ /interface list add name={$pal} } } on-error={}";
-        $s[] = ":do { /ip pool remove [find name=\"{$poolName}\"]; } on-error={}";
+        $s[] = ":do { /ip pool remove [/ip pool find name=\"{$poolName}\"]; } on-error={}";
         $s[] = ":do { /ip pool add name=\"{$poolName}\" ranges={$pool->range_start}-{$pool->range_end} comment=\"hyb-pp-{$id}\"; } on-error={ :error \"hyb-pp-pool-fail\" }";
-        $s[] = ":do { /ppp profile remove [find name=\"{$profile}\"]; } on-error={}";
+        $s[] = ":do { /ppp profile remove [/ppp profile find name=\"{$profile}\"]; } on-error={}";
         $s[] = ":do { /ppp profile add name=\"{$profile}\" local-address={$gateway} remote-address=\"{$poolName}\" dns-server=\"{$dns}\"; } on-error={ :error \"hyb-pp-prof-fail\" }";
-        $s[] = ":do { /ppp profile set [find name=\"{$profile}\"] interface-list={$pal}; } on-error={}";
-        $s[] = ":do { /interface pppoe-server server remove [find service-name=\"{$serviceName}\"]; } on-error={}";
+        $s[] = ":do { /ppp profile set [/ppp profile find name=\"{$profile}\"] interface-list={$pal}; } on-error={}";
+        $s[] = ":do { /interface pppoe-server server remove [/interface pppoe-server server find service-name=\"{$serviceName}\"]; } on-error={}";
         $s[] = ":do { /interface pppoe-server server add service-name=\"{$serviceName}\" interface=\"{$bridge}\" default-profile=\"{$profile}\" authentication=pap,chap,mschap2 keepalive-timeout=10 max-mtu=1480 max-mru=1480 disabled=no; } on-error={ :error \"hyb-pp-srv-fail\" }";
         $s[] = "";
         return $s;
@@ -396,7 +396,7 @@ class ZeroConfigHybridGenerator
 
         return [
             "# Firewall - Bridge Mode (in-interface scoped)",
-            ":do { /ip firewall filter remove [find comment~\"hyb-fw-{$id}\"]; } on-error={}",
+            ":do { /ip firewall filter remove [/ip firewall filter find comment~\"hyb-fw-{$id}\"]; } on-error={}",
             "/ip firewall filter add chain=forward in-interface=\"{$bridge}\" action=drop place-before=0 comment=\"hyb-fw-{$id}-drop\"",
             "/ip firewall filter add chain=forward in-interface=\"{$bridge}\" hotspot=auth out-interface-list=WAN action=accept place-before=0 comment=\"hyb-fw-{$id}-hs-inet\"",
             "/ip firewall filter add chain=forward in-interface-list={$pal} out-interface-list=WAN action=accept place-before=0 comment=\"hyb-fw-{$id}-pp-inet\"",
@@ -421,7 +421,7 @@ class ZeroConfigHybridGenerator
 
         return [
             "# NAT Rules (Bridge)",
-            ":do { /ip firewall nat remove [find comment~\"hyb-nat-{$id}\"]; } on-error={}",
+            ":do { /ip firewall nat remove [/ip firewall nat find comment~\"hyb-nat-{$id}\"]; } on-error={}",
             ":do { /ip firewall nat add chain=srcnat action=masquerade src-address={$hsNet}/{$hsCidr} out-interface-list=WAN comment=\"hyb-nat-{$id}-hs\"; } on-error={ :error \"hyb-nat-hs-fail\" }",
             ":do { /ip firewall nat add chain=srcnat action=masquerade in-interface-list={$pal} out-interface-list=WAN comment=\"hyb-nat-{$id}-pp\"; } on-error={ :error \"hyb-nat-pp-fail\" }",
             ":do { /ip firewall nat add chain=dstnat action=redirect to-ports=64872 protocol=tcp dst-port=80 in-interface=\"{$bridge}\" comment=\"hyb-redir80-{$id}\"; } on-error={ :error \"hyb-redir80-fail\" }",
@@ -442,13 +442,13 @@ class ZeroConfigHybridGenerator
 
         return [
             "# RADIUS - RADIUS-ONLY AAA",
-            ":do { /radius remove [find service=hotspot comment~\"hyb-hs-rad-{$id}\"]; } on-error={}",
+            ":do { /radius remove [/radius find service=hotspot comment~\"hyb-hs-rad-{$id}\"]; } on-error={}",
             ":do { /radius add service=hotspot address={$rs} secret=\"{$sec}\" authentication-port=1812 accounting-port=1813 timeout=3s comment=\"hyb-hs-rad-{$id}\"; } on-error={ :error \"hyb-hs-rad-fail\" }",
-            ":do { /radius remove [find service=ppp comment~\"hyb-pp-rad-{$id}\"]; } on-error={}",
+            ":do { /radius remove [/radius find service=ppp comment~\"hyb-pp-rad-{$id}\"]; } on-error={}",
             ":do { /radius add service=ppp address={$rs} secret=\"{$sec}\" authentication-port=1812 accounting-port=1813 timeout=3s comment=\"hyb-pp-rad-{$id}\"; } on-error={ :error \"hyb-pp-rad-fail\" }",
             "/ppp aaa set use-radius=yes accounting=yes interim-update=5m",
-            ":do { /ip hotspot user remove [find] } on-error={}",
-            ":do { /ppp secret remove [find] } on-error={}",
+            ":do { /ip hotspot user remove [/ip hotspot user find] } on-error={}",
+            ":do { /ppp secret remove [/ppp secret find] } on-error={}",
             "",
         ];
     }
@@ -462,7 +462,7 @@ class ZeroConfigHybridGenerator
 
         return [
             "# Management Input Rules",
-            ":do { /ip firewall filter remove [find comment~\"hyb-mgmt-{$id}\"]; } on-error={}",
+            ":do { /ip firewall filter remove [/ip firewall filter find comment~\"hyb-mgmt-{$id}\"]; } on-error={}",
             "/ip firewall filter add chain=input protocol=tcp dst-port={$mport} action=drop place-before=0 comment=\"hyb-mgmt-{$id}-drop\"",
             "/ip firewall filter add chain=input protocol=udp dst-port=161 src-address={$rs} action=accept place-before=0 comment=\"hyb-mgmt-{$id}-snmp\"",
             "/ip firewall filter add chain=input protocol=tcp dst-port={$mport} src-address={$mgmt} action=accept place-before=0 comment=\"hyb-mgmt-{$id}-allow\"",
@@ -475,7 +475,7 @@ class ZeroConfigHybridGenerator
     {
         return [
             "# Global Default Drop",
-            ":do { /ip firewall filter remove [find comment~\"GLOBAL-DEFAULT-DROP-\"]; } on-error={}",
+            ":do { /ip firewall filter remove [/ip firewall filter find comment~\"GLOBAL-DEFAULT-DROP-\"]; } on-error={}",
             "/ip firewall filter add chain=input action=drop comment=\"GLOBAL-DEFAULT-DROP-IN\"",
             "/ip firewall filter add chain=forward action=drop comment=\"GLOBAL-DEFAULT-DROP-FWD\"",
             "",

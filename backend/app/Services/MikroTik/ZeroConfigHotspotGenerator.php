@@ -122,7 +122,7 @@ class ZeroConfigHotspotGenerator
                 $vlanIface = "vlan-hotspot-{$vlanId}-{$ifaceName}";
                 $script = array_merge($script, [
                     "# VLAN Setup",
-                    ":do { /interface vlan remove [find name=\"{$vlanIface}\"] } on-error={}",
+                    ":do { /interface vlan remove [/interface vlan find name=\"{$vlanIface}\"] } on-error={}",
                     "/interface vlan add name=\"{$vlanIface}\" vlan-id={$vlanId} interface=\"{$ifaceName}\" comment=\"Hotspot VLAN ({$router->id})\"",
                     ""
                 ]);
@@ -173,13 +173,13 @@ class ZeroConfigHotspotGenerator
         $script = array_merge($script, [
             "# Hotspot Access Bridge (Mode A)",
             ":do { :if ([:len [/interface bridge find name=\"{$bridgeName}\"]] = 0) do={ /interface bridge add name=\"{$bridgeName}\" comment=\"hs-br-{$shortId}\" } } on-error={}",
-            ":do { /interface bridge port remove [find bridge=\"{$bridgeName}\" comment=\"hs-port-{$shortId}\"] } on-error={}",
+            ":do { /interface bridge port remove [/interface bridge port find bridge=\"{$bridgeName}\" comment=\"hs-port-{$shortId}\"] } on-error={}",
         ]);
 
         foreach ($accessIfaces as $iface) {
             $script[] = ":if ([:len [/interface find name=\"{$iface}\"]] = 0) do={ :error \"hs-iface-miss-{$iface}\" }";
             $script[] = ":if ([:len [/interface wireguard find name=\"{$iface}\"]] > 0) do={ :error \"hs-wg-refuse-{$iface}\" }";
-            $script[] = ":do { /interface bridge port remove [find bridge=\"{$bridgeName}\" interface=\"{$iface}\"] } on-error={}";
+            $script[] = ":do { /interface bridge port remove [/interface bridge port find bridge=\"{$bridgeName}\" interface=\"{$iface}\"] } on-error={}";
             $script[] = ":do { /interface bridge port add bridge=\"{$bridgeName}\" interface=\"{$iface}\" comment=\"hs-port-{$shortId}\" } on-error={ :error \"hs-port-fail-{$iface}\" }";
         }
 
@@ -301,7 +301,7 @@ class ZeroConfigHotspotGenerator
         return [
             "# Bridge Setup (Optional)",
             ":do { /interface bridge add name=\"{$bridge}\" comment=\"Hotspot Bridge\" } on-error={}",
-            ":do { /interface bridge port remove [find bridge=\"{$bridge}\" interface=\"{$iface}\"] } on-error={}",
+            ":do { /interface bridge port remove [/interface bridge port find bridge=\"{$bridge}\" interface=\"{$iface}\"] } on-error={}",
             ":do { /interface bridge port add bridge=\"{$bridge}\" interface=\"{$iface}\" comment=\"Hotspot Access Port\" } on-error={}",
             ""
         ];
@@ -311,7 +311,7 @@ class ZeroConfigHotspotGenerator
     {
         return [
             "# Global Default Drop",
-            ":do { /ip firewall filter remove [find comment~\"GLOBAL-DEFAULT-DROP-\"]; } on-error={}",
+            ":do { /ip firewall filter remove [/ip firewall filter find comment~\"GLOBAL-DEFAULT-DROP-\"]; } on-error={}",
             "/ip firewall filter add chain=input action=drop comment=\"GLOBAL-DEFAULT-DROP-IN\"",
             "/ip firewall filter add chain=forward action=drop comment=\"GLOBAL-DEFAULT-DROP-FWD\"",
             ""
@@ -383,14 +383,14 @@ class ZeroConfigHotspotGenerator
 
         return array_values(array_filter([
             "# Hotspot Profile",
-            ":do { /ip hotspot profile remove [find name=\"{$profile}\"] } on-error={}",
+            ":do { /ip hotspot profile remove [/ip hotspot profile find name=\"{$profile}\"] } on-error={}",
             ":do { /ip hotspot profile add name=\"{$profile}\" hotspot-address={$params['gateway_ip']} login-by=http-chap,http-pap use-radius=yes html-directory=hotspot dns-name=hotspot.local http-cookie-lifetime=1d } on-error={}",
             ($portalUrl ? ":do { /file set hotspot/login.html contents=\"{$portalUrl}\" } on-error={}" : null),
             "# Hotspot Server",
-            ":do { /ip hotspot remove [find name=\"{$server}\"] } on-error={}",
+            ":do { /ip hotspot remove [/ip hotspot find name=\"{$server}\"] } on-error={}",
             ":do { /ip hotspot add name=\"{$server}\" interface=\"{$iface}\" profile=\"{$profile}\" address-pool={$poolName} addresses-per-mac=2 idle-timeout=5m keepalive-timeout=2m disabled=no } on-error={}",
             "# User Profile",
-            ":do { /ip hotspot user profile remove [find name=\"{$userProf}\"] } on-error={}",
+            ":do { /ip hotspot user profile remove [/ip hotspot user profile find name=\"{$userProf}\"] } on-error={}",
             ":do { /ip hotspot user profile add name=\"{$userProf}\" add-mac-cookie=yes shared-users=1 session-timeout=6h } on-error={}",
             ""
         ], fn ($line) => $line !== null && $line !== ''));
@@ -405,8 +405,8 @@ class ZeroConfigHotspotGenerator
         return [
             "# RADIUS",
             ":if ([:len [/radius find service=hotspot comment~\"hs-radius-{$sid}\"]] = 0) do={ /radius add service=hotspot address={$rs} secret=\"{$sec}\" authentication-port=1812 accounting-port=1813 timeout=3s comment=\"hs-radius-{$sid}\" }",
-            ":do { /ip hotspot profile set [find name=\"{$profile}\"] use-radius=yes } on-error={}",
-            ":do { /ip hotspot user remove [find] } on-error={}",
+            ":do { /ip hotspot profile set [/ip hotspot profile find name=\"{$profile}\"] use-radius=yes } on-error={}",
+            ":do { /ip hotspot user remove [/ip hotspot user find] } on-error={}",
             ""
         ];
     }
@@ -418,7 +418,7 @@ class ZeroConfigHotspotGenerator
 
         return [
             "# Firewall - Auth Enforcement (in-interface scoped)",
-            ":do { /ip firewall filter remove [find comment~\"hs-fw-{$sid}\"] } on-error={}",
+            ":do { /ip firewall filter remove [/ip firewall filter find comment~\"hs-fw-{$sid}\"] } on-error={}",
             "/ip firewall filter add chain=forward in-interface={$iface} action=drop place-before=0 comment=\"hs-fw-{$sid}-drop\"",
             "/ip firewall filter add chain=forward in-interface={$iface} hotspot=auth out-interface-list=WAN action=accept place-before=0 comment=\"hs-fw-{$sid}-inet\"",
             "/ip firewall filter add chain=forward in-interface={$iface} connection-state=invalid action=drop place-before=0 comment=\"hs-fw-{$sid}-inv\"",
@@ -437,7 +437,7 @@ class ZeroConfigHotspotGenerator
 
         return [
             "# Management Input Rules",
-            ":do { /ip firewall filter remove [find comment~\"hs-mgmt-{$sid}\"]; } on-error={}",
+            ":do { /ip firewall filter remove [/ip firewall filter find comment~\"hs-mgmt-{$sid}\"]; } on-error={}",
             "/ip firewall filter add chain=input protocol=tcp dst-port={$mport} action=drop place-before=0 comment=\"hs-mgmt-{$sid}-drop\"",
             "/ip firewall filter add chain=input protocol=udp dst-port=161 src-address={$rs} action=accept place-before=0 comment=\"hs-mgmt-{$sid}-snmp\"",
             "/ip firewall filter add chain=input protocol=tcp dst-port={$mport} src-address={$mgmt} action=accept place-before=0 comment=\"hs-mgmt-{$sid}-allow\"",
@@ -455,7 +455,7 @@ class ZeroConfigHotspotGenerator
 
         return [
             "# NAT Rules",
-            ":do { /ip firewall nat remove [find comment=\"hs-nat-{$sid}\"] } on-error={}",
+            ":do { /ip firewall nat remove [/ip firewall nat find comment=\"hs-nat-{$sid}\"] } on-error={}",
             ":do { /ip firewall nat add chain=srcnat action=masquerade src-address={$network}/{$cidr} out-interface-list=WAN comment=\"hs-nat-{$sid}\" } on-error={}",
             ":do { /ip firewall nat add chain=dstnat action=redirect to-ports=64872 protocol=tcp dst-port=80 in-interface={$iface} comment=\"hs-redir80-{$sid}\" } on-error={}",
             ":do { /ip firewall nat add chain=dstnat action=redirect to-ports=64875 protocol=tcp dst-port=443 in-interface={$iface} comment=\"hs-redir443-{$sid}\" } on-error={}",
@@ -481,10 +481,10 @@ class ZeroConfigHotspotGenerator
         return [
             "# Walled Garden - Allow Portal Access Without Authentication",
             "# CRITICAL: Users must access portal to view packages and make payments",
-            ":do { /ip hotspot walled-garden remove [find comment=\"WiFiCore Portal\"] } on-error={}",
+            ":do { /ip hotspot walled-garden remove [/ip hotspot walled-garden find comment=\"WiFiCore Portal\"] } on-error={}",
             ":do { /ip hotspot walled-garden add dst-host={$portalHost} action=allow comment=\"WiFiCore Portal\" } on-error={}",
             "# Allow API endpoints for package loading and payment",
-            ":do { /ip hotspot walled-garden ip remove [find comment=\"WiFiCore API\"] } on-error={}",
+            ":do { /ip hotspot walled-garden ip remove [/ip hotspot walled-garden ip find comment=\"WiFiCore API\"] } on-error={}",
             ""
         ];
     }
