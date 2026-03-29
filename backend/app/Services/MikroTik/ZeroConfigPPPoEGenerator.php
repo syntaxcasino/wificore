@@ -119,9 +119,29 @@ class ZeroConfigPPPoEGenerator
         $mgmt    = $p['management_subnet'];
         $mports  = '22,8291,8728,8729';
 
+        // Device-aware deployment profiles
+        $deviceModel = $p['device_model'] ?? $p['router_model'] ?? '';
+        $isLowEnd = $this->isLowEndDevice($deviceModel);
+        
+        // Delay profiles (in milliseconds for :delay command)
+        $delays = $isLowEnd ? [
+            'bridge' => '2s',
+            'interface_batch' => '1s',
+            'firewall' => '2s',
+            'between_sections' => '2s',
+            'final' => '2s',
+        ] : [
+            'bridge' => '200ms',
+            'interface_batch' => null, // No delay
+            'firewall' => '100ms',
+            'between_sections' => '100ms',
+            'final' => '100ms',
+        ];
+        
+        $profileName = $isLowEnd ? 'SLOW' : 'FAST';
         $s = [];
 
-        $s[] = "/log info \"PPPoE-$id-START\"";
+        $s[] = "/log info \"PPPoE-$id-START [$profileName profile for: $deviceModel]\"";
 
         // RADIUS
         $s[] = ":do { /radius remove [/radius find comment~\"PPPoE-$id\"]; } on-error={}";
@@ -150,10 +170,12 @@ class ZeroConfigPPPoEGenerator
         $s[] = ":do { /interface bridge port remove [/interface bridge port find bridge=\"$bridge\"]; } on-error={ /log info \"PPPoE-$id: WARN - Failed to remove bridge ports\" }";
         $s[] = ":do { /interface bridge remove [/interface bridge find name=\"$bridge\"]; } on-error={ /log info \"PPPoE-$id: WARN - Failed to remove bridge\" }";
         $s[] = ":do { /interface bridge add name=\"$bridge\" comment=\"PPPoE-$id\" } on-error={ /log info \"PPPoE-$id: WARN - Failed to add bridge\" }";
-        $s[] = ":delay 2s";
+        if ($delays['bridge']) {
+            $s[] = ":delay {$delays['bridge']}";
+        }
         $s[] = ":do { /interface bridge set [/interface bridge find name=\"$bridge\"] protocol-mode=rstp } on-error={ /log info \"PPPoE-$id: WARN - Failed to set bridge protocol\" }";
 
-        // Add ALL interfaces to bridge (silent continuation with logging) - with delays for low-end devices
+        // Add ALL interfaces to bridge (silent continuation with logging)
         $interfaceCount = count($p['interfaces']);
         $currentInterface = 0;
         foreach ($p['interfaces'] as $iface) {
@@ -164,10 +186,10 @@ class ZeroConfigPPPoEGenerator
                 $s[] = "/interface vlan add name=\"$access\" vlan-id={$p['vlan_id']} interface=\"$iface\" comment=\"PPPoE-$id\"";
             }
             $s[] = ":do { /interface bridge port add bridge=\"$bridge\" interface=\"$access\" } on-error={ /log info \"PPPoE-$id: WARN - Failed to add interface $access to bridge\" }";
-            // Add delay after every 2 interfaces on low-end devices
+            // Add delay after every 2 interfaces on low-end devices only
             $currentInterface++;
-            if ($currentInterface % 2 === 0 && $currentInterface < $interfaceCount) {
-                $s[] = ":delay 1s";
+            if ($isLowEnd && $currentInterface % 2 === 0 && $currentInterface < $interfaceCount) {
+                $s[] = ":delay {$delays['interface_batch']}";
             }
         }
 
@@ -195,7 +217,7 @@ class ZeroConfigPPPoEGenerator
         $s[] = "/ip firewall filter add chain=input in-interface=\"$bridge\" action=drop comment=\"PPPoE-$id-DROP-IN\"";
         $s[] = "/ip firewall filter add chain=input protocol=tcp dst-port=$mports src-address=!$mgmt action=drop comment=\"PPPoE-$id-MGMT-DROP\"";
         
-        $s[] = ":delay 2s"; // CPU breathing room - longer for hAP lite
+        $s[] = ":delay {$delays['firewall']}"; // CPU breathing room
         
         // FORWARD rules (append instead of insert)
         $s[] = "/ip firewall filter add chain=forward in-interface-list=$wan out-interface-list=$pal connection-state=established,related action=accept comment=\"pp-wan-est-$id\"";
@@ -204,14 +226,14 @@ class ZeroConfigPPPoEGenerator
         $s[] = "/ip firewall filter add chain=forward in-interface-list=$pal out-interface-list=$wan action=accept comment=\"PPPoE-$id-INET\"";
         $s[] = "/ip firewall filter add chain=forward in-interface=\"$bridge\" action=drop comment=\"PPPoE-$id-BLOCK-UNAUTH\"";
         
-        $s[] = ":delay 200ms"; // CPU breathing room
+        $s[] = ":delay {$delays['between_sections']}";
         
         // GLOBAL DEFAULT DROP (at end - less critical for order)
         $s[] = ":do { /ip firewall filter remove [/ip firewall filter find comment~\"GLOBAL-DEFAULT-DROP-\"]; } on-error={}";
         $s[] = "/ip firewall filter add chain=input action=drop comment=\"GLOBAL-DEFAULT-DROP-IN\"";
         $s[] = "/ip firewall filter add chain=forward action=drop comment=\"GLOBAL-DEFAULT-DROP-FWD\"";
         
-        $s[] = ":delay 2s";
+        $s[] = ":delay {$delays['between_sections']}";
 
         // NAT
         $s[] = ":do { /ip firewall nat remove [/ip firewall nat find comment=\"PPPoE-$id\"]; } on-error={}";
@@ -220,9 +242,9 @@ class ZeroConfigPPPoEGenerator
         // CONNECTION TRACKING
         $s[] = "/ip firewall connection tracking set tcp-established-timeout=1h udp-timeout=30s";
         
-        $s[] = ":delay 2s"; // Final breathing room before completion
+        $s[] = ":delay {$delays['final']}"; // Final breathing room before completion
 
-        $s[] = "/log info \"PPPoE-$id-DONE\"";
+        $s[] = "/log info \"PPPoE-$id-DONE [$profileName profile]\"";
 
         return implode("\n", $s);
     }
@@ -236,6 +258,31 @@ class ZeroConfigPPPoEGenerator
         // Use standard build but with low-resource flag
         $params['optimized'] = true;
         return $this->buildConfiguration($params);
+    }
+
+    private function isLowEndDevice(string $model): bool
+    {
+        if (empty($model)) {
+            return false; // Default to fast profile if unknown
+        }
+        
+        $lowEndPatterns = [
+            'hAP ac lite', 'hAP lite', 'hAP mini', 'hAP 2n',
+            'cAP lite', 'cAP ac', 'wAP', 'wsAP',
+            'OmniTIK 5 PoE ac', 'mAP',
+            'RB941', 'RB951', 'RB952', 'RB750',
+            'LDF', 'QRT', 'SXT',
+            'grooveA', 'Metal',
+        ];
+        
+        $modelLower = strtolower($model);
+        foreach ($lowEndPatterns as $pattern) {
+            if (stripos($modelLower, strtolower($pattern)) !== false) {
+                return true;
+            }
+        }
+        
+        return false;
     }
 
     private function getSafeGatewayIp(string $cidr, ?string $gw): string
