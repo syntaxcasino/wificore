@@ -1639,8 +1639,8 @@ SCRIPT;
         return <<<EOT
 /ip address add address={$router->ip_address} interface=ether2
 /ip service set api disabled=no port={$router->port}
-/ip service enable api-ssl
-/ip service set api-ssl address=10.0.0.0/8
+:do { /ip service set api-ssl disabled=no } on-error={ /log info "api-ssl enable failed or already enabled" }
+:do { /ip service set api-ssl address=10.0.0.0/8 } on-error={ /log info "api-ssl address set failed" }
 /user add name={$router->username} password="{$decryptedPassword}" group=full
 /system identity set name="{$router->name}"
 /system note set note="Managed by Traidnet Solution LTD"
