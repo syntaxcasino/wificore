@@ -414,7 +414,7 @@ import { useConfirmStore } from '@/stores/confirm'
 const confirmStore = useConfirmStore()
 
 // Data management
-const { users, loading, error, activeUsers, inactiveUsers, totalUsers, fetchUsers, createUser, updateUser, viewPassword, resetPassword, toggleUserStatus } = usePppoeUsers()
+const { users, loading, error, activeUsers, inactiveUsers, totalUsers, fetchUsers, createUser, updateUser, viewPassword, resetPassword, toggleUserStatus, subscribeToWebSocket, unsubscribeFromWebSocket } = usePppoeUsers()
 const { packages, fetchPackages } = usePackages()
 const { routers, fetchRouters } = useRouters()
 
@@ -722,11 +722,13 @@ onMounted(() => {
   fetchUsers()
   fetchPackages()
   fetchRouters()
+  subscribeToWebSocket()
   document.addEventListener('click', handleClickOutside)
   document.addEventListener('keydown', handleKeydown)
 })
 
 onUnmounted(() => {
+  unsubscribeFromWebSocket()
   document.removeEventListener('click', handleClickOutside)
   document.removeEventListener('keydown', handleKeydown)
 })
