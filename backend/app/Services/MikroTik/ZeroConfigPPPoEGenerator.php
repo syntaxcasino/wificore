@@ -147,6 +147,7 @@ class ZeroConfigPPPoEGenerator
         $s[] = ":do { /ppp profile set [/ppp profile find name=\"$prof\"] change-tcp-mss=yes use-compression=no } on-error={}";
 
         // BRIDGE
+        $s[] = ":do { /interface bridge remove [/interface bridge find name=\"$bridge\"]; } on-error={}";
         $s[] = ":do { /interface bridge add name=\"$bridge\" comment=\"PPPoE-$id\" } on-error={ :error \"pppoe-bridge-fail\" }";
         $s[] = ":delay 500ms";
         $s[] = ":do { /interface bridge set [/interface bridge find name=\"$bridge\"] protocol-mode=rstp } on-error={}";
