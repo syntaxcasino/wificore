@@ -586,10 +586,7 @@ SCRIPT;
         // Use provisioning service if enabled for this router
         if ($this->shouldUseProvisioningService($router)) {
             try {
-                Log::info('Verifying connectivity via provisioning service', [
-                    'router_id' => $router->id
-                ]);
-                
+                // Reduced: Removed routine provisioning service log
                 $result = $this->provisioningClient->verifyConnectivity(
                     $router,
                     $router->tenant_id
@@ -608,15 +605,7 @@ SCRIPT;
         
         // Original direct SSH implementation (fallback)
         try {
-            Log::info('Verifying connectivity via SSH:', [
-                'router_id' => $router->id,
-                'ip_address' => $router->ip_address,
-                'vpn_ip' => $router->vpn_ip,
-                'username' => $router->username,
-                'port' => $router->port,
-            ]);
-
-            // Use short timeout for connectivity check
+            // Reduced: Removed verbose SSH connection details log
             $ssh = new SshExecutor($router, 10);
             $ssh->connect();
 
@@ -637,12 +626,7 @@ SCRIPT;
                 $interfacesCount = (int) trim($interfacesOutput);
             }
 
-            Log::info('Connectivity verified successfully via SSH:', [
-                'router_id' => $router->id,
-                'model' => $model,
-                'os_version' => $osVersion,
-                'interfaces_count' => $interfacesCount,
-            ]);
+            // Reduced: Removed verbose connectivity success log
 
             return [
                 'status' => 'connected',
@@ -1292,28 +1276,16 @@ SCRIPT;
                                 // WireGuard peers still exist — check for handshake
                                 $hasHandshake = str_contains($postWgOutput, 'last-handshake');
                                 
-                                Log::info('Post-deployment VPN health check', [
-                                    'router_id' => $router->id,
-                                    'vpn_attempt' => $vpnAttempt,
-                                    'peers_exist' => true,
-                                    'has_handshake' => $hasHandshake,
-                                ]);
+                                // Reduced: Removed verbose VPN health check log
                                 
                                 $vpnHealthy = true;
                                 break;
                             }
                             
-                            Log::warning('Post-deployment VPN check: no WireGuard peers found', [
-                                'router_id' => $router->id,
-                                'vpn_attempt' => $vpnAttempt,
-                            ]);
+                            // Reduced: Removed verbose no peers log
                             
                         } catch (\Exception $vpnCheckError) {
-                            Log::warning('Post-deployment VPN health check failed', [
-                                'router_id' => $router->id,
-                                'vpn_attempt' => $vpnAttempt,
-                                'error' => $vpnCheckError->getMessage(),
-                            ]);
+                            // Reduced: Removed verbose VPN check failure log
                             
                             // If SSH itself failed, VPN may be down — try reconnecting
                             if ($vpnAttempt < $vpnRetries) {
@@ -1323,11 +1295,13 @@ SCRIPT;
                                     sleep(2);
                                     $ssh->connect();
                                 } catch (\Exception $reconnectError) {
-                                    Log::error('VPN reconnection attempt failed', [
-                                        'router_id' => $router->id,
-                                        'vpn_attempt' => $vpnAttempt,
-                                        'error' => $reconnectError->getMessage(),
-                                    ]);
+                                    // Reduced: Only log reconnection error once
+                                    if ($vpnAttempt === $vpnRetries) {
+                                        Log::warning('VPN reconnection failed after retries', [
+                                            'router_id' => $router->id,
+                                            'error' => $reconnectError->getMessage(),
+                                        ]);
+                                    }
                                 }
                             }
                         }
