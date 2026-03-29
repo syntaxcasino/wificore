@@ -17,11 +17,13 @@ class RouterResourceManager
      */
     const LOW_END_MODELS = [
         'RB941-2nD',        // hAP lite
+        'hAP lite',         // hAP lite (common name)
         'RB951Ui-2HnD',     // hAP
         'RB750',            // hex lite
         'RB750r2',          // hex lite r2
         'RB750Gr3',         // hex
         'RB952Ui-5ac2nD',   // hAP ac lite
+        'hAP ac lite',      // hAP ac lite (common name)
     ];
     
     /**
@@ -34,7 +36,7 @@ class RouterResourceManager
             'max_concurrent_connections' => 500,
             'polling_interval' => 300,      // 5 minutes
             'command_batch_size' => 5,
-            'ssh_timeout' => 15,
+            'ssh_timeout' => 30,            // Increased for slow SSH handshake
             'verification_attempts' => 2,
         ],
         'mid_range' => [
