@@ -4,7 +4,6 @@ namespace App\Services\MikroTik;
 
 use App\Models\Router;
 use App\Services\TenantContext;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -212,34 +211,29 @@ class RscFileCleanupService
 
         // Delay cleanup by 60 seconds to ensure deployment is complete
         dispatch(function () use ($routerId, $tenantId, $deploymentFile) {
-            // Wrap the entire tenant context setup + Router query in a DB transaction.
-            // This is required for PgBouncer transaction pooling compatibility:
-            // SET LOCAL search_path (used by TenantContext) is transaction-scoped, so
-            // PgBouncer must hold the same backend PostgreSQL connection for the SET
-            // and the subsequent SELECT. Without a transaction, PgBouncer rotates the
-            // backend between statements, returning search_path = public on the SELECT.
-            DB::transaction(function () use ($routerId, $tenantId, $deploymentFile) {
-                $tenantContext = app(TenantContext::class);
+            // Set tenant context OUTSIDE the transaction first
+            // This ensures the schema is set before any DB operations
+            $tenantContext = app(TenantContext::class);
+            
+            if ($tenantId) {
+                $tenantContext->setTenantById($tenantId);
+            }
 
+            try {
+                // Now load the router - tenant context is already set
+                $router = Router::on('pgsql')->useWritePdo()->find($routerId);
+                if (!$router) {
+                    Log::warning('RSC cleanup: Router not found', ['router_id' => $routerId]);
+                    return;
+                }
+
+                $service = new self();
+                $service->cleanupRscFiles($router, $deploymentFile);
+            } finally {
                 if ($tenantId) {
-                    $tenantContext->setTenantById($tenantId);
+                    $tenantContext->clearTenant();
                 }
-
-                try {
-                    $router = Router::on('pgsql')->useWritePdo()->find($routerId);
-                    if (!$router) {
-                        Log::warning('RSC cleanup: Router not found', ['router_id' => $routerId]);
-                        return;
-                    }
-
-                    $service = new self();
-                    $service->cleanupRscFiles($router, $deploymentFile);
-                } finally {
-                    if ($tenantId) {
-                        $tenantContext->clearTenant();
-                    }
-                }
-            });
+            }
         })->delay(now()->addSeconds(60));
     }
 }
