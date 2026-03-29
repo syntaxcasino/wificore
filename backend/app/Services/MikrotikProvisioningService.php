@@ -1680,7 +1680,7 @@ EOT;
                         'router_id' => $router->id,
                         'batch' => $batchNum,
                     ]);
-                    sleep(5); // 5 second memory recovery time for hAP lite
+                    sleep(10); // 10 second memory recovery for extreme low memory (5MB free)
                     $ssh->connect();
                     Log::debug('Reconnected SSH after memory recovery delay', [
                         'router_id' => $router->id,
@@ -1694,13 +1694,13 @@ EOT;
                 
                 $ssh->uploadFile($tempFile, $batchFile);
                 
-                // Short delay after upload before import (let router process)
-                sleep(2);
+                // Delay after upload before import (let router process)
+                sleep(3);
                 
                 $ssh->importFile($batchFile);
                 
                 // Wait for RouterOS to process and stabilize memory
-                sleep(3);
+                sleep(5);
                 
                 // Cleanup batch file immediately after import
                 @unlink($tempFile);
@@ -1833,7 +1833,7 @@ EOT;
         $batches = [];
         $currentBatch = [];
         $lineCount = 0;
-        $maxLinesPerBatch = 2; // Ultra-conservative: max 2 commands per batch for hAP lite
+        $maxLinesPerBatch = 1; // EXTREME: 1 command per batch for hAP lite with 5MB free RAM
         
         foreach ($lines as $line) {
             $trimmed = trim($line);
