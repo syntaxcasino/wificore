@@ -54,7 +54,8 @@ class ProvisioningServiceClient
     public function provision(Router $router, array $commands, string $tenantId): array
     {
         try {
-            Log::info('Provisioning router via provisioning service', [
+            // Reduced: Moved provisioning start log to debug level
+            Log::debug('Provisioning router via provisioning service', [
                 'router_id' => $router->id,
                 'tenant_id' => $tenantId,
                 'command_count' => count($commands)
@@ -83,7 +84,8 @@ class ProvisioningServiceClient
                 throw new \Exception($data['error'] ?? 'Unknown provisioning error');
             }
 
-            Log::info('Router provisioned successfully', [
+            // Reduced: Moved success log to debug level - only log errors at info/warning level
+            Log::debug('Router provisioned successfully via provisioning service', [
                 'router_id' => $router->id,
                 'tenant_id' => $tenantId
             ]);
@@ -160,7 +162,8 @@ class ProvisioningServiceClient
     public function executeCommands(Router $router, array $commands, string $tenantId): array
     {
         try {
-            Log::info('Executing commands via provisioning service', [
+            // Reduced: Moved command execution log to debug level
+            Log::debug('Executing commands via provisioning service', [
                 'router_id' => $router->id,
                 'tenant_id' => $tenantId,
                 'command_count' => count($commands)
