@@ -146,20 +146,31 @@ class ZeroConfigPPPoEGenerator
         $s[] = ":do { /ppp profile set [/ppp profile find name=\"$prof\"] interface-list=$pal } on-error={}";
         $s[] = ":do { /ppp profile set [/ppp profile find name=\"$prof\"] change-tcp-mss=yes use-compression=no } on-error={}";
 
-        // BRIDGE
+        // BRIDGE - Use PRIMARY interface only for initial deployment
+        // First, remove all bridge ports and then the bridge itself (clean slate)
+        $s[] = ":do { /interface bridge port remove [/interface bridge port find bridge=\"$bridge\"]; } on-error={}";
         $s[] = ":do { /interface bridge remove [/interface bridge find name=\"$bridge\"]; } on-error={}";
         $s[] = ":do { /interface bridge add name=\"$bridge\" comment=\"PPPoE-$id\" } on-error={ :error \"pppoe-bridge-fail\" }";
         $s[] = ":delay 500ms";
         $s[] = ":do { /interface bridge set [/interface bridge find name=\"$bridge\"] protocol-mode=rstp } on-error={}";
 
-        foreach ($p['interfaces'] as $iface) {
-            $access = $iface;
+        // Add PRIMARY interface only (first interface in the list)
+        $primaryInterface = $p['interfaces'][0] ?? null;
+        if ($primaryInterface) {
+            $access = $primaryInterface;
             if ($p['vlan_required'] && $p['vlan_id']) {
-                $access = "vlan{$p['vlan_id']}-$iface";
+                $access = "vlan{$p['vlan_id']}-$primaryInterface";
                 $s[] = ":do { /interface vlan remove [/interface vlan find name=\"$access\"]; } on-error={}";
-                $s[] = "/interface vlan add name=\"$access\" vlan-id={$p['vlan_id']} interface=\"$iface\" comment=\"PPPoE-$id\"";
+                $s[] = "/interface vlan add name=\"$access\" vlan-id={$p['vlan_id']} interface=\"$primaryInterface\" comment=\"PPPoE-$id\"";
             }
             $s[] = ":do { /interface bridge port add bridge=\"$bridge\" interface=\"$access\" } on-error={}";
+        }
+
+        // NOTE: Additional interfaces (if any) should be added via separate interface-addition process
+        // This keeps initial deployment simple and reliable
+        $additionalInterfaces = array_slice($p['interfaces'], 1);
+        if (!empty($additionalInterfaces)) {
+            $s[] = "/log info \"PPPoE-$id: Additional interfaces ready for later addition: " . implode(', ', $additionalInterfaces) . "\"";
         }
 
         $s[] = ":do { /ip dhcp-server remove [/ip dhcp-server find interface=\"$bridge\"]; } on-error={}";
@@ -224,5 +235,40 @@ class ZeroConfigPPPoEGenerator
         }
 
         return $gw;
+    }
+
+    /**
+     * Generate script to add additional interfaces to existing PPPoE bridge.
+     * This is called separately after initial deployment with primary interface.
+     */
+    public function generateAdditionalInterfacesScript(array $params): string
+    {
+        $bridge = $params['bridge'] ?? 'pppoe-br-' . $params['id'];
+        $id = $params['id'];
+        $vlanRequired = $params['vlan_required'] ?? false;
+        $vlanId = $params['vlan_id'] ?? null;
+        $additionalInterfaces = $params['additional_interfaces'] ?? [];
+
+        if (empty($additionalInterfaces)) {
+            return "# No additional interfaces to add";
+        }
+
+        $s = [];
+        $s[] = "/log info \"PPPoE-$id-ADD-INTERFACES-START\"";
+
+        foreach ($additionalInterfaces as $iface) {
+            $access = $iface;
+            if ($vlanRequired && $vlanId) {
+                $access = "vlan{$vlanId}-$iface";
+                $s[] = ":do { /interface vlan remove [/interface vlan find name=\"$access\"]; } on-error={}";
+                $s[] = "/interface vlan add name=\"$access\" vlan-id={$vlanId} interface=\"$iface\" comment=\"PPPoE-$id\"";
+            }
+            $s[] = ":do { /interface bridge port add bridge=\"$bridge\" interface=\"$access\" comment=\"PPPoE-$id-add\" } on-error={}";
+            $s[] = "/log info \"PPPoE-$id: Added interface $iface to bridge\"";
+        }
+
+        $s[] = "/log info \"PPPoE-$id-ADD-INTERFACES-DONE\"";
+
+        return implode("\n", $s);
     }
 }
