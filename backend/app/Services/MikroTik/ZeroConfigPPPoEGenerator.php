@@ -123,13 +123,14 @@ class ZeroConfigPPPoEGenerator
         $deviceModel = $p['device_model'] ?? $p['router_model'] ?? '';
         $isLowEnd = $this->isLowEndDevice($deviceModel);
         
-        // Delay profiles (in milliseconds for :delay command)
+        // Delay profiles (in milliseconds/seconds for :delay command)
+        // Per LOW_END_DEVICE_OPTIMIZATION.md: total deployment should be 12-18s
         $delays = $isLowEnd ? [
-            'bridge' => '2s',
-            'interface_batch' => '1s',
-            'firewall' => '2s',
-            'between_sections' => '2s',
-            'final' => '2s',
+            'bridge' => '500ms',           // Was 2s - reduced for faster deployment
+            'interface_batch' => '200ms',  // Was 1s - minimal delay between interface batches
+            'firewall' => '300ms',         // Was 2s - CPU breathing room
+            'between_sections' => '200ms', // Was 2s - reduced section delays
+            'final' => '500ms',            // Was 2s - final breathing room
         ] : [
             'bridge' => '200ms',
             'interface_batch' => null, // No delay

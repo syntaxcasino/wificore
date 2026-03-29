@@ -10,6 +10,7 @@ use App\Models\RouterConfig;
 use App\Services\MikroTik\ConfigurationService;
 use App\Services\MikroTik\RscFileCleanupService;
 use App\Services\MikroTik\SshExecutor;
+use App\Services\RouterResourceManager;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
@@ -854,15 +855,12 @@ SCRIPT;
             }
 
             // Initialize SSH executor (credentials decrypted ONCE here)
-            // Use longer timeout for hAP lite and low-end devices (90s vs 30s)
-            $deviceModel = $router->model ?? '';
-            $isLowEnd = $this->isLowEndDevice($deviceModel);
-            $sshTimeout = $isLowEnd ? 90 : 30;
+            // Use RouterResourceManager for device-appropriate timeout
+            $sshTimeout = RouterResourceManager::getSshTimeout($router);
             
             Log::info('SSH connection timeout configured', [
                 'router_id' => $router->id,
-                'model' => $deviceModel,
-                'is_low_end' => $isLowEnd,
+                'model' => $router->model,
                 'timeout_seconds' => $sshTimeout,
             ]);
             
@@ -1183,9 +1181,10 @@ SCRIPT;
                             $ssh->uploadFile($tempFile, $remoteScriptFile);
                             $ssh->importFile($remoteScriptFile);
 
-                            // Wait for RouterOS to process the script (especially PPPoE server creation)
-                            // Extended for hAP lite and low-end devices (was 3s, now 15s)
-                            sleep(15);
+                            // Wait for RouterOS to process the script
+                            // Per LOW_END_DEVICE_OPTIMIZATION.md: use 1s for low-end devices
+                            $postImportSleep = RouterResourceManager::getRouterTier($router) === 'low_end' ? 1 : 3;
+                            sleep($postImportSleep);
 
                             $validationResult = $validator($ssh);
                             if (!($validationResult['valid'] ?? false)) {
