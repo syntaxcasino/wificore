@@ -1133,96 +1133,13 @@ SCRIPT;
                     }
                 };
 
-                $remoteScriptFile = $scriptName . '.rsc';
-                $tempFile = tempnam(sys_get_temp_dir(), 'wificore_rsc_');
-                if ($tempFile === false) {
-                    throw new \Exception('Failed to create temp file for router script');
-                }
-
-                try {
-                    // Ensure Unix line endings (LF) and remove BOM if present
-                    $cleanScript = str_replace(["\r\n", "\r"], "\n", $serviceScript);
-                    $cleanScript = preg_replace('/^\xEF\xBB\xBF/', '', $cleanScript); // Remove BOM
-                    file_put_contents($tempFile, $cleanScript);
-                    
-                    // DEBUG: Log first 25 lines of script with line numbers
-                    $lines = explode("\n", $cleanScript);
-                    $debugLines = [];
-                    for ($i = 0; $i < min(25, count($lines)); $i++) {
-                        $debugLines[] = ($i + 1) . ": " . $lines[$i];
-                    }
-                    Log::info('Generated script preview (first 25 lines):', [
-                        'router_id' => $router->id,
-                        'lines' => $debugLines,
-                    ]);
-
-                    if ($broadcast) {
-                        RouterProvisioningProgress::dispatch(
-                            $router->id,
-                            'executing_script',
-                            70,
-                            'Uploading and importing configuration script (with automatic retry)',
-                            ['script_file' => $remoteScriptFile]
-                        );
-                    }
-
-                    $attempt = 0;
-                    $maxAttempts = 3;
-
-                    while ($attempt < $maxAttempts) {
-                        $attempt++;
-                        try {
-                            if ($attempt > 1) {
-                                $ssh->disconnect(false);
-                                sleep(1);
-                                $ssh->connect();
-                            }
-
-                            $ssh->uploadFile($tempFile, $remoteScriptFile);
-                            $ssh->importFile($remoteScriptFile);
-
-                            // Wait for RouterOS to process the script
-                            // Per LOW_END_DEVICE_OPTIMIZATION.md: use 1s for low-end devices
-                            $postImportSleep = RouterResourceManager::getRouterTier($router) === 'low_end' ? 1 : 3;
-                            sleep($postImportSleep);
-
-                            $validationResult = $validator($ssh);
-                            if (!($validationResult['valid'] ?? false)) {
-                                throw new \Exception($validationResult['error'] ?? 'Validation failed');
-                            }
-
-                            Log::info('Configuration script imported successfully', [
-                                'router_id' => $router->id,
-                                'script_name' => $scriptName,
-                                'attempts' => $attempt,
-                            ]);
-
-                            break;
-                        } catch (\Exception $e) {
-                            Log::warning('Configuration import attempt failed', [
-                                'router_id' => $router->id,
-                                'script_name' => $scriptName,
-                                'attempt' => $attempt,
-                                'max_attempts' => $maxAttempts,
-                                'error' => $e->getMessage(),
-                            ]);
-
-                            if ($attempt >= $maxAttempts) {
-                                throw $e;
-                            }
-
-                            sleep(2 * $attempt);
-                        }
-                    }
-                } finally {
-                    try {
-                        $ssh->exec('/file remove [find name="' . $remoteScriptFile . '"]');
-                    } catch (\Throwable $e) {
-                    }
-
-                    if (is_string($tempFile) && $tempFile !== '' && is_file($tempFile)) {
-                        @unlink($tempFile);
-                    }
+                // For low-end devices, use batch execution to prevent SSH timeouts
+                $isLowEnd = RouterResourceManager::getRouterTier($router) === 'low_end';
+                
+                if ($isLowEnd && $serviceScript) {
+                    $result = $this->executeBatchedCommands($ssh, $serviceScript, $router, $validator);
+                } else {
+                    $result = $this->executeSingleScript($ssh, $serviceScript, $router, $validator, $remoteScriptFile, $tempFile);
                 }
 
                 // Brief wait for router to stabilize
@@ -1541,5 +1458,193 @@ SCRIPT;
 /system identity set name="{$router->name}"
 /system note set note="Managed by Traidnet Solution LTD"
 EOT;
+    }
+
+    /**
+     * Execute configuration in batches for low-end devices
+     * Prevents SSH timeouts by breaking large scripts into smaller chunks
+     */
+    private function executeBatchedCommands(
+        SshExecutor $ssh,
+        string $serviceScript,
+        Router $router,
+        callable $validator
+    ): array {
+        $batches = $this->splitScriptIntoBatches($serviceScript);
+        $totalBatches = count($batches);
+        
+        Log::info('Executing batched commands for low-end device', [
+            'router_id' => $router->id,
+            'total_batches' => $totalBatches,
+        ]);
+
+        foreach ($batches as $index => $batch) {
+            $batchNum = $index + 1;
+            $batchFile = "batch_{$batchNum}.rsc";
+            
+            try {
+                // Disconnect and reconnect between batches to prevent timeout
+                if ($index > 0) {
+                    $ssh->disconnect(false);
+                    sleep(2);
+                    $ssh->connect();
+                }
+
+                // Upload and execute this batch
+                $tempFile = tempnam(sys_get_temp_dir(), 'batch_');
+                file_put_contents($tempFile, $batch);
+                
+                $ssh->uploadFile($tempFile, $batchFile);
+                $ssh->importFile($batchFile);
+                
+                // Wait for RouterOS to process
+                sleep(1);
+                
+                // Cleanup batch file
+                @unlink($tempFile);
+                try {
+                    $ssh->exec('/file remove [find name="' . $batchFile . '"]');
+                } catch (\Throwable $e) {
+                    // Non-critical
+                }
+
+                Log::info("Batch {$batchNum}/{$totalBatches} completed", [
+                    'router_id' => $router->id,
+                    'lines' => count(explode("\n", $batch)),
+                ]);
+
+            } catch (\Exception $e) {
+                Log::error("Batch {$batchNum}/{$totalBatches} failed", [
+                    'router_id' => $router->id,
+                    'error' => $e->getMessage(),
+                ]);
+                
+                return [
+                    'success' => false,
+                    'message' => "Batch {$batchNum} failed: " . $e->getMessage(),
+                ];
+            }
+        }
+
+        // Final validation
+        try {
+            $validationResult = $validator($ssh);
+            if (!($validationResult['valid'] ?? false)) {
+                return [
+                    'success' => false,
+                    'message' => $validationResult['error'] ?? 'Validation failed',
+                ];
+            }
+        } catch (\Exception $e) {
+            return [
+                'success' => false,
+                'message' => 'Final validation failed: ' . $e->getMessage(),
+            ];
+        }
+
+        return ['success' => true, 'message' => 'Configuration applied via batches'];
+    }
+
+    /**
+     * Split script into logical batches based on command types
+     */
+    private function splitScriptIntoBatches(string $script): array
+    {
+        $lines = explode("\n", $script);
+        $batches = [];
+        $currentBatch = [];
+        
+        foreach ($lines as $line) {
+            $trimmed = trim($line);
+            if (empty($trimmed) || str_starts_with($trimmed, '#')) {
+                continue;
+            }
+            
+            $currentBatch[] = $line;
+            
+            // Start new batch after major sections
+            if (str_contains($trimmed, '/ip firewall') || 
+                str_contains($trimmed, '/interface pppoe-server') ||
+                str_contains($trimmed, '/radius')) {
+                if (count($currentBatch) >= 5) {
+                    $batches[] = implode("\n", $currentBatch);
+                    $currentBatch = [];
+                }
+            }
+        }
+        
+        // Add remaining lines
+        if (!empty($currentBatch)) {
+            $batches[] = implode("\n", $currentBatch);
+        }
+        
+        // If no batches created, use entire script as one batch
+        if (empty($batches)) {
+            $batches[] = $script;
+        }
+        
+        return $batches;
+    }
+
+    /**
+     * Execute entire script at once (for normal/high-end devices)
+     */
+    private function executeSingleScript(
+        SshExecutor $ssh,
+        string $serviceScript,
+        Router $router,
+        callable $validator,
+        string $remoteScriptFile,
+        string $tempFile
+    ): array {
+        $attempt = 0;
+        $maxAttempts = 3;
+
+        while ($attempt < $maxAttempts) {
+            $attempt++;
+            try {
+                if ($attempt > 1) {
+                    $ssh->disconnect(false);
+                    sleep(1);
+                    $ssh->connect();
+                }
+
+                // Ensure Unix line endings
+                $cleanScript = str_replace(["\r\n", "\r"], "\n", $serviceScript);
+                $cleanScript = preg_replace('/^\xEF\xBB\xBF/', '', $cleanScript);
+                file_put_contents($tempFile, $cleanScript);
+
+                $ssh->uploadFile($tempFile, $remoteScriptFile);
+                $ssh->importFile($remoteScriptFile);
+
+                // Wait for RouterOS to process
+                sleep(RouterResourceManager::getRouterTier($router) === 'low_end' ? 1 : 3);
+
+                $validationResult = $validator($ssh);
+                if (!($validationResult['valid'] ?? false)) {
+                    throw new \Exception($validationResult['error'] ?? 'Validation failed');
+                }
+
+                return ['success' => true, 'message' => 'Configuration applied successfully'];
+
+            } catch (\Exception $e) {
+                Log::warning('Script execution attempt failed', [
+                    'router_id' => $router->id,
+                    'attempt' => $attempt,
+                    'error' => $e->getMessage(),
+                ]);
+
+                if ($attempt >= $maxAttempts) {
+                    return [
+                        'success' => false,
+                        'message' => 'Failed after ' . $maxAttempts . ' attempts: ' . $e->getMessage(),
+                    ];
+                }
+
+                sleep(2 * $attempt);
+            }
+        }
+
+        return ['success' => false, 'message' => 'All attempts exhausted'];
     }
 }
