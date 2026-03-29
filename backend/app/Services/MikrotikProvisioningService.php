@@ -1760,17 +1760,24 @@ EOT;
 
         $routerId = $router->id;
         $tenantId = app(\App\Services\TenantContext::class)->getTenantId();
+        $schemaName = app(\App\Services\TenantContext::class)->getSchemaName();
 
-        dispatch(function () use ($routerId, $tenantId, $batchFiles) {
+        dispatch(function () use ($routerId, $tenantId, $schemaName, $batchFiles) {
             $tenantContext = app(\App\Services\TenantContext::class);
             
-            if ($tenantId) {
+            if ($tenantId && $schemaName) {
                 $tenantContext->setTenantById($tenantId);
+                // Ensure we use the tenant schema
+                \DB::connection('pgsql')->statement("SET search_path TO '{$schemaName}'");
             }
 
             try {
                 $router = \App\Models\Router::on('pgsql')->useWritePdo()->find($routerId);
                 if (!$router) {
+                    Log::warning('Router not found during batch cleanup', [
+                        'router_id' => $routerId,
+                        'schema' => $schemaName ?? 'unknown',
+                    ]);
                     return;
                 }
 
