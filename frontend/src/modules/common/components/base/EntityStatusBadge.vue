@@ -12,7 +12,7 @@ const props = defineProps({
   status: { 
     type: String, 
     default: 'unknown',
-    validator: (value) => ['active', 'inactive', 'pending', 'received', 'completed', 'cancelled', 'online', 'offline', 'expired', 'paid', 'overdue', 'unknown'].includes(value)
+    validator: (value) => ['active', 'inactive', 'pending', 'in_progress', 'received', 'completed', 'cancelled', 'online', 'offline', 'expired', 'paid', 'overdue', 'unknown'].includes(value)
   },
   size: { 
     type: String, 
@@ -31,6 +31,7 @@ const badgeClasses = computed(() => {
     active: 'bg-emerald-100 text-emerald-800',
     inactive: 'bg-slate-100 text-slate-800',
     pending: 'bg-amber-100 text-amber-800',
+    in_progress: 'bg-blue-100 text-blue-800',
     received: 'bg-emerald-100 text-emerald-800',
     completed: 'bg-emerald-100 text-emerald-800',
     cancelled: 'bg-red-100 text-red-800',
@@ -56,6 +57,7 @@ const dotColorClass = computed(() => {
     active: 'bg-emerald-500',
     inactive: 'bg-slate-400',
     pending: 'bg-amber-500',
+    in_progress: 'bg-blue-500',
     received: 'bg-emerald-500',
     completed: 'bg-emerald-500',
     cancelled: 'bg-red-500',

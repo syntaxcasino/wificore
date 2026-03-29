@@ -83,6 +83,30 @@ class RouterResourceManager
         // Default to mid-range
         return 'mid_range';
     }
+
+    /**
+     * Detect router tier based on model string (no Router instance required)
+     */
+    public static function getRouterTierByModel(?string $model): string
+    {
+        $model = $model ?? '';
+
+        // Check if it's a low-end model
+        foreach (self::LOW_END_MODELS as $lowEndModel) {
+            if (stripos($model, $lowEndModel) !== false) {
+                return 'low_end';
+            }
+        }
+
+        // Check for high-end indicators
+        if (stripos($model, 'CCR') !== false ||
+            stripos($model, 'CRS') !== false ||
+            stripos($model, 'RB1100') !== false) {
+            return 'high_end';
+        }
+
+        return 'mid_range';
+    }
     
     /**
      * Get resource limits for a router

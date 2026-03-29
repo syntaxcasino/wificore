@@ -6,26 +6,20 @@
     v-model:search-model="searchQuery"
     search-placeholder="Search hotspot users..."
     :stats="[
-      { color: 'bg-cyan-500', value: totalUsers },
-      { color: 'bg-emerald-500', value: activeUsers.length },
-      { color: 'bg-amber-500', value: expiredUsers.length },
-      { color: 'bg-slate-500', value: totalDataUsage }
+      { color: 'bg-emerald-500', value: activeUsers.length, tooltip: 'Active users' },
+      { color: 'bg-amber-500', value: expiredUsers.length, tooltip: 'Expired users' },
+      { color: 'bg-slate-500', value: totalDataUsage, tooltip: 'Total data usage' }
     ]"
-    :total="filteredData.length"
+    :total="totalUsers"
     :loading="loading"
+    add-button-text="Create Voucher"
     @refresh="fetchUsers"
+    @add="$router.push('/dashboard/hotspot/vouchers')"
     @search-clear="searchQuery = ''"
   >
     <!-- Icon Slot -->
     <template #icon>
       <Wifi class="h-5 w-5 md:h-6 md:w-6 text-white" />
-    </template>
-
-    <!-- Action Buttons -->
-    <template #actions>
-      <BaseButton @click="$router.push('/dashboard/hotspot/vouchers')" variant="primary" size="sm" class="shrink-0">
-        <Ticket class="w-4 h-4 mr-1" /> Create Voucher
-      </BaseButton>
     </template>
 
     <!-- Filters -->
@@ -70,38 +64,44 @@
       </div>
 
       <!-- Desktop Table -->
-      <div class="hidden md:flex bg-white border border-slate-200 shadow-sm overflow-hidden flex-col min-h-0 flex-1">
-        <div class="overflow-x-auto overflow-y-auto flex-1 min-h-0">
+      <div class="hidden md:flex bg-white border-x border-t border-slate-200 flex-col min-h-0 flex-1">
+        <!-- Fixed Header -->
+        <div class="bg-slate-50 border-b border-slate-200">
           <table class="w-full">
-            <thead class="bg-slate-50 border-b border-slate-200 sticky top-0 z-[5]">
+            <thead>
               <tr>
-                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Username</th>
-                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Contact</th>
-                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Package</th>
-                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Status</th>
-                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Data Usage</th>
-                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Expires</th>
-                <th class="px-6 py-3 text-right text-xs font-semibold text-slate-700 uppercase tracking-wider">Actions</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[18%]">Username</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[18%]">Contact</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[15%]">Package</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[10%]">Status</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[20%]">Data Usage</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[12%]">Expires</th>
+                <th class="px-6 py-3 text-right text-xs font-semibold text-slate-700 uppercase tracking-wider w-[12%]">Actions</th>
               </tr>
             </thead>
+          </table>
+        </div>
+        <!-- Scrollable Body -->
+        <div class="overflow-y-auto flex-1 min-h-0">
+          <table class="w-full">
             <tbody class="divide-y divide-slate-100">
               <tr v-for="user in paginatedData" :key="user.id" class="hover:bg-cyan-50/50 transition-colors">
-                <td class="px-6 py-4">
+                <td class="px-6 py-4 w-[18%]">
                   <div class="flex items-center gap-2">
                     <User class="w-4 h-4 text-cyan-600" />
                     <span class="text-sm font-medium text-slate-900">{{ user.username }}</span>
                   </div>
                 </td>
-                <td class="px-6 py-4">
+                <td class="px-6 py-4 w-[18%]">
                   <div class="text-sm text-slate-600">{{ user.phone || user.email || '—' }}</div>
                 </td>
-                <td class="px-6 py-4">
+                <td class="px-6 py-4 w-[15%]">
                   <span class="text-sm text-slate-700">{{ user.package_name || '—' }}</span>
                 </td>
-                <td class="px-6 py-4">
+                <td class="px-6 py-4 w-[10%]">
                   <EntityStatusBadge :status="user.status" size="sm" />
                 </td>
-                <td class="px-6 py-4">
+                <td class="px-6 py-4 w-[20%]">
                   <div class="flex items-center gap-2">
                     <div class="flex-1 h-1.5 bg-slate-200 rounded-full overflow-hidden w-24">
                       <div class="h-full rounded-full transition-all" :class="getDataUsageColor(user.data_usage, user.data_limit)" :style="{ width: getDataUsagePercent(user.data_usage, user.data_limit) }"></div>
@@ -109,13 +109,17 @@
                     <span class="text-xs text-slate-600 w-20">{{ formatDataUsage(user.data_usage) }}</span>
                   </div>
                 </td>
-                <td class="px-6 py-4">
+                <td class="px-6 py-4 w-[12%]">
                   <span :class="getExpiryClass(user.expiry)">{{ formatExpiry(user.expiry) }}</span>
                 </td>
-                <td class="px-6 py-4 text-right">
+                <td class="px-6 py-4 text-right w-[12%]">
                   <div class="flex items-center justify-end gap-1">
-                    <button v-if="user.status === 'active'" @click="disconnectUser(user)" class="px-2 py-1 text-xs font-medium text-amber-700 bg-amber-50 rounded hover:bg-amber-100 transition-colors">Disconnect</button>
-                    <button @click="viewDetails(user)" class="px-2 py-1 text-xs font-medium text-blue-700 bg-blue-50 rounded hover:bg-blue-100 transition-colors">Details</button>
+                    <button @click="viewDetails(user)" class="px-2 py-1 text-xs font-medium text-blue-700 bg-blue-50 rounded hover:bg-blue-100 transition-colors">View</button>
+                    <div class="relative">
+                      <button data-menu-button @click="toggleMenu(user.id, $event)" class="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded transition-colors">
+                        <MoreVertical class="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                 </td>
               </tr>
@@ -137,14 +141,31 @@
       color-theme="cyan"
       :show-clear="!!searchQuery"
       :has-filters="hasActiveFilters"
+      :show-add="false"
       @clear="searchQuery = ''"
-    >
-      <template #action>
-        <BaseButton @click="$router.push('/dashboard/hotspot/vouchers')" variant="primary" size="sm">
-          <Ticket class="w-4 h-4 mr-1" /> Create Voucher
-        </BaseButton>
-      </template>
-    </DataEmptyState>
+    />
+
+    <!-- Global Dropdown Menu Portal -->
+    <Teleport to="body">
+      <div v-if="activeMenu !== null" data-dropdown-menu :style="menuPosition" class="fixed w-48 bg-white rounded-lg shadow-2xl border border-slate-200 py-1 z-[9999] overflow-hidden">
+        <button @click="viewDetails(users.find(u => u.id === activeMenu))" class="flex items-center w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-cyan-50 hover:text-cyan-700 transition-colors">
+          <Eye class="w-4 h-4 mr-3" />
+          View Details
+        </button>
+        <button v-if="users.find(u => u.id === activeMenu)?.status === 'active'" @click="disconnectUser(users.find(u => u.id === activeMenu))" class="flex items-center w-full px-4 py-2.5 text-sm text-amber-700 hover:bg-amber-50 hover:text-amber-700 transition-colors">
+          <WifiOff class="w-4 h-4 mr-3" />
+          Disconnect
+        </button>
+        <button v-if="users.find(u => u.id === activeMenu)?.status !== 'active'" @click="handleGrantAccess(users.find(u => u.id === activeMenu))" class="flex items-center w-full px-4 py-2.5 text-sm text-emerald-700 hover:bg-emerald-50 hover:text-emerald-700 transition-colors">
+          <Wifi class="w-4 h-4 mr-3" />
+          Grant Access
+        </button>
+        <button @click="handleRevokeAccess(users.find(u => u.id === activeMenu))" class="flex items-center w-full px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors">
+          <Ban class="w-4 h-4 mr-3" />
+          Revoke Access
+        </button>
+      </div>
+    </Teleport>
   </DataViewContainer>
 
   <!-- User Details SlideOverlay -->
@@ -226,9 +247,11 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
-import { Wifi, Ticket, AlertCircle, User } from 'lucide-vue-next'
-import axios from 'axios'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { Wifi, AlertCircle, User, MoreVertical, WifiOff, Eye, Ban } from 'lucide-vue-next'
+import { useHotspot } from '@/modules/tenant/composables/useHotspot'
+import { useToast } from '@/modules/common/composables/useToast'
+import { useConfirmStore } from '@/stores/confirm'
 import DataViewContainer from '@/modules/common/components/base/DataViewContainer.vue'
 import DataSkeleton from '@/modules/common/components/base/DataSkeleton.vue'
 import MobileDataCard from '@/modules/common/components/base/MobileDataCard.vue'
@@ -236,39 +259,61 @@ import DataPagination from '@/modules/common/components/base/DataPagination.vue'
 import DataEmptyState from '@/modules/common/components/base/DataEmptyState.vue'
 import EntityStatusBadge from '@/modules/common/components/base/EntityStatusBadge.vue'
 import SlideOverlay from '@/modules/common/components/base/SlideOverlay.vue'
-import BaseButton from '@/modules/common/components/base/BaseButton.vue'
 import BaseSelect from '@/modules/common/components/base/BaseSelect.vue'
+import axios from 'axios'
 
-// State
-const loading = ref(false)
-const users = ref([])
-const packages = ref([])
+// Get composable state and methods
+const { 
+  users,
+  sessions,
+  loading,
+  error: hotspotError,
+  pagination,
+  activeUsers,
+  expiredUsers,
+  totalUsers,
+  activeSessions,
+  fetchUsers,
+  fetchSessions,
+  disconnectUser: disconnectUserAction,
+  grantAccess,
+  revokeAccess,
+  getUserDetails,
+  setPage,
+  setPerPage,
+  subscribeToWebSocket,
+  unsubscribeFromWebSocket
+} = useHotspot()
+
+const { toast } = useToast()
+const confirmStore = useConfirmStore()
+
+// Local UI state
 const searchQuery = ref('')
 const currentPage = ref(1)
 const itemsPerPage = ref(10)
 const showDetailsOverlay = ref(false)
 const selectedUser = ref(null)
-const error = ref(null)
-
+const packages = ref([])
 const filters = ref({ status: '', package: '' })
 
-// Computed
-const totalUsers = computed(() => users.value.length)
+// Menu state for dropdown actions
+const activeMenu = ref(null)
+const menuPosition = ref({})
 
-const activeUsers = computed(() => users.value.filter(u => u.status === 'active'))
-const expiredUsers = computed(() => users.value.filter(u => u.status === 'expired'))
-
+// Stats
 const totalDataUsage = computed(() => {
   const total = users.value.reduce((sum, u) => sum + (u.data_usage || 0), 0)
   return formatDataUsageCompact(total)
 })
 
+// Filter and paginate
 const filteredData = computed(() => {
   let data = users.value
   if (searchQuery.value) {
     const query = searchQuery.value.toLowerCase()
     data = data.filter(u =>
-      u.username.toLowerCase().includes(query) ||
+      u.username?.toLowerCase().includes(query) ||
       (u.phone && u.phone.includes(query)) ||
       (u.email && u.email.toLowerCase().includes(query))
     )
@@ -354,39 +399,117 @@ const formatDateTime = (date) => {
   return new Date(date).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
-const getUserActions = (user) => [
-  ...(user.status === 'active' ? [{ label: 'Disconnect', onClick: () => disconnectUser(user), class: 'text-amber-700 bg-amber-50 hover:bg-amber-100' }] : []),
-  { label: 'Details', onClick: () => viewDetails(user), class: 'text-blue-700 bg-blue-50 hover:bg-blue-100' }
-]
-
-// Actions
-const fetchUsers = async () => {
-  loading.value = true
-  error.value = null
-  try {
-    const response = await axios.get('/hotspot/users')
-    const data = response.data?.users?.data || response.data?.users || response.data?.data || []
-    users.value = data.map(u => ({
-      id: u.id,
-      username: u.username || 'Unknown',
-      phone: u.phone || null,
-      email: u.email || null,
-      package_id: u.package_id || null,
-      package_name: u.package_name || u.package?.name || null,
-      status: u.status || 'inactive',
-      data_usage: u.data_usage || u.data_used || 0,
-      data_limit: u.data_limit || u.package?.data_limit || 0,
-      ip_address: u.ip_address || null,
-      mac_address: u.mac_address || null,
-      expiry: u.expires_at || u.expiry || null,
-      created_at: u.created_at || new Date().toISOString()
-    }))
-  } catch (err) {
-    error.value = err.response?.data?.message || 'Failed to load hotspot users'
-    console.error('fetchUsers error:', err)
-  } finally {
-    loading.value = false
+// Menu toggle
+const toggleMenu = (userId, event) => {
+  event.stopPropagation()
+  if (activeMenu.value === userId) {
+    activeMenu.value = null
+    menuPosition.value = {}
+  } else {
+    activeMenu.value = userId
+    const button = event.currentTarget
+    const rect = button.getBoundingClientRect()
+    const menuWidth = 192
+    const menuHeight = 180
+    const viewportHeight = window.innerHeight
+    const viewportWidth = window.innerWidth
+    let top = rect.bottom + 4
+    let left = rect.right - menuWidth
+    if (rect.bottom + menuHeight > viewportHeight) top = rect.top - menuHeight - 4
+    if (left < 0) left = rect.left
+    if (left + menuWidth > viewportWidth) left = viewportWidth - menuWidth - 10
+    menuPosition.value = { top: `${top}px`, left: `${left}px` }
   }
+}
+
+const closeMenu = () => {
+  activeMenu.value = null
+  menuPosition.value = {}
+}
+
+// Click outside handler
+const handleClickOutside = (event) => {
+  const menu = document.querySelector('[data-dropdown-menu]')
+  const menuButton = document.querySelector('[data-menu-button]')
+  if (menu && !menu.contains(event.target) && menuButton && !menuButton.contains(event.target)) {
+    closeMenu()
+  }
+}
+
+// Keyboard handler
+const handleKeydown = (event) => {
+  if (event.key === 'Escape') closeMenu()
+}
+
+// Actions using composable
+const disconnectUser = async (user) => {
+  closeMenu()
+  const confirmed = await confirmStore.open({
+    title: 'Disconnect User',
+    message: `Are you sure you want to disconnect "${user.username}"?`,
+    confirmText: 'Disconnect',
+    cancelText: 'Cancel',
+    variant: 'warning'
+  })
+  
+  if (!confirmed) return
+  
+  try {
+    await disconnectUserAction(user.id)
+    toast.success(`Disconnected ${user.username}`)
+  } catch (err) {
+    toast.error(err.message || 'Failed to disconnect user')
+  }
+}
+
+const handleRevokeAccess = async (user) => {
+  closeMenu()
+  const confirmed = await confirmStore.open({
+    title: 'Revoke Access',
+    message: `Revoke access for "${user.username}"? This will prevent them from using the hotspot.`,
+    confirmText: 'Revoke',
+    cancelText: 'Cancel',
+    variant: 'danger'
+  })
+  
+  if (!confirmed) return
+  
+  try {
+    await revokeAccess(user.id)
+    toast.success(`Access revoked for ${user.username}`)
+  } catch (err) {
+    toast.error(err.message || 'Failed to revoke access')
+  }
+}
+
+const handleGrantAccess = async (user) => {
+  closeMenu()
+  try {
+    await grantAccess(user.id)
+    toast.success(`Access granted to ${user.username}`)
+  } catch (err) {
+    toast.error(err.message || 'Failed to grant access')
+  }
+}
+
+const viewDetails = async (user) => {
+  closeMenu()
+  selectedUser.value = user
+  showDetailsOverlay.value = true
+  
+  try {
+    const freshUser = await getUserDetails(user.id)
+    if (freshUser) {
+      selectedUser.value = freshUser
+    }
+  } catch (err) {
+    console.error('Failed to fetch user details:', err)
+  }
+}
+
+const closeDetails = () => {
+  showDetailsOverlay.value = false
+  setTimeout(() => { selectedUser.value = null }, 300)
 }
 
 const fetchPackages = async () => {
@@ -398,29 +521,25 @@ const fetchPackages = async () => {
   }
 }
 
-const disconnectUser = async (user) => {
-  try {
-    await axios.post(`/hotspot/users/${user.id}/disconnect`)
-    await fetchUsers()
-  } catch (err) {
-    console.error('disconnectUser error:', err)
-    alert(err.response?.data?.message || 'Failed to disconnect user')
-  }
-}
+// Mobile card actions
+const getUserActions = (user) => [
+  ...(user.status === 'active' ? [{ label: 'Disconnect', onClick: () => disconnectUser(user), class: 'text-amber-700 bg-amber-50 hover:bg-amber-100' }] : []),
+  { label: 'Details', onClick: () => viewDetails(user), class: 'text-blue-700 bg-blue-50 hover:bg-blue-100' }
+]
 
-const viewDetails = (user) => {
-  selectedUser.value = user
-  showDetailsOverlay.value = true
-}
-
-const closeDetails = () => {
-  showDetailsOverlay.value = false
-  selectedUser.value = null
-}
-
+// Lifecycle
 onMounted(() => {
   fetchUsers()
   fetchPackages()
+  subscribeToWebSocket()
+  document.addEventListener('click', handleClickOutside)
+  document.addEventListener('keydown', handleKeydown)
+})
+
+onUnmounted(() => {
+  unsubscribeFromWebSocket()
+  document.removeEventListener('click', handleClickOutside)
+  document.removeEventListener('keydown', handleKeydown)
 })
 </script>
 

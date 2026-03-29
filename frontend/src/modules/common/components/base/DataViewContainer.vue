@@ -35,7 +35,7 @@
             <!-- Quick Stats -->
             <div v-if="stats.length" class="hidden md:flex items-center gap-2 px-3 py-2 bg-slate-50 rounded-lg border border-slate-200">
               <template v-for="(stat, index) in stats" :key="index">
-                <div class="flex items-center gap-1.5">
+                <div class="flex items-center gap-1.5" :title="stat.tooltip || ''">
                   <span class="w-2 h-2 rounded-full" :class="stat.color"></span>
                   <span class="text-xs font-semibold text-slate-700">{{ stat.value }}</span>
                 </div>

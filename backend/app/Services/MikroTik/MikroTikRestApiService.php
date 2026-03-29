@@ -390,6 +390,14 @@ class MikroTikRestApiService
     }
 
     /**
+     * Fetch list data from API endpoint
+     */
+    public function fetch(string $endpoint): array
+    {
+        return $this->get($endpoint)->json() ?? [];
+    }
+
+    /**
      * Make GET request to API
      */
     private function get(string $endpoint): \Illuminate\Http\Client\Response

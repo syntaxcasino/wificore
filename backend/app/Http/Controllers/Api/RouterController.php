@@ -211,6 +211,9 @@ class RouterController extends Controller
             $password = Str::random(12);
             $port = 8728;
             $configToken = Str::uuid();
+            $tokenCreatedAt = now();
+            $ttlMinutes = (int) config('app.router_config_token_ttl_minutes', 60);
+            $tokenExpiresAt = $ttlMinutes > 0 ? $tokenCreatedAt->copy()->addMinutes($ttlMinutes) : null;
 
             // VPN is now MANDATORY for all routers
             $router = Router::create([
@@ -221,6 +224,8 @@ class RouterController extends Controller
                 'port' => $port,
                 'wan_interface' => $request->input('wan_interface'),
                 'config_token' => $configToken,
+                'config_token_created_at' => $tokenCreatedAt,
+                'config_token_expires_at' => $tokenExpiresAt,
                 'status' => 'pending',
                 'vpn_enabled' => true, // Always enabled
                 'vpn_status' => 'pending',
@@ -470,12 +475,22 @@ class RouterController extends Controller
         ]);
 
         try {
-            $router->update([
+            $updateData = [
                 'name' => $request->name,
                 'ip_address' => $request->ip_address ?? $router->ip_address,
-                'config_token' => $request->config_token ?? $router->config_token,
                 'wan_interface' => $request->input('wan_interface', $router->wan_interface),
-            ]);
+            ];
+
+            if ($request->filled('config_token')) {
+                $ttlMinutes = (int) config('app.router_config_token_ttl_minutes', 60);
+                $updateData['config_token'] = $request->config_token;
+                $updateData['config_token_created_at'] = now();
+                $updateData['config_token_expires_at'] = $ttlMinutes > 0
+                    ? now()->addMinutes($ttlMinutes)
+                    : null;
+            }
+
+            $router->update($updateData);
 
             Log::info('Router updated successfully:', [
                 'router_id' => $router->id,
@@ -1261,6 +1276,16 @@ class RouterController extends Controller
                     ->header('Content-Type', 'text/plain; charset=utf-8');
             }
 
+            if ($router->isConfigTokenExpired()) {
+                Log::warning('Router config token expired', [
+                    'router_id' => $router->id,
+                    'tenant_id' => $foundTenant->id,
+                ]);
+
+                return response('# ERROR: Configuration token expired. Please regenerate the bootstrap token.', 410)
+                    ->header('Content-Type', 'text/plain; charset=utf-8');
+            }
+
             $completeScript = DB::transaction(function () use ($tenantContext, $foundTenant, $router) {
                 DB::connection()->recordsHaveBeenModified();
                 $tenantContext->setTenant($foundTenant);
@@ -1332,6 +1357,7 @@ class RouterController extends Controller
     {
         $decryptedPassword = Crypt::decrypt($router->password);
         $managementSubnet = config('vpn.subnet.base', '10.0.0.0/8');
+        $apiPort = $router->api_port ?? 8729;
         $snmpCommunity = config('telegraf.snmp_community', 'traidnet-monitor');
         $snmpSubnet = '10.8.0.1/32';
 
@@ -1344,6 +1370,8 @@ class RouterController extends Controller
 
         $script = <<<EOT
 /ip service set api disabled=no port={$router->port} address={$managementSubnet}
+/ip service set rest-api disabled=no port={$apiPort} address={$managementSubnet}
+:do { /ip service set api-ssl disabled=no address={$managementSubnet} } on-error={ /log info "api-ssl enable failed or already enabled" }
 /ip service set ssh disabled=no port=22 address={$managementSubnet}
 /user add name={$router->username} password="$decryptedPassword" group=full
 /system identity set name="{$router->name}"

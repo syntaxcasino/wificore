@@ -6,10 +6,11 @@
     v-model:search-model="searchQuery"
     search-placeholder="Search todos by title or description..."
     :stats="[
-      { color: 'bg-blue-500', value: pendingCount },
-      { color: 'bg-emerald-500', value: completedCount }
+      { color: 'bg-blue-500', value: pendingCount, tooltip: 'Pending - not started' },
+      { color: 'bg-amber-500', value: inProgressCount, tooltip: 'In progress' },
+      { color: 'bg-emerald-500', value: completedCount, tooltip: 'Completed' }
     ]"
-    :total="todos.length"
+    :total="todos?.length || 0"
     :loading="loading"
     add-button-text="Add Todo"
     @refresh="fetchTodos"
@@ -42,10 +43,51 @@
       :error="detailsError"
       @close="closeDetails"
       @complete="handleComplete(selectedTodo)"
-      @reopen="handleReopen(selectedTodo)"
+      @transfer="openTransferModal(selectedTodo)"
     />
 
-    <!-- Error State -->
+    <!-- Transfer Modal -->
+    <SlideOverlay
+      v-model="showTransferModal"
+      title="Transfer Todo"
+      subtitle="Assign this task to another user"
+      icon="user-plus"
+      width="400px"
+      @close="closeTransferModal"
+    >
+      <div class="p-6">
+        <div v-if="transferLoading" class="flex items-center justify-center py-8">
+          <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        </div>
+        <div v-else>
+          <p class="text-sm text-slate-600 mb-4">
+            Transfer "{{ selectedTodo?.title }}" to another user:
+          </p>
+          <div class="space-y-2 max-h-64 overflow-y-auto">
+            <button
+              v-for="user in users"
+              :key="user.id"
+              @click="handleTransfer(user.id)"
+              class="w-full flex items-center gap-3 p-3 rounded-lg border border-slate-200 hover:border-blue-300 hover:bg-blue-50 transition-colors text-left"
+              :class="{ 'opacity-50 cursor-not-allowed': user.id === selectedTodo?.assigned_to?.id || user.id === selectedTodo?.handler?.id }"
+              :disabled="user.id === selectedTodo?.assigned_to?.id || user.id === selectedTodo?.handler?.id"
+            >
+              <div class="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white font-semibold text-xs">
+                {{ user.name?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || user.email?.slice(0, 2).toUpperCase() || '?' }}
+              </div>
+              <div class="flex-1">
+                <p class="text-sm font-medium text-slate-900">{{ user.name || user.full_name || user.email || 'Unknown' }}</p>
+                <p class="text-xs text-slate-500">{{ user.email || '' }}</p>
+              </div>
+              <span v-if="user.id === selectedTodo?.assigned_to?.id || user.id === selectedTodo?.handler?.id" class="text-xs text-slate-400">Current</span>
+            </button>
+          </div>
+          <div v-if="users.length === 0" class="text-center py-8 text-slate-500">
+            No users available
+          </div>
+        </div>
+      </div>
+    </SlideOverlay>
     <div v-if="error" class="flex flex-col items-center justify-center gap-4 p-8 text-red-500">
       <svg xmlns="http://www.w3.org/2000/svg" class="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -60,16 +102,16 @@
     <DataSkeleton v-else-if="loading" :count="5" />
 
     <!-- Data Content -->
-    <div v-else-if="filteredTodos.length" class="flex flex-col h-full px-4 md:px-6 pt-2 pb-2 min-h-0">
+    <div v-else-if="filteredTodos?.length" class="flex flex-col h-full px-4 md:px-6 pt-2 pb-2 min-h-0">
       <!-- Mobile Cards -->
       <div class="md:hidden space-y-3 overflow-y-auto flex-1 min-h-0">
         <MobileDataCard
           v-for="todo in paginatedTodos"
-          :key="todo.id"
-          :title="todo.title"
-          :subtitle="todo.description"
+          :key="todo?.id"
+          :title="todo?.title || 'Untitled'"
+          :subtitle="todo?.description"
           :meta-lines="getTodoMetaLines(todo)"
-          :status="todo.status"
+          :status="todo?.status"
           :actions="getTodoActions(todo)"
           hoverable
         />
@@ -82,12 +124,13 @@
           <table class="w-full">
             <thead>
               <tr>
-                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Title</th>
-                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider hidden lg:table-cell">Description</th>
-                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Priority</th>
-                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Due Date</th>
-                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Status</th>
-                <th class="px-6 py-3 text-right text-xs font-semibold text-slate-700 uppercase tracking-wider">Actions</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[25%]">Title</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider hidden lg:table-cell w-[20%]">Description</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[10%]">Priority</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[12%]">Due Date</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[10%]">Status</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[12%]">Handler</th>
+                <th class="px-6 py-3 text-right text-xs font-semibold text-slate-700 uppercase tracking-wider w-[15%]">Actions</th>
               </tr>
             </thead>
           </table>
@@ -96,28 +139,31 @@
         <div class="overflow-y-auto flex-1 min-h-0">
           <table class="w-full">
             <tbody class="divide-y divide-slate-100">
-              <tr v-for="todo in paginatedTodos" :key="todo.id" class="hover:bg-blue-50/50 transition-colors">
-                <td class="px-6 py-4">
+              <tr v-for="todo in paginatedTodos" :key="todo?.id" class="hover:bg-blue-50/50 transition-colors">
+                <td class="px-6 py-4 w-[25%]">
                   <div class="flex items-center gap-2">
-                    <span :class="getStatusDotClass(todo.status)" class="w-1.5 h-1.5 rounded-full"></span>
-                    <span class="text-sm font-medium text-slate-900">{{ todo.title }}</span>
+                    <span :class="getStatusDotClass(todo?.status)" class="w-1.5 h-1.5 rounded-full"></span>
+                    <span class="text-sm font-medium text-slate-900">{{ todo?.title || 'Untitled' }}</span>
                   </div>
                 </td>
-                <td class="px-6 py-4 hidden lg:table-cell">
-                  <span class="text-sm text-slate-600 truncate max-w-xs block">{{ todo.description || '-' }}</span>
+                <td class="px-6 py-4 hidden lg:table-cell w-[20%]">
+                  <span class="text-sm text-slate-600 truncate max-w-xs block">{{ todo?.description || '-' }}</span>
                 </td>
-                <td class="px-6 py-4">
-                  <span :class="priorityBadgeClass(todo.priority)" class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium capitalize">
-                    {{ todo.priority || 'normal' }}
+                <td class="px-6 py-4 w-[10%]">
+                  <span :class="priorityBadgeClass(todo?.priority)" class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium capitalize">
+                    {{ todo?.priority || 'normal' }}
                   </span>
                 </td>
-                <td class="px-6 py-4">
-                  <span class="text-sm text-slate-600">{{ formatDate(todo.due_date) }}</span>
+                <td class="px-6 py-4 w-[12%]">
+                  <span class="text-sm text-slate-600">{{ formatDate(todo?.due_date) }}</span>
                 </td>
-                <td class="px-6 py-4">
-                  <EntityStatusBadge :status="todo.status === 'completed' ? 'completed' : 'pending'" size="sm" />
+                <td class="px-6 py-4 w-[10%]">
+                  <EntityStatusBadge :status="todo?.status" size="sm" />
                 </td>
-                <td class="px-6 py-4 text-right">
+                <td class="px-6 py-4 w-[12%]">
+                  <span class="text-sm text-slate-600">{{ getHandlerDisplay(todo) }}</span>
+                </td>
+                <td class="px-6 py-4 text-right w-[15%]">
                   <div class="flex items-center justify-end gap-1">
                     <button
                       @click="viewTodo(todo)"
@@ -145,7 +191,7 @@
         v-model:current-page="currentPage"
         v-model:items-per-page="itemsPerPage"
         :total-pages="totalPages"
-        :total-items="filteredTodos.length"
+        :total-items="filteredTodos?.length || 0"
         item-name="todos"
         class="mt-auto"
       />
@@ -169,6 +215,19 @@
     <!-- Global Dropdown Menu Portal -->
     <Teleport to="body">
       <div v-if="activeMenu !== null" data-dropdown-menu :style="menuPosition" class="fixed w-48 bg-white rounded-lg shadow-2xl border border-slate-200 py-1 z-[9999] overflow-hidden">
+        <button v-if="todos.find(t => t.id === activeMenu)?.status === 'pending'" @click="handleStart(todos.find(t => t.id === activeMenu))" class="flex items-center w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-700 transition-colors">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          Start
+        </button>
+        <button v-if="todos.find(t => t.id === activeMenu)?.status === 'in_progress'" @click="handleComplete(todos.find(t => t.id === activeMenu))" class="flex items-center w-full px-4 py-2.5 text-sm text-emerald-700 hover:bg-emerald-50 hover:text-emerald-700 transition-colors">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          Complete
+        </button>
         <button @click="viewTodo(todos.find(t => t.id === activeMenu))" class="flex items-center w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-700 transition-colors">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -196,6 +255,7 @@
 
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import axios from '@/modules/common/services/api/axios'
 import { useTodos } from '@/modules/tenant/composables/useTodos'
 import DataViewContainer from '@/modules/common/components/base/DataViewContainer.vue'
 import DataSkeleton from '@/modules/common/components/base/DataSkeleton.vue'
@@ -204,6 +264,7 @@ import DataPagination from '@/modules/common/components/base/DataPagination.vue'
 import DataEmptyState from '@/modules/common/components/base/DataEmptyState.vue'
 import EntityStatusBadge from '@/modules/common/components/base/EntityStatusBadge.vue'
 import { useConfirmStore } from '@/stores/confirm'
+import SlideOverlay from '@/modules/common/components/base/SlideOverlay.vue'
 import TodoModal from '@/modules/tenant/components/todos/TodoModal.vue'
 import TodoDetailsModal from '@/modules/tenant/components/todos/TodoDetailsModal.vue'
 
@@ -221,6 +282,8 @@ const {
   updateTodo,
   deleteTodo,
   markAsCompleted,
+  markAsInProgress,
+  assignTodo,
   fetchTodo,
   searchTodos,
   setupWebSocketListeners,
@@ -244,13 +307,20 @@ const selectedTodo = ref(null)
 const detailsLoading = ref(false)
 const detailsError = ref('')
 
+// Transfer state
+const showTransferModal = ref(false)
+const transferLoading = ref(false)
+const users = ref([])
+
 // Menu state
 const activeMenu = ref(null)
 const menuPosition = ref({})
 
 // Stats
-const pendingCount = computed(() => pendingTodos.value.length)
-const completedCount = computed(() => completedTodos.value.length)
+const pendingCount = computed(() => todos.value?.filter(t => t?.status === 'pending')?.length ?? 0)
+const inProgressCount = computed(() => todos.value?.filter(t => t?.status === 'in_progress')?.length ?? 0)
+const completedCount = computed(() => completedTodos.value?.length ?? 0)
+const totalCount = computed(() => todos.value?.length ?? 0)
 
 // Filter and paginate
 const filteredTodos = computed(() => {
@@ -259,12 +329,13 @@ const filteredTodos = computed(() => {
 })
 
 const paginatedTodos = computed(() => {
+  if (!filteredTodos.value || !Array.isArray(filteredTodos.value)) return []
   const start = (currentPage.value - 1) * itemsPerPage.value
   const end = start + itemsPerPage.value
   return filteredTodos.value.slice(start, end)
 })
 
-const totalPages = computed(() => Math.ceil(filteredTodos.value.length / itemsPerPage.value))
+const totalPages = computed(() => Math.ceil((filteredTodos.value?.length || 0) / itemsPerPage.value))
 
 // Reset page on search change
 watch(searchQuery, () => { currentPage.value = 1 })
@@ -313,7 +384,17 @@ const handleKeydown = (event) => {
 }
 
 // Helpers
-const getStatusDotClass = (status) => status === 'completed' ? 'bg-emerald-500' : 'bg-blue-500'
+const getStatusDotClass = (status) => {
+  if (status === 'completed') return 'bg-emerald-500'
+  if (status === 'in_progress') return 'bg-blue-500'
+  return 'bg-amber-500'
+}
+
+const getHandlerDisplay = (todo) => {
+  const handler = todo?.handler || todo?.assigned_to
+  if (!handler) return 'Unassigned'
+  return handler.name || handler.full_name || handler.email?.split('@')[0] || 'Unknown'
+}
 
 const priorityBadgeClass = (priority) => {
   const classes = {
@@ -379,9 +460,39 @@ const getTodoMetaLines = (todo) => {
 const getTodoActions = (todo) => {
   const actions = []
   actions.push({ label: 'View', onClick: () => viewTodo(todo), class: 'text-blue-700 bg-blue-50 hover:bg-blue-100' })
-  actions.push({ label: 'Edit', onClick: () => openEditModal(todo), class: 'text-slate-700 bg-slate-100 hover:bg-slate-200' })
-  actions.push({ label: 'Delete', onClick: () => handleDelete(todo), class: 'text-red-600 bg-red-50 hover:bg-red-100' })
+  
+  // Show Start for pending todos
+  if (todo.status === 'pending') {
+    actions.push({ label: 'Start', onClick: () => handleStart(todo), class: 'text-blue-700 bg-blue-50 hover:bg-blue-100' })
+  }
+  
+  // Show Complete for in_progress todos
+  if (todo.status === 'in_progress') {
+    actions.push({ label: 'Complete', onClick: () => handleComplete(todo), class: 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100' })
+  }
+  
+  // Only show Edit/Delete for non-completed todos
+  if (todo.status !== 'completed') {
+    actions.push({ label: 'Edit', onClick: () => openEditModal(todo), class: 'text-slate-700 bg-slate-100 hover:bg-slate-200' })
+    actions.push({ label: 'Delete', onClick: () => handleDelete(todo), class: 'text-red-600 bg-red-50 hover:bg-red-100' })
+  }
+  
   return actions
+}
+
+const handleStart = async (todo) => {
+  closeMenu()
+  try {
+    await markAsInProgress(todo.id)
+    // If details overlay is open, refresh the selected todo
+    if (showDetailsOverlay.value && selectedTodo.value?.id === todo.id) {
+      selectedTodo.value = { ...selectedTodo.value, status: 'in_progress' }
+    }
+    // Refresh the todo list to reflect the status change
+    await fetchTodos()
+  } catch (err) {
+    console.error('Failed to start todo:', err)
+  }
 }
 
 const handleComplete = async (todo) => {
@@ -392,6 +503,8 @@ const handleComplete = async (todo) => {
     if (showDetailsOverlay.value && selectedTodo.value?.id === todo.id) {
       selectedTodo.value = { ...selectedTodo.value, status: 'completed' }
     }
+    // Refresh the todo list to reflect the status change
+    await fetchTodos()
   } catch (err) { 
     console.error('Failed to complete todo:', err) 
   }
@@ -454,6 +567,40 @@ const viewTodo = async (todo) => {
 const closeDetails = () => {
   showDetailsOverlay.value = false
   setTimeout(() => { selectedTodo.value = null }, 300)
+}
+
+const openTransferModal = (todo) => {
+  selectedTodo.value = todo
+  showTransferModal.value = true
+  fetchUsers()
+}
+
+const closeTransferModal = () => {
+  showTransferModal.value = false
+}
+
+const fetchUsers = async () => {
+  try {
+    const response = await axios.get('/users')
+    users.value = response.data?.users || response.data || []
+  } catch (err) {
+    console.error('Failed to fetch users:', err)
+  }
+}
+
+const handleTransfer = async (userId) => {
+  if (!selectedTodo.value || !userId) return
+  
+  transferLoading.value = true
+  try {
+    await assignTodo(selectedTodo.value.id, userId)
+    await fetchTodos()
+    closeTransferModal()
+  } catch (err) {
+    console.error('Failed to transfer todo:', err)
+  } finally {
+    transferLoading.value = false
+  }
 }
 
 // Lifecycle
