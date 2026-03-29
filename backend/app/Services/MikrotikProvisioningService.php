@@ -1657,6 +1657,7 @@ EOT;
     ): array {
         $batches = $this->splitScriptIntoBatches($serviceScript);
         $totalBatches = count($batches);
+        $batchFiles = []; // Track all batch files for cleanup
         
         Log::info('Executing batched commands for low-end device', [
             'router_id' => $router->id,
@@ -1666,6 +1667,7 @@ EOT;
         foreach ($batches as $index => $batch) {
             $batchNum = $index + 1;
             $batchFile = "batch_{$batchNum}.rsc";
+            $batchFiles[] = $batchFile; // Track for cleanup
             
             try {
                 // Disconnect and reconnect between batches to prevent timeout
@@ -1685,12 +1687,19 @@ EOT;
                 // Wait for RouterOS to process
                 sleep(1);
                 
-                // Cleanup batch file
+                // Cleanup batch file immediately after import
                 @unlink($tempFile);
                 try {
                     $ssh->exec('/file remove [find name="' . $batchFile . '"]');
+                    Log::debug("Batch file {$batchFile} removed immediately after import", [
+                        'router_id' => $router->id,
+                    ]);
                 } catch (\Throwable $e) {
-                    // Non-critical
+                    // Non-critical, will be cleaned up later
+                    Log::debug("Batch file {$batchFile} will be cleaned up later", [
+                        'router_id' => $router->id,
+                        'error' => $e->getMessage(),
+                    ]);
                 }
 
                 Log::info("Batch {$batchNum}/{$totalBatches} completed", [
@@ -1704,6 +1713,9 @@ EOT;
                     'error' => $e->getMessage(),
                 ]);
                 
+                // Schedule cleanup of all batch files created so far
+                $this->scheduleBatchCleanup($router, $batchFiles);
+                
                 return [
                     'success' => false,
                     'message' => "Batch {$batchNum} failed: " . $e->getMessage(),
@@ -1715,19 +1727,78 @@ EOT;
         try {
             $validationResult = $validator($ssh);
             if (!($validationResult['valid'] ?? false)) {
+                $this->scheduleBatchCleanup($router, $batchFiles);
                 return [
                     'success' => false,
                     'message' => $validationResult['error'] ?? 'Validation failed',
                 ];
             }
         } catch (\Exception $e) {
+            $this->scheduleBatchCleanup($router, $batchFiles);
             return [
                 'success' => false,
                 'message' => 'Final validation failed: ' . $e->getMessage(),
             ];
         }
 
+        // Schedule cleanup of any remaining batch files
+        $this->scheduleBatchCleanup($router, $batchFiles);
+
         return ['success' => true, 'message' => 'Configuration applied via batches'];
+    }
+
+    /**
+     * Schedule cleanup of batch files
+     */
+    private function scheduleBatchCleanup(Router $router, array $batchFiles): void
+    {
+        if (empty($batchFiles)) {
+            return;
+        }
+
+        $routerId = $router->id;
+        $tenantId = app(\App\Services\TenantContext::class)->getTenantId();
+
+        dispatch(function () use ($routerId, $tenantId, $batchFiles) {
+            $tenantContext = app(\App\Services\TenantContext::class);
+            
+            if ($tenantId) {
+                $tenantContext->setTenantById($tenantId);
+            }
+
+            try {
+                $router = \App\Models\Router::on('pgsql')->useWritePdo()->find($routerId);
+                if (!$router) {
+                    return;
+                }
+
+                $ssh = app(SshExecutor::class, [
+                    'router' => $router,
+                    'timeout' => 10,
+                ]);
+                $ssh->connect();
+
+                try {
+                    foreach ($batchFiles as $batchFile) {
+                        try {
+                            $ssh->exec('/file remove [find name="' . $batchFile . '"]');
+                            Log::debug('Batch file cleaned up', [
+                                'router_id' => $routerId,
+                                'file' => $batchFile,
+                            ]);
+                        } catch (\Throwable $e) {
+                            // File may already be deleted
+                        }
+                    }
+                } finally {
+                    $ssh->disconnect();
+                }
+            } finally {
+                if ($tenantId) {
+                    $tenantContext->clearTenant();
+                }
+            }
+        })->delay(now()->addSeconds(30));
     }
 
     /**
