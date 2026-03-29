@@ -301,14 +301,14 @@ class ZeroConfigHybridGenerator
 
         $script = [
             "# Interface Lists",
-            ":do { /interface list add name=LAN comment=\"Local Area Network\" } on-error={}",
-            ":do { /interface list add name=WAN comment=\"Wide Area Network\" } on-error={}",
-            ":do { /interface list member add list=WAN interface=ether1 } on-error={}",
+            ":do { /interface list add name=LAN comment=\"Local Area Network\" } on-error={ /log info \"hyb-$id: INFO - LAN list exists or failed\" }",
+            ":do { /interface list add name=WAN comment=\"Wide Area Network\" } on-error={ /log info \"hyb-$id: INFO - WAN list exists or failed\" }",
+            ":do { /interface list member add list=WAN interface=ether1 } on-error={ /log info \"hyb-$id: WARN - Failed to add ether1 to WAN\" }",
             "",
             "# Bridge Setup",
-            ":do { /interface bridge port remove [/interface bridge port find bridge=\"{$bridge}\"]; } on-error={}",
-            ":do { /interface bridge remove [/interface bridge find name=\"{$bridge}\"]; } on-error={}",
-            ":do { /interface bridge add name=\"{$bridge}\" protocol-mode=rstp comment=\"hyb-br-{$id}\" } on-error={}",
+            ":do { /interface bridge port remove [/interface bridge port find bridge=\"{$bridge}\"]; } on-error={ /log info \"hyb-$id: INFO - No bridge ports to remove\" }",
+            ":do { /interface bridge remove [/interface bridge find name=\"{$bridge}\"]; } on-error={ /log info \"hyb-$id: INFO - No bridge to remove\" }",
+            ":do { /interface bridge add name=\"{$bridge}\" protocol-mode=rstp comment=\"hyb-br-{$id}\" } on-error={ /log info \"hyb-$id: WARN - Failed to add bridge\" }",
             ":delay 500ms",
         ];
 
@@ -371,15 +371,15 @@ class ZeroConfigHybridGenerator
         $s           = [];
 
         $s[] = "# PPPoE Config (Bridge)";
-        $s[] = ":do { /interface list add name={$pal} } on-error={}";
-        $s[] = ":do { /ip pool remove [/ip pool find name=\"{$poolName}\"]; } on-error={}";
-        $s[] = ":do { /ip pool add name=\"{$poolName}\" ranges={$pool->range_start}-{$pool->range_end} comment=\"hyb-pp-{$id}\"; } on-error={}";
-        $s[] = ":do { /ppp profile remove [/ppp profile find name=\"{$profile}\"]; } on-error={}";
-        $s[] = ":do { /ppp profile add name=\"{$profile}\" local-address={$gateway} remote-address=\"{$poolName}\" dns-server=\"{$dns}\" comment=\"hyb-pp-{$id}\"; } on-error={}";
-        $s[] = ":do { /ppp profile set [/ppp profile find name=\"{$profile}\"] interface-list={$pal}; } on-error={}";
-        $s[] = ":do { /interface pppoe-server server remove [/interface pppoe-server server find service-name=\"{$serviceName}\"]; } on-error={}";
-        $s[] = ":do { /interface pppoe-server server add service-name=\"{$serviceName}\" interface=\"{$bridge}\" default-profile=\"{$profile}\" authentication=pap,chap,mschap2 keepalive-timeout=10 max-mtu=1480 max-mru=1480; } on-error={}";
-        $s[] = ":do { /interface pppoe-server server set [/interface pppoe-server server find service-name=\"{$serviceName}\"] disabled=no; } on-error={}";
+        $s[] = ":do { /interface list add name={$pal} } on-error={ /log info \"hyb-$id: INFO - Interface list $pal exists\" }";
+        $s[] = ":do { /ip pool remove [/ip pool find name=\"{$poolName}\"]; } on-error={ /log info \"hyb-$id: INFO - No pool to remove\" }";
+        $s[] = ":do { /ip pool add name=\"{$poolName}\" ranges={$pool->range_start}-{$pool->range_end} comment=\"hyb-pp-{$id}\"; } on-error={ /log info \"hyb-$id: WARN - Failed to add pool\" }";
+        $s[] = ":do { /ppp profile remove [/ppp profile find name=\"{$profile}\"]; } on-error={ /log info \"hyb-$id: INFO - No profile to remove\" }";
+        $s[] = ":do { /ppp profile add name=\"{$profile}\" local-address={$gateway} remote-address=\"{$poolName}\" dns-server=\"{$dns}\" comment=\"hyb-pp-{$id}\"; } on-error={ /log info \"hyb-$id: WARN - Failed to add profile\" }";
+        $s[] = ":do { /ppp profile set [/ppp profile find name=\"{$profile}\"] interface-list={$pal}; } on-error={ /log info \"hyb-$id: WARN - Failed to set profile interface-list\" }";
+        $s[] = ":do { /interface pppoe-server server remove [/interface pppoe-server server find service-name=\"{$serviceName}\"]; } on-error={ /log info \"hyb-$id: INFO - No PPPoE server to remove\" }";
+        $s[] = ":do { /interface pppoe-server server add service-name=\"{$serviceName}\" interface=\"{$bridge}\" default-profile=\"{$profile}\" authentication=pap,chap,mschap2 keepalive-timeout=10 max-mtu=1480 max-mru=1480; } on-error={ /log info \"hyb-$id: WARN - Failed to add PPPoE server\" }";
+        $s[] = ":do { /interface pppoe-server server set [/interface pppoe-server server find service-name=\"{$serviceName}\"] disabled=no; } on-error={ /log info \"hyb-$id: WARN - Failed to enable PPPoE server\" }";
         $s[] = "";
         return $s;
     }
