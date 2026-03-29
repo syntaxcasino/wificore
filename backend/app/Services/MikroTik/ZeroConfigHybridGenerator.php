@@ -306,6 +306,7 @@ class ZeroConfigHybridGenerator
             ":do { /interface list member add list=WAN interface=ether1 } on-error={}",
             "",
             "# Bridge Setup",
+            ":do { /interface bridge port remove [/interface bridge port find bridge=\"{$bridge}\"]; } on-error={}",
             ":do { /interface bridge remove [/interface bridge find name=\"{$bridge}\"]; } on-error={}",
             ":do { /interface bridge add name=\"{$bridge}\" protocol-mode=rstp comment=\"hyb-br-{$id}\" } on-error={ :error \"hyb-bridge-fail\" }",
             ":delay 500ms",
