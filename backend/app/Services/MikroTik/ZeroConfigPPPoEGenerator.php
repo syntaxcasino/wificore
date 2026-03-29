@@ -160,6 +160,11 @@ class ZeroConfigPPPoEGenerator
         $s[] = ":do { /interface list add name=$pal } on-error={}";
         $s[] = ":do { /interface list member add list=$wan interface=ether1 } on-error={}";
 
+        // ENABLE REST API (api-ssl) for modern provisioning
+        $s[] = ":do { /ip service enable api-ssl } on-error={ /log info \"PPPoE-$id: INFO - api-ssl already enabled or not available\" }";
+        $s[] = ":do { /ip service set api-ssl address=$mgmt } on-error={ /log info \"PPPoE-$id: WARN - Failed to set api-ssl address\" }";
+        $s[] = "/log info \"PPPoE-$id: REST API (api-ssl) enabled on port 8729\"";
+
         // PPP PROFILE — add minimal then set in short chunks
         $s[] = ":do { /ppp profile add name=\"$prof\" comment=\"PPPoE-$id\" } on-error={}";
         $s[] = ":do { /ppp profile set [/ppp profile find name=\"$prof\"] local-address=$gw remote-address=\"$pool\" } on-error={}";
