@@ -28,6 +28,22 @@ class SshExecutor
     }
 
     /**
+     * Set SSH timeout dynamically (useful for slow devices like hAP lite).
+     */
+    public function setTimeout(int $timeout): void
+    {
+        $this->timeout = $timeout;
+    }
+
+    /**
+     * Get current SSH timeout.
+     */
+    public function getTimeout(): int
+    {
+        return $this->timeout;
+    }
+
+    /**
      * Connect using SSH key or password fallback.
      */
     public function connect(): bool
