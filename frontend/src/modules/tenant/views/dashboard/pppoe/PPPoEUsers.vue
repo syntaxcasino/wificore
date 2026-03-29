@@ -499,11 +499,28 @@ const handleKeydown = (event) => {
   if (event.key === 'Escape') closeMenu()
 }
 
-const handleResetPasswordForMenu = (user) => {
+const handleResetPasswordForMenu = async (user) => {
   closeMenu()
   selectedUser.value = user
-  showUserDetailsModal.value = true
-  handleResetPassword()
+  
+  const confirmed = await confirmStore.open({
+    title: 'Reset Password',
+    message: `Are you sure you want to reset the password for ${user.username}?`,
+    confirmText: 'Reset',
+    cancelText: 'Cancel',
+    variant: 'warning'
+  })
+  
+  if (confirmed) {
+    try {
+      const { generatedPassword: newPassword } = await resetPassword(user.id)
+      userPassword.value = newPassword || ''
+      showPasswordValue.value = true
+      showUserDetailsModal.value = true
+    } catch (err) {
+      console.error('Failed to reset password:', err)
+    }
+  }
 }
 
 // Helpers
