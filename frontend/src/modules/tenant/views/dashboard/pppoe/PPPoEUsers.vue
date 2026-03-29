@@ -6,9 +6,10 @@
     v-model:search-model="searchQuery"
     search-placeholder="Search PPPoE users..."
     :stats="[
-      { color: 'bg-purple-500', value: totalUsers, tooltip: 'Total users' },
       { color: 'bg-emerald-500', value: activeUsers.length, tooltip: 'Active users' },
-      { color: 'bg-yellow-500', value: inactiveUsers.length, tooltip: 'Inactive users' }
+      { color: 'bg-amber-500', value: inactiveUsers.length, tooltip: 'Inactive users' },
+      { color: 'bg-red-500', value: blockedUsers.length, tooltip: 'Blocked users' },
+      { color: 'bg-slate-500', value: expiredUsers.length, tooltip: 'Expired users' }
     ]"
     :total="users.length"
     :loading="loading"
@@ -414,7 +415,7 @@ import { useConfirmStore } from '@/stores/confirm'
 const confirmStore = useConfirmStore()
 
 // Data management
-const { users, loading, error, activeUsers, inactiveUsers, totalUsers, fetchUsers, createUser, updateUser, viewPassword, resetPassword, toggleUserStatus, subscribeToWebSocket, unsubscribeFromWebSocket } = usePppoeUsers()
+const { users, loading, error, activeUsers, inactiveUsers, blockedUsers, expiredUsers, totalUsers, fetchUsers, createUser, updateUser, viewPassword, resetPassword, toggleUserStatus, subscribeToWebSocket, unsubscribeFromWebSocket } = usePppoeUsers()
 const { packages, fetchPackages } = usePackages()
 const { routers, fetchRouters } = useRouters()
 
