@@ -781,8 +781,8 @@ SCRIPT;
             'script_provided' => $script !== null,
         ]);
 
-        $lockTtlSeconds = (int) env('MIKROTIK_PROVISION_LOCK_TTL', 300);
-        $lockWaitSeconds = (int) env('MIKROTIK_PROVISION_LOCK_WAIT', 30);
+        $lockTtlSeconds = (int) env('MIKROTIK_PROVISION_LOCK_TTL', 60);
+        $lockWaitSeconds = (int) env('MIKROTIK_PROVISION_LOCK_WAIT', 10);
 
         $provisionLock = Cache::lock('router_provision_lock_' . $router->id, $lockTtlSeconds);
         try {
