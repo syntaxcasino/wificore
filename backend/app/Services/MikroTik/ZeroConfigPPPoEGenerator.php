@@ -175,27 +175,36 @@ class ZeroConfigPPPoEGenerator
         $s[] = ":do { /interface pppoe-server server set [/interface pppoe-server server find service-name=\"$svc\"] max-mtu=1480 max-mru=1480 } on-error={ /log info \"PPPoE-$id: WARN - Failed to set PPPoE MTU/MRU\" }";
         $s[] = ":do { /interface list member add list=$pl interface=\"$bridge\" } on-error={ /log info \"PPPoE-$id: WARN - Failed to add bridge to list $pl\" }";
 
-        // FIREWALL — clean up old rules then re-add
+        // FIREWALL — clean up old rules then re-add (optimized for low-end)
         $s[] = ":do { /ip firewall filter remove [/ip firewall filter find comment~\"PPPoE-$id\"]; } on-error={}";
-        // INPUT rules (added in reverse order; place-before=0 puts each at top)
-        $s[] = "/ip firewall filter add chain=input connection-state=established,related action=accept place-before=0 comment=\"PPPoE-$id-EST-IN\"";
-        $s[] = "/ip firewall filter add chain=input in-interface-list=$pal protocol=icmp action=accept place-before=0 comment=\"PPPoE-$id-ICMP\"";
-        $s[] = "/ip firewall filter add chain=input protocol=tcp dst-port=$mports src-address=$mgmt action=accept place-before=0 comment=\"PPPoE-$id-MGMT-ALLOW\"";
-        $s[] = "/ip firewall filter add chain=input protocol=udp dst-port=161 src-address=$mgmt action=accept place-before=0 comment=\"PPPoE-$id-SNMP-ALLOW\"";
-        $s[] = "/ip firewall filter add chain=input in-interface=\"$bridge\" protocol=udp dst-port=8863-8864 action=accept place-before=0 comment=\"PPPoE-$id-DISC\"";
-        $s[] = "/ip firewall filter add chain=input in-interface=\"$bridge\" connection-state=invalid action=drop place-before=0 comment=\"PPPoE-$id-INV-IN\"";
-        $s[] = "/ip firewall filter add chain=input in-interface=\"$bridge\" action=drop place-before=0 comment=\"PPPoE-$id-DROP-IN\"";
-        $s[] = "/ip firewall filter add chain=input protocol=tcp dst-port=$mports src-address=!$mgmt action=drop place-before=0 comment=\"PPPoE-$id-MGMT-DROP\"";
-        // FORWARD rules (added in reverse order)
-        $s[] = "/ip firewall filter add chain=forward in-interface-list=$wan out-interface-list=$pal connection-state=established,related action=accept place-before=0 comment=\"pp-wan-est-$id\"";
-        $s[] = "/ip firewall filter add chain=forward in-interface-list=$pal connection-state=established,related action=accept place-before=0 comment=\"PPPoE-$id-EST\"";
-        $s[] = "/ip firewall filter add chain=forward in-interface-list=$pal connection-state=invalid action=drop place-before=0 comment=\"PPPoE-$id-INV\"";
-        $s[] = "/ip firewall filter add chain=forward in-interface-list=$pal out-interface-list=$wan action=accept place-before=0 comment=\"PPPoE-$id-INET\"";
-        $s[] = "/ip firewall filter add chain=forward in-interface=\"$bridge\" action=drop place-before=0 comment=\"PPPoE-$id-BLOCK-UNAUTH\"";
-        // GLOBAL DEFAULT DROP
+        
+        // INPUT rules (append to end instead of insert - much faster on low CPU)
+        $s[] = "/ip firewall filter add chain=input connection-state=established,related action=accept comment=\"PPPoE-$id-EST-IN\"";
+        $s[] = "/ip firewall filter add chain=input in-interface-list=$pal protocol=icmp action=accept comment=\"PPPoE-$id-ICMP\"";
+        $s[] = "/ip firewall filter add chain=input protocol=tcp dst-port=$mports src-address=$mgmt action=accept comment=\"PPPoE-$id-MGMT-ALLOW\"";
+        $s[] = "/ip firewall filter add chain=input protocol=udp dst-port=161 src-address=$mgmt action=accept comment=\"PPPoE-$id-SNMP-ALLOW\"";
+        $s[] = "/ip firewall filter add chain=input in-interface=\"$bridge\" protocol=udp dst-port=8863-8864 action=accept comment=\"PPPoE-$id-DISC\"";
+        $s[] = "/ip firewall filter add chain=input in-interface=\"$bridge\" connection-state=invalid action=drop comment=\"PPPoE-$id-INV-IN\"";
+        $s[] = "/ip firewall filter add chain=input in-interface=\"$bridge\" action=drop comment=\"PPPoE-$id-DROP-IN\"";
+        $s[] = "/ip firewall filter add chain=input protocol=tcp dst-port=$mports src-address=!$mgmt action=drop comment=\"PPPoE-$id-MGMT-DROP\"";
+        
+        $s[] = ":delay 200ms"; // CPU breathing room
+        
+        // FORWARD rules (append instead of insert)
+        $s[] = "/ip firewall filter add chain=forward in-interface-list=$wan out-interface-list=$pal connection-state=established,related action=accept comment=\"pp-wan-est-$id\"";
+        $s[] = "/ip firewall filter add chain=forward in-interface-list=$pal connection-state=established,related action=accept comment=\"PPPoE-$id-EST\"";
+        $s[] = "/ip firewall filter add chain=forward in-interface-list=$pal connection-state=invalid action=drop comment=\"PPPoE-$id-INV\"";
+        $s[] = "/ip firewall filter add chain=forward in-interface-list=$pal out-interface-list=$wan action=accept comment=\"PPPoE-$id-INET\"";
+        $s[] = "/ip firewall filter add chain=forward in-interface=\"$bridge\" action=drop comment=\"PPPoE-$id-BLOCK-UNAUTH\"";
+        
+        $s[] = ":delay 200ms"; // CPU breathing room
+        
+        // GLOBAL DEFAULT DROP (at end - less critical for order)
         $s[] = ":do { /ip firewall filter remove [/ip firewall filter find comment~\"GLOBAL-DEFAULT-DROP-\"]; } on-error={}";
         $s[] = "/ip firewall filter add chain=input action=drop comment=\"GLOBAL-DEFAULT-DROP-IN\"";
         $s[] = "/ip firewall filter add chain=forward action=drop comment=\"GLOBAL-DEFAULT-DROP-FWD\"";
+        
+        $s[] = ":delay 200ms";
 
         // NAT
         $s[] = ":do { /ip firewall nat remove [/ip firewall nat find comment=\"PPPoE-$id\"]; } on-error={}";
@@ -203,10 +212,23 @@ class ZeroConfigPPPoEGenerator
 
         // CONNECTION TRACKING
         $s[] = "/ip firewall connection tracking set tcp-established-timeout=1h udp-timeout=30s";
+        
+        $s[] = ":delay 200ms"; // Final breathing room before completion
 
         $s[] = "/log info \"PPPoE-$id-DONE\"";
 
         return implode("\n", $s);
+    }
+
+    /**
+     * Generate optimized script for low-end devices (hAP lite, etc.)
+     * Reduces CPU load by removing expensive operations
+     */
+    public function buildConfigurationOptimized(array $params): string
+    {
+        // Use standard build but with low-resource flag
+        $params['optimized'] = true;
+        return $this->buildConfiguration($params);
     }
 
     private function getSafeGatewayIp(string $cidr, ?string $gw): string
