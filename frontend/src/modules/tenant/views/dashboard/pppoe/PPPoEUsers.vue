@@ -391,7 +391,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { X, Eye, EyeOff, Key, MoreVertical } from 'lucide-vue-next'
 import DataViewContainer from '@/modules/common/components/base/DataViewContainer.vue'
 import DataSkeleton from '@/modules/common/components/base/DataSkeleton.vue'
@@ -425,6 +425,12 @@ const { filters, searchQuery, filteredData, hasActiveFilters } = useFilters(user
 
 // Pagination
 const { currentPage, itemsPerPage, paginatedData, totalPages } = usePagination(filteredData, 10)
+
+// Reset page on search/filter changes (matching TodosView pattern)
+watch(searchQuery, () => { currentPage.value = 1 })
+watch(itemsPerPage, () => { currentPage.value = 1 })
+watch(() => filters.status, () => { currentPage.value = 1 })
+watch(() => filters.package_id, () => { currentPage.value = 1 })
 
 // Overlay state
 const showAddUserOverlay = ref(false)
