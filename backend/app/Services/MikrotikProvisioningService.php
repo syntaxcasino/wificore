@@ -1672,11 +1672,20 @@ EOT;
             $batchFiles[] = $batchFile; // Track for cleanup
             
             try {
-                // Disconnect and reconnect between batches to prevent timeout
+                // ALWAYS disconnect and reconnect between batches for hAP lite
+                // This is critical to prevent memory exhaustion on 16-32MB devices
                 if ($index > 0) {
                     $ssh->disconnect(false);
-                    sleep(2);
+                    Log::debug('Disconnected SSH between batches for memory recovery', [
+                        'router_id' => $router->id,
+                        'batch' => $batchNum,
+                    ]);
+                    sleep(5); // 5 second memory recovery time for hAP lite
                     $ssh->connect();
+                    Log::debug('Reconnected SSH after memory recovery delay', [
+                        'router_id' => $router->id,
+                        'batch' => $batchNum,
+                    ]);
                 }
 
                 // Upload and execute this batch
@@ -1684,15 +1693,19 @@ EOT;
                 file_put_contents($tempFile, $batch);
                 
                 $ssh->uploadFile($tempFile, $batchFile);
+                
+                // Short delay after upload before import (let router process)
+                sleep(2);
+                
                 $ssh->importFile($batchFile);
                 
-                // Wait for RouterOS to process
-                sleep(1);
+                // Wait for RouterOS to process and stabilize memory
+                sleep(3);
                 
                 // Cleanup batch file immediately after import
                 @unlink($tempFile);
                 try {
-                    $ssh->exec('/file remove [find name="' . $batchFile . '"]');
+                    $ssh->exec('/file remove [find name="' . $batchFile . '"]', 5);
                     Log::debug("Batch file {$batchFile} removed immediately after import", [
                         'router_id' => $router->id,
                     ]);
@@ -1812,12 +1825,15 @@ EOT;
 
     /**
      * Split script into logical batches based on command types
+     * Ultra-conservative for hAP lite (16-32MB RAM) to prevent memory exhaustion
      */
     private function splitScriptIntoBatches(string $script): array
     {
         $lines = explode("\n", $script);
         $batches = [];
         $currentBatch = [];
+        $lineCount = 0;
+        $maxLinesPerBatch = 2; // Ultra-conservative: max 2 commands per batch for hAP lite
         
         foreach ($lines as $line) {
             $trimmed = trim($line);
@@ -1826,14 +1842,18 @@ EOT;
             }
             
             $currentBatch[] = $line;
+            $lineCount++;
             
-            // Start new batch after major sections
-            if (str_contains($trimmed, '/ip firewall') || 
+            // Force new batch every 2 commands OR at major sections
+            if ($lineCount >= $maxLinesPerBatch ||
+                str_contains($trimmed, '/ip firewall') || 
                 str_contains($trimmed, '/interface pppoe-server') ||
-                str_contains($trimmed, '/radius')) {
-                if (count($currentBatch) >= 5) {
+                str_contains($trimmed, '/radius') ||
+                str_contains($trimmed, '/interface bridge')) {
+                if (!empty($currentBatch)) {
                     $batches[] = implode("\n", $currentBatch);
                     $currentBatch = [];
+                    $lineCount = 0;
                 }
             }
         }
@@ -1843,7 +1863,7 @@ EOT;
             $batches[] = implode("\n", $currentBatch);
         }
         
-        // If no batches created, use entire script as one batch
+        // If no batches created, use entire script as one batch (shouldn't happen)
         if (empty($batches)) {
             $batches[] = $script;
         }
