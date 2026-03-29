@@ -72,6 +72,7 @@ class ZeroConfigHybridGenerator
                 'radius_secret'     => config('radius.secret', 'testing123'),
                 'management_subnet' => config('vpn.subnet.base', '10.0.0.0/8'),
                 'tenant_id'         => $router->tenant_id,
+                'is_low_end'        => $scriptSettings['tier'] === 'low_end',
             ]);
         }
 
@@ -81,7 +82,7 @@ class ZeroConfigHybridGenerator
         $pppoeVlan   = $vlans->where('service_type', 'pppoe')->first();
 
         if (!$hotspotVlan || !$pppoeVlan) {
-            throw new \Exception('Hybrid service requires both hotspot and pppoe VLANs');
+            throw new \Exception('Hybrid service requires both hotspot and PPPoE VLANs');
         }
 
         return $this->buildConfiguration([
@@ -98,6 +99,7 @@ class ZeroConfigHybridGenerator
             'radius_secret'     => config('radius.secret', 'testing123'),
             'management_subnet' => config('vpn.subnet.base', '10.0.0.0/8'),
             'tenant_id'         => $router->tenant_id,
+            'is_low_end'        => $scriptSettings['tier'] === 'low_end',
         ]);
     }
 
@@ -209,6 +211,11 @@ class ZeroConfigHybridGenerator
         return $s;
     }
 
+    /**
+     * Generate tier-based firewall rules for VLAN mode - minimal for hAP lite, full for high-end
+     * SECURITY: Unauthenticated users are BLOCKED from internet in BOTH tiers
+     * SECURITY: Only authenticated users (hotspot=auth or PAL) can access WAN in BOTH tiers
+     */
     private function generateFirewallRules(array $params): array
     {
         $id      = $params['id'];
@@ -217,9 +224,33 @@ class ZeroConfigHybridGenerator
         $hsIface = "vlan-hs-{$hsVlan}";
         $ppIface = "vlan-pp-{$ppVlan}";
         $pal     = "PPPOE-ACTIVE-HYB-{$id}";
+        $isLowEnd = $params['is_low_end'] ?? false;
 
+        if ($isLowEnd) {
+            // MINIMAL FIREWALL for hAP lite (~8 rules)
+            // Core security only - blocks unauth, allows authenticated
+            return [
+                "# Firewall [MINIMAL] - Essential security for low-end device",
+                ":do { /ip firewall filter remove [/ip firewall filter find comment~\"hyb-fw-{$id}\"]; } on-error={}",
+                // CRITICAL: Drop unauthenticated traffic from both VLANs
+                "/ip firewall filter add chain=forward in-interface={$ppIface} action=drop place-before=0 comment=\"hyb-fw-{$id}-pp-DROP-UNAUTH\"",
+                "/ip firewall filter add chain=forward in-interface={$hsIface} action=drop place-before=0 comment=\"hyb-fw-{$id}-hs-DROP-UNAUTH\"",
+                // CRITICAL: Allow authenticated users to WAN
+                "/ip firewall filter add chain=forward in-interface={$hsIface} hotspot=auth out-interface-list=WAN action=accept place-before=0 comment=\"hyb-fw-{$id}-hs-AUTH-INET\"",
+                "/ip firewall filter add chain=forward in-interface-list={$pal} out-interface-list=WAN action=accept place-before=0 comment=\"hyb-fw-{$id}-pp-AUTH-INET\"",
+                // Performance: Established/related
+                "/ip firewall filter add chain=forward in-interface={$hsIface} connection-state=established,related action=accept place-before=0 comment=\"hyb-fw-{$id}-hs-EST\"",
+                "/ip firewall filter add chain=forward in-interface-list={$pal} connection-state=established,related action=accept place-before=0 comment=\"hyb-fw-{$id}-pp-EST\"",
+                // Security: Drop invalid
+                "/ip firewall filter add chain=forward in-interface={$hsIface} connection-state=invalid action=drop place-before=0 comment=\"hyb-fw-{$id}-hs-INV\"",
+                ""
+            ];
+        }
+
+        // FULL FIREWALL for high-end devices (~12 rules)
+        // Complete security with VLAN separation
         return [
-            "# Firewall - VLAN Separation (in-interface scoped)",
+            "# Firewall [FULL] - Complete security for high-end device",
             ":do { /ip firewall filter remove [/ip firewall filter find comment~\"hyb-fw-{$id}\"]; } on-error={}",
             "/ip firewall filter add chain=forward in-interface={$ppIface} action=drop place-before=0 comment=\"hyb-fw-{$id}-pp-drop\"",
             "/ip firewall filter add chain=forward in-interface={$hsIface} action=drop place-before=0 comment=\"hyb-fw-{$id}-hs-drop\"",
@@ -233,7 +264,7 @@ class ZeroConfigHybridGenerator
             "/ip firewall filter add chain=forward in-interface-list=WAN out-interface-list={$pal} connection-state=established,related action=accept place-before=0 comment=\"hyb-fw-{$id}-pp-wan\"",
             "/ip firewall filter add chain=forward in-interface={$ppIface} out-interface={$hsIface} action=drop place-before=0 comment=\"hyb-fw-{$id}-xvlan-pp\"",
             "/ip firewall filter add chain=forward in-interface={$hsIface} out-interface={$ppIface} action=drop place-before=0 comment=\"hyb-fw-{$id}-xvlan-hs\"",
-            "",
+            ""
         ];
     }
 
@@ -384,14 +415,36 @@ class ZeroConfigHybridGenerator
         return $s;
     }
 
+    /**
+     * Generate tier-based firewall rules for Bridge mode - minimal for hAP lite, full for high-end
+     */
     private function generateBridgeFirewallRules(array $params): array
     {
         $bridge = $params['bridge'];
         $id     = $params['id'];
         $pal    = $params['pppoe_active_list'];
+        $isLowEnd = $params['is_low_end'] ?? false;
 
+        if ($isLowEnd) {
+            // MINIMAL FIREWALL for hAP lite Bridge mode (~6 rules)
+            return [
+                "# Firewall [MINIMAL] - Bridge mode essential security",
+                ":do { /ip firewall filter remove [/ip firewall filter find comment~\"hyb-fw-{$id}\"]; } on-error={}",
+                // CRITICAL: Block unauthenticated users from internet
+                "/ip firewall filter add chain=forward in-interface=\"{$bridge}\" action=drop place-before=0 comment=\"hyb-fw-{$id}-DROP-UNAUTH\"",
+                // CRITICAL: Allow authenticated hotspot and PPPoE users
+                "/ip firewall filter add chain=forward in-interface=\"{$bridge}\" hotspot=auth out-interface-list=WAN action=accept place-before=0 comment=\"hyb-fw-{$id}-hs-AUTH\"",
+                "/ip firewall filter add chain=forward in-interface-list={$pal} out-interface-list=WAN action=accept place-before=0 comment=\"hyb-fw-{$id}-pp-AUTH\"",
+                // Performance and security
+                "/ip firewall filter add chain=forward in-interface=\"{$bridge}\" connection-state=established,related action=accept place-before=0 comment=\"hyb-fw-{$id}-EST\"",
+                "/ip firewall filter add chain=forward in-interface=\"{$bridge}\" connection-state=invalid action=drop place-before=0 comment=\"hyb-fw-{$id}-INV\"",
+                ""
+            ];
+        }
+
+        // FULL FIREWALL for high-end Bridge mode (~9 rules)
         return [
-            "# Firewall - Bridge Mode (in-interface scoped)",
+            "# Firewall [FULL] - Bridge mode complete security",
             ":do { /ip firewall filter remove [/ip firewall filter find comment~\"hyb-fw-{$id}\"]; } on-error={}",
             "/ip firewall filter add chain=forward in-interface=\"{$bridge}\" action=drop place-before=0 comment=\"hyb-fw-{$id}-drop\"",
             "/ip firewall filter add chain=forward in-interface=\"{$bridge}\" hotspot=auth out-interface-list=WAN action=accept place-before=0 comment=\"hyb-fw-{$id}-hs-inet\"",
@@ -402,7 +455,7 @@ class ZeroConfigHybridGenerator
             "/ip firewall filter add chain=forward in-interface=\"{$bridge}\" connection-state=established,related action=accept place-before=0 comment=\"hyb-fw-{$id}-hs-est\"",
             "/ip firewall filter add chain=forward in-interface-list=WAN out-interface=\"{$bridge}\" connection-state=established,related action=accept place-before=0 comment=\"hyb-fw-{$id}-hs-wan\"",
             "/ip firewall filter add chain=forward in-interface-list=WAN out-interface-list={$pal} connection-state=established,related action=accept place-before=0 comment=\"hyb-fw-{$id}-pp-wan\"",
-            "",
+            ""
         ];
     }
 
