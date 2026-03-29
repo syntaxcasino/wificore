@@ -150,10 +150,12 @@ class ZeroConfigPPPoEGenerator
         $s[] = ":do { /interface bridge port remove [/interface bridge port find bridge=\"$bridge\"]; } on-error={ /log info \"PPPoE-$id: WARN - Failed to remove bridge ports\" }";
         $s[] = ":do { /interface bridge remove [/interface bridge find name=\"$bridge\"]; } on-error={ /log info \"PPPoE-$id: WARN - Failed to remove bridge\" }";
         $s[] = ":do { /interface bridge add name=\"$bridge\" comment=\"PPPoE-$id\" } on-error={ /log info \"PPPoE-$id: WARN - Failed to add bridge\" }";
-        $s[] = ":delay 500ms";
+        $s[] = ":delay 2s";
         $s[] = ":do { /interface bridge set [/interface bridge find name=\"$bridge\"] protocol-mode=rstp } on-error={ /log info \"PPPoE-$id: WARN - Failed to set bridge protocol\" }";
 
-        // Add ALL interfaces to bridge (silent continuation with logging)
+        // Add ALL interfaces to bridge (silent continuation with logging) - with delays for low-end devices
+        $interfaceCount = count($p['interfaces']);
+        $currentInterface = 0;
         foreach ($p['interfaces'] as $iface) {
             $access = $iface;
             if ($p['vlan_required'] && $p['vlan_id']) {
@@ -162,6 +164,11 @@ class ZeroConfigPPPoEGenerator
                 $s[] = "/interface vlan add name=\"$access\" vlan-id={$p['vlan_id']} interface=\"$iface\" comment=\"PPPoE-$id\"";
             }
             $s[] = ":do { /interface bridge port add bridge=\"$bridge\" interface=\"$access\" } on-error={ /log info \"PPPoE-$id: WARN - Failed to add interface $access to bridge\" }";
+            // Add delay after every 2 interfaces on low-end devices
+            $currentInterface++;
+            if ($currentInterface % 2 === 0 && $currentInterface < $interfaceCount) {
+                $s[] = ":delay 1s";
+            }
         }
 
         $s[] = ":do { /ip dhcp-server remove [/ip dhcp-server find interface=\"$bridge\"]; } on-error={}";
@@ -188,7 +195,7 @@ class ZeroConfigPPPoEGenerator
         $s[] = "/ip firewall filter add chain=input in-interface=\"$bridge\" action=drop comment=\"PPPoE-$id-DROP-IN\"";
         $s[] = "/ip firewall filter add chain=input protocol=tcp dst-port=$mports src-address=!$mgmt action=drop comment=\"PPPoE-$id-MGMT-DROP\"";
         
-        $s[] = ":delay 200ms"; // CPU breathing room
+        $s[] = ":delay 2s"; // CPU breathing room - longer for hAP lite
         
         // FORWARD rules (append instead of insert)
         $s[] = "/ip firewall filter add chain=forward in-interface-list=$wan out-interface-list=$pal connection-state=established,related action=accept comment=\"pp-wan-est-$id\"";
@@ -204,7 +211,7 @@ class ZeroConfigPPPoEGenerator
         $s[] = "/ip firewall filter add chain=input action=drop comment=\"GLOBAL-DEFAULT-DROP-IN\"";
         $s[] = "/ip firewall filter add chain=forward action=drop comment=\"GLOBAL-DEFAULT-DROP-FWD\"";
         
-        $s[] = ":delay 200ms";
+        $s[] = ":delay 2s";
 
         // NAT
         $s[] = ":do { /ip firewall nat remove [/ip firewall nat find comment=\"PPPoE-$id\"]; } on-error={}";
@@ -213,7 +220,7 @@ class ZeroConfigPPPoEGenerator
         // CONNECTION TRACKING
         $s[] = "/ip firewall connection tracking set tcp-established-timeout=1h udp-timeout=30s";
         
-        $s[] = ":delay 200ms"; // Final breathing room before completion
+        $s[] = ":delay 2s"; // Final breathing room before completion
 
         $s[] = "/log info \"PPPoE-$id-DONE\"";
 
