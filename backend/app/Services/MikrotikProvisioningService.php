@@ -1164,24 +1164,13 @@ SCRIPT;
 
                         if ($expectsHotspot && !$expectsPppoe) {
                             if ($expectedHotspotServer || $expectedHotspotProfile || $expectedHotspotBridge) {
-                                Log::info('Service deployment validation passed (hotspot)', [
-                                    'router_id' => $router->id,
-                                    'expected_hotspot_server' => $expectedHotspotServer,
-                                    'expected_hotspot_profile' => $expectedHotspotProfile,
-                                    'expected_hotspot_bridge' => $expectedHotspotBridge,
-                                ]);
+                                // Reduced: Removed routine success log
                                 return ['valid' => true];
                             }
 
                             $hotspotCount = (int) trim($sshExecutor->exec('/ip hotspot print count-only'));
                             if ($hotspotCount > 0) {
-                                Log::info('Service deployment validation passed (hotspot)', [
-                                    'router_id' => $router->id,
-                                    'hotspot_count' => $hotspotCount,
-                                    'expected_hotspot_server' => $expectedHotspotServer,
-                                    'expected_hotspot_profile' => $expectedHotspotProfile,
-                                    'expected_hotspot_bridge' => $expectedHotspotBridge,
-                                ]);
+                                // Reduced: Removed routine success log
                                 return ['valid' => true];
                             }
 
@@ -1193,20 +1182,13 @@ SCRIPT;
 
                         if ($expectsPppoe && !$expectsHotspot) {
                             if ($expectedPppoeServer) {
-                                Log::info('Service deployment validation passed (pppoe)', [
-                                    'router_id' => $router->id,
-                                    'expected_pppoe_server' => $expectedPppoeServer,
-                                ]);
+                                // Reduced: Removed routine success log
                                 return ['valid' => true];
                             }
 
                             $pppoeCount = (int) trim($sshExecutor->exec('/interface pppoe-server server print count-only'));
                             if ($pppoeCount > 0) {
-                                Log::info('Service deployment validation passed (pppoe)', [
-                                    'router_id' => $router->id,
-                                    'pppoe_count' => $pppoeCount,
-                                    'expected_pppoe_server' => $expectedPppoeServer,
-                                ]);
+                                // Reduced: Removed routine success log
                                 return ['valid' => true];
                             }
 
@@ -1220,15 +1202,7 @@ SCRIPT;
                             $hotspotCount = (int) trim($sshExecutor->exec('/ip hotspot print count-only'));
                             $pppoeCount = (int) trim($sshExecutor->exec('/interface pppoe-server server print count-only'));
                             if ($hotspotCount > 0 && $pppoeCount > 0) {
-                                Log::info('Service deployment validation passed (hybrid)', [
-                                    'router_id' => $router->id,
-                                    'hotspot_count' => $hotspotCount,
-                                    'pppoe_count' => $pppoeCount,
-                                    'expected_hotspot_server' => $expectedHotspotServer,
-                                    'expected_hotspot_profile' => $expectedHotspotProfile,
-                                    'expected_hotspot_bridge' => $expectedHotspotBridge,
-                                    'expected_pppoe_server' => $expectedPppoeServer,
-                                ]);
+                                // Reduced: Removed routine success log
                                 return ['valid' => true];
                             }
 
@@ -1241,11 +1215,7 @@ SCRIPT;
                         $hotspotCount = $hotspotCount ?? (int) trim($sshExecutor->exec('/ip hotspot print count-only'));
                         $pppoeCount = $pppoeCount ?? (int) trim($sshExecutor->exec('/interface pppoe-server server print count-only'));
                         if ($hotspotCount > 0 || $pppoeCount > 0) {
-                            Log::info('Service deployment validation passed', [
-                                'router_id' => $router->id,
-                                'hotspot_count' => $hotspotCount,
-                                'pppoe_count' => $pppoeCount,
-                            ]);
+                            // Reduced: Removed routine success log
                             return ['valid' => true];
                         }
                         
