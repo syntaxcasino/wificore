@@ -4,7 +4,7 @@
     :title="currentPackage?.name || 'Package Details'"
     subtitle="Package Details"
     icon="Package"
-    width="50%"
+    width="480px"
     @close="$emit('close-details')"
   >
     <div class="space-y-6">
@@ -167,11 +167,11 @@
     </div>
 
     <template #footer>
-      <div class="flex items-center justify-end gap-3">
+      <div class="flex gap-3">
         <button
           type="button"
           @click="$emit('close-details')"
-          class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+          class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
         >
           Close
         </button>

@@ -7,6 +7,9 @@ import { onMounted, onUnmounted, ref } from 'vue'
 export function useBroadcasting() {
   const isConnected = ref(false)
   const channels = ref(new Map())
+  
+  // Store bound handlers for cleanup
+  const boundHandlers = new Map()
 
   /**
    * Subscribe to a private channel
@@ -15,7 +18,7 @@ export function useBroadcasting() {
    * @returns {Object} Channel instance
    */
   const subscribeToPrivateChannel = (channelName, events = {}) => {
-    if (!window.Echo) {
+    if (typeof window === 'undefined' || !window.Echo) {
       console.error('Echo is not initialized')
       return null
     }
@@ -73,7 +76,8 @@ export function useBroadcasting() {
    * @param {string} channelName - Name of the channel to leave
    */
   const unsubscribe = (channelName) => {
-    if (window.Echo && channels.value.has(channelName)) {
+    if (typeof window === 'undefined' || !window.Echo) return
+    if (channels.value.has(channelName)) {
       window.Echo.leave(channelName)
       channels.value.delete(channelName)
     }
@@ -92,6 +96,7 @@ export function useBroadcasting() {
    * Check Echo connection status
    */
   const checkConnection = () => {
+    if (typeof window === 'undefined') return 'disconnected'
     if (window.Echo?.connector?.pusher?.connection) {
       const state = window.Echo.connector.pusher.connection.state
       isConnected.value = state === 'connected'
@@ -100,16 +105,24 @@ export function useBroadcasting() {
     return 'disconnected'
   }
 
-  // Monitor connection status
-  onMounted(() => {
-    if (window.Echo?.connector?.pusher?.connection) {
-      window.Echo.connector.pusher.connection.bind('connected', () => {
-        isConnected.value = true
-      })
+  // Connection event handlers
+  const handleConnected = () => {
+    isConnected.value = true
+  }
+  
+  const handleDisconnected = () => {
+    isConnected.value = false
+  }
 
-      window.Echo.connector.pusher.connection.bind('disconnected', () => {
-        isConnected.value = false
-      })
+  // Monitor connection status - only in browser environment
+  onMounted(() => {
+    if (typeof window !== 'undefined' && window.Echo?.connector?.pusher?.connection) {
+      // Store bound handlers for cleanup
+      boundHandlers.set('connected', handleConnected)
+      boundHandlers.set('disconnected', handleDisconnected)
+      
+      window.Echo.connector.pusher.connection.bind('connected', handleConnected)
+      window.Echo.connector.pusher.connection.bind('disconnected', handleDisconnected)
 
       // Check initial state
       checkConnection()
@@ -118,6 +131,15 @@ export function useBroadcasting() {
 
   // Cleanup on unmount
   onUnmounted(() => {
+    // Unbind connection event listeners
+    if (typeof window !== 'undefined' && window.Echo?.connector?.pusher?.connection) {
+      boundHandlers.forEach((handler, eventName) => {
+        window.Echo.connector.pusher.connection.unbind(eventName, handler)
+      })
+      boundHandlers.clear()
+    }
+    
+    // Unsubscribe all channels
     unsubscribeAll()
   })
 

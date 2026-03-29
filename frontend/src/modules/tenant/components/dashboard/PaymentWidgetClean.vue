@@ -173,6 +173,17 @@
           </div>
         </div>
       </div>
+
+      <template #footer>
+        <div class="flex gap-3">
+          <button
+            @click="closeDetails"
+            class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+          >
+            Close
+          </button>
+        </div>
+      </template>
     </SlideOverlay>
   </div>
 </template>

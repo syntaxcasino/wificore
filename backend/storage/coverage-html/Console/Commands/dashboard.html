@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="en">
+ <head>
+  <meta charset="UTF-8">
+  <title>Dashboard for /var/www/html/app/Console/Commands</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link href="../../_css/bootstrap.min.css?v=12.5.3" rel="stylesheet" type="text/css">
+  <link href="../../_css/billboard.min.css?v=12.5.3" rel="stylesheet" type="text/css">
+  <link href="../../_css/style.css?v=12.5.3" rel="stylesheet" type="text/css">
+  <link href="../../_css/custom.css" rel="stylesheet" type="text/css">
+ </head>
+ <body>
+  <header>
+   <div class="container-fluid">
+    <div class="row">
+     <div class="col-md-12">
+      <nav aria-label="breadcrumb">
+       <ol class="breadcrumb">
+         <li class="breadcrumb-item"><a href="../../index.html">/var/www/html/app</a></li>
+         <li class="breadcrumb-item"><a href="../index.html">Console</a></li>
+         <li class="breadcrumb-item"><a href="index.html">Commands</a></li>
+         <li class="breadcrumb-item active">(Dashboard)</li>
+
+       </ol>
+      </nav>
+     </div>
+    </div>
+   </div>
+  </header>
+  <div class="container-fluid">
+   <div class="row">
+    <div class="col-md-12">
+     <h2>Classes</h2>
+    </div>
+   </div>
+   <div class="row">
+    <div class="col-md-6">
+     <h3>Coverage Distribution</h3>
+     <div id="classesCoverageDistribution" style="height: 300px;">
+       <svg></svg>
+     </div>
+    </div>
+    <div class="col-md-6">
+     <h3>Complexity</h3>
+     <div id="classComplexity" style="height: 300px;">
+       <svg></svg>
+     </div>
+    </div>
+   </div>
+   <div class="row">
+    <div class="col-md-6">
+     <h3 style="margin-top: 2rem;">Insufficient Coverage</h3>
+     <div class="scrollbox">
+      <table class="table">
+       <thead>
+        <tr>
+         <th>Class</th>
+         <th class="text-right">Coverage</th>
+        </tr>
+       </thead>
+       <tbody>
+       <tr><td><a href="ApplyTenantIndexes.php.html#10">App\Console\Commands\ApplyTenantIndexes</a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="BackupDatabase.php.html#11">App\Console\Commands\BackupDatabase</a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="CacheStats.php.html#8">App\Console\Commands\CacheStats</a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="CacheWarmUp.php.html#8">App\Console\Commands\CacheWarmUp</a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="CheckRouterStatus.php.html#8">App\Console\Commands\CheckRouterStatus</a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="CleanupOldData.php.html#9">App\Console\Commands\CleanupOldData</a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="ConfigCheck.php.html#10">App\Console\Commands\ConfigCheck</a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="DiagnoseFailedJobs.php.html#8">App\Console\Commands\DiagnoseFailedJobs</a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="DiagnoseTelegrafMetrics.php.html#13">App\Console\Commands\DiagnoseTelegrafMetrics</a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="EnableRouterSnmp.php.html#12">App\Console\Commands\EnableRouterSnmp</a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="FixCorruptedInterfaceNames.php.html#11">App\Console\Commands\FixCorruptedInterfaceNames</a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="FixFailedQueues.php.html#9">App\Console\Commands\FixFailedQueues</a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="FixSchemaMappings.php.html#14">App\Console\Commands\FixSchemaMappings</a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="FixTenantSchemas.php.html#10">App\Console\Commands\FixTenantSchemas</a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="GenerateTelegrafConfig.php.html#11">App\Console\Commands\GenerateTelegrafConfig</a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="MigrateTenantHRFinance.php.html#10">App\Console\Commands\MigrateTenantHRFinance</a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="MigrateTenantIndexes.php.html#9">App\Console\Commands\MigrateTenantIndexes</a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="MigrateTenantRoutersColumn.php.html#10">App\Console\Commands\MigrateTenantRoutersColumn</a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="MigrateTenantTodos.php.html#11">App\Console\Commands\MigrateTenantTodos</a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="QueueStats.php.html#9">App\Console\Commands\QueueStats</a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="RetryRouterDiscovery.php.html#11">App\Console\Commands\RetryRouterDiscovery</a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="RotateRouterSshKeys.php.html#12">App\Console\Commands\RotateRouterSshKeys</a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="RunTenantMigrations.php.html#10">App\Console\Commands\RunTenantMigrations</a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="ScanDependencies.php.html#8">App\Console\Commands\ScanDependencies</a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="TestDashboardJob.php.html#10">App\Console\Commands\TestDashboardJob</a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="TestEmailDeliveryCommand.php.html#9">App\Console\Commands\TestEmailDeliveryCommand</a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="TestMailerSendCommand.php.html#8">App\Console\Commands\TestMailerSendCommand</a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="TestMetricsCollection.php.html#11">App\Console\Commands\TestMetricsCollection</a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="TestProvisioning.php.html#12">App\Console\Commands\TestProvisioning</a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="TestProvisioningWithEvents.php.html#12">App\Console\Commands\TestProvisioningWithEvents</a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="UnblockIP.php.html#8">App\Console\Commands\UnblockIP</a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="ValidateRouterPasswords.php.html#12">App\Console\Commands\ValidateRouterPasswords</a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="VerifyTenantIsolation.php.html#9">App\Console\Commands\VerifyTenantIsolation</a></td><td class="text-right">0%</td></tr>
+
+       </tbody>
+      </table>
+     </div>
+    </div>
+    <div class="col-md-6">
+     <h3 style="margin-top: 2rem;">Project Risks</h3>
+     <div class="scrollbox">
+      <table class="table">
+       <thead>
+        <tr>
+         <th>Class</th>
+         <th class="text-right">Coverage</th>
+         <th class="text-right">Complexity</th>
+         <th class="text-right"><abbr title="Change Risk Anti-Patterns (CRAP) Index">CRAP</abbr></th>
+        </tr>
+       </thead>
+       <tbody>
+       <tr><td><a href="FixSchemaMappings.php.html#14">App\Console\Commands\FixSchemaMappings</a></td><td class="text-right">0.0%</td><td class="text-right">41</td><td class="text-right">1722</td></tr>
+       <tr><td><a href="DiagnoseTelegrafMetrics.php.html#13">App\Console\Commands\DiagnoseTelegrafMetrics</a></td><td class="text-right">0.0%</td><td class="text-right">35</td><td class="text-right">1260</td></tr>
+       <tr><td><a href="GenerateTelegrafConfig.php.html#11">App\Console\Commands\GenerateTelegrafConfig</a></td><td class="text-right">0.0%</td><td class="text-right">32</td><td class="text-right">1056</td></tr>
+       <tr><td><a href="FixCorruptedInterfaceNames.php.html#11">App\Console\Commands\FixCorruptedInterfaceNames</a></td><td class="text-right">0.0%</td><td class="text-right">29</td><td class="text-right">870</td></tr>
+       <tr><td><a href="QueueStats.php.html#9">App\Console\Commands\QueueStats</a></td><td class="text-right">0.0%</td><td class="text-right">24</td><td class="text-right">600</td></tr>
+       <tr><td><a href="ScanDependencies.php.html#8">App\Console\Commands\ScanDependencies</a></td><td class="text-right">0.0%</td><td class="text-right">24</td><td class="text-right">600</td></tr>
+       <tr><td><a href="MigrateTenantRoutersColumn.php.html#10">App\Console\Commands\MigrateTenantRoutersColumn</a></td><td class="text-right">0.0%</td><td class="text-right">23</td><td class="text-right">552</td></tr>
+       <tr><td><a href="VerifyTenantIsolation.php.html#9">App\Console\Commands\VerifyTenantIsolation</a></td><td class="text-right">0.0%</td><td class="text-right">23</td><td class="text-right">552</td></tr>
+       <tr><td><a href="CleanupOldData.php.html#9">App\Console\Commands\CleanupOldData</a></td><td class="text-right">0.0%</td><td class="text-right">20</td><td class="text-right">420</td></tr>
+       <tr><td><a href="ValidateRouterPasswords.php.html#12">App\Console\Commands\ValidateRouterPasswords</a></td><td class="text-right">0.0%</td><td class="text-right">19</td><td class="text-right">380</td></tr>
+       <tr><td><a href="BackupDatabase.php.html#11">App\Console\Commands\BackupDatabase</a></td><td class="text-right">0.0%</td><td class="text-right">17</td><td class="text-right">306</td></tr>
+       <tr><td><a href="MigrateTenantHRFinance.php.html#10">App\Console\Commands\MigrateTenantHRFinance</a></td><td class="text-right">0.0%</td><td class="text-right">17</td><td class="text-right">306</td></tr>
+       <tr><td><a href="TestMetricsCollection.php.html#11">App\Console\Commands\TestMetricsCollection</a></td><td class="text-right">0.0%</td><td class="text-right">17</td><td class="text-right">306</td></tr>
+       <tr><td><a href="ApplyTenantIndexes.php.html#10">App\Console\Commands\ApplyTenantIndexes</a></td><td class="text-right">0.0%</td><td class="text-right">15</td><td class="text-right">240</td></tr>
+       <tr><td><a href="TestDashboardJob.php.html#10">App\Console\Commands\TestDashboardJob</a></td><td class="text-right">0.0%</td><td class="text-right">14</td><td class="text-right">210</td></tr>
+       <tr><td><a href="FixTenantSchemas.php.html#10">App\Console\Commands\FixTenantSchemas</a></td><td class="text-right">0.0%</td><td class="text-right">13</td><td class="text-right">182</td></tr>
+       <tr><td><a href="RotateRouterSshKeys.php.html#12">App\Console\Commands\RotateRouterSshKeys</a></td><td class="text-right">0.0%</td><td class="text-right">11</td><td class="text-right">132</td></tr>
+       <tr><td><a href="RunTenantMigrations.php.html#10">App\Console\Commands\RunTenantMigrations</a></td><td class="text-right">0.0%</td><td class="text-right">11</td><td class="text-right">132</td></tr>
+       <tr><td><a href="EnableRouterSnmp.php.html#12">App\Console\Commands\EnableRouterSnmp</a></td><td class="text-right">0.0%</td><td class="text-right">10</td><td class="text-right">110</td></tr>
+       <tr><td><a href="FixFailedQueues.php.html#9">App\Console\Commands\FixFailedQueues</a></td><td class="text-right">0.0%</td><td class="text-right">10</td><td class="text-right">110</td></tr>
+       <tr><td><a href="RetryRouterDiscovery.php.html#11">App\Console\Commands\RetryRouterDiscovery</a></td><td class="text-right">0.0%</td><td class="text-right">9</td><td class="text-right">90</td></tr>
+       <tr><td><a href="UnblockIP.php.html#8">App\Console\Commands\UnblockIP</a></td><td class="text-right">0.0%</td><td class="text-right">9</td><td class="text-right">90</td></tr>
+       <tr><td><a href="DiagnoseFailedJobs.php.html#8">App\Console\Commands\DiagnoseFailedJobs</a></td><td class="text-right">0.0%</td><td class="text-right">8</td><td class="text-right">72</td></tr>
+       <tr><td><a href="MigrateTenantTodos.php.html#11">App\Console\Commands\MigrateTenantTodos</a></td><td class="text-right">0.0%</td><td class="text-right">8</td><td class="text-right">72</td></tr>
+       <tr><td><a href="MigrateTenantIndexes.php.html#9">App\Console\Commands\MigrateTenantIndexes</a></td><td class="text-right">0.0%</td><td class="text-right">7</td><td class="text-right">56</td></tr>
+       <tr><td><a href="TestEmailDeliveryCommand.php.html#9">App\Console\Commands\TestEmailDeliveryCommand</a></td><td class="text-right">0.0%</td><td class="text-right">7</td><td class="text-right">56</td></tr>
+       <tr><td><a href="TestProvisioningWithEvents.php.html#12">App\Console\Commands\TestProvisioningWithEvents</a></td><td class="text-right">0.0%</td><td class="text-right">7</td><td class="text-right">56</td></tr>
+       <tr><td><a href="ConfigCheck.php.html#10">App\Console\Commands\ConfigCheck</a></td><td class="text-right">0.0%</td><td class="text-right">6</td><td class="text-right">42</td></tr>
+       <tr><td><a href="CacheStats.php.html#8">App\Console\Commands\CacheStats</a></td><td class="text-right">0.0%</td><td class="text-right">5</td><td class="text-right">30</td></tr>
+       <tr><td><a href="CheckRouterStatus.php.html#8">App\Console\Commands\CheckRouterStatus</a></td><td class="text-right">0.0%</td><td class="text-right">4</td><td class="text-right">20</td></tr>
+       <tr><td><a href="TestProvisioning.php.html#12">App\Console\Commands\TestProvisioning</a></td><td class="text-right">0.0%</td><td class="text-right">4</td><td class="text-right">20</td></tr>
+       <tr><td><a href="CacheWarmUp.php.html#8">App\Console\Commands\CacheWarmUp</a></td><td class="text-right">0.0%</td><td class="text-right">3</td><td class="text-right">12</td></tr>
+       <tr><td><a href="TestMailerSendCommand.php.html#8">App\Console\Commands\TestMailerSendCommand</a></td><td class="text-right">0.0%</td><td class="text-right">2</td><td class="text-right">6</td></tr>
+
+       </tbody>
+      </table>
+     </div>
+    </div>
+   </div>
+   <div class="row">
+    <div class="col-md-12">
+     <h2 style="margin-top: 3rem;">Methods</h2>
+    </div>
+   </div>
+   <div class="row">
+    <div class="col-md-6">
+     <h3>Coverage Distribution</h3>
+     <div id="methodsCoverageDistribution" style="height: 300px;">
+       <svg></svg>
+     </div>
+    </div>
+    <div class="col-md-6">
+     <h3>Complexity</h3>
+     <div id="methodComplexity" style="height: 300px;">
+       <svg></svg>
+     </div>
+    </div>
+   </div>
+   <div class="row">
+    <div class="col-md-6">
+     <h3 style="margin-top: 2rem;">Insufficient Coverage</h3>
+     <div class="scrollbox">
+      <table class="table">
+       <thead>
+        <tr>
+         <th>Method</th>
+         <th class="text-right">Coverage</th>
+        </tr>
+       </thead>
+       <tbody>
+       <tr><td><a href="ApplyTenantIndexes.php.html#111"><abbr title="App\Console\Commands\ApplyTenantIndexes::handle">handle</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="ApplyTenantIndexes.php.html#205"><abbr title="App\Console\Commands\ApplyTenantIndexes::tableExists">tableExists</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="BackupDatabase.php.html#30"><abbr title="App\Console\Commands\BackupDatabase::handle">handle</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="BackupDatabase.php.html#110"><abbr title="App\Console\Commands\BackupDatabase::buildBackupCommand">buildBackupCommand</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="BackupDatabase.php.html#128"><abbr title="App\Console\Commands\BackupDatabase::cleanupOldBackups">cleanupOldBackups</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="BackupDatabase.php.html#151"><abbr title="App\Console\Commands\BackupDatabase::formatBytes">formatBytes</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="CacheStats.php.html#27"><abbr title="App\Console\Commands\CacheStats::handle">handle</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="CacheWarmUp.php.html#28"><abbr title="App\Console\Commands\CacheWarmUp::handle">handle</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="CheckRouterStatus.php.html#13"><abbr title="App\Console\Commands\CheckRouterStatus::handle">handle</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="CleanupOldData.php.html#40"><abbr title="App\Console\Commands\CleanupOldData::handle">handle</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="CleanupOldData.php.html#92"><abbr title="App\Console\Commands\CleanupOldData::cleanupTable">cleanupTable</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="CleanupOldData.php.html#132"><abbr title="App\Console\Commands\CleanupOldData::cleanupTenantData">cleanupTenantData</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="CleanupOldData.php.html#192"><abbr title="App\Console\Commands\CleanupOldData::cleanupTenantTable">cleanupTenantTable</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="CleanupOldData.php.html#226"><abbr title="App\Console\Commands\CleanupOldData::tableExists">tableExists</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="CleanupOldData.php.html#238"><abbr title="App\Console\Commands\CleanupOldData::getRetentionPolicy">getRetentionPolicy</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="ConfigCheck.php.html#15"><abbr title="App\Console\Commands\ConfigCheck::handle">handle</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="DiagnoseFailedJobs.php.html#29"><abbr title="App\Console\Commands\DiagnoseFailedJobs::handle">handle</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="DiagnoseTelegrafMetrics.php.html#22"><abbr title="App\Console\Commands\DiagnoseTelegrafMetrics::handle">handle</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="DiagnoseTelegrafMetrics.php.html#55"><abbr title="App\Console\Commands\DiagnoseTelegrafMetrics::checkEnvironmentVariables">checkEnvironmentVariables</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="DiagnoseTelegrafMetrics.php.html#80"><abbr title="App\Console\Commands\DiagnoseTelegrafMetrics::checkDatabaseConfiguration">checkDatabaseConfiguration</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="DiagnoseTelegrafMetrics.php.html#126"><abbr title="App\Console\Commands\DiagnoseTelegrafMetrics::checkTelegrafConfigFiles">checkTelegrafConfigFiles</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="DiagnoseTelegrafMetrics.php.html#156"><abbr title="App\Console\Commands\DiagnoseTelegrafMetrics::checkVictoriaMetrics">checkVictoriaMetrics</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="DiagnoseTelegrafMetrics.php.html#185"><abbr title="App\Console\Commands\DiagnoseTelegrafMetrics::testSpecificRouter">testSpecificRouter</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="DiagnoseTelegrafMetrics.php.html#237"><abbr title="App\Console\Commands\DiagnoseTelegrafMetrics::testSnmpConnectivity">testSnmpConnectivity</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="EnableRouterSnmp.php.html#20"><abbr title="App\Console\Commands\EnableRouterSnmp::handle">handle</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="FixCorruptedInterfaceNames.php.html#16"><abbr title="App\Console\Commands\FixCorruptedInterfaceNames::handle">handle</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="FixCorruptedInterfaceNames.php.html#72"><abbr title="App\Console\Commands\FixCorruptedInterfaceNames::cleanInterfaceName">cleanInterfaceName</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="FixCorruptedInterfaceNames.php.html#101"><abbr title="App\Console\Commands\FixCorruptedInterfaceNames::extractInterfaces">extractInterfaces</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="FixFailedQueues.php.html#30"><abbr title="App\Console\Commands\FixFailedQueues::handle">handle</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="FixSchemaMappings.php.html#33"><abbr title="App\Console\Commands\FixSchemaMappings::handle">handle</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="FixSchemaMappings.php.html#100"><abbr title="App\Console\Commands\FixSchemaMappings::fixPppoeUsers">fixPppoeUsers</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="FixSchemaMappings.php.html#133"><abbr title="App\Console\Commands\FixSchemaMappings::fixPppoeRouterIds">fixPppoeRouterIds</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="FixSchemaMappings.php.html#199"><abbr title="App\Console\Commands\FixSchemaMappings::resolveRouterFromAccounting">resolveRouterFromAccounting</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="FixSchemaMappings.php.html#230"><abbr title="App\Console\Commands\FixSchemaMappings::findRouterByIp">findRouterByIp</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="FixSchemaMappings.php.html#245"><abbr title="App\Console\Commands\FixSchemaMappings::normalizeIp">normalizeIp</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="FixSchemaMappings.php.html#258"><abbr title="App\Console\Commands\FixSchemaMappings::ensureMapping">ensureMapping</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="FixTenantSchemas.php.html#29"><abbr title="App\Console\Commands\FixTenantSchemas::handle">handle</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="FixTenantSchemas.php.html#127"><abbr title="App\Console\Commands\FixTenantSchemas::migrateExistingRadiusData">migrateExistingRadiusData</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="GenerateTelegrafConfig.php.html#20"><abbr title="App\Console\Commands\GenerateTelegrafConfig::handle">handle</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="GenerateTelegrafConfig.php.html#419"><abbr title="App\Console\Commands\GenerateTelegrafConfig::hasTableInSchema">hasTableInSchema</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="GenerateTelegrafConfig.php.html#427"><abbr title="App\Console\Commands\GenerateTelegrafConfig::hasColumnInSchema">hasColumnInSchema</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="GenerateTelegrafConfig.php.html#439"><abbr title="App\Console\Commands\GenerateTelegrafConfig::addSnmpBlock">addSnmpBlock</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="GenerateTelegrafConfig.php.html#458"><abbr title="App\Console\Commands\GenerateTelegrafConfig::esc">esc</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="MigrateTenantHRFinance.php.html#29"><abbr title="App\Console\Commands\MigrateTenantHRFinance::handle">handle</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="MigrateTenantHRFinance.php.html#114"><abbr title="App\Console\Commands\MigrateTenantHRFinance::createDepartmentsTable">createDepartmentsTable</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="MigrateTenantHRFinance.php.html#138"><abbr title="App\Console\Commands\MigrateTenantHRFinance::createPositionsTable">createPositionsTable</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="MigrateTenantHRFinance.php.html#165"><abbr title="App\Console\Commands\MigrateTenantHRFinance::createEmployeesTable">createEmployeesTable</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="MigrateTenantHRFinance.php.html#215"><abbr title="App\Console\Commands\MigrateTenantHRFinance::createExpensesTable">createExpensesTable</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="MigrateTenantHRFinance.php.html#250"><abbr title="App\Console\Commands\MigrateTenantHRFinance::createRevenuesTable">createRevenuesTable</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="MigrateTenantIndexes.php.html#28"><abbr title="App\Console\Commands\MigrateTenantIndexes::handle">handle</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="MigrateTenantRoutersColumn.php.html#29"><abbr title="App\Console\Commands\MigrateTenantRoutersColumn::handle">handle</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="MigrateTenantRoutersColumn.php.html#139"><abbr title="App\Console\Commands\MigrateTenantRoutersColumn::createIndexes">createIndexes</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="MigrateTenantRoutersColumn.php.html#202"><abbr title="App\Console\Commands\MigrateTenantRoutersColumn::tableExists">tableExists</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="MigrateTenantRoutersColumn.php.html#218"><abbr title="App\Console\Commands\MigrateTenantRoutersColumn::indexExists">indexExists</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="MigrateTenantTodos.php.html#30"><abbr title="App\Console\Commands\MigrateTenantTodos::handle">handle</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="QueueStats.php.html#29"><abbr title="App\Console\Commands\QueueStats::handle">handle</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="QueueStats.php.html#146"><abbr title="App\Console\Commands\QueueStats::getProcessedJobsCount">getProcessedJobsCount</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="QueueStats.php.html#170"><abbr title="App\Console\Commands\QueueStats::estimateProcessedFromLogs">estimateProcessedFromLogs</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="QueueStats.php.html#192"><abbr title="App\Console\Commands\QueueStats::getRecentActivity">getRecentActivity</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="QueueStats.php.html#235"><abbr title="App\Console\Commands\QueueStats::countLogEntries">countLogEntries</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="QueueStats.php.html#249"><abbr title="App\Console\Commands\QueueStats::checkWorkerRunning">checkWorkerRunning</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="RetryRouterDiscovery.php.html#20"><abbr title="App\Console\Commands\RetryRouterDiscovery::handle">handle</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="RotateRouterSshKeys.php.html#20"><abbr title="App\Console\Commands\RotateRouterSshKeys::handle">handle</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="RunTenantMigrations.php.html#31"><abbr title="App\Console\Commands\RunTenantMigrations::handle">handle</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="ScanDependencies.php.html#27"><abbr title="App\Console\Commands\ScanDependencies::handle">handle</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="ScanDependencies.php.html#110"><abbr title="App\Console\Commands\ScanDependencies::scanComposerDependencies">scanComposerDependencies</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="ScanDependencies.php.html#149"><abbr title="App\Console\Commands\ScanDependencies::scanNpmDependencies">scanNpmDependencies</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="ScanDependencies.php.html#192"><abbr title="App\Console\Commands\ScanDependencies::generateReport">generateReport</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="ScanDependencies.php.html#219"><abbr title="App\Console\Commands\ScanDependencies::getSeverityBreakdown">getSeverityBreakdown</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="TestDashboardJob.php.html#31"><abbr title="App\Console\Commands\TestDashboardJob::handle">handle</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="TestEmailDeliveryCommand.php.html#14"><abbr title="App\Console\Commands\TestEmailDeliveryCommand::handle">handle</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="TestEmailDeliveryCommand.php.html#33"><abbr title="App\Console\Commands\TestEmailDeliveryCommand::showConfiguration">showConfiguration</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="TestEmailDeliveryCommand.php.html#52"><abbr title="App\Console\Commands\TestEmailDeliveryCommand::testEmailSending">testEmailSending</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="TestMailerSendCommand.php.html#13"><abbr title="App\Console\Commands\TestMailerSendCommand::handle">handle</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="TestMetricsCollection.php.html#30"><abbr title="App\Console\Commands\TestMetricsCollection::handle">handle</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="TestMetricsCollection.php.html#69"><abbr title="App\Console\Commands\TestMetricsCollection::checkDatabaseTables">checkDatabaseTables</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="TestMetricsCollection.php.html#91"><abbr title="App\Console\Commands\TestMetricsCollection::checkCacheKeys">checkCacheKeys</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="TestMetricsCollection.php.html#110"><abbr title="App\Console\Commands\TestMetricsCollection::collectMetrics">collectMetrics</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="TestMetricsCollection.php.html#126"><abbr title="App\Console\Commands\TestMetricsCollection::storePerformanceMetrics">storePerformanceMetrics</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="TestMetricsCollection.php.html#136"><abbr title="App\Console\Commands\TestMetricsCollection::displayMetrics">displayMetrics</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="TestProvisioning.php.html#33"><abbr title="App\Console\Commands\TestProvisioning::handle">handle</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="TestProvisioningWithEvents.php.html#17"><abbr title="App\Console\Commands\TestProvisioningWithEvents::handle">handle</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="TestProvisioningWithEvents.php.html#59"><abbr title="App\Console\Commands\TestProvisioningWithEvents::listenForEvents">listenForEvents</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="UnblockIP.php.html#28"><abbr title="App\Console\Commands\UnblockIP::handle">handle</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="UnblockIP.php.html#60"><abbr title="App\Console\Commands\UnblockIP::unblockAll">unblockAll</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="ValidateRouterPasswords.php.html#34"><abbr title="App\Console\Commands\ValidateRouterPasswords::handle">handle</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="ValidateRouterPasswords.php.html#166"><abbr title="App\Console\Commands\ValidateRouterPasswords::fixRouterPasswords">fixRouterPasswords</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="VerifyTenantIsolation.php.html#14"><abbr title="App\Console\Commands\VerifyTenantIsolation::handle">handle</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="VerifyTenantIsolation.php.html#123"><abbr title="App\Console\Commands\VerifyTenantIsolation::shouldBeTenantScoped">shouldBeTenantScoped</abbr></a></td><td class="text-right">0%</td></tr>
+
+       </tbody>
+      </table>
+     </div>
+    </div>
+    <div class="col-md-6">
+     <h3 style="margin-top: 2rem;">Project Risks</h3>
+     <div class="scrollbox">
+      <table class="table">
+       <thead>
+        <tr>
+         <th>Method</th>
+         <th class="text-right">Coverage</th>
+         <th class="text-right">Complexity</th>
+         <th class="text-right"><abbr title="Change Risk Anti-Patterns (CRAP) Index">CRAP</abbr></th>
+        </tr>
+       </thead>
+       <tbody>
+       <tr><td><a href="GenerateTelegrafConfig.php.html#20"><abbr title="App\Console\Commands\GenerateTelegrafConfig::handle">handle</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">28</td><td class="text-right">812</td></tr>
+       <tr><td><a href="VerifyTenantIsolation.php.html#14"><abbr title="App\Console\Commands\VerifyTenantIsolation::handle">handle</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">18</td><td class="text-right">342</td></tr>
+       <tr><td><a href="ApplyTenantIndexes.php.html#111"><abbr title="App\Console\Commands\ApplyTenantIndexes::handle">handle</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">14</td><td class="text-right">210</td></tr>
+       <tr><td><a href="DiagnoseTelegrafMetrics.php.html#185"><abbr title="App\Console\Commands\DiagnoseTelegrafMetrics::testSpecificRouter">testSpecificRouter</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">14</td><td class="text-right">210</td></tr>
+       <tr><td><a href="TestDashboardJob.php.html#31"><abbr title="App\Console\Commands\TestDashboardJob::handle">handle</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">14</td><td class="text-right">210</td></tr>
+       <tr><td><a href="FixCorruptedInterfaceNames.php.html#101"><abbr title="App\Console\Commands\FixCorruptedInterfaceNames::extractInterfaces">extractInterfaces</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">12</td><td class="text-right">156</td></tr>
+       <tr><td><a href="MigrateTenantHRFinance.php.html#29"><abbr title="App\Console\Commands\MigrateTenantHRFinance::handle">handle</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">12</td><td class="text-right">156</td></tr>
+       <tr><td><a href="ValidateRouterPasswords.php.html#34"><abbr title="App\Console\Commands\ValidateRouterPasswords::handle">handle</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">12</td><td class="text-right">156</td></tr>
+       <tr><td><a href="FixSchemaMappings.php.html#33"><abbr title="App\Console\Commands\FixSchemaMappings::handle">handle</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">11</td><td class="text-right">132</td></tr>
+       <tr><td><a href="FixSchemaMappings.php.html#133"><abbr title="App\Console\Commands\FixSchemaMappings::fixPppoeRouterIds">fixPppoeRouterIds</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">11</td><td class="text-right">132</td></tr>
+       <tr><td><a href="MigrateTenantRoutersColumn.php.html#29"><abbr title="App\Console\Commands\MigrateTenantRoutersColumn::handle">handle</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">11</td><td class="text-right">132</td></tr>
+       <tr><td><a href="RotateRouterSshKeys.php.html#20"><abbr title="App\Console\Commands\RotateRouterSshKeys::handle">handle</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">11</td><td class="text-right">132</td></tr>
+       <tr><td><a href="RunTenantMigrations.php.html#31"><abbr title="App\Console\Commands\RunTenantMigrations::handle">handle</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">11</td><td class="text-right">132</td></tr>
+       <tr><td><a href="EnableRouterSnmp.php.html#20"><abbr title="App\Console\Commands\EnableRouterSnmp::handle">handle</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">10</td><td class="text-right">110</td></tr>
+       <tr><td><a href="FixCorruptedInterfaceNames.php.html#16"><abbr title="App\Console\Commands\FixCorruptedInterfaceNames::handle">handle</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">10</td><td class="text-right">110</td></tr>
+       <tr><td><a href="FixFailedQueues.php.html#30"><abbr title="App\Console\Commands\FixFailedQueues::handle">handle</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">10</td><td class="text-right">110</td></tr>
+       <tr><td><a href="MigrateTenantRoutersColumn.php.html#139"><abbr title="App\Console\Commands\MigrateTenantRoutersColumn::createIndexes">createIndexes</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">10</td><td class="text-right">110</td></tr>
+       <tr><td><a href="QueueStats.php.html#29"><abbr title="App\Console\Commands\QueueStats::handle">handle</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">9</td><td class="text-right">90</td></tr>
+       <tr><td><a href="RetryRouterDiscovery.php.html#20"><abbr title="App\Console\Commands\RetryRouterDiscovery::handle">handle</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">9</td><td class="text-right">90</td></tr>
+       <tr><td><a href="ScanDependencies.php.html#149"><abbr title="App\Console\Commands\ScanDependencies::scanNpmDependencies">scanNpmDependencies</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">9</td><td class="text-right">90</td></tr>
+       <tr><td><a href="DiagnoseFailedJobs.php.html#29"><abbr title="App\Console\Commands\DiagnoseFailedJobs::handle">handle</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">8</td><td class="text-right">72</td></tr>
+       <tr><td><a href="FixTenantSchemas.php.html#29"><abbr title="App\Console\Commands\FixTenantSchemas::handle">handle</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">8</td><td class="text-right">72</td></tr>
+       <tr><td><a href="MigrateTenantTodos.php.html#30"><abbr title="App\Console\Commands\MigrateTenantTodos::handle">handle</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">8</td><td class="text-right">72</td></tr>
+       <tr><td><a href="FixCorruptedInterfaceNames.php.html#72"><abbr title="App\Console\Commands\FixCorruptedInterfaceNames::cleanInterfaceName">cleanInterfaceName</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">7</td><td class="text-right">56</td></tr>
+       <tr><td><a href="MigrateTenantIndexes.php.html#28"><abbr title="App\Console\Commands\MigrateTenantIndexes::handle">handle</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">7</td><td class="text-right">56</td></tr>
+       <tr><td><a href="ValidateRouterPasswords.php.html#166"><abbr title="App\Console\Commands\ValidateRouterPasswords::fixRouterPasswords">fixRouterPasswords</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">7</td><td class="text-right">56</td></tr>
+       <tr><td><a href="ConfigCheck.php.html#15"><abbr title="App\Console\Commands\ConfigCheck::handle">handle</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">6</td><td class="text-right">42</td></tr>
+       <tr><td><a href="DiagnoseTelegrafMetrics.php.html#80"><abbr title="App\Console\Commands\DiagnoseTelegrafMetrics::checkDatabaseConfiguration">checkDatabaseConfiguration</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">6</td><td class="text-right">42</td></tr>
+       <tr><td><a href="FixSchemaMappings.php.html#100"><abbr title="App\Console\Commands\FixSchemaMappings::fixPppoeUsers">fixPppoeUsers</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">6</td><td class="text-right">42</td></tr>
+       <tr><td><a href="FixSchemaMappings.php.html#199"><abbr title="App\Console\Commands\FixSchemaMappings::resolveRouterFromAccounting">resolveRouterFromAccounting</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">6</td><td class="text-right">42</td></tr>
+       <tr><td><a href="ScanDependencies.php.html#110"><abbr title="App\Console\Commands\ScanDependencies::scanComposerDependencies">scanComposerDependencies</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">6</td><td class="text-right">42</td></tr>
+       <tr><td><a href="BackupDatabase.php.html#30"><abbr title="App\Console\Commands\BackupDatabase::handle">handle</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">5</td><td class="text-right">30</td></tr>
+       <tr><td><a href="BackupDatabase.php.html#110"><abbr title="App\Console\Commands\BackupDatabase::buildBackupCommand">buildBackupCommand</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">5</td><td class="text-right">30</td></tr>
+       <tr><td><a href="CacheStats.php.html#27"><abbr title="App\Console\Commands\CacheStats::handle">handle</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">5</td><td class="text-right">30</td></tr>
+       <tr><td><a href="CleanupOldData.php.html#92"><abbr title="App\Console\Commands\CleanupOldData::cleanupTable">cleanupTable</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">5</td><td class="text-right">30</td></tr>
+       <tr><td><a href="CleanupOldData.php.html#192"><abbr title="App\Console\Commands\CleanupOldData::cleanupTenantTable">cleanupTenantTable</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">5</td><td class="text-right">30</td></tr>
+       <tr><td><a href="DiagnoseTelegrafMetrics.php.html#55"><abbr title="App\Console\Commands\DiagnoseTelegrafMetrics::checkEnvironmentVariables">checkEnvironmentVariables</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">5</td><td class="text-right">30</td></tr>
+       <tr><td><a href="FixTenantSchemas.php.html#127"><abbr title="App\Console\Commands\FixTenantSchemas::migrateExistingRadiusData">migrateExistingRadiusData</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">5</td><td class="text-right">30</td></tr>
+       <tr><td><a href="TestMetricsCollection.php.html#136"><abbr title="App\Console\Commands\TestMetricsCollection::displayMetrics">displayMetrics</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">5</td><td class="text-right">30</td></tr>
+       <tr><td><a href="UnblockIP.php.html#60"><abbr title="App\Console\Commands\UnblockIP::unblockAll">unblockAll</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">5</td><td class="text-right">30</td></tr>
+       <tr><td><a href="VerifyTenantIsolation.php.html#123"><abbr title="App\Console\Commands\VerifyTenantIsolation::shouldBeTenantScoped">shouldBeTenantScoped</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">5</td><td class="text-right">30</td></tr>
+       <tr><td><a href="BackupDatabase.php.html#128"><abbr title="App\Console\Commands\BackupDatabase::cleanupOldBackups">cleanupOldBackups</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">4</td><td class="text-right">20</td></tr>
+       <tr><td><a href="CheckRouterStatus.php.html#13"><abbr title="App\Console\Commands\CheckRouterStatus::handle">handle</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">4</td><td class="text-right">20</td></tr>
+       <tr><td><a href="CleanupOldData.php.html#40"><abbr title="App\Console\Commands\CleanupOldData::handle">handle</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">4</td><td class="text-right">20</td></tr>
+       <tr><td><a href="QueueStats.php.html#146"><abbr title="App\Console\Commands\QueueStats::getProcessedJobsCount">getProcessedJobsCount</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">4</td><td class="text-right">20</td></tr>
+       <tr><td><a href="ScanDependencies.php.html#27"><abbr title="App\Console\Commands\ScanDependencies::handle">handle</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">4</td><td class="text-right">20</td></tr>
+       <tr><td><a href="TestEmailDeliveryCommand.php.html#52"><abbr title="App\Console\Commands\TestEmailDeliveryCommand::testEmailSending">testEmailSending</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">4</td><td class="text-right">20</td></tr>
+       <tr><td><a href="TestMetricsCollection.php.html#69"><abbr title="App\Console\Commands\TestMetricsCollection::checkDatabaseTables">checkDatabaseTables</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">4</td><td class="text-right">20</td></tr>
+       <tr><td><a href="TestProvisioning.php.html#33"><abbr title="App\Console\Commands\TestProvisioning::handle">handle</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">4</td><td class="text-right">20</td></tr>
+       <tr><td><a href="TestProvisioningWithEvents.php.html#17"><abbr title="App\Console\Commands\TestProvisioningWithEvents::handle">handle</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">4</td><td class="text-right">20</td></tr>
+       <tr><td><a href="UnblockIP.php.html#28"><abbr title="App\Console\Commands\UnblockIP::handle">handle</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">4</td><td class="text-right">20</td></tr>
+       <tr><td><a href="BackupDatabase.php.html#151"><abbr title="App\Console\Commands\BackupDatabase::formatBytes">formatBytes</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">3</td><td class="text-right">12</td></tr>
+       <tr><td><a href="CacheWarmUp.php.html#28"><abbr title="App\Console\Commands\CacheWarmUp::handle">handle</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">3</td><td class="text-right">12</td></tr>
+       <tr><td><a href="CleanupOldData.php.html#132"><abbr title="App\Console\Commands\CleanupOldData::cleanupTenantData">cleanupTenantData</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">3</td><td class="text-right">12</td></tr>
+       <tr><td><a href="DiagnoseTelegrafMetrics.php.html#22"><abbr title="App\Console\Commands\DiagnoseTelegrafMetrics::handle">handle</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">3</td><td class="text-right">12</td></tr>
+       <tr><td><a href="DiagnoseTelegrafMetrics.php.html#126"><abbr title="App\Console\Commands\DiagnoseTelegrafMetrics::checkTelegrafConfigFiles">checkTelegrafConfigFiles</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">3</td><td class="text-right">12</td></tr>
+       <tr><td><a href="DiagnoseTelegrafMetrics.php.html#156"><abbr title="App\Console\Commands\DiagnoseTelegrafMetrics::checkVictoriaMetrics">checkVictoriaMetrics</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">3</td><td class="text-right">12</td></tr>
+       <tr><td><a href="FixSchemaMappings.php.html#258"><abbr title="App\Console\Commands\FixSchemaMappings::ensureMapping">ensureMapping</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">3</td><td class="text-right">12</td></tr>
+       <tr><td><a href="QueueStats.php.html#170"><abbr title="App\Console\Commands\QueueStats::estimateProcessedFromLogs">estimateProcessedFromLogs</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">3</td><td class="text-right">12</td></tr>
+       <tr><td><a href="QueueStats.php.html#192"><abbr title="App\Console\Commands\QueueStats::getRecentActivity">getRecentActivity</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">3</td><td class="text-right">12</td></tr>
+       <tr><td><a href="QueueStats.php.html#249"><abbr title="App\Console\Commands\QueueStats::checkWorkerRunning">checkWorkerRunning</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">3</td><td class="text-right">12</td></tr>
+       <tr><td><a href="ScanDependencies.php.html#219"><abbr title="App\Console\Commands\ScanDependencies::getSeverityBreakdown">getSeverityBreakdown</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">3</td><td class="text-right">12</td></tr>
+       <tr><td><a href="TestMetricsCollection.php.html#91"><abbr title="App\Console\Commands\TestMetricsCollection::checkCacheKeys">checkCacheKeys</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">3</td><td class="text-right">12</td></tr>
+       <tr><td><a href="TestProvisioningWithEvents.php.html#59"><abbr title="App\Console\Commands\TestProvisioningWithEvents::listenForEvents">listenForEvents</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">3</td><td class="text-right">12</td></tr>
+       <tr><td><a href="CleanupOldData.php.html#226"><abbr title="App\Console\Commands\CleanupOldData::tableExists">tableExists</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">2</td><td class="text-right">6</td></tr>
+       <tr><td><a href="FixSchemaMappings.php.html#230"><abbr title="App\Console\Commands\FixSchemaMappings::findRouterByIp">findRouterByIp</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">2</td><td class="text-right">6</td></tr>
+       <tr><td><a href="FixSchemaMappings.php.html#245"><abbr title="App\Console\Commands\FixSchemaMappings::normalizeIp">normalizeIp</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">2</td><td class="text-right">6</td></tr>
+       <tr><td><a href="QueueStats.php.html#235"><abbr title="App\Console\Commands\QueueStats::countLogEntries">countLogEntries</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">2</td><td class="text-right">6</td></tr>
+       <tr><td><a href="ScanDependencies.php.html#192"><abbr title="App\Console\Commands\ScanDependencies::generateReport">generateReport</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">2</td><td class="text-right">6</td></tr>
+       <tr><td><a href="TestEmailDeliveryCommand.php.html#14"><abbr title="App\Console\Commands\TestEmailDeliveryCommand::handle">handle</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">2</td><td class="text-right">6</td></tr>
+       <tr><td><a href="TestMailerSendCommand.php.html#13"><abbr title="App\Console\Commands\TestMailerSendCommand::handle">handle</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">2</td><td class="text-right">6</td></tr>
+       <tr><td><a href="TestMetricsCollection.php.html#110"><abbr title="App\Console\Commands\TestMetricsCollection::collectMetrics">collectMetrics</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">2</td><td class="text-right">6</td></tr>
+       <tr><td><a href="TestMetricsCollection.php.html#126"><abbr title="App\Console\Commands\TestMetricsCollection::storePerformanceMetrics">storePerformanceMetrics</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">2</td><td class="text-right">6</td></tr>
+
+       </tbody>
+      </table>
+     </div>
+    </div>
+   </div>
+   <footer>
+    <hr/>
+    <p>
+     <small>Generated by <a href="https://github.com/sebastianbergmann/php-code-coverage" target="_top">php-code-coverage 12.5.3</a> using <a href="https://www.php.net/" target="_top">PHP 8.4.14</a> and <a href="https://phpunit.de/">PHPUnit 12.5.14</a> at Mon Mar 23 2:34:34 EAT 2026.</small>
+    </p>
+   </footer>
+  </div>
+  <script src="../../_js/billboard.pkgd.min.js?v=12.5.3" type="text/javascript"></script>
+  <script type="application/json" id="complexity_class">[[0,15,"ApplyTenantIndexes.php.html#10","App\\Console\\Commands\\ApplyTenantIndexes","240"],[0,17,"BackupDatabase.php.html#11","App\\Console\\Commands\\BackupDatabase","306"],[0,5,"CacheStats.php.html#8","App\\Console\\Commands\\CacheStats","30"],[0,3,"CacheWarmUp.php.html#8","App\\Console\\Commands\\CacheWarmUp","12"],[0,4,"CheckRouterStatus.php.html#8","App\\Console\\Commands\\CheckRouterStatus","20"],[0,20,"CleanupOldData.php.html#9","App\\Console\\Commands\\CleanupOldData","420"],[0,6,"ConfigCheck.php.html#10","App\\Console\\Commands\\ConfigCheck","42"],[0,8,"DiagnoseFailedJobs.php.html#8","App\\Console\\Commands\\DiagnoseFailedJobs","72"],[0,35,"DiagnoseTelegrafMetrics.php.html#13","App\\Console\\Commands\\DiagnoseTelegrafMetrics","1260"],[0,10,"EnableRouterSnmp.php.html#12","App\\Console\\Commands\\EnableRouterSnmp","110"],[0,29,"FixCorruptedInterfaceNames.php.html#11","App\\Console\\Commands\\FixCorruptedInterfaceNames","870"],[0,10,"FixFailedQueues.php.html#9","App\\Console\\Commands\\FixFailedQueues","110"],[0,41,"FixSchemaMappings.php.html#14","App\\Console\\Commands\\FixSchemaMappings","1722"],[0,13,"FixTenantSchemas.php.html#10","App\\Console\\Commands\\FixTenantSchemas","182"],[0,32,"GenerateTelegrafConfig.php.html#11","App\\Console\\Commands\\GenerateTelegrafConfig","1056"],[0,17,"MigrateTenantHRFinance.php.html#10","App\\Console\\Commands\\MigrateTenantHRFinance","306"],[0,7,"MigrateTenantIndexes.php.html#9","App\\Console\\Commands\\MigrateTenantIndexes","56"],[0,23,"MigrateTenantRoutersColumn.php.html#10","App\\Console\\Commands\\MigrateTenantRoutersColumn","552"],[0,8,"MigrateTenantTodos.php.html#11","App\\Console\\Commands\\MigrateTenantTodos","72"],[0,24,"QueueStats.php.html#9","App\\Console\\Commands\\QueueStats","600"],[0,9,"RetryRouterDiscovery.php.html#11","App\\Console\\Commands\\RetryRouterDiscovery","90"],[0,11,"RotateRouterSshKeys.php.html#12","App\\Console\\Commands\\RotateRouterSshKeys","132"],[0,11,"RunTenantMigrations.php.html#10","App\\Console\\Commands\\RunTenantMigrations","132"],[0,24,"ScanDependencies.php.html#8","App\\Console\\Commands\\ScanDependencies","600"],[0,14,"TestDashboardJob.php.html#10","App\\Console\\Commands\\TestDashboardJob","210"],[0,7,"TestEmailDeliveryCommand.php.html#9","App\\Console\\Commands\\TestEmailDeliveryCommand","56"],[0,2,"TestMailerSendCommand.php.html#8","App\\Console\\Commands\\TestMailerSendCommand","6"],[0,17,"TestMetricsCollection.php.html#11","App\\Console\\Commands\\TestMetricsCollection","306"],[0,4,"TestProvisioning.php.html#12","App\\Console\\Commands\\TestProvisioning","20"],[0,7,"TestProvisioningWithEvents.php.html#12","App\\Console\\Commands\\TestProvisioningWithEvents","56"],[0,9,"UnblockIP.php.html#8","App\\Console\\Commands\\UnblockIP","90"],[0,19,"ValidateRouterPasswords.php.html#12","App\\Console\\Commands\\ValidateRouterPasswords","380"],[0,23,"VerifyTenantIsolation.php.html#9","App\\Console\\Commands\\VerifyTenantIsolation","552"]]</script>
+  <script type="application/json" id="complexity_method">[[0,14,"ApplyTenantIndexes.php.html#111","App\\Console\\Commands\\ApplyTenantIndexes::handle","210"],[0,1,"ApplyTenantIndexes.php.html#205","App\\Console\\Commands\\ApplyTenantIndexes::tableExists","2"],[0,5,"BackupDatabase.php.html#30","App\\Console\\Commands\\BackupDatabase::handle","30"],[0,5,"BackupDatabase.php.html#110","App\\Console\\Commands\\BackupDatabase::buildBackupCommand","30"],[0,4,"BackupDatabase.php.html#128","App\\Console\\Commands\\BackupDatabase::cleanupOldBackups","20"],[0,3,"BackupDatabase.php.html#151","App\\Console\\Commands\\BackupDatabase::formatBytes","12"],[0,5,"CacheStats.php.html#27","App\\Console\\Commands\\CacheStats::handle","30"],[0,3,"CacheWarmUp.php.html#28","App\\Console\\Commands\\CacheWarmUp::handle","12"],[0,4,"CheckRouterStatus.php.html#13","App\\Console\\Commands\\CheckRouterStatus::handle","20"],[0,4,"CleanupOldData.php.html#40","App\\Console\\Commands\\CleanupOldData::handle","20"],[0,5,"CleanupOldData.php.html#92","App\\Console\\Commands\\CleanupOldData::cleanupTable","30"],[0,3,"CleanupOldData.php.html#132","App\\Console\\Commands\\CleanupOldData::cleanupTenantData","12"],[0,5,"CleanupOldData.php.html#192","App\\Console\\Commands\\CleanupOldData::cleanupTenantTable","30"],[0,2,"CleanupOldData.php.html#226","App\\Console\\Commands\\CleanupOldData::tableExists","6"],[0,1,"CleanupOldData.php.html#238","App\\Console\\Commands\\CleanupOldData::getRetentionPolicy","2"],[0,6,"ConfigCheck.php.html#15","App\\Console\\Commands\\ConfigCheck::handle","42"],[0,8,"DiagnoseFailedJobs.php.html#29","App\\Console\\Commands\\DiagnoseFailedJobs::handle","72"],[0,3,"DiagnoseTelegrafMetrics.php.html#22","App\\Console\\Commands\\DiagnoseTelegrafMetrics::handle","12"],[0,5,"DiagnoseTelegrafMetrics.php.html#55","App\\Console\\Commands\\DiagnoseTelegrafMetrics::checkEnvironmentVariables","30"],[0,6,"DiagnoseTelegrafMetrics.php.html#80","App\\Console\\Commands\\DiagnoseTelegrafMetrics::checkDatabaseConfiguration","42"],[0,3,"DiagnoseTelegrafMetrics.php.html#126","App\\Console\\Commands\\DiagnoseTelegrafMetrics::checkTelegrafConfigFiles","12"],[0,3,"DiagnoseTelegrafMetrics.php.html#156","App\\Console\\Commands\\DiagnoseTelegrafMetrics::checkVictoriaMetrics","12"],[0,14,"DiagnoseTelegrafMetrics.php.html#185","App\\Console\\Commands\\DiagnoseTelegrafMetrics::testSpecificRouter","210"],[0,1,"DiagnoseTelegrafMetrics.php.html#237","App\\Console\\Commands\\DiagnoseTelegrafMetrics::testSnmpConnectivity","2"],[0,10,"EnableRouterSnmp.php.html#20","App\\Console\\Commands\\EnableRouterSnmp::handle","110"],[0,10,"FixCorruptedInterfaceNames.php.html#16","App\\Console\\Commands\\FixCorruptedInterfaceNames::handle","110"],[0,7,"FixCorruptedInterfaceNames.php.html#72","App\\Console\\Commands\\FixCorruptedInterfaceNames::cleanInterfaceName","56"],[0,12,"FixCorruptedInterfaceNames.php.html#101","App\\Console\\Commands\\FixCorruptedInterfaceNames::extractInterfaces","156"],[0,10,"FixFailedQueues.php.html#30","App\\Console\\Commands\\FixFailedQueues::handle","110"],[0,11,"FixSchemaMappings.php.html#33","App\\Console\\Commands\\FixSchemaMappings::handle","132"],[0,6,"FixSchemaMappings.php.html#100","App\\Console\\Commands\\FixSchemaMappings::fixPppoeUsers","42"],[0,11,"FixSchemaMappings.php.html#133","App\\Console\\Commands\\FixSchemaMappings::fixPppoeRouterIds","132"],[0,6,"FixSchemaMappings.php.html#199","App\\Console\\Commands\\FixSchemaMappings::resolveRouterFromAccounting","42"],[0,2,"FixSchemaMappings.php.html#230","App\\Console\\Commands\\FixSchemaMappings::findRouterByIp","6"],[0,2,"FixSchemaMappings.php.html#245","App\\Console\\Commands\\FixSchemaMappings::normalizeIp","6"],[0,3,"FixSchemaMappings.php.html#258","App\\Console\\Commands\\FixSchemaMappings::ensureMapping","12"],[0,8,"FixTenantSchemas.php.html#29","App\\Console\\Commands\\FixTenantSchemas::handle","72"],[0,5,"FixTenantSchemas.php.html#127","App\\Console\\Commands\\FixTenantSchemas::migrateExistingRadiusData","30"],[0,28,"GenerateTelegrafConfig.php.html#20","App\\Console\\Commands\\GenerateTelegrafConfig::handle","812"],[0,1,"GenerateTelegrafConfig.php.html#419","App\\Console\\Commands\\GenerateTelegrafConfig::hasTableInSchema","2"],[0,1,"GenerateTelegrafConfig.php.html#427","App\\Console\\Commands\\GenerateTelegrafConfig::hasColumnInSchema","2"],[0,1,"GenerateTelegrafConfig.php.html#439","App\\Console\\Commands\\GenerateTelegrafConfig::addSnmpBlock","2"],[0,1,"GenerateTelegrafConfig.php.html#458","App\\Console\\Commands\\GenerateTelegrafConfig::esc","2"],[0,12,"MigrateTenantHRFinance.php.html#29","App\\Console\\Commands\\MigrateTenantHRFinance::handle","156"],[0,1,"MigrateTenantHRFinance.php.html#114","App\\Console\\Commands\\MigrateTenantHRFinance::createDepartmentsTable","2"],[0,1,"MigrateTenantHRFinance.php.html#138","App\\Console\\Commands\\MigrateTenantHRFinance::createPositionsTable","2"],[0,1,"MigrateTenantHRFinance.php.html#165","App\\Console\\Commands\\MigrateTenantHRFinance::createEmployeesTable","2"],[0,1,"MigrateTenantHRFinance.php.html#215","App\\Console\\Commands\\MigrateTenantHRFinance::createExpensesTable","2"],[0,1,"MigrateTenantHRFinance.php.html#250","App\\Console\\Commands\\MigrateTenantHRFinance::createRevenuesTable","2"],[0,7,"MigrateTenantIndexes.php.html#28","App\\Console\\Commands\\MigrateTenantIndexes::handle","56"],[0,11,"MigrateTenantRoutersColumn.php.html#29","App\\Console\\Commands\\MigrateTenantRoutersColumn::handle","132"],[0,10,"MigrateTenantRoutersColumn.php.html#139","App\\Console\\Commands\\MigrateTenantRoutersColumn::createIndexes","110"],[0,1,"MigrateTenantRoutersColumn.php.html#202","App\\Console\\Commands\\MigrateTenantRoutersColumn::tableExists","2"],[0,1,"MigrateTenantRoutersColumn.php.html#218","App\\Console\\Commands\\MigrateTenantRoutersColumn::indexExists","2"],[0,8,"MigrateTenantTodos.php.html#30","App\\Console\\Commands\\MigrateTenantTodos::handle","72"],[0,9,"QueueStats.php.html#29","App\\Console\\Commands\\QueueStats::handle","90"],[0,4,"QueueStats.php.html#146","App\\Console\\Commands\\QueueStats::getProcessedJobsCount","20"],[0,3,"QueueStats.php.html#170","App\\Console\\Commands\\QueueStats::estimateProcessedFromLogs","12"],[0,3,"QueueStats.php.html#192","App\\Console\\Commands\\QueueStats::getRecentActivity","12"],[0,2,"QueueStats.php.html#235","App\\Console\\Commands\\QueueStats::countLogEntries","6"],[0,3,"QueueStats.php.html#249","App\\Console\\Commands\\QueueStats::checkWorkerRunning","12"],[0,9,"RetryRouterDiscovery.php.html#20","App\\Console\\Commands\\RetryRouterDiscovery::handle","90"],[0,11,"RotateRouterSshKeys.php.html#20","App\\Console\\Commands\\RotateRouterSshKeys::handle","132"],[0,11,"RunTenantMigrations.php.html#31","App\\Console\\Commands\\RunTenantMigrations::handle","132"],[0,4,"ScanDependencies.php.html#27","App\\Console\\Commands\\ScanDependencies::handle","20"],[0,6,"ScanDependencies.php.html#110","App\\Console\\Commands\\ScanDependencies::scanComposerDependencies","42"],[0,9,"ScanDependencies.php.html#149","App\\Console\\Commands\\ScanDependencies::scanNpmDependencies","90"],[0,2,"ScanDependencies.php.html#192","App\\Console\\Commands\\ScanDependencies::generateReport","6"],[0,3,"ScanDependencies.php.html#219","App\\Console\\Commands\\ScanDependencies::getSeverityBreakdown","12"],[0,14,"TestDashboardJob.php.html#31","App\\Console\\Commands\\TestDashboardJob::handle","210"],[0,2,"TestEmailDeliveryCommand.php.html#14","App\\Console\\Commands\\TestEmailDeliveryCommand::handle","6"],[0,1,"TestEmailDeliveryCommand.php.html#33","App\\Console\\Commands\\TestEmailDeliveryCommand::showConfiguration","2"],[0,4,"TestEmailDeliveryCommand.php.html#52","App\\Console\\Commands\\TestEmailDeliveryCommand::testEmailSending","20"],[0,2,"TestMailerSendCommand.php.html#13","App\\Console\\Commands\\TestMailerSendCommand::handle","6"],[0,1,"TestMetricsCollection.php.html#30","App\\Console\\Commands\\TestMetricsCollection::handle","2"],[0,4,"TestMetricsCollection.php.html#69","App\\Console\\Commands\\TestMetricsCollection::checkDatabaseTables","20"],[0,3,"TestMetricsCollection.php.html#91","App\\Console\\Commands\\TestMetricsCollection::checkCacheKeys","12"],[0,2,"TestMetricsCollection.php.html#110","App\\Console\\Commands\\TestMetricsCollection::collectMetrics","6"],[0,2,"TestMetricsCollection.php.html#126","App\\Console\\Commands\\TestMetricsCollection::storePerformanceMetrics","6"],[0,5,"TestMetricsCollection.php.html#136","App\\Console\\Commands\\TestMetricsCollection::displayMetrics","30"],[0,4,"TestProvisioning.php.html#33","App\\Console\\Commands\\TestProvisioning::handle","20"],[0,4,"TestProvisioningWithEvents.php.html#17","App\\Console\\Commands\\TestProvisioningWithEvents::handle","20"],[0,3,"TestProvisioningWithEvents.php.html#59","App\\Console\\Commands\\TestProvisioningWithEvents::listenForEvents","12"],[0,4,"UnblockIP.php.html#28","App\\Console\\Commands\\UnblockIP::handle","20"],[0,5,"UnblockIP.php.html#60","App\\Console\\Commands\\UnblockIP::unblockAll","30"],[0,12,"ValidateRouterPasswords.php.html#34","App\\Console\\Commands\\ValidateRouterPasswords::handle","156"],[0,7,"ValidateRouterPasswords.php.html#166","App\\Console\\Commands\\ValidateRouterPasswords::fixRouterPasswords","56"],[0,18,"VerifyTenantIsolation.php.html#14","App\\Console\\Commands\\VerifyTenantIsolation::handle","342"],[0,5,"VerifyTenantIsolation.php.html#123","App\\Console\\Commands\\VerifyTenantIsolation::shouldBeTenantScoped","30"]]</script>
+  <script type="text/javascript" defer>
+  const barLabels = [
+    '0%',
+    '0-10%',
+    '10-20%',
+    '20-30%',
+    '30-40%',
+    '40-50%',
+    '50-60%',
+    '60-70%',
+    '70-80%',
+    '80-90%',
+    '90-100%',
+    '100%'
+  ];
+  const barConfig = (name, fullName, values) => ({
+    axis: {
+      x: {
+        type: "category",
+        categories: barLabels,
+      },
+      y: {
+        label: {
+          text: `#${name}`,
+          position: 'outer-top',
+        },
+      },
+    },
+    bindto: `#${name}CoverageDistribution`,
+    data: {
+      columns: [
+        [fullName].concat(values),
+      ],
+      colors: {
+        [fullName]: "rgba(69, 114, 167, 0.75)",
+      },
+      type: "bar",
+    },
+    bar: {
+      width: {
+        ratio: 0.9,
+      },
+    },
+    grid: {
+      focus: {
+        show: false,
+      },
+      x: {
+        show: true,
+      },
+      y: {
+        show: true,
+      },
+    },
+    legend: {
+      show: false,
+    },
+    tooltip: {
+      contents: function (data) {
+        return `<table class="bb-tooltip"><tbody>
+            <tr><th colspan="2">Coverage ${barLabels[data[0].x]}</th></tr>
+            <tr><td class="value">${data[0].value} ${name}</td></tr>
+          </tbody></table>`;
+      },
+      grouped: false,
+    },
+  });
+  bb.generate(
+    barConfig('classes', "Class Coverage", [33,0,0,0,0,0,0,0,0,0,0,0])
+  );
+  bb.generate(
+    barConfig('methods', "Method Coverage", [89,0,0,0,0,0,0,0,0,0,0,0])
+  );
+
+  const scatterConfig = (name, complexityData) => ({
+    axis: {
+      x: {
+        label: {
+          text: 'Code Coverage (in percent)',
+          position: 'outer-right',
+        },
+        tick: {
+          values: [0, 20, 40, 60, 80, 100],
+        },
+      },
+      y: {
+        label: {
+          text: 'Cyclomatic Complexity',
+          position: 'outer-top',
+        },
+        min: 0,
+        padding: {
+          bottom: 0,
+          top: 5,
+        },
+      },
+    },
+    bindto: `#${name}Complexity`,
+    data: {
+      columns: [
+        ["complexity_x"].concat(complexityData.map(d => d[0])),
+        ["complexity"].concat(complexityData.map(d => d[1])),
+      ],
+      onclick: function(data, element) {
+        window.location = complexityData[data.index][2];
+      },
+      type: "scatter",
+      xs: {
+        "complexity": "complexity_x",
+      },
+    },
+    grid: {
+      focus: {
+        show: true,
+        y: true,
+      },
+      x: {
+        show: true,
+      },
+      y: {
+        show: true,
+      },
+    },
+    legend: {
+      show: false,
+    },
+    tooltip: {
+      contents: function (data) {
+        const coverage = Math.round(data[0].x);
+        const complexity = data[0].value;
+        const targetName = complexityData[data[0].index][3];
+        const crap = complexityData[data[0].index][4];
+        return `<table class="bb-tooltip"><tbody>
+            <tr><th colspan="2">${targetName}</th></tr>
+            <tr class="bb-tooltip-name-complexity"><td>Coverage</td><td class="name">${coverage}%</td></tr>
+            <tr class="bb-tooltip-name-complexity"><td>Complexity</td><td class="value">${complexity}</td></tr>
+            <tr class="bb-tooltip-name-complexity"><td>Crap</td><td class="value">${crap}</td></tr>
+          </tbody></table>`;
+      },
+      grouped: false,
+    },
+  });
+  const classComplexityData = JSON.parse(document.getElementById('complexity_class').textContent);
+  bb.generate(
+    scatterConfig("class", classComplexityData)
+  );
+  const methodComplexityData = JSON.parse(document.getElementById('complexity_method').textContent);
+  bb.generate(
+    scatterConfig("method", methodComplexityData),
+  );
+  </script>
+ </body>
+</html>

@@ -140,3 +140,12 @@ echo "  - Provisioning Service: $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-pro
 echo "  - Redis: $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-redis"
 echo ""
 echo "⏰ Completed at: $(date '+%Y-%m-%d %H:%M:%S %Z')"
+echo ""
+echo ""
+echo "⏰ Starting deployment at: $(date '+%Y-%m-%d %H:%M:%S %Z')"
+
+# ==========================
+# DEPLOYMENT
+# ==========================
+ssh 144.91.71.208 -l kja2aro  "cd /opt/wificore && ./deploy.sh --preserve"
+#ssh 144.91.71.208 -l kja2aro  "cd /opt/wificore &&  docker compose -f docker-compose.production.yml exec wificore-backend tail -f -n 1000 storage/logs/laravel.log"

@@ -53,12 +53,15 @@ export function useTodos() {
       const url = params ? `/todos?${params}` : '/todos'
       const response = await axios.get(url)
       
-      todos.value = response.data
+      // Handle both direct array response and wrapped response
+      const todoData = Array.isArray(response.data) ? response.data : (response.data.todos || response.data.data || [])
+      todos.value = todoData
       updateStats()
       
-      return response.data
+      return todoData
     } catch (err) {
-      error.value = err.response?.data?.message || 'Failed to fetch todos'
+      const errorMsg = err?.response?.data?.message || err?.response?.data?.error || err?.message || String(err) || 'Failed to fetch todos'
+      error.value = errorMsg
       toast.error(error.value)
       throw err
     } finally {
@@ -66,12 +69,25 @@ export function useTodos() {
     }
   }
 
+  const fetchTodo = async (todoId) => {
+    try {
+      const response = await axios.get(`/todos/${todoId}`)
+      // Handle both direct response and wrapped response
+      return response.data.todo || response.data
+    } catch (err) {
+      const errorMsg = err.response?.data?.message || err.message || 'Failed to fetch todo details'
+      toast.error(errorMsg)
+      throw err
+    }
+  }
+
   const fetchStatistics = async (tenantWide = false) => {
     try {
       const params = tenantWide ? '?tenant_wide=true' : ''
       const response = await axios.get(`/todos/statistics${params}`)
-      stats.value = response.data
-      return response.data
+      const statsData = response.data || {}
+      stats.value = statsData
+      return statsData
     } catch (err) {
       console.error('Failed to fetch statistics:', err)
       return null
@@ -85,15 +101,21 @@ export function useTodos() {
     try {
       const response = await axios.post('/todos', todoData)
       
+      // Handle both wrapped {todo: ...} and direct response
+      const newTodo = response.data?.todo || response.data
+      
       // Add to local state (will be updated by event)
-      todos.value.unshift(response.data.todo)
-      updateStats()
+      if (newTodo) {
+        todos.value.unshift(newTodo)
+        updateStats()
+      }
       
       toast.success('Todo created successfully')
-      return response.data.todo
+      return newTodo
       
     } catch (err) {
-      error.value = err.response?.data?.message || 'Failed to create todo'
+      const errorMsg = err?.response?.data?.message || err?.response?.data?.error || err?.message || String(err) || 'Failed to create todo'
+      error.value = errorMsg
       toast.error(error.value)
       throw err
     } finally {
@@ -108,18 +130,24 @@ export function useTodos() {
     try {
       const response = await axios.put(`/todos/${todoId}`, updates)
       
+      // Handle both wrapped {todo: ...} and direct response
+      const updatedTodo = response.data?.todo || response.data
+      
       // Update local state (will be updated by event)
-      const index = todos.value.findIndex(t => t.id === todoId)
-      if (index !== -1) {
-        todos.value[index] = response.data.todo
-        updateStats()
+      if (updatedTodo) {
+        const index = todos.value.findIndex(t => t.id === todoId)
+        if (index !== -1) {
+          todos.value[index] = updatedTodo
+          updateStats()
+        }
       }
       
       toast.success('Todo updated successfully')
-      return response.data.todo
+      return updatedTodo
       
     } catch (err) {
-      error.value = err.response?.data?.message || 'Failed to update todo'
+      const errorMsg = err?.response?.data?.message || err?.response?.data?.error || err?.message || String(err) || 'Failed to update todo'
+      error.value = errorMsg
       toast.error(error.value)
       throw err
     } finally {
@@ -141,7 +169,8 @@ export function useTodos() {
       toast.success('Todo deleted successfully')
       
     } catch (err) {
-      error.value = err.response?.data?.message || 'Failed to delete todo'
+      const errorMsg = err?.response?.data?.message || err?.response?.data?.error || err?.message || String(err) || 'Failed to delete todo'
+      error.value = errorMsg
       toast.error(error.value)
       throw err
     } finally {
@@ -153,17 +182,21 @@ export function useTodos() {
     try {
       const response = await axios.post(`/todos/${todoId}/complete`)
       
+      // Handle both wrapped {todo: ...} and direct response
+      const completedTodo = response.data?.todo || response.data
+      
       // Update local state
       const index = todos.value.findIndex(t => t.id === todoId)
-      if (index !== -1) {
-        todos.value[index] = response.data.todo
+      if (index !== -1 && completedTodo) {
+        todos.value[index] = completedTodo
         updateStats()
       }
       
       toast.success('Todo marked as completed')
-      return response.data.todo
+      return completedTodo
     } catch (err) {
-      error.value = err.response?.data?.message || 'Failed to complete todo'
+      const errorMsg = err?.response?.data?.message || err?.response?.data?.error || err?.message || String(err) || 'Failed to complete todo'
+      error.value = errorMsg
       toast.error(error.value)
       throw err
     }
@@ -180,13 +213,17 @@ export function useTodos() {
       // Update local state
       const index = todos.value.findIndex(t => t.id === todoId)
       if (index !== -1) {
-        todos.value[index] = response.data.todo
+        const assignedTodo = response.data?.todo || response.data
+        if (assignedTodo) {
+          todos.value[index] = assignedTodo
+        }
       }
       
       toast.success('Todo assigned successfully')
-      return response.data.todo
+      return response.data?.todo || response.data
     } catch (err) {
-      error.value = err.response?.data?.message || 'Failed to assign todo'
+      const errorMsg = err?.response?.data?.message || err?.response?.data?.error || err?.message || String(err) || 'Failed to assign todo'
+      error.value = errorMsg
       toast.error(error.value)
       throw err
     }
@@ -195,7 +232,7 @@ export function useTodos() {
   const fetchActivities = async (todoId) => {
     try {
       const response = await axios.get(`/todos/${todoId}/activities`)
-      return response.data
+      return response.data || []
     } catch (err) {
       console.error('Failed to fetch activities:', err)
       return []
@@ -300,6 +337,7 @@ export function useTodos() {
     markAsInProgress,
     assignTodo,
     fetchActivities,
+    fetchTodo,
 
     // Utility functions
     getTodoById,

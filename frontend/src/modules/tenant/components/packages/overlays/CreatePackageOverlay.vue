@@ -4,7 +4,7 @@
     :title="isEditing ? 'Edit Package' : 'Create New Package'"
     :subtitle="isEditing ? 'Update package details' : 'Add a new internet package'"
     icon="Package"
-    width="50%"
+    width="480px"
     :close-on-backdrop="!formSubmitting"
     @close="$emit('close-form')"
   >
@@ -264,12 +264,12 @@
       </form>
 
     <template #footer>
-      <div class="flex items-center justify-end gap-3">
+      <div class="flex gap-3">
         <button
           type="button"
           @click="$emit('close-form')"
           :disabled="formSubmitting"
-          class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           Cancel
         </button>
@@ -277,13 +277,9 @@
           type="submit"
           @click="handleSubmit"
           :disabled="formSubmitting"
-          class="px-4 py-2 text-sm font-semibold text-white bg-gradient-to-r from-blue-600 to-indigo-600 rounded-lg hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md hover:shadow-lg flex items-center gap-2"
+          class="flex-1 px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <svg v-if="formSubmitting" class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-          </svg>
-          <span>{{ formSubmitting ? 'Saving...' : (isEditing ? 'Update Package' : 'Create Package') }}</span>
+          {{ formSubmitting ? 'Saving...' : (isEditing ? 'Save Changes' : 'Create Package') }}
         </button>
       </div>
     </template>

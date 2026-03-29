@@ -355,6 +355,7 @@ const routes = [
             component: RadiusServerSettings,
           },
           { path: 'communication-channels', name: 'settings.communication-channels', component: CommunicationChannels },
+          { path: 'payment-gateways', name: 'settings.payment-gateways', component: () => import('@/modules/tenant/views/dashboard/settings/PaymentGatewaysNew.vue') },
           { path: 'mpesa-api', name: 'settings.mpesa-api', component: MpesaApiKeys },
           { path: 'timezone-locale', name: 'settings.timezone-locale', component: TimezoneLocale },
         ],
@@ -422,6 +423,14 @@ const routes = [
         path: 'finance/revenues',
         name: 'finance.revenues',
         component: RevenuesView,
+        meta: { requiresAuth: true }
+      },
+
+      // Branding Module
+      {
+        path: 'branding',
+        name: 'branding',
+        component: () => import('@/modules/tenant/views/dashboard/branding/BrandingView.vue'),
         meta: { requiresAuth: true }
       },
     ],

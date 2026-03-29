@@ -29,7 +29,7 @@
           :class="isDashboardActive ? 'bg-gray-800/80 text-white font-medium' : 'text-gray-300'"
           @click="isMobile && $emit('close-sidebar')"
         >
-          <LayoutDashboard class="w-4 h-4 flex-shrink-0" :class="isDashboardActive ? 'text-blue-400' : ''" />
+          <LayoutDashboard class="w-4 h-4 flex-shrink-0" :class="isDashboardActive ? 'text-green-400' : ''" />
           <span class="text-sm">Dashboard</span>
         </router-link>
 
@@ -55,10 +55,10 @@
           <button
             @click="toggleMenu('hotspot')"
             class="w-full flex items-center justify-between py-2 px-3 rounded-md hover:bg-gray-800/60 transition-all duration-150"
-            :class="route.path.includes('/hotspot') ? 'bg-gray-800/80 text-white font-medium' : 'text-gray-400'"
+            :class="(route.path.includes('/hotspot') && !route.path.includes('/hotspot/vouchers')) ? 'bg-gray-800/80 text-white font-medium' : 'text-gray-400'"
           >
             <span class="flex items-center gap-2.5">
-              <Radio class="w-4 h-4 flex-shrink-0" />
+              <Radio class="w-4 h-4 flex-shrink-0" :class="route.path.includes('/hotspot') ? 'text-green-400' : ''" />
               <span class="text-sm">Hotspot</span>
             </span>
             <div class="flex items-center gap-2">
@@ -99,7 +99,7 @@
             :class="route.path.includes('/pppoe') ? 'bg-gray-800/80 text-white font-medium' : 'text-gray-400'"
           >
             <span class="flex items-center gap-2.5">
-              <Cable class="w-4 h-4 flex-shrink-0" />
+              <Cable class="w-4 h-4 flex-shrink-0" :class="route.path.includes('/pppoe') ? 'text-green-400' : ''" />
               <span class="text-sm">PPP</span>
             </span>    
             <div class="flex items-center gap-2">
@@ -140,7 +140,7 @@
             :class="route.path.includes('/packages') ? 'bg-gray-800/80 text-white font-medium' : 'text-gray-400'"
           >
             <span class="flex items-center gap-2.5">
-              <Box class="w-4 h-4 flex-shrink-0" />
+              <Box class="w-4 h-4 flex-shrink-0" :class="route.path.includes('/packages') ? 'text-green-400' : ''" />
               <span class="text-sm">Plans</span>
             </span>
             <ChevronDown class="w-3 h-3 transition-transform" :class="activeMenu === 'packages' ? 'rotate-180' : ''" />
@@ -184,7 +184,7 @@
             :class="route.path.includes('/routers') || route.path.includes('/monitoring') ? 'bg-gray-800/80 text-white font-medium' : 'text-gray-400'"
           >
             <span class="flex items-center gap-2.5">
-              <Router class="w-4 h-4 flex-shrink-0" />
+              <Router class="w-4 h-4 flex-shrink-0" :class="route.path.includes('/routers') ? 'text-green-400' : ''" />
               <span class="text-sm">Network</span>
             </span>
             <ChevronDown class="w-3 h-3 transition-transform" :class="activeMenu === 'network' ? 'rotate-180' : ''" />
@@ -236,7 +236,7 @@
             :class="route.path.includes('/billing') || route.path.includes('/finance') ? 'bg-gray-800/80 text-white font-medium' : 'text-gray-400'"
           >
             <span class="flex items-center gap-2.5">
-              <Wallet class="w-4 h-4 flex-shrink-0" />
+              <Wallet class="w-4 h-4 flex-shrink-0" :class="(route.path.includes('/billing') || route.path.includes('/finance')) ? 'text-green-400' : ''" />
               <span class="text-sm">Finance</span>
             </span>
             <ChevronDown class="w-3 h-3 transition-transform" :class="activeMenu === 'billing' ? 'rotate-180' : ''" />
@@ -285,7 +285,7 @@
             :class="route.path.includes('/reports') ? 'bg-gray-800/80 text-white font-medium' : 'text-gray-400'"
           >
             <span class="flex items-center gap-2.5">
-              <TrendingUp class="w-4 h-4 flex-shrink-0" />
+              <TrendingUp class="w-4 h-4 flex-shrink-0" :class="route.path.includes('/reports') ? 'text-green-400' : ''" />
               <span class="text-sm">Reports</span>
             </span>
             <ChevronDown class="w-3 h-3 transition-transform" :class="activeMenu === 'reports' ? 'rotate-180' : ''" />
@@ -329,7 +329,7 @@
             :class="route.path.includes('/users/') || route.path.includes('/hr/') ? 'bg-gray-800/80 text-white font-medium' : 'text-gray-400'"
           >
             <span class="flex items-center gap-2.5">
-              <UserCircle class="w-4 h-4 flex-shrink-0" />
+              <UserCircle class="w-4 h-4 flex-shrink-0" :class="(route.path.includes('/users/') || route.path.includes('/hr/')) ? 'text-green-400' : ''" />
               <span class="text-sm">Team Management</span>
             </span>
             <ChevronDown class="w-3 h-3 transition-transform" :class="activeMenu === 'team' ? 'rotate-180' : ''" />
@@ -386,7 +386,7 @@
           :class="route.path.includes('/hotspot/login-page') ? 'bg-gray-800/80 text-white font-medium' : 'text-gray-400'"
           @click="isMobile && $emit('close-sidebar')"
         >
-          <Palette class="w-4 h-4 flex-shrink-0" />
+          <Palette class="w-4 h-4 flex-shrink-0" :class="route.path.includes('/hotspot/login-page') ? 'text-green-400' : ''" />
           <span class="text-sm">Branding</span>
         </router-link>
 
@@ -401,7 +401,7 @@
             :class="route.path.includes('/support') ? 'bg-gray-800/80 text-white font-medium' : 'text-gray-400'"
           >
             <span class="flex items-center gap-2.5">
-              <LifeBuoy class="w-4 h-4 flex-shrink-0" />
+              <LifeBuoy class="w-4 h-4 flex-shrink-0" :class="route.path.includes('/support') ? 'text-green-400' : ''" />
               <span class="text-sm">Support</span>
             </span>
             <ChevronDown class="w-3 h-3 transition-transform" :class="activeMenu === 'support' ? 'rotate-180' : ''" />
@@ -434,7 +434,7 @@
             :class="route.path.includes('/settings') || route.path.includes('/admin/system-updates') ? 'bg-gray-800/80 text-white font-medium' : 'text-gray-400'"
           >
             <span class="flex items-center gap-2.5">
-              <Settings class="w-4 h-4 flex-shrink-0" />
+              <Settings class="w-4 h-4 flex-shrink-0" :class="(route.path.includes('/settings') || route.path.includes('/admin/system-updates')) ? 'text-green-400' : ''" />
               <span class="text-sm">Settings</span>
             </span>
             <ChevronDown class="w-3 h-3 transition-transform" :class="activeMenu === 'settings' ? 'rotate-180' : ''" />
@@ -465,20 +465,20 @@
               Communication Channels
             </router-link>
             <router-link
-              to="/dashboard/settings/mpesa-api"
+              to="/dashboard/settings/payment-gateways"
               class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
-              :class="route.path === '/dashboard/settings/mpesa-api' ? 'text-white font-medium' : 'text-gray-500'"
+              :class="route.path === '/dashboard/settings/payment-gateways' ? 'text-white font-medium' : 'text-gray-500'"
               @click="isMobile && $emit('close-sidebar')"
             >
-              Payment Gateway
+              Payment Gateways
             </router-link>
             <router-link
-              to="/dashboard/settings/timezone-locale"
+              to="/dashboard/branding"
               class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
-              :class="route.path === '/dashboard/settings/timezone-locale' ? 'text-white font-medium' : 'text-gray-500'"
+              :class="route.path === '/dashboard/branding' ? 'text-white font-medium' : 'text-gray-500'"
               @click="isMobile && $emit('close-sidebar')"
             >
-              Timezone & Locale
+              Branding
             </router-link>
           </div>
         </div>

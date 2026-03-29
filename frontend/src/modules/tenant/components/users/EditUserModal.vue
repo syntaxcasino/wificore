@@ -4,7 +4,7 @@
     title="Edit User"
     subtitle="Update user account details"
     icon="UserCog"
-    width="40%"
+    width="480px"
     @close="handleClose"
   >
     <form @submit.prevent="handleSubmit" v-if="user">
@@ -97,13 +97,20 @@
     </form>
 
     <template #footer>
-      <div class="flex items-center justify-end gap-3">
-        <BaseButton @click="handleClose" variant="secondary" :disabled="submitting">
+      <div class="flex gap-3">
+        <button
+          @click="handleClose"
+          class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+        >
           Cancel
-        </BaseButton>
-        <BaseButton @click="handleSubmit" variant="primary" :loading="submitting">
-          Update User
-        </BaseButton>
+        </button>
+        <button
+          @click="handleSubmit"
+          :disabled="submitting"
+          class="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors disabled:opacity-50"
+        >
+          {{ submitting ? 'Saving...' : 'Save Changes' }}
+        </button>
       </div>
     </template>
   </SlideOverlay>

@@ -73,6 +73,11 @@ class SetTenantContext
                     // to the pool. Without a transaction, PgBouncer transaction pooling
                     // releases the backend between each statement, losing search_path.
                     return \Illuminate\Support\Facades\DB::transaction(function () use ($request, $tenant, $next) {
+                        // Force sticky-write mode so all SELECT queries in this request
+                        // use the write PDO (which holds the open transaction).
+                        // Without this, Eloquent routes SELECTs to the read PDO which
+                        // has no transaction and loses SET LOCAL search_path immediately.
+                        \Illuminate\Support\Facades\DB::connection()->recordsHaveBeenModified();
                         $this->tenantContext->setTenant($tenant);
                         return $next($request);
                     });

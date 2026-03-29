@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+ <head>
+  <meta charset="UTF-8">
+  <title>Dashboard for /var/www/html/app/Models</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link href="../_css/bootstrap.min.css?v=12.5.3" rel="stylesheet" type="text/css">
+  <link href="../_css/billboard.min.css?v=12.5.3" rel="stylesheet" type="text/css">
+  <link href="../_css/style.css?v=12.5.3" rel="stylesheet" type="text/css">
+  <link href="../_css/custom.css" rel="stylesheet" type="text/css">
+ </head>
+ <body>
+  <header>
+   <div class="container-fluid">
+    <div class="row">
+     <div class="col-md-12">
+      <nav aria-label="breadcrumb">
+       <ol class="breadcrumb">
+         <li class="breadcrumb-item"><a href="../index.html">/var/www/html/app</a></li>
+         <li class="breadcrumb-item"><a href="index.html">Models</a></li>
+         <li class="breadcrumb-item active">(Dashboard)</li>
+
+       </ol>
+      </nav>
+     </div>
+    </div>
+   </div>
+  </header>
+  <div class="container-fluid">
+   <div class="row">
+    <div class="col-md-12">
+     <h2>Classes</h2>
+    </div>
+   </div>
+   <div class="row">
+    <div class="col-md-6">
+     <h3>Coverage Distribution</h3>
+     <div id="classesCoverageDistribution" style="height: 300px;">
+       <svg></svg>
+     </div>
+    </div>
+    <div class="col-md-6">
+     <h3>Complexity</h3>
+     <div id="classComplexity" style="height: 300px;">
+       <svg></svg>
+     </div>
+    </div>
+   </div>
+   <div class="row">
+    <div class="col-md-6">
+     <h3 style="margin-top: 2rem;">Insufficient Coverage</h3>
+     <div class="scrollbox">
+      <table class="table">
+       <thead>
+        <tr>
+         <th>Class</th>
+         <th class="text-right">Coverage</th>
+        </tr>
+       </thead>
+       <tbody>
+       <tr><td><a href="UserSession.php.html#9">App\Models\UserSession</a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="UserSubscription.php.html#9">App\Models\UserSubscription</a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="Voucher.php.html#11">App\Models\Voucher</a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="VpnConfiguration.php.html#10">App\Models\VpnConfiguration</a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="VpnSubnetAllocation.php.html#10">App\Models\VpnSubnetAllocation</a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="WireguardPeer.php.html#9">App\Models\WireguardPeer</a></td><td class="text-right">0%</td></tr>
+
+       </tbody>
+      </table>
+     </div>
+    </div>
+    <div class="col-md-6">
+     <h3 style="margin-top: 2rem;">Project Risks</h3>
+     <div class="scrollbox">
+      <table class="table">
+       <thead>
+        <tr>
+         <th>Class</th>
+         <th class="text-right">Coverage</th>
+         <th class="text-right">Complexity</th>
+         <th class="text-right"><abbr title="Change Risk Anti-Patterns (CRAP) Index">CRAP</abbr></th>
+        </tr>
+       </thead>
+       <tbody>
+       <tr><td><a href="UserSubscription.php.html#9">App\Models\UserSubscription</a></td><td class="text-right">0.0%</td><td class="text-right">38</td><td class="text-right">1482</td></tr>
+       <tr><td><a href="VpnConfiguration.php.html#10">App\Models\VpnConfiguration</a></td><td class="text-right">0.0%</td><td class="text-right">22</td><td class="text-right">506</td></tr>
+       <tr><td><a href="VpnSubnetAllocation.php.html#10">App\Models\VpnSubnetAllocation</a></td><td class="text-right">0.0%</td><td class="text-right">11</td><td class="text-right">132</td></tr>
+
+       </tbody>
+      </table>
+     </div>
+    </div>
+   </div>
+   <div class="row">
+    <div class="col-md-12">
+     <h2 style="margin-top: 3rem;">Methods</h2>
+    </div>
+   </div>
+   <div class="row">
+    <div class="col-md-6">
+     <h3>Coverage Distribution</h3>
+     <div id="methodsCoverageDistribution" style="height: 300px;">
+       <svg></svg>
+     </div>
+    </div>
+    <div class="col-md-6">
+     <h3>Complexity</h3>
+     <div id="methodComplexity" style="height: 300px;">
+       <svg></svg>
+     </div>
+    </div>
+   </div>
+   <div class="row">
+    <div class="col-md-6">
+     <h3 style="margin-top: 2rem;">Insufficient Coverage</h3>
+     <div class="scrollbox">
+      <table class="table">
+       <thead>
+        <tr>
+         <th>Method</th>
+         <th class="text-right">Coverage</th>
+        </tr>
+       </thead>
+       <tbody>
+       <tr><td><a href="UserSession.php.html#33"><abbr title="App\Models\UserSession::payment">payment</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="UserSubscription.php.html#55"><abbr title="App\Models\UserSubscription::boot">boot</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="UserSubscription.php.html#68"><abbr title="App\Models\UserSubscription::user">user</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="UserSubscription.php.html#76"><abbr title="App\Models\UserSubscription::package">package</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="UserSubscription.php.html#84"><abbr title="App\Models\UserSubscription::payment">payment</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="UserSubscription.php.html#92"><abbr title="App\Models\UserSubscription::isActive">isActive</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="UserSubscription.php.html#100"><abbr title="App\Models\UserSubscription::isExpired">isExpired</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="UserSubscription.php.html#108"><abbr title="App\Models\UserSubscription::getRemainingMinutes">getRemainingMinutes</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="UserSubscription.php.html#120"><abbr title="App\Models\UserSubscription::markAsExpired">markAsExpired</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="UserSubscription.php.html#129"><abbr title="App\Models\UserSubscription::suspend">suspend</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="UserSubscription.php.html#138"><abbr title="App\Models\UserSubscription::activate">activate</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="UserSubscription.php.html#151"><abbr title="App\Models\UserSubscription::serviceControlLogs">serviceControlLogs</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="UserSubscription.php.html#159"><abbr title="App\Models\UserSubscription::paymentReminders">paymentReminders</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="UserSubscription.php.html#171"><abbr title="App\Models\UserSubscription::isInGracePeriod">isInGracePeriod</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="UserSubscription.php.html#181"><abbr title="App\Models\UserSubscription::isDisconnected">isDisconnected</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="UserSubscription.php.html#189"><abbr title="App\Models\UserSubscription::isPaymentDueSoon">isPaymentDueSoon</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="UserSubscription.php.html#201"><abbr title="App\Models\UserSubscription::isPaymentOverdue">isPaymentOverdue</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="UserSubscription.php.html#213"><abbr title="App\Models\UserSubscription::needsPaymentReminder">needsPaymentReminder</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="UserSubscription.php.html#233"><abbr title="App\Models\UserSubscription::startGracePeriod">startGracePeriod</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="UserSubscription.php.html#243"><abbr title="App\Models\UserSubscription::markAsDisconnected">markAsDisconnected</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="UserSubscription.php.html#254"><abbr title="App\Models\UserSubscription::reconnect">reconnect</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="UserSubscription.php.html#265"><abbr title="App\Models\UserSubscription::recordReminderSent">recordReminderSent</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="UserSubscription.php.html#275"><abbr title="App\Models\UserSubscription::getDaysUntilPaymentDue">getDaysUntilPaymentDue</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="UserSubscription.php.html#287"><abbr title="App\Models\UserSubscription::getGracePeriodDaysRemaining">getGracePeriodDaysRemaining</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="UserSubscription.php.html#299"><abbr title="App\Models\UserSubscription::scopeNeedingReminders">scopeNeedingReminders</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="UserSubscription.php.html#312"><abbr title="App\Models\UserSubscription::scopeInGracePeriod">scopeInGracePeriod</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="UserSubscription.php.html#321"><abbr title="App\Models\UserSubscription::scopeDisconnected">scopeDisconnected</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="Voucher.php.html#30"><abbr title="App\Models\Voucher::package">package</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="Voucher.php.html#35"><abbr title="App\Models\Voucher::router">router</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="Voucher.php.html#40"><abbr title="App\Models\Voucher::usedBy">usedBy</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="VpnConfiguration.php.html#64"><abbr title="App\Models\VpnConfiguration::router">router</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="VpnConfiguration.php.html#69"><abbr title="App\Models\VpnConfiguration::tenantVpnTunnel">tenantVpnTunnel</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="VpnConfiguration.php.html#77"><abbr title="App\Models\VpnConfiguration::setServerPrivateKeyAttribute">setServerPrivateKeyAttribute</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="VpnConfiguration.php.html#84"><abbr title="App\Models\VpnConfiguration::getServerPrivateKeyAttribute">getServerPrivateKeyAttribute</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="VpnConfiguration.php.html#92"><abbr title="App\Models\VpnConfiguration::setClientPrivateKeyAttribute">setClientPrivateKeyAttribute</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="VpnConfiguration.php.html#99"><abbr title="App\Models\VpnConfiguration::getClientPrivateKeyAttribute">getClientPrivateKeyAttribute</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="VpnConfiguration.php.html#107"><abbr title="App\Models\VpnConfiguration::setPresharedKeyAttribute">setPresharedKeyAttribute</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="VpnConfiguration.php.html#114"><abbr title="App\Models\VpnConfiguration::getPresharedKeyAttribute">getPresharedKeyAttribute</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="VpnConfiguration.php.html#125"><abbr title="App\Models\VpnConfiguration::scopeActive">scopeActive</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="VpnConfiguration.php.html#133"><abbr title="App\Models\VpnConfiguration::scopeWireguard">scopeWireguard</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="VpnConfiguration.php.html#141"><abbr title="App\Models\VpnConfiguration::isActive">isActive</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="VpnConfiguration.php.html#146"><abbr title="App\Models\VpnConfiguration::isConnected">isConnected</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="VpnConfiguration.php.html#156"><abbr title="App\Models\VpnConfiguration::getFormattedTraffic">getFormattedTraffic</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="VpnConfiguration.php.html#165"><abbr title="App\Models\VpnConfiguration::formatBytes">formatBytes</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="VpnSubnetAllocation.php.html#36"><abbr title="App\Models\VpnSubnetAllocation::tenant">tenant</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="VpnSubnetAllocation.php.html#41"><abbr title="App\Models\VpnSubnetAllocation::vpnConfigurations">vpnConfigurations</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="VpnSubnetAllocation.php.html#49"><abbr title="App\Models\VpnSubnetAllocation::scopeActive">scopeActive</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="VpnSubnetAllocation.php.html#54"><abbr title="App\Models\VpnSubnetAllocation::scopeAvailable">scopeAvailable</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="VpnSubnetAllocation.php.html#63"><abbr title="App\Models\VpnSubnetAllocation::allocateIp">allocateIp</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="VpnSubnetAllocation.php.html#73"><abbr title="App\Models\VpnSubnetAllocation::releaseIp">releaseIp</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="VpnSubnetAllocation.php.html#83"><abbr title="App\Models\VpnSubnetAllocation::getUsagePercentage">getUsagePercentage</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="WireguardPeer.php.html#30"><abbr title="App\Models\WireguardPeer::router">router</abbr></a></td><td class="text-right">0%</td></tr>
+
+       </tbody>
+      </table>
+     </div>
+    </div>
+    <div class="col-md-6">
+     <h3 style="margin-top: 2rem;">Project Risks</h3>
+     <div class="scrollbox">
+      <table class="table">
+       <thead>
+        <tr>
+         <th>Method</th>
+         <th class="text-right">Coverage</th>
+         <th class="text-right">Complexity</th>
+         <th class="text-right"><abbr title="Change Risk Anti-Patterns (CRAP) Index">CRAP</abbr></th>
+        </tr>
+       </thead>
+       <tbody>
+       <tr><td><a href="UserSubscription.php.html#213"><abbr title="App\Models\UserSubscription::needsPaymentReminder">needsPaymentReminder</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">4</td><td class="text-right">20</td></tr>
+       <tr><td><a href="UserSubscription.php.html#171"><abbr title="App\Models\UserSubscription::isInGracePeriod">isInGracePeriod</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">3</td><td class="text-right">12</td></tr>
+       <tr><td><a href="VpnSubnetAllocation.php.html#73"><abbr title="App\Models\VpnSubnetAllocation::releaseIp">releaseIp</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">3</td><td class="text-right">12</td></tr>
+       <tr><td><a href="UserSubscription.php.html#55"><abbr title="App\Models\UserSubscription::boot">boot</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">2</td><td class="text-right">6</td></tr>
+       <tr><td><a href="UserSubscription.php.html#92"><abbr title="App\Models\UserSubscription::isActive">isActive</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">2</td><td class="text-right">6</td></tr>
+       <tr><td><a href="UserSubscription.php.html#108"><abbr title="App\Models\UserSubscription::getRemainingMinutes">getRemainingMinutes</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">2</td><td class="text-right">6</td></tr>
+       <tr><td><a href="UserSubscription.php.html#189"><abbr title="App\Models\UserSubscription::isPaymentDueSoon">isPaymentDueSoon</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">2</td><td class="text-right">6</td></tr>
+       <tr><td><a href="UserSubscription.php.html#201"><abbr title="App\Models\UserSubscription::isPaymentOverdue">isPaymentOverdue</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">2</td><td class="text-right">6</td></tr>
+       <tr><td><a href="UserSubscription.php.html#275"><abbr title="App\Models\UserSubscription::getDaysUntilPaymentDue">getDaysUntilPaymentDue</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">2</td><td class="text-right">6</td></tr>
+       <tr><td><a href="UserSubscription.php.html#287"><abbr title="App\Models\UserSubscription::getGracePeriodDaysRemaining">getGracePeriodDaysRemaining</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">2</td><td class="text-right">6</td></tr>
+       <tr><td><a href="VpnConfiguration.php.html#77"><abbr title="App\Models\VpnConfiguration::setServerPrivateKeyAttribute">setServerPrivateKeyAttribute</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">2</td><td class="text-right">6</td></tr>
+       <tr><td><a href="VpnConfiguration.php.html#84"><abbr title="App\Models\VpnConfiguration::getServerPrivateKeyAttribute">getServerPrivateKeyAttribute</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">2</td><td class="text-right">6</td></tr>
+       <tr><td><a href="VpnConfiguration.php.html#92"><abbr title="App\Models\VpnConfiguration::setClientPrivateKeyAttribute">setClientPrivateKeyAttribute</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">2</td><td class="text-right">6</td></tr>
+       <tr><td><a href="VpnConfiguration.php.html#99"><abbr title="App\Models\VpnConfiguration::getClientPrivateKeyAttribute">getClientPrivateKeyAttribute</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">2</td><td class="text-right">6</td></tr>
+       <tr><td><a href="VpnConfiguration.php.html#107"><abbr title="App\Models\VpnConfiguration::setPresharedKeyAttribute">setPresharedKeyAttribute</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">2</td><td class="text-right">6</td></tr>
+       <tr><td><a href="VpnConfiguration.php.html#114"><abbr title="App\Models\VpnConfiguration::getPresharedKeyAttribute">getPresharedKeyAttribute</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">2</td><td class="text-right">6</td></tr>
+       <tr><td><a href="VpnConfiguration.php.html#146"><abbr title="App\Models\VpnConfiguration::isConnected">isConnected</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">2</td><td class="text-right">6</td></tr>
+       <tr><td><a href="VpnConfiguration.php.html#165"><abbr title="App\Models\VpnConfiguration::formatBytes">formatBytes</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">2</td><td class="text-right">6</td></tr>
+       <tr><td><a href="VpnSubnetAllocation.php.html#63"><abbr title="App\Models\VpnSubnetAllocation::allocateIp">allocateIp</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">2</td><td class="text-right">6</td></tr>
+       <tr><td><a href="VpnSubnetAllocation.php.html#83"><abbr title="App\Models\VpnSubnetAllocation::getUsagePercentage">getUsagePercentage</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">2</td><td class="text-right">6</td></tr>
+
+       </tbody>
+      </table>
+     </div>
+    </div>
+   </div>
+   <footer>
+    <hr/>
+    <p>
+     <small>Generated by <a href="https://github.com/sebastianbergmann/php-code-coverage" target="_top">php-code-coverage 12.5.3</a> using <a href="https://www.php.net/" target="_top">PHP 8.4.14</a> and <a href="https://phpunit.de/">PHPUnit 12.5.14</a> at Mon Mar 23 2:34:34 EAT 2026.</small>
+    </p>
+   </footer>
+  </div>
+  <script src="../_js/billboard.pkgd.min.js?v=12.5.3" type="text/javascript"></script>
+  <script type="application/json" id="complexity_class">[[0,1,"UserSession.php.html#9","App\\Models\\UserSession","2"],[0,38,"UserSubscription.php.html#9","App\\Models\\UserSubscription","1482"],[0,3,"Voucher.php.html#11","App\\Models\\Voucher","12"],[0,22,"VpnConfiguration.php.html#10","App\\Models\\VpnConfiguration","506"],[0,11,"VpnSubnetAllocation.php.html#10","App\\Models\\VpnSubnetAllocation","132"],[0,1,"WireguardPeer.php.html#9","App\\Models\\WireguardPeer","2"]]</script>
+  <script type="application/json" id="complexity_method">[[0,1,"UserSession.php.html#33","App\\Models\\UserSession::payment","2"],[0,2,"UserSubscription.php.html#55","App\\Models\\UserSubscription::boot","6"],[0,1,"UserSubscription.php.html#68","App\\Models\\UserSubscription::user","2"],[0,1,"UserSubscription.php.html#76","App\\Models\\UserSubscription::package","2"],[0,1,"UserSubscription.php.html#84","App\\Models\\UserSubscription::payment","2"],[0,2,"UserSubscription.php.html#92","App\\Models\\UserSubscription::isActive","6"],[0,1,"UserSubscription.php.html#100","App\\Models\\UserSubscription::isExpired","2"],[0,2,"UserSubscription.php.html#108","App\\Models\\UserSubscription::getRemainingMinutes","6"],[0,1,"UserSubscription.php.html#120","App\\Models\\UserSubscription::markAsExpired","2"],[0,1,"UserSubscription.php.html#129","App\\Models\\UserSubscription::suspend","2"],[0,1,"UserSubscription.php.html#138","App\\Models\\UserSubscription::activate","2"],[0,1,"UserSubscription.php.html#151","App\\Models\\UserSubscription::serviceControlLogs","2"],[0,1,"UserSubscription.php.html#159","App\\Models\\UserSubscription::paymentReminders","2"],[0,3,"UserSubscription.php.html#171","App\\Models\\UserSubscription::isInGracePeriod","12"],[0,1,"UserSubscription.php.html#181","App\\Models\\UserSubscription::isDisconnected","2"],[0,2,"UserSubscription.php.html#189","App\\Models\\UserSubscription::isPaymentDueSoon","6"],[0,2,"UserSubscription.php.html#201","App\\Models\\UserSubscription::isPaymentOverdue","6"],[0,4,"UserSubscription.php.html#213","App\\Models\\UserSubscription::needsPaymentReminder","20"],[0,1,"UserSubscription.php.html#233","App\\Models\\UserSubscription::startGracePeriod","2"],[0,1,"UserSubscription.php.html#243","App\\Models\\UserSubscription::markAsDisconnected","2"],[0,1,"UserSubscription.php.html#254","App\\Models\\UserSubscription::reconnect","2"],[0,1,"UserSubscription.php.html#265","App\\Models\\UserSubscription::recordReminderSent","2"],[0,2,"UserSubscription.php.html#275","App\\Models\\UserSubscription::getDaysUntilPaymentDue","6"],[0,2,"UserSubscription.php.html#287","App\\Models\\UserSubscription::getGracePeriodDaysRemaining","6"],[0,1,"UserSubscription.php.html#299","App\\Models\\UserSubscription::scopeNeedingReminders","2"],[0,1,"UserSubscription.php.html#312","App\\Models\\UserSubscription::scopeInGracePeriod","2"],[0,1,"UserSubscription.php.html#321","App\\Models\\UserSubscription::scopeDisconnected","2"],[0,1,"Voucher.php.html#30","App\\Models\\Voucher::package","2"],[0,1,"Voucher.php.html#35","App\\Models\\Voucher::router","2"],[0,1,"Voucher.php.html#40","App\\Models\\Voucher::usedBy","2"],[0,1,"VpnConfiguration.php.html#64","App\\Models\\VpnConfiguration::router","2"],[0,1,"VpnConfiguration.php.html#69","App\\Models\\VpnConfiguration::tenantVpnTunnel","2"],[0,2,"VpnConfiguration.php.html#77","App\\Models\\VpnConfiguration::setServerPrivateKeyAttribute","6"],[0,2,"VpnConfiguration.php.html#84","App\\Models\\VpnConfiguration::getServerPrivateKeyAttribute","6"],[0,2,"VpnConfiguration.php.html#92","App\\Models\\VpnConfiguration::setClientPrivateKeyAttribute","6"],[0,2,"VpnConfiguration.php.html#99","App\\Models\\VpnConfiguration::getClientPrivateKeyAttribute","6"],[0,2,"VpnConfiguration.php.html#107","App\\Models\\VpnConfiguration::setPresharedKeyAttribute","6"],[0,2,"VpnConfiguration.php.html#114","App\\Models\\VpnConfiguration::getPresharedKeyAttribute","6"],[0,1,"VpnConfiguration.php.html#125","App\\Models\\VpnConfiguration::scopeActive","2"],[0,1,"VpnConfiguration.php.html#133","App\\Models\\VpnConfiguration::scopeWireguard","2"],[0,1,"VpnConfiguration.php.html#141","App\\Models\\VpnConfiguration::isActive","2"],[0,2,"VpnConfiguration.php.html#146","App\\Models\\VpnConfiguration::isConnected","6"],[0,1,"VpnConfiguration.php.html#156","App\\Models\\VpnConfiguration::getFormattedTraffic","2"],[0,2,"VpnConfiguration.php.html#165","App\\Models\\VpnConfiguration::formatBytes","6"],[0,1,"VpnSubnetAllocation.php.html#36","App\\Models\\VpnSubnetAllocation::tenant","2"],[0,1,"VpnSubnetAllocation.php.html#41","App\\Models\\VpnSubnetAllocation::vpnConfigurations","2"],[0,1,"VpnSubnetAllocation.php.html#49","App\\Models\\VpnSubnetAllocation::scopeActive","2"],[0,1,"VpnSubnetAllocation.php.html#54","App\\Models\\VpnSubnetAllocation::scopeAvailable","2"],[0,2,"VpnSubnetAllocation.php.html#63","App\\Models\\VpnSubnetAllocation::allocateIp","6"],[0,3,"VpnSubnetAllocation.php.html#73","App\\Models\\VpnSubnetAllocation::releaseIp","12"],[0,2,"VpnSubnetAllocation.php.html#83","App\\Models\\VpnSubnetAllocation::getUsagePercentage","6"],[0,1,"WireguardPeer.php.html#30","App\\Models\\WireguardPeer::router","2"]]</script>
+  <script type="text/javascript" defer>
+  const barLabels = [
+    '0%',
+    '0-10%',
+    '10-20%',
+    '20-30%',
+    '30-40%',
+    '40-50%',
+    '50-60%',
+    '60-70%',
+    '70-80%',
+    '80-90%',
+    '90-100%',
+    '100%'
+  ];
+  const barConfig = (name, fullName, values) => ({
+    axis: {
+      x: {
+        type: "category",
+        categories: barLabels,
+      },
+      y: {
+        label: {
+          text: `#${name}`,
+          position: 'outer-top',
+        },
+      },
+    },
+    bindto: `#${name}CoverageDistribution`,
+    data: {
+      columns: [
+        [fullName].concat(values),
+      ],
+      colors: {
+        [fullName]: "rgba(69, 114, 167, 0.75)",
+      },
+      type: "bar",
+    },
+    bar: {
+      width: {
+        ratio: 0.9,
+      },
+    },
+    grid: {
+      focus: {
+        show: false,
+      },
+      x: {
+        show: true,
+      },
+      y: {
+        show: true,
+      },
+    },
+    legend: {
+      show: false,
+    },
+    tooltip: {
+      contents: function (data) {
+        return `<table class="bb-tooltip"><tbody>
+            <tr><th colspan="2">Coverage ${barLabels[data[0].x]}</th></tr>
+            <tr><td class="value">${data[0].value} ${name}</td></tr>
+          </tbody></table>`;
+      },
+      grouped: false,
+    },
+  });
+  bb.generate(
+    barConfig('classes', "Class Coverage", [6,0,0,0,0,0,0,0,0,0,0,0])
+  );
+  bb.generate(
+    barConfig('methods', "Method Coverage", [52,0,0,0,0,0,0,0,0,0,0,0])
+  );
+
+  const scatterConfig = (name, complexityData) => ({
+    axis: {
+      x: {
+        label: {
+          text: 'Code Coverage (in percent)',
+          position: 'outer-right',
+        },
+        tick: {
+          values: [0, 20, 40, 60, 80, 100],
+        },
+      },
+      y: {
+        label: {
+          text: 'Cyclomatic Complexity',
+          position: 'outer-top',
+        },
+        min: 0,
+        padding: {
+          bottom: 0,
+          top: 5,
+        },
+      },
+    },
+    bindto: `#${name}Complexity`,
+    data: {
+      columns: [
+        ["complexity_x"].concat(complexityData.map(d => d[0])),
+        ["complexity"].concat(complexityData.map(d => d[1])),
+      ],
+      onclick: function(data, element) {
+        window.location = complexityData[data.index][2];
+      },
+      type: "scatter",
+      xs: {
+        "complexity": "complexity_x",
+      },
+    },
+    grid: {
+      focus: {
+        show: true,
+        y: true,
+      },
+      x: {
+        show: true,
+      },
+      y: {
+        show: true,
+      },
+    },
+    legend: {
+      show: false,
+    },
+    tooltip: {
+      contents: function (data) {
+        const coverage = Math.round(data[0].x);
+        const complexity = data[0].value;
+        const targetName = complexityData[data[0].index][3];
+        const crap = complexityData[data[0].index][4];
+        return `<table class="bb-tooltip"><tbody>
+            <tr><th colspan="2">${targetName}</th></tr>
+            <tr class="bb-tooltip-name-complexity"><td>Coverage</td><td class="name">${coverage}%</td></tr>
+            <tr class="bb-tooltip-name-complexity"><td>Complexity</td><td class="value">${complexity}</td></tr>
+            <tr class="bb-tooltip-name-complexity"><td>Crap</td><td class="value">${crap}</td></tr>
+          </tbody></table>`;
+      },
+      grouped: false,
+    },
+  });
+  const classComplexityData = JSON.parse(document.getElementById('complexity_class').textContent);
+  bb.generate(
+    scatterConfig("class", classComplexityData)
+  );
+  const methodComplexityData = JSON.parse(document.getElementById('complexity_method').textContent);
+  bb.generate(
+    scatterConfig("method", methodComplexityData),
+  );
+  </script>
+ </body>
+</html>

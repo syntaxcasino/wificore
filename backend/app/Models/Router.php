@@ -89,6 +89,9 @@ class Router extends Model
      */
     public function getTenantIdAttribute(): ?string
     {
+        if (empty($this->id)) {
+            return null;
+        }
         return RouterTenantMap::findTenantByRouterId($this->id);
     }
 

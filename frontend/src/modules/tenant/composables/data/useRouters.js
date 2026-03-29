@@ -59,17 +59,23 @@ export function useRouters() {
   )
 
   const setupRealtimeUpdates = () => {
-    const tenantId = authStore.tenantId
-    if (!tenantId) return
+    try {
+      const tenantId = authStore.tenantId
+      if (!tenantId) return
 
-    // Unsubscribe existing if any
-    if (routerUpdatesChannel) {
-      unsubscribeFromChannel(routerUpdatesChannel)
-    }
+      // Unsubscribe existing if any
+      if (routerUpdatesChannel) {
+        unsubscribeFromChannel(routerUpdatesChannel)
+      }
 
-    routerUpdatesChannel = `tenant.${tenantId}.router-updates`
-    
-    subscribeToPrivateChannel(routerUpdatesChannel, {
+      routerUpdatesChannel = `tenant.${tenantId}.router-updates`
+      
+      if (typeof subscribeToPrivateChannel !== 'function') {
+        console.warn('subscribeToPrivateChannel is not a function, skipping WebSocket setup')
+        return
+      }
+      
+      subscribeToPrivateChannel(routerUpdatesChannel, {
       RouterLiveDataUpdated: (event) => {
         // Update router metrics
         const routerIndex = routers.value.findIndex(r => String(r.id) === String(event.router_id))
@@ -131,6 +137,9 @@ export function useRouters() {
         })
       }
     })
+  } catch (err) {
+    console.warn('setupRealtimeUpdates error:', err.message)
+  }
   }
 
   const cleanupRealtimeUpdates = () => {
