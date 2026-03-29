@@ -854,7 +854,19 @@ SCRIPT;
             }
 
             // Initialize SSH executor (credentials decrypted ONCE here)
-            $ssh = new SshExecutor($router, 30);
+            // Use longer timeout for hAP lite and low-end devices (90s vs 30s)
+            $deviceModel = $router->model ?? '';
+            $isLowEnd = $this->isLowEndDevice($deviceModel);
+            $sshTimeout = $isLowEnd ? 90 : 30;
+            
+            Log::info('SSH connection timeout configured', [
+                'router_id' => $router->id,
+                'model' => $deviceModel,
+                'is_low_end' => $isLowEnd,
+                'timeout_seconds' => $sshTimeout,
+            ]);
+            
+            $ssh = new SshExecutor($router, $sshTimeout);
             
             try {
                 $ssh->connect();
