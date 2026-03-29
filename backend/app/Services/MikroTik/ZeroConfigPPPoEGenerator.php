@@ -205,8 +205,11 @@ class ZeroConfigPPPoEGenerator
         $s[] = ":do { /interface pppoe-server server set [/interface pppoe-server server find service-name=\"$svc\"] max-mtu=1480 max-mru=1480 } on-error={ /log info \"PPPoE-$id: WARN - Failed to set PPPoE MTU/MRU\" }";
         $s[] = ":do { /interface list member add list=$pl interface=\"$bridge\" } on-error={ /log info \"PPPoE-$id: WARN - Failed to add bridge to list $pl\" }";
 
-        // FIREWALL — clean up old rules then re-add (optimized for low-end)
+        // FIREWALL — clean up ALL old rules including pp-wan-est and PPPoE patterns
+        // Use multiple patterns to ensure complete cleanup
         $s[] = ":do { /ip firewall filter remove [/ip firewall filter find comment~\"PPPoE-$id\"]; } on-error={}";
+        $s[] = ":do { /ip firewall filter remove [/ip firewall filter find comment~\"pp-wan-est-$id\"]; } on-error={}";
+        $s[] = ":delay 100ms"; // Brief delay to ensure removal completes before add
         
         // INPUT rules (append to end instead of insert - much faster on low CPU)
         $s[] = "/ip firewall filter add chain=input connection-state=established,related action=accept comment=\"PPPoE-$id-EST-IN\"";
@@ -221,9 +224,9 @@ class ZeroConfigPPPoEGenerator
         $s[] = ":delay {$delays['firewall']}"; // CPU breathing room
         
         // FORWARD rules (append instead of insert)
-        $s[] = "/ip firewall filter add chain=forward in-interface-list=$wan out-interface-list=$pal connection-state=established,related action=accept comment=\"pp-wan-est-$id\"";
-        $s[] = "/ip firewall filter add chain=forward in-interface-list=$pal connection-state=established,related action=accept comment=\"PPPoE-$id-EST\"";
-        $s[] = "/ip firewall filter add chain=forward in-interface-list=$pal connection-state=invalid action=drop comment=\"PPPoE-$id-INV\"";
+        $s[] = "/ip firewall filter add chain=forward in-interface-list=$wan out-interface-list=$pal connection-state=established,related action=accept comment=\"PPPoE-$id-WAN-EST\"";
+        $s[] = "/ip firewall filter add chain=forward in-interface-list=$pal connection-state=established,related action=accept comment=\"PPPoE-$id-PAL-EST\"";
+        $s[] = "/ip firewall filter add chain=forward in-interface-list=$pal connection-state=invalid action=drop comment=\"PPPoE-$id-PAL-INV\"";
         $s[] = "/ip firewall filter add chain=forward in-interface-list=$pal out-interface-list=$wan action=accept comment=\"PPPoE-$id-INET\"";
         $s[] = "/ip firewall filter add chain=forward in-interface=\"$bridge\" action=drop comment=\"PPPoE-$id-BLOCK-UNAUTH\"";
         
