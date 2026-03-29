@@ -48,12 +48,14 @@ class DeployRouterServiceJob implements ShouldQueue
 
     public function handle(): void
     {
-        $this->executeInTenantContext(function () {
+        // Phase 1: Load service and generate config within transaction
+        // Then commit before SSH to avoid idle-in-transaction timeout
+        $deployData = $this->executeInTenantContext(function () {
             $service = RouterService::with(['router', 'ipPool', 'vlans'])->find($this->serviceId);
 
             if (!$service) {
                 Log::error('DeployRouterServiceJob: Service not found', ['service_id' => $this->serviceId]);
-                return;
+                return null;
             }
 
             if (!$service->router) {
@@ -64,113 +66,146 @@ class DeployRouterServiceJob implements ShouldQueue
                     'deployment_status' => RouterService::DEPLOYMENT_FAILED,
                     'status' => RouterService::STATUS_INACTIVE,
                 ]);
-                return;
+                return null;
             }
 
-            // Skip if already deployed (prevent re-deployment of working config)
+            // Skip if already deployed
             if ($service->deployment_status === RouterService::DEPLOYMENT_DEPLOYED) {
                 Log::info('DeployRouterServiceJob: Already deployed, skipping', [
                     'service_id' => $service->id,
                     'router_id' => $service->router_id,
                 ]);
-                return;
+                return null;
             }
 
-            // Idempotency lock - prevent concurrent deployments on same router
-            // Uses router_id (not service_id) because multiple services share the same SSH connection
-            $lockKey = 'deploy_router_' . $service->router_id;
-            $lock = Cache::lock($lockKey, 300);
-            if (!$lock->get()) {
-                Log::warning('DeployRouterServiceJob: Deployment already in progress on this router (lock held)', [
-                    'service_id' => $this->serviceId,
-                    'router_id' => $service->router_id,
-                    'attempt' => $this->attempts(),
-                ]);
-                // Release back to queue — does NOT count toward maxExceptions
-                $this->release(30);
-                return;
-            }
+            // Generate configuration before releasing transaction
+            $config = $this->generateConfiguration($service);
+            
+            // Return data needed for deployment phase
+            return [
+                'service' => $service,
+                'router' => $service->router,
+                'config' => $config,
+                'service_type' => $service->service_type,
+            ];
+        });
 
-            try {
-                // Mark as in progress
+        // If null, job is done (error or already deployed)
+        if ($deployData === null) {
+            return;
+        }
+
+        // Phase 2: Acquire lock and run SSH deployment OUTSIDE transaction
+        $service = $deployData['service'];
+        $router = $deployData['router'];
+        $config = $deployData['config'];
+        
+        $lockKey = 'deploy_router_' . $router->id;
+        $lock = Cache::lock($lockKey, 300);
+        
+        if (!$lock->get()) {
+            Log::warning('DeployRouterServiceJob: Deployment already in progress on this router', [
+                'service_id' => $this->serviceId,
+                'router_id' => $router->id,
+                'attempt' => $this->attempts(),
+            ]);
+            $this->release(30);
+            return;
+        }
+
+        $result = null;
+        $exception = null;
+        
+        try {
+            // Mark as in progress - short transaction
+            $this->executeInTenantContext(function () use ($service) {
                 $service->update(['deployment_status' => RouterService::DEPLOYMENT_IN_PROGRESS]);
+            });
 
-                Log::info('DeployRouterServiceJob: Starting deployment', [
-                    'service_id' => $service->id,
-                    'router_id' => $service->router_id,
-                    'service_type' => $service->service_type,
-                    'attempt' => $this->attempts(),
-                ]);
+            Log::info('DeployRouterServiceJob: Starting deployment', [
+                'service_id' => $service->id,
+                'router_id' => $router->id,
+                'service_type' => $service->service_type,
+                'attempt' => $this->attempts(),
+            ]);
 
-                // Broadcast progress
-                $this->broadcastServiceProgress($service, 'deploying', 30, 'Generating configuration...');
+            $this->broadcastServiceProgress($service, 'deploying', 30, 'Generating configuration...');
+            $this->broadcastServiceProgress($service, 'applying', 50, 'Applying configuration to router...');
 
-                // Generate configuration based on service type
-                $config = $this->generateConfiguration($service);
+            // SSH deployment - OUTSIDE any DB transaction
+            $provisioningService = app(MikrotikProvisioningService::class);
+            $result = $provisioningService->applyConfigs($router, $config, false);
 
-                $this->broadcastServiceProgress($service, 'applying', 50, 'Applying configuration to router...');
+        } catch (\Exception $e) {
+            $exception = $e;
+        } finally {
+            $lock->release();
+        }
 
-                // Deploy to router via provisioning service
-                $provisioningService = app(MikrotikProvisioningService::class);
-                $result = $provisioningService->applyConfigs($service->router, $config, false);
+        // Phase 3: Update status in new transaction
+        $this->executeInTenantContext(function () use ($service, $result, $exception) {
+            if ($exception !== null) {
+                $this->handleDeploymentException($service, $exception);
+                return;
+            }
 
-                if ($result['success']) {
-                    $this->ensureTenantSearchPath();
-                    $service->update([
-                        'deployment_status' => RouterService::DEPLOYMENT_DEPLOYED,
-                        'status' => RouterService::STATUS_ACTIVE,
-                        'deployed_at' => now(),
-                    ]);
-
-                    $this->broadcastServiceProgress($service, 'completed', 100, 'Service deployed successfully');
-
-                    Log::info('DeployRouterServiceJob: Deployed successfully', [
-                        'service_id' => $service->id,
-                        'router_id' => $service->router_id,
-                        'attempt' => $this->attempts(),
-                    ]);
-                } else {
-                    throw new \Exception($result['message'] ?? 'Deployment failed');
-                }
-
-            } catch (\Exception $e) {
-                if ((int) $e->getCode() === 503) {
-                    Log::warning('DeployRouterServiceJob: Deferred (router busy)', [
-                        'service_id' => $service->id,
-                        'router_id' => $service->router_id,
-                        'error' => $e->getMessage(),
-                    ]);
-
-                    $this->ensureTenantSearchPath();
-                    $service->update([
-                        'deployment_status' => RouterService::DEPLOYMENT_PENDING,
-                        'status' => RouterService::STATUS_INACTIVE,
-                    ]);
-
-                    $this->release(15);
-                    return;
-                }
-
-                Log::error('DeployRouterServiceJob: Failed', [
-                    'service_id' => $service->id,
-                    'router_id' => $service->router_id,
-                    'error' => $e->getMessage(),
-                    'attempt' => $this->attempts(),
-                ]);
-
-                $this->ensureTenantSearchPath();
+            if ($result && $result['success']) {
                 $service->update([
-                    'deployment_status' => RouterService::DEPLOYMENT_FAILED,
-                    'status' => RouterService::STATUS_INACTIVE,
+                    'deployment_status' => RouterService::DEPLOYMENT_DEPLOYED,
+                    'status' => RouterService::STATUS_ACTIVE,
+                    'deployed_at' => now(),
                 ]);
 
-                $this->broadcastServiceProgress($service, 'failed', 0, 'Deployment failed: ' . $e->getMessage());
+                $this->broadcastServiceProgress($service, 'completed', 100, 'Service deployed successfully');
 
-                throw $e;
-            } finally {
-                $lock->release();
+                Log::info('DeployRouterServiceJob: Deployed successfully', [
+                    'service_id' => $service->id,
+                    'router_id' => $service->router_id,
+                ]);
+            } else {
+                throw new \Exception($result['message'] ?? 'Deployment failed');
             }
         });
+        
+        // Re-throw exception outside transaction to trigger retry
+        if ($exception !== null) {
+            throw $exception;
+        }
+    }
+
+    /**
+     * Handle deployment exceptions with retry logic
+     */
+    private function handleDeploymentException(RouterService $service, \Exception $e): void
+    {
+        if ((int) $e->getCode() === 503) {
+            Log::warning('DeployRouterServiceJob: Deferred (router busy)', [
+                'service_id' => $service->id,
+                'router_id' => $service->router_id,
+                'error' => $e->getMessage(),
+            ]);
+
+            $service->update([
+                'deployment_status' => RouterService::DEPLOYMENT_PENDING,
+                'status' => RouterService::STATUS_INACTIVE,
+            ]);
+
+            $this->release(15);
+            return;
+        }
+
+        Log::error('DeployRouterServiceJob: Failed', [
+            'service_id' => $service->id,
+            'router_id' => $service->router_id,
+            'error' => $e->getMessage(),
+        ]);
+
+        $service->update([
+            'deployment_status' => RouterService::DEPLOYMENT_FAILED,
+            'status' => RouterService::STATUS_INACTIVE,
+        ]);
+
+        $this->broadcastServiceProgress($service, 'failed', 0, 'Deployment failed: ' . $e->getMessage());
     }
 
     /**
