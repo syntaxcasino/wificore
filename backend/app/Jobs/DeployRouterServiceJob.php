@@ -101,7 +101,7 @@ class DeployRouterServiceJob implements ShouldQueue
         $config = $deployData['config'];
         
         $lockKey = 'deploy_router_' . $router->id;
-        $lock = Cache::lock($lockKey, 300);
+        $lock = Cache::lock($lockKey, 60);
         
         if (!$lock->get()) {
             Log::warning('DeployRouterServiceJob: Deployment already in progress on this router', [
@@ -109,7 +109,7 @@ class DeployRouterServiceJob implements ShouldQueue
                 'router_id' => $router->id,
                 'attempt' => $this->attempts(),
             ]);
-            $this->release(30);
+            $this->release(10);
             return;
         }
 
