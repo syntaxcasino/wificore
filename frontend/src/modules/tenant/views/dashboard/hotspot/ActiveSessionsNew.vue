@@ -5,13 +5,14 @@
     color-theme="cyan"
     v-model:search-model="searchQuery"
     search-placeholder="Search sessions..."
+    :show-add="false"
     :stats="[
-      { color: 'bg-blue-500', value: stats.total },
-      { color: 'bg-emerald-500', value: stats.users },
-      { color: 'bg-cyan-500', value: formatBytesCompact(stats.bandwidth) },
-      { color: 'bg-amber-500', value: formatBytesCompact(stats.totalData) }
+      { color: 'bg-blue-500', value: stats.total, tooltip: 'Total sessions' },
+      { color: 'bg-emerald-500', value: stats.users, tooltip: 'Unique users' },
+      { color: 'bg-cyan-500', value: formatBytesCompact(stats.bandwidth), tooltip: 'Current bandwidth' },
+      { color: 'bg-amber-500', value: formatBytesCompact(stats.totalData), tooltip: 'Total data transferred' }
     ]"
-    :total="filteredData.length"
+    :total="sessions.length"
     :loading="loading"
     @refresh="fetchSessions"
     @search-clear="searchQuery = ''"
@@ -19,13 +20,6 @@
     <!-- Icon Slot -->
     <template #icon>
       <Activity class="h-5 w-5 md:h-6 md:w-6 text-white" />
-    </template>
-
-    <!-- Action Buttons -->
-    <template #actions>
-      <BaseButton v-if="filteredData.length > 0" @click="disconnectAll" variant="danger" size="sm" class="shrink-0">
-        <Power class="w-4 h-4 mr-1" /> Disconnect All
-      </BaseButton>
     </template>
 
     <!-- Filters -->
@@ -56,56 +50,16 @@
     <div v-else-if="filteredData.length" class="flex flex-col h-full px-4 md:px-6 pt-2 pb-2 min-h-0">
       <!-- Mobile Cards -->
       <div class="md:hidden space-y-3 overflow-y-auto flex-1 min-h-0">
-        <div
+        <MobileDataCard
           v-for="session in paginatedData"
           :key="session.id"
-          class="bg-white rounded-lg border border-slate-200 shadow-sm p-4"
-        >
-          <div class="flex items-center justify-between">
-            <div class="flex items-center gap-3">
-              <div class="w-10 h-10 bg-gradient-to-br from-cyan-500 to-blue-500 rounded-full flex items-center justify-center text-white text-sm font-semibold">
-                {{ getUserInitials(session.user) }}
-              </div>
-              <div>
-                <p class="text-sm font-medium text-slate-900">{{ session.user?.name || session.username }}</p>
-                <p class="text-xs text-slate-500">{{ session.ip_address }}</p>
-              </div>
-            </div>
-            <div class="flex items-center gap-1">
-              <button @click="viewSessionDetails(session)" class="p-2 text-slate-600 hover:bg-slate-100 rounded-md transition-colors">
-                <Eye class="w-4 h-4" />
-              </button>
-              <button @click="disconnectSession(session)" class="p-2 text-red-600 hover:bg-red-50 rounded-md transition-colors">
-                <Power class="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-          <div class="mt-3 grid grid-cols-2 gap-2 text-xs">
-            <div class="bg-slate-50 rounded p-2">
-              <span class="text-slate-500">Package:</span>
-              <span class="ml-1 text-slate-700">{{ session.package?.name || 'N/A' }}</span>
-            </div>
-            <div class="bg-slate-50 rounded p-2">
-              <span class="text-slate-500">Duration:</span>
-              <span class="ml-1 text-slate-700">{{ formatDuration(session.duration) }}</span>
-            </div>
-            <div class="bg-slate-50 rounded p-2">
-              <span class="text-slate-500">Data:</span>
-              <span class="ml-1 text-slate-700">{{ formatBytes(session.bytes_in + session.bytes_out) }}</span>
-            </div>
-            <div class="bg-slate-50 rounded p-2">
-              <span class="text-slate-500">Speed:</span>
-              <span class="ml-1 text-slate-700">{{ formatBytes(session.current_bandwidth) }}/s</span>
-            </div>
-          </div>
-          <div class="mt-2">
-            <div class="flex items-center gap-2">
-              <div class="flex-1 h-1.5 bg-slate-200 rounded-full overflow-hidden">
-                <div class="h-full rounded-full bg-gradient-to-r from-cyan-500 to-blue-500" :style="{ width: getBandwidthPercentage(session) + '%' }"></div>
-              </div>
-            </div>
-          </div>
-        </div>
+          :title="session.user?.name || session.username"
+          :subtitle="session.ip_address"
+          :meta-lines="getSessionMetaLines(session)"
+          :status="'active'"
+          :actions="getSessionActions(session)"
+          hoverable
+        />
       </div>
 
       <!-- Desktop Table -->
@@ -114,18 +68,18 @@
           <table class="w-full">
             <thead class="bg-slate-50 border-b border-slate-200 sticky top-0 z-[5]">
               <tr>
-                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">User</th>
-                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">IP / MAC</th>
-                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Package</th>
-                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Duration</th>
-                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Data Usage</th>
-                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Bandwidth</th>
-                <th class="px-6 py-3 text-right text-xs font-semibold text-slate-700 uppercase tracking-wider">Actions</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[18%]">User</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[15%]">IP / MAC</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[12%]">Package</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[12%]">Duration</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[15%]">Data Usage</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[16%]">Bandwidth</th>
+                <th class="px-6 py-3 text-right text-xs font-semibold text-slate-700 uppercase tracking-wider w-[12%]">Actions</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-100">
               <tr v-for="session in paginatedData" :key="session.id" class="hover:bg-cyan-50/50 transition-colors">
-                <td class="px-6 py-4">
+                <td class="px-6 py-4 w-[18%]">
                   <div class="flex items-center gap-3">
                     <div class="w-10 h-10 bg-gradient-to-br from-cyan-500 to-blue-500 rounded-full flex items-center justify-center text-white text-sm font-semibold">
                       {{ getUserInitials(session.user) }}
@@ -136,19 +90,19 @@
                     </div>
                   </div>
                 </td>
-                <td class="px-6 py-4">
+                <td class="px-6 py-4 w-[15%]">
                   <p class="text-sm text-slate-900">{{ session.ip_address }}</p>
                   <p class="text-xs text-slate-500 font-mono">{{ session.mac_address }}</p>
                 </td>
-                <td class="px-6 py-4">
+                <td class="px-6 py-4 w-[12%]">
                   <p class="text-sm font-medium text-slate-900">{{ session.package?.name || 'N/A' }}</p>
                   <p class="text-xs text-slate-500">{{ session.package?.speed || 'N/A' }}</p>
                 </td>
-                <td class="px-6 py-4">
+                <td class="px-6 py-4 w-[12%]">
                   <p class="text-sm text-slate-900">{{ formatDuration(session.duration) }}</p>
                   <p class="text-xs text-slate-500">Since {{ formatTime(session.start_time) }}</p>
                 </td>
-                <td class="px-6 py-4">
+                <td class="px-6 py-4 w-[15%]">
                   <p class="text-sm text-slate-900">{{ formatBytes(session.bytes_in + session.bytes_out) }}</p>
                   <p class="text-xs text-slate-500">
                     <span class="text-emerald-600">↓ {{ formatBytes(session.bytes_in) }}</span>
@@ -156,7 +110,7 @@
                     <span class="text-blue-600">↑ {{ formatBytes(session.bytes_out) }}</span>
                   </p>
                 </td>
-                <td class="px-6 py-4">
+                <td class="px-6 py-4 w-[16%]">
                   <div class="flex items-center gap-2">
                     <div class="flex-1 h-1.5 bg-slate-200 rounded-full overflow-hidden">
                       <div class="h-full rounded-full bg-gradient-to-r from-cyan-500 to-blue-500 transition-all duration-300" :style="{ width: getBandwidthPercentage(session) + '%' }"></div>
@@ -164,14 +118,16 @@
                     <span class="text-xs text-slate-700 w-14 text-right">{{ formatBytes(session.current_bandwidth) }}/s</span>
                   </div>
                 </td>
-                <td class="px-6 py-4 text-right">
+                <td class="px-6 py-4 text-right w-[12%]">
                   <div class="flex items-center justify-end gap-1">
-                    <button @click="viewSessionDetails(session)" class="p-1.5 text-slate-600 hover:bg-slate-100 rounded-md transition-colors">
-                      <Eye class="w-4 h-4" />
+                    <button @click="viewSessionDetails(session)" class="px-2 py-1 text-xs font-medium text-blue-700 bg-blue-50 rounded hover:bg-blue-100 transition-colors">
+                      View
                     </button>
-                    <button @click="disconnectSession(session)" class="p-1.5 text-red-600 hover:bg-red-50 rounded-md transition-colors">
-                      <Power class="w-4 h-4" />
-                    </button>
+                    <div class="relative">
+                      <button data-menu-button @click="toggleMenu(session.id, $event)" class="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded transition-colors">
+                        <MoreVertical class="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                 </td>
               </tr>
@@ -193,8 +149,23 @@
       color-theme="cyan"
       :show-clear="!!searchQuery"
       :has-filters="hasActiveFilters"
+      :show-add="false"
       @clear="searchQuery = ''"
     />
+
+    <!-- Global Dropdown Menu Portal -->
+    <Teleport to="body">
+      <div v-if="activeMenu !== null" data-dropdown-menu :style="menuPosition" class="fixed w-48 bg-white rounded-lg shadow-2xl border border-slate-200 py-1 z-[9999] overflow-hidden">
+        <button @click="viewSessionDetails(sessions.find(s => s.id === activeMenu))" class="flex items-center w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-cyan-50 hover:text-cyan-700 transition-colors">
+          <Eye class="w-4 h-4 mr-3" />
+          View Details
+        </button>
+        <button @click="disconnectSession(sessions.find(s => s.id === activeMenu))" class="flex items-center w-full px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors">
+          <Power class="w-4 h-4 mr-3" />
+          Disconnect
+        </button>
+      </div>
+    </Teleport>
   </DataViewContainer>
 
   <!-- Session Details Overlay -->
@@ -209,23 +180,23 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { Activity, Power, Eye, AlertCircle } from 'lucide-vue-next'
+import { Activity, Power, Eye, AlertCircle, MoreVertical } from 'lucide-vue-next'
 import axios from 'axios'
+import { useHotspot } from '@/modules/tenant/composables/useHotspot'
 import DataViewContainer from '@/modules/common/components/base/DataViewContainer.vue'
 import DataSkeleton from '@/modules/common/components/base/DataSkeleton.vue'
+import MobileDataCard from '@/modules/common/components/base/MobileDataCard.vue'
 import DataPagination from '@/modules/common/components/base/DataPagination.vue'
 import DataEmptyState from '@/modules/common/components/base/DataEmptyState.vue'
-import BaseButton from '@/modules/common/components/base/BaseButton.vue'
 import BaseSelect from '@/modules/common/components/base/BaseSelect.vue'
 import SessionDetailsOverlay from '@/modules/tenant/components/sessions/SessionDetailsOverlay.vue'
 import { useConfirmStore } from '@/stores/confirm'
 
 const confirmStore = useConfirmStore()
 
-// State
-const loading = ref(false)
-const error = ref(null)
-const sessions = ref([])
+// Use hotspot composable for event-based sessions
+const { sessions, loading, error, fetchSessions, subscribeToWebSocket, unsubscribeFromWebSocket } = useHotspot()
+
 const searchQuery = ref('')
 const currentPage = ref(1)
 const itemsPerPage = ref(10)
@@ -243,8 +214,8 @@ const stats = computed(() => ({
   totalData: sessions.value.reduce((sum, s) => sum + (s.bytes_in || 0) + (s.bytes_out || 0), 0)
 }))
 
-const filteredData = computed(() => {
-  let result = sessions.value
+const filteredSessions = computed(() => {
+  let result = [...sessions.value]
   if (searchQuery.value) {
     const query = searchQuery.value.toLowerCase()
     result = result.filter(s =>
@@ -269,12 +240,14 @@ const filteredData = computed(() => {
   return result
 })
 
+const filteredData = filteredSessions
+
 const paginatedData = computed(() => {
   const start = (currentPage.value - 1) * itemsPerPage.value
-  return filteredData.value.slice(start, start + itemsPerPage.value)
+  return filteredSessions.value.slice(start, start + itemsPerPage.value)
 })
 
-const totalPages = computed(() => Math.ceil(filteredData.value.length / itemsPerPage.value))
+const totalPages = computed(() => Math.ceil(filteredSessions.value.length / itemsPerPage.value))
 const hasActiveFilters = computed(() => filters.value.package || filters.value.duration || searchQuery.value)
 
 // Helpers
@@ -324,6 +297,64 @@ const getBandwidthPercentage = (session) => {
   return Math.min((session.current_bandwidth / maxBandwidth) * 100, 100)
 }
 
+// Menu state
+const activeMenu = ref(null)
+const menuPosition = ref({})
+
+const toggleMenu = (sessionId, event) => {
+  event.stopPropagation()
+  if (activeMenu.value === sessionId) {
+    activeMenu.value = null
+    menuPosition.value = {}
+  } else {
+    activeMenu.value = sessionId
+    const button = event.currentTarget
+    const rect = button.getBoundingClientRect()
+    const menuWidth = 192
+    const menuHeight = 120
+    const viewportHeight = window.innerHeight
+    const viewportWidth = window.innerWidth
+    let top = rect.bottom + 4
+    let left = rect.right - menuWidth
+    if (rect.bottom + menuHeight > viewportHeight) top = rect.top - menuHeight - 4
+    if (left < 0) left = rect.left
+    if (left + menuWidth > viewportWidth) left = viewportWidth - menuWidth - 10
+    menuPosition.value = { top: `${top}px`, left: `${left}px` }
+  }
+}
+
+const closeMenu = () => {
+  activeMenu.value = null
+  menuPosition.value = {}
+}
+
+const handleClickOutside = (event) => {
+  const menu = document.querySelector('[data-dropdown-menu]')
+  const menuButton = document.querySelector('[data-menu-button]')
+  if (menu && !menu.contains(event.target) && menuButton && !menuButton.contains(event.target)) {
+    closeMenu()
+  }
+}
+
+const handleKeydown = (event) => {
+  if (event.key === 'Escape') closeMenu()
+}
+
+const getSessionMetaLines = (session) => {
+  const lines = []
+  if (session.package?.name) lines.push({ text: session.package.name })
+  if (session.duration) lines.push({ text: formatDuration(session.duration) })
+  if (session.bytes_in || session.bytes_out) {
+    lines.push({ text: formatBytes(session.bytes_in + session.bytes_out) })
+  }
+  return lines
+}
+
+const getSessionActions = (session) => [
+  { label: 'View', onClick: () => viewSessionDetails(session), class: 'text-blue-700 bg-blue-50 hover:bg-blue-100' },
+  { label: 'Disconnect', onClick: () => disconnectSession(session), class: 'text-red-600 bg-red-50 hover:bg-red-100' }
+]
+
 // Actions
 const fetchPackages = async () => {
   try {
@@ -331,42 +362,6 @@ const fetchPackages = async () => {
     packages.value = (response.data?.data || response.data || []).map(p => ({ id: p.id, name: p.name }))
   } catch (err) {
     console.warn('Failed to fetch packages:', err)
-  }
-}
-
-const fetchSessions = async () => {
-  const isInitial = sessions.value.length === 0
-  if (isInitial) {
-    loading.value = true
-    error.value = null
-  }
-  try {
-    const response = await axios.get('/hotspot/sessions')
-    const data = response.data?.sessions || response.data?.data || []
-    sessions.value = data.map(s => ({
-      id: s.id,
-      session_id: s.session_id || s.acct_session_id || `sess_${s.id}`,
-      username: s.username || s.user?.name || 'Unknown',
-      user: {
-        name: s.user?.name || s.username || 'Unknown',
-        phone: s.user?.phone_number || s.phone_number || ''
-      },
-      ip_address: s.framed_ip_address || s.ip_address || s.address || '',
-      mac_address: s.calling_station_id || s.mac_address || '',
-      nas_ip: s.nas_ip_address || s.nas_ip || '',
-      package: s.package ? { id: s.package.id, name: s.package.name, speed: s.package.download_speed || '' } : { name: 'N/A', speed: '' },
-      start_time: s.acct_start_time || s.started_at || s.created_at || new Date().toISOString(),
-      duration: s.session_time || s.duration || s.uptime_seconds || 0,
-      bytes_in: Number(s.acct_input_octets || s.bytes_in || 0),
-      bytes_out: Number(s.acct_output_octets || s.bytes_out || 0),
-      current_bandwidth: Number(s.current_bandwidth || 0),
-      _raw: s
-    }))
-  } catch (err) {
-    if (isInitial) error.value = err.response?.data?.message || 'Failed to load active sessions.'
-    console.error('fetchSessions error:', err)
-  } finally {
-    loading.value = false
   }
 }
 
@@ -380,12 +375,13 @@ const closeDetailsOverlay = () => {
 }
 
 const disconnectSession = async (session) => {
+  closeMenu()
   const confirmed = await confirmStore.confirm(`Disconnect ${session.user?.name || session.username}?`)
   if (!confirmed) return
   try {
     const userId = session._raw?.user_id || session._raw?.id || session.id
     await axios.post(`/hotspot/users/${userId}/disconnect`)
-    sessions.value = sessions.value.filter(s => s.id !== session.id)
+    // Session will be removed via WebSocket event
     showDetailsOverlay.value = false
   } catch (err) {
     console.error('Disconnect error:', err)
@@ -393,33 +389,19 @@ const disconnectSession = async (session) => {
   }
 }
 
-const disconnectAll = async () => {
-  const confirmed = await confirmStore.confirm(`Disconnect all ${sessions.value.length} active sessions?`)
-  if (!confirmed) return
-  try {
-    const promises = sessions.value.map(s => {
-      const userId = s._raw?.user_id || s._raw?.id || s.id
-      return axios.post(`/hotspot/users/${userId}/disconnect`).catch(() => null)
-    })
-    await Promise.allSettled(promises)
-    await fetchSessions()
-  } catch (err) {
-    console.error('Disconnect all error:', err)
-    alert(err.response?.data?.message || 'Failed to disconnect all sessions')
-  }
-}
-
 // Lifecycle
-let refreshInterval
-
 onMounted(() => {
   fetchPackages()
   fetchSessions()
-  refreshInterval = setInterval(fetchSessions, 15000)
+  subscribeToWebSocket()
+  document.addEventListener('click', handleClickOutside)
+  document.addEventListener('keydown', handleKeydown)
 })
 
 onUnmounted(() => {
-  if (refreshInterval) clearInterval(refreshInterval)
+  unsubscribeFromWebSocket()
+  document.removeEventListener('click', handleClickOutside)
+  document.removeEventListener('keydown', handleKeydown)
 })
 </script>
 

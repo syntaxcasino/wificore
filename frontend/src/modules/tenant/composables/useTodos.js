@@ -53,14 +53,46 @@ export function useTodos() {
       const url = params ? `/todos?${params}` : '/todos'
       const response = await axios.get(url)
       
-      // Handle both direct array response and wrapped response
-      const todoData = Array.isArray(response.data) ? response.data : (response.data.todos || response.data.data || [])
+      // Debug logging to understand response structure
+      console.log('fetchTodos response:', response)
+      console.log('response.data:', response?.data)
+      
+      // Handle various response structures safely
+      let todoData = []
+      if (response?.data) {
+        if (Array.isArray(response.data)) {
+          todoData = response.data
+        } else if (response.data.todos && Array.isArray(response.data.todos)) {
+          todoData = response.data.todos
+        } else if (response.data.data && Array.isArray(response.data.data)) {
+          todoData = response.data.data
+        } else if (typeof response.data === 'object') {
+          // If it's a single todo object wrapped, try to extract
+          todoData = [response.data]
+        }
+      }
+      
       todos.value = todoData
       updateStats()
       
       return todoData
     } catch (err) {
-      const errorMsg = err?.response?.data?.message || err?.response?.data?.error || err?.message || String(err) || 'Failed to fetch todos'
+      console.error('fetchTodos error:', err)
+      // Safely extract error message with multiple fallbacks
+      let errorMsg = 'Failed to fetch todos'
+      try {
+        if (err?.response?.data?.message) {
+          errorMsg = err.response.data.message
+        } else if (err?.response?.data?.error) {
+          errorMsg = err.response.data.error
+        } else if (err?.message) {
+          errorMsg = err.message
+        } else if (typeof err === 'string') {
+          errorMsg = err
+        }
+      } catch (e) {
+        errorMsg = 'An unexpected error occurred'
+      }
       error.value = errorMsg
       toast.error(error.value)
       throw err
@@ -75,7 +107,7 @@ export function useTodos() {
       // Handle both direct response and wrapped response
       return response.data.todo || response.data
     } catch (err) {
-      const errorMsg = err.response?.data?.message || err.message || 'Failed to fetch todo details'
+      const errorMsg = err?.response?.data?.message || err?.message || String(err) || 'Failed to fetch todo details'
       toast.error(errorMsg)
       throw err
     }

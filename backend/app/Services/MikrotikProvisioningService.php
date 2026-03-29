@@ -7,6 +7,7 @@ use App\Events\RouterConnected;
 use App\Events\RouterProvisioningProgress;
 use App\Models\Router;
 use App\Models\RouterConfig;
+use App\Models\RouterService;
 use App\Services\MikroTik\ConfigurationService;
 use App\Services\MikroTik\RscFileCleanupService;
 use App\Services\MikroTik\SshExecutor;
@@ -772,7 +773,7 @@ SCRIPT;
                 );
             }
 
-            // Use PPPoE API configurator for the deployment
+            // Select appropriate API configurator for the deployment
             if ($broadcast) {
                 RouterProvisioningProgress::dispatch(
                     $router->id,
@@ -784,7 +785,14 @@ SCRIPT;
             }
 
             $serviceId = $config['service_id'] ?? $router->id;
-            $configurator = new MikroTik\PppoeApiConfigurator($apiService, $serviceId, $config);
+            $serviceType = $config['service_type'] ?? RouterService::TYPE_PPPOE;
+            if ($serviceType === RouterService::TYPE_HYBRID) {
+                $configurator = new MikroTik\HybridApiConfigurator($apiService, $serviceId, $config);
+            } elseif ($serviceType === RouterService::TYPE_HOTSPOT) {
+                $configurator = new MikroTik\HotspotApiConfigurator($apiService, $serviceId, $config);
+            } else {
+                $configurator = new MikroTik\PppoeApiConfigurator($apiService, $serviceId, $config);
+            }
             
             $result = $configurator->configure();
 
@@ -1227,6 +1235,25 @@ SCRIPT;
                     try {
                         // Extract config from script for API deployment
                         $apiConfig = $this->extractConfigFromScript($serviceScript, $router);
+                        $apiConfigForLog = $apiConfig;
+                        if (!empty($apiConfigForLog['radius_servers'])) {
+                            $apiConfigForLog['radius_servers'] = array_map(static function (array $server): array {
+                                if (isset($server['secret'])) {
+                                    $server['secret'] = '***';
+                                }
+
+                                return $server;
+                            }, $apiConfigForLog['radius_servers']);
+                        }
+                        if (isset($apiConfigForLog['radius_secret'])) {
+                            $apiConfigForLog['radius_secret'] = '***';
+                        }
+
+                        Log::debug('Extracted REST API config for low-end provisioning', [
+                            'router_id' => $router->id,
+                            'service_type' => $apiConfigForLog['service_type'] ?? null,
+                            'config' => $apiConfigForLog,
+                        ]);
                         
                         // Try REST API first
                         $apiResult = $this->applyConfigsViaApi($router, $apiConfig, $broadcast);
@@ -1448,6 +1475,9 @@ SCRIPT;
             $password = Str::random(12);
             $port = 8728;
             $configToken = Str::uuid();
+            $tokenCreatedAt = now();
+            $ttlMinutes = (int) config('app.router_config_token_ttl_minutes', 60);
+            $tokenExpiresAt = $ttlMinutes > 0 ? $tokenCreatedAt->copy()->addMinutes($ttlMinutes) : null;
 
             $router = Router::create([
                 'name' => $data['name'],
@@ -1456,6 +1486,8 @@ SCRIPT;
                 'password' => Crypt::encrypt($password),
                 'port' => $port,
                 'config_token' => $configToken,
+                'config_token_created_at' => $tokenCreatedAt,
+                'config_token_expires_at' => $tokenExpiresAt,
                 'status' => 'pending',
             ]);
 
@@ -1496,11 +1528,21 @@ SCRIPT;
     public function updateRouter(Router $router, array $data): Router
     {
         try {
-            $router->update([
+            $updateData = [
                 'name' => $data['name'],
                 'ip_address' => $data['ip_address'] ?? $router->ip_address,
-                'config_token' => $data['config_token'] ?? $router->config_token,
-            ]);
+            ];
+
+            if (!empty($data['config_token'])) {
+                $ttlMinutes = (int) config('app.router_config_token_ttl_minutes', 60);
+                $updateData['config_token'] = $data['config_token'];
+                $updateData['config_token_created_at'] = now();
+                $updateData['config_token_expires_at'] = $ttlMinutes > 0
+                    ? now()->addMinutes($ttlMinutes)
+                    : null;
+            }
+
+            $router->update($updateData);
 
             Log::info('Router updated successfully:', ['router_id' => $router->id]);
             return $router->fresh();
@@ -1562,10 +1604,13 @@ SCRIPT;
     private function generateConnectivityScript(Router $router): string
     {
         $decryptedPassword = Crypt::decrypt($router->password);
+        $apiPort = $router->api_port ?? 8729;
         
         return <<<EOT
 /ip address add address={$router->ip_address} interface=ether2
 /ip service set api disabled=no port={$router->port}
+:do { /ip service set rest-api disabled=no port={$apiPort} } on-error={ /log info "rest-api enable failed or already enabled" }
+:do { /ip service set rest-api address=10.0.0.0/8 } on-error={ /log info "rest-api address set failed" }
 :do { /ip service set api-ssl disabled=no } on-error={ /log info "api-ssl enable failed or already enabled" }
 :do { /ip service set api-ssl address=10.0.0.0/8 } on-error={ /log info "api-ssl address set failed" }
 /user add name={$router->username} password="{$decryptedPassword}" group=full
@@ -1794,7 +1839,10 @@ EOT;
     {
         $config = [
             'service_id' => $router->id,
+            'service_type' => null,
             'interfaces' => [],
+            'bridge_ports' => [],
+            'vlans' => [],
             'vlan_required' => false,
             'vlan_id' => null,
             'radius_servers' => [],
@@ -1807,22 +1855,37 @@ EOT;
             'udp_timeout' => 30,
         ];
 
-        // Extract bridge name
-        if (preg_match('/\/interface bridge add name=([^\s]+)/', $script, $matches)) {
-            $config['bridge'] = $matches[1];
+        $hasHotspot = str_contains($script, '/ip hotspot');
+        $hasPppoe = str_contains($script, '/interface pppoe-server');
+
+        if ($hasHotspot && $hasPppoe) {
+            $config['service_type'] = RouterService::TYPE_HYBRID;
+        } elseif ($hasHotspot) {
+            $config['service_type'] = RouterService::TYPE_HOTSPOT;
         } else {
-            $config['bridge'] = 'pppoe-br-' . $router->id;
+            $config['service_type'] = RouterService::TYPE_PPPOE;
+        }
+
+        if ($config['service_type'] !== RouterService::TYPE_PPPOE) {
+            $config['wan_list'] = 'WAN';
+            $config['mgmt_ports'] = '22,8291,8728,8729';
+        }
+
+        $foundBridge = false;
+
+        // Extract bridge name
+        if (preg_match('/\/interface bridge add name="?([^"\s]+)"?/i', $script, $matches)) {
+            $config['bridge'] = $matches[1];
+            $foundBridge = true;
         }
 
         // Extract service name
-        if (preg_match('/\/interface pppoe-server server add service-name=([^\s]+)/', $script, $matches)) {
+        if (preg_match('/\/interface pppoe-server server add .*service-name="?([^"\s]+)"?/i', $script, $matches)) {
             $config['service_name'] = $matches[1];
-        } else {
-            $config['service_name'] = 'pppoe-svc-' . $router->id;
         }
 
         // Extract interfaces (both physical and VLAN)
-        if (preg_match_all('/\/interface bridge port add .* interface=([^\s]+)/', $script, $matches)) {
+        if (preg_match_all('/\/interface bridge port add .* interface="?([^"\s]+)"?/i', $script, $matches)) {
             foreach ($matches[1] as $interface) {
                 if (!in_array($interface, $config['interfaces'])) {
                     $config['interfaces'][] = $interface;
@@ -1830,8 +1893,29 @@ EOT;
             }
         }
 
+        if (preg_match_all('/\/interface bridge port add .* bridge="?([^"\s]+)"?/i', $script, $matches)) {
+            foreach ($matches[1] as $bridgeName) {
+                if (!$foundBridge) {
+                    $config['bridge'] = $bridgeName;
+                    $foundBridge = true;
+                }
+            }
+        }
+
+        $config['bridge_ports'] = $config['interfaces'];
+
         // Check for VLAN
-        if (preg_match('/\/interface vlan add .* vlan-id=(\d+)/', $script, $matches)) {
+        if (preg_match_all('/\/interface vlan add .* name="?([^"\s]+)"? .* vlan-id=(\d+).* interface="?([^"\s]+)"?/i', $script, $matches, PREG_SET_ORDER)) {
+            foreach ($matches as $match) {
+                $config['vlans'][] = [
+                    'name' => $match[1],
+                    'vlan_id' => (int) $match[2],
+                    'interface' => $match[3],
+                ];
+            }
+        }
+
+        if (preg_match('/\/interface vlan add .* vlan-id=(\d+)/i', $script, $matches)) {
             $config['vlan_required'] = true;
             $config['vlan_id'] = (int) $matches[1];
         }
@@ -1848,13 +1932,133 @@ EOT;
         }
 
         // Extract profile
-        if (preg_match('/default-profile=([^\s]+)/', $script, $matches)) {
+        if (preg_match('/default-profile="?([^"\s]+)"?/i', $script, $matches)) {
             $config['profile'] = $matches[1];
+            $config['pppoe_profile'] = $matches[1];
         }
 
         // Extract WAN interface
-        if (preg_match('/\/interface list member add list=pppoe-wan-list interface=([^\s]+)/', $script, $matches)) {
-            $config['wan_interface'] = $matches[1];
+        if (preg_match_all('/\/interface list member add .* list="?([^"\s]+)"? .* interface="?([^"\s]+)"?/i', $script, $matches, PREG_SET_ORDER)) {
+            foreach ($matches as $match) {
+                $listName = $match[1];
+                $interface = $match[2];
+                if (str_contains(strtolower($listName), 'wan')) {
+                    $config['wan_list'] = $listName;
+                    $config['wan_interface'] = $interface;
+                }
+            }
+        }
+
+        if (preg_match('/\/ppp profile set .* interface-list=([^\s]+)/i', $script, $matches)) {
+            $config['pal_list'] = $matches[1];
+            $config['pppoe_active_list'] = $matches[1];
+        }
+
+        if ($hasHotspot) {
+            if (preg_match('/\/ip hotspot profile add .* name="?([^"\s]+)"?/i', $script, $matches)) {
+                $config['hotspot_profile'] = $matches[1];
+            }
+
+            if (preg_match('/\/ip hotspot add .* name="?([^"\s]+)"?/i', $script, $matches)) {
+                $config['hotspot_server'] = $matches[1];
+            }
+
+            if (preg_match('/\/ip hotspot add .* interface="?([^"\s]+)"?/i', $script, $matches)) {
+                $config['hotspot_interface'] = $matches[1];
+            }
+
+            if (preg_match('/\/ip hotspot user profile add .* name="?([^"\s]+)"?/i', $script, $matches)) {
+                $config['hotspot_user_profile'] = $matches[1];
+            }
+
+            if (preg_match('/\/ip hotspot walled-garden add .* dst-host=([^\s]+)/i', $script, $matches)) {
+                $config['portal_host'] = $matches[1];
+            }
+        }
+
+        if (preg_match_all('/\/ip address add .* address=([0-9\.]+)\/(\d+).* interface="?([^"\s]+)"?/i', $script, $matches, PREG_SET_ORDER)) {
+            foreach ($matches as $match) {
+                $gatewayIp = $match[1];
+                $cidr = (int) $match[2];
+                $iface = $match[3];
+
+                $config['gateway_ip'] = $gatewayIp;
+                $config['cidr'] = $cidr;
+                $config['hotspot_gateway_ip'] = $gatewayIp;
+                $config['hotspot_cidr'] = $cidr;
+                $config['hotspot_interface'] = $config['hotspot_interface'] ?? $iface;
+                break;
+            }
+        }
+
+        if (preg_match_all('/\/ip dhcp-server add .* name="?([^"\s]+)"? .* interface="?([^"\s]+)"? .* address-pool=([^\s]+)/i', $script, $matches, PREG_SET_ORDER)) {
+            foreach ($matches as $match) {
+                $config['dhcp_name'] = $match[1];
+                $config['hotspot_dhcp_name'] = $match[1];
+                $config['hotspot_interface'] = $config['hotspot_interface'] ?? $match[2];
+                break;
+            }
+        }
+
+        if (preg_match_all('/\/ip dhcp-server network add .* address=([0-9\.]+\/\d+).* gateway=([0-9\.]+).*?(?:dns-server="?([^"\s]+)"?)?.*comment="?([^"\s]+)"?/i', $script, $matches, PREG_SET_ORDER)) {
+            foreach ($matches as $match) {
+                $config['network_cidr'] = $match[1];
+                $config['hotspot_network_cidr'] = $match[1];
+                $config['gateway_ip'] = $match[2];
+                $config['hotspot_gateway_ip'] = $match[2];
+                if (!empty($match[3])) {
+                    $config['dns_servers'] = $match[3];
+                    $config['hotspot_dns_servers'] = $match[3];
+                }
+                $config['dhcp_network_comment'] = $match[4];
+                $config['hotspot_dhcp_network_comment'] = $match[4];
+                break;
+            }
+        }
+
+        if (preg_match_all('/\/ip pool add .* name="?([^"\s]+)"?.* ranges=([0-9\.]+)-([0-9\.]+).*?(?:comment="?([^"\s]+)"?)?/i', $script, $matches, PREG_SET_ORDER)) {
+            foreach ($matches as $match) {
+                $name = $match[1];
+                $start = $match[2];
+                $end = $match[3];
+                $comment = $match[4] ?? '';
+
+                $isHotspot = str_contains($name, 'hs-') || str_contains($comment, 'hs-');
+                $isPppoe = str_contains($name, 'pppoe') || str_contains($name, 'pp-') || str_contains($comment, 'PPPoE') || str_contains($comment, 'pp-');
+
+                if ($isHotspot) {
+                    $config['pool_name'] = $name;
+                    $config['hotspot_pool'] = $name;
+                    $config['range_start'] = $start;
+                    $config['range_end'] = $end;
+                    $config['hotspot_range_start'] = $start;
+                    $config['hotspot_range_end'] = $end;
+                } elseif ($isPppoe) {
+                    $config['pppoe_pool'] = $name;
+                    $config['pppoe_range_start'] = $start;
+                    $config['pppoe_range_end'] = $end;
+                }
+            }
+        }
+
+        if (preg_match('/\/ppp profile add .* name="?([^"\s]+)"?.* local-address=([0-9\.]+).*?(?:remote-address="?([^"\s]+)"?)?.*?(?:dns-server="?([^"\s]+)"?)?/i', $script, $matches)) {
+            $config['pppoe_profile'] = $matches[1];
+            $config['pppoe_gateway_ip'] = $matches[2];
+            if (!empty($matches[4])) {
+                $config['pppoe_dns_servers'] = $matches[4];
+            }
+        }
+
+        if (preg_match('/\/interface pppoe-server server add .* interface="?([^"\s]+)"?/i', $script, $matches)) {
+            $config['pppoe_interface'] = $matches[1];
+        }
+
+        if (!$foundBridge && $config['service_type'] === RouterService::TYPE_PPPOE) {
+            $config['bridge'] = 'pppoe-br-' . $router->id;
+        }
+
+        if (!$foundBridge && $config['service_type'] !== RouterService::TYPE_PPPOE) {
+            $config['bridge'] = $config['bridge'] ?? null;
         }
 
         // Reduced: Removed API config extraction log

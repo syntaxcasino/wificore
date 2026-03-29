@@ -136,6 +136,8 @@ class Router extends Model
         'interface_assignments',
         'configurations',
         'config_token',
+        'config_token_created_at',
+        'config_token_expires_at',
         'vendor',
         'device_type',
         'capabilities',
@@ -179,6 +181,8 @@ class Router extends Model
         'capabilities' => 'array',
         'interface_list' => 'array',
         'reserved_interfaces' => 'array',
+        'config_token_created_at' => 'datetime',
+        'config_token_expires_at' => 'datetime',
 
         'snmp_enabled' => 'boolean',
         'snmp_trap_enabled' => 'boolean',
@@ -210,6 +214,28 @@ class Router extends Model
             'UTC' => $utc,
             'Africa/Nairobi' => $eat,
         ];
+    }
+
+    public function isConfigTokenExpired(): bool
+    {
+        if (empty($this->config_token)) {
+            return true;
+        }
+
+        if ($this->config_token_expires_at) {
+            return $this->config_token_expires_at->isPast();
+        }
+
+        if (!$this->config_token_created_at) {
+            return false;
+        }
+
+        $ttlMinutes = (int) config('app.router_config_token_ttl_minutes', 60);
+        if ($ttlMinutes <= 0) {
+            return false;
+        }
+
+        return $this->config_token_created_at->copy()->addMinutes($ttlMinutes)->isPast();
     }
 
     public function wireguardPeers()

@@ -74,6 +74,34 @@
           </div>
         </div>
 
+        <!-- Handler/Assignee Card -->
+        <div v-if="todoDetails?.assigned_to || todoDetails?.handler" class="bg-white p-5 rounded-xl shadow-sm">
+          <h4 class="text-sm font-semibold text-gray-700 mb-4 flex items-center">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+            </svg>
+            Current Handler
+          </h4>
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white font-semibold text-sm">
+                {{ getHandlerInitials(todoDetails) }}
+              </div>
+              <div>
+                <p class="text-sm font-medium text-gray-900">{{ getHandlerName(todoDetails) }}</p>
+                <p class="text-xs text-gray-500">{{ todoDetails?.handler?.email || todoDetails?.assigned_to?.email || '' }}</p>
+              </div>
+            </div>
+            <button
+              v-if="todoDetails?.status !== 'completed'"
+              @click="$emit('transfer')"
+              class="px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
+            >
+              Transfer
+            </button>
+          </div>
+        </div>
+
         <!-- Due Date Card -->
         <div v-if="todoDetails?.due_date" class="bg-white p-5 rounded-xl shadow-sm">
           <h4 class="text-sm font-semibold text-gray-700 mb-4 flex items-center">
@@ -135,13 +163,6 @@
         >
           Mark as Complete
         </button>
-        <button
-          v-if="todoDetails?.status === 'completed'"
-          @click="$emit('reopen')"
-          class="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
-        >
-          Reopen
-        </button>
       </div>
     </template>
   </SlideOverlay>
@@ -159,7 +180,7 @@ const props = defineProps({
   error: { type: String, default: '' }
 })
 
-const emit = defineEmits(['update:modelValue', 'close', 'complete', 'reopen'])
+const emit = defineEmits(['update:modelValue', 'close', 'complete', 'transfer'])
 
 const statusDotClass = computed(() => {
   const status = props.todoDetails?.status
@@ -205,5 +226,18 @@ const formatDate = (dateString) => {
     hour: '2-digit',
     minute: '2-digit'
   })
+}
+
+const getHandlerName = (todo) => {
+  const handler = todo?.handler || todo?.assigned_to
+  if (!handler) return 'Unassigned'
+  return handler.name || handler.full_name || handler.email || 'Unknown'
+}
+
+const getHandlerInitials = (todo) => {
+  const handler = todo?.handler || todo?.assigned_to
+  if (!handler) return '?'
+  const name = handler.name || handler.full_name || handler.email || ''
+  return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || '?'
 }
 </script>

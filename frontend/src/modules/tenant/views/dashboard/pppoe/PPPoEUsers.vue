@@ -6,9 +6,9 @@
     v-model:search-model="searchQuery"
     search-placeholder="Search PPPoE users..."
     :stats="[
-      { color: 'bg-purple-500', value: totalUsers },
-      { color: 'bg-emerald-500', value: activeUsers.length },
-      { color: 'bg-yellow-500', value: inactiveUsers.length }
+      { color: 'bg-purple-500', value: totalUsers, tooltip: 'Total users' },
+      { color: 'bg-emerald-500', value: activeUsers.length, tooltip: 'Active users' },
+      { color: 'bg-yellow-500', value: inactiveUsers.length, tooltip: 'Inactive users' }
     ]"
     :total="users.length"
     :loading="loading"
@@ -66,22 +66,28 @@
       </div>
 
       <!-- Desktop Table -->
-      <div class="hidden md:flex bg-white border border-slate-200 shadow-sm overflow-hidden flex-col min-h-0 flex-1">
-        <div class="overflow-x-auto overflow-y-auto flex-1 min-h-0">
+      <div class="hidden md:flex bg-white border-x border-t border-slate-200 flex-col min-h-0 flex-1">
+        <!-- Fixed Header -->
+        <div class="bg-slate-50 border-b border-slate-200">
           <table class="w-full">
-            <thead class="bg-slate-50 border-b border-slate-200 sticky top-0 z-[5]">
+            <thead>
               <tr>
-                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">User</th>
-                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Router</th>
-                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Package</th>
-                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Status</th>
-                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Expires</th>
-                <th class="px-6 py-3 text-right text-xs font-semibold text-slate-700 uppercase tracking-wider">Actions</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[22%]">User</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[18%]">Router</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[18%]">Package</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[12%]">Status</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[18%]">Expires</th>
+                <th class="px-6 py-3 text-right text-xs font-semibold text-slate-700 uppercase tracking-wider w-[12%]">Actions</th>
               </tr>
             </thead>
+          </table>
+        </div>
+        <!-- Scrollable Body -->
+        <div class="overflow-y-auto flex-1 min-h-0">
+          <table class="w-full">
             <tbody class="divide-y divide-slate-100">
               <tr v-for="user in paginatedData" :key="user.id" class="hover:bg-purple-50/50 transition-colors cursor-pointer" @click="openUserDetails(user)">
-                <td class="px-6 py-4">
+                <td class="px-6 py-4 w-[22%]">
                   <div class="flex items-center gap-3">
                     <div class="w-10 h-10 bg-gradient-to-br from-purple-500 to-indigo-500 rounded-full flex items-center justify-center text-white text-sm font-semibold">{{ getUserInitials(user) }}</div>
                     <div>
@@ -90,20 +96,23 @@
                     </div>
                   </div>
                 </td>
-                <td class="px-6 py-4 text-sm text-slate-900">{{ user.router?.name || 'N/A' }}</td>
-                <td class="px-6 py-4">
+                <td class="px-6 py-4 text-sm text-slate-900 w-[18%]">{{ user.router?.name || 'N/A' }}</td>
+                <td class="px-6 py-4 w-[18%]">
                   <div class="text-sm font-medium text-slate-900">{{ user.package?.name || 'No package' }}</div>
                   <div class="text-xs text-slate-500">{{ formatPackageSpeed(user.package) }}</div>
                 </td>
-                <td class="px-6 py-4">
+                <td class="px-6 py-4 w-[12%]">
                   <EntityStatusBadge :status="user.status || 'inactive'" size="sm" />
                 </td>
-                <td class="px-6 py-4 text-sm text-slate-600">{{ formatDate(user.expires_at) }}</td>
-                <td class="px-6 py-4 text-right" @click.stop>
+                <td class="px-6 py-4 text-sm text-slate-600 w-[18%]">{{ formatDate(user.expires_at) }}</td>
+                <td class="px-6 py-4 text-right w-[12%]" @click.stop>
                   <div class="flex items-center justify-end gap-1">
-                    <button @click="openUserDetails(user)" class="px-2 py-1 text-xs font-medium text-slate-700 bg-slate-100 rounded hover:bg-slate-200 transition-colors">View</button>
-                    <button @click="handleEdit(user)" class="px-2 py-1 text-xs font-medium text-slate-700 bg-slate-100 rounded hover:bg-slate-200 transition-colors">Edit</button>
-                    <button @click="handleToggleStatus(user)" :class="user.status === 'blocked' ? 'text-green-700 bg-green-50 hover:bg-green-100' : 'text-amber-700 bg-amber-50 hover:bg-amber-100'" class="px-2 py-1 text-xs font-medium rounded transition-colors">{{ user.status === 'blocked' ? 'Unblock' : 'Block' }}</button>
+                    <button @click="openUserDetails(user)" class="px-2 py-1 text-xs font-medium text-blue-700 bg-blue-50 rounded hover:bg-blue-100 transition-colors">View</button>
+                    <div class="relative">
+                      <button data-menu-button @click="toggleMenu(user.id, $event)" class="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded transition-colors">
+                        <MoreVertical class="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                 </td>
               </tr>
@@ -131,6 +140,37 @@
       @add="openAddUser"
     />
   </DataViewContainer>
+
+  <!-- Global Dropdown Menu Portal -->
+  <Teleport to="body">
+    <div v-if="activeMenu !== null" data-dropdown-menu :style="menuPosition" class="fixed w-48 bg-white rounded-lg shadow-2xl border border-slate-200 py-1 z-[9999] overflow-hidden">
+      <button @click="handleEdit(users.find(u => u.id === activeMenu))" class="flex items-center w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-purple-50 hover:text-purple-700 transition-colors">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+        </svg>
+        Edit
+      </button>
+      <button v-if="users.find(u => u.id === activeMenu)?.status === 'blocked'" @click="handleToggleStatus(users.find(u => u.id === activeMenu))" class="flex items-center w-full px-4 py-2.5 text-sm text-emerald-700 hover:bg-emerald-50 hover:text-emerald-700 transition-colors">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        Unblock
+      </button>
+      <button v-else @click="handleToggleStatus(users.find(u => u.id === activeMenu))" class="flex items-center w-full px-4 py-2.5 text-sm text-amber-700 hover:bg-amber-50 hover:text-amber-700 transition-colors">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+        </svg>
+        Block
+      </button>
+      <div class="border-t border-slate-200 my-1"></div>
+      <button @click="handleResetPasswordForMenu(users.find(u => u.id === activeMenu))" class="flex items-center w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-purple-50 hover:text-purple-700 transition-colors">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+        </svg>
+        Reset Password
+      </button>
+    </div>
+  </Teleport>
 
   <!-- SlideOverlay for Add User -->
   <SlideOverlay
@@ -351,8 +391,8 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
-import { X, Eye, EyeOff, Key } from 'lucide-vue-next'
+import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
+import { X, Eye, EyeOff, Key, MoreVertical } from 'lucide-vue-next'
 import DataViewContainer from '@/modules/common/components/base/DataViewContainer.vue'
 import DataSkeleton from '@/modules/common/components/base/DataSkeleton.vue'
 import MobileDataCard from '@/modules/common/components/base/MobileDataCard.vue'
@@ -409,6 +449,56 @@ const editFormError = ref('')
 const editingUser = ref(null)
 const editFieldErrors = reactive({ package_id: '', router_id: '', simultaneous_use: '', status: '' })
 const editForm = reactive({ package_id: '', router_id: '', simultaneous_use: 1, status: 'active' })
+
+// Menu state
+const activeMenu = ref(null)
+const menuPosition = ref({})
+
+const toggleMenu = (userId, event) => {
+  event.stopPropagation()
+  if (activeMenu.value === userId) {
+    activeMenu.value = null
+    menuPosition.value = {}
+  } else {
+    activeMenu.value = userId
+    const button = event.currentTarget
+    const rect = button.getBoundingClientRect()
+    const menuWidth = 192
+    const menuHeight = 180
+    const viewportHeight = window.innerHeight
+    const viewportWidth = window.innerWidth
+    let top = rect.bottom + 4
+    let left = rect.right - menuWidth
+    if (rect.bottom + menuHeight > viewportHeight) top = rect.top - menuHeight - 4
+    if (left < 0) left = rect.left
+    if (left + menuWidth > viewportWidth) left = viewportWidth - menuWidth - 10
+    menuPosition.value = { top: `${top}px`, left: `${left}px` }
+  }
+}
+
+const closeMenu = () => {
+  activeMenu.value = null
+  menuPosition.value = {}
+}
+
+const handleClickOutside = (event) => {
+  const menu = document.querySelector('[data-dropdown-menu]')
+  const menuButton = document.querySelector('[data-menu-button]')
+  if (menu && !menu.contains(event.target) && menuButton && !menuButton.contains(event.target)) {
+    closeMenu()
+  }
+}
+
+const handleKeydown = (event) => {
+  if (event.key === 'Escape') closeMenu()
+}
+
+const handleResetPasswordForMenu = (user) => {
+  closeMenu()
+  selectedUser.value = user
+  showUserDetailsModal.value = true
+  handleResetPassword()
+}
 
 // Helpers
 const getUserInitials = (user) => {
@@ -632,6 +722,13 @@ onMounted(() => {
   fetchUsers()
   fetchPackages()
   fetchRouters()
+  document.addEventListener('click', handleClickOutside)
+  document.addEventListener('keydown', handleKeydown)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', handleClickOutside)
+  document.removeEventListener('keydown', handleKeydown)
 })
 </script>
 

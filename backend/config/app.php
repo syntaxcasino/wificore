@@ -112,6 +112,17 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Router Provisioning Security
+    |--------------------------------------------------------------------------
+    | Configure the lifespan (in minutes) of router bootstrap config tokens.
+    | Shorter TTLs reduce exposure if a token is leaked.
+    |
+    */
+
+    'router_config_token_ttl_minutes' => (int) env('ROUTER_CONFIG_TOKEN_TTL_MINUTES', 60),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Timezone
     |--------------------------------------------------------------------------
     |

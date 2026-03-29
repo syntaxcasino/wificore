@@ -36,7 +36,7 @@ class UnifiedAuthController extends Controller
             'username' => $request->username,
             'has_password' => !empty($request->password),
             'ip' => $request->ip(),
-            'all_data' => $request->all()
+            'payload' => $request->except('password')
         ]);
         
         // Rate limiting
