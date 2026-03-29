@@ -1659,21 +1659,12 @@ EOT;
                 @unlink($tempFile);
                 try {
                     $ssh->exec('/file remove [find name="' . $batchFile . '"]', 5);
-                    Log::debug("Batch file {$batchFile} removed immediately after import", [
-                        'router_id' => $router->id,
-                    ]);
+                    // Reduced: Removed batch file removal log
                 } catch (\Throwable $e) {
                     // Non-critical, will be cleaned up later
-                    Log::debug("Batch file {$batchFile} will be cleaned up later", [
-                        'router_id' => $router->id,
-                        'error' => $e->getMessage(),
-                    ]);
                 }
 
-                Log::info("Batch {$batchNum}/{$totalBatches} completed", [
-                    'router_id' => $router->id,
-                    'lines' => count(explode("\n", $batch)),
-                ]);
+                // Reduced: Removed routine batch completion log
 
             } catch (\Exception $e) {
                 Log::error("Batch {$batchNum}/{$totalBatches} failed", [
@@ -1757,10 +1748,7 @@ EOT;
                     foreach ($batchFiles as $batchFile) {
                         try {
                             $ssh->exec('/file remove [find name="' . $batchFile . '"]');
-                            Log::debug('Batch file cleaned up', [
-                                'router_id' => $routerId,
-                                'file' => $batchFile,
-                            ]);
+                            // Reduced: Removed routine cleanup log
                         } catch (\Throwable $e) {
                             // File may already be deleted
                         }
@@ -1895,14 +1883,8 @@ EOT;
             $config['wan_interface'] = $matches[1];
         }
 
-        Log::debug('Extracted API config from script', [
-            'router_id' => $router->id,
-            'bridge' => $config['bridge'],
-            'service_name' => $config['service_name'],
-            'interfaces' => $config['interfaces'],
-            'radius_count' => count($config['radius_servers']),
-        ]);
-
+        // Reduced: Removed API config extraction log
+        
         return $config;
     }
 
