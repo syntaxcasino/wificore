@@ -962,7 +962,7 @@ SCRIPT;
 
                         if ($expectsPppoe) {
                             if (preg_match('/\/interface pppoe-server server\s+add\b[^\n]*\bservice-name=(?:"([^"]+)"|([^\s"]+))/i', $serviceScript, $m)) {
-                                $expectedPppoeServer = $m[1] ?: ($m[2] ?? null);
+                                $expectedPppoeServer = ($m[1] ?? null) ?: ($m[2] ?? null);
                             }
                         }
 
@@ -1170,6 +1170,10 @@ SCRIPT;
 
                             $ssh->uploadFile($tempFile, $remoteScriptFile);
                             $ssh->importFile($remoteScriptFile);
+
+                            // Wait for RouterOS to process the script (especially PPPoE server creation)
+                            // Extended for hAP lite and low-end devices (was 3s, now 15s)
+                            sleep(15);
 
                             $validationResult = $validator($ssh);
                             if (!($validationResult['valid'] ?? false)) {
