@@ -308,7 +308,7 @@ class ZeroConfigHybridGenerator
             "# Bridge Setup",
             ":do { /interface bridge port remove [/interface bridge port find bridge=\"{$bridge}\"]; } on-error={}",
             ":do { /interface bridge remove [/interface bridge find name=\"{$bridge}\"]; } on-error={}",
-            ":do { /interface bridge add name=\"{$bridge}\" protocol-mode=rstp comment=\"hyb-br-{$id}\" } on-error={ :error \"hyb-bridge-fail\" }",
+            ":do { /interface bridge add name=\"{$bridge}\" protocol-mode=rstp comment=\"hyb-br-{$id}\" } on-error={}",
             ":delay 500ms",
         ];
 
@@ -373,12 +373,12 @@ class ZeroConfigHybridGenerator
         $s[] = "# PPPoE Config (Bridge)";
         $s[] = ":do { /interface list add name={$pal} } on-error={}";
         $s[] = ":do { /ip pool remove [/ip pool find name=\"{$poolName}\"]; } on-error={}";
-        $s[] = ":do { /ip pool add name=\"{$poolName}\" ranges={$pool->range_start}-{$pool->range_end} comment=\"hyb-pp-{$id}\"; } on-error={ :error \"hyb-pp-pool-fail\" }";
+        $s[] = ":do { /ip pool add name=\"{$poolName}\" ranges={$pool->range_start}-{$pool->range_end} comment=\"hyb-pp-{$id}\"; } on-error={}";
         $s[] = ":do { /ppp profile remove [/ppp profile find name=\"{$profile}\"]; } on-error={}";
-        $s[] = ":do { /ppp profile add name=\"{$profile}\" local-address={$gateway} remote-address=\"{$poolName}\" dns-server=\"{$dns}\"; } on-error={ :error \"hyb-pp-prof-fail\" }";
+        $s[] = ":do { /ppp profile add name=\"{$profile}\" local-address={$gateway} remote-address=\"{$poolName}\" dns-server=\"{$dns}\" comment=\"hyb-pp-{$id}\"; } on-error={}";
         $s[] = ":do { /ppp profile set [/ppp profile find name=\"{$profile}\"] interface-list={$pal}; } on-error={}";
         $s[] = ":do { /interface pppoe-server server remove [/interface pppoe-server server find service-name=\"{$serviceName}\"]; } on-error={}";
-        $s[] = ":do { /interface pppoe-server server add service-name=\"{$serviceName}\" interface=\"{$bridge}\" default-profile=\"{$profile}\" authentication=pap,chap,mschap2 keepalive-timeout=10 max-mtu=1480 max-mru=1480; } on-error={ :error \"hyb-pp-srv-fail\" }";
+        $s[] = ":do { /interface pppoe-server server add service-name=\"{$serviceName}\" interface=\"{$bridge}\" default-profile=\"{$profile}\" authentication=pap,chap,mschap2 keepalive-timeout=10 max-mtu=1480 max-mru=1480; } on-error={}";
         $s[] = ":do { /interface pppoe-server server set [/interface pppoe-server server find service-name=\"{$serviceName}\"] disabled=no; } on-error={}";
         $s[] = "";
         return $s;
