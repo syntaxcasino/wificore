@@ -42,7 +42,8 @@ class MikrotikProvisioningService extends TenantAwareService
         
         if ($this->useProvisioningService) {
             $this->provisioningClient = new ProvisioningServiceClient();
-            Log::info('MikrotikProvisioningService: Using provisioning service for network segmentation');
+            // Reduced: Only log provisioning service mode at debug level
+            Log::debug('MikrotikProvisioningService: Using provisioning service for network segmentation');
         }
     }
     
@@ -76,20 +77,13 @@ class MikrotikProvisioningService extends TenantAwareService
     public function generateConfigs(Router $router, array $data): array
     {
         try {
-            Log::info('MikrotikProvisioningService: Delegating to ConfigurationService', [
-                'router_id' => $router->id,
-                'enable_hotspot' => $data['enable_hotspot'] ?? false,
-                'enable_pppoe' => $data['enable_pppoe'] ?? false,
-            ]);
-            
-            // Delegate to the specialized ConfigurationService
+            // Reduced: Removed routine delegation log
             return $this->configService->generateServiceConfig($router, $data);
             
         } catch (\Exception $e) {
             Log::error('Failed to generate service configuration', [
                 'router_id' => $router->id,
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
             ]);
             throw new \Exception('Failed to generate service configuration: ' . $e->getMessage(), 500);
         }
@@ -278,16 +272,17 @@ class MikrotikProvisioningService extends TenantAwareService
                 );
             }
             
-            // Log the verification results
-            Log::info('Hotspot deployment verification completed', [
-                'router_id' => $router->id,
-                'success' => $verification['success'],
-                'failed_checks' => $verification['success'] ? [] : array_keys(array_filter(
-                    $verification['checks'], 
-                    fn($check) => !$check['status']
-                )),
-                'execution_time' => round(microtime(true) - $startTime, 2) . 's'
-            ]);
+            // Log the verification results - only log failures or reduced success
+            if (!$verification['success']) {
+                Log::warning('Hotspot deployment verification failed', [
+                    'router_id' => $router->id,
+                    'failed_checks' => array_keys(array_filter(
+                        $verification['checks'], 
+                        fn($check) => !$check['status']
+                    )),
+                ]);
+            }
+            // Reduced: Removed success log to reduce noise
             
         } catch (\Exception $e) {
             $verification['success'] = false;
@@ -367,11 +362,7 @@ class MikrotikProvisioningService extends TenantAwareService
         // Use provisioning service if enabled for this router
         if ($this->shouldUseProvisioningService($router)) {
             try {
-                Log::info('Fetching live data via provisioning service', [
-                    'router_id' => $router->id,
-                    'context' => $context
-                ]);
-                
+                // Reduced: Removed routine provisioning service log
                 $result = $this->provisioningClient->fetchLiveData(
                     $router,
                     $context,
@@ -429,7 +420,7 @@ class MikrotikProvisioningService extends TenantAwareService
             
             // Password decryption is now handled in SshExecutor constructor
             // This reduces redundant decryption attempts and improves performance
-            Log::debug('Preparing to fetch router data', ['router_id' => $router->id, 'context' => $context]);
+            // Reduced: Removed routine debug log
             
         } catch (\Exception $e) {
             if ($lock->owner()) {
@@ -457,10 +448,7 @@ class MikrotikProvisioningService extends TenantAwareService
                 
                 $lock->release();
                 
-                Log::info('SSH interface fetch successful', [
-                    'router_id' => $router->id,
-                    'interface_count' => count($result['interfaces'] ?? [])
-                ]);
+                // Reduced: Removed routine success log
                 
                 return $result;
             } else {
@@ -476,9 +464,7 @@ class MikrotikProvisioningService extends TenantAwareService
                 
                 $lock->release();
                 
-                Log::info('SSH live data fetch successful', [
-                    'router_id' => $router->id
-                ]);
+                // Reduced: Removed routine success log
                 
                 return $result;
             }
@@ -563,10 +549,7 @@ SCRIPT;
                 
                 if (!empty($updates)) {
                     $router->update($updates);
-                    Log::info('Updated router hardware info from live data', [
-                        'router_id' => $router->id,
-                        'updates' => array_keys($updates),
-                    ]);
+                    // Reduced: Removed routine update log
                 }
             }
         } catch (\Exception $e) {
