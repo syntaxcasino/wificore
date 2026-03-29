@@ -276,6 +276,11 @@ class ZeroConfigHotspotGenerator
             $script = array_merge($script, $this->generateBridgeSetup($params));
         }
 
+        // Determine router tier for firewall rules
+        $routerModel = $params['router_model'] ?? '';
+        $isLowEnd = RouterResourceManager::getRouterTierByModel($routerModel) === 'low_end';
+        $params['is_low_end'] = $isLowEnd;
+
         $script = array_merge(
             $script,
             $this->generateIpSetup($params),
@@ -411,19 +416,50 @@ class ZeroConfigHotspotGenerator
         ];
     }
 
+    /**
+     * Generate tier-based firewall rules - minimal for hAP lite, full for high-end
+     * SECURITY: Unauthenticated users are BLOCKED from internet in BOTH tiers
+     * SECURITY: Only hotspot=auth users can access WAN in BOTH tiers
+     */
     private function generateFirewallRules(array $params): array
     {
         $sid   = $params['short_id'] ?? substr(str_replace('-', '', $params['router_id']), 0, 8);
         $iface = $params['bridge_name'] ?? $params['interface'];
-
+        $isLowEnd = $params['is_low_end'] ?? false;
+        
+        if ($isLowEnd) {
+            // MINIMAL FIREWALL for hAP lite (~5 rules)
+            // Core security: Block unauth, allow only authenticated
+            return [
+                "# Firewall [MINIMAL] - Essential security for low-end device",
+                ":do { /ip firewall filter remove [/ip firewall filter find comment~\"hs-fw-{$sid}\"] } on-error={}",
+                // CRITICAL: Drop all traffic from unauthenticated users
+                "/ip firewall filter add chain=forward in-interface={$iface} action=drop place-before=0 comment=\"hs-fw-{$sid}-DROP-UNAUTH\"",
+                // CRITICAL: Allow only authenticated hotspot users to WAN
+                "/ip firewall filter add chain=forward in-interface={$iface} hotspot=auth out-interface-list=WAN action=accept place-before=0 comment=\"hs-fw-{$sid}-AUTH-INET\"",
+                // Performance: Allow established/related connections
+                "/ip firewall filter add chain=forward in-interface={$iface} connection-state=established,related action=accept place-before=0 comment=\"hs-fw-{$sid}-EST\"",
+                // Security: Drop invalid packets
+                "/ip firewall filter add chain=forward in-interface={$iface} connection-state=invalid action=drop place-before=0 comment=\"hs-fw-{$sid}-INV\"",
+                // Allow return traffic from WAN
+                "/ip firewall filter add chain=forward in-interface-list=WAN out-interface={$iface} connection-state=established,related action=accept place-before=0 comment=\"hs-fw-{$sid}-WAN-RET\"",
+                ""
+            ];
+        }
+        
+        // FULL FIREWALL for high-end devices (~8 rules)
+        // Complete security with additional features
         return [
-            "# Firewall - Auth Enforcement (in-interface scoped)",
+            "# Firewall [FULL] - Complete security for high-end device",
             ":do { /ip firewall filter remove [/ip firewall filter find comment~\"hs-fw-{$sid}\"] } on-error={}",
-            "/ip firewall filter add chain=forward in-interface={$iface} action=drop place-before=0 comment=\"hs-fw-{$sid}-drop\"",
-            "/ip firewall filter add chain=forward in-interface={$iface} hotspot=auth out-interface-list=WAN action=accept place-before=0 comment=\"hs-fw-{$sid}-inet\"",
-            "/ip firewall filter add chain=forward in-interface={$iface} connection-state=invalid action=drop place-before=0 comment=\"hs-fw-{$sid}-inv\"",
-            "/ip firewall filter add chain=forward in-interface={$iface} connection-state=established,related action=accept place-before=0 comment=\"hs-fw-{$sid}-est\"",
-            "/ip firewall filter add chain=forward in-interface-list=WAN out-interface={$iface} connection-state=established,related action=accept place-before=0 comment=\"hs-fw-{$sid}-wan\"",
+            "/ip firewall filter add chain=forward in-interface={$iface} action=drop place-before=0 comment=\"hs-fw-{$sid}-DROP-UNAUTH\"",
+            "/ip firewall filter add chain=forward in-interface={$iface} hotspot=auth out-interface-list=WAN action=accept place-before=0 comment=\"hs-fw-{$sid}-AUTH-INET\"",
+            "/ip firewall filter add chain=forward in-interface={$iface} connection-state=invalid action=drop place-before=0 comment=\"hs-fw-{$sid}-INV\"",
+            "/ip firewall filter add chain=forward in-interface={$iface} connection-state=established,related action=accept place-before=0 comment=\"hs-fw-{$sid}-EST\"",
+            "/ip firewall filter add chain=forward in-interface-list=WAN out-interface={$iface} connection-state=established,related action=accept place-before=0 comment=\"hs-fw-{$sid}-WAN-RET\"",
+            // Additional high-end features
+            "/ip firewall filter add chain=forward in-interface={$iface} protocol=icmp action=accept place-before=0 comment=\"hs-fw-{$sid}-ICMP\"",
+            "/ip firewall filter add chain=forward in-interface={$iface} dst-port=53 protocol=udp action=accept place-before=0 comment=\"hs-fw-{$sid}-DNS\"",
             ""
         ];
     }

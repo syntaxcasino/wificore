@@ -216,33 +216,56 @@ class ZeroConfigPPPoEGenerator
         $s[] = ":do { /ip firewall filter remove [/ip firewall filter find comment~\"pp-wan-est-$id\"]; } on-error={}";
         $s[] = ":delay 100ms"; // Brief delay to ensure removal completes before add
         
-        // INPUT rules (append to end instead of insert - much faster on low CPU)
-        $s[] = "/ip firewall filter add chain=input connection-state=established,related action=accept comment=\"PPPoE-$id-EST-IN\"";
-        $s[] = "/ip firewall filter add chain=input in-interface-list=$pal protocol=icmp action=accept comment=\"PPPoE-$id-ICMP\"";
-        $s[] = "/ip firewall filter add chain=input protocol=tcp dst-port=$mports src-address=$mgmt action=accept comment=\"PPPoE-$id-MGMT-ALLOW\"";
-        $s[] = "/ip firewall filter add chain=input protocol=udp dst-port=161 src-address=$mgmt action=accept comment=\"PPPoE-$id-SNMP-ALLOW\"";
-        $s[] = "/ip firewall filter add chain=input in-interface=\"$bridge\" protocol=udp dst-port=8863-8864 action=accept comment=\"PPPoE-$id-DISC\"";
-        $s[] = "/ip firewall filter add chain=input in-interface=\"$bridge\" connection-state=invalid action=drop comment=\"PPPoE-$id-INV-IN\"";
-        $s[] = "/ip firewall filter add chain=input in-interface=\"$bridge\" action=drop comment=\"PPPoE-$id-DROP-IN\"";
-        $s[] = "/ip firewall filter add chain=input protocol=tcp dst-port=$mports src-address=!$mgmt action=drop comment=\"PPPoE-$id-MGMT-DROP\"";
+        if ($isLowEnd) {
+            // MINIMAL FIREWALL for hAP lite (low memory/CPU) - ~7 rules
+            // SECURITY: Unauthenticated users CANNOT access internet
+            // SECURITY: Only PPPoE authenticated users (PAL list) can access WAN
+            // SECURITY: All AAA is via RADIUS (configured above)
+            
+            $s[] = "# Firewall [MINIMAL] - Essential security only for low-end device";
+            
+            // INPUT: Allow established + management only (3 rules)
+            $s[] = "/ip firewall filter add chain=input connection-state=established,related action=accept comment=\"PPPoE-$id-EST-IN\"";
+            $s[] = "/ip firewall filter add chain=input protocol=tcp dst-port=$mports src-address=$mgmt action=accept comment=\"PPPoE-$id-MGMT\"";
+            $s[] = "/ip firewall filter add chain=input in-interface=\"$bridge\" action=drop comment=\"PPPoE-$id-DROP-IN\"";
+            
+            // FORWARD: Auth enforcement - critical security rules (4 rules)
+            $s[] = "/ip firewall filter add chain=forward in-interface-list=$pal out-interface-list=$wan action=accept comment=\"PPPoE-$id-INET-AUTH\"";
+            $s[] = "/ip firewall filter add chain=forward in-interface-list=$pal connection-state=invalid action=drop comment=\"PPPoE-$id-DROP-INV\"";
+            $s[] = "/ip firewall filter add chain=forward in-interface-list=$pal connection-state=established,related action=accept comment=\"PPPoE-$id-EST-FWD\"";
+            $s[] = "/ip firewall filter add chain=forward in-interface=\"$bridge\" action=drop comment=\"PPPoE-$id-BLOCK-UNAUTH\"";
+        } else {
+            // FULL FIREWALL for high-end devices - ~15 rules
+            // Includes all security features plus extras like ICMP, SNMP, etc.
+            
+            $s[] = "# Firewall [FULL] - Complete security for high-end device";
+            
+            // INPUT rules (8 rules)
+            $s[] = "/ip firewall filter add chain=input connection-state=established,related action=accept comment=\"PPPoE-$id-EST-IN\"";
+            $s[] = "/ip firewall filter add chain=input in-interface-list=$pal protocol=icmp action=accept comment=\"PPPoE-$id-ICMP\"";
+            $s[] = "/ip firewall filter add chain=input protocol=tcp dst-port=$mports src-address=$mgmt action=accept comment=\"PPPoE-$id-MGMT-ALLOW\"";
+            $s[] = "/ip firewall filter add chain=input protocol=udp dst-port=161 src-address=$mgmt action=accept comment=\"PPPoE-$id-SNMP\"";
+            $s[] = "/ip firewall filter add chain=input in-interface=\"$bridge\" protocol=udp dst-port=8863-8864 action=accept comment=\"PPPoE-$id-DISC\"";
+            $s[] = "/ip firewall filter add chain=input in-interface=\"$bridge\" connection-state=invalid action=drop comment=\"PPPoE-$id-INV-IN\"";
+            $s[] = "/ip firewall filter add chain=input in-interface=\"$bridge\" action=drop comment=\"PPPoE-$id-DROP-IN\"";
+            $s[] = "/ip firewall filter add chain=input protocol=tcp dst-port=$mports src-address=!$mgmt action=drop comment=\"PPPoE-$id-MGMT-DROP\"";
+            
+            $s[] = ":delay {$delays['firewall']}"; // CPU breathing room
+            
+            // FORWARD rules (5 rules)
+            $s[] = "/ip firewall filter add chain=forward in-interface-list=$wan out-interface-list=$pal connection-state=established,related action=accept comment=\"PPPoE-$id-WAN-EST\"";
+            $s[] = "/ip firewall filter add chain=forward in-interface-list=$pal connection-state=established,related action=accept comment=\"PPPoE-$id-PAL-EST\"";
+            $s[] = "/ip firewall filter add chain=forward in-interface-list=$pal connection-state=invalid action=drop comment=\"PPPoE-$id-PAL-INV\"";
+            $s[] = "/ip firewall filter add chain=forward in-interface-list=$pal out-interface-list=$wan action=accept comment=\"PPPoE-$id-INET\"";
+            $s[] = "/ip firewall filter add chain=forward in-interface=\"$bridge\" action=drop comment=\"PPPoE-$id-BLOCK-UNAUTH\"";
+        }
         
-        $s[] = ":delay {$delays['firewall']}"; // CPU breathing room
-        
-        // FORWARD rules (append instead of insert)
-        $s[] = "/ip firewall filter add chain=forward in-interface-list=$wan out-interface-list=$pal connection-state=established,related action=accept comment=\"PPPoE-$id-WAN-EST\"";
-        $s[] = "/ip firewall filter add chain=forward in-interface-list=$pal connection-state=established,related action=accept comment=\"PPPoE-$id-PAL-EST\"";
-        $s[] = "/ip firewall filter add chain=forward in-interface-list=$pal connection-state=invalid action=drop comment=\"PPPoE-$id-PAL-INV\"";
-        $s[] = "/ip firewall filter add chain=forward in-interface-list=$pal out-interface-list=$wan action=accept comment=\"PPPoE-$id-INET\"";
-        $s[] = "/ip firewall filter add chain=forward in-interface=\"$bridge\" action=drop comment=\"PPPoE-$id-BLOCK-UNAUTH\"";
-        
-        $s[] = ":delay {$delays['between_sections']}";
-        
+        $s[] = ":delay {$delays['between_sections']}"; // Final breathing room before completion
+
         // GLOBAL DEFAULT DROP (at end - less critical for order)
         $s[] = ":do { /ip firewall filter remove [/ip firewall filter find comment~\"GLOBAL-DEFAULT-DROP-\"]; } on-error={}";
         $s[] = "/ip firewall filter add chain=input action=drop comment=\"GLOBAL-DEFAULT-DROP-IN\"";
         $s[] = "/ip firewall filter add chain=forward action=drop comment=\"GLOBAL-DEFAULT-DROP-FWD\"";
-        
-        $s[] = ":delay {$delays['between_sections']}";
 
         // NAT
         $s[] = ":do { /ip firewall nat remove [/ip firewall nat find comment=\"PPPoE-$id\"]; } on-error={}";
