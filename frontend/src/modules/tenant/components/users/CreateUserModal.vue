@@ -4,7 +4,7 @@
     title="Create New User"
     subtitle="Add a new administrator or staff account"
     icon="UserPlus"
-    width="40%"
+    width="480px"
     @close="handleClose"
   >
     <form @submit.prevent="handleSubmit">
@@ -114,13 +114,21 @@
     </form>
 
     <template #footer>
-      <div class="flex items-center justify-end gap-3">
-        <BaseButton @click="handleClose" variant="secondary" :disabled="submitting">
+      <div class="flex gap-3">
+        <button
+          @click="handleClose"
+          :disabled="submitting"
+          class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-50"
+        >
           Cancel
-        </BaseButton>
-        <BaseButton @click="handleSubmit" variant="primary" :loading="submitting">
-          Create User
-        </BaseButton>
+        </button>
+        <button
+          @click="handleSubmit"
+          :disabled="submitting"
+          class="flex-1 px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors disabled:opacity-50"
+        >
+          {{ submitting ? 'Creating...' : 'Create User' }}
+        </button>
       </div>
     </template>
   </SlideOverlay>

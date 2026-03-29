@@ -6,7 +6,6 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use App\Traits\HasUuid;
-use App\Scopes\TenantScope;
 
 class PppoePayment extends Model
 {
@@ -43,11 +42,6 @@ class PppoePayment extends Model
         'updated_at' => 'datetime',
         'deleted_at' => 'datetime',
     ];
-
-    protected static function booted()
-    {
-        static::addGlobalScope(new TenantScope);
-    }
 
     public function pppoeUser()
     {

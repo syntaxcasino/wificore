@@ -23,100 +23,27 @@
       </svg>
     </template>
 
-    <!-- SlideOverlay for Create/Edit -->
-    <SlideOverlay
+    <!-- Todo Modal (Create/Edit) -->
+    <TodoModal
       v-model="showFormOverlay"
-      :title="isEditing ? 'Edit Todo' : 'Add Todo'"
-      :subtitle="isEditing ? 'Update task details' : 'Create a new task'"
-      icon="checklist"
-      width="480px"
+      :is-editing="isEditing"
+      :todo="editingTodo"
+      :submitting="formSubmitting"
+      :error="formError"
       @close="closeForm"
-    >
-      <div class="p-6 space-y-4">
-        <!-- Title -->
-        <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Title</label>
-          <input
-            v-model="formData.title"
-            type="text"
-            placeholder="Enter task title..."
-            class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-          />
-        </div>
+      @submit="handleSubmit"
+    />
 
-        <!-- Description -->
-        <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Description</label>
-          <textarea
-            v-model="formData.description"
-            rows="3"
-            placeholder="Enter task description..."
-            class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none resize-none"
-          />
-        </div>
-
-        <!-- Priority -->
-        <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Priority</label>
-          <select
-            v-model="formData.priority"
-            class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white"
-          >
-            <option value="low">Low</option>
-            <option value="medium">Medium</option>
-            <option value="high">High</option>
-          </select>
-        </div>
-
-        <!-- Due Date -->
-        <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Due Date</label>
-          <input
-            v-model="formData.due_date"
-            type="date"
-            class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-          />
-        </div>
-
-        <!-- Status -->
-        <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Status</label>
-          <select
-            v-model="formData.status"
-            class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white"
-          >
-            <option value="pending">Pending</option>
-            <option value="in_progress">In Progress</option>
-            <option value="completed">Completed</option>
-          </select>
-        </div>
-
-        <!-- Error Message -->
-        <div v-if="formError" class="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600">
-          {{ formError }}
-        </div>
-      </div>
-
-      <template #footer>
-        <div class="flex gap-3">
-          <button
-            @click="closeForm"
-            class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
-          >
-            Cancel
-          </button>
-          <button
-            @click="handleSubmit"
-            :disabled="formSubmitting"
-            class="flex-1 px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors"
-            :class="isEditing ? 'bg-blue-600 hover:bg-blue-700' : 'bg-emerald-600 hover:bg-emerald-700'"
-          >
-            <span v-if="formSubmitting">{{ isEditing ? 'Updating...' : 'Creating...' }}</span>
-            <span v-else>{{ isEditing ? 'Update Todo' : 'Create Todo' }}</span>
-          </button>
-        </div>
-      </template>
-    </SlideOverlay>
+    <!-- Todo Details Modal -->
+    <TodoDetailsModal
+      v-model="showDetailsOverlay"
+      :todo-details="selectedTodo"
+      :loading="detailsLoading"
+      :error="detailsError"
+      @close="closeDetails"
+      @complete="handleComplete(selectedTodo)"
+      @reopen="handleReopen(selectedTodo)"
+    />
 
     <!-- Error State -->
     <div v-if="error" class="flex flex-col items-center justify-center gap-4 p-8 text-red-500">
@@ -149,10 +76,11 @@
       </div>
 
       <!-- Desktop Table -->
-      <div class="hidden md:flex bg-white border border-slate-200 shadow-sm overflow-hidden flex-col min-h-0 flex-1">
-        <div class="overflow-x-auto overflow-y-auto flex-1 min-h-0">
+      <div class="hidden md:flex bg-white border-x border-t border-slate-200 flex-col min-h-0 flex-1">
+        <!-- Fixed Header -->
+        <div class="bg-slate-50 border-b border-slate-200">
           <table class="w-full">
-            <thead class="bg-slate-50 border-b border-slate-200 sticky top-0 z-[5]">
+            <thead>
               <tr>
                 <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Title</th>
                 <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider hidden lg:table-cell">Description</th>
@@ -162,6 +90,11 @@
                 <th class="px-6 py-3 text-right text-xs font-semibold text-slate-700 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
+          </table>
+        </div>
+        <!-- Scrollable Body -->
+        <div class="overflow-y-auto flex-1 min-h-0">
+          <table class="w-full">
             <tbody class="divide-y divide-slate-100">
               <tr v-for="todo in paginatedTodos" :key="todo.id" class="hover:bg-blue-50/50 transition-colors">
                 <td class="px-6 py-4">
@@ -187,18 +120,18 @@
                 <td class="px-6 py-4 text-right">
                   <div class="flex items-center justify-end gap-1">
                     <button
-                      v-if="todo.status !== 'completed'"
-                      @click="handleComplete(todo)"
-                      class="px-2 py-1 text-xs font-medium text-emerald-700 bg-emerald-50 rounded hover:bg-emerald-100 transition-colors"
+                      @click="viewTodo(todo)"
+                      class="px-2 py-1 text-xs font-medium text-blue-700 bg-blue-50 rounded hover:bg-blue-100 transition-colors"
                     >
-                      Complete
+                      View
                     </button>
-                    <button @click="openEditModal(todo)" class="px-2 py-1 text-xs font-medium text-slate-700 bg-slate-100 rounded hover:bg-slate-200 transition-colors">
-                      Edit
-                    </button>
-                    <button @click="handleDelete(todo)" class="px-2 py-1 text-xs font-medium text-red-600 bg-red-50 rounded hover:bg-red-100 transition-colors">
-                      Delete
-                    </button>
+                    <div class="relative">
+                      <button data-menu-button @click="toggleMenu(todo.id, $event)" class="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+                        </svg>
+                      </button>
+                    </div>
                   </div>
                 </td>
               </tr>
@@ -232,6 +165,32 @@
       @clear="searchQuery = ''"
       @add="openCreateModal"
     />
+
+    <!-- Global Dropdown Menu Portal -->
+    <Teleport to="body">
+      <div v-if="activeMenu !== null" data-dropdown-menu :style="menuPosition" class="fixed w-48 bg-white rounded-lg shadow-2xl border border-slate-200 py-1 z-[9999] overflow-hidden">
+        <button @click="viewTodo(todos.find(t => t.id === activeMenu))" class="flex items-center w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-700 transition-colors">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+          </svg>
+          View
+        </button>
+        <button @click="openEditModal(todos.find(t => t.id === activeMenu))" class="flex items-center w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-700 transition-colors">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+          </svg>
+          Edit
+        </button>
+        <div class="border-t border-slate-200 my-1"></div>
+        <button @click="handleDelete(todos.find(t => t.id === activeMenu))" class="flex items-center w-full px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+          </svg>
+          Delete
+        </button>
+      </div>
+    </Teleport>
   </DataViewContainer>
 </template>
 
@@ -244,7 +203,11 @@ import MobileDataCard from '@/modules/common/components/base/MobileDataCard.vue'
 import DataPagination from '@/modules/common/components/base/DataPagination.vue'
 import DataEmptyState from '@/modules/common/components/base/DataEmptyState.vue'
 import EntityStatusBadge from '@/modules/common/components/base/EntityStatusBadge.vue'
-import SlideOverlay from '@/modules/common/components/base/SlideOverlay.vue'
+import { useConfirmStore } from '@/stores/confirm'
+import TodoModal from '@/modules/tenant/components/todos/TodoModal.vue'
+import TodoDetailsModal from '@/modules/tenant/components/todos/TodoDetailsModal.vue'
+
+const confirmStore = useConfirmStore()
 
 const {
   todos,
@@ -257,7 +220,8 @@ const {
   createTodo,
   updateTodo,
   deleteTodo,
-  completeTodo,
+  markAsCompleted,
+  fetchTodo,
   searchTodos,
   setupWebSocketListeners,
   cleanupWebSocketListeners
@@ -270,16 +234,19 @@ const itemsPerPage = ref(10)
 // Form state
 const showFormOverlay = ref(false)
 const isEditing = ref(false)
-const editingId = ref(null)
+const editingTodo = ref(null)
 const formSubmitting = ref(false)
 const formError = ref('')
-const formData = ref({
-  title: '',
-  description: '',
-  priority: 'medium',
-  due_date: '',
-  status: 'pending'
-})
+
+// Details state
+const showDetailsOverlay = ref(false)
+const selectedTodo = ref(null)
+const detailsLoading = ref(false)
+const detailsError = ref('')
+
+// Menu state
+const activeMenu = ref(null)
+const menuPosition = ref({})
 
 // Stats
 const pendingCount = computed(() => pendingTodos.value.length)
@@ -303,6 +270,48 @@ const totalPages = computed(() => Math.ceil(filteredTodos.value.length / itemsPe
 watch(searchQuery, () => { currentPage.value = 1 })
 watch(itemsPerPage, () => { currentPage.value = 1 })
 
+// Menu toggle
+const toggleMenu = (todoId, event) => {
+  event.stopPropagation()
+  if (activeMenu.value === todoId) {
+    activeMenu.value = null
+    menuPosition.value = {}
+  } else {
+    activeMenu.value = todoId
+    const button = event.currentTarget
+    const rect = button.getBoundingClientRect()
+    const menuWidth = 192
+    const menuHeight = 140
+    const viewportHeight = window.innerHeight
+    const viewportWidth = window.innerWidth
+    let top = rect.bottom + 4
+    let left = rect.right - menuWidth
+    if (rect.bottom + menuHeight > viewportHeight) top = rect.top - menuHeight - 4
+    if (left < 0) left = rect.left
+    if (left + menuWidth > viewportWidth) left = viewportWidth - menuWidth - 10
+    menuPosition.value = { top: `${top}px`, left: `${left}px` }
+  }
+}
+
+const closeMenu = () => {
+  activeMenu.value = null
+  menuPosition.value = {}
+}
+
+// Click outside handler
+const handleClickOutside = (event) => {
+  const menu = document.querySelector('[data-dropdown-menu]')
+  const menuButton = document.querySelector('[data-menu-button]')
+  if (menu && !menu.contains(event.target) && menuButton && !menuButton.contains(event.target)) {
+    closeMenu()
+  }
+}
+
+// Keyboard handler
+const handleKeydown = (event) => {
+  if (event.key === 'Escape') closeMenu()
+}
+
 // Helpers
 const getStatusDotClass = (status) => status === 'completed' ? 'bg-emerald-500' : 'bg-blue-500'
 
@@ -319,16 +328,9 @@ const formatDate = (dateString) => dateString ? new Date(dateString).toLocaleDat
 
 // Form helpers
 const resetForm = () => {
-  formData.value = {
-    title: '',
-    description: '',
-    priority: 'medium',
-    due_date: '',
-    status: 'pending'
-  }
   formError.value = ''
   isEditing.value = false
-  editingId.value = null
+  editingTodo.value = null
 }
 
 const openCreateModal = () => {
@@ -337,15 +339,9 @@ const openCreateModal = () => {
 }
 
 const openEditModal = (todo) => {
+  closeMenu()
   isEditing.value = true
-  editingId.value = todo.id
-  formData.value = {
-    title: todo.title || '',
-    description: todo.description || '',
-    priority: todo.priority || 'medium',
-    due_date: todo.due_date ? todo.due_date.split('T')[0] : '',
-    status: todo.status || 'pending'
-  }
+  editingTodo.value = todo
   showFormOverlay.value = true
 }
 
@@ -354,15 +350,15 @@ const closeForm = () => {
   setTimeout(resetForm, 300)
 }
 
-const handleSubmit = async () => {
+const handleSubmit = async (formDataValue) => {
   formSubmitting.value = true
   formError.value = ''
 
   try {
     if (isEditing.value) {
-      await updateTodo(editingId.value, formData.value)
+      await updateTodo(editingTodo.value.id, formDataValue)
     } else {
-      await createTodo(formData.value)
+      await createTodo(formDataValue)
     }
     closeForm()
     await fetchTodos()
@@ -382,22 +378,82 @@ const getTodoMetaLines = (todo) => {
 
 const getTodoActions = (todo) => {
   const actions = []
-  if (todo.status !== 'completed') {
-    actions.push({ label: 'Complete', onClick: () => handleComplete(todo), class: 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100' })
-  }
+  actions.push({ label: 'View', onClick: () => viewTodo(todo), class: 'text-blue-700 bg-blue-50 hover:bg-blue-100' })
   actions.push({ label: 'Edit', onClick: () => openEditModal(todo), class: 'text-slate-700 bg-slate-100 hover:bg-slate-200' })
   actions.push({ label: 'Delete', onClick: () => handleDelete(todo), class: 'text-red-600 bg-red-50 hover:bg-red-100' })
   return actions
 }
 
 const handleComplete = async (todo) => {
-  try { await completeTodo(todo.id) } catch (err) { console.error('Failed to complete todo:', err) }
+  closeMenu()
+  try { 
+    await markAsCompleted(todo.id)
+    // If details overlay is open, refresh the selected todo
+    if (showDetailsOverlay.value && selectedTodo.value?.id === todo.id) {
+      selectedTodo.value = { ...selectedTodo.value, status: 'completed' }
+    }
+  } catch (err) { 
+    console.error('Failed to complete todo:', err) 
+  }
 }
 
 const handleDelete = async (todo) => {
-  if (confirm(`Are you sure you want to delete "${todo.title}"?`)) {
-    try { await deleteTodo(todo.id) } catch (err) { console.error('Failed to delete todo:', err) }
+  closeMenu()
+  const confirmed = await confirmStore.open({
+    title: 'Delete Todo',
+    message: `Are you sure you want to delete "${todo.title}"? This action cannot be undone.`,
+    confirmText: 'Delete',
+    cancelText: 'Cancel',
+    variant: 'danger'
+  })
+  
+  if (!confirmed) return
+  
+  try { 
+    await deleteTodo(todo.id) 
+  } catch (err) { 
+    console.error('Failed to delete todo:', err) 
   }
+}
+
+const handleReopen = async (todo) => {
+  closeMenu()
+  try {
+    await updateTodo(todo.id, { status: 'pending' })
+    // If details overlay is open, refresh the selected todo
+    if (showDetailsOverlay.value && selectedTodo.value?.id === todo.id) {
+      selectedTodo.value = { ...selectedTodo.value, status: 'pending' }
+    }
+    await fetchTodos()
+  } catch (err) {
+    console.error('Failed to reopen todo:', err)
+  }
+}
+
+const viewTodo = async (todo) => {
+  closeMenu()
+  selectedTodo.value = todo
+  showDetailsOverlay.value = true
+  detailsLoading.value = true
+  detailsError.value = ''
+  
+  try {
+    // Fetch fresh todo details from API
+    const freshTodo = await fetchTodo(todo.id)
+    if (freshTodo) {
+      selectedTodo.value = freshTodo
+    }
+  } catch (err) {
+    detailsError.value = err.message || 'Failed to load todo details'
+    console.error('Failed to fetch todo details:', err)
+  } finally {
+    detailsLoading.value = false
+  }
+}
+
+const closeDetails = () => {
+  showDetailsOverlay.value = false
+  setTimeout(() => { selectedTodo.value = null }, 300)
 }
 
 // Lifecycle
@@ -405,9 +461,15 @@ onMounted(async () => {
   await fetchTodos()
   await fetchStatistics()
   setupWebSocketListeners()
+  document.addEventListener('click', handleClickOutside)
+  document.addEventListener('keydown', handleKeydown)
 })
 
-onUnmounted(() => cleanupWebSocketListeners())
+onUnmounted(() => {
+  cleanupWebSocketListeners()
+  document.removeEventListener('click', handleClickOutside)
+  document.removeEventListener('keydown', handleKeydown)
+})
 </script>
 
 <style scoped>

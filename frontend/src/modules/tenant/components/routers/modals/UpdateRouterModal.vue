@@ -4,7 +4,7 @@
     title="Edit Router"
     :subtitle="selectedRouter?.name || 'Update router configuration'"
     icon="Edit"
-    width="50%"
+    width="480px"
     @update:model-value="val => { if (!val) $emit('close-update') }"
     @close="$emit('close-update')"
   >
@@ -209,11 +209,11 @@
       </div>
 
     <template #footer>
-      <div class="flex justify-between gap-3">
+      <div class="flex gap-3">
         <button
           type="button"
           @click="$emit('close-update')"
-          class="px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
+          class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
         >
           Cancel
         </button>
@@ -225,9 +225,9 @@
             (formData.ip_address && !isValidIPAddress(formData.ip_address)) ||
             (formData.port && (formData.port < 1 || formData.port > 65535))
           "
-          class="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          class="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          Update Router
+          {{ formSubmitting ? 'Updating...' : 'Update Router' }}
         </button>
       </div>
     </template>

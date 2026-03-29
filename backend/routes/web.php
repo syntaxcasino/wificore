@@ -8,6 +8,10 @@ use Illuminate\Support\Facades\Route;
 
  */
 
+Route::get('/', function () {
+    return response()->json(['status' => 'ok']);
+});
+
 // routes/web.php
 Route::get('/test-broadcast', function () {
     \Log::info('Test broadcast route called');

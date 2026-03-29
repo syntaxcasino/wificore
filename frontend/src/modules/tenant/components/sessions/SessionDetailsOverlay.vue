@@ -4,7 +4,7 @@
     title="Session Details"
     :subtitle="session?.user?.name || session?.username || 'Session information'"
     icon="Activity"
-    width="50%"
+    width="480px"
     @close="$emit('close')"
   >
     <div v-if="session" class="space-y-4">
@@ -150,16 +150,16 @@
     </div>
 
     <template #footer>
-      <div class="flex items-center justify-end gap-2">
+      <div class="flex gap-3">
         <button
           @click="$emit('close')"
-          class="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
+          class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
         >
           Close
         </button>
         <button
           @click="$emit('disconnect', session)"
-          class="px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-red-500 to-rose-600 rounded-lg hover:from-red-600 hover:to-rose-700 transition-all shadow-sm flex items-center gap-1.5"
+          class="flex-1 px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors flex items-center justify-center gap-1.5"
         >
           <Power class="w-4 h-4" />
           Disconnect

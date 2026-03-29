@@ -4,7 +4,7 @@
     title="User Details"
     subtitle="View user account information"
     icon="User"
-    width="40%"
+    width="480px"
     @close="handleClose"
   >
     <div v-if="user" class="space-y-6">
@@ -104,13 +104,19 @@
     </div>
 
     <template #footer>
-      <div class="flex items-center justify-end gap-3">
-        <BaseButton @click="handleClose" variant="secondary">
+      <div class="flex gap-3">
+        <button
+          @click="handleClose"
+          class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+        >
           Close
-        </BaseButton>
-        <BaseButton @click="handleEdit" variant="primary">
+        </button>
+        <button
+          @click="handleEdit"
+          class="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
+        >
           Edit User
-        </BaseButton>
+        </button>
       </div>
     </template>
   </SlideOverlay>

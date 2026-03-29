@@ -32,7 +32,7 @@ class MikrotikSessionService extends TenantAwareService
         }
 
         try {
-            $this->client = new Client([
+            $this->client = $this->createClient([
                 'host' => $this->config['host'],
                 'user' => $this->config['user'],
                 'pass' => $this->config['pass'],
@@ -70,6 +70,11 @@ class MikrotikSessionService extends TenantAwareService
         } catch (\Exception $e) {
             return false;
         }
+    }
+
+    protected function createClient(array $config): Client
+    {
+        return new Client($config);
     }
 
     public function createSession(string $voucher, string $macAddress, string $profile, int $durationHours): array
@@ -160,7 +165,7 @@ class MikrotikSessionService extends TenantAwareService
 
         // Instead of strictly checking 'ret', check for error conditions
         if (empty($response)) {
-            throw new \Exception('Mikrotik returned an empty response when creating user.');
+            throw new \Exception('Failed to create user: Mikrotik returned an empty response.');
         }
 
         if (isset($response[0]['!trap'])) {
@@ -345,10 +350,14 @@ class MikrotikSessionService extends TenantAwareService
     {
         $sanitizedDetails = $this->sanitizeLogData($details);
 
-        SystemLog::create([
-            'action' => $action,
-            'details' => $sanitizedDetails,
-        ]);
+        try {
+            SystemLog::create([
+                'action' => $action,
+                'details' => $sanitizedDetails,
+            ]);
+        } catch (\Throwable $e) {
+            // Swallow DB errors so logging never crashes the service
+        }
 
         Log::$logLevel($action, $sanitizedDetails);
     }

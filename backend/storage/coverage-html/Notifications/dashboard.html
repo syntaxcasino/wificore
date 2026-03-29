@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+ <head>
+  <meta charset="UTF-8">
+  <title>Dashboard for /var/www/html/app/Notifications</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link href="../_css/bootstrap.min.css?v=12.5.3" rel="stylesheet" type="text/css">
+  <link href="../_css/billboard.min.css?v=12.5.3" rel="stylesheet" type="text/css">
+  <link href="../_css/style.css?v=12.5.3" rel="stylesheet" type="text/css">
+  <link href="../_css/custom.css" rel="stylesheet" type="text/css">
+ </head>
+ <body>
+  <header>
+   <div class="container-fluid">
+    <div class="row">
+     <div class="col-md-12">
+      <nav aria-label="breadcrumb">
+       <ol class="breadcrumb">
+         <li class="breadcrumb-item"><a href="../index.html">/var/www/html/app</a></li>
+         <li class="breadcrumb-item"><a href="index.html">Notifications</a></li>
+         <li class="breadcrumb-item active">(Dashboard)</li>
+
+       </ol>
+      </nav>
+     </div>
+    </div>
+   </div>
+  </header>
+  <div class="container-fluid">
+   <div class="row">
+    <div class="col-md-12">
+     <h2>Classes</h2>
+    </div>
+   </div>
+   <div class="row">
+    <div class="col-md-6">
+     <h3>Coverage Distribution</h3>
+     <div id="classesCoverageDistribution" style="height: 300px;">
+       <svg></svg>
+     </div>
+    </div>
+    <div class="col-md-6">
+     <h3>Complexity</h3>
+     <div id="classComplexity" style="height: 300px;">
+       <svg></svg>
+     </div>
+    </div>
+   </div>
+   <div class="row">
+    <div class="col-md-6">
+     <h3 style="margin-top: 2rem;">Insufficient Coverage</h3>
+     <div class="scrollbox">
+      <table class="table">
+       <thead>
+        <tr>
+         <th>Class</th>
+         <th class="text-right">Coverage</th>
+        </tr>
+       </thead>
+       <tbody>
+       <tr><td><a href="GracePeriodWarningNotification.php.html#13">App\Notifications\GracePeriodWarningNotification</a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="PaymentDueReminderNotification.php.html#13">App\Notifications\PaymentDueReminderNotification</a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="PppoeInvoiceNotification.php.html#11">App\Notifications\PppoeInvoiceNotification</a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="PppoeMonthlyPaymentReportNotification.php.html#10">App\Notifications\PppoeMonthlyPaymentReportNotification</a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="PppoePaymentReceiptNotification.php.html#12">App\Notifications\PppoePaymentReceiptNotification</a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="PppoePaymentReminderNotification.php.html#11">App\Notifications\PppoePaymentReminderNotification</a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="ServiceDisconnectedNotification.php.html#13">App\Notifications\ServiceDisconnectedNotification</a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="ServiceReconnectedNotification.php.html#13">App\Notifications\ServiceReconnectedNotification</a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="TenantCredentialsEmail.php.html#10">App\Notifications\TenantCredentialsEmail</a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="TenantDisconnectionNotification.php.html#12">App\Notifications\TenantDisconnectionNotification</a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="TenantEmailVerification.php.html#11">App\Notifications\TenantEmailVerification</a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="TenantInvoiceNotification.php.html#12">App\Notifications\TenantInvoiceNotification</a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="TenantPaymentReceiptNotification.php.html#12">App\Notifications\TenantPaymentReceiptNotification</a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="TenantSubscriptionExpiryWarning.php.html#12">App\Notifications\TenantSubscriptionExpiryWarning</a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="VerifyEmailNotification.php.html#11">App\Notifications\VerifyEmailNotification</a></td><td class="text-right">0%</td></tr>
+
+       </tbody>
+      </table>
+     </div>
+    </div>
+    <div class="col-md-6">
+     <h3 style="margin-top: 2rem;">Project Risks</h3>
+     <div class="scrollbox">
+      <table class="table">
+       <thead>
+        <tr>
+         <th>Class</th>
+         <th class="text-right">Coverage</th>
+         <th class="text-right">Complexity</th>
+         <th class="text-right"><abbr title="Change Risk Anti-Patterns (CRAP) Index">CRAP</abbr></th>
+        </tr>
+       </thead>
+       <tbody>
+       <tr><td><a href="ServiceReconnectedNotification.php.html#13">App\Notifications\ServiceReconnectedNotification</a></td><td class="text-right">0.0%</td><td class="text-right">10</td><td class="text-right">110</td></tr>
+       <tr><td><a href="GracePeriodWarningNotification.php.html#13">App\Notifications\GracePeriodWarningNotification</a></td><td class="text-right">0.0%</td><td class="text-right">8</td><td class="text-right">72</td></tr>
+       <tr><td><a href="PaymentDueReminderNotification.php.html#13">App\Notifications\PaymentDueReminderNotification</a></td><td class="text-right">0.0%</td><td class="text-right">8</td><td class="text-right">72</td></tr>
+       <tr><td><a href="ServiceDisconnectedNotification.php.html#13">App\Notifications\ServiceDisconnectedNotification</a></td><td class="text-right">0.0%</td><td class="text-right">8</td><td class="text-right">72</td></tr>
+       <tr><td><a href="TenantInvoiceNotification.php.html#12">App\Notifications\TenantInvoiceNotification</a></td><td class="text-right">0.0%</td><td class="text-right">6</td><td class="text-right">42</td></tr>
+       <tr><td><a href="TenantPaymentReceiptNotification.php.html#12">App\Notifications\TenantPaymentReceiptNotification</a></td><td class="text-right">0.0%</td><td class="text-right">6</td><td class="text-right">42</td></tr>
+       <tr><td><a href="TenantSubscriptionExpiryWarning.php.html#12">App\Notifications\TenantSubscriptionExpiryWarning</a></td><td class="text-right">0.0%</td><td class="text-right">6</td><td class="text-right">42</td></tr>
+       <tr><td><a href="PppoePaymentReceiptNotification.php.html#12">App\Notifications\PppoePaymentReceiptNotification</a></td><td class="text-right">0.0%</td><td class="text-right">4</td><td class="text-right">20</td></tr>
+
+       </tbody>
+      </table>
+     </div>
+    </div>
+   </div>
+   <div class="row">
+    <div class="col-md-12">
+     <h2 style="margin-top: 3rem;">Methods</h2>
+    </div>
+   </div>
+   <div class="row">
+    <div class="col-md-6">
+     <h3>Coverage Distribution</h3>
+     <div id="methodsCoverageDistribution" style="height: 300px;">
+       <svg></svg>
+     </div>
+    </div>
+    <div class="col-md-6">
+     <h3>Complexity</h3>
+     <div id="methodComplexity" style="height: 300px;">
+       <svg></svg>
+     </div>
+    </div>
+   </div>
+   <div class="row">
+    <div class="col-md-6">
+     <h3 style="margin-top: 2rem;">Insufficient Coverage</h3>
+     <div class="scrollbox">
+      <table class="table">
+       <thead>
+        <tr>
+         <th>Method</th>
+         <th class="text-right">Coverage</th>
+        </tr>
+       </thead>
+       <tbody>
+       <tr><td><a href="GracePeriodWarningNotification.php.html#20"><abbr title="App\Notifications\GracePeriodWarningNotification::__construct">__construct</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="GracePeriodWarningNotification.php.html#30"><abbr title="App\Notifications\GracePeriodWarningNotification::via">via</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="GracePeriodWarningNotification.php.html#48"><abbr title="App\Notifications\GracePeriodWarningNotification::toMail">toMail</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="GracePeriodWarningNotification.php.html#69"><abbr title="App\Notifications\GracePeriodWarningNotification::toWhatsApp">toWhatsApp</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="GracePeriodWarningNotification.php.html#109"><abbr title="App\Notifications\GracePeriodWarningNotification::toArray">toArray</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="PaymentDueReminderNotification.php.html#20"><abbr title="App\Notifications\PaymentDueReminderNotification::__construct">__construct</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="PaymentDueReminderNotification.php.html#30"><abbr title="App\Notifications\PaymentDueReminderNotification::via">via</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="PaymentDueReminderNotification.php.html#50"><abbr title="App\Notifications\PaymentDueReminderNotification::toMail">toMail</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="PaymentDueReminderNotification.php.html#71"><abbr title="App\Notifications\PaymentDueReminderNotification::toWhatsApp">toWhatsApp</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="PaymentDueReminderNotification.php.html#109"><abbr title="App\Notifications\PaymentDueReminderNotification::toArray">toArray</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="PppoeInvoiceNotification.php.html#15"><abbr title="App\Notifications\PppoeInvoiceNotification::__construct">__construct</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="PppoeInvoiceNotification.php.html#22"><abbr title="App\Notifications\PppoeInvoiceNotification::via">via</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="PppoeInvoiceNotification.php.html#27"><abbr title="App\Notifications\PppoeInvoiceNotification::toMail">toMail</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="PppoeMonthlyPaymentReportNotification.php.html#14"><abbr title="App\Notifications\PppoeMonthlyPaymentReportNotification::__construct">__construct</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="PppoeMonthlyPaymentReportNotification.php.html#22"><abbr title="App\Notifications\PppoeMonthlyPaymentReportNotification::via">via</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="PppoeMonthlyPaymentReportNotification.php.html#27"><abbr title="App\Notifications\PppoeMonthlyPaymentReportNotification::toMail">toMail</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="PppoePaymentReceiptNotification.php.html#16"><abbr title="App\Notifications\PppoePaymentReceiptNotification::__construct">__construct</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="PppoePaymentReceiptNotification.php.html#24"><abbr title="App\Notifications\PppoePaymentReceiptNotification::via">via</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="PppoePaymentReceiptNotification.php.html#29"><abbr title="App\Notifications\PppoePaymentReceiptNotification::toMail">toMail</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="PppoePaymentReminderNotification.php.html#15"><abbr title="App\Notifications\PppoePaymentReminderNotification::__construct">__construct</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="PppoePaymentReminderNotification.php.html#23"><abbr title="App\Notifications\PppoePaymentReminderNotification::via">via</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="PppoePaymentReminderNotification.php.html#28"><abbr title="App\Notifications\PppoePaymentReminderNotification::toMail">toMail</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="ServiceDisconnectedNotification.php.html#20"><abbr title="App\Notifications\ServiceDisconnectedNotification::__construct">__construct</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="ServiceDisconnectedNotification.php.html#30"><abbr title="App\Notifications\ServiceDisconnectedNotification::via">via</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="ServiceDisconnectedNotification.php.html#48"><abbr title="App\Notifications\ServiceDisconnectedNotification::toMail">toMail</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="ServiceDisconnectedNotification.php.html#64"><abbr title="App\Notifications\ServiceDisconnectedNotification::toWhatsApp">toWhatsApp</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="ServiceDisconnectedNotification.php.html#97"><abbr title="App\Notifications\ServiceDisconnectedNotification::toArray">toArray</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="ServiceReconnectedNotification.php.html#19"><abbr title="App\Notifications\ServiceReconnectedNotification::__construct">__construct</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="ServiceReconnectedNotification.php.html#28"><abbr title="App\Notifications\ServiceReconnectedNotification::via">via</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="ServiceReconnectedNotification.php.html#46"><abbr title="App\Notifications\ServiceReconnectedNotification::toMail">toMail</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="ServiceReconnectedNotification.php.html#67"><abbr title="App\Notifications\ServiceReconnectedNotification::toWhatsApp">toWhatsApp</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="ServiceReconnectedNotification.php.html#104"><abbr title="App\Notifications\ServiceReconnectedNotification::toArray">toArray</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="TenantCredentialsEmail.php.html#20"><abbr title="App\Notifications\TenantCredentialsEmail::__construct">__construct</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="TenantCredentialsEmail.php.html#34"><abbr title="App\Notifications\TenantCredentialsEmail::via">via</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="TenantCredentialsEmail.php.html#39"><abbr title="App\Notifications\TenantCredentialsEmail::toMail">toMail</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="TenantDisconnectionNotification.php.html#22"><abbr title="App\Notifications\TenantDisconnectionNotification::__construct">__construct</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="TenantDisconnectionNotification.php.html#32"><abbr title="App\Notifications\TenantDisconnectionNotification::via">via</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="TenantDisconnectionNotification.php.html#40"><abbr title="App\Notifications\TenantDisconnectionNotification::toMail">toMail</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="TenantDisconnectionNotification.php.html#73"><abbr title="App\Notifications\TenantDisconnectionNotification::toDatabase">toDatabase</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="TenantDisconnectionNotification.php.html#91"><abbr title="App\Notifications\TenantDisconnectionNotification::toArray">toArray</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="TenantEmailVerification.php.html#20"><abbr title="App\Notifications\TenantEmailVerification::__construct">__construct</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="TenantEmailVerification.php.html#28"><abbr title="App\Notifications\TenantEmailVerification::via">via</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="TenantEmailVerification.php.html#33"><abbr title="App\Notifications\TenantEmailVerification::toMail">toMail</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="TenantEmailVerification.php.html#52"><abbr title="App\Notifications\TenantEmailVerification::verificationUrl">verificationUrl</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="TenantInvoiceNotification.php.html#23"><abbr title="App\Notifications\TenantInvoiceNotification::__construct">__construct</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="TenantInvoiceNotification.php.html#34"><abbr title="App\Notifications\TenantInvoiceNotification::via">via</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="TenantInvoiceNotification.php.html#42"><abbr title="App\Notifications\TenantInvoiceNotification::toMail">toMail</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="TenantInvoiceNotification.php.html#93"><abbr title="App\Notifications\TenantInvoiceNotification::toDatabase">toDatabase</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="TenantInvoiceNotification.php.html#115"><abbr title="App\Notifications\TenantInvoiceNotification::toArray">toArray</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="TenantPaymentReceiptNotification.php.html#23"><abbr title="App\Notifications\TenantPaymentReceiptNotification::__construct">__construct</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="TenantPaymentReceiptNotification.php.html#34"><abbr title="App\Notifications\TenantPaymentReceiptNotification::via">via</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="TenantPaymentReceiptNotification.php.html#42"><abbr title="App\Notifications\TenantPaymentReceiptNotification::toMail">toMail</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="TenantPaymentReceiptNotification.php.html#78"><abbr title="App\Notifications\TenantPaymentReceiptNotification::toDatabase">toDatabase</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="TenantPaymentReceiptNotification.php.html#101"><abbr title="App\Notifications\TenantPaymentReceiptNotification::toArray">toArray</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="TenantSubscriptionExpiryWarning.php.html#23"><abbr title="App\Notifications\TenantSubscriptionExpiryWarning::__construct">__construct</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="TenantSubscriptionExpiryWarning.php.html#34"><abbr title="App\Notifications\TenantSubscriptionExpiryWarning::via">via</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="TenantSubscriptionExpiryWarning.php.html#42"><abbr title="App\Notifications\TenantSubscriptionExpiryWarning::toMail">toMail</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="TenantSubscriptionExpiryWarning.php.html#83"><abbr title="App\Notifications\TenantSubscriptionExpiryWarning::toDatabase">toDatabase</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="TenantSubscriptionExpiryWarning.php.html#103"><abbr title="App\Notifications\TenantSubscriptionExpiryWarning::toArray">toArray</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="VerifyEmailNotification.php.html#18"><abbr title="App\Notifications\VerifyEmailNotification::__construct">__construct</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="VerifyEmailNotification.php.html#26"><abbr title="App\Notifications\VerifyEmailNotification::via">via</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="VerifyEmailNotification.php.html#34"><abbr title="App\Notifications\VerifyEmailNotification::toMail">toMail</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="VerifyEmailNotification.php.html#52"><abbr title="App\Notifications\VerifyEmailNotification::verificationUrl">verificationUrl</abbr></a></td><td class="text-right">0%</td></tr>
+       <tr><td><a href="VerifyEmailNotification.php.html#67"><abbr title="App\Notifications\VerifyEmailNotification::toArray">toArray</abbr></a></td><td class="text-right">0%</td></tr>
+
+       </tbody>
+      </table>
+     </div>
+    </div>
+    <div class="col-md-6">
+     <h3 style="margin-top: 2rem;">Project Risks</h3>
+     <div class="scrollbox">
+      <table class="table">
+       <thead>
+        <tr>
+         <th>Method</th>
+         <th class="text-right">Coverage</th>
+         <th class="text-right">Complexity</th>
+         <th class="text-right"><abbr title="Change Risk Anti-Patterns (CRAP) Index">CRAP</abbr></th>
+        </tr>
+       </thead>
+       <tbody>
+       <tr><td><a href="GracePeriodWarningNotification.php.html#30"><abbr title="App\Notifications\GracePeriodWarningNotification::via">via</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">3</td><td class="text-right">12</td></tr>
+       <tr><td><a href="PaymentDueReminderNotification.php.html#30"><abbr title="App\Notifications\PaymentDueReminderNotification::via">via</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">3</td><td class="text-right">12</td></tr>
+       <tr><td><a href="ServiceDisconnectedNotification.php.html#30"><abbr title="App\Notifications\ServiceDisconnectedNotification::via">via</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">3</td><td class="text-right">12</td></tr>
+       <tr><td><a href="ServiceReconnectedNotification.php.html#28"><abbr title="App\Notifications\ServiceReconnectedNotification::via">via</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">3</td><td class="text-right">12</td></tr>
+       <tr><td><a href="ServiceReconnectedNotification.php.html#67"><abbr title="App\Notifications\ServiceReconnectedNotification::toWhatsApp">toWhatsApp</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">3</td><td class="text-right">12</td></tr>
+       <tr><td><a href="GracePeriodWarningNotification.php.html#69"><abbr title="App\Notifications\GracePeriodWarningNotification::toWhatsApp">toWhatsApp</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">2</td><td class="text-right">6</td></tr>
+       <tr><td><a href="PaymentDueReminderNotification.php.html#71"><abbr title="App\Notifications\PaymentDueReminderNotification::toWhatsApp">toWhatsApp</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">2</td><td class="text-right">6</td></tr>
+       <tr><td><a href="PppoePaymentReceiptNotification.php.html#29"><abbr title="App\Notifications\PppoePaymentReceiptNotification::toMail">toMail</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">2</td><td class="text-right">6</td></tr>
+       <tr><td><a href="ServiceDisconnectedNotification.php.html#64"><abbr title="App\Notifications\ServiceDisconnectedNotification::toWhatsApp">toWhatsApp</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">2</td><td class="text-right">6</td></tr>
+       <tr><td><a href="ServiceReconnectedNotification.php.html#46"><abbr title="App\Notifications\ServiceReconnectedNotification::toMail">toMail</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">2</td><td class="text-right">6</td></tr>
+       <tr><td><a href="TenantInvoiceNotification.php.html#42"><abbr title="App\Notifications\TenantInvoiceNotification::toMail">toMail</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">2</td><td class="text-right">6</td></tr>
+       <tr><td><a href="TenantPaymentReceiptNotification.php.html#42"><abbr title="App\Notifications\TenantPaymentReceiptNotification::toMail">toMail</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">2</td><td class="text-right">6</td></tr>
+       <tr><td><a href="TenantSubscriptionExpiryWarning.php.html#42"><abbr title="App\Notifications\TenantSubscriptionExpiryWarning::toMail">toMail</abbr></a></td><td class="text-right">0.0%</td><td class="text-right">2</td><td class="text-right">6</td></tr>
+
+       </tbody>
+      </table>
+     </div>
+    </div>
+   </div>
+   <footer>
+    <hr/>
+    <p>
+     <small>Generated by <a href="https://github.com/sebastianbergmann/php-code-coverage" target="_top">php-code-coverage 12.5.3</a> using <a href="https://www.php.net/" target="_top">PHP 8.4.14</a> and <a href="https://phpunit.de/">PHPUnit 12.5.14</a> at Mon Mar 23 2:34:34 EAT 2026.</small>
+    </p>
+   </footer>
+  </div>
+  <script src="../_js/billboard.pkgd.min.js?v=12.5.3" type="text/javascript"></script>
+  <script type="application/json" id="complexity_class">[[0,8,"GracePeriodWarningNotification.php.html#13","App\\Notifications\\GracePeriodWarningNotification","72"],[0,8,"PaymentDueReminderNotification.php.html#13","App\\Notifications\\PaymentDueReminderNotification","72"],[0,3,"PppoeInvoiceNotification.php.html#11","App\\Notifications\\PppoeInvoiceNotification","12"],[0,3,"PppoeMonthlyPaymentReportNotification.php.html#10","App\\Notifications\\PppoeMonthlyPaymentReportNotification","12"],[0,4,"PppoePaymentReceiptNotification.php.html#12","App\\Notifications\\PppoePaymentReceiptNotification","20"],[0,3,"PppoePaymentReminderNotification.php.html#11","App\\Notifications\\PppoePaymentReminderNotification","12"],[0,8,"ServiceDisconnectedNotification.php.html#13","App\\Notifications\\ServiceDisconnectedNotification","72"],[0,10,"ServiceReconnectedNotification.php.html#13","App\\Notifications\\ServiceReconnectedNotification","110"],[0,3,"TenantCredentialsEmail.php.html#10","App\\Notifications\\TenantCredentialsEmail","12"],[0,5,"TenantDisconnectionNotification.php.html#12","App\\Notifications\\TenantDisconnectionNotification","30"],[0,4,"TenantEmailVerification.php.html#11","App\\Notifications\\TenantEmailVerification","20"],[0,6,"TenantInvoiceNotification.php.html#12","App\\Notifications\\TenantInvoiceNotification","42"],[0,6,"TenantPaymentReceiptNotification.php.html#12","App\\Notifications\\TenantPaymentReceiptNotification","42"],[0,6,"TenantSubscriptionExpiryWarning.php.html#12","App\\Notifications\\TenantSubscriptionExpiryWarning","42"],[0,5,"VerifyEmailNotification.php.html#11","App\\Notifications\\VerifyEmailNotification","30"]]</script>
+  <script type="application/json" id="complexity_method">[[0,1,"GracePeriodWarningNotification.php.html#20","App\\Notifications\\GracePeriodWarningNotification::__construct","2"],[0,3,"GracePeriodWarningNotification.php.html#30","App\\Notifications\\GracePeriodWarningNotification::via","12"],[0,1,"GracePeriodWarningNotification.php.html#48","App\\Notifications\\GracePeriodWarningNotification::toMail","2"],[0,2,"GracePeriodWarningNotification.php.html#69","App\\Notifications\\GracePeriodWarningNotification::toWhatsApp","6"],[0,1,"GracePeriodWarningNotification.php.html#109","App\\Notifications\\GracePeriodWarningNotification::toArray","2"],[0,1,"PaymentDueReminderNotification.php.html#20","App\\Notifications\\PaymentDueReminderNotification::__construct","2"],[0,3,"PaymentDueReminderNotification.php.html#30","App\\Notifications\\PaymentDueReminderNotification::via","12"],[0,1,"PaymentDueReminderNotification.php.html#50","App\\Notifications\\PaymentDueReminderNotification::toMail","2"],[0,2,"PaymentDueReminderNotification.php.html#71","App\\Notifications\\PaymentDueReminderNotification::toWhatsApp","6"],[0,1,"PaymentDueReminderNotification.php.html#109","App\\Notifications\\PaymentDueReminderNotification::toArray","2"],[0,1,"PppoeInvoiceNotification.php.html#15","App\\Notifications\\PppoeInvoiceNotification::__construct","2"],[0,1,"PppoeInvoiceNotification.php.html#22","App\\Notifications\\PppoeInvoiceNotification::via","2"],[0,1,"PppoeInvoiceNotification.php.html#27","App\\Notifications\\PppoeInvoiceNotification::toMail","2"],[0,1,"PppoeMonthlyPaymentReportNotification.php.html#14","App\\Notifications\\PppoeMonthlyPaymentReportNotification::__construct","2"],[0,1,"PppoeMonthlyPaymentReportNotification.php.html#22","App\\Notifications\\PppoeMonthlyPaymentReportNotification::via","2"],[0,1,"PppoeMonthlyPaymentReportNotification.php.html#27","App\\Notifications\\PppoeMonthlyPaymentReportNotification::toMail","2"],[0,1,"PppoePaymentReceiptNotification.php.html#16","App\\Notifications\\PppoePaymentReceiptNotification::__construct","2"],[0,1,"PppoePaymentReceiptNotification.php.html#24","App\\Notifications\\PppoePaymentReceiptNotification::via","2"],[0,2,"PppoePaymentReceiptNotification.php.html#29","App\\Notifications\\PppoePaymentReceiptNotification::toMail","6"],[0,1,"PppoePaymentReminderNotification.php.html#15","App\\Notifications\\PppoePaymentReminderNotification::__construct","2"],[0,1,"PppoePaymentReminderNotification.php.html#23","App\\Notifications\\PppoePaymentReminderNotification::via","2"],[0,1,"PppoePaymentReminderNotification.php.html#28","App\\Notifications\\PppoePaymentReminderNotification::toMail","2"],[0,1,"ServiceDisconnectedNotification.php.html#20","App\\Notifications\\ServiceDisconnectedNotification::__construct","2"],[0,3,"ServiceDisconnectedNotification.php.html#30","App\\Notifications\\ServiceDisconnectedNotification::via","12"],[0,1,"ServiceDisconnectedNotification.php.html#48","App\\Notifications\\ServiceDisconnectedNotification::toMail","2"],[0,2,"ServiceDisconnectedNotification.php.html#64","App\\Notifications\\ServiceDisconnectedNotification::toWhatsApp","6"],[0,1,"ServiceDisconnectedNotification.php.html#97","App\\Notifications\\ServiceDisconnectedNotification::toArray","2"],[0,1,"ServiceReconnectedNotification.php.html#19","App\\Notifications\\ServiceReconnectedNotification::__construct","2"],[0,3,"ServiceReconnectedNotification.php.html#28","App\\Notifications\\ServiceReconnectedNotification::via","12"],[0,2,"ServiceReconnectedNotification.php.html#46","App\\Notifications\\ServiceReconnectedNotification::toMail","6"],[0,3,"ServiceReconnectedNotification.php.html#67","App\\Notifications\\ServiceReconnectedNotification::toWhatsApp","12"],[0,1,"ServiceReconnectedNotification.php.html#104","App\\Notifications\\ServiceReconnectedNotification::toArray","2"],[0,1,"TenantCredentialsEmail.php.html#20","App\\Notifications\\TenantCredentialsEmail::__construct","2"],[0,1,"TenantCredentialsEmail.php.html#34","App\\Notifications\\TenantCredentialsEmail::via","2"],[0,1,"TenantCredentialsEmail.php.html#39","App\\Notifications\\TenantCredentialsEmail::toMail","2"],[0,1,"TenantDisconnectionNotification.php.html#22","App\\Notifications\\TenantDisconnectionNotification::__construct","2"],[0,1,"TenantDisconnectionNotification.php.html#32","App\\Notifications\\TenantDisconnectionNotification::via","2"],[0,1,"TenantDisconnectionNotification.php.html#40","App\\Notifications\\TenantDisconnectionNotification::toMail","2"],[0,1,"TenantDisconnectionNotification.php.html#73","App\\Notifications\\TenantDisconnectionNotification::toDatabase","2"],[0,1,"TenantDisconnectionNotification.php.html#91","App\\Notifications\\TenantDisconnectionNotification::toArray","2"],[0,1,"TenantEmailVerification.php.html#20","App\\Notifications\\TenantEmailVerification::__construct","2"],[0,1,"TenantEmailVerification.php.html#28","App\\Notifications\\TenantEmailVerification::via","2"],[0,1,"TenantEmailVerification.php.html#33","App\\Notifications\\TenantEmailVerification::toMail","2"],[0,1,"TenantEmailVerification.php.html#52","App\\Notifications\\TenantEmailVerification::verificationUrl","2"],[0,1,"TenantInvoiceNotification.php.html#23","App\\Notifications\\TenantInvoiceNotification::__construct","2"],[0,1,"TenantInvoiceNotification.php.html#34","App\\Notifications\\TenantInvoiceNotification::via","2"],[0,2,"TenantInvoiceNotification.php.html#42","App\\Notifications\\TenantInvoiceNotification::toMail","6"],[0,1,"TenantInvoiceNotification.php.html#93","App\\Notifications\\TenantInvoiceNotification::toDatabase","2"],[0,1,"TenantInvoiceNotification.php.html#115","App\\Notifications\\TenantInvoiceNotification::toArray","2"],[0,1,"TenantPaymentReceiptNotification.php.html#23","App\\Notifications\\TenantPaymentReceiptNotification::__construct","2"],[0,1,"TenantPaymentReceiptNotification.php.html#34","App\\Notifications\\TenantPaymentReceiptNotification::via","2"],[0,2,"TenantPaymentReceiptNotification.php.html#42","App\\Notifications\\TenantPaymentReceiptNotification::toMail","6"],[0,1,"TenantPaymentReceiptNotification.php.html#78","App\\Notifications\\TenantPaymentReceiptNotification::toDatabase","2"],[0,1,"TenantPaymentReceiptNotification.php.html#101","App\\Notifications\\TenantPaymentReceiptNotification::toArray","2"],[0,1,"TenantSubscriptionExpiryWarning.php.html#23","App\\Notifications\\TenantSubscriptionExpiryWarning::__construct","2"],[0,1,"TenantSubscriptionExpiryWarning.php.html#34","App\\Notifications\\TenantSubscriptionExpiryWarning::via","2"],[0,2,"TenantSubscriptionExpiryWarning.php.html#42","App\\Notifications\\TenantSubscriptionExpiryWarning::toMail","6"],[0,1,"TenantSubscriptionExpiryWarning.php.html#83","App\\Notifications\\TenantSubscriptionExpiryWarning::toDatabase","2"],[0,1,"TenantSubscriptionExpiryWarning.php.html#103","App\\Notifications\\TenantSubscriptionExpiryWarning::toArray","2"],[0,1,"VerifyEmailNotification.php.html#18","App\\Notifications\\VerifyEmailNotification::__construct","2"],[0,1,"VerifyEmailNotification.php.html#26","App\\Notifications\\VerifyEmailNotification::via","2"],[0,1,"VerifyEmailNotification.php.html#34","App\\Notifications\\VerifyEmailNotification::toMail","2"],[0,1,"VerifyEmailNotification.php.html#52","App\\Notifications\\VerifyEmailNotification::verificationUrl","2"],[0,1,"VerifyEmailNotification.php.html#67","App\\Notifications\\VerifyEmailNotification::toArray","2"]]</script>
+  <script type="text/javascript" defer>
+  const barLabels = [
+    '0%',
+    '0-10%',
+    '10-20%',
+    '20-30%',
+    '30-40%',
+    '40-50%',
+    '50-60%',
+    '60-70%',
+    '70-80%',
+    '80-90%',
+    '90-100%',
+    '100%'
+  ];
+  const barConfig = (name, fullName, values) => ({
+    axis: {
+      x: {
+        type: "category",
+        categories: barLabels,
+      },
+      y: {
+        label: {
+          text: `#${name}`,
+          position: 'outer-top',
+        },
+      },
+    },
+    bindto: `#${name}CoverageDistribution`,
+    data: {
+      columns: [
+        [fullName].concat(values),
+      ],
+      colors: {
+        [fullName]: "rgba(69, 114, 167, 0.75)",
+      },
+      type: "bar",
+    },
+    bar: {
+      width: {
+        ratio: 0.9,
+      },
+    },
+    grid: {
+      focus: {
+        show: false,
+      },
+      x: {
+        show: true,
+      },
+      y: {
+        show: true,
+      },
+    },
+    legend: {
+      show: false,
+    },
+    tooltip: {
+      contents: function (data) {
+        return `<table class="bb-tooltip"><tbody>
+            <tr><th colspan="2">Coverage ${barLabels[data[0].x]}</th></tr>
+            <tr><td class="value">${data[0].value} ${name}</td></tr>
+          </tbody></table>`;
+      },
+      grouped: false,
+    },
+  });
+  bb.generate(
+    barConfig('classes', "Class Coverage", [15,0,0,0,0,0,0,0,0,0,0,0])
+  );
+  bb.generate(
+    barConfig('methods', "Method Coverage", [64,0,0,0,0,0,0,0,0,0,0,0])
+  );
+
+  const scatterConfig = (name, complexityData) => ({
+    axis: {
+      x: {
+        label: {
+          text: 'Code Coverage (in percent)',
+          position: 'outer-right',
+        },
+        tick: {
+          values: [0, 20, 40, 60, 80, 100],
+        },
+      },
+      y: {
+        label: {
+          text: 'Cyclomatic Complexity',
+          position: 'outer-top',
+        },
+        min: 0,
+        padding: {
+          bottom: 0,
+          top: 5,
+        },
+      },
+    },
+    bindto: `#${name}Complexity`,
+    data: {
+      columns: [
+        ["complexity_x"].concat(complexityData.map(d => d[0])),
+        ["complexity"].concat(complexityData.map(d => d[1])),
+      ],
+      onclick: function(data, element) {
+        window.location = complexityData[data.index][2];
+      },
+      type: "scatter",
+      xs: {
+        "complexity": "complexity_x",
+      },
+    },
+    grid: {
+      focus: {
+        show: true,
+        y: true,
+      },
+      x: {
+        show: true,
+      },
+      y: {
+        show: true,
+      },
+    },
+    legend: {
+      show: false,
+    },
+    tooltip: {
+      contents: function (data) {
+        const coverage = Math.round(data[0].x);
+        const complexity = data[0].value;
+        const targetName = complexityData[data[0].index][3];
+        const crap = complexityData[data[0].index][4];
+        return `<table class="bb-tooltip"><tbody>
+            <tr><th colspan="2">${targetName}</th></tr>
+            <tr class="bb-tooltip-name-complexity"><td>Coverage</td><td class="name">${coverage}%</td></tr>
+            <tr class="bb-tooltip-name-complexity"><td>Complexity</td><td class="value">${complexity}</td></tr>
+            <tr class="bb-tooltip-name-complexity"><td>Crap</td><td class="value">${crap}</td></tr>
+          </tbody></table>`;
+      },
+      grouped: false,
+    },
+  });
+  const classComplexityData = JSON.parse(document.getElementById('complexity_class').textContent);
+  bb.generate(
+    scatterConfig("class", classComplexityData)
+  );
+  const methodComplexityData = JSON.parse(document.getElementById('complexity_method').textContent);
+  bb.generate(
+    scatterConfig("method", methodComplexityData),
+  );
+  </script>
+ </body>
+</html>

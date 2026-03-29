@@ -163,6 +163,8 @@ class PaymentController extends Controller
                 'ResultCode' => 0
             ]);
 
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            throw $e;
         } catch (\Exception $e) {
             $this->logToSystemAndFile('STK Push initiation failed', [
                 'error' => $e->getMessage(),
@@ -353,7 +355,11 @@ class PaymentController extends Controller
     protected function logToSystemAndFile(string $action, array $details, string $logLevel = 'info'): void
     {
         $sanitizedDetails = $this->sanitizeLogData($details);
-        SystemLog::create(['action' => $action, 'details' => $sanitizedDetails]);
+        try {
+            SystemLog::create(['action' => $action, 'details' => $sanitizedDetails]);
+        } catch (\Throwable $e) {
+            Log::warning('SystemLog::create failed', ['action' => $action, 'error' => $e->getMessage()]);
+        }
         Log::$logLevel($action, $sanitizedDetails);
     }
 

@@ -22,6 +22,9 @@
         "pusher/pusher-php-server": "^7.2"
     },
     "require-dev": {
+        "mockery/mockery": "^1.6",
+        "pestphp/pest": "^4.4",
+        "pestphp/pest-plugin-laravel": "^4.1"
     },
 
     "autoload": {

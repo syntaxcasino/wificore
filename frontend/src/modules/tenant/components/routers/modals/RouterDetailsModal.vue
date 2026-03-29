@@ -4,7 +4,7 @@
     title="Router Details"
     :subtitle="routerDetails.name || 'Complete device information'"
     icon="Wifi"
-    width="50%"
+    width="480px"
     @update:model-value="val => { if (!val) $emit('close-details') }"
     @close="$emit('close-details')"
   >

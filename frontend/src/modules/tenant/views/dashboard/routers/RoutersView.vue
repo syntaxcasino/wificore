@@ -25,8 +25,8 @@
 
     <!-- Action Buttons -->
     <template #actions>
-      <BaseButton @click="openCreateOverlay" variant="primary" size="sm" class="shrink-0 h-8 px-3">
-        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 mr-1.5" viewBox="0 0 20 20" fill="currentColor">
+      <BaseButton @click="openCreateOverlay" variant="primary" size="sm" class="shrink-0 h-8 px-3 text-xs">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 mr-1" viewBox="0 0 20 20" fill="currentColor">
           <path fill-rule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clip-rule="evenodd" />
         </svg>
         Add Router
@@ -146,10 +146,11 @@
       </div>
 
       <!-- Desktop Table -->
-      <div class="hidden md:flex bg-white border border-slate-200 shadow-sm overflow-hidden flex-col min-h-0 flex-1">
-        <div class="overflow-x-auto overflow-y-auto flex-1 min-h-0">
+      <div class="hidden md:flex bg-white border-x border-t border-slate-200 flex-col min-h-0 flex-1">
+        <!-- Fixed Header -->
+        <div class="bg-slate-50 border-b border-slate-200">
           <table class="w-full">
-            <thead class="bg-slate-50 border-b border-slate-200 sticky top-0 z-[5]">
+            <thead>
               <tr>
                 <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
                   <div class="flex items-center gap-2"><div class="w-7 h-7"></div><span>Router</span></div>
@@ -164,6 +165,11 @@
                 <th class="px-6 py-3 text-right text-xs font-semibold text-slate-700 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
+          </table>
+        </div>
+        <!-- Scrollable Body -->
+        <div class="overflow-y-auto flex-1 min-h-0">
+          <table class="w-full">
             <tbody class="divide-y divide-slate-100">
               <tr v-for="router in paginatedRouters" :key="router.id" class="hover:bg-blue-50/50 transition-colors cursor-pointer group" @click="openDetails(router)">
                 <td class="px-6 py-4">
@@ -256,7 +262,7 @@
       </div>
 
       <!-- Pagination -->
-      <DataPagination v-model:current-page="currentPage" v-model:items-per-page="itemsPerPage" :total-pages="totalPages" :total-items="filteredRouters.length" item-name="routers" class="mt-auto" />
+      <DataPagination v-model:current-page="currentPage" v-model:items-per-page="itemsPerPage" :total-pages="totalPages" :total-items="filteredRouters.length" item-name="routers" />
 
       <!-- Global Dropdown Menu Portal -->
       <Teleport to="body">
@@ -274,7 +280,7 @@
             Reprovision
           </button>
           <div class="border-t border-slate-200 my-1"></div>
-          <button @click="handleDelete(routers.find(r => r.id === activeMenu))" class="flex items-center w-full px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors">
+          <button @click.stop="handleDelete(routers.find(r => r.id === activeMenu))" class="flex items-center w-full px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors">
             <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
             </svg>
@@ -310,6 +316,7 @@
 
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { useToast } from '@/modules/common/composables/useToast.js'
 import { useRouters } from '@/modules/tenant/composables/data/useRouters'
 import { useConfirmStore } from '@/stores/confirm'
 import { useRouterUtils } from '@/modules/common/composables/utils/useRouterUtils'
@@ -324,6 +331,8 @@ import UpdateOverlay from '@/modules/tenant/components/routers/modals/UpdateRout
 import DetailsOverlay from '@/modules/tenant/components/routers/modals/RouterDetailsModal.vue'
 
 const confirmStore = useConfirmStore()
+
+const { error: showError, success: showSuccess } = useToast()
 
 const {
   routers, loading, refreshing, listError, formError, detailsError, detailsLoading,
@@ -444,27 +453,54 @@ const handleReProv = (router) => {
 
 const handleReprovision = async (router) => {
   if (!router) return
-  const confirmed = await confirmStore.confirm(`Reprovision router ${router.name}? This will regenerate all configurations.`)
+  
+  // Hide menu immediately before showing dialog
+  activeMenu.value = null
+  menuPosition.value = {}
+  
+  const confirmed = await confirmStore.open({
+    title: 'Reprovision Router',
+    message: `Reprovision router ${router.name}? This will regenerate all configurations.`,
+    confirmText: 'Reprovision',
+    cancelText: 'Cancel',
+    variant: 'info'
+  })
   if (!confirmed) return
   try {
     await generateConfigs(router.id)
+    showSuccess('Configuration generated successfully')
     await fetchRouters()
   } catch (err) {
+    const errorMessage = err.response?.data?.error || err.message || 'Failed to generate configuration'
+    showError(`Reprovision failed: ${errorMessage}`)
     console.error('Reprovision error:', err)
   }
 }
 
 const handleDelete = async (router) => {
   if (!router) return
+  
+  // Hide menu immediately before showing dialog
   activeMenu.value = null
   menuPosition.value = {}
-  const confirmed = await confirmStore.confirm(`Delete router ${router.name}? This action cannot be undone.`)
+  
+  const confirmed = await confirmStore.open({
+    title: 'Delete Router',
+    message: `Delete router ${router.name}? This action cannot be undone.`,
+    confirmText: 'Delete',
+    cancelText: 'Cancel',
+    variant: 'danger'
+  })
+  
   if (!confirmed) return
+  
   try {
     await deleteRouter(router.id)
+    showSuccess('Router deleted successfully')
     await fetchRouters()
   } catch (err) {
-    console.error('Delete error:', err)
+    const errorMessage = err.response?.data?.error || err.message || 'Failed to delete router'
+    showError(`Delete failed: ${errorMessage}`)
   }
 }
 

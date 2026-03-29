@@ -70,7 +70,7 @@
       title="Router Provisioning"
       :subtitle="provisioningRouter ? provisioningRouter.name : 'Configure your MikroTik router'"
       icon="Wifi"
-      width="50%"
+      width="480px"
       :close-on-backdrop="!waitingForJobCompletion"
       @update:model-value="val => { if (!val) $emit('close-form') }"
       @close="$emit('close-form')"
@@ -498,43 +498,72 @@
         </div>
 
       <template #footer>
-        <div class="flex justify-end items-center space-x-2">
+        <div class="flex gap-3">
+            <!-- Stage 1: Initial - Create Router -->
+            <button
+              v-if="currentStage === 1 && !initialConfig"
+              @click="$emit('close-form')"
+              class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+            >
+              Cancel
+            </button>
             <button
               v-if="currentStage === 1 && !initialConfig"
               @click="createRouterWithConfig"
               :disabled="!routerName || formSubmitting"
-              class="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              class="flex-1 px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {{ formSubmitting ? 'Creating...' : 'Create Router' }}
+            </button>
+
+            <!-- Stage 1: After Config Created - Continue -->
+            <button
+              v-if="currentStage === 1 && initialConfig"
+              @click="$emit('close-form')"
+              class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+            >
+              Close
             </button>
             <button
               v-if="currentStage === 1 && initialConfig"
               @click="continueToMonitoring"
-              class="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors"
+              class="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
             >
               Continue →
+            </button>
+
+            <!-- Stage 3: Deploying - Confirm & Deploy -->
+            <button
+              v-if="currentStage === 3 && provisioningProgress < 100"
+              @click="$emit('close-form')"
+              :disabled="mappingDeploying"
+              class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-50"
+            >
+              Cancel
             </button>
             <button
               v-if="currentStage === 3 && provisioningProgress < 100"
               @click="confirmServiceMappingAndDeploy"
               :disabled="mappingDeploying"
-              class="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              class="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <span>{{ mappingDeploying ? 'Deploying...' : 'Confirm & Deploy' }}</span>
+              {{ mappingDeploying ? 'Deploying...' : 'Confirm & Deploy' }}
             </button>
+
+            <!-- Stage 3: Complete - Add Another or Done -->
             <button
               v-if="currentStage === 3 && provisioningProgress >= 100"
               @click="resetForm; $emit('close-form')"
-              class="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors flex items-center space-x-2"
+              class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
             >
-              <span>Add Another Router</span>
+              Add Another Router
             </button>
             <button
               v-if="currentStage === 3 && provisioningProgress >= 100"
               @click="$emit('close-form'); $emit('refresh-routers')"
-              class="px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-md transition-colors flex items-center space-x-2"
+              class="flex-1 px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors"
             >
-              <span>Done - View Dashboard</span>
+              Done - View Dashboard
             </button>
         </div>
       </template>

@@ -747,6 +747,151 @@ SCRIPT;
 
         return $result;
     }
+
+    /**
+     * Apply configuration via MikroTik REST API for low-end devices
+     * This avoids SSH connection timeout issues on hAP lite and similar devices
+     * 
+     * @param Router $router The router to configure
+     * @param array $config Configuration array extracted from service parameters
+     * @param bool $broadcast Whether to broadcast progress events
+     * @return array Result of the operation
+     */
+    public function applyConfigsViaApi(Router $router, array $config, bool $broadcast = true): array
+    {
+        $startTime = microtime(true);
+        
+        Log::info('Starting API-based configuration for low-end device', [
+            'router_id' => $router->id,
+            'model' => $router->model,
+        ]);
+
+        if ($broadcast) {
+            RouterProvisioningProgress::dispatch(
+                $router->id,
+                'init',
+                0,
+                'Starting API-based provisioning',
+                ['method' => 'REST_API', 'router_model' => $router->model]
+            );
+        }
+
+        try {
+            // Initialize REST API service
+            $apiService = new MikroTik\MikroTikRestApiService($router, 30);
+
+            // Test API connectivity
+            if ($broadcast) {
+                RouterProvisioningProgress::dispatch(
+                    $router->id,
+                    'connecting',
+                    10,
+                    'Connecting to router via REST API',
+                    ['method' => 'REST_API']
+                );
+            }
+
+            if (!$apiService->testConnection()) {
+                throw new \Exception('Failed to connect to router REST API. Ensure API service is enabled: /ip service enable rest-api');
+            }
+
+            if ($broadcast) {
+                RouterProvisioningProgress::dispatch(
+                    $router->id,
+                    'connected',
+                    20,
+                    'API connection established',
+                    ['method' => 'REST_API']
+                );
+            }
+
+            // Use PPPoE API configurator for the deployment
+            if ($broadcast) {
+                RouterProvisioningProgress::dispatch(
+                    $router->id,
+                    'applying_config',
+                    30,
+                    'Applying configuration via API',
+                    ['method' => 'REST_API']
+                );
+            }
+
+            $serviceId = $config['service_id'] ?? $router->id;
+            $configurator = new MikroTik\PppoeApiConfigurator($apiService, $serviceId, $config);
+            
+            $result = $configurator->configure();
+
+            if (!$result['success']) {
+                throw new \Exception($result['message'] ?? 'API configuration failed');
+            }
+
+            // Verify the configuration
+            if ($broadcast) {
+                RouterProvisioningProgress::dispatch(
+                    $router->id,
+                    'verifying',
+                    80,
+                    'Verifying API deployment',
+                    ['method' => 'REST_API']
+                );
+            }
+
+            $verification = $configurator->verify();
+            if (!$verification['valid']) {
+                throw new \Exception($verification['error'] ?? 'API verification failed');
+            }
+
+            if ($broadcast) {
+                RouterProvisioningProgress::dispatch(
+                    $router->id,
+                    'completed',
+                    100,
+                    'API deployment completed successfully',
+                    ['method' => 'REST_API']
+                );
+            }
+
+            $executionTime = round(microtime(true) - $startTime, 2);
+            
+            Log::info('API configuration applied successfully', [
+                'router_id' => $router->id,
+                'execution_time' => $executionTime . 's',
+                'results' => $result['results'] ?? [],
+            ]);
+
+            return [
+                'success' => true,
+                'message' => 'Configuration applied successfully via REST API',
+                'execution_time' => $executionTime . 's',
+                'router_id' => $router->id,
+                'method' => 'REST_API',
+                'results' => $result['results'] ?? [],
+            ];
+
+        } catch (\Exception $e) {
+            Log::error('API configuration failed', [
+                'router_id' => $router->id,
+                'error' => $e->getMessage(),
+                'execution_time' => round(microtime(true) - $startTime, 2) . 's',
+            ]);
+
+            if ($broadcast) {
+                ProvisioningFailed::dispatch(
+                    $router->id,
+                    'api_failed',
+                    'API deployment failed: ' . $e->getMessage(),
+                    ['method' => 'REST_API', 'error' => $e->getMessage()]
+                );
+            }
+
+            return [
+                'success' => false,
+                'message' => $e->getMessage(),
+                'method' => 'REST_API',
+                'fallback_to_ssh' => true,
+            ];
+        }
+    }
     
     /**
      * Apply saved configuration to router with enhanced reliability and error handling
@@ -1133,12 +1278,47 @@ SCRIPT;
                     }
                 };
 
-                // For low-end devices, use batch execution to prevent SSH timeouts
+                // For low-end devices, try REST API first, then fall back to SSH batching
                 $isLowEnd = RouterResourceManager::getRouterTier($router) === 'low_end';
+                $result = null;
+                
+                // Initialize these for cleanup (only used by executeSingleScript)
+                $remoteScriptFile = null;
+                $tempFile = null;
                 
                 if ($isLowEnd && $serviceScript) {
-                    $result = $this->executeBatchedCommands($ssh, $serviceScript, $router, $validator);
+                    try {
+                        // Extract config from script for API deployment
+                        $apiConfig = $this->extractConfigFromScript($serviceScript, $router);
+                        
+                        // Try REST API first
+                        $apiResult = $this->applyConfigsViaApi($router, $apiConfig, $broadcast);
+                        
+                        if ($apiResult['success']) {
+                            $result = $apiResult;
+                            Log::info('Low-end device configured via REST API', [
+                                'router_id' => $router->id,
+                                'model' => $router->model,
+                            ]);
+                        } else {
+                            // Fall back to SSH batching if API fails
+                            Log::warning('REST API failed, falling back to SSH batching', [
+                                'router_id' => $router->id,
+                                'api_error' => $apiResult['message'],
+                            ]);
+                            $result = $this->executeBatchedCommands($ssh, $serviceScript, $router, $validator);
+                        }
+                    } catch (\Exception $apiException) {
+                        // API threw an exception - fall back to SSH batching
+                        Log::warning('REST API threw exception, falling back to SSH batching', [
+                            'router_id' => $router->id,
+                            'api_error' => $apiException->getMessage(),
+                        ]);
+                        $result = $this->executeBatchedCommands($ssh, $serviceScript, $router, $validator);
+                    }
                 } else {
+                    $remoteScriptFile = "svc_deploy_{$router->id}_" . time() . '.rsc';
+                    $tempFile = tempnam(sys_get_temp_dir(), 'mikrotik_script_');
                     $result = $this->executeSingleScript($ssh, $serviceScript, $router, $validator, $remoteScriptFile, $tempFile);
                 }
 
@@ -1257,14 +1437,17 @@ SCRIPT;
                 $ssh->disconnect();
             }
 
-            $result = [
-                'success' => true,
-                'message' => 'Configuration applied successfully via SSH',
-                'execution_time' => round(microtime(true) - $startTime, 2) . 's',
-                'script_name' => $scriptName,
-                'router_id' => $router->id,
-                'method' => 'SSH'
-            ];
+            // Only override result if not already set by API success
+            if (!$result || !isset($result['method']) || $result['method'] !== 'API') {
+                $result = [
+                    'success' => true,
+                    'message' => 'Configuration applied successfully via SSH',
+                    'execution_time' => round(microtime(true) - $startTime, 2) . 's',
+                    'script_name' => $scriptName,
+                    'router_id' => $router->id,
+                    'method' => 'SSH'
+                ];
+            }
 
             if ($broadcast) {
                 RouterProvisioningProgress::dispatch(
@@ -1276,19 +1459,21 @@ SCRIPT;
                 );
             }
 
-            // Schedule cleanup of orphaned RSC files
-            try {
-                $cleanupService = app(RscFileCleanupService::class);
-                $cleanupService->scheduleCleanup($router, $remoteScriptFile);
-                Log::debug('Scheduled RSC file cleanup', [
-                    'router_id' => $router->id,
-                    'file' => $remoteScriptFile,
-                ]);
-            } catch (\Exception $e) {
-                Log::warning('Failed to schedule RSC cleanup', [
-                    'router_id' => $router->id,
-                    'error' => $e->getMessage(),
-                ]);
+            // Schedule cleanup of orphaned RSC files (only if we have a script file)
+            if ($remoteScriptFile) {
+                try {
+                    $cleanupService = app(RscFileCleanupService::class);
+                    $cleanupService->scheduleCleanup($router, $remoteScriptFile);
+                    Log::debug('Scheduled RSC file cleanup', [
+                        'router_id' => $router->id,
+                        'file' => $remoteScriptFile,
+                    ]);
+                } catch (\Exception $e) {
+                    Log::warning('Failed to schedule RSC cleanup', [
+                        'router_id' => $router->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
             }
 
             Log::info('Configuration applied successfully via SSH', $result);
@@ -1584,6 +1769,88 @@ EOT;
         }
         
         return $batches;
+    }
+
+    /**
+     * Extract configuration parameters from RouterOS script for API deployment
+     * Parses the script and extracts key settings for REST API configuration
+     */
+    private function extractConfigFromScript(string $script, Router $router): array
+    {
+        $config = [
+            'service_id' => $router->id,
+            'interfaces' => [],
+            'vlan_required' => false,
+            'vlan_id' => null,
+            'radius_servers' => [],
+            'profile' => 'pppoe-default',
+            'wan_list' => 'pppoe-wan-list',
+            'pal_list' => 'pppoe-pal-list',
+            'mgmt_subnet' => '10.0.0.0/8',
+            'mgmt_ports' => '8291,22,80,443',
+            'tcp_timeout' => 3600,
+            'udp_timeout' => 30,
+        ];
+
+        // Extract bridge name
+        if (preg_match('/\/interface bridge add name=([^\s]+)/', $script, $matches)) {
+            $config['bridge'] = $matches[1];
+        } else {
+            $config['bridge'] = 'pppoe-br-' . $router->id;
+        }
+
+        // Extract service name
+        if (preg_match('/\/interface pppoe-server server add service-name=([^\s]+)/', $script, $matches)) {
+            $config['service_name'] = $matches[1];
+        } else {
+            $config['service_name'] = 'pppoe-svc-' . $router->id;
+        }
+
+        // Extract interfaces (both physical and VLAN)
+        if (preg_match_all('/\/interface bridge port add .* interface=([^\s]+)/', $script, $matches)) {
+            foreach ($matches[1] as $interface) {
+                if (!in_array($interface, $config['interfaces'])) {
+                    $config['interfaces'][] = $interface;
+                }
+            }
+        }
+
+        // Check for VLAN
+        if (preg_match('/\/interface vlan add .* vlan-id=(\d+)/', $script, $matches)) {
+            $config['vlan_required'] = true;
+            $config['vlan_id'] = (int) $matches[1];
+        }
+
+        // Extract RADIUS servers
+        if (preg_match_all('/\/radius add .* address=([^\s]+) secret=([^\s]+)/', $script, $matches, PREG_SET_ORDER)) {
+            foreach ($matches as $match) {
+                $config['radius_servers'][] = [
+                    'address' => $match[1],
+                    'secret' => trim($match[2], '"'),
+                    'timeout' => 3,
+                ];
+            }
+        }
+
+        // Extract profile
+        if (preg_match('/default-profile=([^\s]+)/', $script, $matches)) {
+            $config['profile'] = $matches[1];
+        }
+
+        // Extract WAN interface
+        if (preg_match('/\/interface list member add list=pppoe-wan-list interface=([^\s]+)/', $script, $matches)) {
+            $config['wan_interface'] = $matches[1];
+        }
+
+        Log::debug('Extracted API config from script', [
+            'router_id' => $router->id,
+            'bridge' => $config['bridge'],
+            'service_name' => $config['service_name'],
+            'interfaces' => $config['interfaces'],
+            'radius_count' => count($config['radius_servers']),
+        ]);
+
+        return $config;
     }
 
     /**

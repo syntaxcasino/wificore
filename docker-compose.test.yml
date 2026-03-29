@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  wificore-test-runner:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.test
+    container_name: wificore-test-runner
+    environment:
+      APP_ENV: testing
+      APP_KEY: base64:dGVzdGtleWJhc2U2NHRlc3RrZXliYXNlNjR0ZXM=
+      APP_DEBUG: "true"
+      DB_CONNECTION: pgsql
+      DB_HOST: wificore-postgres
+      DB_PORT: 5432
+      DB_DATABASE: wms_testing
+      DB_USERNAME: admin
+      DB_PASSWORD: "${DB_PASSWORD:-secret}"
+      CACHE_STORE: array
+      QUEUE_CONNECTION: sync
+      SESSION_DRIVER: array
+      LOG_CHANNEL: stderr
+    networks:
+      - wificore-network
+    depends_on:
+      wificore-postgres:
+        condition: service_healthy
+    volumes:
+      - ./backend:/var/www/html
+
+networks:
+  wificore-network:
+    external: true

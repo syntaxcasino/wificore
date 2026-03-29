@@ -12,11 +12,17 @@ class PackageFactory extends Factory
     public function definition(): array
     {
         return [
-            'name'             => $this->faker->words(2, true), // e.g. "Silver Plan"
-           'description'      => $this->faker->sentence(),
-           'price'            => $this->faker->randomFloat(2, 10, 200), // float value
-           'duration_hours'   => $this->faker->numberBetween(1, 48),
-           'mikrotik_profile' => $this->faker->word(), // should match actual Mikrotik profile names in prod
+            'type'           => $this->faker->randomElement(['pppoe', 'hotspot']),
+            'name'           => $this->faker->words(2, true),
+            'description'    => $this->faker->sentence(),
+            'price'          => $this->faker->randomFloat(2, 10, 200),
+            'duration'       => (string) $this->faker->numberBetween(1, 48),
+            'upload_speed'   => $this->faker->randomElement(['5M', '10M', '20M']),
+            'download_speed' => $this->faker->randomElement(['5M', '10M', '20M']),
+            'speed'          => '10M/10M',
+            'devices'        => $this->faker->numberBetween(1, 5),
+            'is_active'      => true,
+            'is_public'      => true,
         ];
     }
 }
