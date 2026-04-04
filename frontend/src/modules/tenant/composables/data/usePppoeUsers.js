@@ -201,7 +201,8 @@ export function usePppoeUsers() {
     // Update existing user in the list
     const index = users.value.findIndex(u => u.id === user.id)
     if (index !== -1) {
-      users.value[index] = { ...users.value[index], ...user }
+      // Replace with new object to ensure reactivity
+      users.value.splice(index, 1, { ...users.value[index], ...user })
     } else {
       // If not found, add it
       users.value.unshift(user)

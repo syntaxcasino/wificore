@@ -1276,6 +1276,15 @@ class RouterController extends Controller
                     ->header('Content-Type', 'text/plain; charset=utf-8');
             }
 
+            $ttlMinutes = (int) config('app.router_config_token_ttl_minutes', 60);
+            if ($ttlMinutes > 0 && !$router->config_token_created_at && !$router->config_token_expires_at) {
+                $router->forceFill([
+                    'config_token_created_at' => now(),
+                    'config_token_expires_at' => now()->addMinutes($ttlMinutes),
+                ])->save();
+                $router->refresh();
+            }
+
             if ($router->isConfigTokenExpired()) {
                 Log::warning('Router config token expired', [
                     'router_id' => $router->id,
@@ -1369,11 +1378,11 @@ class RouterController extends Controller
             : '';
 
         $script = <<<EOT
-/ip service set api disabled=no port={$router->port} address={$managementSubnet}
-/ip service set rest-api disabled=no port={$apiPort} address={$managementSubnet}
-:do { /ip service set api-ssl disabled=no address={$managementSubnet} } on-error={ /log info "api-ssl enable failed or already enabled" }
-/ip service set ssh disabled=no port=22 address={$managementSubnet}
-/user add name={$router->username} password="$decryptedPassword" group=full
+:do { /ip service set api disabled=no port={$router->port} address={$managementSubnet} } on-error={ /log info "API service not available" }
+:do { /ip service set rest-api disabled=no port={$apiPort} address={$managementSubnet} } on-error={ /log info "REST API service not available" }
+:do { /ip service set api-ssl disabled=no address={$managementSubnet} } on-error={ /log info "API SSL service not available" }
+:do { /ip service set ssh disabled=no port=22 address={$managementSubnet} } on-error={ /log info "SSH service not available" }
+:do { /user add name={$router->username} password="$decryptedPassword" group=full } on-error={ /log info "User already exists or creation failed" }
 /system identity set name="{$router->name}"
 /system note set note="Managed by Traidnet Solution LTD"
 {$snmpLines}
@@ -1423,6 +1432,8 @@ EOT;
     if (!empty($hotspotInterfaces)) {
         $scriptLines[] = '';
         $scriptLines[] = '# Hotspot Configuration';
+        $scriptLines[] = ':if ([:len [/system package find name=hotspot]] > 0) do={';
+        $scriptLines[] = '  :log info "Hotspot package found, configuring..."';
         $bridgeName = 'br-hotspot';
 
         // Bridge setup
@@ -1460,24 +1471,28 @@ EOT;
         // Hotspot Profile
         $profileName = 'hs-prof';
         $scriptLines[] = '/ip hotspot profile';
-        $scriptLines[] = "add name=$profileName";
-        $scriptLines[] = "/ip hotspot profile set $profileName hotspot-address=$gateway";
-        $scriptLines[] = "/ip hotspot profile set $profileName login-by=http-chap,mac-cookie";
-        $scriptLines[] = "/ip hotspot profile set $profileName rate-limit=10M/10M";
+        $scriptLines[] = ':do { remove [find name="' . $profileName . '"] } on-error={}';
+        $scriptLines[] = "add name=\"$profileName\"";
+        $scriptLines[] = ':delay 500ms';
+        $scriptLines[] = ':local hp [/ip hotspot profile find name="' . $profileName . '"]; :if ([:len $hp] > 0) do={ /ip hotspot profile set $hp hotspot-address="' . $gateway . '" login-by=http-chap,mac-cookie rate-limit=10M/10M }';
         //$scriptLines[] = "/ip hotspot profile set $profileName idle-timeout=30m";
 
         // Hotspot Server (explicitly enabled)
+        $serverName = 'hs-hotspot';
         $scriptLines[] = '/ip hotspot';
-        $scriptLines[] = "add name=hs-hotspot interface=$bridgeName profile=$profileName address-pool=pool-hotspot disabled=no";
+        $scriptLines[] = ':do { remove [find name="' . $serverName . '"] } on-error={}';
+        $scriptLines[] = "add name=$serverName interface=$bridgeName profile=$profileName address-pool=pool-hotspot disabled=no";
 
         // User Profile with MAC cookie
         $userProfileName = 'hs-user';
         $scriptLines[] = '/ip hotspot user profile';
+        $scriptLines[] = ':do { remove [find name="' . $userProfileName . '"] } on-error={}';
         $scriptLines[] = "add name=$userProfileName add-mac-cookie=yes rate-limit=10M/10M";
 
         // Add to LAN list
         $scriptLines[] = '/interface list member';
         $scriptLines[] = "add list=LAN interface=$bridgeName";
+        $scriptLines[] = '} on-error={ /log info "Hotspot package not available, skipping hotspot configuration" }';
     }
 
     // Firewall Configuration

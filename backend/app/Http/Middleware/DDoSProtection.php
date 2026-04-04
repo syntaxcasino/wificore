@@ -56,15 +56,15 @@ class DDoSProtection
             return ($now - $timestamp) < 60;
         });
         
-        // Add current request
+        // Add current request (30 seconds max to prevent stale data)
         $requests[] = $now;
-        Cache::put($requestKey, $requests, now()->addMinutes(2));
+        Cache::put($requestKey, $requests, 30);
         
         // Check if threshold exceeded (100 requests per minute)
         if (count($requests) > 100) {
-            // Block IP for 15 minutes
-            $blockedUntil = now()->addMinutes(15)->timestamp;
-            Cache::put($blockKey, $blockedUntil, now()->addMinutes(15));
+            // Block IP for 30 seconds max (reduced from 15 min to prevent stale cache data)
+            $blockedUntil = now()->addSeconds(30)->timestamp;
+            Cache::put($blockKey, $blockedUntil, 30);
             
             Log::alert('DDoS: IP blocked for excessive requests', [
                 'ip' => $ip,
@@ -88,8 +88,9 @@ class DDoSProtection
             
             // If 20 requests in less than 5 seconds, it's suspicious
             if ($timeSpan < 5) {
-                $blockedUntil = now()->addMinutes(15)->timestamp;
-                Cache::put($blockKey, $blockedUntil, now()->addMinutes(15));
+                // Block IP for 30 seconds max (reduced from 15 min to prevent stale cache data)
+                $blockedUntil = now()->addSeconds(30)->timestamp;
+                Cache::put($blockKey, $blockedUntil, 30);
                 
                 Log::alert('DDoS: IP blocked for rapid-fire requests', [
                     'ip' => $ip,

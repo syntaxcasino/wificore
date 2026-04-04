@@ -636,6 +636,16 @@
                 Traffic
               </h4>
               <div class="flex items-center gap-3">
+                 <!-- Time Range Selector -->
+                 <select
+                    v-model="trafficTimeRange"
+                    class="text-xs border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-1 px-2 bg-white"
+                    @change="loadTraffic()"
+                  >
+                    <option v-for="r in timeRanges" :key="r.value" :value="r.value">
+                      {{ r.label }}
+                    </option>
+                  </select>
                  <div v-if="hoveredData && !['pie', 'donut', 'histogram'].includes(selectedChartType)" class="hidden md:flex items-center gap-3 text-xs bg-gray-50 px-2 py-1 rounded border border-gray-100">
                     <span class="font-mono text-gray-500">{{ formatTime(hoveredData.ts) }}</span>
                     <span class="flex items-center gap-1">
@@ -655,6 +665,17 @@
                       {{ t.label }}
                     </option>
                   </select>
+                 <!-- Fullscreen Button -->
+                 <button
+                    @click="toggleTrafficFullscreen"
+                    class="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
+                    title="Toggle fullscreen"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path v-if="!trafficFullscreen" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                      <path v-else stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
               </div>
             </div>
 
@@ -679,12 +700,52 @@
               </div>
 
               <div v-if="trafficLoading" class="text-xs text-gray-500">Loading traffic…</div>
-              <div v-else class="bg-white rounded-lg border border-gray-100 p-4" style="height: 300px;">
-                <div class="flex h-full">
+              <div v-else 
+                   class="bg-white rounded-lg border border-gray-100 p-4 transition-all duration-300 flex flex-col" 
+                   :class="{ 'fixed inset-0 z-[9999] h-screen w-screen bg-white p-6': trafficFullscreen, 'relative': !trafficFullscreen }"
+                   :style="trafficFullscreen ? {} : { height: '300px' }">
+                <!-- Fullscreen header -->
+                <div v-if="trafficFullscreen" class="flex items-center justify-between mb-4 flex-shrink-0">
+                  <h3 class="text-lg font-semibold text-gray-800">Traffic - Fullscreen</h3>
+                  <button @click="toggleTrafficFullscreen" class="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+
+                <!-- Fullscreen Stats for Traffic - Moved to top -->
+                <div v-if="trafficFullscreen" class="grid grid-cols-3 gap-3 mb-4 flex-shrink-0 px-4">
+                  <div class="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg p-3 border border-blue-200">
+                    <div class="text-[11px] text-blue-600 font-medium mb-1">Current</div>
+                    <div class="text-base font-bold text-blue-900">{{ formatBytes(trafficStats.current) }}/s</div>
+                  </div>
+                  <div class="bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg p-3 border border-green-200">
+                    <div class="text-[11px] text-green-600 font-medium mb-1">Download</div>
+                    <div class="text-base font-bold text-green-900">{{ formatBytes(trafficStats.download) }}/s</div>
+                  </div>
+                  <div class="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-lg p-3 border border-purple-200">
+                    <div class="text-[11px] text-purple-600 font-medium mb-1">Upload</div>
+                    <div class="text-base font-bold text-purple-900">{{ formatBytes(trafficStats.upload) }}/s</div>
+                  </div>
+                </div>
+
+                <!-- Fullscreen Legend for Traffic - Moved under stats -->
+                <div v-if="trafficFullscreen" class="flex items-center justify-center gap-8 mb-4 flex-shrink-0">
+                  <div class="flex items-center gap-2">
+                    <div class="w-4 h-4 bg-green-500 rounded-full"></div>
+                    <span class="text-sm text-gray-700 font-medium">Download</span>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <div class="w-4 h-4 bg-purple-500 rounded-full"></div>
+                    <span class="text-sm text-gray-700 font-medium">Upload</span>
+                  </div>
+                </div>
+                <div class="flex flex-1 min-h-0">
                   <!-- Y-Axis -->
                   <div v-if="yAxisTicks.length" class="relative h-full w-14 mr-2 border-r border-gray-100">
                     <div v-for="tick in yAxisTicks" :key="tick.value" 
-                         class="absolute right-1 text-[10px] text-gray-400 transform translate-y-1/2"
+                         class="absolute right-1 text-[10px] text-black font-medium transform translate-y-1/2"
                          :style="{ bottom: tick.percent + '%' }">
                       {{ tick.label }}
                     </div>
@@ -702,6 +763,17 @@
                        <div v-for="tick in yAxisTicks" :key="tick.value" 
                             class="absolute w-full border-t border-gray-100"
                             :style="{ bottom: tick.percent + '%' }">
+                       </div>
+
+                       <!-- No Data Message -->
+                       <div v-if="!chartRenderData && !trafficLoading" class="absolute inset-0 flex items-center justify-center">
+                          <div class="text-center">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 text-gray-300 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                            </svg>
+                            <p class="text-gray-500 text-sm">No historical data available</p>
+                            <p class="text-gray-400 text-xs mt-1">Traffic metrics may not be collected</p>
+                          </div>
                        </div>
 
                        <!-- SVG Chart -->
@@ -781,10 +853,10 @@
                        </div>
                     </div>
                     
-                    <!-- X-Axis -->
-                    <div v-if="xAxisTicks.length" class="h-6 relative mt-1">
+                    <!-- X-Axis - Always visible with proper spacing -->
+                    <div v-if="xAxisTicks.length" class="h-8 relative mt-2 flex-shrink-0 border-t border-gray-200 pt-1">
                        <div v-for="tick in xAxisTicks" :key="tick.x" 
-                            class="absolute text-[10px] text-gray-400 transform -translate-x-1/2 whitespace-nowrap"
+                            class="absolute text-[11px] text-black font-medium transform -translate-x-1/2 whitespace-nowrap"
                             :style="{ left: tick.x + '%' }">
                          {{ tick.label }}
                        </div>
@@ -793,7 +865,7 @@
                 </div>
               </div>
 
-              <div class="flex items-center justify-center gap-6 mt-3">
+              <div v-if="!trafficFullscreen" class="flex items-center justify-center gap-6 mt-3">
                 <div class="flex items-center gap-2">
                   <div class="w-3 h-3 bg-green-500 rounded-full"></div>
                   <span class="text-xs text-gray-600">Download</span>
@@ -801,6 +873,295 @@
                 <div class="flex items-center gap-2">
                   <div class="w-3 h-3 bg-purple-500 rounded-full"></div>
                   <span class="text-xs text-gray-600">Upload</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Resource Utilization Section -->
+          <div class="bg-white p-5 rounded-xl shadow-sm mt-4">
+            <div class="flex items-center justify-between mb-4">
+              <h4 class="text-sm font-semibold text-gray-700 flex items-center">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+                </svg>
+                Resource Utilization
+              </h4>
+              <div class="flex items-center gap-3">
+                 <!-- Time Range Selector -->
+                 <select
+                    v-model="resourceTimeRange"
+                    class="text-xs border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-1 px-2 bg-white"
+                    @change="loadResources()"
+                  >
+                    <option v-for="r in timeRanges" :key="r.value" :value="r.value">
+                      {{ r.label }}
+                    </option>
+                  </select>
+                 <!-- Chart Type Selector -->
+                 <select
+                    v-model="selectedResourceChart"
+                    class="text-xs border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-1 px-2 bg-white"
+                  >
+                    <option value="line">Line</option>
+                    <option value="area">Area</option>
+                  </select>
+                 <!-- Fullscreen Button -->
+                 <button
+                    @click="toggleResourceFullscreen"
+                    class="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
+                    title="Toggle fullscreen"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path v-if="!resourceFullscreen" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                      <path v-else stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+              </div>
+            </div>
+
+            <div v-if="resourceError" class="bg-red-50 p-3 rounded-lg border border-red-200">
+              <p class="text-red-700 text-xs">{{ resourceError }}</p>
+            </div>
+
+            <div v-else>
+              <!-- Resource Stats Cards -->
+              <div class="grid grid-cols-3 gap-3 mb-4">
+                <div class="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg p-3 border border-blue-200">
+                  <div class="flex items-center gap-2 mb-1">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                    <span class="text-[11px] text-blue-600 font-medium">CPU</span>
+                  </div>
+                  <div class="text-base font-bold text-blue-900">
+                    <span v-if="resourceLoading && resourceData.cpu.length === 0">--</span>
+                    <span v-else>{{ formatPercent(resourceStats.cpu.current) }}</span>
+                  </div>
+                  <div class="text-[10px] text-blue-600">
+                    <span v-if="resourceLoading && resourceData.cpu.length === 0">Loading...</span>
+                    <span v-else>Avg: {{ formatPercent(resourceStats.cpu.avg) }} | Max: {{ formatPercent(resourceStats.cpu.max) }}</span>
+                  </div>
+                </div>
+                <div class="bg-gradient-to-br from-purple-50 to-pink-50 rounded-lg p-3 border border-purple-200">
+                  <div class="flex items-center gap-2 mb-1">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                    </svg>
+                    <span class="text-[11px] text-purple-600 font-medium">Memory</span>
+                  </div>
+                  <div class="text-base font-bold text-purple-900">
+                    <span v-if="resourceLoading && resourceData.memory.length === 0">--</span>
+                    <span v-else>{{ formatPercent(resourceStats.memory.current) }}</span>
+                  </div>
+                  <div class="text-[10px] text-purple-600">
+                    <span v-if="resourceLoading && resourceData.memory.length === 0">Loading...</span>
+                    <span v-else>Avg: {{ formatPercent(resourceStats.memory.avg) }} | Max: {{ formatPercent(resourceStats.memory.max) }}</span>
+                  </div>
+                </div>
+                <div class="bg-gradient-to-br from-amber-50 to-orange-50 rounded-lg p-3 border border-amber-200">
+                  <div class="flex items-center gap-2 mb-1">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
+                    </svg>
+                    <span class="text-[11px] text-amber-600 font-medium">Disk</span>
+                  </div>
+                  <div class="text-base font-bold text-amber-900">
+                    <span v-if="resourceLoading && resourceData.disk.length === 0">--</span>
+                    <span v-else>{{ formatPercent(resourceStats.disk.current) }}</span>
+                  </div>
+                  <div class="text-[10px] text-amber-600">
+                    <span v-if="resourceLoading && resourceData.disk.length === 0">Loading...</span>
+                    <span v-else>Avg: {{ formatPercent(resourceStats.disk.avg) }} | Max: {{ formatPercent(resourceStats.disk.max) }}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div v-if="resourceLoading" class="text-xs text-gray-500">Loading resources…</div>
+              <div v-else 
+                   class="bg-white rounded-lg border border-gray-100 p-4 transition-all duration-300 flex flex-col" 
+                   :class="{ 'fixed inset-0 z-[9999] h-screen w-screen bg-white p-6': resourceFullscreen, 'relative': !resourceFullscreen }"
+                   :style="resourceFullscreen ? {} : { height: '250px' }">
+                <!-- Fullscreen header -->
+                <div v-if="resourceFullscreen" class="flex items-center justify-between mb-4 flex-shrink-0">
+                  <h3 class="text-lg font-semibold text-gray-800">Resource Utilization - Fullscreen</h3>
+                  <button @click="toggleResourceFullscreen" class="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+
+                <!-- Fullscreen Stats for Resource - Moved to top -->
+                <div v-if="resourceFullscreen" class="grid grid-cols-3 gap-3 mb-4 flex-shrink-0 px-4">
+                  <div class="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg p-3 border border-blue-200">
+                    <div class="flex items-center gap-2 mb-1">
+                      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      </svg>
+                      <span class="text-[11px] text-blue-600 font-medium">CPU</span>
+                    </div>
+                    <div class="text-base font-bold text-blue-900">{{ formatPercent(resourceStats.cpu.current) }}</div>
+                    <div class="text-[10px] text-blue-600">Avg: {{ formatPercent(resourceStats.cpu.avg) }} | Max: {{ formatPercent(resourceStats.cpu.max) }}</div>
+                  </div>
+                  <div class="bg-gradient-to-br from-purple-50 to-pink-50 rounded-lg p-3 border border-purple-200">
+                    <div class="flex items-center gap-2 mb-1">
+                      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                      </svg>
+                      <span class="text-[11px] text-purple-600 font-medium">Memory</span>
+                    </div>
+                    <div class="text-base font-bold text-purple-900">{{ formatPercent(resourceStats.memory.current) }}</div>
+                    <div class="text-[10px] text-purple-600">Avg: {{ formatPercent(resourceStats.memory.avg) }} | Max: {{ formatPercent(resourceStats.memory.max) }}</div>
+                  </div>
+                  <div class="bg-gradient-to-br from-amber-50 to-orange-50 rounded-lg p-3 border border-amber-200">
+                    <div class="flex items-center gap-2 mb-1">
+                      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
+                      </svg>
+                      <span class="text-[11px] text-amber-600 font-medium">Disk</span>
+                    </div>
+                    <div class="text-base font-bold text-amber-900">{{ formatPercent(resourceStats.disk.current) }}</div>
+                    <div class="text-[10px] text-amber-600">Avg: {{ formatPercent(resourceStats.disk.avg) }} | Max: {{ formatPercent(resourceStats.disk.max) }}</div>
+                  </div>
+                </div>
+
+                <!-- Fullscreen Legend for Resource - Moved under stats -->
+                <div v-if="resourceFullscreen" class="flex items-center justify-center gap-8 mb-4 flex-shrink-0">
+                  <div class="flex items-center gap-2">
+                    <div class="w-4 h-4 bg-blue-500 rounded-full"></div>
+                    <span class="text-sm text-gray-700 font-medium">CPU</span>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <div class="w-4 h-4 bg-purple-500 rounded-full"></div>
+                    <span class="text-sm text-gray-700 font-medium">Memory</span>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <div class="w-4 h-4 bg-amber-500 rounded-full"></div>
+                    <span class="text-sm text-gray-700 font-medium">Disk</span>
+                  </div>
+                </div>
+                <div class="flex flex-1 min-h-0">
+                  <!-- Y-Axis -->
+                  <div class="relative h-full w-12 mr-2 border-r border-gray-200">
+                    <div v-for="tick in resourceYAxisTicks" :key="tick.value" 
+                         class="absolute right-1 text-[10px] text-black font-medium transform translate-y-1/2"
+                         :style="{ bottom: tick.percent + '%' }">
+                      {{ tick.label }}
+                    </div>
+                  </div>
+                  
+                  <!-- Graph -->
+                  <div class="relative flex-1 flex flex-col">
+                    <div 
+                      class="relative flex-1 overflow-hidden cursor-crosshair"
+                      @mousemove="handleResourceGraphHover"
+                      @mouseleave="handleResourceGraphLeave"
+                      ref="resourceGraphContainer"
+                    >
+                       <!-- Grid Lines -->
+                       <div v-for="tick in resourceYAxisTicks" :key="tick.value" 
+                            class="absolute w-full border-t border-gray-100"
+                            :style="{ bottom: tick.percent + '%' }">
+                       </div>
+
+                       <!-- No Data Message -->
+                       <div v-if="!resourceChartRenderData && !resourceLoading" class="absolute inset-0 flex items-center justify-center">
+                          <div class="text-center">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 text-gray-300 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                            </svg>
+                            <p class="text-gray-500 text-sm">No historical data available</p>
+                            <p class="text-gray-400 text-xs mt-1">Metrics collection may not be configured</p>
+                          </div>
+                       </div>
+
+                       <!-- SVG Chart -->
+                       <svg v-if="resourceChartRenderData" class="absolute inset-0 w-full h-full" viewBox="0 0 1000 200" preserveAspectRatio="none">
+                          <defs>
+                            <linearGradient id="gradCpu" x1="0" x2="0" y1="0" y2="1">
+                              <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.2"/>
+                              <stop offset="100%" stop-color="#3b82f6" stop-opacity="0"/>
+                            </linearGradient>
+                            <linearGradient id="gradMem" x1="0" x2="0" y1="0" y2="1">
+                              <stop offset="0%" stop-color="#a855f7" stop-opacity="0.2"/>
+                              <stop offset="100%" stop-color="#a855f7" stop-opacity="0"/>
+                            </linearGradient>
+                            <linearGradient id="gradDisk" x1="0" x2="0" y1="0" y2="1">
+                              <stop offset="0%" stop-color="#f59e0b" stop-opacity="0.2"/>
+                              <stop offset="100%" stop-color="#f59e0b" stop-opacity="0"/>
+                            </linearGradient>
+                          </defs>
+                          
+                          <!-- Area fills (only for area chart type) -->
+                          <template v-if="selectedResourceChart === 'area'">
+                            <path :d="resourceChartRenderData.paths.cpuArea" fill="url(#gradCpu)" />
+                            <path :d="resourceChartRenderData.paths.memArea" fill="url(#gradMem)" />
+                            <path :d="resourceChartRenderData.paths.diskArea" fill="url(#gradDisk)" />
+                          </template>
+                          
+                          <!-- Lines -->
+                          <path :d="resourceChartRenderData.paths.cpu" fill="none" stroke="#3b82f6" stroke-width="2" vector-effect="non-scaling-stroke" />
+                          <path :d="resourceChartRenderData.paths.mem" fill="none" stroke="#a855f7" stroke-width="2" vector-effect="non-scaling-stroke" />
+                          <path :d="resourceChartRenderData.paths.disk" fill="none" stroke="#f59e0b" stroke-width="2" vector-effect="non-scaling-stroke" />
+                       </svg>
+
+                       <!-- Hover Line -->
+                       <div v-if="resourceHoveredIndex >= 0" 
+                            class="absolute top-0 bottom-0 border-l border-gray-400 border-dashed pointer-events-none z-10"
+                            :style="{ left: resourceHoverX + '%' }">
+                          <!-- Dot indicators -->
+                          <div class="absolute w-2 h-2 bg-blue-500 rounded-full -ml-1 border border-white"
+                               :style="{ bottom: (resourceHoveredData.cpu / 100 * 100) + '%' }"></div>
+                          <div class="absolute w-2 h-2 bg-purple-500 rounded-full -ml-1 border border-white"
+                               :style="{ bottom: (resourceHoveredData.memory / 100 * 100) + '%' }"></div>
+                          <div class="absolute w-2 h-2 bg-amber-500 rounded-full -ml-1 border border-white"
+                               :style="{ bottom: (resourceHoveredData.disk / 100 * 100) + '%' }"></div>
+                          
+                          <!-- Floating Tooltip -->
+                          <div class="absolute top-0 left-2 bg-white/90 backdrop-blur-sm shadow-lg border border-gray-200 rounded p-2 text-xs whitespace-nowrap z-20 pointer-events-none"
+                               :class="{ '-translate-x-full -left-2': resourceHoverX > 80 }">
+                             <div class="font-mono text-gray-500 mb-1">{{ formatTime(resourceHoveredData.ts) }}</div>
+                             <div class="flex items-center gap-2 mb-0.5">
+                               <span class="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
+                               <span class="font-medium text-gray-700">CPU: {{ formatPercent(resourceHoveredData.cpu) }}</span>
+                             </div>
+                             <div class="flex items-center gap-2 mb-0.5">
+                               <span class="w-1.5 h-1.5 rounded-full bg-purple-500"></span>
+                               <span class="font-medium text-gray-700">Mem: {{ formatPercent(resourceHoveredData.memory) }}</span>
+                             </div>
+                             <div class="flex items-center gap-2">
+                               <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                               <span class="font-medium text-gray-700">Disk: {{ formatPercent(resourceHoveredData.disk) }}</span>
+                             </div>
+                          </div>
+                       </div>
+                    </div>
+                    
+                    <!-- X-Axis - Always visible with proper spacing -->
+                    <div v-if="resourceXAxisTicks.length" class="h-8 relative mt-2 flex-shrink-0 border-t border-gray-200 pt-1">
+                       <div v-for="tick in resourceXAxisTicks" :key="tick.x" 
+                            class="absolute text-[11px] text-black font-medium transform -translate-x-1/2 whitespace-nowrap"
+                            :style="{ left: tick.x + '%' }">
+                         {{ tick.label }}
+                       </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div v-if="!resourceFullscreen" class="flex items-center justify-center gap-6 mt-3">
+                <div class="flex items-center gap-2">
+                  <div class="w-3 h-3 bg-blue-500 rounded-full"></div>
+                  <span class="text-xs text-gray-600">CPU</span>
+                </div>
+                <div class="flex items-center gap-2">
+                  <div class="w-3 h-3 bg-purple-500 rounded-full"></div>
+                  <span class="text-xs text-gray-600">Memory</span>
+                </div>
+                <div class="flex items-center gap-2">
+                  <div class="w-3 h-3 bg-amber-500 rounded-full"></div>
+                  <span class="text-xs text-gray-600">Disk</span>
                 </div>
               </div>
             </div>
@@ -849,11 +1210,16 @@
 import axios from 'axios'
 import SlideOverlay from '@/modules/common/components/base/SlideOverlay.vue'
 import { useRouterUtils } from '@/modules/common/composables/utils/useRouterUtils'
+import { useAuthStore } from '@/stores/auth'
 
 const { formatHandshakeDateTime } = useRouterUtils()
 
 export default {
   components: { SlideOverlay },
+  setup() {
+    const authStore = useAuthStore()
+    return { authStore }
+  },
   props: {
     showDetailsOverlay: Boolean,
     selectedRouter: Object,
@@ -1204,15 +1570,17 @@ export default {
           })
       }
 
-      const count = 6
+      const count = 5 // Reduced from 6 to 5 for better spacing
       const data = this.trafficData
       const step = Math.floor((data.length - 1) / (count - 1)) || 1
+      const padding = 5 // 5% padding on each side
+      const usableWidth = 100 - (padding * 2)
 
       return data
         .filter((_, i) => i % step === 0 || i === data.length - 1)
-        .map((d) => {
-          const index = data.indexOf(d)
-          const x = (index / (data.length - 1)) * 100
+        .slice(0, count) // Limit to exactly count items
+        .map((d, idx) => {
+          const x = padding + ((idx / (count - 1)) * usableWidth)
           let label = ''
           try {
             label = new Date(d.ts * 1000).toLocaleTimeString([], {
@@ -1228,17 +1596,147 @@ export default {
           }
         })
     },
+    // Resource graph computed properties
+    trafficStats() {
+      // Always derive from latest trafficData for real-time updates
+      const lastPoint = this.trafficData[this.trafficData.length - 1] || { download: 0, upload: 0 }
+      return {
+        current: (lastPoint.download || 0) + (lastPoint.upload || 0),
+        download: lastPoint.download || 0,
+        upload: lastPoint.upload || 0,
+      }
+    },
+    combinedResourceData() {
+      // Combine CPU, Memory, Disk data by timestamp
+      const map = new Map()
+      
+      this.resourceData.cpu.forEach((p) => {
+        if (!map.has(p.ts)) map.set(p.ts, { ts: p.ts, cpu: 0, memory: 0, disk: 0 })
+        map.get(p.ts).cpu = p.value
+      })
+      
+      this.resourceData.memory.forEach((p) => {
+        if (!map.has(p.ts)) map.set(p.ts, { ts: p.ts, cpu: 0, memory: 0, disk: 0 })
+        map.get(p.ts).memory = p.value
+      })
+      
+      this.resourceData.disk.forEach((p) => {
+        if (!map.has(p.ts)) map.set(p.ts, { ts: p.ts, cpu: 0, memory: 0, disk: 0 })
+        map.get(p.ts).disk = p.value
+      })
+      
+      return Array.from(map.values()).sort((a, b) => a.ts - b.ts)
+    },
+    resourceChartRenderData() {
+      const data = this.combinedResourceData
+      if (!data.length) return null
+
+      const width = 1000
+      const height = 200
+      const max = 100 // Percentage 0-100
+
+      const getPt = (val, i) => {
+        const x = (i / (data.length - 1 || 1)) * width
+        const y = height - ((val || 0) / max) * height
+        return `${x.toFixed(1)},${y.toFixed(1)}`
+      }
+
+      // Generate points for each resource
+      const cpuPoints = data.map((d, i) => getPt(d.cpu, i))
+      const memPoints = data.map((d, i) => getPt(d.memory, i))
+      const diskPoints = data.map((d, i) => getPt(d.disk, i))
+
+      // Generate lines
+      const cpuLine = `M ${cpuPoints.join(' L ')}`
+      const memLine = `M ${memPoints.join(' L ')}`
+      const diskLine = `M ${diskPoints.join(' L ')}`
+
+      // Generate area paths (line + bottom corners + close)
+      const cpuArea = `${cpuLine} L ${width},${height} L 0,${height} Z`
+      const memArea = `${memLine} L ${width},${height} L 0,${height} Z`
+      const diskArea = `${diskLine} L ${width},${height} L 0,${height} Z`
+
+      return {
+        paths: {
+          cpu: cpuLine,
+          mem: memLine,
+          disk: diskLine,
+          cpuArea,
+          memArea,
+          diskArea,
+        },
+      }
+    },
+    resourceYAxisTicks() {
+      const ticks = 5
+      const max = 100 // Percentage
+      return Array.from({ length: ticks + 1 }, (_, i) => {
+        const val = (max / ticks) * i
+        return {
+          value: val,
+          label: `${Math.round(val)}%`,
+          percent: (i / ticks) * 100,
+        }
+      })
+    },
+    resourceHoverX() {
+      if (this.resourceHoveredIndex < 0 || !this.combinedResourceData.length) return 0
+      return (this.resourceHoveredIndex / (this.combinedResourceData.length - 1)) * 100
+    },
+    resourceXAxisTicks() {
+      if (!this.combinedResourceData.length) return []
+
+      const count = 5 // Reduced from 6 to 5 for better spacing
+      const data = this.combinedResourceData
+      const step = Math.floor((data.length - 1) / (count - 1)) || 1
+      const padding = 5 // 5% padding on each side
+      const usableWidth = 100 - (padding * 2)
+
+      return data
+        .filter((_, i) => i % step === 0 || i === data.length - 1)
+        .slice(0, count) // Limit to exactly count items
+        .map((d, idx) => {
+          const x = padding + ((idx / (count - 1)) * usableWidth)
+          let label = ''
+          try {
+            label = new Date(d.ts * 1000).toLocaleTimeString([], {
+              hour: '2-digit',
+              minute: '2-digit',
+            })
+          } catch (e) {
+            label = ''
+          }
+          return { x, label }
+        })
+    },
+    // Resource stats computed property for real-time updates
+    resourceStats() {
+      const cpuValues = this.resourceData.cpu.map(d => d.value).filter(Number.isFinite)
+      const memValues = this.resourceData.memory.map(d => d.value).filter(Number.isFinite)
+      const diskValues = this.resourceData.disk.map(d => d.value).filter(Number.isFinite)
+      
+      const calcStats = (values) => {
+        if (!values.length) return { current: null, avg: null, max: null }
+        return {
+          current: values[values.length - 1],
+          avg: values.reduce((a, b) => a + b, 0) / values.length,
+          max: Math.max(...values),
+        }
+      }
+      
+      return {
+        cpu: calcStats(cpuValues),
+        memory: { ...calcStats(memValues), used: null, total: null },
+        disk: { ...calcStats(diskValues), used: null, total: null },
+      }
+    },
   },
   data() {
     return {
       trafficLoading: false,
       trafficError: '',
       trafficData: [],
-      trafficStats: {
-        current: 0,
-        download: 0,
-        upload: 0,
-      },
+      // trafficStats removed - now a computed property for real-time updates
       selectedChartType: 'line',
       chartTypes: [
         { value: 'line', label: 'Time Series (Line)' },
@@ -1252,23 +1750,74 @@ export default {
       hoveredIndex: -1,
       hoveredData: null,
       refreshInterval: null,
+      // Time range selectors - independent for traffic and resources
+      trafficTimeRange: '1h',
+      resourceTimeRange: '1h',
+      timeRanges: [
+        { value: '15m', label: 'Last 15 min' },
+        { value: '30m', label: 'Last 30 min' },
+        { value: '1h', label: 'Last 1 hour' },
+        { value: '6h', label: 'Last 6 hours' },
+        { value: '24h', label: 'Last 24 hours' },
+        { value: '7d', label: 'Last 7 days' },
+      ],
+      // Resource metrics
+      resourceLoading: false,
+      resourceError: '',
+      resourceData: {
+        cpu: [],
+        memory: [],
+        disk: [],
+      },
+      // resourceStats removed - now a computed property for real-time updates
+      // Resource graph hover state
+      resourceHoveredIndex: -1,
+      resourceHoveredData: null,
+      selectedResourceChart: 'line',
+      trafficFullscreen: false,
+      resourceFullscreen: false,
+      // WebSocket connection for event-based updates
+      metricsChannel: null,
+      subscribedRouterId: null,
     }
   },
   beforeUnmount() {
-    this.stopAutoRefresh()
+    this.unsubscribeFromMetrics()
+  },
+  mounted() {
+    if (this.showDetailsOverlay) {
+      this.loadTraffic()
+      this.loadResources()
+      // Only subscribe if not already subscribed to this router
+      if (this.subscribedRouterId !== this.routerDetails?.id) {
+        this.subscribeToMetrics()
+      }
+    }
   },
   watch: {
     showDetailsOverlay(val) {
       if (val) {
         this.loadTraffic()
-        this.startAutoRefresh()
+        this.loadResources()
+        this.subscribeToMetrics()
       } else {
-        this.stopAutoRefresh()
+        this.unsubscribeFromMetrics()
       }
     },
     selectedRouter() {
       if (this.showDetailsOverlay) {
         this.loadTraffic()
+        this.loadResources()
+      }
+    },
+    trafficTimeRange() {
+      if (this.showDetailsOverlay) {
+        this.loadTraffic()
+      }
+    },
+    resourceTimeRange() {
+      if (this.showDetailsOverlay) {
+        this.loadResources()
       }
     },
   },
@@ -1305,16 +1854,135 @@ export default {
       this.hoveredIndex = -1
       this.hoveredData = null
     },
-    startAutoRefresh() {
-      this.stopAutoRefresh()
-      this.refreshInterval = setInterval(() => {
-        this.$emit('refresh-details')
-      }, 30000)
+    handleResourceGraphHover(event) {
+      if (!this.combinedResourceData.length) return
+
+      const container = this.$refs.resourceGraphContainer
+      if (!container) return
+      
+      const rect = container.getBoundingClientRect()
+      const x = event.clientX - rect.left
+      const width = rect.width
+      const count = this.combinedResourceData.length
+
+      let index = Math.round((x / width) * (count - 1))
+      index = Math.max(0, Math.min(index, count - 1))
+
+      this.resourceHoveredIndex = index
+      this.resourceHoveredData = this.combinedResourceData[index]
     },
-    stopAutoRefresh() {
-      if (this.refreshInterval) {
-        clearInterval(this.refreshInterval)
-        this.refreshInterval = null
+    handleResourceGraphLeave() {
+      this.resourceHoveredIndex = -1
+      this.resourceHoveredData = null
+    },
+    toggleResourceFullscreen() {
+      this.resourceFullscreen = !this.resourceFullscreen
+      this.toggleBodyClass(this.resourceFullscreen)
+    },
+    toggleTrafficFullscreen() {
+      this.trafficFullscreen = !this.trafficFullscreen
+      this.toggleBodyClass(this.trafficFullscreen)
+    },
+    toggleBodyClass(isFullscreen) {
+      if (isFullscreen) {
+        document.body.classList.add('graph-fullscreen-active')
+      } else {
+        document.body.classList.remove('graph-fullscreen-active')
+      }
+    },
+    subscribeToMetrics() {
+      // Prevent double subscription - check if already subscribed to this router
+      const routerId = this.routerDetails?.id
+      const tenantId = this.authStore?.tenantId
+      
+      if (!routerId || !tenantId || !window.Echo) {
+        console.log('Cannot subscribe - missing routerId, tenantId, or Echo')
+        return
+      }
+      
+      const channelName = `tenant.${tenantId}.router.${routerId}`
+      
+      // Already subscribed to this exact channel - skip
+      if (this.metricsChannel && this.subscribedRouterId === routerId) {
+        console.log(`Already subscribed to ${channelName}, skipping`)
+        return
+      }
+      
+      // Unsubscribe from previous router if different
+      if (this.metricsChannel && this.subscribedRouterId !== routerId) {
+        console.log(`Switching from router ${this.subscribedRouterId} to ${routerId}`)
+        this.unsubscribeFromMetrics()
+      }
+      
+      this.subscribedRouterId = routerId
+      
+      this.metricsChannel = window.Echo.private(channelName)
+        .listen('.router.metrics.updated', (event) => {
+          this.handleMetricsUpdate(event)
+        })
+      
+      console.log('Subscribed to metrics channel:', channelName)
+    },
+    unsubscribeFromMetrics() {
+      if (this.metricsChannel && this.subscribedRouterId) {
+        const tenantId = this.authStore?.tenantId
+        const channelName = `tenant.${tenantId}.router.${this.subscribedRouterId}`
+        
+        this.metricsChannel.stopListening('.router.metrics.updated')
+        window.Echo?.leave(channelName)
+        
+        console.log('Unsubscribed from metrics channel:', channelName)
+        
+        this.metricsChannel = null
+        this.subscribedRouterId = null
+      }
+    },
+    handleMetricsUpdate(event) {
+      if (!event || !event.metrics) return
+      
+      const { metric_type, time_range, metrics } = event
+      
+      if (metric_type === 'traffic' && Array.isArray(metrics)) {
+        // Only update if the time range matches traffic time selection
+        if (time_range !== this.trafficTimeRange) return
+        
+        this.trafficData = metrics.slice(-60)
+        this.trafficLoading = false
+        
+        // trafficStats now computed property - automatically updates from trafficData
+        // const lastPoint = this.trafficData[this.trafficData.length - 1] || { download: 0, upload: 0 }
+        // this.trafficStats.download = lastPoint.download
+        // this.trafficStats.upload = lastPoint.upload
+        // this.trafficStats.current = lastPoint.download + lastPoint.upload
+        
+        // Update tooltip if hovering
+        if (this.hoveredIndex >= 0 && this.hoveredIndex < this.trafficData.length) {
+          this.hoveredData = this.trafficData[this.hoveredIndex]
+        }
+      } else if (metric_type === 'resources') {
+        // Only update if the time range matches resource time selection
+        if (time_range !== this.resourceTimeRange) return
+
+        const cpuSeries = this.normalizeResourceSeries(metrics.cpu)
+        if (cpuSeries.length > 0) {
+          this.resourceData.cpu = cpuSeries.map(p => ({ ts: p.ts, value: p.v }))
+        }
+        const memorySeries = this.normalizeResourceSeries(metrics.memory)
+        if (memorySeries.length > 0) {
+          this.resourceData.memory = memorySeries.map(p => ({ ts: p.ts, value: p.v }))
+        }
+        const diskSeries = this.normalizeResourceSeries(metrics.disk)
+        if (diskSeries.length > 0) {
+          this.resourceData.disk = diskSeries.map(p => ({ ts: p.ts, value: p.v }))
+        }
+        this.resourceLoading = false
+        // resourceStats now computed property - automatically updates
+        // this.calculateResourceStats()
+        
+        // Update tooltip if hovering
+        if (this.resourceHoveredIndex >= 0 && this.resourceHoveredIndex < this.combinedResourceData.length) {
+          this.resourceHoveredData = this.combinedResourceData[this.resourceHoveredIndex]
+        }
       }
     },
     formatDate(dateString) {
@@ -1422,6 +2090,36 @@ export default {
         })
         .filter(Boolean)
     },
+    normalizeResourceSeries(series) {
+      if (!series) return []
+
+      let points = []
+      if (Array.isArray(series)) {
+        points = series
+          .map((point) => {
+            if (Array.isArray(point) && point.length >= 2) {
+              return { ts: Number(point[0]), v: Number(point[1]) }
+            }
+            if (point && typeof point === 'object') {
+              const ts = Number(point.ts ?? point.timestamp ?? point.t)
+              const v = Number(point.v ?? point.value ?? point.y)
+              return { ts, v }
+            }
+            return null
+          })
+          .filter(Boolean)
+      } else if (typeof series === 'object') {
+        points = this.parseVmSeriesValues(series)
+      }
+
+      return points
+        .map((point) => {
+          if (!Number.isFinite(point.ts) || !Number.isFinite(point.v)) return null
+          const clamped = Math.max(0, Math.min(100, point.v))
+          return { ts: point.ts, v: clamped }
+        })
+        .filter(Boolean)
+    },
     getLastValue(points) {
       if (!Array.isArray(points) || points.length === 0) return 0
       return points[points.length - 1]?.v ?? 0
@@ -1439,7 +2137,7 @@ export default {
       try {
         const response = await axios.get(`/routers/${routerId}/metrics/traffic`, {
           params: {
-            range: '1h',
+            range: this.trafficTimeRange,
             step: '30s',
           },
         })
@@ -1473,9 +2171,10 @@ export default {
           download: 0,
           upload: 0,
         }
-        this.trafficStats.download = lastPoint.download
-        this.trafficStats.upload = lastPoint.upload
-        this.trafficStats.current = lastPoint.download + lastPoint.upload
+        // trafficStats now computed property - no need to set manually
+        // this.trafficStats.download = lastPoint.download
+        // this.trafficStats.upload = lastPoint.upload
+        // this.trafficStats.current = lastPoint.download + lastPoint.upload
 
         // Update tooltip data if hovering
         if (this.hoveredIndex >= 0) {
@@ -1497,6 +2196,117 @@ export default {
       } finally {
         this.trafficLoading = false
       }
+    },
+    async loadResources() {
+      const routerId = String(this.routerDetails?.id ?? '')
+      if (!routerId) return
+
+      this.resourceLoading = true
+      this.resourceError = ''
+
+      try {
+        const response = await axios.get(`/routers/${routerId}/metrics/resources`, {
+          params: {
+            range: this.resourceTimeRange,
+            step: '30s',
+          },
+        })
+
+        const data = response.data || {}
+        console.log('Resource metrics response:', data)
+        
+        if (!data.success) {
+          throw new Error(data.error || 'Failed to load resource metrics')
+        }
+
+        // Parse CPU data - only update if we have data to prevent clearing on empty response
+        const cpuSeries = this.normalizeResourceSeries(data.cpu)
+        if (cpuSeries.length > 0) {
+          this.resourceData.cpu = cpuSeries.map(p => ({ ts: p.ts, value: p.v }))
+        }
+
+        // Parse Memory data (as percentage) - only update if we have data
+        const memSeries = this.normalizeResourceSeries(data.memory)
+        if (memSeries.length > 0) {
+          this.resourceData.memory = memSeries.map(p => ({ ts: p.ts, value: p.v }))
+        }
+
+        // Parse Disk data (as percentage) - only update if we have data
+        const diskSeries = this.normalizeResourceSeries(data.disk)
+        if (diskSeries.length > 0) {
+          this.resourceData.disk = diskSeries.map(p => ({ ts: p.ts, value: p.v }))
+        }
+
+        console.log('Parsed resource data:', {
+          cpu: this.resourceData.cpu.length,
+          memory: this.resourceData.memory.length,
+          disk: this.resourceData.disk.length,
+          cpuSample: this.resourceData.cpu[0],
+          memSample: this.resourceData.memory[0],
+          diskSample: this.resourceData.disk[0]
+        })
+
+        // Calculate stats
+        // resourceStats now computed property - automatically updates
+        // this.calculateResourceStats()
+        this.resourceError = ''
+
+        // Update tooltip data if hovering
+        if (this.resourceHoveredIndex >= 0) {
+          if (this.resourceHoveredIndex < this.combinedResourceData.length) {
+            this.resourceHoveredData = this.combinedResourceData[this.resourceHoveredIndex]
+          } else {
+            this.resourceHoveredIndex = -1
+            this.resourceHoveredData = null
+          }
+        }
+      } catch (err) {
+        this.resourceError = err.response?.data?.error || err.message || 'Failed to load resource metrics'
+        console.error('Resource metrics error:', err)
+      } finally {
+        this.resourceLoading = false
+      }
+    },
+    // calculateResourceStats removed - now computed property
+    getResourceMax(type) {
+      return 100 // CPU, Memory, Disk are all percentages 0-100
+    },
+    formatPercent(value) {
+      if (value === undefined || value === null || !Number.isFinite(value)) return 'N/A'
+      return `${value.toFixed(1)}%`
+    },
+    getResourcePath(type) {
+      const data = this.resourceData[type]
+      if (!data || data.length === 0) return ''
+      
+      const width = 1000
+      const height = 100
+      const max = 100 // Percentage 0-100
+      
+      const points = data.map((d, i) => {
+        const x = (i / (data.length - 1 || 1)) * width
+        const y = height - (d.value / max) * height
+        return `${x.toFixed(1)},${y.toFixed(1)}`
+      })
+      
+      const line = `M ${points.join(' L ')}`
+      return `${line} L ${width},${height} L 0,${height} Z`
+    },
+    getResourceLine(type) {
+      const data = this.resourceData[type]
+      if (!data || data.length === 0) return ''
+      
+      const width = 1000
+      const height = 100
+      const max = 100 // Percentage 0-100
+      
+      const points = data.map((d, i) => {
+        const x = (i / (data.length - 1 || 1)) * width
+        const y = height - (d.value / max) * height
+        return `${x.toFixed(1)},${y.toFixed(1)}`
+      })
+      
+      return `M ${points.join(' L ')}`
     },
     copyToClipboard(text) {
       navigator.clipboard
@@ -1528,3 +2338,16 @@ export default {
   },
 }
 </script>
+
+<style>
+/* Hide sidebar when graph fullscreen is active */
+body.graph-fullscreen-active aside[class*="sidebar"],
+body.graph-fullscreen-active aside.fixed.left-0 {
+  display: none !important;
+}
+
+/* Ensure fullscreen graphs are truly fullscreen */
+body.graph-fullscreen-active {
+  overflow: hidden;
+}
+</style>

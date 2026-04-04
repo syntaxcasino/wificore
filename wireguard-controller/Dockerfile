@@ -17,6 +17,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY controller.py .
 COPY load-peers.py .
+COPY webhook_monitor.py .
 COPY config/ /app/config/
 RUN chmod +x load-peers.py
 

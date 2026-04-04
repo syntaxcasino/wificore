@@ -58,6 +58,10 @@ return new class extends Migration
                 $table->json('interface_assignments')->nullable();
                 $table->json('configurations')->nullable();
                 $table->string('config_token', 64)->nullable();
+                $table->timestamp('config_token_created_at')->nullable()->after('config_token')
+                    ->comment('When the config token was created');
+                $table->timestamp('config_token_expires_at')->nullable()->after('config_token_created_at')
+                    ->comment('When the config token expires');
                 $table->string('vendor', 50)->default('mikrotik');
                 $table->string('device_type', 50)->default('router');
                 $table->json('capabilities')->nullable();

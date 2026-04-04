@@ -92,9 +92,24 @@ class RouterMetricsController extends Controller
         }
 
         $routerId = (string) $router->id;
-
         $range = (string) $request->query('range', '1h');
         $step = (string) $request->query('step', '30s');
+
+        // Check for pre-computed cached data first
+        $cacheKey = "router:{$routerId}:metrics:{$range}";
+        $cached = \Cache::get($cacheKey);
+
+        if ($cached && isset($cached['traffic'])) {
+            return response()->json([
+                'success' => true,
+                'router_id' => $routerId,
+                'cached' => true,
+                'computed_at' => $cached['computed_at'] ?? null,
+                'in' => ['data' => ['result' => [['values' => array_map(fn($p) => [$p['ts'], $p['upload']], $cached['traffic'])]]]],
+                'out' => ['data' => ['result' => [['values' => array_map(fn($p) => [$p['ts'], $p['download']], $cached['traffic'])]]]],
+            ]);
+        }
+
         $now = time();
         $start = $this->rangeStartFromNow($range, $now);
 
@@ -183,6 +198,95 @@ class RouterMetricsController extends Controller
             'total_out' => $totalOut,
             'by_router_in' => $byRouterIn,
             'by_router_out' => $byRouterOut,
+        ]);
+    }
+
+    public function resourcesRange(Request $request, Router $router, VictoriaMetricsClient $vm, TenantContext $tenantContext): JsonResponse
+    {
+        $tenantId = $tenantContext->getTenantId();
+        if (!$tenantId) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Tenant context not set',
+            ], 403);
+        }
+
+        $routerId = (string) $router->id;
+        $range = (string) $request->query('range', '1h');
+        $step = (string) $request->query('step', '30s');
+
+        // Check for pre-computed cached data first
+        $cacheKey = "router:{$routerId}:metrics:{$range}";
+        $cached = \Cache::get($cacheKey);
+
+        if ($cached && isset($cached['resources'])) {
+            $resources = $cached['resources'];
+            return response()->json([
+                'success' => true,
+                'router_id' => $routerId,
+                'cached' => true,
+                'computed_at' => $cached['computed_at'] ?? null,
+                'cpu' => ['data' => ['result' => [['values' => $resources['cpu'] ?? []]]]],
+                'memory' => ['data' => ['result' => [['values' => $resources['memory'] ?? []]]]],
+                'disk' => ['data' => ['result' => [['values' => $resources['disk'] ?? []]]]],
+            ]);
+        }
+
+        $now = time();
+        $start = $this->rangeStartFromNow($range, $now);
+
+        $selector = sprintf('tenant_id="%s",router_id="%s"', $this->escapeLabelValue((string) $tenantId), $this->escapeLabelValue($routerId));
+
+        $diskType = '(^([.]?1[.]3[.]6[.]1[.]2[.]1[.]25[.]2[.]1[.]4|iso[.]3[.]6[.]1[.]2[.]1[.]25[.]2[.]1[.]4)$|hrStorageFixedDisk|HOST-RESOURCES-MIB::hrStorageFixedDisk)';
+        $ramType = '(^([.]?1[.]3[.]6[.]1[.]2[.]1[.]25[.]2[.]1[.]2|iso[.]3[.]6[.]1[.]2[.]1[.]25[.]2[.]1[.]2)$|hrStorageRam|HOST-RESOURCES-MIB::hrStorageRam)';
+
+        // CPU queries - primary from MikroTik Enterprise MIB, fallback to HOST-RESOURCES
+        $cpuPrimary = sprintf('router_health_cpu_load{%s}', $selector);
+        $cpuFallbacks = [
+            sprintf('avg by (router_id) (cpu_hrProcessorLoad{%s})', $selector),
+        ];
+
+        // Memory percentage - calculate from total/free bytes since percentage metric doesn't exist
+        $memPrimary = sprintf('100 - ((router_health_free_memory{%s} / router_health_total_memory{%s}) * 100)', $selector, $selector);
+        $memFallbacks = [
+            // Fallback to HOST-RESOURCES-MIB storage-based calculation
+            sprintf('(%s / %s) * 100',
+                $this->buildStorageBytesQuery('storage', 'hrStorageUsed', $selector, $ramType),
+                $this->buildStorageBytesQuery('storage', 'hrStorageSize', $selector, $ramType)
+            ),
+            // Second fallback to router_storage prefix
+            sprintf('(%s / %s) * 100',
+                $this->buildStorageBytesQuery('router_storage', 'hrStorageUsed', $selector, $ramType),
+                $this->buildStorageBytesQuery('router_storage', 'hrStorageSize', $selector, $ramType)
+            ),
+        ];
+
+        // Disk percentage - calculate from storage table
+        $diskPrimary = sprintf('(%s / %s) * 100',
+            $this->buildStorageBytesQuery('storage', 'hrStorageUsed', $selector, $diskType),
+            $this->buildStorageBytesQuery('storage', 'hrStorageSize', $selector, $diskType)
+        );
+        $diskFallbacks = [
+            // Fallback to router_storage prefix
+            sprintf('(%s / %s) * 100',
+                $this->buildStorageBytesQuery('router_storage', 'hrStorageUsed', $selector, $diskType),
+                $this->buildStorageBytesQuery('router_storage', 'hrStorageSize', $selector, $diskType)
+            ),
+        ];
+
+        $cpu = $this->queryRangeWithFallback($vm, $cpuPrimary, $cpuFallbacks, $start, $now, $step);
+        $memory = $this->queryRangeWithFallback($vm, $memPrimary, $memFallbacks, $start, $now, $step);
+        $disk = $this->queryRangeWithFallback($vm, $diskPrimary, $diskFallbacks, $start, $now, $step);
+
+        return response()->json([
+            'success' => true,
+            'router_id' => $routerId,
+            'start' => $start,
+            'end' => $now,
+            'step' => $step,
+            'cpu' => $cpu,
+            'memory' => $memory,
+            'disk' => $disk,
         ]);
     }
 

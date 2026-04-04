@@ -1,6 +1,6 @@
 <template>
-  <div class="bg-gray-900 text-gray-200 min-h-[calc(100vh-4rem)]">
-    <router-view />
+  <div class="h-full min-h-0 flex flex-col bg-gray-900 text-gray-200">
+    <router-view class="flex-1 min-h-0" />
   </div>
 </template>
 

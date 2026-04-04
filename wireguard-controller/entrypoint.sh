@@ -210,5 +210,23 @@ echo "Interface: ${VPN_INTERFACE_NAME}"
 echo "Listen Port: ${VPN_LISTEN_PORT}"
 echo "Server IP: ${VPN_SERVER_IP}"
 
+# Start webhook monitor in background if enabled
+if [ "${ENABLE_WEBHOOK_MONITOR:-true}" = "true" ]; then
+    echo ""
+    echo "Starting Webhook Monitor..."
+    echo "Webhook URL: ${WEBHOOK_BASE_URL:-http://backend:80}"
+    
+    # Run webhook monitor in background
+    python3 /app/webhook_monitor.py &
+    WEBHOOK_PID=$!
+    
+    echo "✓ Webhook Monitor started (PID: $WEBHOOK_PID)"
+fi
+
+echo ""
+echo "=========================================="
+echo "All services started successfully!"
+echo "=========================================="
+
 # Execute the main command
 exec "$@"

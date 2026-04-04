@@ -3,6 +3,13 @@
     title="Traffic Graphs"
     subtitle="Real-time network traffic visualization"
     icon="BarChart3"
+    color-theme="blue"
+    :stats="[
+      { color: 'bg-blue-500', value: formatBytes(stats.current) + '/s', tooltip: 'Current Traffic' },
+      { color: 'bg-green-500', value: formatBytes(stats.download) + '/s', tooltip: 'Download' },
+      { color: 'bg-purple-500', value: formatBytes(stats.upload) + '/s', tooltip: 'Upload' },
+      { color: 'bg-amber-500', value: formatBytes(stats.peak) + '/s', tooltip: 'Peak Today' }
+    ]"
     :breadcrumbs="breadcrumbs"
   >
     <template #actions>
@@ -14,50 +21,6 @@
         <Download class="w-4 h-4 mr-1" />
         Export
       </BaseButton>
-    </template>
-
-    <template #stats>
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
-        <div class="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200">
-          <div class="flex items-center justify-between">
-            <div>
-              <div class="text-xs text-blue-600 font-medium mb-1">Current Traffic</div>
-              <div class="text-2xl font-bold text-blue-900">{{ formatBytes(stats.current) }}/s</div>
-            </div>
-            <Activity class="w-6 h-6 text-blue-600" />
-          </div>
-        </div>
-
-        <div class="bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg p-4 border border-green-200">
-          <div class="flex items-center justify-between">
-            <div>
-              <div class="text-xs text-green-600 font-medium mb-1">Download</div>
-              <div class="text-2xl font-bold text-green-900">{{ formatBytes(stats.download) }}/s</div>
-            </div>
-            <ArrowDown class="w-6 h-6 text-green-600" />
-          </div>
-        </div>
-
-        <div class="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-lg p-4 border border-purple-200">
-          <div class="flex items-center justify-between">
-            <div>
-              <div class="text-xs text-purple-600 font-medium mb-1">Upload</div>
-              <div class="text-2xl font-bold text-purple-900">{{ formatBytes(stats.upload) }}/s</div>
-            </div>
-            <ArrowUp class="w-6 h-6 text-purple-600" />
-          </div>
-        </div>
-
-        <div class="bg-gradient-to-br from-amber-50 to-yellow-50 rounded-lg p-4 border border-amber-200">
-          <div class="flex items-center justify-between">
-            <div>
-              <div class="text-xs text-amber-600 font-medium mb-1">Peak Today</div>
-              <div class="text-2xl font-bold text-amber-900">{{ formatBytes(stats.peak) }}/s</div>
-            </div>
-            <TrendingUp class="w-6 h-6 text-amber-600" />
-          </div>
-        </div>
-      </div>
     </template>
 
     <template #filters>

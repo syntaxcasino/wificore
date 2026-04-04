@@ -6,14 +6,15 @@
     v-model:search-model="searchQuery"
     search-placeholder="Search routers..."
     :stats="[
-      { color: 'bg-emerald-500', value: onlineCount },
-      { color: 'bg-slate-500', value: offlineCount },
-      { color: 'bg-blue-500', value: routers.length },
-      { color: 'bg-amber-500', value: filteredRouters.length }
+      { color: 'bg-emerald-500', value: onlineCount, tooltip: 'Online routers' },
+      { color: 'bg-slate-500', value: offlineCount, tooltip: 'Offline routers' },
+      { color: 'bg-amber-500', value: issueCount, tooltip: 'Routers with issues' }
     ]"
     :total="filteredRouters.length"
     :loading="loading"
+    add-button-text="Add Router"
     @refresh="fetchRouters"
+    @add="openCreateOverlay"
     @search-clear="searchQuery = ''"
   >
     <!-- Icon Slot -->
@@ -21,16 +22,6 @@
       <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 md:h-6 md:w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
         <path stroke-linecap="round" stroke-linejoin="round" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904 3.905 10.236 3.905 14.142 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0" />
       </svg>
-    </template>
-
-    <!-- Action Buttons -->
-    <template #actions>
-      <BaseButton @click="openCreateOverlay" variant="primary" size="sm" class="shrink-0 h-8 px-3 text-xs">
-        <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 mr-1" viewBox="0 0 20 20" fill="currentColor">
-          <path fill-rule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clip-rule="evenodd" />
-        </svg>
-        Add Router
-      </BaseButton>
     </template>
 
     <!-- Overlays (keep mounted so provisioning flow doesn't reset during list refresh/loading) -->
@@ -69,6 +60,18 @@
       @retry="fetchRouters" 
     />
 
+    <!-- Filters -->
+    <template #filters>
+      <BaseSelect v-model="filterStatus" placeholder="All Statuses" class="w-40" @change="handleFilterChange">
+        <option value="">All Statuses</option>
+        <option value="online">Online</option>
+        <option value="offline">Offline</option>
+        <option value="error">Error</option>
+        <option value="rebooting">Rebooting</option>
+      </BaseSelect>
+      <button v-if="filterStatus" @click="clearFilters" class="text-xs text-indigo-600 hover:text-indigo-700 font-medium">Clear filters</button>
+    </template>
+
     <!-- Error State -->
     <div v-if="listError" class="flex flex-col items-center justify-center gap-4 p-8 text-red-500">
       <svg xmlns="http://www.w3.org/2000/svg" class="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -85,94 +88,46 @@
     <div v-else-if="filteredRouters.length" class="flex flex-col h-full px-4 md:px-6 pt-2 pb-2 min-h-0">
       <!-- Mobile Cards -->
       <div class="md:hidden space-y-3 overflow-y-auto flex-1 min-h-0">
-        <div
+        <MobileDataCard
           v-for="router in paginatedRouters"
           :key="router.id"
-          class="bg-white rounded-lg border border-slate-200 shadow-sm p-4 cursor-pointer active:scale-[0.99] transition-transform"
-          @click="openDetails(router)"
-        >
-          <div class="flex items-start justify-between gap-3">
-            <div class="min-w-0">
-              <div class="flex items-center gap-2 min-w-0">
-                <span :class="getStatusDotClass(router.status)" class="w-2 h-2 rounded-full flex-shrink-0"></span>
-                <div class="text-sm font-semibold text-slate-900 truncate">{{ router.name }}</div>
-              </div>
-              <div class="mt-1 text-xs text-slate-600 truncate">{{ router.ip_address || 'No IP' }}</div>
-              <div class="mt-1 text-xs text-slate-500 truncate">{{ formatModel(getRouterModel(router)) }}</div>
-            </div>
-            <EntityStatusBadge :status="router.status" size="sm" />
-          </div>
-
-          <div class="mt-3 grid grid-cols-2 gap-3">
-            <div class="bg-slate-50 border border-slate-200 rounded-md p-2">
-              <div class="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">CPU</div>
-              <div v-if="router.live_data?.cpu_load !== undefined && router.live_data?.cpu_load !== null" class="mt-1 flex items-center gap-2">
-                <div class="flex-1 h-1.5 bg-slate-200 rounded-full overflow-hidden">
-                  <div :class="getCpuColorClass(Number(router.live_data.cpu_load))" class="h-full rounded-full transition-all" :style="{ width: String(router.live_data.cpu_load) + '%' }"></div>
-                </div>
-                <div class="text-xs font-medium text-slate-700 w-10 text-right">{{ router.live_data.cpu_load }}%</div>
-              </div>
-              <div v-else class="mt-1 text-xs text-slate-400">—</div>
-            </div>
-
-            <div class="bg-slate-50 border border-slate-200 rounded-md p-2">
-              <div class="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Memory</div>
-              <div v-if="getMemoryUsage(router) !== null" class="mt-1 flex items-center gap-2">
-                <div class="flex-1 h-1.5 bg-slate-200 rounded-full overflow-hidden">
-                  <div :class="getMemoryColorClass(getMemoryUsage(router))" class="h-full rounded-full transition-all" :style="{ width: getMemoryUsage(router) + '%' }"></div>
-                </div>
-                <div class="text-xs font-medium text-slate-700 w-10 text-right">{{ getMemoryUsage(router) }}%</div>
-              </div>
-              <div v-else class="mt-1 text-xs text-slate-400">—</div>
-            </div>
-
-            <div class="bg-slate-50 border border-slate-200 rounded-md p-2">
-              <div class="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Disk</div>
-              <div v-if="getDiskUsage(router) !== null" class="mt-1 flex items-center gap-2">
-                <div class="flex-1 h-1.5 bg-slate-200 rounded-full overflow-hidden">
-                  <div :class="getDiskColorClass(getDiskUsage(router))" class="h-full rounded-full transition-all" :style="{ width: getDiskUsage(router) + '%' }"></div>
-                </div>
-                <div class="text-xs font-medium text-slate-700 w-10 text-right">{{ getDiskUsage(router) }}%</div>
-              </div>
-              <div v-else class="mt-1 text-xs text-slate-400">—</div>
-            </div>
-          </div>
-
-          <div class="mt-3 flex items-center justify-end gap-2" @click.stop>
-            <button @click="loginToRouter(router)" :disabled="router.status !== 'online'" class="px-3 py-2 text-xs font-medium text-emerald-700 bg-emerald-50 rounded-md hover:bg-emerald-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">Login</button>
-            <button @click="openDetails(router)" class="px-3 py-2 text-xs font-medium text-blue-700 bg-blue-50 rounded-md hover:bg-blue-100 transition-colors">View</button>
-          </div>
-        </div>
+          :title="router.name"
+          :subtitle="router.ip_address || 'No IP'"
+          :meta-lines="getRouterMetaLines(router)"
+          :status="router.status"
+          :actions="getRouterActions(router)"
+          hoverable
+        />
       </div>
 
       <!-- Desktop Table -->
       <div class="hidden md:flex bg-white border-x border-t border-slate-200 flex-col min-h-0 flex-1">
         <!-- Fixed Header -->
         <div class="bg-slate-50 border-b border-slate-200">
-          <table class="w-full">
+          <table class="w-full table-fixed">
             <thead>
               <tr>
-                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                <th class="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[22%]">
                   <div class="flex items-center gap-2"><div class="w-7 h-7"></div><span>Router</span></div>
                 </th>
-                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider hidden lg:table-cell">IP Address</th>
-                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Status</th>
-                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider hidden xl:table-cell">CPU</th>
-                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider hidden xl:table-cell">Memory</th>
-                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider hidden xl:table-cell">Disk</th>
-                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider hidden lg:table-cell">Model</th>
-                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider hidden lg:table-cell">Last Seen</th>
-                <th class="px-6 py-3 text-right text-xs font-semibold text-slate-700 uppercase tracking-wider">Actions</th>
+                <th class="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[14%] hidden lg:table-cell">IP Address</th>
+                <th class="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[10%]">Status</th>
+                <th class="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[10%] hidden xl:table-cell">CPU</th>
+                <th class="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[10%] hidden xl:table-cell">Memory</th>
+                <th class="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[10%] hidden xl:table-cell">Disk</th>
+                <th class="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[12%] hidden lg:table-cell">Model</th>
+                <th class="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[12%] hidden lg:table-cell">Last Seen</th>
+                <th class="px-4 py-3 text-right text-xs font-semibold text-slate-700 uppercase tracking-wider w-[15%]">Actions</th>
               </tr>
             </thead>
           </table>
         </div>
         <!-- Scrollable Body -->
         <div class="overflow-y-auto flex-1 min-h-0">
-          <table class="w-full">
+          <table class="w-full table-fixed">
             <tbody class="divide-y divide-slate-100">
               <tr v-for="router in paginatedRouters" :key="router.id" class="hover:bg-blue-50/50 transition-colors cursor-pointer group" @click="openDetails(router)">
-                <td class="px-6 py-4">
+                <td class="px-4 py-4 w-[22%]">
                   <div class="flex items-center gap-3">
                     <div class="w-7 h-7 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-md flex items-center justify-center text-white flex-shrink-0">
                       <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -185,7 +140,7 @@
                     </div>
                   </div>
                 </td>
-                <td class="px-6 py-4 hidden lg:table-cell">
+                <td class="px-4 py-4 w-[14%] hidden lg:table-cell">
                   <div class="flex items-center gap-1.5">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 text-slate-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
@@ -193,45 +148,43 @@
                     <span class="text-xs text-slate-600 truncate">{{ router.ip_address || 'No IP' }}</span>
                   </div>
                 </td>
-                <td class="px-6 py-4">
-                  <EntityStatusBadge :status="router.status" size="sm" />
-                </td>
-                <td class="px-6 py-4 hidden xl:table-cell">
+                <td class="px-4 py-4 w-[10%]"><EntityStatusBadge :status="router.status" size="sm" /></td>
+                <td class="px-4 py-4 w-[10%] hidden xl:table-cell">
                   <div v-if="router.live_data?.cpu_load !== undefined && router.live_data?.cpu_load !== null" class="flex items-center gap-1.5">
-                    <div class="flex-1 h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                    <div class="flex-1 h-1.5 bg-slate-200 rounded-full overflow-hidden min-w-[30px]">
                       <div :class="getCpuColorClass(router.live_data.cpu_load)" class="h-full rounded-full transition-all" :style="{ width: router.live_data.cpu_load + '%' }"></div>
                     </div>
-                    <span class="text-xs font-medium text-slate-700 w-8 text-right">{{ router.live_data.cpu_load }}%</span>
+                    <span class="text-xs font-medium text-slate-700 w-6 text-right">{{ router.live_data.cpu_load }}%</span>
                   </div>
                   <span v-else class="text-xs text-slate-400">—</span>
                 </td>
-                <td class="px-6 py-4 hidden xl:table-cell">
+                <td class="px-4 py-4 w-[10%] hidden xl:table-cell">
                   <div v-if="getMemoryUsage(router) !== null" class="flex items-center gap-1.5">
-                    <div class="flex-1 h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                    <div class="flex-1 h-1.5 bg-slate-200 rounded-full overflow-hidden min-w-[30px]">
                       <div :class="getMemoryColorClass(getMemoryUsage(router))" class="h-full rounded-full transition-all" :style="{ width: getMemoryUsage(router) + '%' }"></div>
                     </div>
-                    <span class="text-xs font-medium text-slate-700 w-8 text-right">{{ getMemoryUsage(router) }}%</span>
+                    <span class="text-xs font-medium text-slate-700 w-6 text-right">{{ getMemoryUsage(router) }}%</span>
                   </div>
                   <span v-else class="text-xs text-slate-400">—</span>
                 </td>
-                <td class="px-6 py-4 hidden xl:table-cell">
+                <td class="px-4 py-4 w-[10%] hidden xl:table-cell">
                   <div v-if="getDiskUsage(router) !== null" class="flex items-center gap-1.5">
-                    <div class="flex-1 h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                    <div class="flex-1 h-1.5 bg-slate-200 rounded-full overflow-hidden min-w-[30px]">
                       <div :class="getDiskColorClass(getDiskUsage(router))" class="h-full rounded-full transition-all" :style="{ width: getDiskUsage(router) + '%' }"></div>
                     </div>
-                    <span class="text-xs font-medium text-slate-700 w-8 text-right">{{ getDiskUsage(router) }}%</span>
+                    <span class="text-xs font-medium text-slate-700 w-6 text-right">{{ getDiskUsage(router) }}%</span>
                   </div>
                   <span v-else class="text-xs text-slate-400">—</span>
                 </td>
-                <td class="px-6 py-4 hidden lg:table-cell">
-                  <span v-if="getRouterModel(router)" class="text-xs text-slate-500 truncate" :title="getRouterModel(router)">{{ formatModel(getRouterModel(router)) }}</span>
+                <td class="px-4 py-4 w-[12%] hidden lg:table-cell">
+                  <span v-if="getRouterModel(router)" class="text-xs text-slate-500 truncate block" :title="getRouterModel(router)">{{ formatModel(getRouterModel(router)) }}</span>
                   <span v-else class="text-xs text-slate-400">—</span>
                 </td>
-                <td class="px-6 py-4 hidden lg:table-cell">
-                  <span v-if="router.last_updated || router.last_seen" class="text-xs text-slate-500 truncate">{{ formatTimeAgo(router.last_updated || router.last_seen) }}</span>
+                <td class="px-4 py-4 w-[12%] hidden lg:table-cell">
+                  <span v-if="router.last_updated || router.last_seen" class="text-xs text-slate-500 truncate block">{{ formatTimeAgo(router.last_updated || router.last_seen) }}</span>
                   <span v-else class="text-xs text-slate-400">—</span>
                 </td>
-                <td class="px-6 py-4 text-right" @click.stop>
+                <td class="px-4 py-4 text-right w-[15%]" @click.stop>
                   <div class="flex items-center justify-end gap-1">
                     <button @click="loginToRouter(router)" :disabled="router.status !== 'online'" class="px-2 py-1 text-xs font-medium text-emerald-700 bg-emerald-50 rounded hover:bg-emerald-100 transition-colors inline-flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed">
                       <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -293,24 +246,17 @@
     <!-- Empty State -->
     <DataEmptyState
       v-else
-      :title="searchQuery ? 'No Routers Found' : 'No Routers'"
-      :description="searchQuery ? 'No routers match your search criteria.' : 'Get started by adding your first router to begin managing your network infrastructure.'"
+      :title="searchQuery || filterStatus ? 'No Routers Found' : 'No Routers'"
+      :description="searchQuery || filterStatus ? 'No routers match your search criteria.' : 'Get started by adding your first router to begin managing your network infrastructure.'"
       icon="router"
       color-theme="indigo"
-      :show-clear="!!searchQuery"
-      :has-filters="!!searchQuery"
-      clear-text="Clear Search"
-      @clear="searchQuery = ''"
-    >
-      <template #action>
-        <BaseButton @click="openCreateOverlay" variant="primary" size="sm">
-          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 mr-1" viewBox="0 0 20 20" fill="currentColor">
-            <path fill-rule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clip-rule="evenodd" />
-          </svg>
-          Add Your First Router
-        </BaseButton>
-      </template>
-    </DataEmptyState>
+      :show-clear="!!searchQuery || !!filterStatus"
+      :has-filters="!!filterStatus"
+      clear-text="Clear Filters"
+      add-text="Add Your First Router"
+      @clear="clearFilters"
+      @add="openCreateOverlay"
+    />
   </DataViewContainer>
 </template>
 
@@ -325,10 +271,11 @@ import DataSkeleton from '@/modules/common/components/base/DataSkeleton.vue'
 import DataPagination from '@/modules/common/components/base/DataPagination.vue'
 import DataEmptyState from '@/modules/common/components/base/DataEmptyState.vue'
 import EntityStatusBadge from '@/modules/common/components/base/EntityStatusBadge.vue'
-import BaseButton from '@/modules/common/components/base/BaseButton.vue'
-import Overlay from '@/modules/tenant/components/routers/modals/CreateRouterModal.vue'
+import MobileDataCard from '@/modules/common/components/base/MobileDataCard.vue'
+import BaseSelect from '@/modules/common/components/base/BaseSelect.vue'
 import UpdateOverlay from '@/modules/tenant/components/routers/modals/UpdateRouterModal.vue'
 import DetailsOverlay from '@/modules/tenant/components/routers/modals/RouterDetailsModal.vue'
+import Overlay from '@/modules/tenant/components/routers/modals/CreateRouterModal.vue'
 
 const confirmStore = useConfirmStore()
 
@@ -354,6 +301,7 @@ const {
 const activeMenu = ref(null)
 const menuPosition = ref({})
 const searchQuery = ref('')
+const filterStatus = ref('')
 const currentPage = ref(1)
 const itemsPerPage = ref(10)
 
@@ -382,11 +330,14 @@ const filteredRouters = computed(() => {
   let filtered = routers.value
   if (searchQuery.value) {
     const query = searchQuery.value.toLowerCase()
-    filtered = routers.value.filter(router => 
+    filtered = filtered.filter(router => 
       (router.name && router.name.toLowerCase().includes(query)) ||
       (router.ip_address && router.ip_address.includes(query)) ||
       (router.model && router.model.toLowerCase().includes(query))
     )
+  }
+  if (filterStatus.value) {
+    filtered = filtered.filter(router => router.status === filterStatus.value)
   }
   return [...filtered].sort((a, b) => {
     const byName = normalizeName(a).localeCompare(normalizeName(b), undefined, { numeric: true, sensitivity: 'base' })
@@ -407,6 +358,7 @@ const totalPages = computed(() => Math.ceil(filteredRouters.value.length / items
 
 watch(searchQuery, () => { currentPage.value = 1 })
 watch(itemsPerPage, () => { currentPage.value = 1 })
+watch(filterStatus, () => { currentPage.value = 1 })
 
 watch(totalPages, (pages) => {
   const safePages = pages || 1
@@ -416,6 +368,38 @@ watch(totalPages, (pages) => {
 
 const onlineCount = computed(() => routers.value.filter(r => r.status === 'online').length)
 const offlineCount = computed(() => routers.value.filter(r => !r.status || r.status === 'offline').length)
+const issueCount = computed(() => routers.value.filter(r => r.status === 'error' || r.status === 'rebooting').length)
+
+// Mobile card helpers
+const getRouterMetaLines = (router) => {
+  const lines = []
+  if (router.model) lines.push({ text: formatModel(getRouterModel(router)) })
+  if (router.live_data?.cpu_load !== undefined) {
+    lines.push({ text: `CPU: ${router.live_data.cpu_load}%` })
+  }
+  return lines
+}
+
+const getRouterActions = (router) => {
+  const actions = [
+    { label: 'View', onClick: () => openDetails(router), class: 'text-blue-700 bg-blue-50 hover:bg-blue-100' }
+  ]
+  if (router.status === 'online') {
+    actions.push({ label: 'Login', onClick: () => loginToRouter(router), class: 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100' })
+  }
+  return actions
+}
+
+// Filter helpers
+const clearFilters = () => {
+  filterStatus.value = ''
+  searchQuery.value = ''
+  currentPage.value = 1
+}
+
+const handleFilterChange = () => {
+  // Handled by watcher
+}
 
 const toggleMenu = (routerId, event) => {
   event.stopPropagation()
@@ -524,7 +508,23 @@ const loginToRouter = (router) => {
   window.open(winboxUrl, '_blank')
 }
 
-onMounted(() => { fetchRouters() })
+onMounted(() => {
+  fetchRouters()
+  document.addEventListener('click', handleClickOutside)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', handleClickOutside)
+})
+
+const handleClickOutside = (event) => {
+  const menuButton = document.querySelector('[data-menu-button]')
+  const dropdownMenu = document.querySelector('[data-dropdown-menu]')
+  if (activeMenu.value && dropdownMenu && !dropdownMenu.contains(event.target) && menuButton && !menuButton.contains(event.target)) {
+    activeMenu.value = null
+    menuPosition.value = {}
+  }
+}
 </script>
 
 <style scoped>

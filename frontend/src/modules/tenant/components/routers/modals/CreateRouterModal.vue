@@ -72,7 +72,7 @@
       icon="Wifi"
       width="480px"
       :close-on-backdrop="!waitingForJobCompletion"
-      @update:model-value="val => { if (!val) $emit('close-form') }"
+      @update:modelValue="val => { if (!val) $emit('close-form') }"
       @close="$emit('close-form')"
     >
         <!-- Progress Bar - Compact -->

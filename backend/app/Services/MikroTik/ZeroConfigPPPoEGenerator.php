@@ -76,6 +76,7 @@ class ZeroConfigPPPoEGenerator
         return $this->buildConfiguration([
             'router_id'     => (string) $router->id,
             'tenant_id'     => (string) $router->tenant_id,
+            'router_model'  => $router->model ?? '',
             'interfaces'    => $interfaces,
             'vlan_required' => (bool) $service->vlan_required,
             'vlan_id'       => $service->vlan_id,
@@ -127,7 +128,7 @@ class ZeroConfigPPPoEGenerator
         // Per LOW_END_DEVICE_OPTIMIZATION.md: total deployment should be 12-18s
         $delays = $isLowEnd ? [
             'bridge' => '500ms',           // Was 2s - reduced for faster deployment
-            'interface_batch' => '200ms',  // Was 1s - minimal delay between interface batches
+            'interface_batch' => '300ms',  // Slightly higher delay to reduce CPU spikes on low-end
             'firewall' => '300ms',         // Was 2s - CPU breathing room
             'between_sections' => '200ms', // Was 2s - reduced section delays
             'final' => '500ms',            // Was 2s - final breathing room
@@ -145,20 +146,25 @@ class ZeroConfigPPPoEGenerator
         $s[] = "/log info \"PPPoE-$id-START [$profileName profile for: $deviceModel]\"";
 
         // RADIUS
-        $s[] = ":do { /radius remove [/radius find comment~\"PPPoE-$id\"]; } on-error={}";
-        $s[] = "/radius add service=ppp address=$rs secret=\"$rsec\" timeout=3s comment=\"PPPoE-$id\"";
-        $s[] = "/radius set [/radius find comment=\"PPPoE-$id\"] authentication-port=1812 accounting-port=1813";
+        $s[] = ':do { /radius remove [/radius find service=ppp comment~"WiFiCore PPPoE"]; } on-error={}';
+        $s[] = ":do { /radius add service=ppp address={$rs} secret={$rsec} authentication-port=1812 accounting-port=1813 timeout=3s comment=\"WiFiCore PPPoE ({$id})\"; } on-error={ :error \"PPPoE: RADIUS configure failed\" }";
         $s[] = "/ppp aaa set use-radius=yes accounting=yes interim-update=5m";
 
-        // IP POOL
-        $s[] = ":do { /ip pool add name=\"$pool\" comment=\"PPPoE-$id\" } on-error={}";
-        $s[] = ":do { /ip pool set [/ip pool find name=\"$pool\"] ranges={$p['range_start']}-{$p['range_end']} } on-error={}";
+        // IP POOL - Atomic creation with ranges
+        $s[] = ":do { /ip pool add name=\"$pool\" ranges={$p['range_start']}-{$p['range_end']} comment=\"PPPoE-$id\" } on-error={ /log info \"PPPoE-$id: Pool may exist, attempting update\"; /ip pool set [/ip pool find name=\"$pool\"] ranges={$p['range_start']}-{$p['range_end']}; }";
 
         // INTERFACE LISTS
-        $s[] = ":do { /interface list add name=$wan } on-error={}";
-        $s[] = ":do { /interface list add name=$pl } on-error={}";
-        $s[] = ":do { /interface list add name=$pal } on-error={}";
-        $s[] = ":do { /interface list member add list=$wan interface=ether1 } on-error={}";
+        $s[] = ":do { /interface list add name=$wan } on-error={} ";
+        $s[] = ":do { /interface list add name=$pl } on-error={} ";
+        $s[] = ":do { /interface list add name=$pal } on-error={} ";
+        $s[] = ":do { /interface list member add list=$wan interface=ether1 } on-error={} ";
+
+        // WAN baseline (optional) - DHCP client + disable running-check on ports
+        $s[] = ":do { /ip dhcp-client add interface=ether1 disabled=no } on-error={ /ip dhcp-client set [/ip dhcp-client find interface=ether1] disabled=no; }";
+        $runningCheckInterfaces = array_values(array_unique(array_merge(['ether1'], $p['interfaces'])));
+        foreach ($runningCheckInterfaces as $iface) {
+            $s[] = ":do { /interface ethernet set [find name=\"{$iface}\"] disable-running-check=no } on-error={} ";
+        }
 
         // ENABLE REST API (api-ssl) for modern provisioning
         $s[] = ":do { /ip service enable api-ssl } on-error={ /log info \"PPPoE-$id: INFO - api-ssl already enabled or not available\" }";
@@ -227,12 +233,14 @@ class ZeroConfigPPPoEGenerator
             // INPUT: Allow established + management only (3 rules)
             $s[] = "/ip firewall filter add chain=input connection-state=established,related action=accept comment=\"PPPoE-$id-EST-IN\"";
             $s[] = "/ip firewall filter add chain=input protocol=tcp dst-port=$mports src-address=$mgmt action=accept comment=\"PPPoE-$id-MGMT\"";
+            $s[] = "/ip firewall filter add chain=input protocol=udp dst-port=161 src-address=$mgmt action=accept comment=\"PPPoE-$id-SNMP\"";
             $s[] = "/ip firewall filter add chain=input in-interface=\"$bridge\" action=drop comment=\"PPPoE-$id-DROP-IN\"";
             
             // FORWARD: Auth enforcement - critical security rules (4 rules)
             $s[] = "/ip firewall filter add chain=forward in-interface-list=$pal out-interface-list=$wan action=accept comment=\"PPPoE-$id-INET-AUTH\"";
             $s[] = "/ip firewall filter add chain=forward in-interface-list=$pal connection-state=invalid action=drop comment=\"PPPoE-$id-DROP-INV\"";
             $s[] = "/ip firewall filter add chain=forward in-interface-list=$pal connection-state=established,related action=accept comment=\"PPPoE-$id-EST-FWD\"";
+            $s[] = "/ip firewall filter add chain=forward in-interface-list=$wan out-interface-list=$pal connection-state=established,related action=accept comment=\"PPPoE-$id-WAN-EST\"";
             $s[] = "/ip firewall filter add chain=forward in-interface=\"$bridge\" action=drop comment=\"PPPoE-$id-BLOCK-UNAUTH\"";
         } else {
             // FULL FIREWALL for high-end devices - ~15 rules

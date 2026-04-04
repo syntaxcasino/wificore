@@ -45,7 +45,7 @@ export function useRouters() {
   let latestMetricsRequestToken = 0
 
   // WebSocket Integration
-  const { subscribeToPrivateChannel, unsubscribeFromChannel } = useBroadcasting()
+  const { subscribeToPrivateChannel, unsubscribe } = useBroadcasting()
   const authStore = useAuthStore()
   let routerUpdatesChannel = null
 
@@ -144,7 +144,7 @@ export function useRouters() {
 
   const cleanupRealtimeUpdates = () => {
     if (routerUpdatesChannel) {
-      unsubscribeFromChannel(routerUpdatesChannel)
+      unsubscribe(routerUpdatesChannel)
       routerUpdatesChannel = null
     }
   }
@@ -512,7 +512,9 @@ export function useRouters() {
   }
 
   const openCreateOverlay = () => {
+    console.log('>>> openCreateOverlay START <<<')
     showFormOverlay.value = true
+    console.log('showFormOverlay set to:', showFormOverlay.value)
     isEditing.value = false
     currentStep.value = 1
     formData.value = {
@@ -530,7 +532,8 @@ export function useRouters() {
       last_seen: null,
       status: 'pending',
     }
-    console.log('openCreateOverlay called, formData:', JSON.parse(JSON.stringify(formData.value)))
+    console.log('openCreateOverlay complete, formData:', JSON.parse(JSON.stringify(formData.value)))
+    console.log('>>> openCreateOverlay END <<<')
   }
 
   const openEditOverlay = (router) => {

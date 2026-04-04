@@ -2,232 +2,39 @@
   <DataViewContainer
     title="Live Connections"
     subtitle="Real-time monitoring of active network connections"
-    icon="Activity"
-    :breadcrumbs="breadcrumbs"
+    color-theme="blue"
+    v-model:search-model="searchQuery"
+    search-placeholder="Search by IP, MAC, user..."
+    :stats="[
+      { color: 'bg-blue-500', value: stats.total, tooltip: 'Total Online Users' },
+      { color: 'bg-orange-500', value: stats.hotspot, tooltip: 'Hotspot Users' },
+      { color: 'bg-indigo-500', value: stats.pppoe, tooltip: 'PPPoE Users' },
+      { color: 'bg-green-500', value: formatBytes(stats.download) + '/s ↓', tooltip: 'Download Speed' },
+      { color: 'bg-purple-500', value: formatBytes(stats.upload) + '/s ↑', tooltip: 'Upload Speed' },
+      { color: 'bg-amber-500', value: stats.peakToday, tooltip: 'Peak Concurrent Today' }
+    ]"
+    :total="connections?.length || 0"
+    :loading="loading"
+    @refresh="fetchConnections"
+    @search-clear="clearFilters"
   >
+    <template #icon>
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 md:h-6 md:w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+      </svg>
+    </template>
+
     <template #actions>
-      <BaseButton @click="refreshConnections" variant="ghost" :loading="refreshing">
-        <RefreshCw class="w-4 h-4 mr-1" :class="{ 'animate-spin': refreshing }" />
-        Refresh
-      </BaseButton>
-      <BaseButton @click="exportData" variant="ghost">
-        <Download class="w-4 h-4 mr-1" />
+      <button
+        @click="exportData"
+        class="px-3 py-1.5 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded hover:bg-slate-50 transition-colors inline-flex items-center gap-1"
+      >
         Export
-      </BaseButton>
+      </button>
     </template>
 
-    <template #stats>
-      <div class="grid grid-cols-2 md:grid-cols-5 gap-3 sm:gap-4">
-        <div class="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200">
-          <div class="flex items-center justify-between">
-            <div>
-              <div class="text-xs text-blue-600 font-medium mb-1">Total Connections</div>
-              <div class="text-2xl font-bold text-blue-900">{{ stats.total }}</div>
-            </div>
-            <div class="p-3 bg-blue-100 rounded-lg">
-              <Activity class="w-6 h-6 text-blue-600" />
-            </div>
-          </div>
-        </div>
-
-        <div class="bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg p-4 border border-green-200">
-          <div class="flex items-center justify-between">
-            <div>
-              <div class="text-xs text-green-600 font-medium mb-1">Active</div>
-              <div class="text-2xl font-bold text-green-900">{{ stats.active }}</div>
-            </div>
-            <div class="p-3 bg-green-100 rounded-lg">
-              <Wifi class="w-6 h-6 text-green-600" />
-            </div>
-          </div>
-        </div>
-
-        <div class="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-lg p-4 border border-purple-200">
-          <div class="flex items-center justify-between">
-            <div>
-              <div class="text-xs text-purple-600 font-medium mb-1">Bandwidth</div>
-              <div class="text-2xl font-bold text-purple-900">{{ formatBytes(stats.bandwidth) }}/s</div>
-            </div>
-            <div class="p-3 bg-purple-100 rounded-lg">
-              <Zap class="w-6 h-6 text-purple-600" />
-            </div>
-          </div>
-        </div>
-
-        <div class="bg-gradient-to-br from-amber-50 to-yellow-50 rounded-lg p-4 border border-amber-200">
-          <div class="flex items-center justify-between">
-            <div>
-              <div class="text-xs text-amber-600 font-medium mb-1">Download</div>
-              <div class="text-2xl font-bold text-amber-900">{{ formatBytes(stats.download) }}/s</div>
-            </div>
-            <div class="p-3 bg-amber-100 rounded-lg">
-              <ArrowDown class="w-6 h-6 text-amber-600" />
-            </div>
-          </div>
-        </div>
-
-        <div class="bg-gradient-to-br from-cyan-50 to-blue-50 rounded-lg p-4 border border-cyan-200">
-          <div class="flex items-center justify-between">
-            <div>
-              <div class="text-xs text-cyan-600 font-medium mb-1">Upload</div>
-              <div class="text-2xl font-bold text-cyan-900">{{ formatBytes(stats.upload) }}/s</div>
-            </div>
-            <div class="p-3 bg-cyan-100 rounded-lg">
-              <ArrowUp class="w-6 h-6 text-cyan-600" />
-            </div>
-          </div>
-        </div>
-      </div>
-    </template>
-
-    <template #filters>
-      <div class="flex flex-col sm:flex-row sm:items-center gap-3 flex-wrap">
-        <div class="flex-1 min-w-0 sm:min-w-[250px] max-w-md">
-          <BaseSearch v-model="searchQuery" placeholder="Search by IP, MAC, user..." />
-        </div>
-        <div class="flex items-center gap-2">
-          <BaseSelect v-model="filters.type" placeholder="All Types" class="w-36">
-            <option value="">All Types</option>
-            <option value="hotspot">Hotspot</option>
-            <option value="pppoe">PPPoE</option>
-          </BaseSelect>
-          
-          <BaseSelect v-model="filters.router" placeholder="All Routers" class="w-40">
-            <option value="">All Routers</option>
-            <option v-for="router in routers" :key="router.id" :value="router.id">{{ router.name }}</option>
-          </BaseSelect>
-          
-          <BaseButton v-if="hasActiveFilters" @click="clearFilters" variant="ghost" size="sm">
-            <X class="w-4 h-4 mr-1" />
-            Clear
-          </BaseButton>
-        </div>
-        
-        <div class="ml-auto">
-          <BaseBadge variant="info">{{ filteredData.length }} connections</BaseBadge>
-        </div>
-      </div>
-    </template>
-
-    <!-- Content -->
-    <PageContent :padding="false">
-      <!-- Loading State -->
-      <div v-if="loading" class="p-6">
-        <BaseLoading type="table" :rows="8" />
-      </div>
-
-      <!-- Error State -->
-      <div v-else-if="error" class="p-6">
-        <BaseAlert variant="danger" :title="error" dismissible>
-          <div class="mt-2">
-            <BaseButton @click="fetchConnections" variant="danger" size="sm">
-              <RefreshCw class="w-4 h-4 mr-1" />
-              Retry
-            </BaseButton>
-          </div>
-        </BaseAlert>
-      </div>
-
-      <!-- Empty State -->
-      <div v-else-if="!filteredData.length">
-        <BaseEmpty
-          title="No active connections"
-          description="No connections are currently active on the network."
-          icon="Activity"
-        />
-      </div>
-
-      <!-- Connections Table -->
-      <div v-else class="p-6">
-        <BaseCard :padding="false">
-          <div class="overflow-x-auto">
-            <table class="w-full">
-              <thead class="bg-slate-50 border-b border-slate-200">
-                <tr>
-                  <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">User</th>
-                  <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Connection</th>
-                  <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Type</th>
-                  <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Router</th>
-                  <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Bandwidth</th>
-                  <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Duration</th>
-                  <th class="px-6 py-3 text-right text-xs font-semibold text-slate-700 uppercase tracking-wider">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr
-                  v-for="conn in paginatedData"
-                  :key="conn.id"
-                  class="border-b border-slate-100 hover:bg-blue-50/50 transition-colors"
-                >
-                  <td class="px-6 py-4">
-                    <div class="flex items-center gap-3">
-                      <div class="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-full flex items-center justify-center text-white text-sm font-semibold">
-                        {{ getUserInitials(conn) }}
-                      </div>
-                      <div>
-                        <div class="text-sm font-medium text-slate-900">{{ conn.username }}</div>
-                        <div class="text-xs text-slate-500">{{ conn.user_name || 'N/A' }}</div>
-                      </div>
-                    </div>
-                  </td>
-                  <td class="px-6 py-4">
-                    <div class="text-sm text-slate-900 font-mono">{{ conn.ip_address }}</div>
-                    <div class="text-xs text-slate-500 font-mono">{{ conn.mac_address }}</div>
-                  </td>
-                  <td class="px-6 py-4">
-                    <BaseBadge :variant="conn.type === 'hotspot' ? 'purple' : 'info'">
-                      {{ conn.type }}
-                    </BaseBadge>
-                  </td>
-                  <td class="px-6 py-4 text-sm text-slate-900">{{ conn.router_name }}</td>
-                  <td class="px-6 py-4">
-                    <div class="space-y-1">
-                      <div class="flex items-center gap-2 text-xs">
-                        <ArrowDown class="w-3 h-3 text-green-600" />
-                        <span class="text-green-600 font-medium">{{ formatBytes(conn.download_rate) }}/s</span>
-                      </div>
-                      <div class="flex items-center gap-2 text-xs">
-                        <ArrowUp class="w-3 h-3 text-blue-600" />
-                        <span class="text-blue-600 font-medium">{{ formatBytes(conn.upload_rate) }}/s</span>
-                      </div>
-                    </div>
-                  </td>
-                  <td class="px-6 py-4">
-                    <div class="text-sm text-slate-900">{{ formatDuration(conn.uptime) }}</div>
-                    <div class="text-xs text-slate-500">{{ formatDateTime(conn.connected_at) }}</div>
-                  </td>
-                  <td class="px-6 py-4 text-right">
-                    <div class="flex items-center justify-end gap-1">
-                      <BaseButton @click="viewDetails(conn)" variant="ghost" size="sm" title="View Details">
-                        <Eye class="w-3 h-3" />
-                      </BaseButton>
-                      <BaseButton @click="disconnectUser(conn)" variant="danger" size="sm">
-                        <Power class="w-3 h-3" />
-                      </BaseButton>
-                    </div>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </BaseCard>
-      </div>
-    </PageContent>
-
-    <!-- Footer -->
-    <PageFooter>
-      <div class="text-sm text-slate-600">
-        Showing {{ paginationInfo.start }} to {{ paginationInfo.end }} of {{ paginationInfo.total }} connections
-      </div>
-      <BasePagination
-        v-model="currentPage"
-        :total-pages="totalPages"
-        :total-items="filteredData.length"
-      />
-    </PageFooter>
-
-    <!-- Connection Details Overlay -->
-    <SlideOverlay v-model="showDetailsOverlay" title="Connection Details" :subtitle="selectedConnection?.username" icon="Activity" width="480px">
+    <!-- Connection Details Modal -->
+    <SlideOverlay v-model="showDetailsOverlay" title="Connection Details" :subtitle="selectedConnection?.username" icon="activity" width="480px">
       <div v-if="selectedConnection" class="space-y-6 p-6">
         <div class="grid grid-cols-2 gap-4">
           <div>
@@ -236,7 +43,9 @@
           </div>
           <div>
             <div class="text-xs text-slate-500 mb-1">Type</div>
-            <BaseBadge :variant="selectedConnection.type === 'hotspot' ? 'purple' : 'info'">{{ selectedConnection.type }}</BaseBadge>
+            <EntityStatusBadge :status="selectedConnection.type === 'hotspot' ? 'active' : 'pending'" size="sm">
+              {{ selectedConnection.type }}
+            </EntityStatusBadge>
           </div>
           <div>
             <div class="text-xs text-slate-500 mb-1">IP Address</div>
@@ -294,7 +103,7 @@
             Close
           </button>
           <button
-            @click="disconnectUser(selectedConnection); closeDetails()"
+            @click="handleDisconnect(selectedConnection); closeDetails()"
             class="flex-1 px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors"
           >
             Disconnect
@@ -302,250 +111,298 @@
         </div>
       </template>
     </SlideOverlay>
+
+    <div v-if="error" class="flex flex-col items-center justify-center gap-4 p-8 text-red-500">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+      <p class="text-center">{{ error }}</p>
+      <button @click="fetchConnections" class="px-4 py-2 text-sm font-medium text-white bg-red-500 rounded-md hover:bg-red-600 transition-colors">
+        Retry
+      </button>
+    </div>
+
+    <DataSkeleton v-else-if="loading" :count="5" />
+
+    <div v-else-if="filteredData.length" class="flex flex-col h-full px-4 md:px-6 pt-2 pb-2 min-h-0">
+      <!-- Mobile Cards -->
+      <div class="md:hidden space-y-3 overflow-y-auto flex-1 min-h-0">
+        <MobileDataCard
+          v-for="conn in paginatedData"
+          :key="conn.id"
+          :title="conn.username"
+          :subtitle="conn.user_name || conn.ip_address"
+          :meta-lines="getConnectionMetaLines(conn)"
+          :status="conn.type"
+          :status-variant="conn.type === 'hotspot' ? 'purple' : 'info'"
+          :actions="getConnectionActions(conn)"
+          hoverable
+        />
+      </div>
+
+      <!-- Desktop Table -->
+      <div class="hidden md:flex bg-white border-x border-t border-slate-200 flex-col min-h-0 flex-1">
+        <!-- Fixed Header -->
+        <div class="bg-slate-50 border-b border-slate-200">
+          <table class="w-full">
+            <thead>
+              <tr>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[20%]">User</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[18%]">Connection</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[10%]">Type</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider hidden lg:table-cell w-[15%]">Router</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[15%]">Bandwidth</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[12%]">Duration</th>
+                <th class="px-6 py-3 text-right text-xs font-semibold text-slate-700 uppercase tracking-wider w-[15%]">Actions</th>
+              </tr>
+            </thead>
+          </table>
+        </div>
+        <!-- Scrollable Body -->
+        <div class="overflow-y-auto flex-1 min-h-0">
+          <table class="w-full">
+            <tbody class="divide-y divide-slate-100">
+              <tr
+                v-for="conn in paginatedData"
+                :key="conn.id"
+                class="hover:bg-blue-50/50 transition-colors"
+              >
+                <td class="px-6 py-4 w-[20%]">
+                  <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-full flex items-center justify-center text-white text-xs font-semibold flex-shrink-0">
+                      {{ getUserInitials(conn) }}
+                    </div>
+                    <div class="min-w-0">
+                      <div class="text-sm font-medium text-slate-900 truncate">{{ conn.username }}</div>
+                      <div class="text-xs text-slate-500 truncate">{{ conn.user_name || 'N/A' }}</div>
+                    </div>
+                  </div>
+                </td>
+                <td class="px-6 py-4 w-[18%]">
+                  <div class="text-sm text-slate-900 font-mono truncate">{{ conn.ip_address }}</div>
+                  <div class="text-xs text-slate-500 font-mono truncate">{{ conn.mac_address }}</div>
+                </td>
+                <td class="px-6 py-4 w-[10%]">
+                  <EntityStatusBadge :status="conn.type === 'hotspot' ? 'active' : 'pending'" size="sm">
+                    {{ conn.type }}
+                  </EntityStatusBadge>
+                </td>
+                <td class="px-6 py-4 hidden lg:table-cell w-[15%]">
+                  <span class="text-sm text-slate-900 truncate block">{{ conn.router_name }}</span>
+                </td>
+                <td class="px-6 py-4 w-[15%]">
+                  <div class="space-y-1">
+                    <div class="flex items-center gap-2 text-xs">
+                      <ArrowDown class="w-3 h-3 text-green-600 flex-shrink-0" />
+                      <span class="text-green-600 font-medium">{{ formatBytes(conn.download_rate) }}/s</span>
+                    </div>
+                    <div class="flex items-center gap-2 text-xs">
+                      <ArrowUp class="w-3 h-3 text-blue-600 flex-shrink-0" />
+                      <span class="text-blue-600 font-medium">{{ formatBytes(conn.upload_rate) }}/s</span>
+                    </div>
+                  </div>
+                </td>
+                <td class="px-6 py-4 w-[12%]">
+                  <div class="text-sm text-slate-900">{{ formatDuration(conn.uptime) }}</div>
+                  <div class="text-xs text-slate-500">{{ formatDateTime(conn.connected_at) }}</div>
+                </td>
+                <td class="px-6 py-4 text-right w-[15%]">
+                  <div class="flex items-center justify-end gap-1">
+                    <button
+                      @click="viewDetails(conn)"
+                      class="px-2 py-1 text-xs font-medium text-blue-700 bg-blue-50 rounded hover:bg-blue-100 transition-colors"
+                    >
+                      View
+                    </button>
+                    <div class="relative">
+                      <button data-menu-button @click="toggleMenu(conn.id, $event)" class="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded transition-colors">
+                        <MoreVertical class="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Pagination -->
+      <DataPagination
+        v-model:current-page="currentPage"
+        v-model:items-per-page="itemsPerPage"
+        :total-pages="totalPages"
+        :total-items="filteredData.length"
+        item-name="connections"
+        class="mt-auto"
+      />
+
+      <!-- Global Dropdown Menu Portal -->
+      <Teleport to="body">
+        <div v-if="activeMenu !== null" data-dropdown-menu :style="menuPosition" class="fixed w-48 bg-white rounded-lg shadow-2xl border border-slate-200 py-1 z-[9999] overflow-hidden">
+          <button @click="viewDetails(getConnectionById(activeMenu))" class="flex items-center w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-700 transition-colors">
+            <Eye class="w-4 h-4 mr-3" />
+            View Details
+          </button>
+          <div class="border-t border-slate-200 my-1"></div>
+          <button @click.stop="handleDisconnect(getConnectionById(activeMenu))" class="flex items-center w-full px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors">
+            <Power class="w-4 h-4 mr-3" />
+            Disconnect
+          </button>
+        </div>
+      </Teleport>
+    </div>
+
+    <!-- Empty State -->
+    <DataEmptyState
+      v-else
+      :title="searchQuery ? 'No Matches Found' : 'No Active Connections'"
+      :description="searchQuery ? 'No connections match your search criteria. Try adjusting your filters.' : 'No connections are currently active on the network.'"
+      icon="activity"
+      color-theme="blue"
+      :show-clear="!!searchQuery"
+      :has-filters="!!searchQuery"
+      :showAdd="false"
+      clear-text="Clear Search"
+      @clear="searchQuery = ''"
+    />
   </DataViewContainer>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { 
-  Activity, RefreshCw, Download, X, Eye, Power,
-  Wifi, Zap, ArrowDown, ArrowUp
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import {
+  Eye, Power,
+  ArrowDown, ArrowUp, MoreVertical
 } from 'lucide-vue-next'
-import axios from 'axios'
+import { useLiveConnections } from '@/modules/tenant/composables/useLiveConnections'
 import DataViewContainer from '@/modules/common/components/base/DataViewContainer.vue'
-import PageContent from '@/modules/common/components/layout/templates/PageContent.vue'
-import PageFooter from '@/modules/common/components/layout/templates/PageFooter.vue'
-import BaseButton from '@/modules/common/components/base/BaseButton.vue'
-import BaseCard from '@/modules/common/components/base/BaseCard.vue'
-import BaseBadge from '@/modules/common/components/base/BaseBadge.vue'
-import BaseSearch from '@/modules/common/components/base/BaseSearch.vue'
-import BaseSelect from '@/modules/common/components/base/BaseSelect.vue'
-import BasePagination from '@/modules/common/components/base/BasePagination.vue'
-import BaseLoading from '@/modules/common/components/base/BaseLoading.vue'
-import BaseEmpty from '@/modules/common/components/base/BaseEmpty.vue'
-import BaseAlert from '@/modules/common/components/base/BaseAlert.vue'
+import DataSkeleton from '@/modules/common/components/base/DataSkeleton.vue'
+import DataEmptyState from '@/modules/common/components/base/DataEmptyState.vue'
+import DataPagination from '@/modules/common/components/base/DataPagination.vue'
+import MobileDataCard from '@/modules/common/components/base/MobileDataCard.vue'
+import EntityStatusBadge from '@/modules/common/components/base/EntityStatusBadge.vue'
 import SlideOverlay from '@/modules/common/components/base/SlideOverlay.vue'
 
-const breadcrumbs = [
-  { label: 'Dashboard', to: '/dashboard' },
-  { label: 'Monitoring', to: '/dashboard/monitoring' },
-  { label: 'Live Connections' }
-]
+// Use composable (matching Todo pattern)
+const {
+  connections,
+  filteredConnections,
+  stats,
+  loading,
+  error,
+  fetchConnections,
+  disconnectUser,
+  getConnectionById,
+  searchConnections,
+  clearFilters,
+  formatBytes,
+  setupSSEListeners,
+  cleanupSSEListeners,
+  setupWebSocketListeners,
+  cleanupWebSocketListeners
+} = useLiveConnections()
 
-const loading = ref(false)
-const refreshing = ref(false)
-const error = ref(null)
-const connections = ref([])
+// Local state (matching Todo pattern)
 const searchQuery = ref('')
 const currentPage = ref(1)
 const itemsPerPage = ref(10)
 const showDetailsOverlay = ref(false)
 const selectedConnection = ref(null)
+const activeMenu = ref(null)
+const menuPosition = ref({})
 
-const filters = ref({
-  type: '',
-  router: ''
-})
-
-const routers = ref([])
-
-const stats = computed(() => {
-  const total = connections.value.length
-  const active = connections.value.filter(c => c.download_rate > 0 || c.upload_rate > 0).length
-  const bandwidth = connections.value.reduce((sum, c) => sum + c.download_rate + c.upload_rate, 0)
-  const download = connections.value.reduce((sum, c) => sum + c.download_rate, 0)
-  const upload = connections.value.reduce((sum, c) => sum + c.upload_rate, 0)
-  
-  return { total, active, bandwidth, download, upload }
-})
-
+// Computed (matching Todo pattern)
 const filteredData = computed(() => {
-  let data = connections.value
-
-  if (searchQuery.value) {
-    const query = searchQuery.value.toLowerCase()
-    data = data.filter(c =>
-      c.username.toLowerCase().includes(query) ||
-      c.ip_address.includes(query) ||
-      c.mac_address.toLowerCase().includes(query)
-    )
-  }
-
-  if (filters.value.type) {
-    data = data.filter(c => c.type === filters.value.type)
-  }
-
-  if (filters.value.router) {
-    data = data.filter(c => c.router_name === routers.value.find(r => r.id === filters.value.router)?.name)
-  }
-
-  return data
+  if (!searchQuery.value) return filteredConnections.value
+  return searchConnections(searchQuery.value)
 })
 
-const totalPages = computed(() => Math.ceil(filteredData.value.length / itemsPerPage.value))
+const totalPages = computed(() => Math.ceil((filteredData.value?.length || 0) / itemsPerPage.value))
 
 const paginatedData = computed(() => {
+  if (!filteredData.value || !Array.isArray(filteredData.value)) return []
   const start = (currentPage.value - 1) * itemsPerPage.value
-  return filteredData.value.slice(start, start + itemsPerPage.value)
+  const end = start + itemsPerPage.value
+  return filteredData.value.slice(start, end)
 })
 
-const paginationInfo = computed(() => {
-  const start = (currentPage.value - 1) * itemsPerPage.value + 1
-  const end = Math.min(start + itemsPerPage.value - 1, filteredData.value.length)
-  return { start, end, total: filteredData.value.length }
-})
+// Reset page on search change (matching Todo pattern)
+watch(searchQuery, () => { currentPage.value = 1 })
+watch(itemsPerPage, () => { currentPage.value = 1 })
 
-const hasActiveFilters = computed(() => filters.value.type || filters.value.router || searchQuery.value)
-
-const fetchRouters = async () => {
-  try {
-    const response = await axios.get('/routers')
-    const data = Array.isArray(response.data) ? response.data : (response.data?.data || [])
-    routers.value = data.map(r => ({ id: r.id, name: r.name }))
-  } catch (err) {
-    console.warn('Failed to fetch routers for filter:', err.message)
-  }
-}
-
-const fetchConnections = async () => {
-  const isInitial = connections.value.length === 0
-  if (isInitial) {
-    loading.value = true
-    error.value = null
+// Menu toggle (matching Todo pattern)
+const toggleMenu = (connId, event) => {
+  event.stopPropagation()
+  if (activeMenu.value === connId) {
+    activeMenu.value = null
+    menuPosition.value = {}
   } else {
-    refreshing.value = true
-  }
-  
-  try {
-    const [pppoeRes, hotspotRes] = await Promise.allSettled([
-      axios.get('/pppoe/sessions/live'),
-      axios.get('/hotspot/sessions')
-    ])
-
-    const merged = []
-
-    if (pppoeRes.status === 'fulfilled') {
-      const pppoeData = pppoeRes.value.data?.sessions || pppoeRes.value.data?.data || []
-      pppoeData.forEach((s, i) => {
-        merged.push({
-          id: `pppoe-${s.id || i}`,
-          username: s.username || s.name || 'Unknown',
-          user_name: s.caller_id || s.name || '',
-          ip_address: s.address || s.ip_address || '',
-          mac_address: s.caller_id || s.mac_address || '',
-          type: 'pppoe',
-          router_name: s.router?.name || s.router_name || 'Unknown',
-          router_id: s.router?.id || s.router_id || null,
-          download_rate: s.tx_byte ? Number(s.tx_byte) : (s.download_rate || 0),
-          upload_rate: s.rx_byte ? Number(s.rx_byte) : (s.upload_rate || 0),
-          uptime: s.uptime_seconds || s.uptime || 0,
-          connected_at: s.started_at || s.created_at || new Date().toISOString(),
-          service: s.service || '',
-          _raw: s
-        })
-      })
-    }
-
-    if (hotspotRes.status === 'fulfilled') {
-      const hotspotData = hotspotRes.value.data?.sessions || hotspotRes.value.data?.data || []
-      hotspotData.forEach((s, i) => {
-        merged.push({
-          id: `hotspot-${s.id || i}`,
-          username: s.username || s.user || 'Unknown',
-          user_name: s.name || s.user_name || '',
-          ip_address: s.address || s.ip_address || '',
-          mac_address: s.mac_address || '',
-          type: 'hotspot',
-          router_name: s.router?.name || s.router_name || 'Unknown',
-          router_id: s.router?.id || s.router_id || null,
-          download_rate: s.bytes_out ? Number(s.bytes_out) : (s.download_rate || 0),
-          upload_rate: s.bytes_in ? Number(s.bytes_in) : (s.upload_rate || 0),
-          uptime: s.uptime_seconds || s.uptime || 0,
-          connected_at: s.started_at || s.created_at || new Date().toISOString(),
-          _raw: s
-        })
-      })
-    }
-
-    connections.value = merged
-
-    if (pppoeRes.status === 'rejected' && hotspotRes.status === 'rejected') {
-      if (isInitial) {
-        error.value = 'Failed to load live connections. Please check your network.'
-      }
-    }
-  } catch (err) {
-    if (isInitial) {
-      error.value = err.response?.data?.message || 'Failed to load connections.'
-    }
-    console.error('fetchConnections error:', err)
-  } finally {
-    loading.value = false
-    refreshing.value = false
+    activeMenu.value = connId
+    const button = event.currentTarget
+    const rect = button.getBoundingClientRect()
+    const menuWidth = 192
+    const menuHeight = 80
+    const viewportHeight = window.innerHeight
+    const viewportWidth = window.innerWidth
+    let top = rect.bottom + 4
+    let left = rect.right - menuWidth
+    if (rect.bottom + menuHeight > viewportHeight) top = rect.top - menuHeight - 4
+    if (left < 0) left = rect.left
+    if (left + menuWidth > viewportWidth) left = viewportWidth - menuWidth - 10
+    menuPosition.value = { top: `${top}px`, left: `${left}px` }
   }
 }
 
-const refreshConnections = async () => {
-  await fetchConnections()
+const closeMenu = () => {
+  activeMenu.value = null
+  menuPosition.value = {}
 }
 
-const clearFilters = () => {
-  filters.value = { type: '', router: '' }
-  searchQuery.value = ''
+// Click outside handler (matching Todo pattern)
+const handleClickOutside = (event) => {
+  const menu = document.querySelector('[data-dropdown-menu]')
+  const menuButton = document.querySelector('[data-menu-button]')
+  if (menu && !menu.contains(event.target) && menuButton && !menuButton.contains(event.target)) {
+    closeMenu()
+  }
 }
 
-const formatBytes = (bytes) => {
-  if (!bytes) return '0 B'
-  const k = 1024
-  const sizes = ['B', 'KB', 'MB', 'GB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i]
+// Keyboard handler (matching Todo pattern)
+const handleKeydown = (event) => {
+  if (event.key === 'Escape') closeMenu()
 }
 
-const formatDuration = (seconds) => {
-  const h = Math.floor(seconds / 3600)
-  const m = Math.floor((seconds % 3600) / 60)
-  const s = seconds % 60
-  return h > 0 ? `${h}h ${m}m` : `${m}m ${s}s`
-}
-
-const formatDateTime = (date) => {
-  return new Date(date).toLocaleString()
-}
-
-const getUserInitials = (conn) => {
-  return conn.username.slice(0, 2).toUpperCase()
-}
-
+// View details (matching Todo pattern)
 const viewDetails = (conn) => {
+  if (!conn) return
+  closeMenu()
   selectedConnection.value = conn
   showDetailsOverlay.value = true
 }
 
 const closeDetails = () => {
   showDetailsOverlay.value = false
-  selectedConnection.value = null
+  setTimeout(() => { selectedConnection.value = null }, 300)
 }
 
-const disconnectUser = async (conn) => {
+// Disconnect handler
+const handleDisconnect = async (conn) => {
+  if (!conn) return
   if (!confirm(`Disconnect ${conn.username}?`)) return
-  
+
+  closeMenu()
   try {
-    if (conn.type === 'pppoe') {
-      await axios.post('/pppoe/sessions/disconnect', { session_id: conn._raw?.id, username: conn.username })
-    } else {
-      const userId = conn._raw?.user_id || conn._raw?.id
-      if (userId) {
-        await axios.post(`/hotspot/users/${userId}/disconnect`)
-      }
+    await disconnectUser(conn)
+    if (showDetailsOverlay.value && selectedConnection.value?.id === conn.id) {
+      closeDetails()
     }
-    connections.value = connections.value.filter(c => c.id !== conn.id)
   } catch (err) {
-    console.error('Disconnect error:', err)
-    alert(err.response?.data?.message || 'Failed to disconnect user')
+    console.error('Failed to disconnect:', err)
   }
 }
 
+// Export data
 const exportData = () => {
   const csv = [
     ['Username', 'IP Address', 'MAC Address', 'Type', 'Router', 'Connected At'].join(','),
@@ -562,15 +419,67 @@ const exportData = () => {
   URL.revokeObjectURL(url)
 }
 
-let refreshInterval
+// Helpers
+const formatDuration = (seconds) => {
+  const h = Math.floor(seconds / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  const s = seconds % 60
+  return h > 0 ? `${h}h ${m}m` : `${m}m ${s}s`
+}
 
-onMounted(() => {
-  fetchRouters()
-  fetchConnections()
-  refreshInterval = setInterval(fetchConnections, 15000)
+const formatDateTime = (date) => {
+  return new Date(date).toLocaleString()
+}
+
+const getUserInitials = (conn) => {
+  return conn.username.slice(0, 2).toUpperCase()
+}
+
+// Mobile card helpers
+const getConnectionMetaLines = (conn) => [
+  { icon: 'Router', text: conn.router_name },
+  { icon: 'ArrowDown', text: `${formatBytes(conn.download_rate)}/s ↓` },
+  { icon: 'ArrowUp', text: `${formatBytes(conn.upload_rate)}/s ↑` },
+  { icon: 'Clock', text: formatDuration(conn.uptime) }
+]
+
+const getConnectionActions = (conn) => [
+  { label: 'View', icon: 'Eye', onClick: () => viewDetails(conn) },
+  { label: 'Disconnect', icon: 'Power', variant: 'danger', onClick: () => handleDisconnect(conn) }
+]
+
+// Lifecycle (matching Todo pattern with SSE/WebSocket)
+onMounted(async () => {
+  await fetchConnections()
+  // Try SSE first, fallback to WebSocket events
+  setupSSEListeners()
+  setupWebSocketListeners()
+  document.addEventListener('click', handleClickOutside)
+  document.addEventListener('keydown', handleKeydown)
 })
 
 onUnmounted(() => {
-  if (refreshInterval) clearInterval(refreshInterval)
+  cleanupSSEListeners()
+  cleanupWebSocketListeners()
+  document.removeEventListener('click', handleClickOutside)
+  document.removeEventListener('keydown', handleKeydown)
 })
 </script>
+
+<style scoped>
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+</style>

@@ -229,7 +229,8 @@ class WireGuardService extends TenantAwareService
             if (count($parts) >= 6 && $parts[0] === $publicKey) {
                 $handshake = (int) ($parts[4] ?? 0);
                 $handshakeAt = $handshake > 0 ? Carbon::createFromTimestamp($handshake) : null;
-                $handshakeAgeSeconds = $handshakeAt ? now()->diffInSeconds($handshakeAt) : null;
+                // Use absolute difference to handle clock skew (router clock ahead/behind server)
+                $handshakeAgeSeconds = $handshakeAt ? abs(now()->diffInSeconds($handshakeAt, false)) : null;
 
                 return [
                     'public_key' => $parts[0],

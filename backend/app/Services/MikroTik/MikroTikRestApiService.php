@@ -207,7 +207,8 @@ class MikroTikRestApiService
         int $maxMtu = 1480,
         int $maxMru = 1480,
         bool $oneSessionPerHost = true,
-        int $keepaliveTimeout = 30
+        int $keepaliveTimeout = 30,
+        string $authentication = 'chap,mschap2'
     ): array {
         return $this->post('/interface/pppoe-server/server/add', [
             'service-name' => $serviceName,
@@ -217,7 +218,7 @@ class MikroTikRestApiService
             'max-mru' => $maxMru,
             'one-session-per-host' => $oneSessionPerHost ? 'yes' : 'no',
             'keepalive-timeout' => $keepaliveTimeout,
-            'authentication' => 'chap,mschap2',
+            'authentication' => $authentication,
             'disabled' => 'no',
         ]);
     }

@@ -96,7 +96,8 @@ class QueueStatsController extends Controller
     private function getProcessedJobsCount(): int
     {
         if (!Cache::has('queue_stats_start_time')) {
-            Cache::forever('queue_stats_start_time', now());
+            // Max 30 seconds cache to prevent stale data
+            Cache::put('queue_stats_start_time', now(), now()->addSeconds(30));
         }
 
         // Get count from logs with minimal caching (30 seconds for performance)
@@ -272,7 +273,8 @@ class QueueStatsController extends Controller
     {
         try {
             $current = Cache::get('queue_stats_processed_count', 0);
-            Cache::put('queue_stats_processed_count', $current + 1, now()->addDays(30));
+            // Max 30 seconds cache to prevent stale data
+            Cache::put('queue_stats_processed_count', $current + 1, now()->addSeconds(30));
 
             // Also increment 24h and week counters
             Cache::increment('queue_processed_24h', 1);

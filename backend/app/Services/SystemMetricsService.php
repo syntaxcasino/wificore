@@ -15,8 +15,8 @@ class SystemMetricsService
     public static function getSystemUptime(): float
     {
         try {
-            // Get the application start time from cache or set it now
-            $appStartTime = Cache::rememberForever('app_start_time', function () {
+            // Get the application start time from cache or set it now (30 seconds max)
+            $appStartTime = Cache::remember('app_start_time', 30, function () {
                 return now();
             });
 
@@ -246,7 +246,7 @@ class SystemMetricsService
             }
             
             $responseTimes[] = $timeInSeconds;
-            Cache::put('api_response_times', $responseTimes, now()->addHours(1));
+            Cache::put('api_response_times', $responseTimes, now()->addSeconds(30));
         } catch (\Exception $e) {
             // Silently fail - don't break the request
         }
@@ -260,7 +260,7 @@ class SystemMetricsService
     {
         try {
             $currentDowntime = Cache::get('system_downtime_seconds', 0);
-            Cache::put('system_downtime_seconds', $currentDowntime + $seconds, now()->addYears(10));
+            Cache::put('system_downtime_seconds', $currentDowntime + $seconds, now()->addSeconds(30));
         } catch (\Exception $e) {
             \Log::error('Failed to record downtime', ['error' => $e->getMessage()]);
         }

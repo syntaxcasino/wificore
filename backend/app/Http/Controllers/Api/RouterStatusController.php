@@ -38,9 +38,10 @@ class RouterStatusController extends BaseApiController
         // }
 
         // Broadcast only if status changed
+        // Cache for 30 seconds max to prevent stale data
         $previousStatus = Cache::get('router_online', false);
         if ($isOnline !== $previousStatus) {
-            Cache::put('router_online', $isOnline, now()->addMinutes(10));
+            Cache::put('router_online', $isOnline, now()->addSeconds(30));
             broadcast(new RouterStatusUpdated($isOnline));
         }
 

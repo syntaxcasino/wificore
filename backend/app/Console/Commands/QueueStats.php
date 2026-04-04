@@ -145,9 +145,9 @@ class QueueStats extends Command
      */
     private function getProcessedJobsCount(): int
     {
-        // Initialize counter if not exists
+        // Initialize counter if not exists (30 seconds max to prevent stale data)
         if (!Cache::has('queue_stats_start_time')) {
-            Cache::forever('queue_stats_start_time', now());
+            Cache::put('queue_stats_start_time', now(), 30);
         }
 
         // Try to get from cache
@@ -157,7 +157,8 @@ class QueueStats extends Command
         if ($count === 0) {
             $count = $this->estimateProcessedFromLogs();
             if ($count > 0) {
-                Cache::put('queue_stats_processed_count', $count, now()->addDays(30));
+                // 30 seconds max to prevent stale data
+                Cache::put('queue_stats_processed_count', $count, 30);
             }
         }
 

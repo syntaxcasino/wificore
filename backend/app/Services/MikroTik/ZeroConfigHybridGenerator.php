@@ -241,6 +241,8 @@ class ZeroConfigHybridGenerator
                 // Performance: Established/related
                 "/ip firewall filter add chain=forward in-interface={$hsIface} connection-state=established,related action=accept place-before=0 comment=\"hyb-fw-{$id}-hs-EST\"",
                 "/ip firewall filter add chain=forward in-interface-list={$pal} connection-state=established,related action=accept place-before=0 comment=\"hyb-fw-{$id}-pp-EST\"",
+                "/ip firewall filter add chain=forward in-interface-list=WAN out-interface={$hsIface} connection-state=established,related action=accept place-before=0 comment=\"hyb-fw-{$id}-hs-WAN\"",
+                "/ip firewall filter add chain=forward in-interface-list=WAN out-interface-list={$pal} connection-state=established,related action=accept place-before=0 comment=\"hyb-fw-{$id}-pp-WAN\"",
                 // Security: Drop invalid
                 "/ip firewall filter add chain=forward in-interface={$hsIface} connection-state=invalid action=drop place-before=0 comment=\"hyb-fw-{$id}-hs-INV\"",
                 ""
@@ -437,6 +439,8 @@ class ZeroConfigHybridGenerator
                 "/ip firewall filter add chain=forward in-interface-list={$pal} out-interface-list=WAN action=accept place-before=0 comment=\"hyb-fw-{$id}-pp-AUTH\"",
                 // Performance and security
                 "/ip firewall filter add chain=forward in-interface=\"{$bridge}\" connection-state=established,related action=accept place-before=0 comment=\"hyb-fw-{$id}-EST\"",
+                "/ip firewall filter add chain=forward in-interface-list=WAN out-interface=\"{$bridge}\" connection-state=established,related action=accept place-before=0 comment=\"hyb-fw-{$id}-WAN\"",
+                "/ip firewall filter add chain=forward in-interface-list=WAN out-interface-list={$pal} connection-state=established,related action=accept place-before=0 comment=\"hyb-fw-{$id}-pp-WAN\"",
                 "/ip firewall filter add chain=forward in-interface=\"{$bridge}\" connection-state=invalid action=drop place-before=0 comment=\"hyb-fw-{$id}-INV\"",
                 ""
             ];

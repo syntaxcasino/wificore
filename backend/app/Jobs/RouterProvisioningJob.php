@@ -5,7 +5,7 @@ namespace App\Jobs;
 use App\Models\Router;
 use App\Models\VpnConfiguration;
 use App\Services\MikrotikProvisioningService;
-use App\Services\VpnConnectivityService;
+use App\Services\RouterStatusCheckService;
 use App\Events\RouterProvisioningProgress;
 use App\Traits\TenantAwareJob;
 use Illuminate\Bus\Queueable;
@@ -43,10 +43,10 @@ class RouterProvisioningJob implements ShouldQueue
      */
     public function handle(
         MikrotikProvisioningService $provisioningService,
-        VpnConnectivityService $vpnConnectivityService
+        RouterStatusCheckService $statusCheckService
     ): void
     {
-        $this->executeInTenantContext(function() use ($provisioningService, $vpnConnectivityService) {
+        $this->executeInTenantContext(function() use ($provisioningService, $statusCheckService) {
             $router = Router::find($this->routerId);
 
             if (!$router) {
@@ -71,21 +71,17 @@ class RouterProvisioningJob implements ShouldQueue
                 // Stage 1: Verify status via ping only (strict provisioning policy)
                 $this->broadcastProgress($router, 'verifying', 5, 'Verifying router status via ping...');
 
-                $vpnConfig = VpnConfiguration::where('router_id', $router->id)->first();
-                if (!$vpnConfig) {
-                    throw new \Exception('Router VPN configuration not found for ping status check');
-                }
+                // Use RouterStatusCheckService for strict ping-only check during provisioning
+                $connectivity = $statusCheckService->checkStatusProvisioning($router);
 
-                $connectivity = $vpnConnectivityService->verifyConnectivity($vpnConfig, 2, 3, true);
-
-                if (!($connectivity['success'] ?? false) || ($connectivity['packet_loss'] ?? 100) > 0) {
-                    throw new \Exception($connectivity['message'] ?? 'Router ping check failed during provisioning');
+                if (!$connectivity['online']) {
+                    throw new \Exception($connectivity['reason'] ?? 'Router ping check failed during provisioning');
                 }
 
                 $this->broadcastProgress($router, 'connected', 20, 'Router connected successfully', [
                     'model' => $router->model,
                     'version' => $router->os_version,
-                    'latency_ms' => $connectivity['latency'] ?? null,
+                    'latency_ms' => $connectivity['latency_ms'] ?? null,
                 ]);
 
                 // Stage 2: Apply saved service configuration (already generated in previous step)

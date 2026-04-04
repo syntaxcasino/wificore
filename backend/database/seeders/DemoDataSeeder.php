@@ -83,6 +83,19 @@ class DemoDataSeeder extends Seeder
 
     private function createDemoPackages(Tenant $tenant): void
     {
+        // Check if packages table exists
+        $tableExists = \Illuminate\Support\Facades\DB::selectOne("
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_schema = 'public' AND table_name = 'packages'
+            ) as exists
+        ");
+
+        if (!$tableExists->exists) {
+            $this->command->warn("⚠️  Skipping packages creation - packages table does not exist");
+            return;
+        }
+
         $packages = [
             [
                 'name' => 'Basic Plan',

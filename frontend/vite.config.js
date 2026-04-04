@@ -15,7 +15,8 @@ export default defineConfig({
     vueDevTools(),
     tailwindcss(),
     VitePWA({
-      registerType: 'autoUpdate',
+      registerType: 'prompt',
+      injectRegister: 'auto',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png'],
       manifest: {
         name: 'TraidNet WiFi Hotspot',
@@ -49,39 +50,28 @@ export default defineConfig({
         ]
       },
       workbox: {
-        skipWaiting: true,
+        skipWaiting: false,
         clientsClaim: true,
         cleanupOutdatedCaches: true,
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
+        globPatterns: ['**/*.{css,html,ico,png,svg,woff,woff2}'],
         navigateFallback: 'index.html',
         navigateFallbackDenylist: [/^\/api\//],
         runtimeCaching: [
           {
-            // Real-time dashboard and system stats - NEVER cache
-            urlPattern: /\/(api\/)?(dashboard|system)\/(stats|metrics|queue|health)/i,
-            handler: 'NetworkOnly'
-          },
-          {
-            // Other API calls - short cache for performance
-            urlPattern: /^https:\/\/api\..*/i,
-            handler: 'NetworkFirst',
+            urlPattern: /\/assets\/.*\.js$/,
+            handler: 'StaleWhileRevalidate',
             options: {
-              cacheName: 'api-cache',
+              cacheName: 'js-assets',
               expiration: {
-                maxEntries: 20,
-                maxAgeSeconds: 30 // 30 seconds only
-              },
-              networkTimeoutSeconds: 3,
-              cacheableResponse: {
-                statuses: [0, 200]
+                maxEntries: 50,
+                maxAgeSeconds: 24 * 60 * 60
               }
             }
           }
         ]
       },
       devOptions: {
-        enabled: true,
-        type: 'module'
+        enabled: false
       }
     })
   ],

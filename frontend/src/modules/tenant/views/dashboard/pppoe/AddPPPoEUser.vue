@@ -161,7 +161,7 @@ const { createUser } = usePppoeUsers()
 const { packages, fetchPackages } = usePackages()
 const { routers, fetchRouters } = useRouters()
 
-const pppoePackages = computed(() => (packages.value || []).filter((p) => p?.type === 'pppoe'))
+const pppoePackages = computed(() => (packages.value || []).filter((p) => p?.type === 'pppoe' && p?.status === 'active'))
 
 const form = reactive({
   username: '',

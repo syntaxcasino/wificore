@@ -1,154 +1,33 @@
 <template>
-  <div class="flex flex-col h-full bg-gradient-to-br from-slate-50 via-gray-50 to-blue-50/30 rounded-lg shadow-lg overflow-hidden">
-    <!-- Header -->
-    <div class="flex-shrink-0 bg-white border-b border-slate-200 shadow-sm">
-      <div class="px-4 md:px-6 py-3 md:py-5">
-        <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 md:gap-6">
-          <!-- Left: Title & Icon -->
-          <div class="flex items-center gap-3">
-            <div class="w-10 h-10 md:w-11 md:h-11 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg">
-              <Ticket class="h-5 w-5 md:h-6 md:w-6 text-white" />
-            </div>
-            <div>
-              <h2 class="text-lg md:text-xl font-bold text-slate-900">Voucher Management</h2>
-              <p class="text-xs text-slate-500 mt-0.5 hidden md:block">Generate and manage hotspot vouchers</p>
-            </div>
-          </div>
-          
-          <!-- Right: Actions -->
-          <div class="flex items-center gap-2 md:gap-3">
-            <button @click="fetchVouchers" :disabled="loading" class="inline-flex items-center gap-1.5 px-2 md:px-3 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 hover:border-slate-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all">
-              <RefreshCw class="w-4 h-4" :class="loading ? 'animate-spin' : ''" />
-              <span class="hidden md:inline">Refresh</span>
-            </button>
-            <button @click="openCreateOverlay" class="inline-flex items-center gap-1.5 px-3 md:px-4 py-2 text-xs font-semibold text-white bg-gradient-to-r from-blue-600 to-indigo-600 rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all shadow-md hover:shadow-lg">
-              <Plus class="w-4 h-4" />
-              <span class="hidden sm:inline">Create Voucher</span>
-              <span class="sm:hidden">Create</span>
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
+  <DataViewContainer
+    title="Voucher Management"
+    subtitle="Generate and manage hotspot vouchers"
+    color-theme="cyan"
+    v-model:search-model="searchQuery"
+    search-placeholder="Search by voucher code..."
+    :stats="statsForView"
+    :total="pagination.total"
+    :loading="loading"
+    add-button-text="Create Voucher"
+    @refresh="refreshVouchers"
+    @add="openCreateOverlay"
+    @search-clear="searchQuery = ''"
+  >
 
-    <!-- Main Content Area - Scrollable -->
-    <div class="flex-1 min-h-0 overflow-y-auto">
-      <div class="p-4 md:p-6 space-y-4">
-        <!-- Stats Summary -->
-        <div class="grid grid-cols-2 md:grid-cols-5 gap-3 md:gap-4">
-          <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-3 md:p-4 text-center">
-            <div class="text-xl md:text-2xl font-bold text-slate-900">{{ stats.total || 0 }}</div>
-            <div class="text-xs text-slate-500 mt-1">Total</div>
-          </div>
-          <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-3 md:p-4 text-center">
-            <div class="text-xl md:text-2xl font-bold text-green-600">{{ stats.unused || 0 }}</div>
-            <div class="text-xs text-slate-500 mt-1">Unused</div>
-          </div>
-          <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-3 md:p-4 text-center">
-            <div class="text-xl md:text-2xl font-bold text-blue-600">{{ stats.used || 0 }}</div>
-            <div class="text-xs text-slate-500 mt-1">Used</div>
-          </div>
-          <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-3 md:p-4 text-center">
-            <div class="text-xl md:text-2xl font-bold text-yellow-600">{{ stats.expired || 0 }}</div>
-            <div class="text-xs text-slate-500 mt-1">Expired</div>
-          </div>
-          <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-3 md:p-4 text-center">
-            <div class="text-xl md:text-2xl font-bold text-red-600">{{ stats.revoked || 0 }}</div>
-            <div class="text-xs text-slate-500 mt-1">Revoked</div>
-          </div>
-        </div>
-
-        <!-- Filters -->
-        <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-3 md:p-4">
-          <div class="flex flex-wrap items-center gap-2 md:gap-3">
-            <input v-model="searchQuery" type="text" placeholder="Search by code..." class="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-full md:w-64" @input="debouncedFetch" />
-            <select v-model="filterStatus" class="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 flex-1 md:flex-initial" @change="fetchVouchers">
-              <option value="">All Statuses</option>
-              <option value="unused">Unused</option>
-              <option value="used">Used</option>
-              <option value="expired">Expired</option>
-              <option value="revoked">Revoked</option>
-            </select>
-            <select v-model="filterPackage" class="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 flex-1 md:flex-initial" @change="fetchVouchers">
-              <option value="">All Packages</option>
-              <option v-for="pkg in packages" :key="pkg.id" :value="pkg.id">{{ pkg.name }}</option>
-            </select>
-          </div>
-        </div>
-
-        <!-- Loading -->
-        <div v-if="loading && !vouchers.length" class="bg-white rounded-xl border border-slate-200 shadow-sm p-8 text-center text-slate-500">
-          <div class="animate-spin w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full mx-auto mb-3"></div>
-          Loading vouchers...
-        </div>
-
-        <!-- Error -->
-        <div v-else-if="error" class="bg-white rounded-xl border border-slate-200 shadow-sm p-8 text-center text-red-500">
-          {{ error }}
-          <button @click="fetchVouchers" class="block mx-auto mt-2 text-blue-600 hover:underline text-sm">Retry</button>
-        </div>
-
-        <!-- Vouchers Table -->
-        <div v-else class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-          <div class="overflow-x-auto">
-            <table class="w-full">
-              <thead class="bg-slate-50 border-b border-slate-200 sticky top-0 z-[5]">
-                <tr>
-                  <th class="text-left px-6 py-3 text-xs font-semibold text-slate-700 uppercase tracking-wider">Code</th>
-                  <th class="text-left px-6 py-3 text-xs font-semibold text-slate-700 uppercase tracking-wider hidden md:table-cell">Package</th>
-                  <th class="text-left px-6 py-3 text-xs font-semibold text-slate-700 uppercase tracking-wider">Status</th>
-                  <th class="text-left px-6 py-3 text-xs font-semibold text-slate-700 uppercase tracking-wider hidden lg:table-cell">Expires</th>
-                  <th class="text-left px-6 py-3 text-xs font-semibold text-slate-700 uppercase tracking-wider hidden lg:table-cell">Created</th>
-                  <th class="text-right px-6 py-3 text-xs font-semibold text-slate-700 uppercase tracking-wider">Actions</th>
-                </tr>
-              </thead>
-              <tbody class="divide-y divide-slate-100">
-                <tr v-for="voucher in vouchers" :key="voucher.id" class="hover:bg-blue-50/50 transition-colors cursor-pointer group" @click="openDetailOverlay(voucher)">
-                  <td class="px-6 py-4 text-sm font-mono font-semibold text-blue-700">{{ voucher.code }}</td>
-                  <td class="px-6 py-4 text-sm text-slate-900 hidden md:table-cell">{{ voucher.package?.name || '-' }}</td>
-                  <td class="px-6 py-4">
-                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium capitalize" :class="statusClass(voucher.status)">{{ voucher.status }}</span>
-                  </td>
-                  <td class="px-6 py-4 text-xs text-slate-500 hidden lg:table-cell">{{ voucher.expires_at ? formatDate(voucher.expires_at) : 'No expiry' }}</td>
-                  <td class="px-6 py-4 text-xs text-slate-500 hidden lg:table-cell">{{ formatDate(voucher.created_at) }}</td>
-                  <td class="px-6 py-4 text-right" @click.stop>
-                    <div class="flex items-center justify-end gap-1 relative">
-                      <button @click.stop="openDetailOverlay(voucher)" class="p-1.5 text-blue-500 hover:bg-blue-50 rounded-md transition-colors" title="View Details">
-                        <Eye class="w-4 h-4" />
-                      </button>
-                      <button v-if="voucher.status === 'unused'" @click.stop="revokeVoucher(voucher)" class="p-1.5 text-red-500 hover:bg-red-50 rounded-md transition-colors" title="Revoke Voucher">
-                        <Ban class="w-4 h-4" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-                <tr v-if="!vouchers.length">
-                  <td colspan="6" class="px-6 py-8 text-center text-slate-400 text-sm">No vouchers found. Click "Create Voucher" to generate some.</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          <!-- Pagination -->
-          <div v-if="pagination.lastPage > 1" class="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 md:px-6 py-3 border-t border-slate-200 bg-slate-50">
-            <span class="text-xs text-slate-600">Showing {{ pagination.from }}-{{ pagination.to }} of {{ pagination.total }}</span>
-            <div class="flex items-center gap-1">
-              <button @click="goToPage(pagination.currentPage - 1)" :disabled="pagination.currentPage <= 1" class="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-300 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">Prev</button>
-              <span class="px-2 text-xs text-slate-600">Page {{ pagination.currentPage }} of {{ pagination.lastPage }}</span>
-              <button @click="goToPage(pagination.currentPage + 1)" :disabled="pagination.currentPage >= pagination.lastPage" class="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-300 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">Next</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+    <!-- Icon Slot -->
+    <template #icon>
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 md:h-6 md:w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" />
+      </svg>
+    </template>
 
     <!-- Create Voucher Overlay -->
-    <SlideOverlay v-model="showCreateOverlay" title="Create Voucher" subtitle="Generate new hotspot vouchers" icon="Ticket" width="480px" @close="showCreateOverlay = false">
+    <SlideOverlay v-model="showCreateOverlay" title="Create Voucher" subtitle="Generate new hotspot vouchers" icon="Ticket" width="480px" @close="closeCreateOverlay">
       <form @submit.prevent="generateVouchers" class="space-y-5">
         <!-- Package Selection -->
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">Select Package *</label>
-          <select v-model="formData.package_id" required class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+          <select v-model="formData.package_id" required class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500">
             <option value="">Choose a package...</option>
             <option v-for="pkg in packages" :key="pkg.id" :value="pkg.id">{{ pkg.name }}</option>
           </select>
@@ -160,36 +39,36 @@
         <!-- Quantity -->
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">Number of Vouchers *</label>
-          <input v-model.number="formData.quantity" type="number" min="1" max="100" required class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="1-100" />
+          <input v-model.number="formData.quantity" type="number" min="1" max="100" required class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500" placeholder="1-100" />
           <p class="mt-1 text-xs text-gray-400">Maximum 100 vouchers per batch</p>
         </div>
 
         <!-- Prefix -->
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">Voucher Prefix (Optional)</label>
-          <input v-model="formData.prefix" type="text" maxlength="10" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="e.g., WIFI, HOT" />
+          <input v-model="formData.prefix" type="text" maxlength="10" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500" placeholder="e.g., WIFI, HOT" />
         </div>
 
         <!-- Expiry Date -->
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">Expiry Date (Optional)</label>
-          <input v-model="formData.expires_at" type="date" :min="minDate" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+          <input v-model="formData.expires_at" type="date" :min="minDate" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500" />
         </div>
 
         <!-- Notes -->
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">Notes (Optional)</label>
-          <textarea v-model="formData.notes" rows="2" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="Any notes..."></textarea>
+          <textarea v-model="formData.notes" rows="2" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500" placeholder="Any notes..."></textarea>
         </div>
 
         <!-- Summary -->
-        <div v-if="formData.package_id && formData.quantity" class="bg-blue-50 border border-blue-200 rounded-lg p-3">
-          <h4 class="text-xs font-semibold text-blue-900 mb-2">Summary</h4>
+        <div v-if="formData.package_id && formData.quantity" class="bg-cyan-50 border border-cyan-200 rounded-lg p-3">
+          <h4 class="text-xs font-semibold text-cyan-900 mb-2">Summary</h4>
           <div class="grid grid-cols-2 gap-2 text-xs">
-            <div><span class="text-blue-600">Package:</span> <span class="font-medium text-blue-900">{{ selectedPackage?.name }}</span></div>
-            <div><span class="text-blue-600">Quantity:</span> <span class="font-medium text-blue-900">{{ formData.quantity }}</span></div>
-            <div><span class="text-blue-600">Total Value:</span> <span class="font-medium text-blue-900">KES {{ totalValue }}</span></div>
-            <div><span class="text-blue-600">Prefix:</span> <span class="font-medium text-blue-900">{{ formData.prefix || 'None' }}</span></div>
+            <div><span class="text-cyan-600">Package:</span> <span class="font-medium text-cyan-900">{{ selectedPackage?.name }}</span></div>
+            <div><span class="text-cyan-600">Quantity:</span> <span class="font-medium text-cyan-900">{{ formData.quantity }}</span></div>
+            <div><span class="text-cyan-600">Total Value:</span> <span class="font-medium text-cyan-900">KES {{ totalValue }}</span></div>
+            <div><span class="text-cyan-600">Prefix:</span> <span class="font-medium text-cyan-900">{{ formData.prefix || 'None' }}</span></div>
           </div>
         </div>
 
@@ -199,18 +78,8 @@
 
       <template #footer>
         <div class="flex gap-3">
-          <button
-            type="button"
-            @click="showCreateOverlay = false"
-            class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            @click="generateVouchers"
-            :disabled="generating || !formData.package_id || !formData.quantity"
-            class="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-50"
-          >
+          <button type="button" @click="closeCreateOverlay" class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors">Cancel</button>
+          <button @click="handleGenerate" :disabled="generating || !formData.package_id || !formData.quantity" class="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-white bg-cyan-600 rounded-lg hover:bg-cyan-700 transition-colors disabled:opacity-50">
             <Ticket class="w-4 h-4" />
             {{ generating ? 'Generating...' : `Generate ${formData.quantity || 0} Voucher${formData.quantity !== 1 ? 's' : ''}` }}
           </button>
@@ -219,10 +88,10 @@
     </SlideOverlay>
 
     <!-- Voucher Detail Overlay -->
-    <SlideOverlay v-model="showDetailOverlay" title="Voucher Details" subtitle="View voucher information" icon="Ticket" width="480px" @close="showDetailOverlay = false">
+    <SlideOverlay v-model="showDetailOverlay" title="Voucher Details" subtitle="View voucher information" icon="Ticket" width="480px" @close="closeDetailOverlay">
       <div v-if="selectedVoucher" class="space-y-3">
-        <div class="flex items-center justify-center p-4 bg-blue-50 rounded-lg">
-          <span class="font-mono text-xl font-bold text-blue-700">{{ selectedVoucher.code }}</span>
+        <div class="flex items-center justify-center p-4 bg-cyan-50 rounded-lg">
+          <span class="font-mono text-xl font-bold text-cyan-700">{{ selectedVoucher.code }}</span>
         </div>
         <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
           <span class="text-sm font-medium text-gray-600">Status</span>
@@ -263,52 +132,206 @@
       </div>
       <template #footer>
         <div class="flex gap-3">
-          <button
-            type="button"
-            @click="showDetailOverlay = false"
-            class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
-          >
-            Close
-          </button>
-          <button
-            v-if="selectedVoucher?.status === 'unused'"
-            @click="revokeVoucher(selectedVoucher)"
-            class="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors"
-          >
-            <Ban class="w-4 h-4" />
-            Revoke
+          <button type="button" @click="closeDetailOverlay" class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors">Close</button>
+          <button v-if="selectedVoucher?.status === 'unused'" @click="handleRevoke(selectedVoucher)" class="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors">
+            <Ban class="w-4 h-4" />Revoke
           </button>
         </div>
       </template>
     </SlideOverlay>
-  </div>
+
+    <!-- Filters -->
+    <template #filters>
+      <BaseSelect v-model="filterStatus" placeholder="All Statuses" class="w-40" @change="handleFilterChange">
+        <option value="">All Statuses</option>
+        <option value="unused">Unused</option>
+        <option value="used">Used</option>
+        <option value="expired">Expired</option>
+        <option value="revoked">Revoked</option>
+      </BaseSelect>
+      <BaseSelect v-model="filterPackage" placeholder="All Packages" class="w-48" @change="handleFilterChange">
+        <option value="">All Packages</option>
+        <option v-for="pkg in packages" :key="pkg.id" :value="pkg.id">{{ pkg.name }}</option>
+      </BaseSelect>
+      <button v-if="hasActiveFilters" @click="clearFilters" class="text-xs text-cyan-600 hover:text-cyan-700 font-medium">Clear filters</button>
+    </template>
+
+    <!-- Error State -->
+    <div v-if="error" class="flex flex-col items-center justify-center gap-4 p-8 text-red-500">
+      <Ticket class="w-10 h-10" />
+      <p class="text-center">{{ error }}</p>
+      <button @click="refreshVouchers" class="px-4 py-2 text-sm font-medium text-white bg-red-500 rounded-md hover:bg-red-600 transition-colors">Retry</button>
+    </div>
+
+    <!-- Loading Skeleton -->
+    <DataSkeleton v-else-if="loading && !vouchers.length" :count="5" />
+
+    <!-- Data Content -->
+    <div v-else-if="filteredVouchers.length" class="flex flex-col h-full px-4 md:px-6 pt-2 pb-2 min-h-0">
+      <!-- Mobile Cards -->
+      <div class="md:hidden space-y-3 overflow-y-auto flex-1 min-h-0">
+        <MobileDataCard
+          v-for="voucher in paginatedVouchers"
+          :key="voucher.id"
+          :title="voucher.code"
+          :subtitle="voucher.package?.name || 'No package'"
+          :meta-lines="[
+            { text: `Status: ${voucher.status}`, class: statusClass(voucher.status) },
+            { text: `Expires: ${voucher.expires_at ? formatDate(voucher.expires_at) : 'No expiry'}` },
+            { text: `Created: ${formatDate(voucher.created_at)}` }
+          ]"
+          :status="voucher.status"
+          :actions="getVoucherActions(voucher)"
+          hoverable
+        />
+      </div>
+
+      <!-- Desktop Table -->
+      <div class="hidden md:flex bg-white border-x border-t border-slate-200 flex-col min-h-0 flex-1">
+        <!-- Fixed Header -->
+        <div class="bg-slate-50 border-b border-slate-200">
+          <table class="w-full">
+            <thead>
+              <tr>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[20%]">Code</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[25%]">Package</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[12%]">Status</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[18%]">Expires</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[15%]">Created</th>
+                <th class="px-6 py-3 text-right text-xs font-semibold text-slate-700 uppercase tracking-wider w-[10%]">Actions</th>
+              </tr>
+            </thead>
+          </table>
+        </div>
+        <!-- Scrollable Body -->
+        <div class="overflow-y-auto flex-1 min-h-0">
+          <table class="w-full">
+            <tbody class="divide-y divide-slate-100">
+              <tr v-for="voucher in paginatedVouchers" :key="voucher.id" class="hover:bg-cyan-50/50 transition-colors">
+                <td class="px-6 py-4 w-[20%]">
+                  <span class="font-mono text-sm font-semibold text-cyan-700">{{ voucher.code }}</span>
+                </td>
+                <td class="px-6 py-4 w-[25%]">
+                  <span class="text-sm text-slate-900">{{ voucher.package?.name || '-' }}</span>
+                </td>
+                <td class="px-6 py-4 w-[12%]">
+                  <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium capitalize" :class="statusClass(voucher.status)">{{ voucher.status }}</span>
+                </td>
+                <td class="px-6 py-4 w-[18%]">
+                  <span class="text-xs text-slate-500">{{ voucher.expires_at ? formatDate(voucher.expires_at) : 'No expiry' }}</span>
+                </td>
+                <td class="px-6 py-4 w-[15%]">
+                  <span class="text-xs text-slate-500">{{ formatDate(voucher.created_at) }}</span>
+                </td>
+                <td class="px-6 py-4 text-right w-[10%]">
+                  <div class="flex items-center justify-end gap-1">
+                    <button @click="openDetailOverlay(voucher)" class="p-1.5 text-cyan-600 hover:bg-cyan-50 rounded-md transition-colors" title="View Details">
+                      <Eye class="w-4 h-4" />
+                    </button>
+                    <button v-if="voucher.status === 'unused'" @click="handleRevoke(voucher)" class="p-1.5 text-red-500 hover:bg-red-50 rounded-md transition-colors" title="Revoke Voucher">
+                      <Ban class="w-4 h-4" />
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Pagination -->
+      <DataPagination v-model:current-page="currentPage" v-model:items-per-page="itemsPerPage" :total-pages="pagination.lastPage" :total-items="pagination.total" item-name="vouchers" class="mt-auto" />
+    </div>
+
+    <!-- Empty State -->
+    <DataEmptyState
+      v-else
+      :title="searchQuery || hasActiveFilters ? 'No Matches Found' : 'No Vouchers'"
+      :description="searchQuery || hasActiveFilters ? 'No vouchers match your search criteria.' : 'Create your first voucher to get started.'"
+      icon="box"
+      color-theme="cyan"
+      :show-clear="!!searchQuery"
+      :has-filters="hasActiveFilters"
+      clear-text="Clear Filters"
+      add-text="Create Voucher"
+      @clear="clearFilters"
+      @add="openCreateOverlay"
+    />
+  </DataViewContainer>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
-import axios from 'axios'
-import { RefreshCw, Plus, Eye, Ban, Ticket } from 'lucide-vue-next'
+import { ref, computed, onMounted, watch } from 'vue'
+import { Ticket, Eye, Ban } from 'lucide-vue-next'
+import DataViewContainer from '@/modules/common/components/base/DataViewContainer.vue'
+import DataSkeleton from '@/modules/common/components/base/DataSkeleton.vue'
+import MobileDataCard from '@/modules/common/components/base/MobileDataCard.vue'
+import DataPagination from '@/modules/common/components/base/DataPagination.vue'
+import DataEmptyState from '@/modules/common/components/base/DataEmptyState.vue'
+import BaseSelect from '@/modules/common/components/base/BaseSelect.vue'
 import SlideOverlay from '@/modules/common/components/base/SlideOverlay.vue'
+import { useVouchers } from '@/modules/tenant/composables/useVouchers'
+import { useConfirmStore } from '@/stores/confirm'
+
+const confirmStore = useConfirmStore()
+
+const {
+  vouchers,
+  packages,
+  loading,
+  error,
+  generating,
+  generateError,
+  pagination,
+  statsForView,
+  fetchPackages,
+  fetchVouchers,
+  refreshVouchers,
+  fetchStats,
+  goToPage,
+  generateVouchers,
+  revokeVoucher,
+  filterVouchers,
+  statusClass,
+  formatDate,
+  getPackageById,
+  calculateTotalValue
+} = useVouchers()
 
 // State
-const loading = ref(false)
-const error = ref(null)
-const vouchers = ref([])
-const packages = ref([])
-const stats = ref({})
-const generating = ref(false)
-const generateError = ref(null)
 const searchQuery = ref('')
-const filterStatus = ref('')
-const filterPackage = ref('')
-
-// Pagination
-const pagination = ref({ currentPage: 1, lastPage: 1, from: 0, to: 0, total: 0 })
-
-// Overlays
+const currentPage = ref(1)
+const itemsPerPage = ref(25)
 const showCreateOverlay = ref(false)
 const showDetailOverlay = ref(false)
 const selectedVoucher = ref(null)
+const filterStatus = ref('')
+const filterPackage = ref('')
+
+const filters = computed(() => ({
+  status: filterStatus.value,
+  package_id: filterPackage.value
+}))
+
+const hasActiveFilters = computed(() => filterStatus.value || filterPackage.value)
+
+// Computed
+const filteredVouchers = computed(() => filterVouchers(searchQuery.value, filters.value))
+
+const paginatedVouchers = computed(() => {
+  // Use server-side pagination if no local filters
+  if (!searchQuery.value && !filterStatus.value && !filterPackage.value) {
+    return vouchers.value
+  }
+  // Use client-side filtering with pagination
+  const start = (currentPage.value - 1) * itemsPerPage.value
+  const end = start + itemsPerPage.value
+  return filteredVouchers.value.slice(start, end)
+})
+
+const selectedPackage = computed(() => getPackageById(formData.value.package_id))
+const totalValue = computed(() => calculateTotalValue(selectedPackage.value, formData.value.quantity))
+const minDate = computed(() => new Date().toISOString().split('T')[0])
 
 // Form
 const formData = ref({
@@ -319,95 +342,41 @@ const formData = ref({
   notes: ''
 })
 
-// Computed
-const selectedPackage = computed(() => packages.value.find(p => p.id === formData.value.package_id))
-const totalValue = computed(() => {
-  if (!selectedPackage.value || !formData.value.quantity) return 0
-  return (selectedPackage.value.price || 0) * formData.value.quantity
+// Reset page on search/filter change
+watch([searchQuery, itemsPerPage], () => {
+  currentPage.value = 1
 })
-const minDate = computed(() => new Date().toISOString().split('T')[0])
 
-// Status badge classes
-const statusClass = (status) => {
-  const map = {
-    unused: 'bg-green-100 text-green-700',
-    used: 'bg-blue-100 text-blue-700',
-    expired: 'bg-yellow-100 text-yellow-700',
-    revoked: 'bg-red-100 text-red-700',
-  }
-  return map[status] || 'bg-gray-100 text-gray-700'
+// Watch filter changes to trigger API call
+watch([filterStatus, filterPackage], () => {
+  currentPage.value = 1
+  fetchVouchers({
+    page: 1,
+    status: filterStatus.value || undefined,
+    package_id: filterPackage.value || undefined
+  })
+})
+
+// Actions
+const clearFilters = () => {
+  filterStatus.value = ''
+  filterPackage.value = ''
+  searchQuery.value = ''
+  currentPage.value = 1
+  fetchVouchers({ page: 1 })
 }
 
-const formatDate = (d) => d ? new Date(d).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''
-
-// Debounce search
-let searchTimeout = null
-const debouncedFetch = () => {
-  clearTimeout(searchTimeout)
-  searchTimeout = setTimeout(() => fetchVouchers(), 400)
-}
-
-// API calls
-const fetchPackages = async () => {
-  try {
-    const res = await axios.get('/packages')
-    const data = res.data.data || res.data
-    packages.value = Array.isArray(data) ? data : (data.data || [])
-  } catch (err) {
-    console.error('Failed to fetch packages:', err)
-  }
-}
-
-const fetchStats = async () => {
-  try {
-    const res = await axios.get('/vouchers/stats')
-    stats.value = res.data.data || {}
-  } catch (err) {
-    console.error('Failed to fetch voucher stats:', err)
-  }
-}
-
-const fetchVouchers = async (page = 1) => {
-  try {
-    loading.value = true
-    error.value = null
-    const params = { page, per_page: 25 }
-    if (searchQuery.value) params.search = searchQuery.value
-    if (filterStatus.value) params.status = filterStatus.value
-    if (filterPackage.value) params.package_id = filterPackage.value
-
-    const res = await axios.get('/vouchers', { params })
-    const data = res.data.data || res.data
-
-    if (data.data) {
-      vouchers.value = data.data
-      pagination.value = {
-        currentPage: data.current_page || 1,
-        lastPage: data.last_page || 1,
-        from: data.from || 0,
-        to: data.to || 0,
-        total: data.total || 0,
-      }
-    } else if (Array.isArray(data)) {
-      vouchers.value = data
-    }
-  } catch (err) {
-    if (err.response?.status === 401) return
-    error.value = err.response?.data?.message || 'Failed to load vouchers'
-  } finally {
-    loading.value = false
-  }
-}
-
-const goToPage = (page) => {
-  if (page < 1 || page > pagination.value.lastPage) return
-  fetchVouchers(page)
+const handleFilterChange = () => {
+  // Handled by watcher
 }
 
 const openCreateOverlay = () => {
   formData.value = { package_id: '', quantity: 10, prefix: '', expires_at: '', notes: '' }
-  generateError.value = null
   showCreateOverlay.value = true
+}
+
+const closeCreateOverlay = () => {
+  showCreateOverlay.value = false
 }
 
 const openDetailOverlay = (voucher) => {
@@ -415,41 +384,43 @@ const openDetailOverlay = (voucher) => {
   showDetailOverlay.value = true
 }
 
-const generateVouchers = async () => {
-  if (!formData.value.package_id || !formData.value.quantity) return
-  generating.value = true
-  generateError.value = null
+const closeDetailOverlay = () => {
+  showDetailOverlay.value = false
+  selectedVoucher.value = null
+}
 
-  try {
-    const payload = {
-      package_id: formData.value.package_id,
-      quantity: formData.value.quantity,
-    }
-    if (formData.value.prefix) payload.prefix = formData.value.prefix
-    if (formData.value.expires_at) payload.expires_at = formData.value.expires_at
-    if (formData.value.notes) payload.notes = formData.value.notes
-
-    await axios.post('/vouchers/generate', payload)
-    showCreateOverlay.value = false
-    fetchVouchers()
-    fetchStats()
-  } catch (err) {
-    generateError.value = err.response?.data?.message || 'Failed to generate vouchers'
-  } finally {
-    generating.value = false
+const handleGenerate = async () => {
+  const success = await generateVouchers(formData.value)
+  if (success) {
+    closeCreateOverlay()
   }
 }
 
-const revokeVoucher = async (voucher) => {
-  if (!confirm(`Revoke voucher ${voucher.code}?`)) return
-  try {
-    await axios.post(`/vouchers/${voucher.id}/revoke`)
-    fetchVouchers(pagination.value.currentPage)
-    fetchStats()
-    if (showDetailOverlay.value) showDetailOverlay.value = false
-  } catch (err) {
-    alert(err.response?.data?.message || 'Failed to revoke voucher')
+const handleRevoke = async (voucher) => {
+  const confirmed = await confirmStore.open({
+    title: 'Revoke Voucher',
+    message: `Are you sure you want to revoke voucher ${voucher.code}? This action cannot be undone.`,
+    confirmText: 'Revoke',
+    cancelText: 'Cancel',
+    variant: 'danger'
+  })
+  
+  if (!confirmed) return
+  
+  const success = await revokeVoucher(voucher)
+  if (success) {
+    closeDetailOverlay()
   }
+}
+
+const getVoucherActions = (voucher) => {
+  const actions = [
+    { label: 'View', onClick: () => openDetailOverlay(voucher), class: 'text-cyan-700 bg-cyan-50 hover:bg-cyan-100' }
+  ]
+  if (voucher.status === 'unused') {
+    actions.push({ label: 'Revoke', onClick: () => handleRevoke(voucher), class: 'text-red-600 bg-red-50 hover:bg-red-100' })
+  }
+  return actions
 }
 
 // Lifecycle
@@ -459,3 +430,10 @@ onMounted(() => {
   fetchStats()
 })
 </script>
+
+<style scoped>
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+</style>

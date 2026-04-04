@@ -12,36 +12,17 @@ import './assets/main.css'
 
 let piniaRef = null
 
-// Register Service Worker for PWA
+// Register Service Worker with user prompt (not auto-update)
 const updateSW = registerSW({
+  immediate: false,
   onNeedRefresh() {
-    try {
-      if (piniaRef) {
-        const confirmStore = useConfirmStore(piniaRef)
-        confirmStore
-          .open({
-            title: 'Update Available',
-            message: 'New content is available. Reload to update?',
-            confirmText: 'Reload',
-            cancelText: 'Later',
-            variant: 'primary',
-          })
-          .then((ok) => {
-            if (ok) updateSW(true)
-          })
-        return
-      }
-    } catch (e) {
-    }
-
-    if (confirm('New content available. Reload to update?')) {
-      updateSW(true)
-    }
+    console.log('New version available - user can refresh to update')
   },
   onOfflineReady() {
     console.log('App ready to work offline')
   },
 })
+
 // Configure axios
 axios.defaults.baseURL = import.meta.env.VITE_API_BASE_URL
 
