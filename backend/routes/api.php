@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\RouterStatusStreamController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Broadcast;
@@ -34,6 +35,7 @@ use App\Http\Controllers\Api\PublicTenantController;
 use App\Http\Controllers\Api\EnvironmentHealthController;
 use App\Http\Controllers\Api\PppoeUserController;
 use App\Http\Controllers\Api\PppoeSessionController;
+use App\Http\Controllers\Api\ConnectionStatsController;
 use App\Http\Controllers\Api\PppoeMetricsController;
 use App\Http\Controllers\Api\RouterAnalyticsController;
 use App\Http\Controllers\DashboardController;
@@ -64,6 +66,53 @@ use App\Events\TestWebSocketEvent;
 // BROADCASTING AUTH - Sanctum-based authentication for WebSocket channels
 // =============================================================================
 Route::middleware(['auth:sanctum', 'user.active', 'tenant.context'])->post('/broadcasting/auth', function (Request $request) {
+    $user = Auth::user();
+    $channelName = $request->input('channel_name');
+    
+    // SECURITY: Log all channel authorization attempts for audit
+    Log::info('WebSocket channel auth attempt', [
+        'user_id' => $user?->id,
+        'tenant_id' => $user?->tenant_id,
+        'channel_name' => $channelName,
+        'socket_id' => $request->input('socket_id'),
+        'ip' => $request->ip(),
+    ]);
+    
+    // SECURITY: Explicit tenant verification for private/presence channels
+    if ($channelName && (str_starts_with($channelName, 'private-tenant.') || str_starts_with($channelName, 'presence-tenant.'))) {
+        // Extract tenant ID from channel name (format: private-tenant.{tenantId}.{suffix})
+        $parts = explode('.', str_replace(['private-', 'presence-'], '', $channelName));
+        $channelTenantId = $parts[1] ?? null;
+        
+        if ($channelTenantId && (string) $user->tenant_id !== (string) $channelTenantId) {
+            Log::warning('Unauthorized WebSocket channel access attempt', [
+                'user_id' => $user->id,
+                'user_tenant' => $user->tenant_id,
+                'requested_channel_tenant' => $channelTenantId,
+                'channel_name' => $channelName,
+                'ip' => $request->ip(),
+            ]);
+            
+            return response()->json(['error' => 'Unauthorized'], 403);
+        }
+    }
+    
+    // SECURITY: Verify user channel ownership
+    if ($channelName && str_starts_with($channelName, 'private-user.')) {
+        $parts = explode('.', str_replace('private-', '', $channelName));
+        $channelUserId = $parts[1] ?? null;
+        
+        if ($channelUserId && (string) $user->id !== (string) $channelUserId) {
+            Log::warning('Unauthorized WebSocket user channel access attempt', [
+                'user_id' => $user->id,
+                'requested_user_id' => $channelUserId,
+                'channel_name' => $channelName,
+            ]);
+            
+            return response()->json(['error' => 'Unauthorized'], 403);
+        }
+    }
+    
     return Broadcast::auth($request);
 });
 
@@ -615,6 +664,12 @@ Route::middleware(['auth:sanctum', 'role:admin', 'user.active', 'tenant.context'
     // Router Management
     // -------------------------------------------------------------------------
     Route::prefix('routers')->name('api.routers.')->group(function () {
+        // Server-Sent Events stream for real-time status (WebSocket fallback)
+        // Requires authentication - strictly tenant-isolated
+        Route::get('/stream/status', [RouterStatusStreamController::class, 'stream'])
+            ->middleware(['auth:sanctum', 'tenant.context'])
+            ->name('stream.status');
+        
         // CRUD Operations
         Route::get('/', [RouterController::class, 'index'])->name('index');
         Route::get('/live-data', [RouterController::class, 'getLiveData'])->name('live-data.all');
@@ -630,6 +685,7 @@ Route::middleware(['auth:sanctum', 'role:admin', 'user.active', 'tenant.context'
         Route::get('/{router}/details', [RouterController::class, 'getRouterDetails'])->name('details');
         Route::get('/{router}/metrics/live', [RouterMetricsController::class, 'live'])->name('metrics.live');
         Route::get('/{router}/metrics/traffic', [RouterMetricsController::class, 'trafficRange'])->name('metrics.traffic.range');
+        Route::get('/{router}/metrics/resources', [RouterMetricsController::class, 'resourcesRange'])->name('metrics.resources.range');
         Route::get('/{router}/live-data', [RouterController::class, 'getRouterLiveData'])->name('live-data.single');
         
         // Router Analytics & Revenue
@@ -762,12 +818,24 @@ Route::middleware(['auth:sanctum', 'role:admin', 'user.active', 'tenant.context'
     Route::get('/router-status', [RouterStatusController::class, 'getStatus'])
         ->name('api.router-status');
 
+    // -------------------------------------------------------------------------
+    // Connection Statistics (Aggregated PPPoE + Hotspot)
+    // -------------------------------------------------------------------------
+    Route::get('/connections/stats', [ConnectionStatsController::class, 'stats'])
+        ->name('api.connections.stats');
+
     // =========================================================================
     // NEW: STANDALONE ACCESS POINT ROUTES
     // =========================================================================
     Route::prefix('access-points')->name('api.access-points.')->group(function () {
         // List all access points for tenant
         Route::get('/', [AccessPointController::class, 'list'])->name('list');
+        
+        // Create new access point
+        Route::post('/', [AccessPointController::class, 'create'])->name('create');
+        
+        // Tenant-wide statistics
+        Route::get('/statistics', [AccessPointController::class, 'tenantStatistics'])->name('tenant-statistics');
         
         // Get specific access point
         Route::get('/{accessPoint}', [AccessPointController::class, 'show'])->name('show');
@@ -1069,6 +1137,27 @@ Route::middleware('auth:sanctum')->prefix('routers/{router}')->group(function ()
 // DUPLICATE SYSTEM ADMIN ROUTES REMOVED
 // All system admin routes are now in the main system admin group above (line ~191)
 // =============================================================================
+
+// =============================================================================
+// WIREGUARD WEBHOOK ROUTES - Event-based router status updates
+// =============================================================================
+Route::prefix('webhooks/wireguard')->group(function () {
+    // Peer handshake event (router came online)
+    Route::post('/peer/handshake', [\App\Http\Controllers\Api\WireGuardWebhookController::class, 'peerHandshake'])
+        ->name('api.webhooks.wireguard.peer-handshake');
+    
+    // Peer expired event (router went offline)
+    Route::post('/peer/expired', [\App\Http\Controllers\Api\WireGuardWebhookController::class, 'peerExpired'])
+        ->name('api.webhooks.wireguard.peer-expired');
+    
+    // Batch update from WireGuard dump
+    Route::post('/peers/batch', [\App\Http\Controllers\Api\WireGuardWebhookController::class, 'batchUpdate'])
+        ->name('api.webhooks.wireguard.batch');
+    
+    // Health check
+    Route::get('/health', [\App\Http\Controllers\Api\WireGuardWebhookController::class, 'health'])
+        ->name('api.webhooks.wireguard.health');
+});
 
 // =============================================================================
 // TENANT ROUTES - Tenant-specific data (auto-filtered by TenantScope)

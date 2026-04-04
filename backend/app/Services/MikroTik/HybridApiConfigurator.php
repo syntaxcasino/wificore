@@ -37,6 +37,9 @@ class HybridApiConfigurator
             $this->ensureInterfaceLists();
             sleep(1);
 
+            $this->setupWanInterface();
+            sleep(1);
+
             $this->setupHotspot();
             sleep(1);
 
@@ -191,6 +194,37 @@ class HybridApiConfigurator
         $this->results['interface_lists'] = 'success';
     }
 
+    private function setupWanInterface(): void
+    {
+        $this->results['last_phase'] = 'wan_interface';
+
+        $wanInterface = $this->config['wan_interface']
+            ?? $this->config['wan_dhcp_client_interface']
+            ?? 'ether1';
+
+        $runningCheckInterfaces = $this->config['disable_running_check_interfaces'] ?? [];
+        if (!empty($runningCheckInterfaces)) {
+            foreach ($runningCheckInterfaces as $interface) {
+                $this->setEthernetRunningCheck($interface, false);
+            }
+        } elseif (array_key_exists('wan_disable_running_check', $this->config) && $wanInterface) {
+            $this->setEthernetRunningCheck(
+                $wanInterface,
+                $this->toBoolean($this->config['wan_disable_running_check'], false)
+            );
+        }
+
+        if (!empty($this->config['wan_dhcp_client']) && $wanInterface) {
+            $this->removeByField('/ip/dhcp-client', 'interface', $wanInterface);
+            $this->api->executeCommand('/ip/dhcp-client/add', [
+                'interface' => $wanInterface,
+                'disabled' => 'no',
+            ]);
+        }
+
+        $this->results['wan_interface'] = 'success';
+    }
+
     private function setupHotspot(): void
     {
         $this->results['last_phase'] = 'hotspot';
@@ -302,12 +336,17 @@ class HybridApiConfigurator
             ?? $this->config['pal_list']
             ?? 'PPPOE-ACTIVE-HYB-' . $shortId;
         $gatewayIp = $this->config['pppoe_gateway_ip'] ?? $this->config['pppoe_local_address'] ?? null;
+        $remoteAddress = $this->config['pppoe_remote_address'] ?? null;
         $rangeStart = $this->config['pppoe_range_start'] ?? null;
         $rangeEnd = $this->config['pppoe_range_end'] ?? null;
         $dnsServers = $this->config['pppoe_dns_servers'] ?? $this->config['dns_servers'] ?? null;
 
         if (!$interface || !$gatewayIp || !$rangeStart || !$rangeEnd) {
             throw new \Exception('Missing PPPoE configuration parameters');
+        }
+
+        if (!$remoteAddress) {
+            $remoteAddress = $poolName;
         }
 
         $this->removeByName('/ip/pool', 'name', $poolName);
@@ -321,9 +360,18 @@ class HybridApiConfigurator
         $profileParams = [
             'name' => $profile,
             'local-address' => $gatewayIp,
-            'remote-address' => $poolName,
+            'remote-address' => $remoteAddress,
             'interface-list' => $palList,
         ];
+        if (array_key_exists('pppoe_only_one', $this->config) && $this->config['pppoe_only_one'] !== null) {
+            $profileParams['only-one'] = $this->toBoolean($this->config['pppoe_only_one'], true) ? 'yes' : 'no';
+        }
+        if (array_key_exists('pppoe_change_tcp_mss', $this->config) && $this->config['pppoe_change_tcp_mss'] !== null) {
+            $profileParams['change-tcp-mss'] = $this->toBoolean($this->config['pppoe_change_tcp_mss'], true) ? 'yes' : 'no';
+        }
+        if (array_key_exists('pppoe_use_compression', $this->config) && $this->config['pppoe_use_compression'] !== null) {
+            $profileParams['use-compression'] = $this->toBoolean($this->config['pppoe_use_compression'], false) ? 'yes' : 'no';
+        }
         if ($dnsServers) {
             $profileParams['dns-server'] = $dnsServers;
         }
@@ -333,10 +381,11 @@ class HybridApiConfigurator
             $serviceName,
             $interface,
             $profile,
-            1480,
-            1480,
-            true,
-            10
+            $this->toInteger($this->config['pppoe_max_mtu'] ?? $this->config['max_mtu'] ?? 1480, 1480),
+            $this->toInteger($this->config['pppoe_max_mru'] ?? $this->config['max_mru'] ?? 1480, 1480),
+            $this->toBoolean($this->config['pppoe_one_session_per_host'] ?? $this->config['one_session_per_host'] ?? true, true),
+            $this->toInteger($this->config['pppoe_keepalive_timeout'] ?? $this->config['keepalive_timeout'] ?? 10, 10),
+            (string) ($this->config['pppoe_authentication'] ?? 'pap,chap,mschap2')
         );
 
         $this->results['pppoe'] = 'success';
@@ -478,6 +527,16 @@ class HybridApiConfigurator
 
             $this->api->addFirewallFilterRule([
                 'chain' => 'forward',
+                'in-interface-list' => $wanList,
+                'out-interface' => $hotspotDropInterface,
+                'connection-state' => 'established,related',
+                'action' => 'accept',
+                'place-before' => 0,
+                'comment' => 'hyb-fw-' . $this->serviceId . '-hs-WAN',
+            ]);
+
+            $this->api->addFirewallFilterRule([
+                'chain' => 'forward',
                 'in-interface' => $hotspotDropInterface,
                 'connection-state' => 'invalid',
                 'action' => 'drop',
@@ -502,6 +561,25 @@ class HybridApiConfigurator
             'action' => 'accept',
             'place-before' => 0,
             'comment' => 'hyb-fw-' . $this->serviceId . '-pp-EST',
+        ]);
+
+        $this->api->addFirewallFilterRule([
+            'chain' => 'forward',
+            'in-interface-list' => $palList,
+            'connection-state' => 'invalid',
+            'action' => 'drop',
+            'place-before' => 0,
+            'comment' => 'hyb-fw-' . $this->serviceId . '-pp-INV',
+        ]);
+
+        $this->api->addFirewallFilterRule([
+            'chain' => 'forward',
+            'in-interface-list' => $wanList,
+            'out-interface-list' => $palList,
+            'connection-state' => 'established,related',
+            'action' => 'accept',
+            'place-before' => 0,
+            'comment' => 'hyb-fw-' . $this->serviceId . '-pp-WAN',
         ]);
 
         $this->api->addFirewallFilterRule([
@@ -679,6 +757,65 @@ class HybridApiConfigurator
         } catch (\Exception $e) {
             // ignore cleanup failures
         }
+    }
+
+    private function setEthernetRunningCheck(string $interface, bool $disabled): void
+    {
+        try {
+            $items = $this->api->fetch('/interface/ethernet/print');
+            foreach ($items as $item) {
+                $name = $item['default-name'] ?? $item['name'] ?? null;
+                if ($name === $interface) {
+                    $this->api->executeCommand('/interface/ethernet/set', [
+                        'numbers' => $item['.id'],
+                        'disable-running-check' => $disabled ? 'yes' : 'no',
+                    ]);
+                    break;
+                }
+            }
+        } catch (\Exception $e) {
+            // ignore running-check failures
+        }
+    }
+
+    private function toInteger($value, int $default): int
+    {
+        if ($value === null || $value === '') {
+            return $default;
+        }
+
+        if (is_numeric($value)) {
+            return (int) $value;
+        }
+
+        if (is_string($value) && preg_match('/^(\d+)/', $value, $matches)) {
+            return (int) $matches[1];
+        }
+
+        return $default;
+    }
+
+    private function toBoolean($value, bool $default): bool
+    {
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        if (is_numeric($value)) {
+            return (bool) $value;
+        }
+
+        if (is_string($value)) {
+            $normalized = strtolower($value);
+            if (in_array($normalized, ['yes', 'true', '1', 'on'], true)) {
+                return true;
+            }
+            if (in_array($normalized, ['no', 'false', '0', 'off'], true)) {
+                return false;
+            }
+        }
+
+        return $default;
     }
 
     private function calculateNetworkCidr(string $gatewayIp, int $cidr): string

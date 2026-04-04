@@ -1,7 +1,6 @@
 <template>
   <div class="h-screen flex flex-col bg-gray-100">
     <router-view class="flex-1 overflow-y-auto" />
-    <PWAUpdatePrompt />
     
     <!-- Notification Toast (Global) -->
     <NotificationToast />
@@ -27,7 +26,6 @@
 <script setup>
 import { ref } from 'vue'
 import EventMonitor from '@/modules/common/components/debug/EventMonitor.vue'
-import PWAUpdatePrompt from '@/modules/common/components/app/PWAUpdatePrompt.vue'
 import NotificationToast from '@/modules/common/components/app/NotificationToast.vue'
 import ConfirmDialog from '@/modules/common/components/app/ConfirmDialog.vue'
 

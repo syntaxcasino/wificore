@@ -239,6 +239,7 @@ SCRIPT;
 
 # 5. Configure RADIUS for PPPoE
 /radius
+:do { /radius remove [/radius find service=ppp comment~"WiFiCore PPPoE"]; } on-error={}
 :if ([:len [find address="{$radiusServer}" service~"ppp"]] = 0) do={
     add address={$radiusServer} secret={$radiusSecret} \
         service=ppp timeout=3s comment="WiFiCore RADIUS PPPoE"

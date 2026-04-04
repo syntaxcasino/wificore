@@ -211,29 +211,30 @@ class RscFileCleanupService
 
         // Delay cleanup by 60 seconds to ensure deployment is complete
         dispatch(function () use ($routerId, $tenantId, $deploymentFile) {
-            // Set tenant context OUTSIDE the transaction first
-            // This ensures the schema is set before any DB operations
             $tenantContext = app(TenantContext::class);
             
-            if ($tenantId) {
-                $tenantContext->setTenantById($tenantId);
-            }
-
-            try {
-                // Now load the router - tenant context is already set
-                $router = Router::on('pgsql')->useWritePdo()->find($routerId);
-                if (!$router) {
-                    Log::warning('RSC cleanup: Router not found', ['router_id' => $routerId]);
-                    return;
-                }
-
-                $service = new self();
-                $service->cleanupRscFiles($router, $deploymentFile);
-            } finally {
+            // Wrap in transaction for proper SET LOCAL search_path handling with PgBouncer
+            \Illuminate\Support\Facades\DB::transaction(function () use ($routerId, $tenantId, $deploymentFile, $tenantContext) {
                 if ($tenantId) {
-                    $tenantContext->clearTenant();
+                    $tenantContext->setTenantById($tenantId);
                 }
-            }
+
+                try {
+                    // Now load the router - tenant context is already set
+                    $router = Router::on('pgsql')->useWritePdo()->find($routerId);
+                    if (!$router) {
+                        Log::warning('RSC cleanup: Router not found', ['router_id' => $routerId]);
+                        return;
+                    }
+
+                    $service = new self();
+                    $service->cleanupRscFiles($router, $deploymentFile);
+                } finally {
+                    if ($tenantId) {
+                        $tenantContext->clearTenant();
+                    }
+                }
+            });
         })->delay(now()->addSeconds(60));
     }
 }

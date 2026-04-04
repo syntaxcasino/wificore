@@ -3,7 +3,6 @@
 namespace App\Services;
 
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Cache;
 use App\Models\SystemLog;
 use App\Models\Router;
 use App\Models\Voucher;
@@ -83,13 +82,18 @@ class MikrotikSessionService extends TenantAwareService
             $this->connect();
 
             $uptime = $durationHours . 'h';
-            $cacheKey = "mikrotik_session_{$macAddress}_{$voucher}";
 
-            if (Cache::has($cacheKey)) {
+            // Check if session already exists in MikroTik (NOT in our cache)
+            // Query MikroTik directly to avoid stale cache issues
+            $existingQuery = (new Query('/ip/hotspot/active/print'))
+                ->where('mac-address', $macAddress);
+            $existing = $this->client->query($existingQuery)->read();
+            
+            if (!empty($existing)) {
                 return [
                     'success' => true,
-                    'message' => 'Session already exists',
-                    'cached' => true
+                    'message' => 'Session already active in MikroTik',
+                    'data' => ['existing_session' => $existing[0]]
                 ];
             }
 
@@ -102,8 +106,6 @@ class MikrotikSessionService extends TenantAwareService
             if (!$authResponse['success']) {
                 throw new \Exception('User created but authentication failed: ' . $authResponse['message']);
             }
-
-            Cache::put($cacheKey, true, now()->addMinutes(5));
 
             $this->logToSystemAndFile(
                 'Mikrotik user created and authenticated',

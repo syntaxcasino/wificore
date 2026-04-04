@@ -26,6 +26,12 @@ Broadcast::channel('tenant.{tenantId}.router-updates', function ($user, $tenantI
     return (string) $user->tenant_id === (string) $tenantId;
 });
 
+// Tenant-specific individual router metrics channel (for event-based graph updates)
+Broadcast::channel('tenant.{tenantId}.router.{routerId}', function ($user, $tenantId, $routerId) {
+    // SECURITY: Only users belonging to this specific tenant can access router metrics
+    return (string) $user->tenant_id === (string) $tenantId;
+});
+
 // Tenant-specific routers channel - for router interface discovery and status events
 Broadcast::channel('tenant.{tenantId}.routers', function ($user, $tenantId) {
     // SECURITY: Only users belonging to this specific tenant can access

@@ -1,107 +1,43 @@
-  <template>
-  <div class="flex flex-col h-full bg-gradient-to-br from-slate-50 via-gray-50 to-blue-50/30 rounded-lg shadow-lg overflow-hidden">
-    <!-- Header -->
-    <div class="flex-shrink-0 bg-white border-b border-slate-200 shadow-sm relative">
-      <!-- Top Bar -->
-      <div class="px-4 md:px-6 py-3 md:py-5">
-        <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 md:gap-6">
-          <!-- Left: Title & Icon -->
-          <div class="flex items-center justify-between gap-3">
-            <div class="flex items-center gap-3">
-              <div class="w-10 h-10 md:w-11 md:h-11 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 md:h-6 md:w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-                </svg>
-              </div>
-              <div>
-                <h2 class="text-lg md:text-xl font-bold text-slate-900">Package Management</h2>
-                <p class="text-xs text-slate-500 mt-0.5 hidden md:block">Manage your internet service packages</p>
-              </div>
-            </div>
+<template>
+  <DataViewContainer
+    title="Package Management"
+    subtitle="Manage your internet service packages"
+    color-theme="blue"
+    v-model:search-model="searchQuery"
+    search-placeholder="Search packages by name or description..."
+    :stats="[
+      { color: 'bg-blue-500', value: packages?.length || 0, tooltip: 'Total packages' },
+      { color: 'bg-emerald-500', value: activeCount, tooltip: 'Active packages' },
+      { color: 'bg-slate-500', value: inactiveCount, tooltip: 'Inactive packages' }
+    ]"
+    :total="packages?.length || 0"
+    :loading="loading"
+    add-button-text="Add Package"
+    @refresh="fetchPackages"
+    @add="openCreateOverlay"
+    @search-clear="searchQuery = ''"
+  >
+    <!-- Icon Slot -->
+    <template #icon>
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 md:h-6 md:w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+      </svg>
+    </template>
 
-            <!-- Mobile: Quick Stats -->
-            <div class="flex md:hidden items-center gap-2 px-2 py-1.5 bg-slate-50 rounded-lg border border-slate-200">
-              <div class="flex items-center gap-1">
-                <span class="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
-                <span class="text-xs font-semibold text-slate-700">{{ activeCount }}</span>
-              </div>
-              <span class="text-slate-300 text-xs">|</span>
-              <div class="flex items-center gap-1">
-                <span class="w-1.5 h-1.5 bg-slate-400 rounded-full"></span>
-                <span class="text-xs font-semibold text-slate-700">{{ inactiveCount }}</span>
-              </div>
-            </div>
-          </div>
-
-          <!-- Center: Search Bar (Desktop only) -->
-          <div class="hidden md:block flex-1 max-w-xl">
-            <div class="relative">
-              <div class="absolute inset-y-0 left-0 flex items-center pl-3.5 pointer-events-none">
-                <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-                </svg>
-              </div>
-              <input
-                v-model="searchQuery"
-                type="text"
-                placeholder="Search packages by name or description..."
-                class="w-full py-2.5 pl-10 pr-10 text-sm text-slate-700 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:bg-white focus:outline-none transition-all placeholder:text-slate-400"
-              >
-              <div v-if="searchQuery" class="absolute inset-y-0 right-0 flex items-center pr-3">
-                <button @click="searchQuery = ''" class="text-slate-400 hover:text-slate-600 transition-colors p-1 hover:bg-slate-100 rounded">
-                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-                  </svg>
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <!-- Right: Stats & Actions -->
-          <div class="flex items-center justify-between md:justify-end gap-2 md:gap-3">
-            <!-- Desktop: Quick Stats -->
-            <div class="hidden md:flex items-center gap-2 px-3 py-2 bg-slate-50 rounded-lg border border-slate-200">
-              <div class="flex items-center gap-1.5">
-                <span class="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
-                <span class="text-xs font-semibold text-slate-700">{{ activeCount }}</span>
-              </div>
-              <span class="text-slate-300">|</span>
-              <div class="flex items-center gap-1.5">
-                <span class="w-2 h-2 bg-slate-400 rounded-full"></span>
-                <span class="text-xs font-semibold text-slate-700">{{ inactiveCount }}</span>
-              </div>
-              <span class="text-slate-300">|</span>
-              <span class="text-xs font-semibold text-blue-600">{{ packages.length }}</span>
-            </div>
-
-            <!-- Action Buttons -->
-            <button @click="fetchPackages" :disabled="loading"
-              class="inline-flex items-center gap-1.5 px-2 md:px-3 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 hover:border-slate-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all">
-              <svg xmlns="http://www.w3.org/2000/svg" :class="loading ? 'animate-spin' : ''" class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
-                <path fill-rule="evenodd"
-                  d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z"
-                  clip-rule="evenodd" />
-              </svg>
-              <span class="hidden md:inline">Refresh</span>
-            </button>
-            <button @click="openCreateOverlay"
-              class="inline-flex items-center gap-1.5 px-3 md:px-4 py-2 text-xs font-semibold text-white bg-gradient-to-r from-blue-600 to-indigo-600 rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all shadow-md hover:shadow-lg">
-              <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
-                <path fill-rule="evenodd"
-                  d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z"
-                  clip-rule="evenodd" />
-              </svg>
-              <span class="hidden sm:inline">Add Package</span>
-              <span class="sm:hidden">Add</span>
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Main Content Area -->
-    <div class="flex-1 min-h-0 overflow-hidden">
-      <!-- Overlays -->
+    <!-- Filters -->
+    <template #filters>
+      <BaseSelect v-model="filters.type" placeholder="All Types" class="w-36">
+        <option value="">All Types</option>
+        <option value="hotspot">Hotspot</option>
+        <option value="pppoe">PPPoE</option>
+      </BaseSelect>
+      <BaseSelect v-model="filters.status" placeholder="All Status" class="w-36">
+        <option value="">All Status</option>
+        <option value="active">Active</option>
+        <option value="inactive">Inactive</option>
+      </BaseSelect>
+    </template>
+    <!-- Overlays -->
       <ViewPackageOverlay
         :show-details-overlay="showDetailsOverlay"
         :current-package="currentPackage"
@@ -126,316 +62,213 @@
         @submit="updatePackage"
       />
 
-      <!-- Loading Skeleton -->
-      <div v-if="loading" class="p-6 space-y-4">
-        <div class="animate-pulse space-y-4">
-          <div v-for="i in 5" :key="i" class="bg-white rounded-lg p-4 shadow-sm border border-gray-200">
-            <div class="flex items-center space-x-4">
-              <div class="w-12 h-12 bg-gray-200 rounded-lg"></div>
-              <div class="flex-1 space-y-2">
-                <div class="h-4 bg-gray-200 rounded w-1/4"></div>
-                <div class="h-3 bg-gray-200 rounded w-1/3"></div>
-              </div>
-              <div class="flex gap-2">
-                <div class="w-20 h-8 bg-gray-200 rounded"></div>
-                <div class="w-8 h-8 bg-gray-200 rounded"></div>
-              </div>
-            </div>
-          </div>
+    <!-- Error State -->
+    <div v-if="listError" class="flex flex-col items-center justify-center gap-4 p-8 text-red-500">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+      <p class="text-center">{{ listError }}</p>
+      <button @click="fetchPackages" class="px-4 py-2 text-sm font-medium text-white bg-red-500 rounded-md hover:bg-red-600 transition-colors">
+        Retry
+      </button>
+    </div>
+
+    <!-- Loading Skeleton -->
+    <DataSkeleton v-else-if="loading" :count="5" />
+
+    <!-- Data Content -->
+    <div v-else-if="filteredData?.length" class="flex flex-col h-full px-4 md:px-6 pt-2 pb-2 min-h-0">
+      <!-- Mobile Cards -->
+      <div class="md:hidden space-y-3 overflow-y-auto flex-1 min-h-0">
+        <MobileDataCard
+          v-for="pkg in paginatedData"
+          :key="pkg.id"
+          :title="pkg.name"
+          :subtitle="pkg.description || '—'"
+          :meta-lines="getPackageMetaLines(pkg)"
+          :status="pkg.status"
+          :actions="getPackageActions(pkg)"
+          hoverable
+        />
+      </div>
+
+      <!-- Desktop Table -->
+      <div class="hidden md:flex bg-white border-x border-t border-slate-200 flex-col min-h-0 flex-1">
+        <!-- Fixed Header -->
+        <div class="bg-slate-50 border-b border-slate-200">
+          <table class="w-full">
+            <thead>
+              <tr>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[25%]">Package</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider hidden lg:table-cell w-[12%]">Type</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[12%]">Price</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider hidden xl:table-cell w-[15%]">Speed</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider hidden xl:table-cell w-[12%]">Validity</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[10%]">Status</th>
+                <th class="px-6 py-3 text-right text-xs font-semibold text-slate-700 uppercase tracking-wider w-[14%]">Actions</th>
+              </tr>
+            </thead>
+          </table>
+        </div>
+        <!-- Scrollable Body -->
+        <div class="overflow-y-auto flex-1 min-h-0">
+          <table class="w-full">
+            <tbody class="divide-y divide-slate-100">
+              <tr
+                v-for="pkg in paginatedData"
+                :key="pkg.id"
+                @click="openDetails(pkg)"
+                class="group cursor-pointer hover:bg-blue-50/50 transition-colors"
+              >
+                <td class="px-6 py-4 w-[25%]">
+                  <div class="flex items-center gap-2">
+                    <span class="w-1.5 h-1.5 rounded-full flex-shrink-0" :class="pkg.status === 'active' ? 'bg-emerald-500' : 'bg-slate-400'"></span>
+                    <span class="text-sm font-medium text-slate-900 truncate">{{ pkg.name }}</span>
+                  </div>
+                </td>
+
+                <td class="px-6 py-4 hidden lg:table-cell w-[12%]">
+                  <span v-if="pkg.type" class="text-xs text-slate-500 truncate">{{ pkg.type }}</span>
+                  <span v-else class="text-xs text-slate-400">—</span>
+                </td>
+
+                <td class="px-6 py-4 w-[12%]">
+                  <span class="text-sm font-semibold text-slate-900">KES {{ formatMoney(pkg.price) }}</span>
+                </td>
+
+                <td class="px-6 py-4 hidden xl:table-cell w-[15%]">
+                  <span class="text-xs text-slate-500 truncate">{{ formatPackageSpeed(pkg) }}</span>
+                </td>
+
+                <td class="px-6 py-4 hidden xl:table-cell w-[12%]">
+                  <span v-if="pkg.validity" class="text-xs text-slate-500 truncate">{{ pkg.validity }}</span>
+                  <span v-else class="text-xs text-slate-400">—</span>
+                </td>
+
+                <td class="px-6 py-4 w-[10%]">
+                  <EntityStatusBadge :status="pkg.status" size="sm" />
+                </td>
+
+                <td class="px-6 py-4 text-right w-[14%]" @click.stop>
+                  <div class="flex items-center justify-end gap-1">
+                    <button
+                      @click="openDetails(pkg)"
+                      class="px-2 py-1 text-xs font-medium text-blue-700 bg-blue-50 rounded hover:bg-blue-100 transition-colors"
+                    >
+                      View
+                    </button>
+                    <div class="relative">
+                      <button data-menu-button @click.stop="toggleMenu(pkg.id, $event)" class="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </div>
 
-      <!-- Error -->
-      <div v-else-if="listError" class="flex flex-col items-center justify-center gap-4 p-8 text-red-500">
-        <svg xmlns="http://www.w3.org/2000/svg" class="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-            d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-        <p class="text-center">{{ listError }}</p>
-        <button @click="fetchPackages"
-          class="px-4 py-2 text-sm font-medium text-white bg-red-500 rounded-md hover:bg-red-600 transition-colors">
-          Retry
+      <!-- Pagination -->
+      <DataPagination
+        v-model:current-page="currentPage"
+        v-model:items-per-page="itemsPerPage"
+        :total-pages="totalPages"
+        :total-items="filteredData?.length || 0"
+        item-name="packages"
+        class="mt-auto"
+      />
+    </div>
+
+    <!-- Empty State -->
+    <DataEmptyState
+      v-else
+          :title="searchQuery ? 'No Matches Found' : 'No Packages Found'"
+          :description="searchQuery ? 'No packages match your search criteria.' : 'Get started by creating your first internet service package.'"
+          icon="package"
+          color-theme="blue"
+          :show-clear="!!searchQuery"
+          :has-filters="hasActiveFilters"
+          clear-text="Clear Search"
+          add-text="Add Package"
+          @clear="searchQuery = ''"
+          @add="openCreateOverlay"
+        />
+
+    <!-- Global Dropdown Menu Portal -->
+    <Teleport to="body">
+      <div
+        v-if="activeMenu !== null"
+        data-dropdown-menu
+        :style="menuPosition"
+        class="fixed w-48 bg-white rounded-lg shadow-2xl border border-slate-200 py-1 z-[9999] overflow-hidden"
+      >
+        <button @click="handleViewMenu()"
+          class="flex items-center w-full px-4 py-2.5 text-sm text-blue-600 hover:bg-blue-50 transition-colors md:hidden">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+          </svg>
+          View Details
+        </button>
+        <button @click="handleToggleStatusMenu()"
+          :class="[
+            'flex items-center w-full px-4 py-2.5 text-sm transition-colors',
+            getMenuPackage()?.status === 'active'
+              ? 'text-amber-700 hover:bg-amber-50'
+              : 'text-emerald-700 hover:bg-emerald-50'
+          ]">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          {{ getMenuPackage()?.status === 'active' ? 'Deactivate' : 'Activate' }}
+        </button>
+        <div class="border-t border-slate-200 my-1"></div>
+        <button @click="handleEditMenu()"
+          class="flex items-center w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-700 transition-colors">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+          </svg>
+          Edit Package
+        </button>
+        <button @click="handleDuplicateMenu()"
+          class="flex items-center w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 transition-colors">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+          </svg>
+          Duplicate
+        </button>
+        <div class="border-t border-slate-200 my-1"></div>
+        <button @click="handleDeleteMenu()"
+          class="flex items-center w-full px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+          </svg>
+          Delete Package
         </button>
       </div>
-
-      <div v-else class="flex flex-col min-h-0 flex-1">
-        <div v-if="paginatedPackages.length" class="px-4 md:px-6 pt-2 pb-2 flex flex-col min-h-0 flex-1">
-          <div class="flex-1 min-h-0 overflow-y-auto">
-            <!-- Mobile Cards -->
-            <div class="md:hidden space-y-3">
-              <div
-                v-for="pkg in paginatedPackages"
-                :key="pkg.id"
-                class="bg-white rounded-lg border border-slate-200 shadow-sm p-4 cursor-pointer active:scale-[0.99] transition-transform"
-                @click="openDetails(pkg)"
-              >
-                <div class="flex items-start justify-between gap-3">
-                  <div class="min-w-0">
-                    <div class="flex items-center gap-2 min-w-0">
-                      <div class="w-2 h-2 rounded-full flex-shrink-0" :class="pkg.status === 'active' ? 'bg-emerald-500' : 'bg-slate-400'"></div>
-                      <div class="text-sm font-semibold text-slate-900 truncate">{{ pkg.name }}</div>
-                    </div>
-                    <div class="mt-1 text-xs text-slate-600 truncate">{{ pkg.description || '—' }}</div>
-                    <div class="mt-1 text-xs text-slate-500 truncate">{{ pkg.type || '—' }}</div>
-                  </div>
-                  <span :class="statusBadgeClass(pkg.status)" class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium capitalize flex-shrink-0">
-                    {{ pkg.status || 'Unknown' }}
-                  </span>
-                </div>
-
-                <div class="mt-3 grid grid-cols-2 gap-3">
-                  <div class="bg-slate-50 border border-slate-200 rounded-md p-2">
-                    <div class="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Price</div>
-                    <div class="mt-1 text-xs font-medium text-slate-700">KES {{ formatMoney(pkg.price) }}</div>
-                  </div>
-                  <div class="bg-slate-50 border border-slate-200 rounded-md p-2">
-                    <div class="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Speed</div>
-                    <div class="mt-1 text-xs font-medium text-slate-700">{{ formatPackageSpeed(pkg) }}</div>
-                  </div>
-                </div>
-
-                <div class="mt-3 flex items-center justify-end gap-2" @click.stop>
-                  <button
-                    @click="handleToggleStatus(pkg)"
-                    :class="[
-                      'px-3 py-2 text-xs font-medium rounded-md transition-colors',
-                      pkg.status === 'active'
-                        ? 'text-amber-700 bg-amber-50 hover:bg-amber-100'
-                        : 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100'
-                    ]"
-                  >
-                    {{ pkg.status === 'active' ? 'Deactivate' : 'Activate' }}
-                  </button>
-                  <button
-                    @click="openDetails(pkg)"
-                    class="px-3 py-2 text-xs font-medium text-blue-700 bg-blue-50 rounded-md hover:bg-blue-100 transition-colors"
-                  >
-                    View
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <!-- Desktop Table -->
-            <div class="hidden md:flex bg-white border border-slate-200 shadow-sm overflow-hidden flex-col min-h-0">
-              <div class="overflow-x-auto overflow-y-auto flex-1 min-h-0">
-                <table class="w-full">
-                  <thead class="bg-slate-50 border-b border-slate-200 sticky top-0 z-[5]">
-                    <tr>
-                      <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
-                        <div class="flex items-center gap-2">
-                          <div class="w-7 h-7"></div>
-                          <span>Package</span>
-                        </div>
-                      </th>
-                      <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider hidden lg:table-cell">Type</th>
-                      <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Price</th>
-                      <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider hidden xl:table-cell">Speed</th>
-                      <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider hidden xl:table-cell">Validity</th>
-                      <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Status</th>
-                      <th class="px-6 py-3 text-right text-xs font-semibold text-slate-700 uppercase tracking-wider">Actions</th>
-                    </tr>
-                  </thead>
-
-                  <tbody class="divide-y divide-slate-100">
-                    <tr
-                      v-for="pkg in paginatedPackages"
-                      :key="pkg.id"
-                      class="hover:bg-blue-50/50 transition-colors cursor-pointer group"
-                      @click="openDetails(pkg)"
-                    >
-                      <td class="px-6 py-4">
-                        <div class="flex items-center gap-3">
-                          <div class="w-7 h-7 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-md flex items-center justify-center text-white flex-shrink-0">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                              <path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-                            </svg>
-                          </div>
-                          <div class="flex items-center gap-1.5 min-w-0">
-                            <span class="w-1.5 h-1.5 rounded-full flex-shrink-0" :class="pkg.status === 'active' ? 'bg-emerald-500' : 'bg-slate-400'"></span>
-                            <div class="min-w-0">
-                              <div class="text-sm font-semibold text-slate-900 truncate">{{ pkg.name }}</div>
-                              <div class="text-xs text-slate-500 truncate">{{ pkg.description || '—' }}</div>
-                            </div>
-                          </div>
-                        </div>
-                      </td>
-
-                      <td class="px-6 py-4 hidden lg:table-cell">
-                        <span v-if="pkg.type" class="text-xs text-slate-500 truncate">{{ pkg.type }}</span>
-                        <span v-else class="text-xs text-slate-400">—</span>
-                      </td>
-
-                      <td class="px-6 py-4">
-                        <span class="text-sm font-semibold text-slate-900">KES {{ formatMoney(pkg.price) }}</span>
-                      </td>
-
-                      <td class="px-6 py-4 hidden xl:table-cell">
-                        <span class="text-xs text-slate-500 truncate">{{ formatPackageSpeed(pkg) }}</span>
-                      </td>
-
-                      <td class="px-6 py-4 hidden xl:table-cell">
-                        <span v-if="pkg.validity" class="text-xs text-slate-500 truncate">{{ pkg.validity }}</span>
-                        <span v-else class="text-xs text-slate-400">—</span>
-                      </td>
-
-                      <td class="px-6 py-4">
-                        <span :class="statusBadgeClass(pkg.status)" class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium capitalize">
-                          {{ pkg.status || 'Unknown' }}
-                        </span>
-                      </td>
-
-                      <td class="px-6 py-4 text-right" @click.stop>
-                        <div class="flex items-center justify-end gap-1">
-                          <button
-                            @click="handleToggleStatus(pkg)"
-                            :class="[
-                              'px-2 py-1 text-xs font-medium rounded transition-colors inline-flex items-center gap-1',
-                              pkg.status === 'active'
-                                ? 'text-amber-700 bg-amber-50 hover:bg-amber-100'
-                                : 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100'
-                            ]"
-                          >
-                            {{ pkg.status === 'active' ? 'Deactivate' : 'Activate' }}
-                          </button>
-
-                          <button @click="openDetails(pkg)"
-                            class="px-2 py-1 text-xs font-medium text-blue-700 bg-blue-50 rounded hover:bg-blue-100 transition-colors inline-flex items-center gap-1">
-                            View
-                          </button>
-
-                          <div class="relative">
-                            <button
-                              data-menu-button
-                              @click="toggleMenu(pkg.id, $event)"
-                              class="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded transition-colors"
-                            >
-                              <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
-                              </svg>
-                            </button>
-                          </div>
-                        </div>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-
-          <div class="mt-3 bg-white rounded-lg border border-slate-200 shadow-sm px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div class="text-sm text-slate-600">
-              Showing {{ paginationInfo.start }} to {{ paginationInfo.end }} of {{ paginationInfo.total }} packages
-            </div>
-
-            <div class="flex flex-col sm:flex-row sm:items-center gap-3">
-              <div class="flex items-center gap-2">
-                <span class="text-sm text-slate-600">Show:</span>
-                <select
-                  v-model.number="itemsPerPage"
-                  class="h-9 px-2.5 text-sm bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:outline-none"
-                >
-                  <option v-for="opt in itemsPerPageOptions" :key="opt" :value="opt">{{ opt }}</option>
-                </select>
-              </div>
-
-              <div class="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  @click="goToFirstPage"
-                  :disabled="currentPage <= 1"
-                  class="h-9 px-3 text-sm font-medium bg-white border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  First
-                </button>
-                <button
-                  type="button"
-                  @click="goToPreviousPage"
-                  :disabled="currentPage <= 1"
-                  class="h-9 px-3 text-sm font-medium bg-white border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <span class="sr-only">Previous</span>
-                  &​lt;
-                </button>
-                <div class="h-9 px-3 flex items-center text-sm text-slate-700 bg-slate-50 border border-slate-200 rounded-lg">
-                  {{ currentPage }} / {{ totalPages || 1 }}
-                </div>
-                <button
-                  type="button"
-                  @click="goToNextPage"
-                  :disabled="currentPage >= totalPages"
-                  class="h-9 px-3 text-sm font-medium bg-white border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <span class="sr-only">Next</span>
-                  &​gt;
-                </button>
-                <button
-                  type="button"
-                  @click="goToLastPage"
-                  :disabled="currentPage >= totalPages"
-                  class="h-9 px-3 text-sm font-medium bg-white border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Last
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <Teleport to="body">
-            <div
-              v-if="activeMenu !== null"
-              data-dropdown-menu
-              :style="menuPosition"
-              class="fixed w-48 bg-white rounded-lg shadow-2xl border border-slate-200 py-1 z-[9999] overflow-hidden"
-            >
-              <button @click="openEditOverlay(packages.find(p => p.id === activeMenu)); closeMenu()"
-                class="flex items-center w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-700 transition-colors">
-                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                </svg>
-                Edit Package
-              </button>
-              <button @click="handleDuplicate(packages.find(p => p.id === activeMenu)); closeMenu()"
-                class="flex items-center w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 transition-colors">
-                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                </svg>
-                Duplicate
-              </button>
-              <div class="border-t border-slate-200 my-1"></div>
-              <button @click="handleDelete(packages.find(p => p.id === activeMenu)); closeMenu()"
-                class="flex items-center w-full px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors">
-                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
-                Delete Package
-              </button>
-            </div>
-          </Teleport>
-        </div>
-
-        <div v-else class="flex flex-col items-center justify-center gap-4 p-12 text-slate-500">
-          <svg xmlns="http://www.w3.org/2000/svg" class="w-16 h-16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-          </svg>
-          <p class="text-center text-lg font-medium">No packages found</p>
-          <button @click="openCreateOverlay"
-            class="mt-4 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors">
-            Add Package
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
+    </Teleport>
+  </DataViewContainer>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { usePackages } from '@/modules/tenant/composables/data/usePackages'
+import { useFilters } from '@/modules/common/composables/utils/useFilters'
+import { usePagination } from '@/modules/common/composables/utils/usePagination'
 import { useConfirmStore } from '@/stores/confirm'
 import { useBroadcasting } from '@/modules/common/composables/websocket/useBroadcasting'
 import { useAuthStore } from '@/stores/auth'
+import DataViewContainer from '@/modules/common/components/base/DataViewContainer.vue'
+import DataSkeleton from '@/modules/common/components/base/DataSkeleton.vue'
+import MobileDataCard from '@/modules/common/components/base/MobileDataCard.vue'
+import DataPagination from '@/modules/common/components/base/DataPagination.vue'
+import DataEmptyState from '@/modules/common/components/base/DataEmptyState.vue'
+import EntityStatusBadge from '@/modules/common/components/base/EntityStatusBadge.vue'
+import BaseSelect from '@/modules/common/components/base/BaseSelect.vue'
 import CreatePackageOverlay from '@/modules/tenant/components/packages/overlays/CreatePackageOverlay.vue'
 import ViewPackageOverlay from '@/modules/tenant/components/packages/overlays/ViewPackageOverlay.vue'
 
@@ -469,66 +302,37 @@ const confirmStore = useConfirmStore()
 const authStore = useAuthStore()
 const { subscribeToPrivateChannel } = useBroadcasting()
 
-const searchQuery = ref('')
-const typeFilter = ref('all')
-const statusFilter = ref('all')
+// Filtering and Pagination
+const { filters, searchQuery, filteredData, hasActiveFilters } = useFilters(packages, { type: '', status: '' })
+const { currentPage, itemsPerPage, paginatedData, totalPages } = usePagination(filteredData, 10)
 
-const currentPage = ref(1)
-const itemsPerPage = ref(10)
-const itemsPerPageOptions = [10, 20, 50]
+// Stats
+const activeCount = computed(() => packages.value?.filter(p => p.status === 'active').length || 0)
+const inactiveCount = computed(() => packages.value?.filter(p => p.status === 'inactive').length || 0)
 
+// Reset page on search/filter changes (matching TodosView pattern)
+watch(searchQuery, () => { currentPage.value = 1 })
+watch(itemsPerPage, () => { currentPage.value = 1 })
+watch(() => filters.value.type, () => { currentPage.value = 1 })
+watch(() => filters.value.status, () => { currentPage.value = 1 })
+
+// Menu state
 const activeMenu = ref(null)
-const menuPosition = ref({ top: '0px', left: '0px' })
+const menuPosition = ref({})
 
-const filteredPackages = computed(() => {
-  let filtered = packages.value
-  
-  if (searchQuery.value) {
-    const query = searchQuery.value.toLowerCase()
-    filtered = filtered.filter(pkg =>
-      pkg.name.toLowerCase().includes(query) ||
-      (pkg.description && pkg.description.toLowerCase().includes(query))
-    )
+const toggleMenu = (id, event) => {
+  if (activeMenu.value === id) {
+    activeMenu.value = null
+    menuPosition.value = {}
+  } else {
+    activeMenu.value = id
+    const rect = event.currentTarget.getBoundingClientRect()
+    menuPosition.value = {
+      top: `${rect.bottom + 4}px`,
+      right: `${window.innerWidth - rect.right}px`
+    }
   }
-  
-  if (typeFilter.value !== 'all') {
-    filtered = filtered.filter(pkg => pkg.type === typeFilter.value)
-  }
-  
-  if (statusFilter.value !== 'all') {
-    filtered = filtered.filter(pkg => pkg.status === statusFilter.value)
-  }
-  
-  return filtered
-})
-
-const totalPages = computed(() => Math.max(1, Math.ceil(filteredPackages.value.length / itemsPerPage.value)))
-
-const paginatedPackages = computed(() => {
-  const start = (currentPage.value - 1) * itemsPerPage.value
-  const end = start + itemsPerPage.value
-  return filteredPackages.value.slice(start, end)
-})
-
-const paginationInfo = computed(() => {
-  const total = filteredPackages.value.length
-  if (total === 0) {
-    return { start: 0, end: 0, total: 0 }
-  }
-
-  const start = (currentPage.value - 1) * itemsPerPage.value + 1
-  const end = Math.min(currentPage.value * itemsPerPage.value, total)
-
-  return { start, end, total }
-})
-
-const activeCount = computed(() => {
-  return packages.value.filter(p => p.status === 'active').length
-})
-
-const inactiveCount = computed(() => {
-  return packages.value.filter(p => p.status === 'inactive').length
-})
+}
 
 const formatMoney = (amount) => {
   return new Intl.NumberFormat('en-KE').format(amount)
@@ -563,8 +367,25 @@ const handleToggleStatus = async (pkg) => {
   }
 }
 
-const handleDuplicate = async (pkg) => {
-  await duplicatePackage(pkg)
+const getPackageMetaLines = (pkg) => {
+  const lines = []
+  lines.push({ text: `KES ${formatMoney(pkg.price)}` })
+  lines.push({ text: formatPackageSpeed(pkg) })
+  if (pkg.type) lines.push({ text: pkg.type, class: 'capitalize' })
+  return lines
+}
+
+const getPackageActions = (pkg) => {
+  const actions = []
+  actions.push({ label: 'View', onClick: () => openDetails(pkg), class: 'text-blue-700 bg-blue-50 hover:bg-blue-100' })
+  actions.push({ label: 'Edit', onClick: () => openEditOverlay(pkg), class: 'text-slate-700 bg-slate-100 hover:bg-slate-200' })
+  actions.push({ label: 'Duplicate', onClick: () => duplicatePackage(pkg), class: 'text-indigo-700 bg-indigo-50 hover:bg-indigo-100' })
+  actions.push({
+    label: pkg.status === 'active' ? 'Deactivate' : 'Activate',
+    onClick: () => handleToggleStatus(pkg),
+    class: pkg.status === 'active' ? 'text-amber-700 bg-amber-50 hover:bg-amber-100' : 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100'
+  })
+  return actions
 }
 
 const handleDelete = async (pkg) => {
@@ -587,40 +408,77 @@ const handleDelete = async (pkg) => {
 
 const closeMenu = () => {
   activeMenu.value = null
-}
-
-const toggleMenu = (packageId, event) => {
-  if (event) {
-    event.stopPropagation()
-    const button = event.currentTarget
-    const rect = button.getBoundingClientRect()
-    menuPosition.value = {
-      top: `${rect.bottom + 8}px`,
-      left: `${Math.min(rect.left, window.innerWidth - 200)}px`,
-    }
-  }
-
-  activeMenu.value = activeMenu.value === packageId ? null : packageId
+  menuPosition.value = {}
 }
 
 const handleClickOutside = (event) => {
-  if (!activeMenu.value) return
-  const target = event.target
-  if (!target) return
-
-  if (target.closest('[data-dropdown-menu]') || target.closest('[data-menu-button]')) {
-    return
+  const menu = document.querySelector('[data-dropdown-menu]')
+  const menuButton = document.querySelector('[data-menu-button]')
+  if (menu && !menu.contains(event.target) && menuButton && !menuButton.contains(event.target)) {
+    closeMenu()
   }
-
-  closeMenu()
 }
 
+const handleKeydown = (event) => {
+  if (event.key === 'Escape') closeMenu()
+}
+
+// Menu action handlers with closeMenu
+const getMenuPackage = () => packages.value.find(p => p.id === activeMenu.value)
+
+const handleViewMenu = () => {
+  const pkg = getMenuPackage()
+  closeMenu()
+  if (pkg) openDetails(pkg)
+}
+
+const handleToggleStatusMenu = () => {
+  const pkg = getMenuPackage()
+  closeMenu()
+  if (pkg) handleToggleStatus(pkg)
+}
+
+const handleEditMenu = () => {
+  const pkg = packages.value.find(p => p.id === activeMenu.value)
+  closeMenu()
+  if (pkg) openEditOverlay(pkg)
+}
+
+const handleDuplicateMenu = () => {
+  const pkg = packages.value.find(p => p.id === activeMenu.value)
+  closeMenu()
+  if (pkg) duplicatePackage(pkg)
+}
+
+const handleDeleteMenu = async () => {
+  const pkg = packages.value.find(p => p.id === activeMenu.value)
+  closeMenu()
+  if (!pkg) return
+
+  const confirmed = await confirmStore.open({
+    title: 'Confirm Delete',
+    message: `Are you sure you want to delete ${pkg.name}? This action cannot be undone.`,
+    confirmText: 'Delete',
+    cancelText: 'Cancel',
+    variant: 'danger'
+  })
+
+  if (confirmed) {
+    try {
+      await deletePackage(pkg.id)
+    } catch (err) {
+      alert('Failed to delete package')
+    }
+  }
+}
+
+// Pagination navigation helpers (available for programmatic use)
 const goToFirstPage = () => { currentPage.value = 1 }
 const goToPreviousPage = () => { currentPage.value = Math.max(1, currentPage.value - 1) }
 const goToNextPage = () => { currentPage.value = Math.min(totalPages.value, currentPage.value + 1) }
 const goToLastPage = () => { currentPage.value = totalPages.value }
 
-watch([filteredPackages, itemsPerPage], () => {
+watch([filteredData, itemsPerPage], () => {
   if (currentPage.value > totalPages.value) {
     currentPage.value = totalPages.value
   }

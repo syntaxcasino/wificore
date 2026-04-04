@@ -125,10 +125,13 @@ onUnmounted(() => {
 
 .content-area {
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
   padding: 20px;
-  padding-top: 80px; /* Add top padding to prevent content from being hidden under topbar */
+  padding-top: 80px;
   position: relative;
 }
 

@@ -32,8 +32,8 @@ class IdentifyTenantFromSubdomain
             return $next($request);
         }
 
-        // Find tenant by subdomain (with caching)
-        $tenant = Cache::remember("tenant:subdomain:{$subdomain}", 3600, function () use ($subdomain) {
+        // Find tenant by subdomain (with caching) - 30 seconds max to prevent stale data
+        $tenant = Cache::remember("tenant:subdomain:{$subdomain}", 30, function () use ($subdomain) {
             return Tenant::where('subdomain', $subdomain)
                 ->orWhere('custom_domain', $subdomain)
                 ->first();

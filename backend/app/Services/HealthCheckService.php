@@ -403,24 +403,156 @@ class HealthCheckService
             'REDIS_HOST',
             'RADIUS_SERVER_HOST',
         ];
-        
+
         $missing = [];
         foreach ($required as $key) {
             if (empty(env($key))) {
                 $missing[] = $key;
             }
         }
-        
-        $status = empty($missing) ? 'healthy' : 'unhealthy';
-        
+
+        $warnings = [];
+        $unsafe = [];
+
+        $appEnv = config('app.env', env('APP_ENV', 'production'));
+        $isProduction = $appEnv === 'production';
+
+        $appKey = env('APP_KEY');
+        if (!empty($appKey) && str_contains($appKey, 'GENERATE_WITH')) {
+            $unsafe['APP_KEY'] = 'APP_KEY is still using a placeholder value.';
+        }
+
+        $debug = filter_var(env('APP_DEBUG', false), FILTER_VALIDATE_BOOLEAN);
+        if ($debug && $isProduction) {
+            $unsafe['APP_DEBUG'] = 'Debug mode must be disabled in production.';
+        }
+
+        if (!$isProduction) {
+            $warnings['APP_ENV'] = "APP_ENV is set to {$appEnv}; production expected for live systems.";
+        }
+
+        $appUrl = (string) env('APP_URL', '');
+        if ($isProduction) {
+            if (empty($appUrl)) {
+                $warnings['APP_URL'] = 'APP_URL is not set for production.';
+            } elseif (!str_starts_with($appUrl, 'https://')) {
+                $warnings['APP_URL'] = 'APP_URL should use https in production.';
+            }
+            if (str_contains($appUrl, 'localhost') || str_contains($appUrl, '127.0.0.1')) {
+                $warnings['APP_URL'] = 'APP_URL should not point to localhost in production.';
+            }
+        }
+
+        $dbPassword = (string) env('DB_PASSWORD', '');
+        $weakDbPasswords = ['password', 'changeme', 'CHANGE_THIS_STRONG_PASSWORD', 'root', 'admin'];
+        if ($isProduction && (empty($dbPassword) || in_array($dbPassword, $weakDbPasswords, true))) {
+            $unsafe['DB_PASSWORD'] = 'Database password is missing or uses a weak placeholder.';
+        }
+
+        $redisPassword = (string) env('REDIS_PASSWORD', '');
+        if ($isProduction && empty($redisPassword)) {
+            $warnings['REDIS_PASSWORD'] = 'Redis password is not set for production.';
+        }
+
+        $radiusSecret = (string) env('RADIUS_SECRET', '');
+        if ($isProduction && empty($radiusSecret)) {
+            $warnings['RADIUS_SECRET'] = 'RADIUS secret is not set for production.';
+        }
+
+        $wireguardApiKey = (string) env('WIREGUARD_API_KEY', '');
+        if ($isProduction && empty($wireguardApiKey)) {
+            $warnings['WIREGUARD_API_KEY'] = 'WireGuard controller API key is not set.';
+        }
+
+        $logLevel = strtolower((string) env('LOG_LEVEL', 'debug'));
+        if ($isProduction && in_array($logLevel, ['debug', 'info'], true)) {
+            $warnings['LOG_LEVEL'] = 'LOG_LEVEL should be warning or error in production.';
+        }
+
+        $queueConnection = (string) env('QUEUE_CONNECTION', '');
+        if ($isProduction && $queueConnection === 'sync') {
+            $warnings['QUEUE_CONNECTION'] = 'Queue connection is sync; use a persistent queue backend.';
+        }
+
+        $cacheStore = (string) env('CACHE_STORE', '');
+        if ($isProduction && $cacheStore === 'array') {
+            $warnings['CACHE_STORE'] = 'Cache store is set to array (non-persistent).';
+        }
+
+        $sessionSecure = filter_var(env('SESSION_SECURE_COOKIE', false), FILTER_VALIDATE_BOOLEAN);
+        if ($isProduction && !$sessionSecure) {
+            $warnings['SESSION_SECURE_COOKIE'] = 'Session cookies should be marked secure in production.';
+        }
+
+        $sessionSameSite = strtolower((string) env('SESSION_SAME_SITE', 'lax'));
+        if ($isProduction && $sessionSameSite === 'none' && !$sessionSecure) {
+            $warnings['SESSION_SAME_SITE'] = 'SameSite=None requires secure cookies.';
+        }
+
+        $sessionDriver = (string) env('SESSION_DRIVER', 'database');
+        if ($isProduction && in_array($sessionDriver, ['array', 'file'], true)) {
+            $warnings['SESSION_DRIVER'] = 'Session driver should use a shared backend in production.';
+        }
+
+        $sanctumDomains = (string) env('SANCTUM_STATEFUL_DOMAINS', '');
+        if ($isProduction && empty($sanctumDomains)) {
+            $warnings['SANCTUM_STATEFUL_DOMAINS'] = 'SANCTUM_STATEFUL_DOMAINS is not configured.';
+        }
+        if ($isProduction && str_contains($sanctumDomains, 'localhost')) {
+            $warnings['SANCTUM_STATEFUL_DOMAINS'] = 'SANCTUM_STATEFUL_DOMAINS contains localhost entries.';
+        }
+
+        if ($isProduction) {
+            $corsOrigins = array_filter(config('cors.allowed_origins', []));
+            $localOrigins = array_filter($corsOrigins, fn($origin) => str_contains($origin, 'localhost') || str_contains($origin, '127.0.0.1'));
+            if (!empty($localOrigins)) {
+                $warnings['CORS_ALLOWED_ORIGINS'] = 'Localhost origins are enabled in production.';
+            }
+
+            $corsPatterns = config('cors.allowed_origins_patterns', []);
+            $localPatterns = array_filter($corsPatterns, fn($pattern) => str_contains($pattern, 'localhost') || str_contains($pattern, 'ngrok'));
+            if (!empty($localPatterns)) {
+                $warnings['CORS_ALLOWED_ORIGINS_PATTERNS'] = 'Development CORS origin patterns are enabled in production.';
+            }
+        }
+
+        $mpesaEnv = strtolower((string) (env('MPESA_ENVIRONMENT') ?? env('MPESA_ENV', '')));
+        if ($isProduction && $mpesaEnv === 'sandbox') {
+            $warnings['MPESA_ENV'] = 'M-Pesa environment is set to sandbox in production.';
+        }
+
+        $soketiDebug = filter_var(env('SOKETI_DEBUG', false), FILTER_VALIDATE_BOOLEAN);
+        if ($isProduction && $soketiDebug) {
+            $warnings['SOKETI_DEBUG'] = 'Soketi debug is enabled in production.';
+        }
+
+        $tokenTtl = (int) env('ROUTER_CONFIG_TOKEN_TTL_MINUTES', 60);
+        if ($isProduction && $tokenTtl <= 0) {
+            $warnings['ROUTER_CONFIG_TOKEN_TTL_MINUTES'] = 'Router config token TTL is disabled.';
+        }
+
+        $status = 'healthy';
+        if (!empty($missing) || !empty($unsafe)) {
+            $status = 'unhealthy';
+        } elseif (!empty($warnings)) {
+            $status = 'warning';
+        }
+
         return [
             'status' => $status,
+            'app_env' => $appEnv,
+            'is_production' => $isProduction,
             'missing_vars' => $missing,
+            'unsafe_settings' => $unsafe,
+            'warning_settings' => $warnings,
             'total_required' => count($required),
-            'configured' => count($required) - count($missing)
+            'configured' => count($required) - count($missing),
+            'missing_count' => count($missing),
+            'unsafe_count' => count($unsafe),
+            'warning_count' => count($warnings),
         ];
     }
-    
+
     /**
      * Check queue health
      */

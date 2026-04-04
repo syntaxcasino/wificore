@@ -21,8 +21,16 @@ class PppoeSessionController extends Controller
 
         try {
             $rows = collect();
+            $source = 'none';
 
-            if (Schema::hasTable('radacct')) {
+            // Check tenant schema first
+            $tenantSchemaExists = Schema::hasTable('radacct');
+            Log::info('PPPoE sessions lookup started', [
+                'tenant_id' => $tenantId,
+                'tenant_schema_radacct_exists' => $tenantSchemaExists,
+            ]);
+
+            if ($tenantSchemaExists) {
                 $rows = DB::table('radacct')
                     ->select([
                         'acctsessionid',
@@ -40,12 +48,23 @@ class PppoeSessionController extends Controller
                     ->orderByDesc('acctstarttime')
                     ->limit(500)
                     ->get();
+                
+                Log::info('Tenant schema radacct query result', [
+                    'row_count' => $rows->count(),
+                ]);
+                
+                if ($rows->isNotEmpty()) {
+                    $source = 'tenant_radacct';
+                }
             }
 
-            // Fallback: if tenant-schema accounting is empty/missing, pull from public.radacct but
-            // strictly filter to this tenant's PPPoE usernames to avoid cross-tenant leakage.
+            // Fallback: if tenant-schema accounting is empty/missing, pull from public.radacct
             if ($rows->isEmpty()) {
                 $publicRadacctExists = (bool) (DB::selectOne("SELECT to_regclass('public.radacct') AS t")->t ?? null);
+                
+                Log::info('Checking public.radacct fallback', [
+                    'public_radacct_exists' => $publicRadacctExists,
+                ]);
 
                 if ($publicRadacctExists) {
                     $tenantUsernames = PppoeUser::query()
@@ -55,6 +74,11 @@ class PppoeSessionController extends Controller
                         ->unique()
                         ->values()
                         ->all();
+
+                    Log::info('Tenant PPPoE usernames for public.radacct filter', [
+                        'username_count' => count($tenantUsernames),
+                        'usernames' => array_slice($tenantUsernames, 0, 10), // First 10 only
+                    ]);
 
                     if (!empty($tenantUsernames)) {
                         $rows = DB::table('public.radacct')
@@ -75,6 +99,14 @@ class PppoeSessionController extends Controller
                             ->orderByDesc('acctstarttime')
                             ->limit(500)
                             ->get();
+                        
+                        Log::info('Public radacct query result', [
+                            'row_count' => $rows->count(),
+                        ]);
+                        
+                        if ($rows->isNotEmpty()) {
+                            $source = 'public_radacct';
+                        }
                     }
                 }
             }
@@ -151,15 +183,32 @@ class PppoeSessionController extends Controller
                 ];
             })->values();
 
+            Log::info('PPPoE sessions data mapping complete', [
+                'data_count' => $data->count(),
+                'source' => $source,
+                'usernames_found' => count($usernames),
+            ]);
+
             // If no radacct data, we used to fallback to live fetch from routers via SSH.
             // But user explicitly said "this is a bad design".
             // So we will return empty list or data from VM if usernames are known (active users).
             if ($data->isEmpty()) {
+                Log::info('No radacct data found, trying VM fallback with active users');
+                
                 // Try fetching active users from DB and checking VM for them as a last resort
                 $activeUsers = PppoeUser::where('status', 'active')->get();
+                Log::info('Active PPPoE users from DB', [
+                    'active_user_count' => $activeUsers->count(),
+                ]);
+                
                 if ($activeUsers->isNotEmpty()) {
                     $usernames = $activeUsers->pluck('username')->all();
                     $liveMetrics = $this->fetchLiveMetrics($vm, (string) $tenantId, $usernames);
+                    
+                    Log::info('VictoriaMetrics lookup for active users', [
+                        'usernames_checked' => count($usernames),
+                        'metrics_found' => count($liveMetrics),
+                    ]);
                     
                     if (!empty($liveMetrics)) {
                         // Construct minimal session data from VM metrics + DB
@@ -178,14 +227,23 @@ class PppoeSessionController extends Controller
                                     'status' => 'active (metrics only)',
                                 ];
                             })->values();
+                        
+                        if ($data->isNotEmpty()) {
+                            $source = 'vm_fallback';
+                        }
                     }
                 }
             }
 
+            Log::info('PPPoE sessions response ready', [
+                'final_count' => $data->count(),
+                'final_source' => $source,
+            ]);
+
             return response()->json([
                 'success' => true,
                 'data' => $data,
-                'source' => 'radacct+vm',
+                'source' => $source,
                 'tenant_id' => $tenantId,
             ]);
         } catch (\Exception $e) {

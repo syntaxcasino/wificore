@@ -37,7 +37,6 @@ const WalletAccountBalance = () => import('@/modules/tenant/views/dashboard/bill
 const PaymentMethods = () => import('@/modules/tenant/views/dashboard/billing/PaymentMethodsNew.vue')
 
 // Packages
-const PackagesLayout = () => import('@/modules/tenant/views/dashboard/packages/PackagesLayout.vue')
 const AllPackages = () => import('@/modules/tenant/views/dashboard/packages/AllPackagesNew.vue')
 const AddPackage = () => import('@/modules/tenant/views/dashboard/packages/AddPackageNew.vue')
 const PackageGroups = () => import('@/modules/tenant/views/dashboard/packages/PackageGroupsNew.vue')
@@ -255,20 +254,24 @@ const routes = [
         ],
       },
 
+      // Packages Module
       {
-        path: 'packages',
-        component: PackagesLayout,
-        children: [
-          { path: '', redirect: 'all' },
-          { path: 'all', name: 'packages.all', component: AllPackages },
-          { path: 'add', name: 'packages.add', component: AddPackage },
-          { path: 'groups', name: 'packages.groups', component: PackageGroups },
-/*           {
-            path: 'bandwidth-limits',
-            name: 'packages.bandwidth-limits',
-            component: BandwidthLimitRules,
-          }, */
-        ],
+        path: 'packages/all',
+        name: 'packages',
+        component: AllPackages,
+        meta: { requiresAuth: true }
+      },
+      {
+        path: 'packages/add',
+        name: 'packages.add',
+        component: AddPackage,
+        meta: { requiresAuth: true }
+      },
+      {
+        path: 'packages/groups',
+        name: 'packages.groups',
+        component: PackageGroups,
+        meta: { requiresAuth: true }
       },
 
       {

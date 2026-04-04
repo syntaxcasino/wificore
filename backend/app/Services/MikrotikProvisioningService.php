@@ -1013,6 +1013,29 @@ SCRIPT;
                 throw new \Exception($errorMsg, 503, $e);
             }
 
+            // Capture hardware/OS details early to drive low-end optimizations
+            $detectedModel = null;
+            $detectedVersion = null;
+            try {
+                $resourceOutput = $ssh->exec('/system resource print');
+                $resourceInfo = $this->parseSingleKeyValueBlock($resourceOutput);
+                $detectedModel = $resourceInfo['board-name'] ?? null;
+                $detectedVersion = $resourceInfo['version'] ?? null;
+
+                if ($detectedModel && $detectedModel !== $router->model) {
+                    $router->update(['model' => $detectedModel]);
+                }
+
+                if ($detectedVersion && $detectedVersion !== $router->os_version) {
+                    $router->update(['os_version' => $detectedVersion]);
+                }
+            } catch (\Exception $e) {
+                Log::debug('Unable to read router hardware details (non-fatal)', [
+                    'router_id' => $router->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
             // 4. Check VPN/WireGuard status BEFORE deployment (baseline)
             $vpnIp = $router->vpn_ip ? explode('/', $router->vpn_ip)[0] : null;
             $preDeployVpnStatus = null;
@@ -1223,15 +1246,38 @@ SCRIPT;
                     }
                 };
 
+                $routerModel = $detectedModel ?: $router->model;
+                $routerTier = RouterResourceManager::getRouterTierByModel($routerModel);
+                if (empty($routerModel)) {
+                    $routerTier = 'low_end';
+                }
+
+                $osMajor = null;
+                $routerOsVersion = $detectedVersion ?: $router->os_version;
+                if ($routerOsVersion && preg_match('/^(\d+)/', $routerOsVersion, $matches)) {
+                    $osMajor = (int) $matches[1];
+                }
+
+                $isLowEnd = $routerTier === 'low_end';
+                $canUseRestApi = $osMajor === null ? true : $osMajor >= 7;
+                if ($isLowEnd && !$canUseRestApi && $broadcast) {
+                    RouterProvisioningProgress::dispatch(
+                        $router->id,
+                        'compatibility_warning',
+                        35,
+                        'RouterOS < 7 detected; using SSH batching (REST API/WireGuard unavailable).',
+                        ['router_os_version' => $routerOsVersion]
+                    );
+                }
+
                 // For low-end devices, try REST API first, then fall back to SSH batching
-                $isLowEnd = RouterResourceManager::getRouterTier($router) === 'low_end';
                 $result = null;
                 
                 // Initialize these for cleanup (only used by executeSingleScript)
                 $remoteScriptFile = null;
                 $tempFile = null;
                 
-                if ($isLowEnd && $serviceScript) {
+                if ($isLowEnd && $serviceScript && $canUseRestApi) {
                     try {
                         // Extract config from script for API deployment
                         $apiConfig = $this->extractConfigFromScript($serviceScript, $router);
@@ -1629,7 +1675,7 @@ EOT;
         Router $router,
         callable $validator
     ): array {
-        $batches = $this->splitScriptIntoBatches($serviceScript);
+        $batches = $this->splitScriptIntoBatches($serviceScript, $router);
         $totalBatches = count($batches);
         $batchFiles = []; // Track all batch files for cleanup
         
@@ -1742,15 +1788,17 @@ EOT;
             $tenantContext = app(\App\Services\TenantContext::class);
             
             if ($tenantId && $schemaName) {
+                // First reset to public schema to access tenants table
+                \DB::connection('pgsql')->statement("SET search_path TO 'public'");
                 $tenantContext->setTenantById($tenantId);
-                // Ensure we use the tenant schema
+                // Then set to tenant schema for router operations
                 \DB::connection('pgsql')->statement("SET search_path TO '{$schemaName}'");
             }
 
             try {
                 $router = \App\Models\Router::on('pgsql')->useWritePdo()->find($routerId);
                 if (!$router) {
-                    Log::warning('Router not found during batch cleanup', [
+                    \Illuminate\Support\Facades\Log::warning('Router not found during batch cleanup', [
                         'router_id' => $routerId,
                         'schema' => $schemaName ?? 'unknown',
                     ]);
@@ -1787,13 +1835,17 @@ EOT;
      * Split script into logical batches based on command types
      * Ultra-conservative for hAP lite (16-32MB RAM) to prevent memory exhaustion
      */
-    private function splitScriptIntoBatches(string $script): array
+    private function splitScriptIntoBatches(string $script, Router $router): array
     {
         $lines = explode("\n", $script);
         $batches = [];
         $currentBatch = [];
         $lineCount = 0;
-        $maxLinesPerBatch = 1; // EXTREME: 1 command per batch for hAP lite with 5MB free RAM
+        $maxLinesPerBatch = RouterResourceManager::getCommandBatchSize($router);
+        if ($maxLinesPerBatch < 3) {
+            $maxLinesPerBatch = 3;
+        }
+        $inCriticalSection = false; // Bridge + PPPoE server section must stay together
         
         foreach ($lines as $line) {
             $trimmed = trim($line);
@@ -1801,19 +1853,40 @@ EOT;
                 continue;
             }
             
+            // Check if this is a critical infrastructure command (bridge or PPPoE server)
+            $isBridgeCommand = str_contains($trimmed, '/interface bridge');
+            $isPppoeServerCommand = str_contains($trimmed, '/interface pppoe-server');
+            $isInfrastructureCommand = $isBridgeCommand || $isPppoeServerCommand;
+            
+            // Track if we're in the critical infrastructure section
+            // This keeps bridge creation, bridge ports, and PPPoE server together
+            if ($isInfrastructureCommand) {
+                $inCriticalSection = true;
+            } elseif (str_contains($trimmed, '/ip firewall') || 
+                      str_contains($trimmed, '/radius') ||
+                      str_contains($trimmed, '/ppp profile') ||
+                      (str_contains($trimmed, '/interface') && !$isInfrastructureCommand)) {
+                // End of critical infrastructure section
+                $inCriticalSection = false;
+            }
+            
             $currentBatch[] = $line;
             $lineCount++;
             
-            // Force new batch every 2 commands OR at major sections
-            if ($lineCount >= $maxLinesPerBatch ||
-                str_contains($trimmed, '/ip firewall') || 
-                str_contains($trimmed, '/interface pppoe-server') ||
-                str_contains($trimmed, '/radius') ||
-                str_contains($trimmed, '/interface bridge')) {
+            // Force new batch every maxLinesPerBatch, EXCEPT when in critical infrastructure section
+            // Bridge + bridge ports + PPPoE server must execute together
+            $forceNewBatch = $lineCount >= $maxLinesPerBatch && !$inCriticalSection;
+            
+            // Section boundaries - only at major section transitions (NOT within infrastructure)
+            $sectionBoundary = (str_contains($trimmed, '/ip firewall') || 
+                               str_contains($trimmed, '/radius')) && !$inCriticalSection;
+            
+            if ($forceNewBatch || $sectionBoundary) {
                 if (!empty($currentBatch)) {
                     $batches[] = implode("\n", $currentBatch);
                     $currentBatch = [];
                     $lineCount = 0;
+                    $inCriticalSection = false;
                 }
             }
         }
@@ -1847,10 +1920,31 @@ EOT;
             'vlan_id' => null,
             'radius_servers' => [],
             'profile' => 'pppoe-default',
-            'wan_list' => 'pppoe-wan-list',
-            'pal_list' => 'pppoe-pal-list',
+            'pppoe_profile' => null,
+            'pppoe_pool' => null,
+            'pppoe_range_start' => null,
+            'pppoe_range_end' => null,
+            'pppoe_gateway_ip' => null,
+            'pppoe_remote_address' => null,
+            'pppoe_dns_servers' => null,
+            'pppoe_only_one' => null,
+            'pppoe_change_tcp_mss' => null,
+            'pppoe_use_compression' => null,
+            'pppoe_authentication' => null,
+            'pppoe_one_session_per_host' => null,
+            'pppoe_keepalive_timeout' => null,
+            'pppoe_max_mtu' => null,
+            'pppoe_max_mru' => null,
+            'pppoe_interim_update' => null,
+            'pppoe_list' => null,
+            'wan_list' => 'WAN',
+            'pal_list' => null,
             'mgmt_subnet' => '10.0.0.0/8',
-            'mgmt_ports' => '8291,22,80,443',
+            'mgmt_ports' => '22,8291,8728,8729',
+            'wan_dhcp_client' => false,
+            'wan_dhcp_client_interface' => null,
+            'wan_disable_running_check' => null,
+            'disable_running_check_interfaces' => [],
             'tcp_timeout' => 3600,
             'udp_timeout' => 30,
         ];
@@ -1937,7 +2031,7 @@ EOT;
             $config['pppoe_profile'] = $matches[1];
         }
 
-        // Extract WAN interface
+        // Extract interface list members
         if (preg_match_all('/\/interface list member add .* list="?([^"\s]+)"? .* interface="?([^"\s]+)"?/i', $script, $matches, PREG_SET_ORDER)) {
             foreach ($matches as $match) {
                 $listName = $match[1];
@@ -1945,6 +2039,8 @@ EOT;
                 if (str_contains(strtolower($listName), 'wan')) {
                     $config['wan_list'] = $listName;
                     $config['wan_interface'] = $interface;
+                } else {
+                    $config['pppoe_list'] = $config['pppoe_list'] ?? $listName;
                 }
             }
         }
@@ -2044,8 +2140,79 @@ EOT;
         if (preg_match('/\/ppp profile add .* name="?([^"\s]+)"?.* local-address=([0-9\.]+).*?(?:remote-address="?([^"\s]+)"?)?.*?(?:dns-server="?([^"\s]+)"?)?/i', $script, $matches)) {
             $config['pppoe_profile'] = $matches[1];
             $config['pppoe_gateway_ip'] = $matches[2];
+            if (!empty($matches[3])) {
+                $config['pppoe_remote_address'] = trim($matches[3], '"');
+            }
             if (!empty($matches[4])) {
                 $config['pppoe_dns_servers'] = $matches[4];
+            }
+        }
+
+        if (preg_match('/\/ppp profile set .* local-address=([0-9\.]+).*?(?:remote-address="?([^"\s]+)"?)?/i', $script, $matches)) {
+            $config['pppoe_gateway_ip'] = $matches[1];
+            if (!empty($matches[2])) {
+                $config['pppoe_remote_address'] = trim($matches[2], '"');
+            }
+        }
+
+        if (preg_match('/\/ppp profile set .* dns-server="?([^"\s]+)"?/i', $script, $matches)) {
+            $config['pppoe_dns_servers'] = $matches[1];
+        }
+
+        if (preg_match('/\/ppp profile set .* only-one=([^\s]+)/i', $script, $matches)) {
+            $config['pppoe_only_one'] = $matches[1];
+        }
+
+        if (preg_match('/\/ppp profile set .* change-tcp-mss=([^\s]+)/i', $script, $matches)) {
+            $config['pppoe_change_tcp_mss'] = $matches[1];
+        }
+
+        if (preg_match('/\/ppp profile set .* use-compression=([^\s]+)/i', $script, $matches)) {
+            $config['pppoe_use_compression'] = $matches[1];
+        }
+
+        if (preg_match('/\/interface pppoe-server server set .* authentication=([^\s]+)/i', $script, $matches)) {
+            $config['pppoe_authentication'] = $matches[1];
+        }
+
+        if (preg_match('/\/interface pppoe-server server set .* one-session-per-host=([^\s]+)/i', $script, $matches)) {
+            $config['pppoe_one_session_per_host'] = $matches[1];
+        }
+
+        if (preg_match('/\/interface pppoe-server server set .* keepalive-timeout=([^\s]+)/i', $script, $matches)) {
+            $config['pppoe_keepalive_timeout'] = $matches[1];
+        }
+
+        if (preg_match('/\/interface pppoe-server server set .* max-mtu=([^\s]+) .* max-mru=([^\s]+)/i', $script, $matches)) {
+            $config['pppoe_max_mtu'] = $matches[1];
+            $config['pppoe_max_mru'] = $matches[2];
+        }
+
+        if (preg_match('/\/ppp aaa set .* interim-update=([^\s]+)/i', $script, $matches)) {
+            $config['pppoe_interim_update'] = $matches[1];
+        }
+
+        if (preg_match('/\/ip dhcp-client add .* interface="?([^"\s]+)"?.*?(?:disabled=([^\s]+))?/i', $script, $matches)) {
+            $config['wan_dhcp_client'] = true;
+            $config['wan_dhcp_client_interface'] = $matches[1];
+            if (!empty($matches[2])) {
+                $config['wan_dhcp_client_disabled'] = $matches[2];
+            }
+        }
+
+        if (preg_match_all('/\/interface ethernet set \[find (?:default-name|name)=("?)([^"\]]+)\1\] .*?disable-running-check=([^\s]+)/i', $script, $matches, PREG_SET_ORDER)) {
+            foreach ($matches as $match) {
+                if (strtolower($match[3]) === 'no') {
+                    $config['disable_running_check_interfaces'][] = trim($match[2]);
+                }
+            }
+        }
+
+        if (preg_match_all('/\/interface ethernet set .*?disable-running-check=([^\s]+).*?\[find (?:default-name|name)=("?)([^"\]]+)\2\]/i', $script, $matches, PREG_SET_ORDER)) {
+            foreach ($matches as $match) {
+                if (strtolower($match[1]) === 'no') {
+                    $config['disable_running_check_interfaces'][] = trim($match[3]);
+                }
             }
         }
 
@@ -2089,18 +2256,40 @@ EOT;
                     $ssh->connect();
                 }
 
+                Log::info('Starting script execution', [
+                    'router_id' => $router->id,
+                    'attempt' => $attempt,
+                    'temp_file' => $tempFile,
+                    'remote_file' => $remoteScriptFile,
+                ]);
+
                 // Ensure Unix line endings
                 $cleanScript = str_replace(["\r\n", "\r"], "\n", $serviceScript);
                 $cleanScript = preg_replace('/^\xEF\xBB\xBF/', '', $cleanScript);
                 file_put_contents($tempFile, $cleanScript);
+                
+                Log::info('Script written to temp file', [
+                    'router_id' => $router->id,
+                    'temp_file' => $tempFile,
+                    'size' => strlen($cleanScript),
+                ]);
 
+                Log::info('Starting file upload via SFTP', ['router_id' => $router->id]);
                 $ssh->uploadFile($tempFile, $remoteScriptFile);
+                Log::info('File upload completed', ['router_id' => $router->id]);
+                
+                Log::info('Starting script import', ['router_id' => $router->id]);
                 $ssh->importFile($remoteScriptFile);
+                Log::info('Script import completed', ['router_id' => $router->id]);
 
                 // Wait for RouterOS to process
-                sleep(RouterResourceManager::getRouterTier($router) === 'low_end' ? 1 : 3);
+                $sleepTime = RouterResourceManager::getRouterTier($router) === 'low_end' ? 1 : 3;
+                Log::info('Waiting for RouterOS to process', ['router_id' => $router->id, 'sleep_seconds' => $sleepTime]);
+                sleep($sleepTime);
 
+                Log::info('Starting validation', ['router_id' => $router->id]);
                 $validationResult = $validator($ssh);
+                Log::info('Validation completed', ['router_id' => $router->id, 'valid' => $validationResult['valid'] ?? false]);
                 if (!($validationResult['valid'] ?? false)) {
                     throw new \Exception($validationResult['error'] ?? 'Validation failed');
                 }

@@ -35,7 +35,8 @@ class ThrottleRequests
             ], 429);
         }
         
-        Cache::put($key, $attempts + 1, now()->addMinutes($decayMinutes));
+        // Max 30 seconds cache to prevent stale data
+        Cache::put($key, $attempts + 1, 30);
         
         $response = $next($request);
         

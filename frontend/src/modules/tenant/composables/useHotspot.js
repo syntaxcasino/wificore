@@ -32,7 +32,6 @@ export function useHotspot() {
   
   // WebSocket subscription reference
   let echoChannel = null
-  let sessionsChannel = null
   
   // Computed
   const activeUsers = computed(() => 
@@ -204,18 +203,6 @@ export function useHotspot() {
         console.log('Hotspot provision requested:', event)
         handleProvisionRequested(event)
       })
-      .listen('.hotspot.session.started', (event) => {
-        console.log('Hotspot session started:', event)
-        handleSessionStarted(event)
-      })
-      .listen('.hotspot.session.ended', (event) => {
-        console.log('Hotspot session ended:', event)
-        handleSessionEnded(event)
-      })
-      .listen('.hotspot.session.updated', (event) => {
-        console.log('Hotspot session updated:', event)
-        handleSessionUpdated(event)
-      })
     
     // Subscribe to hotspot-users channel for user creation events
     window.Echo.private(`tenant.${tenantId}.hotspot-users`)
@@ -224,11 +211,11 @@ export function useHotspot() {
         handleUserCreated(event)
       })
     
-    // Subscribe to hotspot-sessions channel for session-specific events
-    sessionsChannel = window.Echo.private(`tenant.${tenantId}.hotspot-sessions`)
-      .listen('.hotspot.session.sync', (event) => {
-        console.log('Hotspot session sync:', event)
-        handleSessionSync(event)
+    // Subscribe to dashboard-stats channel for session expiration events
+    window.Echo.private(`tenant.${tenantId}.dashboard-stats`)
+      .listen('.SessionExpired', (event) => {
+        console.log('Session expired:', event)
+        handleSessionExpired(event)
       })
     
     console.log(`Subscribed to hotspot WebSocket channels for tenant ${tenantId}`)
@@ -243,9 +230,8 @@ export function useHotspot() {
     
     window.Echo.leave(`tenant.${tenantId}.hotspot`)
     window.Echo.leave(`tenant.${tenantId}.hotspot-users`)
-    window.Echo.leave(`tenant.${tenantId}.hotspot-sessions`)
+    window.Echo.leave(`tenant.${tenantId}.dashboard-stats`)
     echoChannel = null
-    sessionsChannel = null
     
     console.log('Unsubscribed from hotspot WebSocket channels')
   }
@@ -322,52 +308,27 @@ export function useHotspot() {
     }
   }
   
-  // Session event handlers
-  function handleSessionStarted(event) {
-    // Add new session to the list if not already present
-    const exists = sessions.value.some(s => s.id === event.session_id || s.username === event.username)
-    if (!exists) {
-      sessions.value.unshift({
-        id: event.session_id,
-        username: event.username,
-        user: event.user || { name: event.username },
-        ip_address: event.ip_address,
-        mac_address: event.mac_address,
-        package: event.package,
-        start_time: event.started_at,
-        duration: 0,
-        bytes_in: 0,
-        bytes_out: 0,
-        current_bandwidth: 0,
-        status: 'active',
-      })
-    }
-  }
-  
-  function handleSessionEnded(event) {
-    // Remove session from the list
-    const index = sessions.value.findIndex(s => s.id === event.session_id || s.username === event.username)
-    if (index !== -1) {
-      sessions.value.splice(index, 1)
-    }
-  }
-  
-  function handleSessionUpdated(event) {
-    // Update existing session data
-    const index = sessions.value.findIndex(s => s.id === event.session_id)
-    if (index !== -1) {
-      sessions.value[index] = {
-        ...sessions.value[index],
-        ...event.session,
-        duration: event.session?.duration || sessions.value[index].duration,
-        bytes_in: event.session?.bytes_in || sessions.value[index].bytes_in,
-        bytes_out: event.session?.bytes_out || sessions.value[index].bytes_out,
-        current_bandwidth: event.session?.current_bandwidth || sessions.value[index].current_bandwidth,
+  // Session event handlers (reserved for future backend implementation)
+  function handleSessionExpired(event) {
+    // Remove expired session from the list
+    const sessionId = event.session?.id
+    const username = event.session?.username
+    if (sessionId) {
+      const index = sessions.value.findIndex(s => s.id === sessionId)
+      if (index !== -1) {
+        sessions.value.splice(index, 1)
+      }
+    } else if (username) {
+      // Fallback: remove by username if id not available
+      const index = sessions.value.findIndex(s => s.username === username)
+      if (index !== -1) {
+        sessions.value.splice(index, 1)
       }
     }
   }
   
   function handleSessionSync(event) {
+    // Reserved for future backend implementation
     // Full session list sync from server
     if (event.sessions) {
       sessions.value = event.sessions

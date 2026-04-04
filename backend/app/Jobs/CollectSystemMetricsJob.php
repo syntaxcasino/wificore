@@ -39,10 +39,10 @@ class CollectSystemMetricsJob implements ShouldQueue
             // Performance metrics already includes recorded_at from collectPerformanceMetrics()
             PerformanceMetric::create($performanceMetrics);
             
-            // Cache for real-time display (TTL: 2 minutes)
-            Cache::put('metrics:queue:latest', $queueMetrics, now()->addMinutes(2));
-            Cache::put('metrics:health:latest', $healthMetrics, now()->addMinutes(2));
-            Cache::put('metrics:performance:latest', $performanceMetrics, now()->addMinutes(2));
+            // Cache for real-time display (TTL: 30 seconds max)
+            Cache::put('metrics:queue:latest', $queueMetrics, now()->addSeconds(30));
+            Cache::put('metrics:health:latest', $healthMetrics, now()->addSeconds(30));
+            Cache::put('metrics:performance:latest', $performanceMetrics, now()->addSeconds(30));
             
             \Log::info('System metrics collected and persisted', [
                 'queue_workers' => $queueMetrics['active_workers'] ?? 0,

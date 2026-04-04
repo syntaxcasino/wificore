@@ -49,23 +49,31 @@ class PppoeApiConfigurator
             $this->setupInterfaceLists();
             sleep(1);
 
-            // Phase 4: Create PPPoE server
+            // Phase 4: Setup WAN basics
+            $this->setupWanInterface();
+            sleep(1);
+
+            // Phase 5: Setup PPP profile/pool
+            $this->setupPppProfile();
+            sleep(1);
+
+            // Phase 6: Create PPPoE server
             $this->createPppoeServer();
             sleep(1);
 
-            // Phase 5: Setup RADIUS
+            // Phase 7: Setup RADIUS
             $this->setupRadius();
             sleep(1);
 
-            // Phase 6: Setup firewall
+            // Phase 8: Setup firewall
             $this->setupFirewall();
             sleep(1);
 
-            // Phase 7: Setup NAT
+            // Phase 9: Setup NAT
             $this->setupNat();
             sleep(1);
 
-            // Phase 8: Connection tracking
+            // Phase 10: Connection tracking
             $this->setConnectionTracking();
 
             Log::info('PPPoE API configuration completed', [
@@ -100,8 +108,14 @@ class PppoeApiConfigurator
     {
         $this->results['last_phase'] = 'cleanup';
 
-        $bridge = $this->config['bridge'] ?? 'pppoe-br-' . $this->serviceId;
-        $serviceName = $this->config['service_name'] ?? 'pppoe-svc-' . $this->serviceId;
+        $shortId = $this->shortId();
+        $bridge = $this->config['bridge'] ?? 'pppoe-br-' . $shortId;
+        $serviceName = $this->config['service_name'] ?? 'pppoe-svc-' . $shortId;
+        $poolName = $this->config['pppoe_pool'] ?? $this->config['pool'] ?? "pppoe-pool-{$shortId}";
+        $profile = $this->config['pppoe_profile'] ?? $this->config['profile'] ?? "pppoe-prof-{$shortId}";
+        if ($profile === 'pppoe-default') {
+            $profile = "pppoe-prof-{$shortId}";
+        }
 
         // Remove firewall rules
         $this->api->removeFirewallFilterByComment('PPPoE-' . $this->serviceId);
@@ -125,6 +139,12 @@ class PppoeApiConfigurator
         // Remove bridge
         $this->api->removeBridge($bridge);
 
+        $this->removeByName('/ip/pool', 'name', $poolName);
+
+        if ($profile && !str_starts_with(strtolower($profile), 'default')) {
+            $this->removeByName('/ppp/profile', 'name', $profile);
+        }
+
         $this->results['cleanup'] = 'success';
     }
 
@@ -135,7 +155,8 @@ class PppoeApiConfigurator
     {
         $this->results['last_phase'] = 'bridge';
 
-        $bridge = $this->config['bridge'] ?? 'pppoe-br-' . $this->serviceId;
+        $shortId = $this->shortId();
+        $bridge = $this->config['bridge'] ?? 'pppoe-br-' . $shortId;
 
         // Create bridge
         $this->api->createBridge($bridge, 'PPPoE-' . $this->serviceId);
@@ -165,14 +186,36 @@ class PppoeApiConfigurator
     {
         $this->results['last_phase'] = 'interface_lists';
 
-        $bridge = $this->config['bridge'] ?? 'pppoe-br-' . $this->serviceId;
-        $wanList = $this->config['wan_list'] ?? 'pppoe-wan-list';
-        $palList = $this->config['pal_list'] ?? 'pppoe-pal-list';
+        $shortId = $this->shortId();
+        $bridge = $this->config['bridge'] ?? 'pppoe-br-' . $shortId;
+        $wanList = $this->config['wan_list'] ?? 'WAN';
+        $palList = $this->config['pal_list'] ?? 'PA-' . $shortId;
+        $pppoeList = $this->config['pppoe_list'] ?? 'PL-' . $shortId;
 
-        // Add bridge to PAL list
-        $this->api->addInterfaceListMember($palList, $bridge);
+        try {
+            $this->api->executeCommand('/interface/list/add', ['name' => $wanList]);
+        } catch (\Exception $e) {
+            // list may already exist
+        }
 
-        // Ensure WAN list exists (may already be created)
+        try {
+            $this->api->executeCommand('/interface/list/add', ['name' => $palList]);
+        } catch (\Exception $e) {
+            // list may already exist
+        }
+
+        if ($pppoeList) {
+            try {
+                $this->api->executeCommand('/interface/list/add', ['name' => $pppoeList]);
+            } catch (\Exception $e) {
+                // list may already exist
+            }
+        }
+
+        if ($pppoeList) {
+            $this->api->addInterfaceListMember($pppoeList, $bridge);
+        }
+
         try {
             $this->api->addInterfaceListMember($wanList, $this->config['wan_interface'] ?? 'ether1');
         } catch (\Exception $e) {
@@ -183,24 +226,123 @@ class PppoeApiConfigurator
     }
 
     /**
+     * Setup WAN interface behaviors (DHCP client, running-check)
+     */
+    private function setupWanInterface(): void
+    {
+        $this->results['last_phase'] = 'wan_interface';
+
+        $wanInterface = $this->config['wan_interface']
+            ?? $this->config['wan_dhcp_client_interface']
+            ?? 'ether1';
+
+        $runningCheckInterfaces = $this->config['disable_running_check_interfaces'] ?? [];
+        if (!empty($runningCheckInterfaces)) {
+            foreach ($runningCheckInterfaces as $interface) {
+                $this->setEthernetRunningCheck($interface, false);
+            }
+        } elseif (array_key_exists('wan_disable_running_check', $this->config) && $wanInterface) {
+            $this->setEthernetRunningCheck(
+                $wanInterface,
+                $this->toBoolean($this->config['wan_disable_running_check'], false)
+            );
+        }
+
+        if (!empty($this->config['wan_dhcp_client']) && $wanInterface) {
+            $this->removeByField('/ip/dhcp-client', 'interface', $wanInterface);
+            $this->api->executeCommand('/ip/dhcp-client/add', [
+                'interface' => $wanInterface,
+                'disabled' => 'no',
+            ]);
+        }
+
+        $this->results['wan_interface'] = 'success';
+    }
+
+    /**
+     * Setup PPP profile + IP pool
+     */
+    private function setupPppProfile(): void
+    {
+        $this->results['last_phase'] = 'ppp_profile';
+
+        $shortId = $this->shortId();
+        $poolName = $this->config['pppoe_pool'] ?? $this->config['pool'] ?? "pppoe-pool-{$shortId}";
+        $rangeStart = $this->config['pppoe_range_start'] ?? $this->config['range_start'] ?? null;
+        $rangeEnd = $this->config['pppoe_range_end'] ?? $this->config['range_end'] ?? null;
+
+        if ($poolName && $rangeStart && $rangeEnd) {
+            $this->removeByName('/ip/pool', 'name', $poolName);
+            $this->api->executeCommand('/ip/pool/add', [
+                'name' => $poolName,
+                'ranges' => "{$rangeStart}-{$rangeEnd}",
+                'comment' => 'PPPoE-' . $this->serviceId,
+            ]);
+        }
+
+        $profile = $this->config['pppoe_profile'] ?? $this->config['profile'] ?? "pppoe-prof-{$shortId}";
+        if ($profile === 'pppoe-default') {
+            $profile = "pppoe-prof-{$shortId}";
+        }
+
+        $localAddress = $this->config['pppoe_gateway_ip'] ?? $this->config['gateway_ip'] ?? null;
+        $remoteAddress = $this->config['pppoe_remote_address'] ?? $poolName;
+        $dnsServers = $this->config['pppoe_dns_servers'] ?? $this->config['dns_servers'] ?? null;
+        $palList = $this->config['pal_list'] ?? 'PA-' . $shortId;
+
+        if ($profile) {
+            $this->removeByName('/ppp/profile', 'name', $profile);
+            $params = [
+                'name' => $profile,
+                'comment' => 'PPPoE-' . $this->serviceId,
+                'only-one' => $this->toBoolean($this->config['pppoe_only_one'] ?? true, true) ? 'yes' : 'no',
+                'change-tcp-mss' => $this->toBoolean($this->config['pppoe_change_tcp_mss'] ?? true, true) ? 'yes' : 'no',
+                'use-compression' => $this->toBoolean($this->config['pppoe_use_compression'] ?? false, false) ? 'yes' : 'no',
+            ];
+
+            if ($localAddress) {
+                $params['local-address'] = $localAddress;
+            }
+            if ($remoteAddress) {
+                $params['remote-address'] = $remoteAddress;
+            }
+            if ($dnsServers) {
+                $params['dns-server'] = $dnsServers;
+            }
+            if ($palList) {
+                $params['interface-list'] = $palList;
+            }
+
+            $this->api->executeCommand('/ppp/profile/add', $params);
+        }
+
+        $this->results['ppp_profile'] = 'success';
+    }
+
+    /**
      * Create PPPoE server
      */
     private function createPppoeServer(): void
     {
         $this->results['last_phase'] = 'pppoe_server';
 
-        $bridge = $this->config['bridge'] ?? 'pppoe-br-' . $this->serviceId;
-        $serviceName = $this->config['service_name'] ?? 'pppoe-svc-' . $this->serviceId;
-        $profile = $this->config['profile'] ?? 'pppoe-default';
+        $shortId = $this->shortId();
+        $bridge = $this->config['bridge'] ?? 'pppoe-br-' . $shortId;
+        $serviceName = $this->config['service_name'] ?? 'pppoe-svc-' . $shortId;
+        $profile = $this->config['pppoe_profile'] ?? $this->config['profile'] ?? "pppoe-prof-{$shortId}";
+        if ($profile === 'pppoe-default') {
+            $profile = "pppoe-prof-{$shortId}";
+        }
 
         $this->api->createPppoeServer(
             $serviceName,
             $bridge,
             $profile,
-            $this->config['max_mtu'] ?? 1480,
-            $this->config['max_mru'] ?? 1480,
-            $this->config['one_session_per_host'] ?? true,
-            $this->config['keepalive_timeout'] ?? 30
+            $this->toInteger($this->config['pppoe_max_mtu'] ?? $this->config['max_mtu'] ?? 1480, 1480),
+            $this->toInteger($this->config['pppoe_max_mru'] ?? $this->config['max_mru'] ?? 1480, 1480),
+            $this->toBoolean($this->config['pppoe_one_session_per_host'] ?? $this->config['one_session_per_host'] ?? true, true),
+            $this->toInteger($this->config['pppoe_keepalive_timeout'] ?? $this->config['keepalive_timeout'] ?? 30, 30),
+            (string) ($this->config['pppoe_authentication'] ?? 'chap,mschap2')
         );
 
         $this->results['pppoe_server'] = 'success';
@@ -225,6 +367,12 @@ class PppoeApiConfigurator
             );
         }
 
+        $this->api->executeCommand('/ppp/aaa/set', [
+            'use-radius' => 'yes',
+            'accounting' => 'yes',
+            'interim-update' => $this->config['pppoe_interim_update'] ?? '5m',
+        ]);
+
         $this->results['radius'] = 'success';
     }
 
@@ -235,11 +383,12 @@ class PppoeApiConfigurator
     {
         $this->results['last_phase'] = 'firewall';
 
-        $palList = $this->config['pal_list'] ?? 'pppoe-pal-list';
-        $wanList = $this->config['wan_list'] ?? 'pppoe-wan-list';
-        $bridge = $this->config['bridge'] ?? 'pppoe-br-' . $this->serviceId;
+        $shortId = $this->shortId();
+        $palList = $this->config['pal_list'] ?? 'PA-' . $shortId;
+        $wanList = $this->config['wan_list'] ?? 'WAN';
+        $bridge = $this->config['bridge'] ?? 'pppoe-br-' . $shortId;
         $mgmtSubnet = $this->config['mgmt_subnet'] ?? '10.0.0.0/8';
-        $mgmtPorts = $this->config['mgmt_ports'] ?? '8291,22,80,443';
+        $mgmtPorts = $this->config['mgmt_ports'] ?? '22,8291,8728,8729';
 
         // INPUT chain rules
         $this->api->addFirewallFilterRule([
@@ -348,8 +497,9 @@ class PppoeApiConfigurator
     {
         $this->results['last_phase'] = 'nat';
 
-        $palList = $this->config['pal_list'] ?? 'pppoe-pal-list';
-        $wanList = $this->config['wan_list'] ?? 'pppoe-wan-list';
+        $shortId = $this->shortId();
+        $palList = $this->config['pal_list'] ?? 'PA-' . $shortId;
+        $wanList = $this->config['wan_list'] ?? 'WAN';
 
         $this->api->addNatRule([
             'chain' => 'srcnat',
@@ -382,7 +532,8 @@ class PppoeApiConfigurator
      */
     public function verify(): array
     {
-        $serviceName = $this->config['service_name'] ?? 'pppoe-svc-' . $this->serviceId;
+        $shortId = $this->shortId();
+        $serviceName = $this->config['service_name'] ?? 'pppoe-svc-' . $shortId;
 
         if ($this->api->pppoeServerExists($serviceName)) {
             return [
@@ -395,5 +546,105 @@ class PppoeApiConfigurator
             'valid' => false,
             'error' => 'PPPoE server not found after configuration',
         ];
+    }
+
+    private function shortId(): string
+    {
+        return substr(str_replace('-', '', $this->serviceId), 0, 8);
+    }
+
+    private function removeByName(string $resource, string $field, ?string $name): void
+    {
+        if (!$name) {
+            return;
+        }
+
+        try {
+            $items = $this->api->fetch($resource . '/print');
+            foreach ($items as $item) {
+                if (($item[$field] ?? null) === $name) {
+                    $this->api->executeCommand($resource . '/remove', ['numbers' => $item['.id']]);
+                }
+            }
+        } catch (\Exception $e) {
+            // ignore cleanup failures
+        }
+    }
+
+    private function removeByField(string $resource, string $field, ?string $value): void
+    {
+        if (!$value) {
+            return;
+        }
+
+        try {
+            $items = $this->api->fetch($resource . '/print');
+            foreach ($items as $item) {
+                if (($item[$field] ?? null) === $value) {
+                    $this->api->executeCommand($resource . '/remove', ['numbers' => $item['.id']]);
+                }
+            }
+        } catch (\Exception $e) {
+            // ignore cleanup failures
+        }
+    }
+
+    private function setEthernetRunningCheck(string $interface, bool $disabled): void
+    {
+        try {
+            $items = $this->api->fetch('/interface/ethernet/print');
+            foreach ($items as $item) {
+                $name = $item['default-name'] ?? $item['name'] ?? null;
+                if ($name === $interface) {
+                    $this->api->executeCommand('/interface/ethernet/set', [
+                        'numbers' => $item['.id'],
+                        'disable-running-check' => $disabled ? 'yes' : 'no',
+                    ]);
+                    break;
+                }
+            }
+        } catch (\Exception $e) {
+            // ignore running-check failures
+        }
+    }
+
+    private function toInteger($value, int $default): int
+    {
+        if ($value === null || $value === '') {
+            return $default;
+        }
+
+        if (is_numeric($value)) {
+            return (int) $value;
+        }
+
+        if (is_string($value) && preg_match('/^(\d+)/', $value, $matches)) {
+            return (int) $matches[1];
+        }
+
+        return $default;
+    }
+
+    private function toBoolean($value, bool $default): bool
+    {
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        if (is_numeric($value)) {
+            return (bool) $value;
+        }
+
+        if (is_string($value)) {
+            $normalized = strtolower($value);
+            if (in_array($normalized, ['yes', 'true', '1', 'on'], true)) {
+                return true;
+            }
+            if (in_array($normalized, ['no', 'false', '0', 'off'], true)) {
+                return false;
+            }
+        }
+
+        return $default;
     }
 }

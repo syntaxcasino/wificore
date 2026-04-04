@@ -6,26 +6,23 @@
     v-model:search-model="searchQuery"
     search-placeholder="Search access points..."
     :stats="[
-      { color: 'bg-emerald-500', value: onlineCount },
-      { color: 'bg-slate-500', value: offlineCount },
-      { color: 'bg-blue-500', value: accessPoints.length },
-      { color: 'bg-amber-500', value: totalActiveUsers }
+      { color: 'bg-emerald-500', value: onlineCount, tooltip: 'Online access points' },
+      { color: 'bg-slate-500', value: offlineCount, tooltip: 'Offline access points' },
+      { color: 'bg-blue-500', value: totalCount, tooltip: 'Total access points' },
+      { color: 'bg-amber-500', value: totalActiveUsers, tooltip: 'Active users' }
     ]"
-    :total="filteredData.length"
+    :total="accessPoints?.length || 0"
     :loading="loading"
+    add-button-text="Add Access Point"
     @refresh="fetchAccessPoints"
     @search-clear="searchQuery = ''"
+    @add="openCreateModal"
   >
     <!-- Icon Slot -->
     <template #icon>
-      <WifiIcon class="h-5 w-5 md:h-6 md:w-6 text-white" />
-    </template>
-
-    <!-- Action Buttons -->
-    <template #actions>
-      <BaseButton @click="openCreateOverlay" variant="primary" size="sm" class="shrink-0">
-        <Plus class="w-4 h-4 mr-1" /> Add Access Point
-      </BaseButton>
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 md:h-6 md:w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0" />
+      </svg>
     </template>
 
     <!-- Filters -->
@@ -44,7 +41,9 @@
 
     <!-- Error State -->
     <div v-if="error" class="flex flex-col items-center justify-center gap-4 p-8 text-red-500">
-      <AlertCircle class="w-10 h-10" />
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
       <p class="text-center">{{ error }}</p>
       <button @click="fetchAccessPoints" class="px-4 py-2 text-sm font-medium text-white bg-red-500 rounded-md hover:bg-red-600 transition-colors">Retry</button>
     </div>
@@ -53,78 +52,88 @@
     <DataSkeleton v-else-if="loading" :count="5" />
 
     <!-- Data Content -->
-    <div v-else-if="filteredData.length" class="flex flex-col h-full px-4 md:px-6 pt-2 pb-2 min-h-0">
+    <div v-else-if="filteredAccessPoints?.length" class="flex flex-col h-full px-4 md:px-6 pt-2 pb-2 min-h-0">
       <!-- Mobile Cards -->
       <div class="md:hidden space-y-3 overflow-y-auto flex-1 min-h-0">
         <MobileDataCard
-          v-for="ap in paginatedData"
-          :key="ap.id"
-          :title="ap.name"
-          :subtitle="ap.location || 'No Location'"
-          :meta-lines="[{ text: ap.ip_address || 'No IP' }, { text: `${ap.active_users || 0} active users`, class: 'text-slate-600' }]"
-          :status="ap.status"
+          v-for="ap in paginatedAccessPoints"
+          :key="ap?.id"
+          :title="ap?.name || 'Unnamed'"
+          :subtitle="ap?.location || 'No Location'"
+          :meta-lines="getAPMetaLines(ap)"
+          :status="ap?.status"
           :actions="getAPActions(ap)"
           hoverable
         />
       </div>
 
       <!-- Desktop Table -->
-      <div class="hidden md:flex bg-white border border-slate-200 shadow-sm overflow-hidden flex-col min-h-0 flex-1">
-        <div class="overflow-x-auto overflow-y-auto flex-1 min-h-0">
+      <div class="hidden md:flex bg-white border-x border-t border-slate-200 flex-col min-h-0 flex-1">
+        <!-- Fixed Header -->
+        <div class="bg-slate-50 border-b border-slate-200">
           <table class="w-full">
-            <thead class="bg-slate-50 border-b border-slate-200 sticky top-0 z-[5]">
+            <thead>
               <tr>
-                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Name</th>
-                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider hidden lg:table-cell">IP Address</th>
-                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Router</th>
-                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Status</th>
-                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Active Users</th>
-                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider hidden lg:table-cell">Vendor</th>
-                <th class="px-6 py-3 text-right text-xs font-semibold text-slate-700 uppercase tracking-wider">Actions</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[22%]">Name</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider hidden lg:table-cell w-[15%]">IP Address</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[15%]">Router</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[10%]">Status</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[12%]">Active Users</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider hidden lg:table-cell w-[12%]">Vendor</th>
+                <th class="px-6 py-3 text-right text-xs font-semibold text-slate-700 uppercase tracking-wider w-[14%]">Actions</th>
               </tr>
             </thead>
+          </table>
+        </div>
+        <!-- Scrollable Body -->
+        <div class="overflow-y-auto flex-1 min-h-0">
+          <table class="w-full">
             <tbody class="divide-y divide-slate-100">
-              <tr v-for="ap in paginatedData" :key="ap.id" class="hover:bg-blue-50/50 transition-colors">
-                <td class="px-6 py-4">
-                  <div class="flex items-center gap-3">
-                    <div class="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center text-blue-600 font-bold text-sm">
-                      {{ ap.name.charAt(0).toUpperCase() }}
-                    </div>
-                    <div>
-                      <p class="text-sm font-medium text-slate-900">{{ ap.name }}</p>
-                      <p class="text-xs text-slate-500">{{ ap.location || 'No Location' }}</p>
+              <tr v-for="ap in paginatedAccessPoints" :key="ap?.id" class="hover:bg-blue-50/50 transition-colors">
+                <td class="px-6 py-4 w-[22%]">
+                  <div class="flex items-center gap-2">
+                    <span :class="getStatusDotClass(ap?.status)" class="w-1.5 h-1.5 rounded-full"></span>
+                    <div class="flex items-center gap-3">
+                      <div class="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center text-blue-600 font-bold text-sm">
+                        {{ ap?.name?.charAt(0).toUpperCase() || '?' }}
+                      </div>
+                      <div>
+                        <p class="text-sm font-medium text-slate-900">{{ ap?.name || 'Unnamed' }}</p>
+                        <p class="text-xs text-slate-500">{{ ap?.location || 'No Location' }}</p>
+                      </div>
                     </div>
                   </div>
                 </td>
-                <td class="px-6 py-4 hidden lg:table-cell">
-                  <p class="text-sm text-slate-600 font-mono">{{ ap.ip_address || '—' }}</p>
+                <td class="px-6 py-4 hidden lg:table-cell w-[15%]">
+                  <p class="text-sm text-slate-600 font-mono">{{ ap?.ip_address || '—' }}</p>
                 </td>
-                <td class="px-6 py-4">
-                  <p class="text-sm text-slate-900">{{ getRouterName(ap.router_id) }}</p>
+                <td class="px-6 py-4 w-[15%]">
+                  <p class="text-sm text-slate-900">{{ getRouterName(ap?.router_id) }}</p>
                 </td>
-                <td class="px-6 py-4">
-                  <EntityStatusBadge :status="ap.status" size="sm" />
+                <td class="px-6 py-4 w-[10%]">
+                  <EntityStatusBadge :status="ap?.status" size="sm" />
                 </td>
-                <td class="px-6 py-4">
-                  <p class="text-sm font-medium text-slate-700">{{ ap.active_users || 0 }}</p>
+                <td class="px-6 py-4 w-[12%]">
+                  <p class="text-sm font-medium text-slate-700">{{ ap?.active_users || 0 }}</p>
                 </td>
-                <td class="px-6 py-4 hidden lg:table-cell">
-                  <p class="text-sm text-slate-600 capitalize">{{ ap.vendor || '—' }}</p>
+                <td class="px-6 py-4 hidden lg:table-cell w-[12%]">
+                  <p class="text-sm text-slate-600 capitalize">{{ ap?.vendor || '—' }}</p>
                 </td>
                 <td class="px-6 py-4 text-right">
                   <div class="flex items-center justify-end gap-1">
-                    <button @click="syncStatus(ap)" :disabled="syncingIds.has(ap.id)" class="px-2 py-1 text-xs font-medium text-blue-700 bg-blue-50 rounded hover:bg-blue-100 transition-colors disabled:opacity-50 inline-flex items-center gap-1">
-                      <RefreshCw class="w-3 h-3" :class="{ 'animate-spin': syncingIds.has(ap.id) }" />
-                      Sync
+                    <button
+                      @click="viewAP(ap)"
+                      class="px-2 py-1 text-xs font-medium text-blue-700 bg-blue-50 rounded hover:bg-blue-100 transition-colors"
+                    >
+                      View
                     </button>
-                    <button @click="openEditOverlay(ap)" class="px-2 py-1 text-xs font-medium text-indigo-700 bg-indigo-50 rounded hover:bg-indigo-100 transition-colors inline-flex items-center gap-1">
-                      <Edit class="w-3 h-3" />
-                      Edit
-                    </button>
-                    <button @click="deleteAP(ap)" class="px-2 py-1 text-xs font-medium text-red-700 bg-red-50 rounded hover:bg-red-100 transition-colors inline-flex items-center gap-1">
-                      <Trash2 class="w-3 h-3" />
-                      Delete
-                    </button>
+                    <div class="relative">
+                      <button data-menu-button @click="toggleMenu(ap.id, $event)" class="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+                        </svg>
+                      </button>
+                    </div>
                   </div>
                 </td>
               </tr>
@@ -134,180 +143,174 @@
       </div>
 
       <!-- Pagination -->
-      <DataPagination v-model:current-page="currentPage" v-model:items-per-page="itemsPerPage" :total-pages="totalPages" :total-items="filteredData.length" item-name="access points" class="mt-auto" />
+      <DataPagination
+        v-model:current-page="currentPage"
+        v-model:items-per-page="itemsPerPage"
+        :total-pages="totalPages"
+        :total-items="filteredAccessPoints?.length || 0"
+        item-name="access points"
+        class="mt-auto"
+      />
     </div>
 
     <!-- Empty State -->
     <DataEmptyState
       v-else
       :title="searchQuery ? 'No Access Points Found' : 'No Access Points'"
-      :description="searchQuery ? 'No access points match your search criteria.' : 'Get started by adding your first access point.'"
+      :description="searchQuery ? 'No access points match your search criteria. Try adjusting your filters.' : 'Get started by adding your first access point.'"
       icon="wifi"
       color-theme="indigo"
       :show-clear="!!searchQuery"
       :has-filters="hasActiveFilters"
+      clear-text="Clear Search"
+      add-text="Add Your First Access Point"
       @clear="searchQuery = ''"
-    >
-      <template #action>
-        <BaseButton @click="openCreateOverlay" variant="primary" size="sm">
-          <Plus class="w-4 h-4 mr-1" /> Add Access Point
-        </BaseButton>
-      </template>
-    </DataEmptyState>
+      @add="openCreateModal"
+    />
   </DataViewContainer>
-
-  <!-- Form SlideOverlay -->
-  <SlideOverlay
+  <APModal
     v-model="showFormOverlay"
-    :title="isEditing ? 'Edit Access Point' : 'Add Access Point'"
-    subtitle="Configure access point settings"
-    icon="WifiIcon"
-    width="480px"
-    @close="closeFormOverlay"
-  >
-    <div class="p-6 space-y-4">
-      <div>
-        <label class="block text-sm font-medium text-slate-700 mb-1">Router</label>
-        <BaseSelect v-model="formData.router_id" placeholder="Select a router">
-          <option value="">Select a router</option>
-          <option v-for="router in availableRouters" :key="router.id" :value="router.id">{{ router.name }} ({{ router.ip_address }})</option>
-        </BaseSelect>
-      </div>
-      <div>
-        <label class="block text-sm font-medium text-slate-700 mb-1">Name</label>
-        <BaseInput v-model="formData.name" placeholder="Access Point Name" />
-      </div>
-      <div>
-        <label class="block text-sm font-medium text-slate-700 mb-1">Vendor</label>
-        <BaseSelect v-model="formData.vendor" placeholder="Select vendor">
-          <option v-for="v in vendors" :key="v.value" :value="v.value">{{ v.label }}</option>
-        </BaseSelect>
-      </div>
-      <div>
-        <label class="block text-sm font-medium text-slate-700 mb-1">Model</label>
-        <BaseInput v-model="formData.model" placeholder="Model (e.g., UniFi AP AC Pro)" />
-      </div>
-      <div>
-        <label class="block text-sm font-medium text-slate-700 mb-1">IP Address</label>
-        <BaseInput v-model="formData.ip_address" placeholder="192.168.1.100" />
-      </div>
-      <div>
-        <label class="block text-sm font-medium text-slate-700 mb-1">MAC Address</label>
-        <BaseInput v-model="formData.mac_address" placeholder="AA:BB:CC:DD:EE:FF" />
-      </div>
-      <div>
-        <label class="block text-sm font-medium text-slate-700 mb-1">Serial Number</label>
-        <BaseInput v-model="formData.serial_number" placeholder="Required for Zero-Touch" />
-      </div>
-      <div>
-        <label class="block text-sm font-medium text-slate-700 mb-1">Location</label>
-        <BaseInput v-model="formData.location" placeholder="Building A, Floor 2" />
-      </div>
-      <div v-if="formMessage.text" :class="formMessage.type === 'error' ? 'text-red-600' : 'text-green-600'" class="text-sm">
-        {{ formMessage.text }}
-      </div>
+    :is-editing="isEditing"
+    :ap="editingAP"
+    :available-routers="availableRouters"
+    :submitting="formSubmitting"
+    :error="formError"
+    @close="closeForm"
+    @submit="handleSubmit"
+  />
+
+  <!-- AP Details Modal -->
+  <APDetailsModal
+    v-model="showDetailsOverlay"
+    :ap-details="selectedAP"
+    :loading="detailsLoading"
+    :error="detailsError"
+    @close="closeDetails"
+    @sync="handleSync(selectedAP)"
+  />
+
+  <!-- Global Dropdown Menu Portal -->
+  <Teleport to="body">
+    <div v-if="activeMenu !== null" data-dropdown-menu :style="menuPosition" class="fixed w-48 bg-white rounded-lg shadow-2xl border border-slate-200 py-1 z-[9999] overflow-hidden">
+      <button v-if="currentAP?.status !== 'online'" @click="handleSync(currentAP)" :disabled="syncingIds.has(activeMenu) || !currentAP" class="flex items-center w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-700 transition-colors disabled:opacity-50">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" :class="{ 'animate-spin': syncingIds.has(activeMenu) }">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+        </svg>
+        Sync
+      </button>
+      <button @click="handleEdit(currentAP)" :disabled="!currentAP" class="flex items-center w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-700 transition-colors disabled:opacity-50">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+        </svg>
+        Edit
+      </button>
+      <button @click="viewAP(currentAP)" :disabled="!currentAP" class="flex items-center w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-700 transition-colors disabled:opacity-50">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+        </svg>
+        View
+      </button>
+      <div class="border-t border-slate-200 my-1"></div>
+      <button @click="handleDelete(currentAP)" :disabled="!currentAP" class="flex items-center w-full px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+        </svg>
+        Delete
+      </button>
     </div>
-    <template #footer>
-      <div class="flex gap-3">
-        <button
-          @click="closeFormOverlay"
-          class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
-        >
-          Cancel
-        </button>
-        <button
-          @click="submitForm"
-          :disabled="formSubmitting"
-          class="flex-1 px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors"
-          :class="isEditing ? 'bg-blue-600 hover:bg-blue-700' : 'bg-emerald-600 hover:bg-emerald-700'"
-        >
-          <span v-if="formSubmitting">{{ isEditing ? 'Saving...' : 'Adding...' }}</span>
-          <span v-else>{{ isEditing ? 'Save Changes' : 'Add Access Point' }}</span>
-        </button>
-      </div>
-    </template>
-  </SlideOverlay>
+  </Teleport>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
-import { WifiIcon, Plus, AlertCircle, RefreshCw, Edit, Trash2 } from 'lucide-vue-next'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import axios from '@/modules/common/services/api/axios'
+import { useAccessPoints } from '@/modules/tenant/composables/useAccessPoints'
 import DataViewContainer from '@/modules/common/components/base/DataViewContainer.vue'
 import DataSkeleton from '@/modules/common/components/base/DataSkeleton.vue'
 import MobileDataCard from '@/modules/common/components/base/MobileDataCard.vue'
 import DataPagination from '@/modules/common/components/base/DataPagination.vue'
 import DataEmptyState from '@/modules/common/components/base/DataEmptyState.vue'
 import EntityStatusBadge from '@/modules/common/components/base/EntityStatusBadge.vue'
-import SlideOverlay from '@/modules/common/components/base/SlideOverlay.vue'
-import BaseButton from '@/modules/common/components/base/BaseButton.vue'
-import BaseSelect from '@/modules/common/components/base/BaseSelect.vue'
-import BaseInput from '@/modules/common/components/base/BaseInput.vue'
+import APModal from '@/modules/tenant/components/access-points/APModal.vue'
+import APDetailsModal from '@/modules/tenant/components/access-points/APDetailsModal.vue'
 import { useConfirmStore } from '@/stores/confirm'
 
 const confirmStore = useConfirmStore()
 
-const accessPoints = ref([])
-const loading = ref(false)
-const error = ref(null)
+const {
+  accessPoints,
+  onlineAccessPoints,
+  offlineAccessPoints,
+  loading,
+  error,
+  fetchAccessPoints,
+  fetchStatistics,
+  createAccessPoint,
+  updateAccessPoint,
+  deleteAccessPoint,
+  syncAccessPoint,
+  fetchAccessPoint,
+  searchAccessPoints,
+  setupWebSocketListeners,
+  cleanupWebSocketListeners
+} = useAccessPoints()
+
 const searchQuery = ref('')
 const currentPage = ref(1)
 const itemsPerPage = ref(10)
+
+// Form state
 const showFormOverlay = ref(false)
 const isEditing = ref(false)
+const editingAP = ref(null)
 const formSubmitting = ref(false)
-const formMessage = ref({ type: '', text: '' })
+const formError = ref('')
+
+// Details state
+const showDetailsOverlay = ref(false)
+const selectedAP = ref(null)
+const detailsLoading = ref(false)
+const detailsError = ref('')
+
+// Menu state
+const activeMenu = ref(null)
+const menuPosition = ref({})
 const syncingIds = ref(new Set())
 
-const availableRouters = ref([
-  { id: 1, name: 'Main Router', ip_address: '192.168.1.1' },
-  { id: 2, name: 'Branch Router', ip_address: '192.168.2.1' },
-])
-
-const vendors = [
-  { value: 'ubiquiti', label: 'Ubiquiti Networks' },
-  { value: 'mikrotik', label: 'MikroTik' },
-  { value: 'tp-link', label: 'TP-Link' },
-  { value: 'cisco', label: 'Cisco' },
-  { value: 'ruckus', label: 'Ruckus' },
-  { value: 'aruba', label: 'Aruba' },
-  { value: 'other', label: 'Other' },
-]
-
+// Filters
 const filters = ref({ status: '', router_id: '' })
 
-const formData = ref({
-  router_id: '',
-  name: '',
-  vendor: '',
-  model: '',
-  ip_address: '',
-  mac_address: '',
-  serial_number: '',
-  location: ''
-})
+// Stats
+const onlineCount = computed(() => onlineAccessPoints.value?.length ?? 0)
+const offlineCount = computed(() => offlineAccessPoints.value?.length ?? 0)
+const totalCount = computed(() => accessPoints.value?.length ?? 0)
+const totalActiveUsers = computed(() => 
+  accessPoints.value?.reduce((sum, ap) => sum + (ap?.active_users || 0), 0) ?? 0
+)
 
-// Computed
-const stats = computed(() => {
-  const online = accessPoints.value.filter(ap => ap.status === 'online').length
-  const offline = accessPoints.value.filter(ap => ap.status === 'offline').length
-  const totalUsers = accessPoints.value.reduce((sum, ap) => sum + (ap.active_users || 0), 0)
-  return { online, offline, total: accessPoints.value.length, totalUsers }
-})
+// Mock data - should fetch from API
+const availableRouters = ref([])
 
-const onlineCount = computed(() => stats.value.online)
-const offlineCount = computed(() => stats.value.offline)
-const totalActiveUsers = computed(() => stats.value.totalUsers)
+const fetchRouters = async () => {
+  try {
+    const response = await axios.get('/routers')
+    availableRouters.value = response.data?.data || response.data?.routers || response.data || []
+  } catch (err) {
+    console.error('Failed to fetch routers:', err)
+    // Fallback to mock data
+    availableRouters.value = [
+      { id: 1, name: 'Main Router', ip_address: '192.168.1.1' },
+      { id: 2, name: 'Branch Router', ip_address: '192.168.2.1' },
+    ]
+  }
+}
 
-const filteredData = computed(() => {
-  let data = accessPoints.value
+// Filter and paginate
+const filteredAccessPoints = computed(() => {
+  let data = accessPoints.value || []
   if (searchQuery.value) {
-    const query = searchQuery.value.toLowerCase()
-    data = data.filter(ap =>
-      ap.name.toLowerCase().includes(query) ||
-      (ap.ip_address && ap.ip_address.includes(query)) ||
-      (ap.mac_address && ap.mac_address.toLowerCase().includes(query)) ||
-      (ap.serial_number && ap.serial_number.toLowerCase().includes(query))
-    )
+    data = searchAccessPoints(searchQuery.value)
   }
   if (filters.value.status) {
     data = data.filter(ap => ap.status === filters.value.status)
@@ -318,13 +321,66 @@ const filteredData = computed(() => {
   return data
 })
 
-const paginatedData = computed(() => {
+const paginatedAccessPoints = computed(() => {
+  if (!filteredAccessPoints.value || !Array.isArray(filteredAccessPoints.value)) return []
   const start = (currentPage.value - 1) * itemsPerPage.value
-  return filteredData.value.slice(start, start + itemsPerPage.value)
+  const end = start + itemsPerPage.value
+  return filteredAccessPoints.value.slice(start, end)
 })
 
-const totalPages = computed(() => Math.ceil(filteredData.value.length / itemsPerPage.value))
+const totalPages = computed(() => Math.ceil((filteredAccessPoints.value?.length || 0) / itemsPerPage.value))
 const hasActiveFilters = computed(() => filters.value.status || filters.value.router_id || searchQuery.value)
+
+// Current AP for menu
+const currentAP = computed(() => accessPoints.value.find(ap => ap.id === activeMenu.value))
+
+// Reset page on search change
+watch(searchQuery, () => { currentPage.value = 1 })
+watch(itemsPerPage, () => { currentPage.value = 1 })
+watch(() => filters.value.status, () => { currentPage.value = 1 })
+watch(() => filters.value.router_id, () => { currentPage.value = 1 })
+
+// Menu toggle
+const toggleMenu = (apId, event) => {
+  event.stopPropagation()
+  if (activeMenu.value === apId) {
+    activeMenu.value = null
+    menuPosition.value = {}
+  } else {
+    activeMenu.value = apId
+    const button = event.currentTarget
+    const rect = button.getBoundingClientRect()
+    const menuWidth = 192
+    const menuHeight = 140
+    const viewportHeight = window.innerHeight
+    const viewportWidth = window.innerWidth
+    let top = rect.bottom + 4
+    let left = rect.right - menuWidth
+    if (rect.bottom + menuHeight > viewportHeight) top = rect.top - menuHeight - 4
+    if (left < 0) left = rect.left
+    if (left + menuWidth > viewportWidth) left = viewportWidth - menuWidth - 10
+    menuPosition.value = { top: `${top}px`, left: `${left}px` }
+  }
+}
+
+const closeMenu = () => {
+  activeMenu.value = null
+  menuPosition.value = {}
+}
+
+// Click outside handler
+const handleClickOutside = (event) => {
+  const menu = document.querySelector('[data-dropdown-menu]')
+  const menuButton = document.querySelector('[data-menu-button]')
+  if (menu && !menu.contains(event.target) && menuButton && !menuButton.contains(event.target)) {
+    closeMenu()
+  }
+}
+
+// Keyboard handler
+const handleKeydown = (event) => {
+  if (event.key === 'Escape') closeMenu()
+}
 
 // Helpers
 const getRouterName = (routerId) => {
@@ -332,106 +388,156 @@ const getRouterName = (routerId) => {
   return router ? router.name : 'Unknown'
 }
 
-const getAPActions = (ap) => [
-  { label: 'Sync', onClick: () => syncStatus(ap), class: 'text-blue-700 bg-blue-50 hover:bg-blue-100', disabled: syncingIds.value.has(ap.id) },
-  { label: 'Edit', onClick: () => openEditOverlay(ap), class: 'text-indigo-700 bg-indigo-50 hover:bg-indigo-100' },
-  { label: 'Delete', onClick: () => deleteAP(ap), class: 'text-red-700 bg-red-50 hover:bg-red-100' }
-]
-
-// Actions
-const fetchAccessPoints = async () => {
-  loading.value = true
-  error.value = null
-  try {
-    const response = await axios.get('/network/access-points')
-    const data = response.data?.access_points?.data || response.data?.access_points || response.data?.data || []
-    accessPoints.value = data.map(ap => ({
-      id: ap.id,
-      router_id: ap.router_id || null,
-      name: ap.name || 'Unnamed',
-      vendor: ap.vendor || 'other',
-      model: ap.model || '',
-      ip_address: ap.ip_address || null,
-      mac_address: ap.mac_address || null,
-      serial_number: ap.serial_number || null,
-      location: ap.location || null,
-      status: ap.status || 'unknown',
-      active_users: ap.active_users || 0
-    }))
-  } catch (err) {
-    error.value = err.response?.data?.message || 'Failed to load access points'
-    console.error('fetchAccessPoints error:', err)
-  } finally {
-    loading.value = false
-  }
+const getStatusDotClass = (status) => {
+  if (status === 'online') return 'bg-emerald-500'
+  if (status === 'offline') return 'bg-red-500'
+  return 'bg-slate-400'
 }
 
-const syncStatus = async (ap) => {
-  syncingIds.value.add(ap.id)
-  try {
-    await axios.post(`/network/access-points/${ap.id}/sync`)
-    await fetchAccessPoints()
-  } catch (err) {
-    console.error('Sync error:', err)
-    alert(err.response?.data?.message || 'Failed to sync access point')
-  } finally {
-    syncingIds.value.delete(ap.id)
-  }
+const getAPMetaLines = (ap) => {
+  const lines = []
+  if (ap?.ip_address) lines.push({ text: ap.ip_address, class: 'font-mono' })
+  if (ap?.active_users !== undefined) lines.push({ text: `${ap.active_users} active users`, class: 'text-slate-600' })
+  return lines
 }
 
-const openCreateOverlay = () => {
-  formData.value = { router_id: '', name: '', vendor: '', model: '', ip_address: '', mac_address: '', serial_number: '', location: '' }
+const getAPActions = (ap) => {
+  const actions = []
+  actions.push({ label: 'View', onClick: () => viewAP(ap), class: 'text-blue-700 bg-blue-50 hover:bg-blue-100' })
+  
+  if (ap?.status !== 'online') {
+    actions.push({ label: 'Sync', onClick: () => handleSync(ap), class: 'text-blue-700 bg-blue-50 hover:bg-blue-100', disabled: syncingIds.value.has(ap.id) })
+  }
+  
+  actions.push({ label: 'Edit', onClick: () => handleEdit(ap), class: 'text-slate-700 bg-slate-100 hover:bg-slate-200' })
+  actions.push({ label: 'Delete', onClick: () => handleDelete(ap), class: 'text-red-600 bg-red-50 hover:bg-red-100' })
+  
+  return actions
+}
+
+// Form helpers
+const openCreateModal = () => {
   isEditing.value = false
-  formMessage.value = { type: '', text: '' }
+  editingAP.value = null
+  formError.value = ''
+  fetchRouters() // Fetch fresh router list
   showFormOverlay.value = true
 }
 
-const openEditOverlay = (ap) => {
-  formData.value = { ...ap }
+const handleEdit = (ap) => {
+  closeMenu()
+  if (!ap) return
   isEditing.value = true
-  formMessage.value = { type: '', text: '' }
+  editingAP.value = ap
+  fetchRouters() // Fetch routers for dropdown
   showFormOverlay.value = true
 }
 
-const closeFormOverlay = () => {
+const closeForm = () => {
   showFormOverlay.value = false
-  formMessage.value = { type: '', text: '' }
+  setTimeout(() => {
+    isEditing.value = false
+    editingAP.value = null
+    formError.value = ''
+  }, 300)
 }
 
-const submitForm = async () => {
-  if (!formData.value.name || !formData.value.router_id) {
-    formMessage.value = { type: 'error', text: 'Name and Router are required.' }
+const handleSubmit = async (formDataValue) => {
+  if (!formDataValue.name || !formDataValue.router_id) {
+    formError.value = 'Name and Router are required.'
     return
   }
+  
   formSubmitting.value = true
+  formError.value = ''
+
   try {
     if (isEditing.value) {
-      await axios.put(`/network/access-points/${formData.value.id}`, formData.value)
+      await updateAccessPoint(editingAP.value.id, formDataValue)
     } else {
-      await axios.post('/network/access-points', formData.value)
+      await createAccessPoint(formDataValue)
     }
-    closeFormOverlay()
+    closeForm()
     await fetchAccessPoints()
   } catch (err) {
-    formMessage.value = { type: 'error', text: err.response?.data?.message || 'Failed to save access point' }
+    formError.value = err.message || 'Failed to save access point'
   } finally {
     formSubmitting.value = false
   }
 }
 
-const deleteAP = async (ap) => {
-  const confirmed = await confirmStore.confirm(`Delete access point ${ap.name}?`)
-  if (!confirmed) return
+const handleSync = async (ap) => {
+  closeMenu()
+  if (!ap) return
+  syncingIds.value.add(ap.id)
   try {
-    await axios.delete(`/network/access-points/${ap.id}`)
-    await fetchAccessPoints()
-  } catch (err) {
-    console.error('Delete error:', err)
-    alert(err.response?.data?.message || 'Failed to delete access point')
+    await syncAccessPoint(ap.id)
+  } finally {
+    syncingIds.value.delete(ap.id)
   }
 }
 
-onMounted(() => { fetchAccessPoints() })
+const handleDelete = async (ap) => {
+  closeMenu()
+  if (!ap) return
+  const confirmed = await confirmStore.open({
+    title: 'Delete Access Point',
+    message: `Are you sure you want to delete "${ap.name}"? This action cannot be undone.`,
+    confirmText: 'Delete',
+    cancelText: 'Cancel',
+    variant: 'danger'
+  })
+  
+  if (!confirmed) return
+  
+  try {
+    await deleteAccessPoint(ap.id)
+  } catch (err) {
+    console.error('Failed to delete access point:', err)
+  }
+}
+
+const viewAP = async (ap) => {
+  closeMenu()
+  if (!ap) return
+  selectedAP.value = ap
+  showDetailsOverlay.value = true
+  detailsLoading.value = true
+  detailsError.value = ''
+  
+  try {
+    // Fetch fresh AP details from API
+    const freshAP = await fetchAccessPoint(ap.id)
+    if (freshAP) {
+      selectedAP.value = freshAP
+    }
+  } catch (err) {
+    detailsError.value = err.message || 'Failed to load access point details'
+    console.error('Failed to fetch access point details:', err)
+  } finally {
+    detailsLoading.value = false
+  }
+}
+
+const closeDetails = () => {
+  showDetailsOverlay.value = false
+  setTimeout(() => { selectedAP.value = null }, 300)
+}
+
+// Lifecycle
+onMounted(async () => {
+  await fetchAccessPoints()
+  await fetchStatistics()
+  setupWebSocketListeners()
+  document.addEventListener('click', handleClickOutside)
+  document.addEventListener('keydown', handleKeydown)
+})
+
+onUnmounted(() => {
+  cleanupWebSocketListeners()
+  document.removeEventListener('click', handleClickOutside)
+  document.removeEventListener('keydown', handleKeydown)
+})
 </script>
 
 <style scoped>

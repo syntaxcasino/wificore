@@ -23,7 +23,17 @@ class VictoriaMetricsClient
             'query' => $promql,
         ]);
 
-        $response = $this->http()->get($endpoint, $params);
+        $queryString = http_build_query([
+            'query' => $promql,
+            'time' => $time,
+        ]);
+        $url = $endpoint . '?' . $queryString;
+
+        Log::debug('VictoriaMetrics instant query URL', [
+            'url' => $url,
+        ]);
+
+        $response = $this->http()->get($url);
 
         if (!$response->successful()) {
             $bodySnippet = $this->truncateBody($response->body());
@@ -58,13 +68,28 @@ class VictoriaMetricsClient
             'step' => $step,
         ]);
 
-        $response = $this->http()
-            ->get($endpoint, [
-                'query' => $promql,
-                'start' => $start,
-                'end' => $end,
-                'step' => $step,
-            ]);
+        // Debug: log the actual HTTP request params
+        $requestParams = [
+            'query' => $promql,
+            'start' => $start,
+            'end' => $end,
+            'step' => $step,
+        ];
+        Log::debug('VictoriaMetrics request params', $requestParams);
+
+        $queryString = http_build_query([
+            'query' => $promql,
+            'start' => $start,
+            'end' => $end,
+            'step' => $step,
+        ]);
+        $url = $endpoint . '?' . $queryString;
+
+        Log::debug('VictoriaMetrics range query URL', [
+            'url' => $url,
+        ]);
+
+        $response = $this->http()->get($url);
 
         if (!$response->successful()) {
             $bodySnippet = $this->truncateBody($response->body());

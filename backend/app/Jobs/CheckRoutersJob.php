@@ -9,6 +9,7 @@ use App\Models\Tenant;
 use App\Models\VpnConfiguration;
 use App\Models\WireguardPeer;
 use App\Services\CacheInvalidationService;
+use App\Services\RouterStatusCheckService;
 use App\Services\VpnConnectivityService;
 use App\Traits\TenantAwareJob;
 use Illuminate\Bus\Queueable;
@@ -80,121 +81,25 @@ class CheckRoutersJob implements ShouldQueue
                 'job_id' => $this->job?->getJobId() ?? 'unknown',
             ];
 
-            Log::withContext($context)->debug('Starting router status check job for tenant (WireGuard handshake mode)');
+            $statusCheckService = app(RouterStatusCheckService::class);
+
+            Log::withContext($context)->debug('Starting router status check job for tenant (strict phase-based mode)');
 
             try {
                 // Get all routers for this tenant
                 $routers = Router::whereNotIn('status', ['pending', 'deploying', 'provisioning', 'verifying'])->get();
                 $pendingRouters = Router::whereIn('status', ['pending', 'deploying', 'provisioning', 'verifying'])->get();
-                
+
                 $updatedStatuses = [];
-                $inactiveThreshold = (int) config('vpn.monitoring.inactive_threshold', 120);
-                
-                // Get handshakes for ALL routers (including pending)
-                $allRouterIds = $routers->pluck('id')->merge($pendingRouters->pluck('id'));
-                $peerHandshakes = WireguardPeer::whereIn('router_id', $allRouterIds)
-                    ->orderBy('last_handshake', 'desc')
-                    ->get(['router_id', 'last_handshake'])
-                    ->groupBy('router_id');
 
                 // Check pending routers for VPN connectivity (triggers discovery)
                 foreach ($pendingRouters as $router) {
-                    $this->checkPendingRouterVpn($router, $context, $peerHandshakes);
+                    $this->checkPendingRouterVpn($router, $context, $statusCheckService);
                 }
 
-                // Check non-pending routers using WireGuard handshake only (no SSH/TCP/ping probes)
+                // Check operational routers using STRICT handshake-only (no ping/TCP probes)
                 foreach ($routers as $router) {
-                    // Check if router is currently locked by another operation
-                    $lockKey = "router_api_lock_{$router->id}";
-                    if (Cache::has($lockKey)) {
-                        continue;
-                    }
-
-                    try {
-                        // Refresh router to get latest data (prevents race conditions with VerifyVpnConnectivityJob)
-                        $router->refresh();
-
-                        $latestHandshake = $peerHandshakes->get($router->id)?->first()?->last_handshake;
-                        $previousVpnHandshake = $router->vpn_last_handshake;
-
-                        // Use the most recent handshake from either WireGuard peer or existing router record
-                        // This prevents flipping to offline if we just verified connectivity via ping (which updates router record)
-                        // but the WireGuard dump hasn't updated yet or is lagging
-                        if ($previousVpnHandshake && (!$latestHandshake || $previousVpnHandshake > $latestHandshake)) {
-                            $latestHandshake = $previousVpnHandshake;
-                        }
-
-                        $vpnStatus = ($latestHandshake && now()->diffInSeconds($latestHandshake) <= $inactiveThreshold)
-                            ? 'active'
-                            : 'inactive';
-
-                        // Get VPN configuration for this router
-                        $previousStatus = $router->status;
-                        $previousVpnStatus = $router->vpn_status;
-                        
-                        $status = $vpnStatus === 'active' ? 'online' : 'offline';
-                        $latency = null;
-
-                        // Update router status (model/os_version come from Telegraf SNMP, not here)
-                        $router->update([
-                            'status' => $status,
-                            'last_checked' => now(),
-                            'last_seen' => $status === 'online' ? now() : $router->last_seen,
-                            'vpn_status' => $vpnStatus,
-                            'vpn_last_handshake' => $latestHandshake,
-                        ]);
-
-                        $handshakeChanged = ($previousVpnHandshake?->getTimestamp() ?? null)
-                            !== ($latestHandshake?->getTimestamp() ?? null);
-                        $shouldBroadcast = $previousStatus !== $status
-                            || $previousVpnStatus !== $vpnStatus
-                            || $handshakeChanged;
-
-                        if ($shouldBroadcast) {
-                            CacheInvalidationService::invalidateRouterCache((string) $this->tenantId, (string) $router->id);
-
-                            $payload = array_merge([
-                                'id' => $router->id,
-                                'ip_address' => $router->ip_address,
-                                'vpn_ip' => $router->vpn_ip,
-                                'name' => $router->name,
-                                'status' => $status,
-                                'last_checked' => $router->last_checked,
-                                'model' => $router->model,
-                                'os_version' => $router->os_version,
-                                'last_seen' => $router->last_seen,
-                                'latency_ms' => $latency,
-                                'vpn_status' => $vpnStatus,
-                                'vpn_last_handshake' => $latestHandshake,
-                                'tenant_id' => (string) $this->tenantId,
-                            ], $this->buildHandshakeTimezonePayload($latestHandshake));
-
-                            $updatedStatuses[] = $payload;
-
-                            try {
-                                broadcast(new RouterStatusUpdated([$payload], (string) $this->tenantId))->toOthers();
-                            } catch (\Exception $e) {
-                                Log::withContext($context)->warning('Failed to broadcast RouterStatusUpdated', [
-                                    'router_id' => $router->id,
-                                    'error' => $e->getMessage(),
-                                ]);
-                            }
-                        }
-
-                    } catch (Throwable $e) {
-                        $this->markRouterOffline(
-                            $router,
-                            $updatedStatuses,
-                            $context,
-                            $vpnStatus ?? $router->vpn_status,
-                            $latestHandshake ?? $router->vpn_last_handshake
-                        );
-                        
-                        Log::withContext($context)->warning('Router VPN check failed', [
-                            'router_id' => $router->id,
-                            'error' => $e->getMessage(),
-                        ]);
-                    }
+                    $this->checkOperationalRouter($router, $context, $updatedStatuses, $statusCheckService);
                 }
 
                 // Broadcast batch updates if any
@@ -287,8 +192,9 @@ class CheckRoutersJob implements ShouldQueue
     /**
      * Check if a pending router's VPN is now reachable and trigger discovery.
      * This allows provisioning to continue after user applies the config script.
+     * Uses STRICT PING-ONLY checking during provisioning phase.
      */
-    private function checkPendingRouterVpn(Router $router, array $context, $peerHandshakes = null): void
+    private function checkPendingRouterVpn(Router $router, array $context, RouterStatusCheckService $statusCheckService): void
     {
         $routerContext = array_merge($context, [
             'router_id' => $router->id,
@@ -305,88 +211,163 @@ class CheckRoutersJob implements ShouldQueue
             return;
         }
 
-        // PRIORITY CHECK: Check WireGuard handshake directly
-        // If we have a recent handshake, the tunnel is UP, even if Ping is blocked by firewall
-        $latestHandshake = $peerHandshakes?->get($router->id)?->first()?->last_handshake;
-        $inactiveThreshold = (int) config('vpn.monitoring.inactive_threshold', 120);
-        $isHandshakeActive = $latestHandshake && now()->diffInSeconds($latestHandshake) <= $inactiveThreshold;
-
-        if ($isHandshakeActive) {
-            Log::withContext($routerContext)->info('Pending router has active WireGuard handshake - marking ONLINE', [
-                'handshake_ago' => now()->diffInSeconds($latestHandshake) . 's',
-            ]);
-
-            // Ensure vpnConfig is marked connected
-            if ($vpnConfig->status !== 'connected') {
-                $vpnConfig->update([
-                    'status' => 'connected',
-                    'last_handshake_at' => $latestHandshake,
-                ]);
-            }
-
-            // Mark router online and trigger discovery
-            $this->markRouterOnline($router, $vpnConfig, $latestHandshake, $routerContext);
-            return;
-        }
-
-        Log::withContext($routerContext)->info('Checking VPN connectivity for pending router', [
-            'vpn_config_id' => $vpnConfig->id,
-            'client_ip' => $vpnConfig->client_ip,
-            'vpn_status' => $vpnConfig->status,
-        ]);
-
-        // Skip if VPN is already connected (legacy check)
-        if ($vpnConfig->status === 'connected') {
-            // Refresh router to get latest status (another job may have updated it)
-            $router->refresh();
-            
-            // If VPN is connected but router is still pending, mark online FIRST then dispatch discovery
-            if ($router->status === 'pending') {
-                $this->markRouterOnline($router, $vpnConfig, $vpnConfig->last_handshake_at, $routerContext);
-            }
-            return;
-        }
-
         // Rate limit VPN checks to avoid excessive pinging (once per minute per router)
         $vpnCheckKey = "vpn_check_pending_{$router->id}";
         if (Cache::has($vpnCheckKey)) {
-            Log::withContext($routerContext)->info('VPN check rate limited, skipping');
+            Log::withContext($routerContext)->debug('VPN check rate limited, skipping');
             return;
         }
 
         // Set rate limit for 55 seconds (job runs every minute)
         Cache::put($vpnCheckKey, true, 55);
 
-        try {
-            $connectivityService = app(VpnConnectivityService::class);
-            
-            // Quick ping check (2 pings, 3 second timeout) for provisioning/pending routers
-            $result = $connectivityService->verifyConnectivity($vpnConfig, 2, 3, true);
+        // Use RouterStatusCheckService for strict ping-only check
+        $result = $statusCheckService->checkStatusProvisioning($router);
 
-            if ($result['success'] && $result['packet_loss'] === 0) {
-                // VPN is now reachable! Mark router as ONLINE immediately (no SSH required)
-                Log::withContext($routerContext)->info('Pending router VPN now reachable via Ping - marking ONLINE', [
-                    'latency_ms' => $result['latency'],
-                ]);
-
-                $vpnConfig->update([
-                    'status' => 'connected',
-                    'last_handshake_at' => now(),
-                ]);
-
-                $this->markRouterOnline($router, $vpnConfig, now(), $routerContext);
-            } else {
-                Log::withContext($routerContext)->info('Pending router VPN not reachable', [
-                    'success' => $result['success'] ?? false,
-                    'packet_loss' => $result['packet_loss'] ?? 100,
-                    'raw_output' => substr($result['raw_output'] ?? '', 0, 500),
-                ]);
-            }
-        } catch (Throwable $e) {
-            Log::withContext($routerContext)->error('VPN check failed for pending router', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
+        if ($result['online']) {
+            Log::withContext($routerContext)->info('Pending router VPN now reachable via Ping - marking ONLINE', [
+                'latency_ms' => $result['latency_ms'],
+                'packet_loss' => $result['packet_loss'],
             ]);
+
+            $vpnConfig->update([
+                'status' => 'connected',
+                'last_handshake_at' => now(),
+            ]);
+
+            $this->markRouterOnline($router, $vpnConfig, now(), $routerContext);
+        } else {
+            Log::withContext($routerContext)->debug('Pending router VPN not reachable via ping', [
+                'reason' => $result['reason'] ?? 'Ping failed',
+            ]);
+        }
+    }
+
+    /**
+     * Check operational router status using metrics as primary source.
+     * If metrics are flowing, router is online regardless of VPN handshake.
+     */
+    private function checkOperationalRouter(
+        Router $router,
+        array $context,
+        array &$updatedStatuses,
+        RouterStatusCheckService $statusCheckService
+    ): void {
+        // Check if router is currently locked by another operation
+        $lockKey = "router_api_lock_{$router->id}";
+        if (Cache::has($lockKey)) {
+            return;
+        }
+
+        try {
+            // Refresh router to get latest data
+            $router->refresh();
+
+            $previousStatus = $router->status;
+            $previousVpnStatus = $router->vpn_status;
+            $previousVpnHandshake = $router->vpn_last_handshake;
+
+            // Check if we have recent metrics data (from FetchRouterLiveData job)
+            // If metrics are being collected, the router is definitely online
+            $lastChecked = $router->last_checked;
+            $hasRecentMetrics = $lastChecked && $lastChecked->gt(now()->subMinutes(2));
+            
+            if ($hasRecentMetrics && $previousStatus === 'online') {
+                // Metrics are flowing and router was recently online - trust metrics
+                // Skip the strict VPN handshake check to avoid false negatives
+                Log::withContext($context)->debug('Router has recent metrics, preserving online status', [
+                    'router_id' => $router->id,
+                    'last_checked' => $lastChecked->toIso8601String(),
+                    'vpn_status' => $router->vpn_status,
+                ]);
+                
+                // Still update VPN-specific fields from handshake check
+                // but don't override the online status if metrics prove connectivity
+                $result = $statusCheckService->checkStatusOperational($router);
+                
+                // Update VPN status fields without overriding online status from metrics
+                $router->update([
+                    'last_checked' => now(),
+                    'vpn_status' => $result['vpn_status'],
+                    'vpn_last_handshake' => $result['handshake_at'] ?? null,
+                ]);
+                
+                // Only mark offline if BOTH metrics stopped AND VPN is inactive
+                if (!$result['online'] && $router->vpn_status === 'inactive') {
+                    // Check if metrics have been missing for a while (> 5 minutes)
+                    $metricsStale = !$lastChecked || $lastChecked->lt(now()->subMinutes(5));
+                    if ($metricsStale) {
+                        $status = 'offline';
+                        $this->markRouterOffline($router, $updatedStatuses, $context, $result['vpn_status'], $result['handshake_at'] ?? null);
+                        return;
+                    }
+                }
+                
+                return; // Keep current online status, metrics are flowing
+            }
+
+            // No recent metrics - fall back to strict VPN handshake check
+            $result = $statusCheckService->checkStatusOperational($router);
+
+            $status = $result['online'] ? 'online' : 'offline';
+            $vpnStatus = $result['vpn_status'];
+            $latestHandshake = $result['handshake_at'] ?? null;
+
+            // Update router status
+            $router->update([
+                'status' => $status,
+                'last_checked' => now(),
+                'last_seen' => ($status === 'online' && $vpnStatus === 'active') ? now() : $router->last_seen,
+                'vpn_status' => $vpnStatus,
+                'vpn_last_handshake' => $latestHandshake,
+            ]);
+
+            // Determine if we should broadcast
+            $handshakeChanged = ($previousVpnHandshake?->getTimestamp() ?? null)
+                !== ($latestHandshake?->getTimestamp() ?? null);
+            $shouldBroadcast = $previousStatus !== $status
+                || $previousVpnStatus !== $vpnStatus
+                || $handshakeChanged;
+
+            if ($shouldBroadcast) {
+                CacheInvalidationService::invalidateRouterCache((string) $this->tenantId, (string) $router->id);
+
+                $payload = array_merge([
+                    'id' => $router->id,
+                    'ip_address' => $router->ip_address,
+                    'vpn_ip' => $router->vpn_ip,
+                    'name' => $router->name,
+                    'status' => $status,
+                    'last_checked' => $router->last_checked,
+                    'model' => $router->model,
+                    'os_version' => $router->os_version,
+                    'last_seen' => $router->last_seen,
+                    'latency_ms' => null, // No latency from handshake-only check
+                    'vpn_status' => $vpnStatus,
+                    'vpn_last_handshake' => $latestHandshake,
+                    'tenant_id' => (string) $this->tenantId,
+                ], $this->buildHandshakeTimezonePayload($latestHandshake));
+
+                $updatedStatuses[] = $payload;
+
+                try {
+                    broadcast(new RouterStatusUpdated([$payload], (string) $this->tenantId))->toOthers();
+                } catch (\Exception $e) {
+                    Log::withContext($context)->warning('Failed to broadcast RouterStatusUpdated', [
+                        'router_id' => $router->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+
+        } catch (Throwable $e) {
+            Log::withContext($context)->warning('Operational router check failed', [
+                'router_id' => $router->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            // Mark as offline on error
+            $this->markRouterOffline($router, $updatedStatuses, $context, $router->vpn_status, $router->vpn_last_handshake);
         }
     }
 

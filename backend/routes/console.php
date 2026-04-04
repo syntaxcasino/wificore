@@ -4,7 +4,8 @@ use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
 use App\Jobs\CheckRoutersJob;
-use App\Jobs\FetchRouterLiveData;
+use App\Jobs\RouterHandshakeMonitorJob;
+use App\Jobs\ComputeRouterMetricsJob;
 use App\Jobs\RotateLogs;
 use App\Jobs\UpdateDashboardStatsJob;
 use App\Jobs\CheckExpiredSessionsJob;
@@ -26,6 +27,14 @@ use App\Jobs\CheckHotspotExpirationsJob;
 
 Schedule::job(new CheckRoutersJob)->everyMinute();
 
+// NEW: Event-based router status monitoring - runs every 5 seconds for near-realtime updates
+// This provides instant status changes when routers go online/offline
+Schedule::job(new RouterHandshakeMonitorJob)
+    ->everyFiveSeconds()
+    ->name('router-handshake-monitor')
+    ->withoutOverlapping()
+    ->onOneServer();
+
 // Regenerate Telegraf config every 5 minutes to pick up new routers
 Schedule::command('telegraf:generate-config')
     ->everyFiveMinutes()
@@ -33,10 +42,18 @@ Schedule::command('telegraf:generate-config')
     ->withoutOverlapping()
     ->onOneServer();
 
+// NEW: Router metrics pre-computation for event-based graph updates
+// This runs every minute to pre-compute and cache graph data
+Schedule::job(new ComputeRouterMetricsJob)
+    ->everyMinute()
+    ->name('compute-router-metrics')
+    ->withoutOverlapping()
+    ->onOneServer();
+
 // Fetch live router data from VictoriaMetrics and broadcast to frontend
 // This runs regardless of polling mode (Telegraf or Laravel) to ensure UI updates
 Schedule::job(new \App\Jobs\ScheduleRouterPollingJob)
-    ->everyThirtySeconds()
+    ->everyFiveSeconds()
     ->name('fetch-router-live-data')
     ->withoutOverlapping();
 
@@ -48,7 +65,7 @@ Schedule::call(function () {
     foreach ($tenants as $tenantId) {
         UpdateDashboardStatsJob::dispatch($tenantId)->onQueue('dashboard');
     }
-})->everyThirtySeconds()->name('update-dashboard-stats')->withoutOverlapping();
+})->everyFiveSeconds()->name('update-dashboard-stats')->withoutOverlapping();
 
 // Schedule the RotateLogs job to run daily at 1:00 AM
 //Schedule::job(new RotateLogs)->dailyAt('01:00');

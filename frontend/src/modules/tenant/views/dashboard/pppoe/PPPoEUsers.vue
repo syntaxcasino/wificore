@@ -634,6 +634,7 @@ const finishCreateUser = async () => {
 }
 
 const openUserDetails = (user) => {
+  closeMenu()
   selectedUser.value = user
   showPasswordValue.value = false
   userPassword.value = ''
@@ -681,6 +682,7 @@ const handleResetPassword = async () => {
 
 const handleEdit = (user) => {
   if (!user) return
+  closeMenu()
   showUserDetailsModal.value = false
   editingUser.value = user
   editForm.package_id = user.package_id || user.package?.id || ''
@@ -708,7 +710,7 @@ const handleUpdateUser = async () => {
       status: String(editForm.status || 'active')
     })
     closeEditUser()
-    await fetchUsers()
+    // List refresh is handled by WebSocket PppoeUserUpdated event
   } catch (err) {
     const status = err.response?.status
     const message = err.response?.data?.message || err.response?.data?.error || 'Failed to update PPPoE user'
@@ -723,6 +725,7 @@ const handleUpdateUser = async () => {
 }
 
 const handleToggleStatus = async (user) => {
+  closeMenu()
   const action = user.status === 'blocked' ? 'unblock' : 'block'
   const confirmed = await confirmStore.open({
     title: 'Confirm Action',
@@ -734,7 +737,7 @@ const handleToggleStatus = async (user) => {
   if (confirmed) {
     try {
       await toggleUserStatus(user.id, user.status !== 'blocked')
-      await fetchUsers()
+      // List refresh is handled by WebSocket PppoeUserUpdated event
     } catch (err) {
       console.error(`Failed to ${action} user:`, err)
     }

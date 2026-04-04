@@ -41,9 +41,9 @@ class MetricsService extends TenantAwareService
             $transactionCount = Cache::get(self::CACHE_KEY_TRANSACTION_COUNT, 0);
 
             if (!$lastReset) {
-                // First time - initialize
-                Cache::put(self::CACHE_KEY_LAST_RESET, now(), 3600);
-                Cache::put(self::CACHE_KEY_TRANSACTION_COUNT, 0, 3600);
+                // First time - initialize (30 seconds max to prevent stale data)
+                Cache::put(self::CACHE_KEY_LAST_RESET, now(), 30);
+                Cache::put(self::CACHE_KEY_TRANSACTION_COUNT, 0, 30);
                 return 0;
             }
 
@@ -94,9 +94,9 @@ class MetricsService extends TenantAwareService
                 Cache::put(self::CACHE_KEY_TPS, $tps, 60);
             }
 
-            // Reset counters
-            Cache::put(self::CACHE_KEY_TRANSACTION_COUNT, 0, 3600);
-            Cache::put(self::CACHE_KEY_LAST_RESET, now(), 3600);
+            // Reset counters (30 seconds max to prevent stale data)
+            Cache::put(self::CACHE_KEY_TRANSACTION_COUNT, 0, 30);
+            Cache::put(self::CACHE_KEY_LAST_RESET, now(), 30);
         } catch (\Exception $e) {
             Log::error('Failed to reset TPS counter', ['error' => $e->getMessage()]);
         }
@@ -121,7 +121,7 @@ class MetricsService extends TenantAwareService
                 $history = array_slice($history, -60);
             }
 
-            Cache::put(self::CACHE_KEY_TPS_HISTORY, $history, 3600);
+            Cache::put(self::CACHE_KEY_TPS_HISTORY, $history, 30);
         } catch (\Exception $e) {
             Log::error('Failed to add TPS to history', ['error' => $e->getMessage()]);
         }

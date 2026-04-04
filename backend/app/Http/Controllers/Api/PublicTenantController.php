@@ -16,8 +16,8 @@ class PublicTenantController extends Controller
      */
     public function getTenantBySubdomain(Request $request, string $subdomain)
     {
-        // Cache tenant info for 1 hour
-        $tenant = Cache::remember("tenant:public:{$subdomain}", 3600, function () use ($subdomain) {
+        // Cache tenant info for 30 seconds max to prevent stale data
+        $tenant = Cache::remember("tenant:public:{$subdomain}", 30, function () use ($subdomain) {
             return Tenant::where('subdomain', $subdomain)
                 ->orWhere('custom_domain', $subdomain)
                 ->first();
@@ -119,7 +119,7 @@ class PublicTenantController extends Controller
     {
         $host = $request->getHost();
         
-        $tenant = Cache::remember("tenant:domain:{$host}", 3600, function () use ($host) {
+        $tenant = Cache::remember("tenant:domain:{$host}", 30, function () use ($host) {
             return Tenant::where('custom_domain', $host)
                 ->orWhere('subdomain', $host)
                 ->first();

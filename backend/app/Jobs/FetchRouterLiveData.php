@@ -101,15 +101,21 @@ class FetchRouterLiveData implements ShouldQueue
 
                     $liveData = $liveDataBatch[$routerId] ?? [];
                     
-                    // Determine status based on presence of metrics
-                    // If we got metrics (e.g. uptime), router is online.
-                    // If array is empty, it might be offline or Telegraf issues.
-                    $isOnline = !empty($liveData) && isset($liveData['uptime']);
+                    // Refresh router to get latest VPN status (set by WireGuard monitoring)
+                    $router->refresh();
                     
-                    if ($isOnline) {
+                    // Determine status based on presence of metrics
+                    // If we got metrics (e.g. uptime), router is online via SNMP/Telegraf.
+                    // VPN status is separate - metrics prove the router is actually responding.
+                    $hasMetrics = !empty($liveData) && isset($liveData['uptime']);
+                    
+                    // If metrics are flowing, router is online regardless of VPN handshake status
+                    // VPN is just one connectivity method; SNMP/Telegraf metrics are equally valid
+                    if ($hasMetrics) {
                         Log::debug('Fetched live data for router from VM', [
                             'router_id' => $router->id,
-                            'live_data' => $liveData
+                            'live_data' => $liveData,
+                            'vpn_status' => $router->vpn_status,
                         ]);
 
                         // Broadcast event on tenant-scoped channel
@@ -122,25 +128,37 @@ class FetchRouterLiveData implements ShouldQueue
                             now()->addSeconds(60)
                         );
 
-                        // Update router status
+                        // Update router status to ONLINE - metrics prove connectivity
                         $this->updateRouterStatus($router, $liveData, 'online');
                         $successfulRouters[] = $router->id;
+                        
+                        // Also update last_seen if VPN is also active
+                        if ($router->vpn_status === 'active' && $router->vpn_last_handshake) {
+                            $router->update(['last_seen' => now()]);
+                        }
                     } else {
-                        // VM returned no data for this router
-                        // It could be offline, new and not yet scraped, or VM/Telegraf lag.
-                        // IMPORTANT: Do not force offline here; CheckRoutersJob is the
-                        // connectivity source of truth during/after provisioning.
-                        $failedRouters[] = $router->id;
-                        $router->refresh();
-                        $router->update(['last_checked' => now()]);
+                        // No metrics - check VPN status for connectivity
+                        if ($router->vpn_status === 'inactive' || $router->vpn_last_handshake === null) {
+                            $failedRouters[] = $routerId;
+                            $router->update(['last_checked' => now()]);
+                            
+                            Log::info('Router has no metrics and inactive VPN - marking offline', [
+                                'router_id' => $router->id,
+                                'vpn_status' => $router->vpn_status,
+                                'vpn_last_handshake' => $router->vpn_last_handshake,
+                            ]);
+                        } else {
+                            // VPN claims active but no metrics - could be VM/Telegraf lag
+                            $failedRouters[] = $routerId;
+                            $router->update(['last_checked' => now()]);
 
-                        Log::debug('No VM metrics returned; preserving connectivity status', [
-                            'router_id' => $router->id,
-                            'current_status' => $router->status,
-                            'vpn_status' => $router->vpn_status,
-                            'last_seen' => $router->last_seen,
-                        ]);
-
+                            Log::debug('No VM metrics returned; preserving connectivity status', [
+                                'router_id' => $router->id,
+                                'current_status' => $router->status,
+                                'vpn_status' => $router->vpn_status,
+                                'last_seen' => $router->last_seen,
+                            ]);
+                        }
                         continue;
                     }
                 }

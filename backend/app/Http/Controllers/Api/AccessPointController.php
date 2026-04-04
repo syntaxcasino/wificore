@@ -6,6 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Models\Router;
 use App\Models\AccessPoint;
 use App\Services\AccessPointManager;
+use App\Events\AccessPointCreated;
+use App\Events\AccessPointUpdated;
+use App\Events\AccessPointDeleted;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
@@ -38,16 +41,58 @@ class AccessPointController extends Controller
                 });
             }
             
+            // Filter by status
+            if ($request->has('status')) {
+                $query->where('status', $request->status);
+            }
+            
+            // Filter by router
+            if ($request->has('router_id')) {
+                $query->where('router_id', $request->router_id);
+            }
+            
             $accessPoints = $query->get();
 
             return response()->json([
                 'success' => true,
                 'data' => $accessPoints,
+                'access_points' => $accessPoints, // For frontend compatibility
             ]);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to get access points',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Get tenant-wide access point statistics
+     */
+    public function tenantStatistics(): JsonResponse
+    {
+        try {
+            $total = AccessPoint::count();
+            $online = AccessPoint::where('status', 'online')->count();
+            $offline = AccessPoint::where('status', 'offline')->count();
+            $unknown = AccessPoint::where('status', 'unknown')->orWhereNull('status')->count();
+            $totalUsers = AccessPoint::sum('active_users');
+
+            return response()->json([
+                'success' => true,
+                'stats' => [
+                    'total' => $total,
+                    'online' => $online,
+                    'offline' => $offline,
+                    'unknown' => $unknown,
+                    'total_users' => $totalUsers,
+                ],
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to get statistics',
                 'error' => $e->getMessage(),
             ], 500);
         }
@@ -75,12 +120,13 @@ class AccessPointController extends Controller
     }
 
     /**
-     * Add a new access point
+     * Create new access point (standalone route)
      */
-    public function store(Request $request, Router $router): JsonResponse
+    public function create(Request $request): JsonResponse
     {
         try {
             $validated = $request->validate([
+                'router_id' => 'required|exists:routers,id',
                 'name' => 'required|string|max:100',
                 'vendor' => 'required|string|in:ruijie,tenda,tplink,mikrotik,ubiquiti,other',
                 'model' => 'nullable|string|max:100',
@@ -93,22 +139,26 @@ class AccessPointController extends Controller
                 'total_capacity' => 'nullable|integer|min:1',
             ]);
 
+            $router = Router::findOrFail($validated['router_id']);
             $ap = $this->apManager->addAccessPoint($router, $validated);
+
+            // Broadcast event for WebSocket
+            broadcast(new AccessPointCreated($ap))->toOthers();
 
             return response()->json([
                 'success' => true,
-                'message' => 'Access point added successfully',
+                'message' => 'Access point created successfully',
                 'data' => $ap,
+                'access_point' => $ap, // For frontend compatibility
             ], 201);
         } catch (\Exception $e) {
-            Log::error('Failed to add access point', [
-                'router_id' => $router->id,
+            Log::error('Failed to create access point', [
                 'error' => $e->getMessage(),
             ]);
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to add access point',
+                'message' => 'Failed to create access point',
                 'error' => $e->getMessage(),
             ], 500);
         }
@@ -125,6 +175,7 @@ class AccessPointController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => $accessPoint,
+                'access_point' => $accessPoint, // For frontend compatibility
             ]);
         } catch (\Exception $e) {
             return response()->json([
@@ -155,10 +206,14 @@ class AccessPointController extends Controller
 
             $ap = $this->apManager->updateAccessPoint($accessPoint, $validated);
 
+            // Broadcast event for WebSocket
+            broadcast(new AccessPointUpdated($ap))->toOthers();
+
             return response()->json([
                 'success' => true,
                 'message' => 'Access point updated successfully',
                 'data' => $ap,
+                'access_point' => $ap, // For frontend compatibility
             ]);
         } catch (\Exception $e) {
             return response()->json([
@@ -175,7 +230,14 @@ class AccessPointController extends Controller
     public function destroy(AccessPoint $accessPoint): JsonResponse
     {
         try {
+            $id = $accessPoint->id;
+            $tenantId = $accessPoint->tenant_id;
             $success = $this->apManager->removeAccessPoint($accessPoint);
+
+            if ($success) {
+                // Broadcast event for WebSocket
+                broadcast(new AccessPointDeleted($id, $tenantId))->toOthers();
+            }
 
             return response()->json([
                 'success' => $success,
@@ -240,10 +302,17 @@ class AccessPointController extends Controller
         try {
             $stats = $this->apManager->syncAccessPointStatus($accessPoint);
 
+            // Reload the model to get updated status
+            $accessPoint->refresh();
+
+            // Broadcast event for WebSocket
+            broadcast(new AccessPointUpdated($accessPoint))->toOthers();
+
             return response()->json([
                 'success' => true,
                 'message' => 'Access point status synced successfully',
                 'data' => $stats,
+                'access_point' => $accessPoint, // For frontend compatibility
             ]);
         } catch (\Exception $e) {
             return response()->json([
