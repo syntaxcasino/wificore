@@ -218,8 +218,8 @@ class CheckRoutersJob implements ShouldQueue
             return;
         }
 
-        // Set rate limit for 55 seconds (job runs every minute)
-        Cache::put($vpnCheckKey, true, 55);
+        // Set rate limit for 30 seconds (reduced from 55 to prevent stale cache)
+        Cache::put($vpnCheckKey, true, 30);
 
         // Use RouterStatusCheckService for strict ping-only check
         $result = $statusCheckService->checkStatusProvisioning($router);
@@ -407,7 +407,7 @@ class CheckRoutersJob implements ShouldQueue
         // Then dispatch discovery for interfaces (non-blocking)
         $discoveryDispatchKey = "discovery_dispatch_{$router->id}";
         if (!Cache::has($discoveryDispatchKey)) {
-            Cache::put($discoveryDispatchKey, true, 120); // 2 minute deduplication
+            Cache::put($discoveryDispatchKey, true, 30); // 30 second deduplication
             Log::withContext($context)->info('Dispatching interface discovery job');
             dispatch(new DiscoverRouterInterfacesJob($this->tenantId, $router->id))
                 ->onQueue('router-provisioning');

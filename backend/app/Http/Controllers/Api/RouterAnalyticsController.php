@@ -27,7 +27,7 @@ class RouterAnalyticsController extends Controller
 
         $cacheKey = "router_revenue_tenant_{$tenantId}";
 
-        $analytics = Cache::remember($cacheKey, 600, function () use ($tenantId) {
+        $analytics = Cache::remember($cacheKey, 30, function () use ($tenantId) {
             // Router is in tenant schema - no tenant_id filter needed
             $routers = Router::with(['payments' => function($query) {
                     $query->where('status', 'completed');
@@ -99,7 +99,7 @@ class RouterAnalyticsController extends Controller
 
         $cacheKey = "router_details_{$routerId}";
 
-        $analytics = Cache::remember($cacheKey, 300, function () use ($router) {
+        $analytics = Cache::remember($cacheKey, 30, function () use ($router) {
             // Total revenue
             $totalRevenue = $router->payments()
                 ->where('status', 'completed')

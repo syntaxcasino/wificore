@@ -44,7 +44,7 @@ class PublicPackageController extends Controller
         // Cache key specific to this tenant and router
         $cacheKey = "public_packages_tenant_{$tenantId}_router_" . ($routerId ?? 'all');
 
-        $packages = Cache::remember($cacheKey, 300, function () use ($routerId) {
+        $packages = Cache::remember($cacheKey, 30, function () use ($routerId) {
             // Package is now in tenant schema - no tenant_id filter needed
             $query = Package::where('type', 'hotspot')
                 ->where('is_active', true)

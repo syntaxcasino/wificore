@@ -165,11 +165,11 @@ class CreateHotspotUserJob implements ShouldQueue
                     'expires_at' => $hotspotUser->subscription_expires_at->toIso8601String(),
                 ];
                 
-                // Cache credentials for 5 minutes for auto-login (tenant-scoped key)
+                // Cache credentials for 30 seconds max to prevent stale data (tenant-scoped key)
                 Cache::put(
                     "tenant_{$this->tenantId}_payment_credentials_{$payment->id}", 
                     $credentials, 
-                    now()->addMinutes(5)
+                    now()->addSeconds(30)
                 );
                 
                 // Dispatch SMS job (async)
