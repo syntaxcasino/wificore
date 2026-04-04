@@ -153,7 +153,7 @@ class PaymentConfigService
     protected function getSystemSettings(): ?SystemPaymentSetting
     {
         try {
-            return Cache::remember('system_payment_settings', 300, function () {
+            return Cache::remember('system_payment_settings', 30, function () {
                 return SystemPaymentSetting::getActive();
             });
         } catch (\Exception $e) {

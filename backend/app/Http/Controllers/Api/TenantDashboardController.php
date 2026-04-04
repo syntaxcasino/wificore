@@ -33,7 +33,7 @@ class TenantDashboardController extends Controller
         // Cache key specific to this tenant
         $cacheKey = "tenant_{$tenantId}_dashboard_stats";
 
-        $stats = Cache::remember($cacheKey, 60, function () use ($tenantId) {
+        $stats = Cache::remember($cacheKey, 30, function () use ($tenantId) {
             return [
                 'users' => [
                     // Users are in public schema with tenant_id

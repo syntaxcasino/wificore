@@ -20,7 +20,7 @@ class SystemAdminController extends Controller
      */
     public function getDashboardStats(Request $request)
     {
-        $stats = Cache::remember('system_admin_dashboard_stats', 300, function () {
+        $stats = Cache::remember('system_admin_dashboard_stats', 30, function () {
             $totalTenants = Tenant::count();
             $activeTenants = Tenant::where('is_active', true)
                 ->whereNull('suspended_at')

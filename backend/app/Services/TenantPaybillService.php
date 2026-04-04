@@ -84,8 +84,8 @@ class TenantPaybillService extends TenantAwareService
      */
     protected function getLandlordConfig(): array
     {
-        // Try DB-driven system settings first
-        $systemSettings = Cache::remember('system_payment_settings', 300, function () {
+        // Try DB-driven system settings first (30 seconds max to prevent stale data)
+        $systemSettings = Cache::remember('system_payment_settings', 30, function () {
             return SystemPaymentSetting::getActive();
         });
 

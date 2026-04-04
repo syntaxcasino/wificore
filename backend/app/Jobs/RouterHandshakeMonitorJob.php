@@ -178,9 +178,9 @@ class RouterHandshakeMonitorJob implements ShouldQueue
         $handshakeChanged = $cachedHandshake !== ($latestHandshake?->getTimestamp() ?? null);
         $statusChanged = $cachedStatus !== $newStatus;
         
-        // Update cache
-        Cache::put($cacheKey, $latestHandshake?->getTimestamp(), 300);
-        Cache::put(self::STATUS_CACHE_PREFIX . $router->id, $newStatus, 300);
+        // Update cache (30 seconds max to prevent stale data)
+        Cache::put($cacheKey, $latestHandshake?->getTimestamp(), 30);
+        Cache::put(self::STATUS_CACHE_PREFIX . $router->id, $newStatus, 30);
 
         // Only update and broadcast if something changed
         if ($statusChanged || $handshakeChanged) {

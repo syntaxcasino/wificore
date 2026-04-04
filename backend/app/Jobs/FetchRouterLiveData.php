@@ -121,11 +121,11 @@ class FetchRouterLiveData implements ShouldQueue
                         // Broadcast event on tenant-scoped channel
                         broadcast(new RouterLiveDataUpdated((string) $this->tenantId, (string) $router->id, $liveData));
                         
-                        // Cache data
+                        // Cache data (30 seconds max to prevent stale data)
                         Cache::put(
                             "router_live_data_{$router->id}", 
                             $liveData, 
-                            now()->addSeconds(60)
+                            now()->addSeconds(30)
                         );
 
                         // Update router status to ONLINE - metrics prove connectivity
@@ -253,7 +253,7 @@ class FetchRouterLiveData implements ShouldQueue
                 'last_attempt' => now()->toISOString(),
                 'exception' => get_class($e)
             ], 
-            now()->addSeconds(60)
+            now()->addSeconds(30)
         );
     }
 

@@ -4,7 +4,7 @@ namespace App\Services\RADIUS;
 
 use App\Models\User;
 use App\Services\TenantAwareService;
-use App\Services\VlanManager;
+use App\Models\VlanManager;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 

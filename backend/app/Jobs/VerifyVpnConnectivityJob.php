@@ -232,7 +232,7 @@ class VerifyVpnConnectivityJob implements ShouldQueue
                 return;
             }
             
-            \Illuminate\Support\Facades\Cache::put($discoveryDispatchKey, true, 120); // 2 minute deduplication
+            \Illuminate\Support\Facades\Cache::put($discoveryDispatchKey, true, 30); // 30 second deduplication
             
             dispatch(new \App\Jobs\DiscoverRouterInterfacesJob(
                 $this->tenantId,

@@ -32,8 +32,8 @@ class PackageController extends Controller
             ], 403);
         }
         
-        // Cache packages per tenant - schema isolation handles tenancy
-        return Cache::remember("packages_list_tenant_{$tenantId}", 600, function () {
+        // Cache packages per tenant - 30 seconds max to prevent stale data
+        return Cache::remember("packages_list_tenant_{$tenantId}", 30, function () {
             return Package::with(['routers:id,name'])
                 ->orderBy('created_at', 'desc')
                 ->get();

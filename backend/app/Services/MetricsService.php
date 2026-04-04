@@ -55,8 +55,8 @@ class MetricsService extends TenantAwareService
 
             $tps = round($transactionCount / $secondsElapsed, 2);
 
-            // Store current TPS
-            Cache::put(self::CACHE_KEY_TPS, $tps, 60);
+            // Store current TPS (30 seconds max to prevent stale data)
+            Cache::put(self::CACHE_KEY_TPS, $tps, 30);
 
             return $tps;
         } catch (\Exception $e) {
@@ -90,8 +90,8 @@ class MetricsService extends TenantAwareService
                 // Store in history
                 self::addTPSToHistory($tps);
                 
-                // Store current TPS
-                Cache::put(self::CACHE_KEY_TPS, $tps, 60);
+                // Store current TPS (30 seconds max to prevent stale data)
+                Cache::put(self::CACHE_KEY_TPS, $tps, 30);
             }
 
             // Reset counters (30 seconds max to prevent stale data)
