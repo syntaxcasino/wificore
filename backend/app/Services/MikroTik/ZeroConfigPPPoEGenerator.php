@@ -150,6 +150,16 @@ class ZeroConfigPPPoEGenerator
         $s[] = ":do { /radius add service=ppp address={$rs} secret={$rsec} authentication-port=1812 accounting-port=1813 timeout=3s comment=\"WiFiCore PPPoE ({$id})\"; } on-error={ :error \"PPPoE: RADIUS configure failed\" }";
         $s[] = "/ppp aaa set use-radius=yes accounting=yes interim-update=5m";
 
+        // PPP AAA and Accounting (ensure session visibility)
+        $s[] = "/ppp aaa set use-radius=yes accounting=yes interim-update=5m";
+        
+        // Enable PPP session logging for visibility
+        $s[] = ":do { /system logging add action=memory topics=ppp } on-error={}";
+        $s[] = ":do { /system logging add action=memory topics=pppoe } on-error={}";
+        
+        // Ensure connection tracking is enabled for proper session handling
+        $s[] = "/ip firewall connection tracking set enabled=yes tcp-established-timeout=1h udp-timeout=30s icmp-timeout=30s";
+
         // IP POOL - Atomic creation with ranges
         $s[] = ":do { /ip pool add name=\"$pool\" ranges={$p['range_start']}-{$p['range_end']} comment=\"PPPoE-$id\" } on-error={ /log info \"PPPoE-$id: Pool may exist, attempting update\"; /ip pool set [/ip pool find name=\"$pool\"] ranges={$p['range_start']}-{$p['range_end']}; }";
 
@@ -221,6 +231,9 @@ class ZeroConfigPPPoEGenerator
         $s[] = ":do { /ip firewall filter remove [/ip firewall filter find comment~\"PPPoE-$id\"]; } on-error={}";
         $s[] = ":do { /ip firewall filter remove [/ip firewall filter find comment~\"pp-wan-est-$id\"]; } on-error={}";
         $s[] = ":delay 100ms"; // Brief delay to ensure removal completes before add
+        
+        // SECURITY HARDENING - BCP 38 and DDoS protection (new)
+        $s = array_merge($s, $this->generateSecurityHardeningRules($p));
         
         if ($isLowEnd) {
             // MINIMAL FIREWALL for hAP lite (low memory/CPU) - ~7 rules
@@ -298,6 +311,67 @@ class ZeroConfigPPPoEGenerator
         // Use standard build but with low-resource flag
         $params['optimized'] = true;
         return $this->buildConfiguration($params);
+    }
+
+    /**
+     * Generate security hardening rules (BCP 38 anti-spoofing + DDoS protection)
+     * These rules are added before service-specific firewall rules
+     */
+    private function generateSecurityHardeningRules(array $p): array
+    {
+        $id     = $p['id'];
+        $pal    = $p['pppoe_active_list'];
+        $wan    = $p['wan_list'];
+        $bridge = "pppoe-br-$id";
+        $isLowEnd = $p['is_low_end'] ?? false;
+        
+        $rules = [
+            "# SECURITY HARDENING - BCP 38 Anti-Spoofing & DDoS Protection",
+            ":do { /ip firewall filter remove [/ip firewall filter find comment~\"SEC-$id\"]; } on-error={}",
+        ];
+        
+        if ($isLowEnd) {
+            // MINIMAL security for low-end devices - essential rules only
+            // BCP 38: Drop spoofed traffic from PPPoE clients
+            $rules[] = "/ip firewall filter add chain=forward in-interface-list=$pal src-address=!100.64.0.0/10 action=drop comment=\"SEC-$id-BCP38-SPOOF\"";
+            
+            // DDoS: SYN flood protection (rate limit new TCP connections)
+            $rules[] = "/ip firewall filter add chain=input protocol=tcp connection-state=new limit=50,5 action=drop comment=\"SEC-$id-DDoS-SYN\"";
+            
+            // DDoS: Connection limit per source IP (prevent exhaustion)
+            $rules[] = "/ip firewall filter add chain=forward in-interface-list=$pal connection-state=new connection-limit=100,32 action=drop comment=\"SEC-$id-DDoS-CONN\"";
+            
+            // DDoS: ICMP flood protection
+            $rules[] = "/ip firewall filter add chain=input protocol=icmp connection-state=new limit=20,5 action=drop comment=\"SEC-$id-DDoS-ICMP\"";
+        } else {
+            // FULL security for high-end devices
+            // BCP 38: Drop private RFC1918 sources from WAN
+            $rules[] = "/ip firewall filter add chain=input in-interface-list=$wan src-address=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,100.64.0.0/10 action=drop comment=\"SEC-$id-BCP38-WAN\"";
+            
+            // BCP 38: Drop spoofed traffic from PPPoE clients (must use assigned CGNAT range)
+            $rules[] = "/ip firewall filter add chain=forward in-interface-list=$pal src-address=!100.64.0.0/10 action=drop comment=\"SEC-$id-BCP38-SPOOF\"";
+            
+            // BCP 38: Drop martian sources
+            $rules[] = "/ip firewall filter add chain=forward src-address=0.0.0.0/8,127.0.0.0/8,169.254.0.0/16,192.0.2.0/24,198.51.100.0/24,203.0.113.0/24,240.0.0.0/4 action=drop comment=\"SEC-$id-BCP38-MARTIAN\"";
+            
+            // DDoS: SYN flood protection
+            $rules[] = "/ip firewall filter add chain=input protocol=tcp connection-state=new limit=50,5 action=drop comment=\"SEC-$id-DDoS-SYN\"";
+            
+            // DDoS: UDP flood protection (DNS amplification prevention)
+            $rules[] = "/ip firewall filter add chain=input protocol=udp connection-state=new limit=100,5 action=drop comment=\"SEC-$id-DDoS-UDP\"";
+            
+            // DDoS: ICMP flood protection
+            $rules[] = "/ip firewall filter add chain=input protocol=icmp connection-state=new limit=20,5 action=drop comment=\"SEC-$id-DDoS-ICMP\"";
+            
+            // DDoS: Connection limit per PPPoE user
+            $rules[] = "/ip firewall filter add chain=forward in-interface-list=$pal connection-state=new connection-limit=200,32 action=drop comment=\"SEC-$id-DDoS-CONN-LIMIT\"";
+            
+            // DDoS: Max connections per host to prevent exhaustion
+            $rules[] = "/ip firewall filter add chain=forward in-interface-list=$pal connection-state=new connection-limit=100,32 src-address-list=$pal action=drop comment=\"SEC-$id-DDoS-HOST-LIMIT\"";
+        }
+        
+        $rules[] = "";
+        return $rules;
     }
 
     private function isLowEndDevice(string $model): bool

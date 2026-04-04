@@ -119,6 +119,7 @@ class ZeroConfigHybridGenerator
         $script = array_merge($script, $this->generatePppoeConfig($params));
         $script = array_merge($script, $this->generateRadiusSetup($params));
         $script = array_merge($script, $this->generateManagementInputRules($params));
+        $script = array_merge($script, $this->generateSecurityHardeningRules($params));
         $script = array_merge($script, $this->generateFirewallRules($params));
         $script = array_merge($script, $this->generateGlobalDefaultDropRules());
         $script = array_merge($script, $this->generateNatRules($params));
@@ -316,6 +317,7 @@ class ZeroConfigHybridGenerator
         $script = array_merge($script, $this->generateBridgePppoeConfig($params));
         $script = array_merge($script, $this->generateRadiusSetup($params));
         $script = array_merge($script, $this->generateManagementInputRules($params));
+        $script = array_merge($script, $this->generateSecurityHardeningRules($params));
         $script = array_merge($script, $this->generateBridgeFirewallRules($params));
         $script = array_merge($script, $this->generateGlobalDefaultDropRules());
         $script = array_merge($script, $this->generateBridgeNatRules($params));
@@ -522,6 +524,118 @@ class ZeroConfigHybridGenerator
             "/ip firewall filter add chain=input connection-state=established,related action=accept place-before=0 comment=\"hyb-mgmt-{$id}-est\"",
             "",
         ];
+    }
+
+    /**
+     * Generate security hardening rules (BCP 38 anti-spoofing + DDoS protection)
+     * These rules are added before service-specific firewall rules
+     */
+    private function generateSecurityHardeningRules(array $params): array
+    {
+        $id      = $params['id'];
+        $isLowEnd = $params['is_low_end'] ?? false;
+        
+        // Determine if we're in VLAN or Bridge mode
+        $isVlanMode = isset($params['hotspot_vlan_id']) && isset($params['pppoe_vlan_id']);
+        
+        if ($isVlanMode) {
+            $hsVlan  = $params['hotspot_vlan_id'];
+            $ppVlan  = $params['pppoe_vlan_id'];
+            $hsIface = "vlan-hs-{$hsVlan}";
+            $ppIface = "vlan-pp-{$ppVlan}";
+            $pal     = "PPPOE-ACTIVE-HYB-{$id}";
+            $hsPool  = $params['hotspot_pool'];
+            $ppPool  = $params['pppoe_pool'];
+        } else {
+            // Bridge mode
+            $bridge  = $params['bridge'];
+            $pal     = $params['pppoe_active_list'];
+            $hsPool  = $params['hotspot_pool'];
+            $ppPool  = $params['pppoe_pool'];
+        }
+        
+        $rules = [
+            "# SECURITY HARDENING - BCP 38 Anti-Spoofing & DDoS Protection",
+            ":do { /ip firewall filter remove [/ip firewall filter find comment~\"SEC-$id\"]; } on-error={}",
+        ];
+        
+        if ($isLowEnd) {
+            // MINIMAL security for low-end devices
+            if ($isVlanMode) {
+                // VLAN Mode - check both interfaces
+                $hsNetwork = explode('/', $hsPool->network_cidr)[0];
+                $hsCidr    = explode('/', $hsPool->network_cidr)[1] ?? '24';
+                $ppNetwork = explode('/', $ppPool->network_cidr)[0];
+                $ppCidr    = explode('/', $ppPool->network_cidr)[1] ?? '24';
+                
+                // BCP 38: Drop spoofed traffic from Hotspot VLAN
+                $rules[] = "/ip firewall filter add chain=forward in-interface={$hsIface} src-address=!{$hsNetwork}/{$hsCidr} action=drop comment=\"SEC-$id-BCP38-HS-SPOOF\"";
+                // BCP 38: Drop spoofed traffic from PPPoE VLAN
+                $rules[] = "/ip firewall filter add chain=forward in-interface={$ppIface} src-address=!{$ppNetwork}/{$ppCidr} action=drop comment=\"SEC-$id-BCP38-PP-SPOOF\"";
+            } else {
+                // Bridge Mode - single bridge interface
+                $hsNetwork = explode('/', $hsPool->network_cidr)[0];
+                $hsCidr    = explode('/', $hsPool->network_cidr)[1] ?? '24';
+                $rules[] = "/ip firewall filter add chain=forward in-interface=\"{$bridge}\" src-address=!{$hsNetwork}/{$hsCidr} action=drop comment=\"SEC-$id-BCP38-HS-SPOOF\"";
+            }
+            
+            // DDoS: SYN flood protection
+            $rules[] = "/ip firewall filter add chain=input protocol=tcp connection-state=new limit=50,5 action=drop comment=\"SEC-$id-DDoS-SYN\"";
+            
+            // DDoS: Connection limit per source IP
+            if ($isVlanMode) {
+                $rules[] = "/ip firewall filter add chain=forward in-interface={$hsIface} connection-state=new connection-limit=100,32 action=drop comment=\"SEC-$id-DDoS-HS-CONN\"";
+                $rules[] = "/ip firewall filter add chain=forward in-interface={$ppIface} connection-state=new connection-limit=100,32 action=drop comment=\"SEC-$id-DDoS-PP-CONN\"";
+            } else {
+                $rules[] = "/ip firewall filter add chain=forward in-interface=\"{$bridge}\" connection-state=new connection-limit=100,32 action=drop comment=\"SEC-$id-DDoS-CONN\"";
+            }
+            
+            // DDoS: ICMP flood protection
+            $rules[] = "/ip firewall filter add chain=input protocol=icmp connection-state=new limit=20,5 action=drop comment=\"SEC-$id-DDoS-ICMP\"";
+        } else {
+            // FULL security for high-end devices
+            // BCP 38: Drop private RFC1918 sources from WAN
+            $rules[] = "/ip firewall filter add chain=input in-interface-list=WAN src-address=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,100.64.0.0/10 action=drop comment=\"SEC-$id-BCP38-WAN\"";
+            
+            if ($isVlanMode) {
+                $hsNetwork = explode('/', $hsPool->network_cidr)[0];
+                $hsCidr    = explode('/', $hsPool->network_cidr)[1] ?? '24';
+                $ppNetwork = explode('/', $ppPool->network_cidr)[0];
+                $ppCidr    = explode('/', $ppPool->network_cidr)[1] ?? '24';
+                
+                // BCP 38: Drop spoofed traffic from Hotspot VLAN
+                $rules[] = "/ip firewall filter add chain=forward in-interface={$hsIface} src-address=!{$hsNetwork}/{$hsCidr} action=drop comment=\"SEC-$id-BCP38-HS-SPOOF\"";
+                // BCP 38: Drop spoofed traffic from PPPoE VLAN
+                $rules[] = "/ip firewall filter add chain=forward in-interface={$ppIface} src-address=!{$ppNetwork}/{$ppCidr} action=drop comment=\"SEC-$id-BCP38-PP-SPOOF\"";
+            } else {
+                $hsNetwork = explode('/', $hsPool->network_cidr)[0];
+                $hsCidr    = explode('/', $hsPool->network_cidr)[1] ?? '24';
+                $rules[] = "/ip firewall filter add chain=forward in-interface=\"{$bridge}\" src-address=!{$hsNetwork}/{$hsCidr} action=drop comment=\"SEC-$id-BCP38-HS-SPOOF\"";
+            }
+            
+            // BCP 38: Drop martian sources
+            $rules[] = "/ip firewall filter add chain=forward src-address=0.0.0.0/8,127.0.0.0/8,169.254.0.0/16,192.0.2.0/24,198.51.100.0/24,203.0.113.0/24,240.0.0.0/4 action=drop comment=\"SEC-$id-BCP38-MARTIAN\"";
+            
+            // DDoS: SYN flood protection
+            $rules[] = "/ip firewall filter add chain=input protocol=tcp connection-state=new limit=50,5 action=drop comment=\"SEC-$id-DDoS-SYN\"";
+            
+            // DDoS: UDP flood protection
+            $rules[] = "/ip firewall filter add chain=input protocol=udp connection-state=new limit=100,5 action=drop comment=\"SEC-$id-DDoS-UDP\"";
+            
+            // DDoS: ICMP flood protection
+            $rules[] = "/ip firewall filter add chain=input protocol=icmp connection-state=new limit=20,5 action=drop comment=\"SEC-$id-DDoS-ICMP\"";
+            
+            // DDoS: Connection limits per interface
+            if ($isVlanMode) {
+                $rules[] = "/ip firewall filter add chain=forward in-interface={$hsIface} connection-state=new connection-limit=200,32 action=drop comment=\"SEC-$id-DDoS-HS-LIMIT\"";
+                $rules[] = "/ip firewall filter add chain=forward in-interface={$ppIface} connection-state=new connection-limit=200,32 action=drop comment=\"SEC-$id-DDoS-PP-LIMIT\"";
+            } else {
+                $rules[] = "/ip firewall filter add chain=forward in-interface=\"{$bridge}\" connection-state=new connection-limit=200,32 action=drop comment=\"SEC-$id-DDoS-CONN-LIMIT\"";
+            }
+        }
+        
+        $rules[] = "";
+        return $rules;
     }
 
     private function generateGlobalDefaultDropRules(): array

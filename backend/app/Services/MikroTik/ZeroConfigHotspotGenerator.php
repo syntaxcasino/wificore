@@ -290,6 +290,7 @@ class ZeroConfigHotspotGenerator
             $this->generateRadiusSetup($params),
             $this->generateWalledGarden($params),
             $this->generateManagementInputRules($params),
+            $this->generateSecurityHardeningRules($params),
             $this->generateFirewallRules($params),
             $this->generateGlobalDefaultDropRules(),
             $this->generateNatRules($params)
@@ -414,6 +415,70 @@ class ZeroConfigHotspotGenerator
             ":do { /ip hotspot user remove [/ip hotspot user find] } on-error={}",
             ""
         ];
+    }
+
+    /**
+     * Generate security hardening rules (BCP 38 anti-spoofing + DDoS protection)
+     * These rules are added before service-specific firewall rules
+     */
+    private function generateSecurityHardeningRules(array $params): array
+    {
+        $sid   = $params['short_id'] ?? substr(str_replace('-', '', $params['router_id']), 0, 8);
+        $iface = $params['bridge_name'] ?? $params['interface'];
+        $isLowEnd = $params['is_low_end'] ?? false;
+        
+        $rules = [
+            "# SECURITY HARDENING - BCP 38 Anti-Spoofing & DDoS Protection",
+            ":do { /ip firewall filter remove [/ip firewall filter find comment~\"SEC-$sid\"]; } on-error={}",
+        ];
+        
+        if ($isLowEnd) {
+            // MINIMAL security for low-end devices - essential rules only
+            // BCP 38: Drop spoofed traffic from Hotspot clients
+            $network = explode('/', $params['network_cidr'])[0];
+            $cidr    = explode('/', $params['network_cidr'])[1] ?? '24';
+            $rules[] = "/ip firewall filter add chain=forward in-interface={$iface} src-address=!{$network}/{$cidr} action=drop comment=\"SEC-$sid-BCP38-SPOOF\"";
+            
+            // DDoS: SYN flood protection (rate limit new TCP connections)
+            $rules[] = "/ip firewall filter add chain=input protocol=tcp connection-state=new limit=50,5 action=drop comment=\"SEC-$sid-DDoS-SYN\"";
+            
+            // DDoS: Connection limit per source IP (prevent exhaustion)
+            $rules[] = "/ip firewall filter add chain=forward in-interface={$iface} connection-state=new connection-limit=100,32 action=drop comment=\"SEC-$sid-DDoS-CONN\"";
+            
+            // DDoS: ICMP flood protection
+            $rules[] = "/ip firewall filter add chain=input protocol=icmp connection-state=new limit=20,5 action=drop comment=\"SEC-$sid-DDoS-ICMP\"";
+        } else {
+            // FULL security for high-end devices
+            $network = explode('/', $params['network_cidr'])[0];
+            $cidr    = explode('/', $params['network_cidr'])[1] ?? '24';
+            
+            // BCP 38: Drop private RFC1918 sources from WAN
+            $rules[] = "/ip firewall filter add chain=input in-interface-list=WAN src-address=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,100.64.0.0/10 action=drop comment=\"SEC-$sid-BCP38-WAN\"";
+            
+            // BCP 38: Drop spoofed traffic from Hotspot clients
+            $rules[] = "/ip firewall filter add chain=forward in-interface={$iface} src-address=!{$network}/{$cidr} action=drop comment=\"SEC-$sid-BCP38-SPOOF\"";
+            
+            // BCP 38: Drop martian sources
+            $rules[] = "/ip firewall filter add chain=forward src-address=0.0.0.0/8,127.0.0.0/8,169.254.0.0/16,192.0.2.0/24,198.51.100.0/24,203.0.113.0/24,240.0.0.0/4 action=drop comment=\"SEC-$sid-BCP38-MARTIAN\"";
+            
+            // DDoS: SYN flood protection
+            $rules[] = "/ip firewall filter add chain=input protocol=tcp connection-state=new limit=50,5 action=drop comment=\"SEC-$sid-DDoS-SYN\"";
+            
+            // DDoS: UDP flood protection (DNS amplification prevention)
+            $rules[] = "/ip firewall filter add chain=input protocol=udp connection-state=new limit=100,5 action=drop comment=\"SEC-$sid-DDoS-UDP\"";
+            
+            // DDoS: ICMP flood protection
+            $rules[] = "/ip firewall filter add chain=input protocol=icmp connection-state=new limit=20,5 action=drop comment=\"SEC-$sid-DDoS-ICMP\"";
+            
+            // DDoS: Connection limit per Hotspot user
+            $rules[] = "/ip firewall filter add chain=forward in-interface={$iface} connection-state=new connection-limit=200,32 action=drop comment=\"SEC-$sid-DDoS-CONN-LIMIT\"";
+            
+            // DDoS: Max connections per host
+            $rules[] = "/ip firewall filter add chain=forward in-interface={$iface} connection-state=new connection-limit=100,32 src-address-list={$iface} action=drop comment=\"SEC-$sid-DDoS-HOST-LIMIT\"";
+        }
+        
+        $rules[] = "";
+        return $rules;
     }
 
     /**

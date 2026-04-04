@@ -38,6 +38,7 @@ use App\Http\Controllers\Api\PppoeSessionController;
 use App\Http\Controllers\Api\ConnectionStatsController;
 use App\Http\Controllers\Api\PppoeMetricsController;
 use App\Http\Controllers\Api\RouterAnalyticsController;
+use App\Http\Controllers\Api\UnifiedStreamController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\Api\TodoController;
 // HR Module Controllers
@@ -823,6 +824,16 @@ Route::middleware(['auth:sanctum', 'role:admin', 'user.active', 'tenant.context'
     // -------------------------------------------------------------------------
     Route::get('/connections/stats', [ConnectionStatsController::class, 'stats'])
         ->name('api.connections.stats');
+    
+    // SSE Stream for live connections (real-time updates)
+    Route::get('/live-connections/stream', [ConnectionStatsController::class, 'stream'])
+        ->name('api.live-connections.stream');
+    
+    // UNIFIED SSE Stream - Single endpoint for all real-time data with tagging
+    Route::get('/stream/unified', [UnifiedStreamController::class, 'stream'])
+        ->name('api.stream.unified');
+    Route::get('/stream/available', [UnifiedStreamController::class, 'getAvailableStreams'])
+        ->name('api.stream.available');
 
     // =========================================================================
     // NEW: STANDALONE ACCESS POINT ROUTES
@@ -1036,6 +1047,14 @@ Route::middleware(['auth:sanctum', 'role:admin', 'user.active', 'tenant.context'
     // Hotspot Management (Admin)
     // -------------------------------------------------------------------------
     Route::prefix('hotspot')->name('api.hotspot.admin.')->group(function () {
+        // List hotspot packages
+        Route::get('/packages', [PackageController::class, 'index'])
+            ->name('packages.index');
+        
+        // List active sessions only
+        Route::get('/sessions/active', [\App\Http\Controllers\Api\HotspotController::class, 'listSessions'])
+            ->name('sessions.active');
+            
         // List hotspot users with pagination
         Route::get('/users', [\App\Http\Controllers\Api\HotspotController::class, 'listUsers'])
             ->name('users.index');
