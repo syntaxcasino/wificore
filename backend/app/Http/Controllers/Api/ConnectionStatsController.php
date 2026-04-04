@@ -358,6 +358,75 @@ class ConnectionStatsController extends Controller
 
     private function escapeRegexValue(string $value): string
     {
-        return preg_replace('/([\\.^$|?*+()\[\]{}])/', '\\\\$1', $value) ?? '';
+        return preg_replace('/([\.^$|?*+()\[\]{}])/', '\\$1', $value) ?? '';
+    }
+
+    /**
+     * SSE Stream for live connection updates
+     * 
+     * Server-Sent Events endpoint for real-time connection statistics.
+     * Streams aggregated PPPoE and Hotspot connection data every 5 seconds.
+     */
+    public function stream(Request $request, VictoriaMetricsClient $vm)
+    {
+        $tenantId = $request->user()->tenant_id;
+
+        return response()->stream(function () use ($tenantId, $vm) {
+            // Send initial data
+            $data = $this->getStreamData($tenantId, $vm);
+            echo "data: " . json_encode($data) . "\n\n";
+            ob_flush();
+            flush();
+
+            // Stream for 5 minutes max, sending updates every 5 seconds
+            $maxIterations = 60;
+            $iteration = 0;
+            
+            while ($iteration < $maxIterations && !connection_aborted()) {
+                sleep(5);
+                
+                $data = $this->getStreamData($tenantId, $vm);
+                echo "data: " . json_encode($data) . "\n\n";
+                ob_flush();
+                flush();
+                
+                $iteration++;
+            }
+        }, 200, [
+            'Content-Type' => 'text/event-stream',
+            'Cache-Control' => 'no-cache',
+            'X-Accel-Buffering' => 'no',
+            'Connection' => 'keep-alive',
+        ]);
+    }
+
+    /**
+     * Get data for SSE stream
+     */
+    private function getStreamData(string $tenantId, VictoriaMetricsClient $vm): array
+    {
+        try {
+            $pppoeData = $this->fetchPppoeSessions($tenantId, $vm);
+            $hotspotData = $this->fetchHotspotSessions($tenantId);
+            $allConnections = array_merge($pppoeData, $hotspotData);
+            $stats = $this->calculateStats($allConnections, $tenantId);
+
+            return [
+                'success' => true,
+                'data' => $stats,
+                'timestamp' => now()->toIso8601String(),
+            ];
+        } catch (\Exception $e) {
+            Log::error('Stream data fetch failed', [
+                'tenant_id' => $tenantId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [
+                'success' => false,
+                'message' => 'Failed to fetch connection data',
+                'timestamp' => now()->toIso8601String(),
+            ];
+        }
     }
 }

@@ -47,9 +47,10 @@ export function usePppoeSessions() {
       sessions.value = Array.isArray(payload) ? payload : (payload?.data ?? [])
       return sessions.value
     } catch (err) {
-      error.value = 'Failed to load active sessions. Please try again.'
+      // Guard against undefined or non-axios errors
+      error.value = err?.response?.data?.message || err?.message || 'Failed to load active sessions. Please try again.'
       console.error('Error fetching sessions:', err)
-      throw err
+      return []
     } finally {
       loading.value = false
     }
@@ -64,9 +65,10 @@ export function usePppoeSessions() {
       sessions.value = Array.isArray(payload) ? payload : (payload?.data ?? [])
       return sessions.value
     } catch (err) {
-      error.value = 'Failed to refresh sessions. Please try again.'
+      // Guard against undefined or non-axios errors
+      error.value = err?.response?.data?.message || err?.message || 'Failed to refresh sessions. Please try again.'
       console.error('Error refreshing sessions:', err)
-      throw err
+      return []
     } finally {
       refreshing.value = false
     }
@@ -85,7 +87,9 @@ export function usePppoeSessions() {
       }
     } catch (err) {
       console.error('Error disconnecting session:', err)
-      toast.error(err.response?.data?.message || 'Failed to disconnect session')
+      // Guard against undefined or non-axios errors
+      const errorMsg = err?.response?.data?.message || err?.message || 'Failed to disconnect session'
+      toast.error(errorMsg)
       return false
     }
   }
@@ -145,27 +149,38 @@ export function usePppoeSessions() {
   // WebSocket
   const setupWebSocketListeners = () => {
     const tenantId = authStore.tenantId
-    if (!tenantId) return
+    if (!tenantId) {
+      console.warn('WebSocket: No tenant ID available')
+      return
+    }
     
-    sessionChannel.value = `tenant.${tenantId}.pppoe-sessions`
-    subscribeToPrivateChannel(sessionChannel.value, {
-      PppoeSessionStarted: () => refreshSessions(),
-      PppoeSessionEnded: (event) => {
-        if (event.session) {
-          sessions.value = sessions.value.filter(s =>
-            !(s.username === event.session.username && s.router_id === event.session.router_id)
-          )
-        }
-      },
-      PppoeSessionUpdated: () => refreshSessions()
-    })
+    try {
+      sessionChannel.value = `tenant.${tenantId}.pppoe-sessions`
+      subscribeToPrivateChannel(sessionChannel.value, {
+        PppoeSessionStarted: () => refreshSessions(),
+        PppoeSessionEnded: (event) => {
+          if (event?.session) {
+            sessions.value = sessions.value.filter(s =>
+              !(s.username === event.session.username && s.router_id === event.session.router_id)
+            )
+          }
+        },
+        PppoeSessionUpdated: () => refreshSessions()
+      })
+    } catch (err) {
+      console.error('WebSocket setup error:', err)
+    }
   }
 
   const cleanupWebSocketListeners = () => {
-    stopPolling()
-    if (sessionChannel.value) {
-      unsubscribeFromChannel(sessionChannel.value)
-      sessionChannel.value = null
+    try {
+      stopPolling()
+      if (sessionChannel.value && unsubscribeFromChannel) {
+        unsubscribeFromChannel(sessionChannel.value)
+        sessionChannel.value = null
+      }
+    } catch (err) {
+      console.error('WebSocket cleanup error:', err)
     }
   }
 

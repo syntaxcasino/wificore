@@ -56,9 +56,12 @@ export function useActiveSessions() {
       sessions.value = data
       return data
     } catch (err) {
-      error.value = err.response?.data?.message || 'Failed to load active sessions'
-      toast.error(error.value)
-      throw err
+      // Guard against undefined or non-axios errors
+      const errorMsg = err?.response?.data?.message || err?.message || 'Failed to load active sessions'
+      error.value = errorMsg
+      toast.error(errorMsg)
+      console.error('Fetch sessions error:', err)
+      return []
     } finally {
       loading.value = false
     }
@@ -83,10 +86,12 @@ export function useActiveSessions() {
       toast.success(`${session.user?.name || session.username} disconnected successfully`)
       return true
     } catch (err) {
-      const errorMsg = err.response?.data?.message || 'Failed to disconnect session'
+      // Guard against undefined or non-axios errors
+      const errorMsg = err?.response?.data?.message || err?.message || 'Failed to disconnect session'
       error.value = errorMsg
       toast.error(errorMsg)
-      throw err
+      console.error('Disconnect session error:', err)
+      return false
     }
   }
 
