@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use App\Traits\HasUuid;
 
 /**
  * VLAN Manager Model
@@ -11,10 +13,11 @@ use Illuminate\Database\Eloquent\Model;
  */
 class VlanManager extends Model
 {
+    use HasFactory, HasUuid;
+
     protected $table = 'vlans';
 
     protected $fillable = [
-        'tenant_id',
         'vlan_id',
         'name',
         'description',
