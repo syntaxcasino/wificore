@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use App\Traits\HasUuid;
 
 /**
  * Configuration Snapshot Model
@@ -11,6 +13,7 @@ use Illuminate\Database\Eloquent\Model;
  */
 class ConfigSnapshot extends Model
 {
+    use HasFactory, HasUuid;
     protected $table = 'config_snapshots';
 
     protected $fillable = [

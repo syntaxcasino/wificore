@@ -3,7 +3,8 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Casts\AsArrayObject;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use App\Traits\HasUuid;
 use Illuminate\Support\Facades\Crypt;
 
 /**
@@ -13,6 +14,7 @@ use Illuminate\Support\Facades\Crypt;
  */
 class CanaryDeployment extends Model
 {
+    use HasFactory, HasUuid;
     protected $table = 'canary_deployments';
 
     protected $fillable = [
