@@ -6,6 +6,8 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use App\Traits\HasUuid;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class PppoeUser extends Model
 {
@@ -62,6 +64,82 @@ class PppoeUser extends Model
         'last_invoice_sent_at' => 'datetime',
         'last_receipt_sent_at' => 'datetime',
     ];
+
+    /**
+     * Boot the model.
+     * Automatically ensure radius_user_schema_mapping entry exists on save.
+     */
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::saved(function ($pppoeUser) {
+            static::ensureRadiusSchemaMapping($pppoeUser);
+        });
+    }
+
+    /**
+     * Ensure radius_user_schema_mapping entry exists for this PPPoE user.
+     * This is critical for FreeRADIUS to know which tenant schema to query.
+     */
+    public static function ensureRadiusSchemaMapping(self $pppoeUser): void
+    {
+        try {
+            // Get tenant info from connection or app context
+            $tenant = self::getCurrentTenant();
+            if (!$tenant) {
+                Log::warning('Cannot ensure schema mapping: no tenant context', [
+                    'username' => $pppoeUser->username,
+                ]);
+                return;
+            }
+
+            DB::statement("
+                INSERT INTO public.radius_user_schema_mapping (username, schema_name, tenant_id, user_role, is_active, created_at, updated_at)
+                VALUES (?, ?, ?::uuid, 'pppoe', true, NOW(), NOW())
+                ON CONFLICT (username) DO UPDATE SET
+                    schema_name = EXCLUDED.schema_name,
+                    tenant_id = EXCLUDED.tenant_id,
+                    user_role = EXCLUDED.user_role,
+                    is_active = true,
+                    updated_at = NOW()
+            ", [$pppoeUser->username, $tenant->schema_name, $tenant->id]);
+
+            Log::info('RADIUS schema mapping ensured via model event', [
+                'username' => $pppoeUser->username,
+                'schema_name' => $tenant->schema_name,
+                'tenant_id' => $tenant->id,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to ensure RADIUS schema mapping', [
+                'username' => $pppoeUser->username,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Get current tenant from app context or database.
+     */
+    private static function getCurrentTenant(): ?Tenant
+    {
+        // Try to get from app container (set by TenantContext or middleware)
+        if (app()->has('current_tenant')) {
+            return app('current_tenant');
+        }
+
+        // Fallback: query from database using schema search path
+        try {
+            $schemaName = DB::selectOne("SELECT current_schema()")?->current_schema;
+            if ($schemaName && $schemaName !== 'public') {
+                return Tenant::where('schema_name', $schemaName)->first();
+            }
+        } catch (\Exception $e) {
+            // Ignore and return null
+        }
+
+        return null;
+    }
 
     public function package()
     {

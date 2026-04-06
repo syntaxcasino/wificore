@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Tenant;
 use App\Scopes\TenantScope;
 use App\Models\TenantVpnTunnel;
 use App\Models\VpnConfiguration;
@@ -12,7 +13,35 @@ use Illuminate\Support\Facades\Log;
 
 class WireguardPeerHealthService
 {
+    public function __construct(protected TenantContext $tenantContext)
+    {
+    }
+
     public function refreshPeerStats(string $tenantId): array
+    {
+        $tenant = Tenant::find($tenantId);
+
+        if (!$tenant) {
+            Log::warning('Tenant not found for WireGuard peer refresh', [
+                'tenant_id' => $tenantId,
+            ]);
+            return [];
+        }
+
+        if (!$tenant->schema_created || empty($tenant->schema_name)) {
+            Log::warning('Tenant schema not ready for WireGuard peer refresh', [
+                'tenant_id' => $tenantId,
+                'schema_created' => $tenant->schema_created,
+            ]);
+            return [];
+        }
+
+        return $this->tenantContext->runInTenantContext($tenant, function () use ($tenantId) {
+            return $this->refreshPeerStatsWithinTenant($tenantId);
+        });
+    }
+
+    protected function refreshPeerStatsWithinTenant(string $tenantId): array
     {
         $tunnels = TenantVpnTunnel::where('tenant_id', $tenantId)->get();
         if ($tunnels->isEmpty()) {

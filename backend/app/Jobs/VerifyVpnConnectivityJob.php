@@ -7,7 +7,9 @@ use App\Events\VpnConnectivityChecking;
 use App\Events\VpnConnectivityFailed;
 use App\Events\VpnConnectivityVerified;
 use App\Models\Router;
+use App\Models\Scopes\TenantScope;
 use App\Models\VpnConfiguration;
+use App\Models\WireguardPeer;
 use App\Services\RouterStatusCheckService;
 use App\Services\VpnConnectivityService;
 use App\Services\WireGuardService;
@@ -129,22 +131,47 @@ class VerifyVpnConnectivityJob implements ShouldQueue
 
                 if ($isConnected) {
                     // Success! Update status and broadcast success event
-                    $updateData = [
+                    $vpnConfig->update([
                         'status' => 'connected',
                         'last_handshake_at' => now(),
-                    ];
-                    
-                    $vpnConfig->update($updateData);
+                    ]);
 
-                    // Also update Router status immediately so frontend polling sees it as online
                     if ($router) {
-                        $router->update([
-                            'status' => 'online',
-                            'vpn_status' => 'active',
-                            'last_seen' => now(),
-                            'last_checked' => now(),
-                            'vpn_last_handshake' => now(),
-                        ]);
+                        $provisioningStatuses = ['pending', 'deploying', 'provisioning', 'verifying'];
+                        $inProvisioning = in_array($router->status, $provisioningStatuses, true);
+                        $now = now();
+
+                        if ($inProvisioning) {
+                            $router->update([
+                                'status' => $router->status === 'pending' ? 'provisioning' : $router->status,
+                                'provisioning_stage' => $router->provisioning_stage ?? 'vpn_verified',
+                                'last_seen' => $now,
+                                'last_checked' => $now,
+                            ]);
+                        } else {
+                            $router->update([
+                                'status' => 'online',
+                                'vpn_status' => 'active',
+                                'last_seen' => $now,
+                                'last_checked' => $now,
+                                'vpn_last_handshake' => $now,
+                            ]);
+
+                            try {
+                                $updated = WireguardPeer::withoutGlobalScope(TenantScope::class)
+                                    ->where('router_id', $router->id)
+                                    ->update(['last_handshake' => $now]);
+                                Log::info('Updated wireguard_peers.last_handshake after ping success', [
+                                    'router_id' => $router->id,
+                                    'rows_updated' => $updated,
+                                ]);
+                            } catch (\Exception $e) {
+                                Log::error('Failed to update wireguard_peers.last_handshake', [
+                                    'router_id' => $router->id,
+                                    'error' => $e->getMessage(),
+                                ]);
+                            }
+                        }
                     }
 
                     Log::info('VPN connectivity verified successfully', [

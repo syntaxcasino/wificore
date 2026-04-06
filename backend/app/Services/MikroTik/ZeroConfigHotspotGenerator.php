@@ -7,6 +7,7 @@ use App\Services\RouterResourceManager;
 use Illuminate\Support\Facades\Log;
 use App\Models\Router;
 use App\Models\TenantIpPool;
+use App\Support\SubnetHelper;
 
 /**
  * ISP-Grade Zero-Config Hotspot Generator
@@ -206,7 +207,7 @@ class ZeroConfigHotspotGenerator
             'radius_profile' => $service->radius_profile,
             'radius_server' => $resolvedRadiusServer,
             'radius_secret' => $radiusSecret,
-            'management_subnet' => config('vpn.subnet.base', '10.0.0.0/8'),
+            'management_subnet' => SubnetHelper::normalize(config('vpn.subnet.base', '10.0.0.0/8')),
             'tenant_id' => $router->tenant_id,
             'captive_portal_url' => $captivePortalUrl,
             'portal_host' => $portalHost,
@@ -532,7 +533,7 @@ class ZeroConfigHotspotGenerator
     private function generateManagementInputRules(array $params): array
     {
         $sid   = $params['short_id'] ?? substr(str_replace('-', '', $params['router_id']), 0, 8);
-        $mgmt  = $params['management_subnet'] ?? '10.0.0.0/8';
+        $mgmt  = SubnetHelper::normalize($params['management_subnet'] ?? '10.0.0.0/8');
         $mport = '22,8291,8728,8729';
         $rs    = $params['radius_server'] ?? '10.8.0.1';
 

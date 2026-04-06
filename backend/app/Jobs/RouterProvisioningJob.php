@@ -69,6 +69,12 @@ class RouterProvisioningJob implements ShouldQueue
 
             try {
                 // Stage 1: Verify status via ping only (strict provisioning policy)
+                $router->update([
+                    'status' => 'provisioning',
+                    'provisioning_stage' => 'ping_verification',
+                    'last_checked' => now(),
+                ]);
+
                 $this->broadcastProgress($router, 'verifying', 5, 'Verifying router status via ping...');
 
                 // Use RouterStatusCheckService for strict ping-only check during provisioning
@@ -81,7 +87,14 @@ class RouterProvisioningJob implements ShouldQueue
                 $this->broadcastProgress($router, 'connected', 20, 'Router connected successfully', [
                     'model' => $router->model,
                     'version' => $router->os_version,
-                    'latency_ms' => $connectivity['latency_ms'] ?? null,
+                    'method' => $connectivity['method'] ?? 'wireguard_api',
+                ]);
+
+                $router->update([
+                    'status' => 'deploying',
+                    'provisioning_stage' => 'deploying_config',
+                    'last_seen' => now(),
+                    'last_checked' => now(),
                 ]);
 
                 // Stage 2: Apply saved service configuration (already generated in previous step)
@@ -91,13 +104,21 @@ class RouterProvisioningJob implements ShouldQueue
 
                 $this->broadcastProgress($router, 'deployed', 70, 'Configuration deployed successfully');
 
+                $router->update([
+                    'status' => 'verifying',
+                    'provisioning_stage' => 'verifying_deployment',
+                    'last_checked' => now(),
+                ]);
+
                 // Stage 3: Verify deployment
                 $this->broadcastProgress($router, 'verifying_deployment', 85, 'Verifying deployment...');
                 
-                // Update router status
+                // Update router status after verification completes
                 $router->update([
                     'status' => 'online',
+                    'provisioning_stage' => 'completed',
                     'last_seen' => now(),
+                    'last_checked' => now(),
                 ]);
 
                 // Stage 4: Complete
@@ -125,7 +146,10 @@ class RouterProvisioningJob implements ShouldQueue
                     'trace' => $e->getTraceAsString(),
                 ]);
 
-                $router->update(['status' => 'failed']);
+                $router->update([
+                    'status' => 'failed',
+                    'provisioning_stage' => 'failed',
+                ]);
 
                 $this->broadcastProgress($router, 'failed', 0, 'Provisioning failed: ' . $e->getMessage(), [
                     'error' => $e->getMessage(),
@@ -176,7 +200,11 @@ class RouterProvisioningJob implements ShouldQueue
             $this->executeInTenantContext(function() {
                 $router = Router::find($this->routerId);
                 if ($router) {
-                    $router->update(['status' => 'failed']);
+                    $router->update([
+                        'status' => 'failed',
+                        'provisioning_stage' => 'failed',
+                        'last_checked' => now(),
+                    ]);
                     
                     // Also broadcast failure
                      broadcast(new RouterProvisioningProgress(

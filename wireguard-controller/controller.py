@@ -8,6 +8,7 @@ import os
 import subprocess
 import logging
 import json
+import time
 from flask import Flask, request, jsonify
 from datetime import datetime
 
@@ -442,6 +443,79 @@ def get_dump(interface):
     except Exception as e:
         logger.error(f"Failed to get dump for {interface}: {str(e)}")
         return jsonify({'error': str(e)}), 500
+
+@app.route('/vpn/ping', methods=['POST'])
+def ping_router():
+    """Ping a router IP from the WireGuard container (host network access)"""
+    if not verify_api_key():
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    data = request.json
+    ip = data.get('ip')
+    timeout = data.get('timeout', 3)
+    attempts = data.get('attempts', 3)
+    
+    if not ip:
+        return jsonify({'error': 'Missing IP address'}), 400
+    
+    # Validate IP format (basic check)
+    import re
+    if not re.match(r'^(\d{1,3}\.){3}\d{1,3}$', ip):
+        return jsonify({'error': 'Invalid IP format'}), 400
+    
+    try:
+        logger.info(f"Pinging router IP: {ip} (attempts: {attempts}, timeout: {timeout}s)")
+        
+        success = False
+        latency_ms = None
+        last_error = None
+        
+        for i in range(attempts):
+            start_time = time.time()
+            
+            # Use system ping command
+            ping_result = run_command(f"ping -c 1 -W {timeout} {ip}", check=False)
+            
+            if ping_result['success']:
+                success = True
+                latency_ms = round((time.time() - start_time) * 1000, 2)
+                
+                # Try to extract actual latency from ping output
+                output = ping_result['stdout']
+                if 'time=' in output:
+                    try:
+                        time_match = re.search(r'time=([\d.]+)', output)
+                        if time_match:
+                            latency_ms = round(float(time_match.group(1)), 2)
+                    except:
+                        pass
+                
+                logger.info(f"Ping successful to {ip} on attempt {i+1}, latency: {latency_ms}ms")
+                break
+            else:
+                last_error = ping_result['stderr'] or ping_result['stdout']
+                logger.debug(f"Ping attempt {i+1} failed: {last_error}")
+                if i < attempts - 1:
+                    time.sleep(1)
+        
+        return jsonify({
+            'status': 'success',
+            'ip': ip,
+            'success': success,
+            'latency_ms': latency_ms,
+            'attempts': attempts,
+            'packet_loss': 0 if success else 100,
+            'error': last_error if not success else None
+        })
+        
+    except Exception as e:
+        logger.error(f"Failed to ping {ip}: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'ip': ip,
+            'success': False,
+            'error': str(e)
+        }), 500
 
 @app.route('/vpn/down/<interface>', methods=['POST'])
 def bring_down(interface):

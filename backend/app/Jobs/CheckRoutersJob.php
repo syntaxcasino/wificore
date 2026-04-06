@@ -225,17 +225,16 @@ class CheckRoutersJob implements ShouldQueue
         $result = $statusCheckService->checkStatusProvisioning($router);
 
         if ($result['online']) {
-            Log::withContext($routerContext)->info('Pending router VPN now reachable via Ping - marking ONLINE', [
+            Log::withContext($routerContext)->info('Pending router VPN reachable via Ping - keeping router in provisioning state', [
                 'latency_ms' => $result['latency_ms'],
                 'packet_loss' => $result['packet_loss'],
             ]);
 
             $vpnConfig->update([
                 'status' => 'connected',
-                'last_handshake_at' => now(),
             ]);
 
-            $this->markRouterOnline($router, $vpnConfig, now(), $routerContext);
+            $this->markRouterOnline($router, $vpnConfig, null, $routerContext);
         } else {
             Log::withContext($routerContext)->debug('Pending router VPN not reachable via ping', [
                 'reason' => $result['reason'] ?? 'Ping failed',
@@ -376,34 +375,51 @@ class CheckRoutersJob implements ShouldQueue
      */
     private function markRouterOnline(Router $router, $vpnConfig, $handshakeAt, array $context): void
     {
-        // Mark router as online FIRST
-        $router->update([
-            'status' => 'online',
-            'last_seen' => now(),
-            'last_checked' => now(),
-            'vpn_status' => 'active',
-            'vpn_last_handshake' => $handshakeAt,
-        ]);
+        $provisioningStatuses = ['pending', 'deploying', 'provisioning', 'verifying'];
+        $inProvisioning = in_array($router->status, $provisioningStatuses, true);
+        $now = now();
+
+        if ($inProvisioning) {
+            $newStatus = $router->status === 'pending' ? 'provisioning' : $router->status;
+            $router->update([
+                'status' => $newStatus,
+                'provisioning_stage' => $router->provisioning_stage ?? 'ping_verified',
+                'last_seen' => $now,
+                'last_checked' => $now,
+            ]);
+        } else {
+            $router->update([
+                'status' => 'online',
+                'last_seen' => $now,
+                'last_checked' => $now,
+                'vpn_status' => 'active',
+                'vpn_last_handshake' => $handshakeAt,
+            ]);
+        }
         
         CacheInvalidationService::invalidateRouterCache((string) $this->tenantId, (string) $router->id);
         try {
-            broadcast(new RouterStatusUpdated([array_merge([
+            $payload = array_merge([
                 'id' => $router->id,
                 'name' => $router->name,
                 'ip_address' => $router->ip_address,
                 'vpn_ip' => $router->vpn_ip,
-                'status' => 'online',
+                'status' => $router->status,
                 'last_seen' => $router->last_seen,
-                'vpn_status' => $router->vpn_status,
-                'vpn_last_handshake' => $router->vpn_last_handshake,
+                'vpn_status' => $inProvisioning ? null : $router->vpn_status,
+                'vpn_last_handshake' => $inProvisioning ? null : $router->vpn_last_handshake,
                 'tenant_id' => (string) $this->tenantId,
-            ], $this->buildHandshakeTimezonePayload($router->vpn_last_handshake))], (string) $this->tenantId))->toOthers();
+            ], $inProvisioning ? [] : $this->buildHandshakeTimezonePayload($router->vpn_last_handshake));
+
+            broadcast(new RouterStatusUpdated([$payload], (string) $this->tenantId))->toOthers();
         } catch (\Exception $e) {
-            Log::withContext($context)->warning('Failed to broadcast online status', ['error' => $e->getMessage()]);
+            Log::withContext($context)->warning('Failed to broadcast router status update', ['error' => $e->getMessage()]);
         }
         
-        Log::withContext($context)->info('VPN connected - marked router ONLINE');
-        
+        Log::withContext($context)->info($inProvisioning
+            ? 'VPN reachable via ping during provisioning - status preserved'
+            : 'VPN connected - marked router ONLINE');
+
         // Then dispatch discovery for interfaces (non-blocking)
         $discoveryDispatchKey = "discovery_dispatch_{$router->id}";
         if (!Cache::has($discoveryDispatchKey)) {

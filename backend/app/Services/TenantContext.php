@@ -45,6 +45,9 @@ class TenantContext
         
         $this->tenant = $tenant;
         
+        // Also set in app container for model events to access
+        app()->instance('current_tenant', $tenant);
+        
         // Only set search path if tenant has a schema
         if ($tenant->schema_created && $tenant->schema_name) {
             $this->setSearchPath($tenant->schema_name);
@@ -146,6 +149,11 @@ class TenantContext
         }
         
         $this->tenant = null;
+        
+        // Clear from app container
+        if (app()->has('current_tenant')) {
+            app()->forgetInstance('current_tenant');
+        }
         
         Log::debug('Tenant context cleared');
     }
