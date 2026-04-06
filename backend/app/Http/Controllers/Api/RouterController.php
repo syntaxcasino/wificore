@@ -396,7 +396,7 @@ class RouterController extends Controller
 
             $router->update([
                 'status' => 'pending',
-                'provisioning_stage' => null,
+                'provisioning_stage' => 'pending',
             ]);
 
             Cache::forget("vpn_check_pending_{$router->id}");

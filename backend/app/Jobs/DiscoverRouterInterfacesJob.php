@@ -42,9 +42,10 @@ class DiscoverRouterInterfacesJob implements ShouldQueue
                 return;
             }
 
-            // Router should already be online (marked by CheckRoutersJob via VPN ping)
-            // This job just discovers interfaces for service configuration
-            if ($router->status !== 'online' && $router->status !== 'pending') {
+            // Router may still be provisioning; allow discovery once ping is verified.
+            // This job just discovers interfaces for service configuration.
+            $allowedStatuses = ['pending', 'deploying', 'provisioning', 'verifying', 'online'];
+            if (!in_array($router->status, $allowedStatuses, true)) {
                 Log::info('Router not in expected state for discovery, skipping', [
                     'router_id' => $router->id,
                     'status' => $router->status,

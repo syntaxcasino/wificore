@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\MikroTik;
 
 use Illuminate\Support\Facades\Log;
+use App\Support\SubnetHelper;
 
 class HotspotApiConfigurator
 {
@@ -332,9 +333,15 @@ class HotspotApiConfigurator
 
         $accessInterface = $this->accessInterface();
         $wanList = $this->config['wan_list'] ?? 'WAN';
-        $mgmtSubnet = $this->config['mgmt_subnet'] ?? '10.0.0.0/8';
+        $mgmtSubnet = SubnetHelper::normalize($this->config['mgmt_subnet'] ?? '10.0.0.0/8');
         $mgmtPorts = $this->config['mgmt_ports'] ?? '22,8291,8728,8729';
         $radiusServer = $this->config['radius_server'] ?? ($this->config['radius_servers'][0]['address'] ?? null);
+
+        try {
+            $this->api->addInterfaceListMember($wanList, $this->config['wan_interface'] ?? 'ether1');
+        } catch (\Exception $e) {
+            // member may already exist
+        }
 
         $this->api->addFirewallFilterRule([
             'chain' => 'input',

@@ -7,6 +7,7 @@ use App\Models\VpnConfiguration;
 use App\Models\WireguardPeer;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -15,9 +16,9 @@ use Illuminate\Support\Facades\Log;
  * Implements a strict two-phase status checking system:
  *
  * 1. PROVISIONING PHASE (status: pending, deploying, provisioning, verifying):
- *    - Uses ICMP ping ONLY to check router connectivity
- *    - ICMP is allowed during provisioning for initial setup
- *    - WireGuard handshake is secondary/validation only
+ *    - Uses WireGuard controller API to check peer handshake status
+ *    - WireGuard container (host network) monitors peers, backend queries via API
+ *    - Handshake timestamp determines if router is reachable via VPN
  *
  * 2. OPERATIONAL PHASE (status: online, offline, failed, etc.):
  *    - Uses WireGuard handshake timestamp ONLY
@@ -25,7 +26,7 @@ use Illuminate\Support\Facades\Log;
  *    - Handshake age determines online/offline status
  *
  * This design ensures:
- * - Reliable provisioning status detection via ping
+ * - Reliable provisioning status detection via WireGuard controller
  * - Secure operational status detection via encrypted tunnel handshake
  * - No false negatives when firewall blocks ICMP post-hardening
  */
@@ -60,8 +61,8 @@ class RouterStatusCheckService
     }
 
     /**
-     * Check router status during PROVISIONING phase using PING ONLY.
-     * This is the only reliable method during initial setup.
+     * Check router status during PROVISIONING phase using WireGuard controller API.
+     * The WireGuard container (host network) pings the router, backend queries the API.
      *
      * @param Router $router
      * @return array
@@ -73,36 +74,120 @@ class RouterStatusCheckService
         if (!$vpnConfig) {
             return [
                 'online' => false,
-                'method' => 'ping',
+                'method' => 'wireguard_api',
                 'phase' => 'provisioning',
                 'reason' => 'No VPN configuration found',
                 'vpn_status' => 'inactive',
             ];
         }
 
-        // STRICT PING-ONLY CHECK during provisioning
-        // Do NOT fall back to handshake - ping is the authoritative method here
-        $pingResult = $this->pingOnlyCheck($vpnConfig);
+        // Query WireGuard controller API for peer status
+        // The WireGuard container (on host network) can reach the VPN, not the backend
+        $peerStatus = $this->checkPeerViaWireguardController($vpnConfig);
 
-        $isOnline = $pingResult['success'] && $pingResult['packet_loss'] === 0;
+        $isOnline = $peerStatus['online'] ?? false;
 
         Log::info('Provisioning status check result', [
             'router_id' => $router->id,
-            'method' => 'ping_only',
+            'method' => 'wireguard_api',
             'online' => $isOnline,
-            'latency_ms' => $pingResult['latency'],
-            'packet_loss' => $pingResult['packet_loss'],
+            'peer_public_key' => substr($vpnConfig->client_public_key, 0, 20) . '...',
         ]);
 
         return [
             'online' => $isOnline,
-            'method' => 'ping',
+            'method' => 'wireguard_api',
             'phase' => 'provisioning',
-            'latency_ms' => $pingResult['latency'],
-            'packet_loss' => $pingResult['packet_loss'],
+            'latency_ms' => null,
+            'packet_loss' => $isOnline ? 0 : 100,
             'vpn_status' => $isOnline ? 'active' : 'inactive',
-            'details' => $pingResult,
+            'details' => $peerStatus,
         ];
+    }
+
+    /**
+     * Check peer status via WireGuard controller API.
+     * Sends command to WireGuard container (host network) to ping the router.
+     *
+     * @param VpnConfiguration $config
+     * @param int $attempts
+     * @param int $timeout
+     * @return array
+     */
+    private function checkPeerViaWireguardController(VpnConfiguration $config, int $attempts = 3, int $timeout = 3): array
+    {
+        try {
+            $controllerUrl = config('services.wireguard.controller_url', 'http://172.70.0.1:8080');
+            $apiKey = config('services.wireguard.api_key');
+            
+            // Extract client IP from config
+            $clientIp = explode('/', $config->client_ip ?? '')[0];
+            
+            if (empty($clientIp)) {
+                return [
+                    'online' => false,
+                    'error' => 'No VPN client IP configured',
+                ];
+            }
+            
+            // Send ping command to WireGuard controller
+            // WireGuard container runs on host network and CAN reach VPN subnet
+            $response = Http::withHeaders([
+                'Authorization' => 'Bearer ' . $apiKey,
+                'Content-Type' => 'application/json',
+            ])
+            ->timeout(15)
+            ->post("{$controllerUrl}/vpn/ping", [
+                'ip' => $clientIp,
+                'timeout' => $timeout,
+                'attempts' => $attempts,
+            ]);
+            
+            if (!$response->successful()) {
+                Log::warning('WireGuard controller ping API returned error', [
+                    'ip' => $clientIp,
+                    'status' => $response->status(),
+                    'response' => $response->body(),
+                ]);
+                return [
+                    'online' => false,
+                    'error' => 'WireGuard controller API error: ' . $response->status(),
+                ];
+            }
+            
+            $data = $response->json();
+            
+            // Check if ping was successful
+            $success = $data['success'] ?? false;
+            
+            Log::info('WireGuard controller ping result', [
+                'router_id' => $config->router_id,
+                'ip' => $clientIp,
+                'success' => $success,
+                'latency_ms' => $data['latency_ms'] ?? null,
+                'attempts' => $data['attempts'] ?? $attempts,
+            ]);
+            
+            return [
+                'online' => $success,
+                'latency' => $data['latency_ms'] ?? null,
+                'packet_loss' => $success ? 0 : 100,
+                'attempts' => $data['attempts'] ?? $attempts,
+                'error' => $data['error'] ?? null,
+            ];
+            
+        } catch (\Exception $e) {
+            Log::error('Failed to query WireGuard controller for ping', [
+                'router_id' => $config->router_id,
+                'ip' => $clientIp ?? 'unknown',
+                'error' => $e->getMessage(),
+            ]);
+            
+            return [
+                'online' => false,
+                'error' => 'Failed to query WireGuard controller: ' . $e->getMessage(),
+            ];
+        }
     }
 
     /**
@@ -274,7 +359,7 @@ class RouterStatusCheckService
 
     /**
      * Wait for router to come online during provisioning.
-     * Uses ping-only checks with retries.
+     * Uses WireGuard controller API checks with retries.
      *
      * @param Router $router
      * @param int $maxWaitSeconds Maximum time to wait
@@ -305,7 +390,7 @@ class RouterStatusCheckService
 
                 return [
                     'success' => true,
-                    'method' => 'ping',
+                    'method' => 'wireguard_api',
                     'phase' => 'provisioning',
                     'attempts' => $attempt,
                     'elapsed_seconds' => time() - $startTime,
@@ -329,11 +414,11 @@ class RouterStatusCheckService
 
         return [
             'success' => false,
-            'method' => 'ping',
+            'method' => 'wireguard_api',
             'phase' => 'provisioning',
             'attempts' => $attempt,
             'elapsed_seconds' => time() - $startTime,
-            'reason' => 'Timeout waiting for router to respond to ping',
+            'reason' => 'Timeout waiting for router WireGuard handshake',
         ];
     }
 

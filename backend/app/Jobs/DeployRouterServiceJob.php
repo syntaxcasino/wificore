@@ -3,11 +3,14 @@
 namespace App\Jobs;
 
 use App\Models\Tenant;
+use App\Models\Router;
 use App\Models\RouterService;
 use App\Services\MikroTik\ZeroConfigHotspotGenerator;
 use App\Services\MikroTik\ZeroConfigPPPoEGenerator;
 use App\Services\MikroTik\ZeroConfigHybridGenerator;
+use App\Services\CacheInvalidationService;
 use App\Services\MikrotikProvisioningService;
+use App\Events\RouterStatusUpdated;
 use App\Events\RouterProvisioningProgress;
 use App\Traits\TenantAwareJob;
 use Illuminate\Bus\Queueable;
@@ -155,6 +158,33 @@ class DeployRouterServiceJob implements ShouldQueue
                     'status' => RouterService::STATUS_ACTIVE,
                     'deployed_at' => now(),
                 ]);
+
+                $router = Router::find($service->router_id);
+                if ($router) {
+                    $provisioningStatuses = ['pending', 'deploying', 'provisioning', 'verifying'];
+                    if (in_array($router->status, $provisioningStatuses, true)) {
+                        $router->update([
+                            'status' => 'online',
+                            'provisioning_stage' => 'completed',
+                            'last_seen' => now(),
+                            'last_checked' => now(),
+                        ]);
+
+                        CacheInvalidationService::invalidateRouterCache((string) $this->tenantId, (string) $router->id);
+                        broadcast(new RouterStatusUpdated([
+                            [
+                                'id' => $router->id,
+                                'ip_address' => $router->ip_address,
+                                'vpn_ip' => $router->vpn_ip,
+                                'name' => $router->name,
+                                'status' => $router->status,
+                                'last_seen' => $router->last_seen,
+                                'last_checked' => $router->last_checked,
+                                'tenant_id' => (string) $this->tenantId,
+                            ],
+                        ], (string) $this->tenantId))->toOthers();
+                    }
+                }
 
                 $this->broadcastServiceProgress($service, 'completed', 100, 'Service deployed successfully');
 

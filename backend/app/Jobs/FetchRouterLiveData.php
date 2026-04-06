@@ -86,12 +86,16 @@ class FetchRouterLiveData implements ShouldQueue
                 $successfulRouters = [];
                 $failedRouters = [];
 
+                $inactiveThreshold = (int) config('vpn.monitoring.inactive_threshold', 180);
+
+                $provisioningStatuses = ['pending', 'deploying', 'provisioning', 'verifying'];
+
                 foreach ($this->routerIds as $routerId) {
                     $router = $routers->get($routerId);
                     if (!$router) continue;
 
                     // Skip routers that are under provisioning
-                    if (in_array($router->status, ['pending', 'deploying', 'provisioning', 'verifying'])) {
+                    if (in_array($router->status, $provisioningStatuses)) {
                         Log::info('Skipping router - under provisioning', [
                             'router_id' => $router->id,
                             'status' => $router->status
@@ -103,7 +107,9 @@ class FetchRouterLiveData implements ShouldQueue
                     
                     // Refresh router to get latest VPN status (set by WireGuard monitoring)
                     $router->refresh();
-                    
+
+                    $inProvisioning = in_array($router->status, $provisioningStatuses);
+
                     // Determine status based on presence of metrics
                     // If we got metrics (e.g. uptime), router is online via SNMP/Telegraf.
                     // VPN status is separate - metrics prove the router is actually responding.
@@ -137,28 +143,45 @@ class FetchRouterLiveData implements ShouldQueue
                             $router->update(['last_seen' => now()]);
                         }
                     } else {
-                        // No metrics - check VPN status for connectivity
-                        if ($router->vpn_status === 'inactive' || $router->vpn_last_handshake === null) {
-                            $failedRouters[] = $routerId;
-                            $router->update(['last_checked' => now()]);
-                            
-                            Log::info('Router has no metrics and inactive VPN - marking offline', [
+                        if ($inProvisioning) {
+                            Log::info('Router in provisioning has no metrics yet - leaving status untouched', [
                                 'router_id' => $router->id,
+                                'status' => $router->status,
+                            ]);
+                            continue;
+                        }
+
+                        $handshakeRecentlyActive = false;
+                        if ($router->vpn_status === 'active' && $router->vpn_last_handshake) {
+                            $handshakeAge = abs(now()->diffInSeconds($router->vpn_last_handshake, false));
+                            $handshakeRecentlyActive = $handshakeAge <= $inactiveThreshold;
+                        }
+
+                        if ($handshakeRecentlyActive) {
+                            Log::info('Router has active VPN but no metrics yet - keeping online', [
+                                'router_id' => $router->id,
+                                'handshake_age_seconds' => $handshakeAge ?? null,
+                                'threshold_seconds' => $inactiveThreshold,
+                            ]);
+
+                            $this->updateRouterStatus($router, [
+                                'handshake_only' => true,
                                 'vpn_status' => $router->vpn_status,
                                 'vpn_last_handshake' => $router->vpn_last_handshake,
-                            ]);
-                        } else {
-                            // VPN claims active but no metrics - could be VM/Telegraf lag
-                            $failedRouters[] = $routerId;
-                            $router->update(['last_checked' => now()]);
-
-                            Log::debug('No VM metrics returned; preserving connectivity status', [
-                                'router_id' => $router->id,
-                                'current_status' => $router->status,
-                                'vpn_status' => $router->vpn_status,
-                                'last_seen' => $router->last_seen,
-                            ]);
+                            ], 'online');
+                            $successfulRouters[] = $router->id;
+                            continue;
                         }
+
+                        // No metrics and no recent handshake - mark offline
+                        $failedRouters[] = $routerId;
+                        $router->update(['last_checked' => now()]);
+
+                        Log::info('Router has no metrics and inactive VPN - marking offline', [
+                            'router_id' => $router->id,
+                            'vpn_status' => $router->vpn_status,
+                            'vpn_last_handshake' => $router->vpn_last_handshake,
+                        ]);
                         continue;
                     }
                 }

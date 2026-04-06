@@ -189,9 +189,23 @@ class PppoeSessionController extends Controller
                 'usernames_found' => count($usernames),
             ]);
 
-            // If no radacct data, we used to fallback to live fetch from routers via SSH.
-            // But user explicitly said "this is a bad design".
-            // So we will return empty list or data from VM if usernames are known (active users).
+            // If no radacct data, fallback to fetching live sessions from routers via SSH
+            if ($data->isEmpty()) {
+                Log::info('No radacct data found, fetching live sessions from routers via SSH');
+                
+                $liveSessions = $this->fetchLiveSessionsFromRouters((string) $tenantId);
+                
+                if ($liveSessions->isNotEmpty()) {
+                    $data = $liveSessions;
+                    $source = 'router_ssh';
+                    
+                    Log::info('Live sessions fetched from routers', [
+                        'session_count' => $data->count(),
+                    ]);
+                }
+            }
+
+            // Final fallback: Try VictoriaMetrics for active users
             if ($data->isEmpty()) {
                 Log::info('No radacct data found, trying VM fallback with active users');
                 
@@ -555,5 +569,239 @@ class PppoeSessionController extends Controller
             : $value * 1000 * 1000;
 
         return (int) floor($bitsPerSecond / 8);
+    }
+
+    /**
+     * Fetch live PPPoE sessions from all tenant routers via SSH.
+     * This is a fallback when RADIUS accounting data is not available.
+     */
+    private function fetchLiveSessionsFromRouters(string $tenantId): \Illuminate\Support\Collection
+    {
+        $sessions = collect();
+        
+        try {
+            // Get all routers for this tenant
+            $routerMaps = RouterTenantMap::query()
+                ->where('tenant_id', $tenantId)
+                ->get();
+            
+            if ($routerMaps->isEmpty()) {
+                Log::warning('No routers found for tenant', ['tenant_id' => $tenantId]);
+                return $sessions;
+            }
+            
+            // Get all PPPoE users for this tenant to match with active sessions
+            $pppoeUsers = PppoeUser::query()
+                ->with(['package:id,name,download_speed,upload_speed,speed', 'router:id,name'])
+                ->get()
+                ->keyBy('username');
+            
+            foreach ($routerMaps as $map) {
+                $router = Router::find($map->router_id);
+                if (!$router) {
+                    continue;
+                }
+                
+                try {
+                    $ssh = new SshExecutor($router, 15);
+                    if (!$ssh->connect()) {
+                        Log::warning('SSH connection failed to router', [
+                            'router_id' => $router->id,
+                            'router_name' => $router->name,
+                        ]);
+                        continue;
+                    }
+                    
+                    // Get active PPPoE sessions from router
+                    $output = $ssh->exec('/ppp active print detail without-paging');
+                    $ssh->disconnect();
+                    
+                    if (empty($output)) {
+                        continue;
+                    }
+                    
+                    // Parse the output
+                    $routerSessions = $this->parsePppActiveOutput($output, $router, $pppoeUsers);
+                    $sessions = $sessions->merge($routerSessions);
+                    
+                } catch (\Exception $e) {
+                    Log::warning('Failed to fetch sessions from router', [
+                        'router_id' => $router->id,
+                        'router_name' => $router->name,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+            
+            Log::info('SSH session fetch complete', [
+                'tenant_id' => $tenantId,
+                'total_sessions_found' => $sessions->count(),
+                'routers_checked' => $routerMaps->count(),
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('Error in fetchLiveSessionsFromRouters', [
+                'tenant_id' => $tenantId,
+                'error' => $e->getMessage(),
+            ]);
+        }
+        
+        return $sessions;
+    }
+    
+    /**
+     * Parse the output of /ppp active print detail from MikroTik.
+     */
+    private function parsePppActiveOutput(string $output, Router $router, \Illuminate\Support\Collection $pppoeUsers): array
+    {
+        $sessions = [];
+        $lines = explode("\n", $output);
+        
+        // MikroTik output format:
+        // Flags: R - RADIUS
+        // 0 R name="james.saro" service=pppoe caller-id="52:54:00:A6:90:DB" address=100.64.0.255 uptime=2m38s ...
+        
+        foreach ($lines as $line) {
+            $line = trim($line);
+            
+            // Skip empty lines, headers, and flag lines
+            if (empty($line) || str_starts_with($line, 'Flags:') || str_starts_with($line, '#')) {
+                continue;
+            }
+            
+            // Check if line starts with a session number (e.g., "0 R name=" or "1 name=")
+            if (!preg_match('/^\d+\s+/', $line)) {
+                continue;
+            }
+            
+            // Parse session data using regex
+            $session = $this->parsePppActiveLine($line, $router, $pppoeUsers);
+            if ($session) {
+                $sessions[] = $session;
+            }
+        }
+        
+        return $sessions;
+    }
+    
+    /**
+     * Parse a single line from /ppp active print detail output.
+     */
+    private function parsePppActiveLine(string $line, Router $router, \Illuminate\Support\Collection $pppoeUsers): ?array
+    {
+        try {
+            // Extract name (username)
+            $username = $this->extractValue($line, 'name="([^"]+)"');
+            if (!$username) {
+                return null;
+            }
+            
+            // Check if this user belongs to this tenant
+            $pppoeUser = $pppoeUsers->get($username);
+            if (!$pppoeUser) {
+                // User not found in this tenant's PPPoE users, skip
+                return null;
+            }
+            
+            // Extract other fields
+            $service = $this->extractValue($line, 'service=([^\s]+)');
+            $callerId = $this->extractValue($line, 'caller-id="([^"]+)"');
+            $address = $this->extractValue($line, 'address=([^\s]+)');
+            $uptimeStr = $this->extractValue($line, 'uptime=([^\s]+)');
+            $sessionId = $this->extractValue($line, 'session-id=([^\s]+)');
+            
+            // Parse uptime to seconds
+            $uptimeSeconds = $this->parseUptime($uptimeStr);
+            
+            $pkg = $pppoeUser->package;
+            
+            return [
+                'id' => $sessionId ?: $username,
+                'acct_session_id' => $sessionId,
+                'acct_unique_id' => null,
+                'username' => $username,
+                'type' => $service ?: 'pppoe',
+                'router_id' => (string) $router->id,
+                'router_name' => $router->name,
+                'user' => [
+                    'phone' => $pppoeUser->customer_phone ?? null,
+                ],
+                'framed_ip' => $address,
+                'ip_address' => $address,
+                'calling_station_id' => $callerId,
+                'mac_address' => $callerId,
+                'nas_ip_address' => $router->ip_address ?? $router->vpn_ip,
+                'profile' => [
+                    'id' => $pkg?->id ? (string) $pkg->id : null,
+                    'name' => $pkg?->name ?? 'N/A',
+                    'speed' => $pkg?->speed ?? null,
+                    'max_download' => $this->parseSpeedToBytesPerSecond($pkg?->download_speed),
+                    'max_upload' => $this->parseSpeedToBytesPerSecond($pkg?->upload_speed),
+                ],
+                'start_time' => now()->subSeconds($uptimeSeconds)->toDateTimeString(),
+                'connected_at' => now()->subSeconds($uptimeSeconds)->toDateTimeString(),
+                'duration' => $uptimeSeconds,
+                'uptime' => $uptimeSeconds,
+                'input_octets' => 0,  // Not available from router active list
+                'output_octets' => 0, // Not available from router active list
+                'download_speed' => 0, // Would need separate stats query
+                'upload_speed' => 0,   // Would need separate stats query
+                'download_rate' => 0,
+                'upload_rate' => 0,
+                '_source' => 'router_ssh',
+            ];
+            
+        } catch (\Exception $e) {
+            Log::warning('Failed to parse PPP active line', [
+                'line' => $line,
+                'error' => $e->getMessage(),
+            ]);
+            return null;
+        }
+    }
+    
+    /**
+     * Extract a value from a line using regex pattern.
+     */
+    private function extractValue(string $line, string $pattern): ?string
+    {
+        if (preg_match('/' . $pattern . '/', $line, $matches)) {
+            return $matches[1] ?? null;
+        }
+        return null;
+    }
+    
+    /**
+     * Parse MikroTik uptime string (e.g., "2m38s", "1h30m", "3d12h") to seconds.
+     */
+    private function parseUptime(?string $uptime): int
+    {
+        if (!$uptime) {
+            return 0;
+        }
+        
+        $seconds = 0;
+        
+        // Match days
+        if (preg_match('/(\d+)d/', $uptime, $m)) {
+            $seconds += (int) $m[1] * 86400;
+        }
+        
+        // Match hours
+        if (preg_match('/(\d+)h/', $uptime, $m)) {
+            $seconds += (int) $m[1] * 3600;
+        }
+        
+        // Match minutes
+        if (preg_match('/(\d+)m/', $uptime, $m)) {
+            $seconds += (int) $m[1] * 60;
+        }
+        
+        // Match seconds
+        if (preg_match('/(\d+)s/', $uptime, $m)) {
+            $seconds += (int) $m[1];
+        }
+        
+        return $seconds;
     }
 }

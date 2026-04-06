@@ -28,6 +28,7 @@ class ProcessWireGuardWebhookJob implements ShouldQueue
     public array $eventData;
     public $tries = 3;
     public $timeout = 30;
+    private array $provisioningStatuses = ['pending', 'deploying', 'provisioning', 'verifying'];
 
     public function __construct(array $eventData)
     {
@@ -112,12 +113,16 @@ class ProcessWireGuardWebhookJob implements ShouldQueue
         $previousStatus = $router->status;
         $previousVpnStatus = $router->vpn_status;
 
+        $now = now();
+        $inProvisioning = in_array($router->status, $this->provisioningStatuses, true);
+
         $router->update([
-            'status' => 'online',
-            'vpn_status' => 'active',
+            'status' => $inProvisioning ? ($router->status === 'pending' ? 'provisioning' : $router->status) : 'online',
+            'provisioning_stage' => $inProvisioning ? ($router->provisioning_stage ?? 'handshake_detected') : $router->provisioning_stage,
+            'vpn_status' => $inProvisioning ? $router->vpn_status : 'active',
             'vpn_last_handshake' => $handshakeAt,
-            'last_seen' => now(),
-            'last_checked' => now(),
+            'last_seen' => $now,
+            'last_checked' => $now,
         ]);
 
         // Broadcast status update immediately
@@ -154,10 +159,12 @@ class ProcessWireGuardWebhookJob implements ShouldQueue
 
         $previousStatus = $router->status;
         $previousVpnStatus = $router->vpn_status;
+        $inProvisioning = in_array($router->status, $this->provisioningStatuses, true);
 
-        // Mark router offline
+        // Mark router offline only if operational
         $router->update([
-            'status' => 'offline',
+            'status' => $inProvisioning ? $router->status : 'offline',
+            'provisioning_stage' => $inProvisioning ? $router->provisioning_stage : $router->provisioning_stage,
             'vpn_status' => 'inactive',
             'vpn_last_handshake' => null,
             'last_checked' => now(),
@@ -208,13 +215,16 @@ class ProcessWireGuardWebhookJob implements ShouldQueue
             }
 
             $previousStatus = $router->status;
+            $inProvisioning = in_array($router->status, $this->provisioningStatuses, true);
+            $now = now();
             
             $router->update([
-                'status' => 'online',
-                'vpn_status' => 'active',
+                'status' => $inProvisioning ? ($router->status === 'pending' ? 'provisioning' : $router->status) : 'online',
+                'provisioning_stage' => $inProvisioning ? ($router->provisioning_stage ?? 'handshake_detected') : $router->provisioning_stage,
+                'vpn_status' => $inProvisioning ? $router->vpn_status : 'active',
                 'vpn_last_handshake' => $handshakeAt,
-                'last_seen' => now(),
-                'last_checked' => now(),
+                'last_seen' => $now,
+                'last_checked' => $now,
             ]);
 
             $updatedRouters[$router->id] = [

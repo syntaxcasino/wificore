@@ -6,6 +6,7 @@ use App\Models\RouterService;
 use App\Services\RouterResourceManager;
 use Illuminate\Support\Facades\Log;
 use App\Models\TenantIpPool;
+use App\Support\SubnetHelper;
 
 /**
  * Zero-Config Hybrid (Hotspot + PPPoE) Configuration Generator
@@ -70,7 +71,7 @@ class ZeroConfigHybridGenerator
                 'bridge_name'       => $advancedConfig['bridge_name'] ?? null,
                 'radius_server'     => config('radius.server_ip', config('services.radius.host', 'wificore-freeradius')),
                 'radius_secret'     => config('radius.secret', 'testing123'),
-                'management_subnet' => config('vpn.subnet.base', '10.0.0.0/8'),
+                'management_subnet' => SubnetHelper::normalize(config('vpn.subnet.base', '10.0.0.0/8')),
                 'tenant_id'         => $router->tenant_id,
                 'is_low_end'        => $scriptSettings['tier'] === 'low_end',
             ]);
@@ -97,7 +98,7 @@ class ZeroConfigHybridGenerator
             'portal_host'       => $portalHost,
             'radius_server'     => config('radius.server_ip', config('services.radius.host', 'wificore-freeradius')),
             'radius_secret'     => config('radius.secret', 'testing123'),
-            'management_subnet' => config('vpn.subnet.base', '10.0.0.0/8'),
+            'management_subnet' => SubnetHelper::normalize(config('vpn.subnet.base', '10.0.0.0/8')),
             'tenant_id'         => $router->tenant_id,
             'is_low_end'        => $scriptSettings['tier'] === 'low_end',
         ]);
@@ -511,7 +512,7 @@ class ZeroConfigHybridGenerator
     private function generateManagementInputRules(array $params): array
     {
         $id    = $params['id'];
-        $mgmt  = $params['management_subnet'] ?? '10.0.0.0/8';
+        $mgmt  = SubnetHelper::normalize($params['management_subnet'] ?? '10.0.0.0/8');
         $mport = '22,8291,8728,8729';
         $rs    = $params['radius_server'] ?? '10.8.0.1';
 

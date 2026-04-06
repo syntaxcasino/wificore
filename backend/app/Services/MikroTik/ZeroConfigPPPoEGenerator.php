@@ -6,6 +6,7 @@ use App\Models\RouterService;
 use App\Services\RouterResourceManager;
 use App\Models\Router;
 use App\Models\TenantIpPool;
+use App\Support\SubnetHelper;
 
 /**
  * ISP-Grade Zero-Config PPPoE Generator
@@ -73,10 +74,16 @@ class ZeroConfigPPPoEGenerator
             $resolvedRadiusServer = config('vpn.server_ip', '10.8.0.1');
         }
 
+        $radiusSrcAddress = $router->vpn_ip ?: null;
+        if (is_string($radiusSrcAddress) && str_contains($radiusSrcAddress, '/')) {
+            $radiusSrcAddress = explode('/', $radiusSrcAddress)[0];
+        }
+
         return $this->buildConfiguration([
             'router_id'     => (string) $router->id,
             'tenant_id'     => (string) $router->tenant_id,
             'router_model'  => $router->model ?? '',
+            'router_name'   => $router->name ?? '',
             'interfaces'    => $interfaces,
             'vlan_required' => (bool) $service->vlan_required,
             'vlan_id'       => $service->vlan_id,
@@ -88,7 +95,8 @@ class ZeroConfigPPPoEGenerator
             'dns_secondary' => $pool->dns_secondary ?? '8.8.4.4',
             'radius_server' => $resolvedRadiusServer,
             'radius_secret' => config('radius.secret', 'testing123'),
-            'management_subnet' => config('vpn.subnet.base', '10.0.0.0/8'),
+            'management_subnet' => SubnetHelper::normalize(config('vpn.subnet.base', '10.0.0.0/8')),
+            'radius_src_address' => $radiusSrcAddress,
         ]);
     }
 
@@ -141,6 +149,11 @@ class ZeroConfigPPPoEGenerator
         ];
         
         $profileName = $isLowEnd ? 'SLOW' : 'FAST';
+        $routerName = $p['router_name'] ?? '';
+        $sanitizedRouterName = preg_replace('/[^A-Za-z0-9_-]+/', '-', trim($routerName));
+        $nasIdentifier = $p['nas_identifier']
+            ?? ($sanitizedRouterName !== '' ? $sanitizedRouterName : ('wificore-' . $id));
+        $radiusSrcAddress = $p['radius_src_address'] ?? null;
         $s = [];
 
         $s[] = "/log info \"PPPoE-$id-START [$profileName profile for: $deviceModel]\"";
@@ -148,14 +161,23 @@ class ZeroConfigPPPoEGenerator
         // RADIUS
         $s[] = ':do { /radius remove [/radius find service=ppp comment~"WiFiCore PPPoE"]; } on-error={}';
         $s[] = ":do { /radius add service=ppp address={$rs} secret={$rsec} authentication-port=1812 accounting-port=1813 timeout=3s comment=\"WiFiCore PPPoE ({$id})\"; } on-error={ :error \"PPPoE: RADIUS configure failed\" }";
-        $s[] = "/ppp aaa set use-radius=yes accounting=yes interim-update=5m";
+        if ($radiusSrcAddress) {
+            $s[] = ":do { /radius set [/radius find service=ppp] src-address={$radiusSrcAddress}; } on-error={ /log info \"PPPoE-$id: WARN - Failed to set RADIUS src-address\" }";
+        }
+        $s[] = ":do { /radius set [/radius find service=ppp] nas-identifier=\"{$nasIdentifier}\"; } on-error={ /log info \"PPPoE-$id: WARN - Failed to set RADIUS NAS-Identifier\" }";
+        $s[] = "/ppp aaa set use-radius=yes accounting=yes interim-update=5m use-circuit-id-in-nas-port-id=yes";
+        $s[] = ":do { /radius incoming set accept=yes port=3799; } on-error={ /log info \"PPPoE-$id: WARN - Failed to enable RADIUS incoming\" }";
 
         // PPP AAA and Accounting (ensure session visibility)
-        $s[] = "/ppp aaa set use-radius=yes accounting=yes interim-update=5m";
+        $s[] = "/ppp aaa set use-radius=yes accounting=yes interim-update=5m use-circuit-id-in-nas-port-id=yes";
         
-        // Enable PPP session logging for visibility
-        $s[] = ":do { /system logging add action=memory topics=ppp } on-error={}";
-        $s[] = ":do { /system logging add action=memory topics=pppoe } on-error={}";
+        // Enable PPP session logging for visibility (deduplicated by comment)
+        $pppLogComment = "PPPoE-$id-PPP-LOG";
+        $pppoeLogComment = "PPPoE-$id-PPPOE-LOG";
+        $s[] = ":do { /system logging remove [/system logging find comment=\"$pppLogComment\"]; } on-error={}";
+        $s[] = ":do { /system logging add action=memory topics=ppp comment=\"$pppLogComment\" } on-error={}";
+        $s[] = ":do { /system logging remove [/system logging find comment=\"$pppoeLogComment\"]; } on-error={}";
+        $s[] = ":do { /system logging add action=memory topics=pppoe comment=\"$pppoeLogComment\" } on-error={}";
         
         // Ensure connection tracking is enabled for proper session handling
         $s[] = "/ip firewall connection tracking set enabled=yes tcp-established-timeout=1h udp-timeout=30s icmp-timeout=30s";
@@ -167,6 +189,9 @@ class ZeroConfigPPPoEGenerator
         $s[] = ":do { /interface list add name=$wan } on-error={} ";
         $s[] = ":do { /interface list add name=$pl } on-error={} ";
         $s[] = ":do { /interface list add name=$pal } on-error={} ";
+        // Clean up stale list members before re-adding current interfaces
+        $s[] = ":do { /interface list member remove [/interface list member find list=$wan interface=ether1]; } on-error={} ";
+        $s[] = ":do { /interface list member remove [/interface list member find list=$pl]; } on-error={} ";
         $s[] = ":do { /interface list member add list=$wan interface=ether1 } on-error={} ";
 
         // WAN baseline (optional) - DHCP client + disable running-check on ports
@@ -180,6 +205,16 @@ class ZeroConfigPPPoEGenerator
         $s[] = ":do { /ip service enable api-ssl } on-error={ /log info \"PPPoE-$id: INFO - api-ssl already enabled or not available\" }";
         $s[] = ":do { /ip service set api-ssl address=$mgmt } on-error={ /log info \"PPPoE-$id: WARN - Failed to set api-ssl address\" }";
         $s[] = "/log info \"PPPoE-$id: REST API (api-ssl) enabled on port 8729\"";
+
+        // SERVICE HARDENING - disable unused services, restrict management access
+        $s[] = ":do { /ip service set ssh address=$mgmt } on-error={ /log info \"PPPoE-$id: WARN - Failed to set SSH address\" }";
+        $s[] = ":do { /ip service set winbox address=$mgmt } on-error={ /log info \"PPPoE-$id: WARN - Failed to set Winbox address\" }";
+        $s[] = ":do { /ip service disable telnet } on-error={ /log info \"PPPoE-$id: INFO - Telnet already disabled\" }";
+        $s[] = ":do { /ip service disable ftp } on-error={ /log info \"PPPoE-$id: INFO - FTP already disabled\" }";
+        $s[] = ":do { /ip service disable www } on-error={ /log info \"PPPoE-$id: INFO - WWW already disabled\" }";
+        $s[] = ":do { /ip service disable www-ssl } on-error={ /log info \"PPPoE-$id: INFO - WWW-SSL already disabled\" }";
+        $s[] = ":do { /ip service disable api } on-error={ /log info \"PPPoE-$id: INFO - API already disabled\" }";
+        $s[] = ":do { /ip service disable romon } on-error={ /log info \"PPPoE-$id: INFO - ROMON already disabled\" }";
 
         // PPP PROFILE — add minimal then set in short chunks
         $s[] = ":do { /ppp profile add name=\"$prof\" comment=\"PPPoE-$id\" } on-error={}";
@@ -224,7 +259,8 @@ class ZeroConfigPPPoEGenerator
         $s[] = ":do { /interface pppoe-server server set [/interface pppoe-server server find service-name=\"$svc\"] authentication=chap,mschap2 } on-error={ /log info \"PPPoE-$id: WARN - Failed to set PPPoE auth\" }";
         $s[] = ":do { /interface pppoe-server server set [/interface pppoe-server server find service-name=\"$svc\"] one-session-per-host=yes keepalive-timeout=30 } on-error={ /log info \"PPPoE-$id: WARN - Failed to set PPPoE session params\" }";
         $s[] = ":do { /interface pppoe-server server set [/interface pppoe-server server find service-name=\"$svc\"] max-mtu=1480 max-mru=1480 } on-error={ /log info \"PPPoE-$id: WARN - Failed to set PPPoE MTU/MRU\" }";
-        $s[] = ":do { /interface list member add list=$pl interface=\"$bridge\" } on-error={ /log info \"PPPoE-$id: WARN - Failed to add bridge to list $pl\" }";
+        $s[] = ":do { /interface list member remove [/interface list member find list=$pl]; } on-error={}";
+        $s[] = ":do { /interface list member add list=$pl interface=\"$bridge\" comment=\"PPPoE-$id-PL\" } on-error={ /log info \"PPPoE-$id: WARN - Failed to add bridge to list $pl\" }";
 
         // FIREWALL — clean up ALL old rules including pp-wan-est and PPPoE patterns
         // Use multiple patterns to ensure complete cleanup
@@ -346,13 +382,27 @@ class ZeroConfigPPPoEGenerator
         } else {
             // FULL security for high-end devices
             // BCP 38: Drop private RFC1918 sources from WAN
-            $rules[] = "/ip firewall filter add chain=input in-interface-list=$wan src-address=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,100.64.0.0/10 action=drop comment=\"SEC-$id-BCP38-WAN\"";
+            $rfc1918Sources = ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '100.64.0.0/10'];
+            foreach ($rfc1918Sources as $cidr) {
+                $rules[] = "/ip firewall filter add chain=input in-interface-list=$wan src-address={$cidr} action=drop comment=\"SEC-$id-BCP38-WAN\"";
+            }
             
             // BCP 38: Drop spoofed traffic from PPPoE clients (must use assigned CGNAT range)
             $rules[] = "/ip firewall filter add chain=forward in-interface-list=$pal src-address=!100.64.0.0/10 action=drop comment=\"SEC-$id-BCP38-SPOOF\"";
             
             // BCP 38: Drop martian sources
-            $rules[] = "/ip firewall filter add chain=forward src-address=0.0.0.0/8,127.0.0.0/8,169.254.0.0/16,192.0.2.0/24,198.51.100.0/24,203.0.113.0/24,240.0.0.0/4 action=drop comment=\"SEC-$id-BCP38-MARTIAN\"";
+            $martianSources = [
+                '0.0.0.0/8',
+                '127.0.0.0/8',
+                '169.254.0.0/16',
+                '192.0.2.0/24',
+                '198.51.100.0/24',
+                '203.0.113.0/24',
+                '240.0.0.0/4',
+            ];
+            foreach ($martianSources as $cidr) {
+                $rules[] = "/ip firewall filter add chain=forward src-address={$cidr} action=drop comment=\"SEC-$id-BCP38-MARTIAN\"";
+            }
             
             // DDoS: SYN flood protection
             $rules[] = "/ip firewall filter add chain=input protocol=tcp connection-state=new limit=50,5 action=drop comment=\"SEC-$id-DDoS-SYN\"";
