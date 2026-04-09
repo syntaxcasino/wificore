@@ -79,24 +79,30 @@ class ZeroConfigPPPoEGenerator
             $radiusSrcAddress = explode('/', $radiusSrcAddress)[0];
         }
 
+        // WAN interface: use service wan_interface if set, otherwise router wan_interface, else ether1
+        $wanInterface = $service->wan_interface
+            ?? $router->wan_interface
+            ?? 'ether1';
+
         return $this->buildConfiguration([
-            'router_id'     => (string) $router->id,
-            'tenant_id'     => (string) $router->tenant_id,
-            'router_model'  => $router->model ?? '',
-            'router_name'   => $router->name ?? '',
-            'interfaces'    => $interfaces,
-            'vlan_required' => (bool) $service->vlan_required,
-            'vlan_id'       => $service->vlan_id,
-            'network_cidr'  => $pool->network_cidr,
-            'gateway_ip'    => $this->getSafeGatewayIp($pool->network_cidr, $pool->gateway_ip),
-            'range_start'   => $pool->range_start,
-            'range_end'     => $pool->range_end,
-            'dns_primary'   => $pool->dns_primary ?? '8.8.8.8',
-            'dns_secondary' => $pool->dns_secondary ?? '8.8.4.4',
-            'radius_server' => $resolvedRadiusServer,
-            'radius_secret' => config('radius.secret', 'testing123'),
+            'router_id'         => (string) $router->id,
+            'tenant_id'         => (string) $router->tenant_id,
+            'router_model'      => $router->model ?? '',
+            'router_name'       => $router->name ?? '',
+            'interfaces'        => $interfaces,
+            'vlan_required'     => (bool) $service->vlan_required,
+            'vlan_id'           => $service->vlan_id,
+            'network_cidr'      => $pool->network_cidr,
+            'gateway_ip'        => $this->getSafeGatewayIp($pool->network_cidr, $pool->gateway_ip),
+            'range_start'       => $pool->range_start,
+            'range_end'         => $pool->range_end,
+            'dns_primary'       => $pool->dns_primary ?? '8.8.8.8',
+            'dns_secondary'     => $pool->dns_secondary ?? '8.8.4.4',
+            'radius_server'     => $resolvedRadiusServer,
+            'radius_secret'     => config('radius.secret', 'testing123'),
             'management_subnet' => SubnetHelper::normalize(config('vpn.subnet.base', '10.0.0.0/8')),
             'radius_src_address' => $radiusSrcAddress,
+            'wan_interface'     => $wanInterface,
         ]);
     }
 
@@ -192,13 +198,14 @@ class ZeroConfigPPPoEGenerator
         $s[] = ":do { /interface list add name=$pl } on-error={} ";
         $s[] = ":do { /interface list add name=$pal } on-error={} ";
         // Clean up stale list members before re-adding current interfaces
-        $s[] = ":do { /interface list member remove [/interface list member find list=$wan interface=ether1]; } on-error={} ";
+        $wanIface = $p['wan_interface'] ?? 'ether1';
+        $s[] = ":do { /interface list member remove [/interface list member find list=$wan interface={$wanIface}]; } on-error={} ";
         $s[] = ":do { /interface list member remove [/interface list member find list=$pl]; } on-error={} ";
-        $s[] = ":do { /interface list member add list=$wan interface=ether1 } on-error={} ";
+        $s[] = ":do { /interface list member add list=$wan interface={$wanIface} } on-error={} ";
 
-        // WAN baseline (optional) - DHCP client + disable running-check on ports
-        $s[] = ":do { /ip dhcp-client add interface=ether1 disabled=no } on-error={ /ip dhcp-client set [/ip dhcp-client find interface=ether1] disabled=no; }";
-        $runningCheckInterfaces = array_values(array_unique(array_merge(['ether1'], $p['interfaces'])));
+        // WAN baseline (optional) - DHCP client on WAN interface + disable running-check
+        $s[] = ":do { /ip dhcp-client add interface={$wanIface} disabled=no } on-error={ /ip dhcp-client set [/ip dhcp-client find interface={$wanIface}] disabled=no; }";
+        $runningCheckInterfaces = array_values(array_unique(array_merge([$wanIface], $p['interfaces'])));
         foreach ($runningCheckInterfaces as $iface) {
             $s[] = ":do { /interface ethernet set [find name=\"{$iface}\"] disable-running-check=no } on-error={} ";
         }
@@ -234,10 +241,20 @@ class ZeroConfigPPPoEGenerator
         }
         $s[] = ":do { /interface bridge set [/interface bridge find name=\"$bridge\"] protocol-mode=rstp } on-error={ /log info \"PPPoE-$id: WARN - Failed to set bridge protocol\" }";
 
-        // Add ALL interfaces to bridge (silent continuation with logging)
+        // Add ALL interfaces to bridge — skip WireGuard/VPN interfaces (adding wg to bridge kills VPN)
+        $vpnPatterns = ['wireguard', 'wg', 'vpn'];
         $interfaceCount = count($p['interfaces']);
         $currentInterface = 0;
         foreach ($p['interfaces'] as $iface) {
+            $ifaceLower = strtolower($iface);
+            $isVpn = false;
+            foreach ($vpnPatterns as $pat) {
+                if (str_contains($ifaceLower, $pat)) { $isVpn = true; break; }
+            }
+            if ($isVpn) {
+                $s[] = "/log info \"PPPoE-$id: SKIP VPN interface $iface (not added to bridge)\"";
+                continue;
+            }
             $access = $iface;
             if ($p['vlan_required'] && $p['vlan_id']) {
                 $access = "vlan{$p['vlan_id']}-$iface";
@@ -245,7 +262,6 @@ class ZeroConfigPPPoEGenerator
                 $s[] = "/interface vlan add name=\"$access\" vlan-id={$p['vlan_id']} interface=\"$iface\" comment=\"PPPoE-$id\"";
             }
             $s[] = ":do { /interface bridge port add bridge=\"$bridge\" interface=\"$access\" } on-error={ /log info \"PPPoE-$id: WARN - Failed to add interface $access to bridge\" }";
-            // Add delay after every 2 interfaces on low-end devices only
             $currentInterface++;
             if ($isLowEnd && $currentInterface % 2 === 0 && $currentInterface < $interfaceCount) {
                 $s[] = ":delay {$delays['interface_batch']}";
@@ -270,8 +286,8 @@ class ZeroConfigPPPoEGenerator
         $s[] = ":do { /ip firewall filter remove [/ip firewall filter find comment~\"pp-wan-est-$id\"]; } on-error={}";
         $s[] = ":delay 100ms"; // Brief delay to ensure removal completes before add
         
-        // SECURITY HARDENING - BCP 38 and DDoS protection (new)
-        $s = array_merge($s, $this->generateSecurityHardeningRules($p));
+        // SECURITY HARDENING - BCP 38 and DDoS protection
+        $s = array_merge($s, $this->generateSecurityHardeningRules($p + ['is_low_end' => $isLowEnd]));
         
         if ($isLowEnd) {
             // MINIMAL FIREWALL for hAP lite (low memory/CPU) - ~7 rules
@@ -319,22 +335,24 @@ class ZeroConfigPPPoEGenerator
             $s[] = "/ip firewall filter add chain=forward in-interface=\"$bridge\" action=drop comment=\"PPPoE-$id-BLOCK-UNAUTH\"";
         }
         
-        $s[] = ":delay {$delays['between_sections']}"; // Final breathing room before completion
+        $s[] = ":delay {$delays['between_sections']}";
 
-        // GLOBAL DEFAULT DROP (at end - less critical for order)
+        // NAT — srcnat masquerade: PPPoE users exit via WAN (out-interface-list only, no in-interface on srcnat)
+        $s[] = ":do { /ip firewall nat remove [/ip firewall nat find comment=\"PPPoE-$id\"]; } on-error={}";
+        $s[] = "/ip firewall nat add chain=srcnat out-interface-list=$wan action=masquerade comment=\"PPPoE-$id\"";
+
+        // RADIUS CoA INPUT accept (port 3799) — must be before GLOBAL-DROP
+        $s[] = ":do { /ip firewall filter remove [/ip firewall filter find comment~\"PPPoE-$id-COA\"]; } on-error={}";
+        $s[] = "/ip firewall filter add chain=input protocol=udp dst-port=3799 src-address={$rs} action=accept comment=\"PPPoE-$id-COA\"";
+
+        // GLOBAL DEFAULT DROP — appended last so all service-specific accept rules above it take effect
+        // On re-deploy, old GLOBAL-DROP rules are removed first then re-added at the end
         $s[] = ":do { /ip firewall filter remove [/ip firewall filter find comment~\"GLOBAL-DEFAULT-DROP-\"]; } on-error={}";
+        $s[] = "/ip firewall filter add chain=input connection-state=established,related action=accept comment=\"GLOBAL-EST-IN\"";
         $s[] = "/ip firewall filter add chain=input action=drop comment=\"GLOBAL-DEFAULT-DROP-IN\"";
         $s[] = "/ip firewall filter add chain=forward action=drop comment=\"GLOBAL-DEFAULT-DROP-FWD\"";
 
-        // NAT
-        $s[] = ":do { /ip firewall nat remove [/ip firewall nat find comment=\"PPPoE-$id\"]; } on-error={}";
-        $s[] = "/ip firewall nat add chain=srcnat in-interface-list=$pal out-interface-list=$wan action=masquerade comment=\"PPPoE-$id\"";
-
-        // CONNECTION TRACKING
-        $s[] = "/ip firewall connection tracking set tcp-established-timeout=1h udp-timeout=30s";
-        
-        $s[] = ":delay {$delays['final']}"; // Final breathing room before completion
-
+        $s[] = ":delay {$delays['final']}";
         $s[] = "/log info \"PPPoE-$id-DONE [$profileName profile]\"";
 
         return implode("\n", $s);
@@ -357,71 +375,51 @@ class ZeroConfigPPPoEGenerator
      */
     private function generateSecurityHardeningRules(array $p): array
     {
-        $id     = $p['id'];
-        $pal    = $p['pppoe_active_list'];
-        $wan    = $p['wan_list'];
-        $bridge = "pppoe-br-$id";
+        $id       = $p['id'];
+        $pal      = $p['pppoe_active_list'];
+        $wan      = $p['wan_list'];
         $isLowEnd = $p['is_low_end'] ?? false;
-        
+        // Actual PPPoE client pool CIDR — used for BCP38 anti-spoof (not CGNAT)
+        $poolCidr = $p['network_cidr'] ?? '192.168.0.0/24';
+        $mgmt     = $p['management_subnet'] ?? '10.0.0.0/8';
+
         $rules = [
             "# SECURITY HARDENING - BCP 38 Anti-Spoofing & DDoS Protection",
             ":do { /ip firewall filter remove [/ip firewall filter find comment~\"SEC-$id\"]; } on-error={}",
         ];
-        
+
         if ($isLowEnd) {
-            // MINIMAL security for low-end devices - essential rules only
-            // BCP 38: Drop spoofed traffic from PPPoE clients
-            $rules[] = "/ip firewall filter add chain=forward in-interface-list=$pal src-address=!100.64.0.0/10 action=drop comment=\"SEC-$id-BCP38-SPOOF\"";
-            
-            // DDoS: SYN flood protection (rate limit new TCP connections)
-            $rules[] = "/ip firewall filter add chain=input protocol=tcp connection-state=new limit=50,5 action=drop comment=\"SEC-$id-DDoS-SYN\"";
-            
-            // DDoS: Connection limit per source IP (prevent exhaustion)
+            // MINIMAL — 4 rules only; low-memory devices cannot afford more
+            // BCP38: clients must originate from pool subnet only
+            $rules[] = "/ip firewall filter add chain=forward in-interface-list=$pal src-address=!{$poolCidr} action=drop comment=\"SEC-$id-BCP38-SPOOF\"";
+            // DDoS: SYN flood — RouterOS limit syntax: rate/interval,burst
+            $rules[] = "/ip firewall filter add chain=input protocol=tcp connection-state=new limit=50/s,5 action=drop comment=\"SEC-$id-DDoS-SYN\"";
+            // DDoS: ICMP flood
+            $rules[] = "/ip firewall filter add chain=input protocol=icmp connection-state=new limit=20/s,5 action=drop comment=\"SEC-$id-DDoS-ICMP\"";
+            // DDoS: per-client connection cap (32-bit bucket)
             $rules[] = "/ip firewall filter add chain=forward in-interface-list=$pal connection-state=new connection-limit=100,32 action=drop comment=\"SEC-$id-DDoS-CONN\"";
-            
-            // DDoS: ICMP flood protection
-            $rules[] = "/ip firewall filter add chain=input protocol=icmp connection-state=new limit=20,5 action=drop comment=\"SEC-$id-DDoS-ICMP\"";
         } else {
-            // FULL security for high-end devices
-            // BCP 38: Drop private RFC1918 sources from WAN
-            $rfc1918Sources = ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '100.64.0.0/10'];
-            foreach ($rfc1918Sources as $cidr) {
+            // FULL — high-end devices
+            // BCP38: drop RFC1918/CGNAT ingress from WAN — exclude management subnet (WireGuard uses 10.x)
+            $wanSpoof = ['172.16.0.0/12', '192.168.0.0/16', '100.64.0.0/10', '0.0.0.0/8'];
+            foreach ($wanSpoof as $cidr) {
                 $rules[] = "/ip firewall filter add chain=input in-interface-list=$wan src-address={$cidr} action=drop comment=\"SEC-$id-BCP38-WAN\"";
             }
-            
-            // BCP 38: Drop spoofed traffic from PPPoE clients (must use assigned CGNAT range)
-            $rules[] = "/ip firewall filter add chain=forward in-interface-list=$pal src-address=!100.64.0.0/10 action=drop comment=\"SEC-$id-BCP38-SPOOF\"";
-            
-            // BCP 38: Drop martian sources
-            $martianSources = [
-                '0.0.0.0/8',
-                '127.0.0.0/8',
-                '169.254.0.0/16',
-                '192.0.2.0/24',
-                '198.51.100.0/24',
-                '203.0.113.0/24',
-                '240.0.0.0/4',
-            ];
-            foreach ($martianSources as $cidr) {
-                $rules[] = "/ip firewall filter add chain=forward src-address={$cidr} action=drop comment=\"SEC-$id-BCP38-MARTIAN\"";
-            }
-            
-            // DDoS: SYN flood protection
-            $rules[] = "/ip firewall filter add chain=input protocol=tcp connection-state=new limit=50,5 action=drop comment=\"SEC-$id-DDoS-SYN\"";
-            
-            // DDoS: UDP flood protection (DNS amplification prevention)
-            $rules[] = "/ip firewall filter add chain=input protocol=udp connection-state=new limit=100,5 action=drop comment=\"SEC-$id-DDoS-UDP\"";
-            
-            // DDoS: ICMP flood protection
-            $rules[] = "/ip firewall filter add chain=input protocol=icmp connection-state=new limit=20,5 action=drop comment=\"SEC-$id-DDoS-ICMP\"";
-            
-            // DDoS: Connection limit per PPPoE user
-            $rules[] = "/ip firewall filter add chain=forward in-interface-list=$pal connection-state=new connection-limit=200,32 action=drop comment=\"SEC-$id-DDoS-CONN-LIMIT\"";
-            
-            // DDoS: Max connections per host to prevent exhaustion
-            $rules[] = "/ip firewall filter add chain=forward in-interface-list=$pal connection-state=new connection-limit=100,32 src-address-list=$pal action=drop comment=\"SEC-$id-DDoS-HOST-LIMIT\"";
+            // BCP38: clients must originate from pool subnet
+            $rules[] = "/ip firewall filter add chain=forward in-interface-list=$pal src-address=!{$poolCidr} action=drop comment=\"SEC-$id-BCP38-SPOOF\"";
+            // BCP38: drop martians in forward chain
+            $martians = '0.0.0.0/8,127.0.0.0/8,169.254.0.0/16,192.0.2.0/24,198.51.100.0/24,203.0.113.0/24,240.0.0.0/4';
+            $rules[] = "/ip firewall filter add chain=forward src-address={$martians} action=drop comment=\"SEC-$id-BCP38-MARTIAN\"";
+            // DDoS: SYN flood
+            $rules[] = "/ip firewall filter add chain=input protocol=tcp connection-state=new limit=50/s,5 action=drop comment=\"SEC-$id-DDoS-SYN\"";
+            // DDoS: UDP flood (DNS amplification)
+            $rules[] = "/ip firewall filter add chain=input protocol=udp connection-state=new limit=100/s,5 action=drop comment=\"SEC-$id-DDoS-UDP\"";
+            // DDoS: ICMP flood
+            $rules[] = "/ip firewall filter add chain=input protocol=icmp connection-state=new limit=20/s,5 action=drop comment=\"SEC-$id-DDoS-ICMP\"";
+            // DDoS: per-client connection cap (each PPPoE session limited to 200 new conns/s)
+            $rules[] = "/ip firewall filter add chain=forward in-interface-list=$pal connection-state=new connection-limit=200,32 action=drop comment=\"SEC-$id-DDoS-CONN\"";
         }
-        
+
         $rules[] = "";
         return $rules;
     }
