@@ -4,8 +4,8 @@ namespace App\Events;
 
 use App\Models\Tenant;
 use App\Models\User;
-use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
+use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
 
@@ -41,8 +41,8 @@ class TenantCreated implements ShouldBroadcast
     public function broadcastOn(): array
     {
         return [
-            new Channel('system-admin'),
-            new Channel('tenants'),
+            new PrivateChannel('system.admin'),
+            new PrivateChannel('system.tenants'),
         ];
     }
 

@@ -83,7 +83,7 @@ class WebSocketService {
 
     console.log(`📡 Subscribing to tenant channel: ${channelName}`)
 
-    const channel = this.echo.channel(channelName)
+    const channel = this.echo.private(channelName)
 
     // Tenant-related events
     channel

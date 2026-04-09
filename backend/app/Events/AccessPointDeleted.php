@@ -2,7 +2,7 @@
 
 namespace App\Events;
 
-use Illuminate\Broadcasting\Channel;
+use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
@@ -32,7 +32,7 @@ class AccessPointDeleted implements ShouldBroadcast
     public function broadcastOn(): array
     {
         return [
-            new Channel('tenant.' . $this->tenantId),
+            new PrivateChannel('tenant.' . $this->tenantId . '.access-points'),
         ];
     }
 

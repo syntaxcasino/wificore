@@ -42,10 +42,11 @@ class UserCreated implements ShouldBroadcast
         if ($this->tenantId) {
             return $this->getTenantChannels(['users', 'dashboard-stats']);
         }
-        
+
+        // System-level user creation has no tenant scope — broadcast only to
+        // the private system admin channel to avoid cross-tenant data leakage.
         return [
-            new Channel('system-admin'),
-            new Channel('users'),
+            new \Illuminate\Broadcasting\PrivateChannel('system.admin'),
         ];
     }
 
