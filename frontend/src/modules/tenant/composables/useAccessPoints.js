@@ -318,26 +318,13 @@ export function useAccessPoints() {
     updateStats()
   }
 
-  // Setup WebSocket event listeners - use named handlers
+  // Setup WebSocket event listeners.
+  // websocket.js subscribeModuleChannels() subscribes to the private
+  // tenant.{id}.access-points channel and dispatches these custom DOM events.
   const setupWebSocketListeners = () => {
-    // Listen for custom events from Echo/Laravel WebSockets
     window.addEventListener('access-point-created', handleAccessPointCreated)
     window.addEventListener('access-point-updated', handleAccessPointUpdated)
     window.addEventListener('access-point-deleted', handleAccessPointDeleted)
-    
-    // Subscribe to Laravel Echo channel if available
-    if (window.Echo && authStore.tenant?.id) {
-      window.Echo.channel(`tenant.${authStore.tenant.id}`)
-        .listen('.access-point-created', (e) => {
-          handleAccessPointCreated({ detail: e })
-        })
-        .listen('.access-point-updated', (e) => {
-          handleAccessPointUpdated({ detail: e })
-        })
-        .listen('.access-point-deleted', (e) => {
-          handleAccessPointDeleted({ detail: e })
-        })
-    }
   }
 
   // Cleanup WebSocket listeners
@@ -345,11 +332,6 @@ export function useAccessPoints() {
     window.removeEventListener('access-point-created', handleAccessPointCreated)
     window.removeEventListener('access-point-updated', handleAccessPointUpdated)
     window.removeEventListener('access-point-deleted', handleAccessPointDeleted)
-    
-    // Unsubscribe from Echo channel if available
-    if (window.Echo && authStore.tenant?.id) {
-      window.Echo.leaveChannel(`tenant.${authStore.tenant.id}`)
-    }
   }
 
   return {
