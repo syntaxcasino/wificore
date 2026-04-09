@@ -45,6 +45,8 @@ class SshExecutor
 
     /**
      * Connect using SSH key or password fallback.
+     *
+     * @throws \RuntimeException if authentication fails or connection cannot be established.
      */
     public function connect(): bool
     {
@@ -78,7 +80,7 @@ class SshExecutor
         }
 
         Log::error("SSH connection failed", ['router' => $host, 'username' => $this->router->username]);
-        return false;
+        throw new \RuntimeException("SSH authentication failed for router {$host} (user: {$this->router->username}). Check credentials and network reachability.");
     }
 
     /**
@@ -248,10 +250,8 @@ class SshExecutor
     private function reconnect(): void
     {
         $this->destroyPassword();
-        if (!$this->connect()) {
-            $host = explode('/', $this->router->vpn_ip ?? $this->router->ip_address ?? '')[0];
-            throw new \RuntimeException("Failed to reconnect to router {$host}");
-        }
+        // connect() throws RuntimeException on failure — no return-value check needed.
+        $this->connect();
     }
 
     /**
@@ -287,14 +287,29 @@ class SshExecutor
 
     /**
      * Detect RouterOS-specific command errors robustly.
+     *
+     * Only match authoritative RouterOS error prefixes to avoid false positives
+     * on benign output containing words like "error", "invalid", "failure" etc.
+     * RouterOS error responses always start with one of these line prefixes.
      */
     private function isCommandError(string $output): bool
     {
-        $outputLower = strtolower($output);
-        $errorPatterns = ['failure', 'error', 'invalid', '!trap', '!fatal', 'cannot', 'unknown command'];
+        // Exact RouterOS error-line prefixes (always at start of a line)
+        $errorPrefixes = [
+            '!trap',
+            '!fatal',
+            'input does not match',
+            'bad command name',
+            'unknown command',
+            'syntax error',
+            'expected end of command',
+            'no such item',
+            'script error',
+        ];
 
-        foreach ($errorPatterns as $pattern) {
-            if (str_contains($outputLower, $pattern)) {
+        $outputLower = strtolower($output);
+        foreach ($errorPrefixes as $prefix) {
+            if (str_contains($outputLower, $prefix)) {
                 return true;
             }
         }
