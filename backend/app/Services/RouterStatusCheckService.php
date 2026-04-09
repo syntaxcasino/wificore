@@ -64,6 +64,9 @@ class RouterStatusCheckService
      * Check router status during PROVISIONING phase using WireGuard controller API.
      * The WireGuard container (host network) pings the router, backend queries the API.
      *
+     * If ICMP is blocked post-deployment, fall back to WireGuard handshake checks
+     * to avoid false offline status.
+     *
      * @param Router $router
      * @return array
      */
@@ -86,22 +89,37 @@ class RouterStatusCheckService
         $peerStatus = $this->checkPeerViaWireguardController($vpnConfig);
 
         $isOnline = $peerStatus['online'] ?? false;
+        $method = 'wireguard_api';
+        $details = $peerStatus;
+
+        if (!$isOnline) {
+            // Fallback to handshake-only checks for post-deployment routers
+            $handshakeResult = $this->handshakeOnlyCheck($router);
+            if ($handshakeResult['online'] ?? false) {
+                $isOnline = true;
+                $method = 'handshake_fallback';
+                $details = [
+                    'ping' => $peerStatus,
+                    'handshake' => $handshakeResult,
+                ];
+            }
+        }
 
         Log::info('Provisioning status check result', [
             'router_id' => $router->id,
-            'method' => 'wireguard_api',
+            'method' => $method,
             'online' => $isOnline,
             'peer_public_key' => substr($vpnConfig->client_public_key, 0, 20) . '...',
         ]);
 
         return [
             'online' => $isOnline,
-            'method' => 'wireguard_api',
+            'method' => $method,
             'phase' => 'provisioning',
             'latency_ms' => null,
             'packet_loss' => $isOnline ? 0 : 100,
             'vpn_status' => $isOnline ? 'active' : 'inactive',
-            'details' => $peerStatus,
+            'details' => $details,
         ];
     }
 

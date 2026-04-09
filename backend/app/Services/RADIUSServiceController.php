@@ -246,14 +246,7 @@ class RADIUSServiceController extends TenantAwareService
             // Disconnect via SSH - remove active PPPoE session
             $ssh = new \App\Services\MikroTik\SshExecutor($router, 15);
 
-            if (!$ssh->connect()) {
-                Log::warning('CoA disconnect: SSH connection failed', [
-                    'username' => $username,
-                    'router_id' => $router->id,
-                    'nas_ip' => $nasIpAddress,
-                ]);
-                return false;
-            }
+            $ssh->connect();
 
             try {
                 $escapedUsername = addslashes($username);

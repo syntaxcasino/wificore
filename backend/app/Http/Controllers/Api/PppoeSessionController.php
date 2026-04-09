@@ -302,12 +302,7 @@ class PppoeSessionController extends Controller
             }
 
             $ssh = new SshExecutor($router, 10); // Increased timeout to 10s
-            if (!$ssh->connect()) {
-                 return response()->json([
-                    'success' => false,
-                    'message' => 'Could not connect to router via SSH',
-                ], 500);
-            }
+            $ssh->connect();
 
             // Try multiple commands to ensure disconnection
             // 1. Find by name (username)
@@ -390,14 +385,11 @@ class PppoeSessionController extends Controller
                 }
 
                 $ssh = new SshExecutor($router, 10);
-                if ($ssh->connect()) {
-                    $ssh->exec(sprintf('/ppp active remove [find name="%s"]', addslashes($username)));
-                    $ssh->exec(sprintf('/ppp active remove [find user="%s"]', addslashes($username)));
-                    $ssh->disconnect();
-                    $disconnected++;
-                } else {
-                    $failed++;
-                }
+                $ssh->connect();
+                $ssh->exec(sprintf('/ppp active remove [find name="%s"]', addslashes($username)));
+                $ssh->exec(sprintf('/ppp active remove [find user="%s"]', addslashes($username)));
+                $ssh->disconnect();
+                $disconnected++;
             } catch (\Exception $e) {
                 $failed++;
                 Log::warning('Failed to disconnect PPPoE session in bulk', [
@@ -604,13 +596,7 @@ class PppoeSessionController extends Controller
                 
                 try {
                     $ssh = new SshExecutor($router, 15);
-                    if (!$ssh->connect()) {
-                        Log::warning('SSH connection failed to router', [
-                            'router_id' => $router->id,
-                            'router_name' => $router->name,
-                        ]);
-                        continue;
-                    }
+                    $ssh->connect();
                     
                     // Get active PPPoE sessions from router
                     $output = $ssh->exec('/ppp active print detail without-paging');

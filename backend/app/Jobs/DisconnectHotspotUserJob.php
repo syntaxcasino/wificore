@@ -186,15 +186,7 @@ class DisconnectHotspotUserJob implements ShouldQueue
             }
 
             $ssh = new SshExecutor($router, 10);
-            if (!$ssh->connect()) {
-                Log::warning('Cannot disconnect hotspot session: SSH connection failed', [
-                    'session_id' => $session->id,
-                    'username' => $username,
-                    'router_id' => $router->id,
-                    'tenant_id' => $this->tenantId,
-                ]);
-                return false;
-            }
+            $ssh->connect();
 
             try {
                 $escapedUsername = addslashes($username);

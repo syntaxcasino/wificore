@@ -124,7 +124,7 @@ class ZeroConfigPPPoEGenerator
         $gw      = $p['gateway_ip'];
         $dns     = "{$p['dns_primary']},{$p['dns_secondary']}";
         $rs      = $p['radius_server'];
-        $rsec    = $p['radius_secret'];
+        $rsec    = $this->escapeRouterOsString($p['radius_secret']);
         $mgmt    = $p['management_subnet'];
         $mports  = '22,8291,8728,8729';
 
@@ -153,6 +153,7 @@ class ZeroConfigPPPoEGenerator
         $sanitizedRouterName = preg_replace('/[^A-Za-z0-9_-]+/', '-', trim($routerName));
         $nasIdentifier = $p['nas_identifier']
             ?? ($sanitizedRouterName !== '' ? $sanitizedRouterName : ('wificore-' . $id));
+        $nasIdentifier = $this->escapeRouterOsString($nasIdentifier);
         $radiusSrcAddress = $p['radius_src_address'] ?? null;
         $s = [];
 
@@ -160,16 +161,17 @@ class ZeroConfigPPPoEGenerator
 
         // RADIUS
         $s[] = ':do { /radius remove [/radius find service=ppp comment~"WiFiCore PPPoE"]; } on-error={}';
-        $s[] = ":do { /radius add service=ppp address={$rs} secret={$rsec} authentication-port=1812 accounting-port=1813 timeout=3s comment=\"WiFiCore PPPoE ({$id})\"; } on-error={ :error \"PPPoE: RADIUS configure failed\" }";
+        $s[] = ":do { /radius add service=ppp address={$rs} secret=\"{$rsec}\" authentication-port=1812 accounting-port=1813 timeout=3s comment=\"WiFiCore PPPoE ({$id})\"; } on-error={ :error \"PPPoE: RADIUS configure failed\" }";
         if ($radiusSrcAddress) {
             $s[] = ":do { /radius set [/radius find service=ppp] src-address={$radiusSrcAddress}; } on-error={ /log info \"PPPoE-$id: WARN - Failed to set RADIUS src-address\" }";
         }
-        $s[] = ":do { /radius set [/radius find service=ppp] nas-identifier=\"{$nasIdentifier}\"; } on-error={ /log info \"PPPoE-$id: WARN - Failed to set RADIUS NAS-Identifier\" }";
         $s[] = "/ppp aaa set use-radius=yes accounting=yes interim-update=5m use-circuit-id-in-nas-port-id=yes";
         $s[] = ":do { /radius incoming set accept=yes port=3799; } on-error={ /log info \"PPPoE-$id: WARN - Failed to enable RADIUS incoming\" }";
 
+        // NAS-Identifier (version-safe): RouterOS uses system identity as NAS-ID
+        $s[] = ":do { /system identity set name=\"{$nasIdentifier}\"; } on-error={ /log info \"PPPoE-$id: WARN - Failed to set system identity\" }";
+
         // PPP AAA and Accounting (ensure session visibility)
-        $s[] = "/ppp aaa set use-radius=yes accounting=yes interim-update=5m use-circuit-id-in-nas-port-id=yes";
         
         // Enable PPP session logging for visibility (deduplicated by comment)
         $pppLogComment = "PPPoE-$id-PPP-LOG";
@@ -447,6 +449,12 @@ class ZeroConfigPPPoEGenerator
         }
         
         return false;
+    }
+
+    private function escapeRouterOsString(string $string): string
+    {
+        $string = str_replace(["\r\n", "\r", "\n"], '\\r\\n', $string);
+        return str_replace(['\\', '"', ';', '{', '}', '$'], ['\\\\', '\\"', '\\;', '\\{', '\\}', '\\$'], $string);
     }
 
     private function getSafeGatewayIp(string $cidr, ?string $gw): string
