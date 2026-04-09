@@ -287,7 +287,7 @@ const {
   selectedRouter, formData, formSubmitting, currentStep, steps, configLoading,
   connectivityVerified, availableInterfaces, configurationProgress, formMessage, formSubmitted,
   fetchRouters, verifyConnectivity, addRouter, editRouter, updateRouter, deleteRouter,
-  generateConfigs, applyConfigurations, formatTimestamp, statusBadgeClass,
+  reprovisionRouter, generateConfigs, applyConfigurations, formatTimestamp, statusBadgeClass,
   openCreateOverlay, openEditOverlay, openDetails, closeDetails, refreshDetails,
   closeFormOverlay, closeUpdateOverlay, nextStep, previousStep, copyToClipboard,
   updateInterfaceAssignments, updateFormData,
@@ -437,25 +437,28 @@ const handleReProv = (router) => {
 
 const handleReprovision = async (router) => {
   if (!router) return
-  
+
   // Hide menu immediately before showing dialog
   activeMenu.value = null
   menuPosition.value = {}
-  
+
   const confirmed = await confirmStore.open({
     title: 'Reprovision Router',
-    message: `Reprovision router ${router.name}? This will regenerate all configurations.`,
+    message: `Reprovision "${router.name}"? This resets the provisioning state and restarts the probing process.`,
     confirmText: 'Reprovision',
     cancelText: 'Cancel',
-    variant: 'info'
+    variant: 'info',
   })
   if (!confirmed) return
+
   try {
-    await generateConfigs(router.id)
-    showSuccess('Configuration generated successfully')
-    await fetchRouters()
+    const result = await reprovisionRouter(router.id)
+    const msg = result?.probing_started
+      ? `Reprovisioning started for "${router.name}". Status updates will appear in real-time.`
+      : `Provisioning state reset for "${router.name}".`
+    showSuccess(msg)
   } catch (err) {
-    const errorMessage = err.response?.data?.error || err.message || 'Failed to generate configuration'
+    const errorMessage = err.response?.data?.message || err.response?.data?.error || err.message || 'Failed to reprovision router'
     showError(`Reprovision failed: ${errorMessage}`)
     console.error('Reprovision error:', err)
   }
