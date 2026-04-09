@@ -127,6 +127,7 @@ class EventServiceProvider extends ServiceProvider
 
         \App\Events\PackageUpdated::class => [
             \App\Listeners\UpdatePppoeUsersRateLimit::class,
+            \App\Listeners\UpdateHotspotUsersRateLimit::class,
         ],
         
         // Router events
