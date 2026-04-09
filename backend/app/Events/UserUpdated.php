@@ -4,8 +4,8 @@ namespace App\Events;
 
 use App\Models\User;
 use App\Traits\BroadcastsToTenant;
-use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
+use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
 
@@ -43,10 +43,10 @@ class UserUpdated implements ShouldBroadcast
         if ($this->tenantId) {
             return $this->getTenantChannels(['users']);
         }
-        
+
+        // System-level update — only visible to system admins
         return [
-            new Channel('system-admin'),
-            new Channel('users'),
+            new PrivateChannel('system.admin'),
         ];
     }
 

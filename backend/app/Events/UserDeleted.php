@@ -2,8 +2,8 @@
 
 namespace App\Events;
 
-use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
+use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
 
@@ -14,15 +14,17 @@ class UserDeleted implements ShouldBroadcast
     public int $userId;
     public string $username;
     public string $email;
+    public ?string $tenantId;
 
     /**
      * Create a new event instance.
      */
-    public function __construct(int $userId, string $username, string $email)
+    public function __construct(int $userId, string $username, string $email, ?string $tenantId = null)
     {
         $this->userId = $userId;
         $this->username = $username;
         $this->email = $email;
+        $this->tenantId = $tenantId;
     }
 
     /**
@@ -30,9 +32,15 @@ class UserDeleted implements ShouldBroadcast
      */
     public function broadcastOn(): array
     {
+        if ($this->tenantId) {
+            return [
+                new PrivateChannel("tenant.{$this->tenantId}.users"),
+            ];
+        }
+
+        // System-level user deletion (no tenant) — system admin channel only
         return [
-            new Channel('system-admin'),
-            new Channel('users'),
+            new PrivateChannel('system.admin'),
         ];
     }
 

@@ -100,10 +100,25 @@ Broadcast::channel('tenant.{tenantId}.admin-notifications', function ($user, $te
     return $user->isAdmin() && (string) $user->tenant_id === (string) $tenantId;
 });
 
-// Router provisioning progress channel - only admins can listen
+// Tenant-specific access points channel
+Broadcast::channel('tenant.{tenantId}.access-points', function ($user, $tenantId) {
+    // SECURITY: Only users belonging to this specific tenant can access
+    return (string) $user->tenant_id === (string) $tenantId;
+});
+
+// Router provisioning progress channel - tenant-scoped: only the tenant
+// that owns the router can listen to its provisioning events.
 Broadcast::channel('router-provisioning.{routerId}', function ($user, $routerId) {
-    // Only admins can listen to router provisioning progress
-    return $user !== null && $user->isAdmin();
+    if (!$user->isAdmin()) {
+        return false;
+    }
+    // System admins have full access
+    if ($user->isSystemAdmin()) {
+        return true;
+    }
+    // Tenant admins may only listen to routers they own
+    $router = \App\Models\Router::find($routerId);
+    return $router && (string) $router->tenant_id === (string) $user->tenant_id;
 });
 
 // Tenant-specific dashboard stats channel
