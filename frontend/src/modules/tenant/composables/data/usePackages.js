@@ -1,4 +1,4 @@
-import { ref } from 'vue'
+import { ref, onUnmounted } from 'vue'
 import axios from 'axios'
 
 export function usePackages() {
@@ -52,6 +52,7 @@ export function usePackages() {
         const dateB = new Date(b.created_at || 0)
         return dateB - dateA
       })
+      setupWebSocketListeners()
     } catch (err) {
       listError.value = err.response?.data?.error || 'Failed to fetch packages'
       console.error('fetchPackages error:', err.message, err.response?.data)
@@ -209,6 +210,45 @@ export function usePackages() {
     }
   }
 
+  // WebSocket handlers — react to custom events dispatched by websocket.js
+  const handlePackageCreated = (event) => {
+    const pkg = event.detail?.package || event.detail
+    if (!pkg?.id) return
+    const exists = packages.value.some(p => p.id === pkg.id)
+    if (!exists) {
+      packages.value.unshift(pkg)
+    }
+  }
+
+  const handlePackageUpdated = (event) => {
+    const pkg = event.detail?.package || event.detail
+    if (!pkg?.id) return
+    const index = packages.value.findIndex(p => p.id === pkg.id)
+    if (index !== -1) {
+      packages.value.splice(index, 1, { ...packages.value[index], ...pkg })
+    }
+  }
+
+  const handlePackageDeleted = (event) => {
+    const id = event.detail?.package?.id || event.detail?.id
+    if (!id) return
+    packages.value = packages.value.filter(p => p.id !== id)
+  }
+
+  const setupWebSocketListeners = () => {
+    window.addEventListener('package-created', handlePackageCreated)
+    window.addEventListener('package-updated', handlePackageUpdated)
+    window.addEventListener('package-deleted', handlePackageDeleted)
+  }
+
+  const cleanupWebSocketListeners = () => {
+    window.removeEventListener('package-created', handlePackageCreated)
+    window.removeEventListener('package-updated', handlePackageUpdated)
+    window.removeEventListener('package-deleted', handlePackageDeleted)
+  }
+
+  onUnmounted(cleanupWebSocketListeners)
+
   const toggleMenu = (packageId) => {
     showMenu.value = showMenu.value === packageId ? null : packageId
   }
@@ -268,6 +308,8 @@ export function usePackages() {
     closeUpdateOverlay,
     resetFormData,
     formatTimestamp,
-    statusBadgeClass
+    statusBadgeClass,
+    setupWebSocketListeners,
+    cleanupWebSocketListeners
   }
 }

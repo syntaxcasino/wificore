@@ -58,6 +58,26 @@ export function useRouters() {
     { deep: true },
   )
 
+  // Custom DOM event handlers for router-created/deleted (dispatched by websocket.js)
+  const handleRouterCreated = (event) => {
+    const router = event.detail?.router || event.detail
+    if (!router?.id) return
+    const exists = routers.value.some(r => String(r.id) === String(router.id))
+    if (!exists) {
+      routers.value.unshift(router)
+    }
+  }
+
+  const handleRouterDeleted = (event) => {
+    const id = event.detail?.router?.id || event.detail?.id
+    if (!id) return
+    routers.value = routers.value.filter(r => String(r.id) !== String(id))
+    if (currentRouter.value && String(currentRouter.value.id) === String(id)) {
+      showDetailsOverlay.value = false
+      currentRouter.value = null
+    }
+  }
+
   const setupRealtimeUpdates = () => {
     try {
       const tenantId = authStore.tenantId
@@ -67,6 +87,10 @@ export function useRouters() {
       if (routerUpdatesChannel) {
         unsubscribeFromChannel(routerUpdatesChannel)
       }
+
+      // Listen for create/delete events dispatched by websocket.js subscribeModuleChannels
+      window.addEventListener('router-created', handleRouterCreated)
+      window.addEventListener('router-deleted', handleRouterDeleted)
 
       routerUpdatesChannel = `tenant.${tenantId}.router-updates`
       
@@ -143,6 +167,8 @@ export function useRouters() {
   }
 
   const cleanupRealtimeUpdates = () => {
+    window.removeEventListener('router-created', handleRouterCreated)
+    window.removeEventListener('router-deleted', handleRouterDeleted)
     if (routerUpdatesChannel) {
       unsubscribe(routerUpdatesChannel)
       routerUpdatesChannel = null

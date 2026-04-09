@@ -271,6 +271,167 @@ class WebSocketService {
   }
 
   /**
+   * Subscribe to all tenant resource sub-channels.
+   * Backend events broadcast on tenant.{id}.{resource} private channels,
+   * NOT on the flat tenant.{id} channel, so we must subscribe individually.
+   */
+  subscribeModuleChannels(tenantId) {
+    if (!this.echo || !tenantId) return
+
+    // ── HR: Departments ──────────────────────────────────────────────────────
+    const deptChannel = `tenant.${tenantId}.departments`
+    if (!this.channels.has(deptChannel)) {
+      const ch = this.echo.private(deptChannel)
+        .listen('.department.created', (event) => {
+          this.notificationStore.success('Department Created', `"${event.department?.name}" created.`, 5000)
+          window.dispatchEvent(new CustomEvent('department-created', { detail: event }))
+        })
+        .listen('.department.updated', (event) => {
+          window.dispatchEvent(new CustomEvent('department-updated', { detail: event }))
+        })
+        .listen('.department.deleted', (event) => {
+          window.dispatchEvent(new CustomEvent('department-deleted', { detail: event }))
+        })
+      this.channels.set(deptChannel, ch)
+    }
+
+    // ── HR: Employees ─────────────────────────────────────────────────────────
+    const empChannel = `tenant.${tenantId}.employees`
+    if (!this.channels.has(empChannel)) {
+      const ch = this.echo.private(empChannel)
+        .listen('.employeecreated', (event) => {
+          this.notificationStore.success('Employee Created', 'A new employee has been added.', 5000)
+          window.dispatchEvent(new CustomEvent('employee-created', { detail: event }))
+        })
+        .listen('.employeeupdated', (event) => {
+          window.dispatchEvent(new CustomEvent('employee-updated', { detail: event }))
+        })
+        .listen('.employeedeleted', (event) => {
+          window.dispatchEvent(new CustomEvent('employee-deleted', { detail: event }))
+        })
+      this.channels.set(empChannel, ch)
+    }
+
+    // ── HR: Positions ─────────────────────────────────────────────────────────
+    const posChannel = `tenant.${tenantId}.positions`
+    if (!this.channels.has(posChannel)) {
+      const ch = this.echo.private(posChannel)
+        .listen('.positioncreated', (event) => {
+          this.notificationStore.success('Position Created', `"${event.position?.title}" created.`, 5000)
+          window.dispatchEvent(new CustomEvent('position-created', { detail: event }))
+        })
+        .listen('.positionupdated', (event) => {
+          window.dispatchEvent(new CustomEvent('position-updated', { detail: event }))
+        })
+        .listen('.positiondeleted', (event) => {
+          window.dispatchEvent(new CustomEvent('position-deleted', { detail: event }))
+        })
+      this.channels.set(posChannel, ch)
+    }
+
+    // ── Finance: Expenses ─────────────────────────────────────────────────────
+    const expChannel = `tenant.${tenantId}.expenses`
+    if (!this.channels.has(expChannel)) {
+      const ch = this.echo.private(expChannel)
+        .listen('.expensecreated', (event) => {
+          this.notificationStore.success('Expense Created', `Expense created.`, 5000)
+          window.dispatchEvent(new CustomEvent('expense-created', { detail: event }))
+        })
+        .listen('.expenseupdated', (event) => {
+          window.dispatchEvent(new CustomEvent('expense-updated', { detail: event }))
+        })
+        .listen('.expensedeleted', (event) => {
+          window.dispatchEvent(new CustomEvent('expense-deleted', { detail: event }))
+        })
+      this.channels.set(expChannel, ch)
+    }
+
+    // ── Finance: Revenues ─────────────────────────────────────────────────────
+    const revChannel = `tenant.${tenantId}.revenues`
+    if (!this.channels.has(revChannel)) {
+      const ch = this.echo.private(revChannel)
+        .listen('.revenuecreated', (event) => {
+          this.notificationStore.success('Revenue Created', `Revenue created.`, 5000)
+          window.dispatchEvent(new CustomEvent('revenue-created', { detail: event }))
+        })
+        .listen('.revenueupdated', (event) => {
+          window.dispatchEvent(new CustomEvent('revenue-updated', { detail: event }))
+        })
+        .listen('.revenuedeleted', (event) => {
+          window.dispatchEvent(new CustomEvent('revenue-deleted', { detail: event }))
+        })
+      this.channels.set(revChannel, ch)
+    }
+
+    // ── Todos ─────────────────────────────────────────────────────────────────
+    const todoChannel = `tenant.${tenantId}.todos`
+    if (!this.channels.has(todoChannel)) {
+      const ch = this.echo.private(todoChannel)
+        .listen('.todo.created', (event) => {
+          this.notificationStore.success('Todo Created', `"${event.todo?.title}" created.`, 5000)
+          window.dispatchEvent(new CustomEvent('todo-created', { detail: event }))
+        })
+        .listen('.todo.updated', (event) => {
+          this.notificationStore.info('Todo Updated', `"${event.todo?.title}" updated.`, 4000)
+          window.dispatchEvent(new CustomEvent('todo-updated', { detail: event }))
+        })
+        .listen('.todo.deleted', (event) => {
+          this.notificationStore.info('Todo Deleted', 'A todo has been deleted.', 4000)
+          window.dispatchEvent(new CustomEvent('todo-deleted', { detail: event }))
+        })
+        .listen('.todo.activity.created', (event) => {
+          window.dispatchEvent(new CustomEvent('todo-activity-created', { detail: event }))
+        })
+      this.channels.set(todoChannel, ch)
+    }
+
+    // ── Packages ──────────────────────────────────────────────────────────────
+    const pkgChannel = `tenant.${tenantId}.packages`
+    if (!this.channels.has(pkgChannel)) {
+      const ch = this.echo.private(pkgChannel)
+        .listen('.PackageCreated', (event) => {
+          window.dispatchEvent(new CustomEvent('package-created', { detail: event }))
+        })
+        .listen('.PackageUpdated', (event) => {
+          window.dispatchEvent(new CustomEvent('package-updated', { detail: event }))
+        })
+        .listen('.PackageDeleted', (event) => {
+          window.dispatchEvent(new CustomEvent('package-deleted', { detail: event }))
+        })
+      this.channels.set(pkgChannel, ch)
+    }
+
+    // ── Routers ───────────────────────────────────────────────────────────────
+    const routersChannel = `tenant.${tenantId}.routers`
+    if (!this.channels.has(routersChannel)) {
+      const ch = this.echo.private(routersChannel)
+        .listen('.RouterCreated', (event) => {
+          window.dispatchEvent(new CustomEvent('router-created', { detail: event }))
+        })
+        .listen('.RouterDeleted', (event) => {
+          window.dispatchEvent(new CustomEvent('router-deleted', { detail: event }))
+        })
+      this.channels.set(routersChannel, ch)
+    }
+
+    // ── Access Points ─────────────────────────────────────────────────────────
+    const apChannel = `tenant.${tenantId}.access-points`
+    if (!this.channels.has(apChannel)) {
+      const ch = this.echo.private(apChannel)
+        .listen('.access-point-created', (event) => {
+          window.dispatchEvent(new CustomEvent('access-point-created', { detail: event }))
+        })
+        .listen('.access-point-updated', (event) => {
+          window.dispatchEvent(new CustomEvent('access-point-updated', { detail: event }))
+        })
+        .listen('.access-point-deleted', (event) => {
+          window.dispatchEvent(new CustomEvent('access-point-deleted', { detail: event }))
+        })
+      this.channels.set(apChannel, ch)
+    }
+  }
+
+  /**
    * Subscribe to user private channel
    */
   subscribeUserChannel(userId) {
@@ -449,9 +610,10 @@ export { WebSocketService }
 export const initializeWebSocket = (tenantId, userId, isSystemAdmin = false) => {
   websocketService.initialize()
 
-  // Subscribe to tenant channel
+  // Subscribe to tenant notification channel and all resource sub-channels
   if (tenantId) {
     websocketService.subscribeTenantChannel(tenantId)
+    websocketService.subscribeModuleChannels(tenantId)
   }
 
   // Subscribe to user private channel

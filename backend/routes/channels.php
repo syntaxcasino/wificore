@@ -232,6 +232,47 @@ Broadcast::channel('system.queue-stats', function ($user) {
 });
 
 // =============================================================================
+// HR MODULE CHANNELS
+// =============================================================================
+
+Broadcast::channel('tenant.{tenantId}.departments', function ($user, $tenantId) {
+    return (string) $user->tenant_id === (string) $tenantId;
+});
+
+Broadcast::channel('tenant.{tenantId}.employees', function ($user, $tenantId) {
+    return (string) $user->tenant_id === (string) $tenantId;
+});
+
+Broadcast::channel('tenant.{tenantId}.positions', function ($user, $tenantId) {
+    return (string) $user->tenant_id === (string) $tenantId;
+});
+
+// =============================================================================
+// FINANCE MODULE CHANNELS
+// =============================================================================
+
+Broadcast::channel('tenant.{tenantId}.expenses', function ($user, $tenantId) {
+    return $user->isAdmin() && (string) $user->tenant_id === (string) $tenantId;
+});
+
+Broadcast::channel('tenant.{tenantId}.revenues', function ($user, $tenantId) {
+    return $user->isAdmin() && (string) $user->tenant_id === (string) $tenantId;
+});
+
+// =============================================================================
+// TODO MODULE CHANNELS
+// =============================================================================
+
+Broadcast::channel('tenant.{tenantId}.todos', function ($user, $tenantId) {
+    return (string) $user->tenant_id === (string) $tenantId;
+});
+
+// Personal todo channel — only the assigned user can listen
+Broadcast::channel('user.{userId}.todos', function ($user, $userId) {
+    return (string) $user->id === (string) $userId;
+});
+
+// =============================================================================
 // HOTSPOT CHANNELS - Real-time Hotspot updates
 // =============================================================================
 
