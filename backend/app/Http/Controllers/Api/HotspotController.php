@@ -538,7 +538,7 @@ class HotspotController extends Controller
     }
 
     /**
-     * List active hotspot sessions
+     * List hotspot sessions from our RadiusSession DB cache
      */
     public function listSessions(Request $request)
     {
@@ -550,7 +550,7 @@ class HotspotController extends Controller
                 ->when($request->user_id, function ($q, $userId) {
                     return $q->where('hotspot_user_id', $userId);
                 })
-                ->when($request->active_only, function ($q) {
+                ->when($request->active_only || !$request->status, function ($q) {
                     return $q->where('status', 'active');
                 });
 
@@ -571,6 +571,125 @@ class HotspotController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to fetch sessions',
+            ], 500);
+        }
+    }
+
+    /**
+     * List LIVE hotspot sessions directly from RADIUS accounting (radacct).
+     * This is the authoritative source — mirrors GET /pppoe/sessions.
+     * Returns rows where acctstoptime IS NULL (i.e. still connected).
+     */
+    public function listLiveSessions(Request $request)
+    {
+        try {
+            $source = 'none';
+
+            // 1. Try tenant-schema radacct first
+            $rows = collect();
+            if (\Illuminate\Support\Facades\Schema::hasTable('radacct')) {
+                $rows = DB::table('radacct')
+                    ->select([
+                        'acctsessionid', 'acctuniqueid', 'username',
+                        'acctstarttime', 'acctsessiontime',
+                        'acctinputoctets', 'acctoutputoctets',
+                        'framedipaddress', 'callingstationid', 'nasipaddress',
+                        'nasportid', 'servicetype',
+                    ])
+                    ->whereNull('acctstoptime')
+                    ->whereIn('servicetype', ['Framed-User', 'Login-User', 'Call-Check', ''])
+                    ->orderByDesc('acctstarttime')
+                    ->limit(500)
+                    ->get();
+
+                if ($rows->isNotEmpty()) {
+                    $source = 'tenant_radacct';
+                }
+            }
+
+            // 2. Fallback: public.radacct filtered by tenant hotspot usernames
+            if ($rows->isEmpty()) {
+                $publicExists = (bool) (DB::selectOne("SELECT to_regclass('public.radacct') AS t")->t ?? null);
+                if ($publicExists) {
+                    $usernames = HotspotUser::query()->pluck('username')->filter()->unique()->values()->all();
+                    if (!empty($usernames)) {
+                        $rows = DB::table('public.radacct')
+                            ->select([
+                                'acctsessionid', 'acctuniqueid', 'username',
+                                'acctstarttime', 'acctsessiontime',
+                                'acctinputoctets', 'acctoutputoctets',
+                                'framedipaddress', 'callingstationid', 'nasipaddress',
+                                'nasportid', 'servicetype',
+                            ])
+                            ->whereNull('acctstoptime')
+                            ->whereIn('username', $usernames)
+                            ->orderByDesc('acctstarttime')
+                            ->limit(500)
+                            ->get();
+
+                        if ($rows->isNotEmpty()) {
+                            $source = 'public_radacct';
+                        }
+                    }
+                }
+            }
+
+            $usernames = $rows->pluck('username')->filter()->unique()->values()->all();
+
+            $hotspotUsersByUsername = HotspotUser::whereIn('username', $usernames)
+                ->with(['package:id,name,data_limit'])
+                ->get()
+                ->keyBy('username');
+
+            $data = $rows->map(function ($row) use ($hotspotUsersByUsername) {
+                $username    = (string) ($row->username ?? '');
+                $hsUser      = $hotspotUsersByUsername->get($username);
+                $pkg         = $hsUser?->package;
+                $start       = $row->acctstarttime ? \Carbon\Carbon::parse($row->acctstarttime) : null;
+                $duration    = $start ? max(0, $start->diffInSeconds(now(), false)) : (int) ($row->acctsessiontime ?? 0);
+                $bytesIn     = (int) ($row->acctinputoctets ?? 0);
+                $bytesOut    = (int) ($row->acctoutputoctets ?? 0);
+
+                return [
+                    'id'                 => (string) ($row->acctuniqueid ?? $row->acctsessionid ?? $username),
+                    'acct_session_id'    => $row->acctsessionid ?? null,
+                    'acct_unique_id'     => $row->acctuniqueid ?? null,
+                    'username'           => $username,
+                    'type'               => 'hotspot',
+                    'hotspot_user_id'    => $hsUser?->id,
+                    'framed_ip'          => $row->framedipaddress ?? null,
+                    'ip_address'         => $row->framedipaddress ?? null,
+                    'calling_station_id' => $row->callingstationid ?? null,
+                    'mac_address'        => $row->callingstationid ?? null,
+                    'nas_ip_address'     => $row->nasipaddress ?? null,
+                    'nas_port_id'        => $row->nasportid ?? null,
+                    'start_time'         => $row->acctstarttime ?? null,
+                    'connected_at'       => $row->acctstarttime ?? null,
+                    'duration'           => $duration,
+                    'uptime'             => $duration,
+                    'input_octets'       => $bytesIn,
+                    'output_octets'      => $bytesOut,
+                    'package'            => $pkg ? [
+                        'id'         => (string) $pkg->id,
+                        'name'       => $pkg->name,
+                        'data_limit' => $pkg->data_limit,
+                    ] : null,
+                    'subscription_expires_at' => $hsUser?->subscription_expires_at,
+                    'status'             => 'active',
+                ];
+            })->values();
+
+            return response()->json([
+                'success' => true,
+                'data'    => $data,
+                'source'  => $source,
+                'total'   => $data->count(),
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error fetching live hotspot sessions', ['error' => $e->getMessage()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch live sessions: ' . $e->getMessage(),
             ], 500);
         }
     }
