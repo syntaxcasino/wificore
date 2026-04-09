@@ -228,46 +228,40 @@ class ZeroConfigHybridGenerator
         $pal     = "PPPOE-ACTIVE-HYB-{$id}";
         $isLowEnd = $params['is_low_end'] ?? false;
 
+        // Rules appended in correct order — NO place-before=0 (which reverses insertion order)
+        // Correct order: established/related -> invalid drop -> auth accept -> cross-VLAN drop -> unauth drop
         if ($isLowEnd) {
-            // MINIMAL FIREWALL for hAP lite (~8 rules)
-            // Core security only - blocks unauth, allows authenticated
             return [
                 "# Firewall [MINIMAL] - Essential security for low-end device",
                 ":do { /ip firewall filter remove [/ip firewall filter find comment~\"hyb-fw-{$id}\"]; } on-error={}",
-                // CRITICAL: Drop unauthenticated traffic from both VLANs
-                "/ip firewall filter add chain=forward in-interface={$ppIface} action=drop place-before=0 comment=\"hyb-fw-{$id}-pp-DROP-UNAUTH\"",
-                "/ip firewall filter add chain=forward in-interface={$hsIface} action=drop place-before=0 comment=\"hyb-fw-{$id}-hs-DROP-UNAUTH\"",
-                // CRITICAL: Allow authenticated users to WAN
-                "/ip firewall filter add chain=forward in-interface={$hsIface} hotspot=auth out-interface-list=WAN action=accept place-before=0 comment=\"hyb-fw-{$id}-hs-AUTH-INET\"",
-                "/ip firewall filter add chain=forward in-interface-list={$pal} out-interface-list=WAN action=accept place-before=0 comment=\"hyb-fw-{$id}-pp-AUTH-INET\"",
-                // Performance: Established/related
-                "/ip firewall filter add chain=forward in-interface={$hsIface} connection-state=established,related action=accept place-before=0 comment=\"hyb-fw-{$id}-hs-EST\"",
-                "/ip firewall filter add chain=forward in-interface-list={$pal} connection-state=established,related action=accept place-before=0 comment=\"hyb-fw-{$id}-pp-EST\"",
-                "/ip firewall filter add chain=forward in-interface-list=WAN out-interface={$hsIface} connection-state=established,related action=accept place-before=0 comment=\"hyb-fw-{$id}-hs-WAN\"",
-                "/ip firewall filter add chain=forward in-interface-list=WAN out-interface-list={$pal} connection-state=established,related action=accept place-before=0 comment=\"hyb-fw-{$id}-pp-WAN\"",
-                // Security: Drop invalid
-                "/ip firewall filter add chain=forward in-interface={$hsIface} connection-state=invalid action=drop place-before=0 comment=\"hyb-fw-{$id}-hs-INV\"",
+                "/ip firewall filter add chain=forward in-interface={$hsIface} connection-state=established,related action=accept comment=\"hyb-fw-{$id}-hs-EST\"",
+                "/ip firewall filter add chain=forward in-interface-list={$pal} connection-state=established,related action=accept comment=\"hyb-fw-{$id}-pp-EST\"",
+                "/ip firewall filter add chain=forward in-interface-list=WAN out-interface={$hsIface} connection-state=established,related action=accept comment=\"hyb-fw-{$id}-hs-WAN\"",
+                "/ip firewall filter add chain=forward in-interface-list=WAN out-interface-list={$pal} connection-state=established,related action=accept comment=\"hyb-fw-{$id}-pp-WAN\"",
+                "/ip firewall filter add chain=forward in-interface={$hsIface} connection-state=invalid action=drop comment=\"hyb-fw-{$id}-hs-INV\"",
+                "/ip firewall filter add chain=forward in-interface={$hsIface} hotspot=auth out-interface-list=WAN action=accept comment=\"hyb-fw-{$id}-hs-AUTH-INET\"",
+                "/ip firewall filter add chain=forward in-interface-list={$pal} out-interface-list=WAN action=accept comment=\"hyb-fw-{$id}-pp-AUTH-INET\"",
+                "/ip firewall filter add chain=forward in-interface={$ppIface} action=drop comment=\"hyb-fw-{$id}-pp-DROP-UNAUTH\"",
+                "/ip firewall filter add chain=forward in-interface={$hsIface} action=drop comment=\"hyb-fw-{$id}-hs-DROP-UNAUTH\"",
                 ""
             ];
         }
 
-        // FULL FIREWALL for high-end devices (~12 rules)
-        // Complete security with VLAN separation
         return [
             "# Firewall [FULL] - Complete security for high-end device",
             ":do { /ip firewall filter remove [/ip firewall filter find comment~\"hyb-fw-{$id}\"]; } on-error={}",
-            "/ip firewall filter add chain=forward in-interface={$ppIface} action=drop place-before=0 comment=\"hyb-fw-{$id}-pp-drop\"",
-            "/ip firewall filter add chain=forward in-interface={$hsIface} action=drop place-before=0 comment=\"hyb-fw-{$id}-hs-drop\"",
-            "/ip firewall filter add chain=forward in-interface={$hsIface} hotspot=auth out-interface-list=WAN action=accept place-before=0 comment=\"hyb-fw-{$id}-hs-inet\"",
-            "/ip firewall filter add chain=forward in-interface-list={$pal} out-interface-list=WAN action=accept place-before=0 comment=\"hyb-fw-{$id}-pp-inet\"",
-            "/ip firewall filter add chain=forward in-interface-list={$pal} connection-state=invalid action=drop place-before=0 comment=\"hyb-fw-{$id}-pp-inv\"",
-            "/ip firewall filter add chain=forward in-interface={$hsIface} connection-state=invalid action=drop place-before=0 comment=\"hyb-fw-{$id}-hs-inv\"",
-            "/ip firewall filter add chain=forward in-interface-list={$pal} connection-state=established,related action=accept place-before=0 comment=\"hyb-fw-{$id}-pp-est\"",
-            "/ip firewall filter add chain=forward in-interface={$hsIface} connection-state=established,related action=accept place-before=0 comment=\"hyb-fw-{$id}-hs-est\"",
-            "/ip firewall filter add chain=forward in-interface-list=WAN out-interface={$hsIface} connection-state=established,related action=accept place-before=0 comment=\"hyb-fw-{$id}-hs-wan\"",
-            "/ip firewall filter add chain=forward in-interface-list=WAN out-interface-list={$pal} connection-state=established,related action=accept place-before=0 comment=\"hyb-fw-{$id}-pp-wan\"",
-            "/ip firewall filter add chain=forward in-interface={$ppIface} out-interface={$hsIface} action=drop place-before=0 comment=\"hyb-fw-{$id}-xvlan-pp\"",
-            "/ip firewall filter add chain=forward in-interface={$hsIface} out-interface={$ppIface} action=drop place-before=0 comment=\"hyb-fw-{$id}-xvlan-hs\"",
+            "/ip firewall filter add chain=forward in-interface={$hsIface} connection-state=established,related action=accept comment=\"hyb-fw-{$id}-hs-est\"",
+            "/ip firewall filter add chain=forward in-interface-list={$pal} connection-state=established,related action=accept comment=\"hyb-fw-{$id}-pp-est\"",
+            "/ip firewall filter add chain=forward in-interface-list=WAN out-interface={$hsIface} connection-state=established,related action=accept comment=\"hyb-fw-{$id}-hs-wan\"",
+            "/ip firewall filter add chain=forward in-interface-list=WAN out-interface-list={$pal} connection-state=established,related action=accept comment=\"hyb-fw-{$id}-pp-wan\"",
+            "/ip firewall filter add chain=forward in-interface-list={$pal} connection-state=invalid action=drop comment=\"hyb-fw-{$id}-pp-inv\"",
+            "/ip firewall filter add chain=forward in-interface={$hsIface} connection-state=invalid action=drop comment=\"hyb-fw-{$id}-hs-inv\"",
+            "/ip firewall filter add chain=forward in-interface={$hsIface} hotspot=auth out-interface-list=WAN action=accept comment=\"hyb-fw-{$id}-hs-inet\"",
+            "/ip firewall filter add chain=forward in-interface-list={$pal} out-interface-list=WAN action=accept comment=\"hyb-fw-{$id}-pp-inet\"",
+            "/ip firewall filter add chain=forward in-interface={$ppIface} out-interface={$hsIface} action=drop comment=\"hyb-fw-{$id}-xvlan-pp\"",
+            "/ip firewall filter add chain=forward in-interface={$hsIface} out-interface={$ppIface} action=drop comment=\"hyb-fw-{$id}-xvlan-hs\"",
+            "/ip firewall filter add chain=forward in-interface={$ppIface} action=drop comment=\"hyb-fw-{$id}-pp-drop\"",
+            "/ip firewall filter add chain=forward in-interface={$hsIface} action=drop comment=\"hyb-fw-{$id}-hs-drop\"",
             ""
         ];
     }
@@ -285,8 +279,10 @@ class ZeroConfigHybridGenerator
         return [
             "# NAT Rules",
             ":do { /ip firewall nat remove [/ip firewall nat find comment~\"hyb-nat-{$id}\"]; } on-error={}",
-            ":do { /ip firewall nat add chain=srcnat action=masquerade src-address={$hsNet}/{$hsCidr} out-interface=!{$hsIface} comment=\"hyb-nat-{$id}-hs\"; } on-error={ :error \"hyb-nat-hs-fail\" }",
-            ":do { /ip firewall nat add chain=srcnat action=masquerade in-interface-list={$pal} out-interface-list=WAN comment=\"hyb-nat-{$id}-pp\"; } on-error={ :error \"hyb-nat-pp-fail\" }",
+            // Hotspot: srcnat masquerade for hotspot pool subnet going to WAN
+            ":do { /ip firewall nat add chain=srcnat action=masquerade src-address={$hsNet}/{$hsCidr} out-interface-list=WAN comment=\"hyb-nat-{$id}-hs\"; } on-error={ :error \"hyb-nat-hs-fail\" }",
+            // PPPoE: srcnat masquerade for PPPoE active sessions going to WAN (out-interface-list only)
+            ":do { /ip firewall nat add chain=srcnat action=masquerade out-interface-list=WAN comment=\"hyb-nat-{$id}-pp\"; } on-error={ :error \"hyb-nat-pp-fail\" }",
             ":do { /ip firewall nat add chain=dstnat action=redirect to-ports=64872 protocol=tcp dst-port=80 in-interface={$hsIface} comment=\"hyb-redir80-{$id}\"; } on-error={ :error \"hyb-redir80-fail\" }",
             ":do { /ip firewall nat add chain=dstnat action=redirect to-ports=64875 protocol=tcp dst-port=443 in-interface={$hsIface} comment=\"hyb-redir443-{$id}\"; } on-error={ :error \"hyb-redir443-fail\" }",
             "",
@@ -430,38 +426,34 @@ class ZeroConfigHybridGenerator
         $pal    = $params['pppoe_active_list'];
         $isLowEnd = $params['is_low_end'] ?? false;
 
+        // Rules appended in correct order — NO place-before=0 (which reverses insertion order)
         if ($isLowEnd) {
-            // MINIMAL FIREWALL for hAP lite Bridge mode (~6 rules)
             return [
                 "# Firewall [MINIMAL] - Bridge mode essential security",
                 ":do { /ip firewall filter remove [/ip firewall filter find comment~\"hyb-fw-{$id}\"]; } on-error={}",
-                // CRITICAL: Block unauthenticated users from internet
-                "/ip firewall filter add chain=forward in-interface=\"{$bridge}\" action=drop place-before=0 comment=\"hyb-fw-{$id}-DROP-UNAUTH\"",
-                // CRITICAL: Allow authenticated hotspot and PPPoE users
-                "/ip firewall filter add chain=forward in-interface=\"{$bridge}\" hotspot=auth out-interface-list=WAN action=accept place-before=0 comment=\"hyb-fw-{$id}-hs-AUTH\"",
-                "/ip firewall filter add chain=forward in-interface-list={$pal} out-interface-list=WAN action=accept place-before=0 comment=\"hyb-fw-{$id}-pp-AUTH\"",
-                // Performance and security
-                "/ip firewall filter add chain=forward in-interface=\"{$bridge}\" connection-state=established,related action=accept place-before=0 comment=\"hyb-fw-{$id}-EST\"",
-                "/ip firewall filter add chain=forward in-interface-list=WAN out-interface=\"{$bridge}\" connection-state=established,related action=accept place-before=0 comment=\"hyb-fw-{$id}-WAN\"",
-                "/ip firewall filter add chain=forward in-interface-list=WAN out-interface-list={$pal} connection-state=established,related action=accept place-before=0 comment=\"hyb-fw-{$id}-pp-WAN\"",
-                "/ip firewall filter add chain=forward in-interface=\"{$bridge}\" connection-state=invalid action=drop place-before=0 comment=\"hyb-fw-{$id}-INV\"",
+                "/ip firewall filter add chain=forward in-interface=\"{$bridge}\" connection-state=established,related action=accept comment=\"hyb-fw-{$id}-EST\"",
+                "/ip firewall filter add chain=forward in-interface-list=WAN out-interface=\"{$bridge}\" connection-state=established,related action=accept comment=\"hyb-fw-{$id}-WAN\"",
+                "/ip firewall filter add chain=forward in-interface-list=WAN out-interface-list={$pal} connection-state=established,related action=accept comment=\"hyb-fw-{$id}-pp-WAN\"",
+                "/ip firewall filter add chain=forward in-interface=\"{$bridge}\" connection-state=invalid action=drop comment=\"hyb-fw-{$id}-INV\"",
+                "/ip firewall filter add chain=forward in-interface=\"{$bridge}\" hotspot=auth out-interface-list=WAN action=accept comment=\"hyb-fw-{$id}-hs-AUTH\"",
+                "/ip firewall filter add chain=forward in-interface-list={$pal} out-interface-list=WAN action=accept comment=\"hyb-fw-{$id}-pp-AUTH\"",
+                "/ip firewall filter add chain=forward in-interface=\"{$bridge}\" action=drop comment=\"hyb-fw-{$id}-DROP-UNAUTH\"",
                 ""
             ];
         }
 
-        // FULL FIREWALL for high-end Bridge mode (~9 rules)
         return [
             "# Firewall [FULL] - Bridge mode complete security",
             ":do { /ip firewall filter remove [/ip firewall filter find comment~\"hyb-fw-{$id}\"]; } on-error={}",
-            "/ip firewall filter add chain=forward in-interface=\"{$bridge}\" action=drop place-before=0 comment=\"hyb-fw-{$id}-drop\"",
-            "/ip firewall filter add chain=forward in-interface=\"{$bridge}\" hotspot=auth out-interface-list=WAN action=accept place-before=0 comment=\"hyb-fw-{$id}-hs-inet\"",
-            "/ip firewall filter add chain=forward in-interface-list={$pal} out-interface-list=WAN action=accept place-before=0 comment=\"hyb-fw-{$id}-pp-inet\"",
-            "/ip firewall filter add chain=forward in-interface-list={$pal} connection-state=invalid action=drop place-before=0 comment=\"hyb-fw-{$id}-pp-inv\"",
-            "/ip firewall filter add chain=forward in-interface=\"{$bridge}\" connection-state=invalid action=drop place-before=0 comment=\"hyb-fw-{$id}-hs-inv\"",
-            "/ip firewall filter add chain=forward in-interface-list={$pal} connection-state=established,related action=accept place-before=0 comment=\"hyb-fw-{$id}-pp-est\"",
-            "/ip firewall filter add chain=forward in-interface=\"{$bridge}\" connection-state=established,related action=accept place-before=0 comment=\"hyb-fw-{$id}-hs-est\"",
-            "/ip firewall filter add chain=forward in-interface-list=WAN out-interface=\"{$bridge}\" connection-state=established,related action=accept place-before=0 comment=\"hyb-fw-{$id}-hs-wan\"",
-            "/ip firewall filter add chain=forward in-interface-list=WAN out-interface-list={$pal} connection-state=established,related action=accept place-before=0 comment=\"hyb-fw-{$id}-pp-wan\"",
+            "/ip firewall filter add chain=forward in-interface=\"{$bridge}\" connection-state=established,related action=accept comment=\"hyb-fw-{$id}-hs-est\"",
+            "/ip firewall filter add chain=forward in-interface-list={$pal} connection-state=established,related action=accept comment=\"hyb-fw-{$id}-pp-est\"",
+            "/ip firewall filter add chain=forward in-interface-list=WAN out-interface=\"{$bridge}\" connection-state=established,related action=accept comment=\"hyb-fw-{$id}-hs-wan\"",
+            "/ip firewall filter add chain=forward in-interface-list=WAN out-interface-list={$pal} connection-state=established,related action=accept comment=\"hyb-fw-{$id}-pp-wan\"",
+            "/ip firewall filter add chain=forward in-interface=\"{$bridge}\" connection-state=invalid action=drop comment=\"hyb-fw-{$id}-hs-inv\"",
+            "/ip firewall filter add chain=forward in-interface-list={$pal} connection-state=invalid action=drop comment=\"hyb-fw-{$id}-pp-inv\"",
+            "/ip firewall filter add chain=forward in-interface=\"{$bridge}\" hotspot=auth out-interface-list=WAN action=accept comment=\"hyb-fw-{$id}-hs-inet\"",
+            "/ip firewall filter add chain=forward in-interface-list={$pal} out-interface-list=WAN action=accept comment=\"hyb-fw-{$id}-pp-inet\"",
+            "/ip firewall filter add chain=forward in-interface=\"{$bridge}\" action=drop comment=\"hyb-fw-{$id}-drop\"",
             ""
         ];
     }
@@ -493,16 +485,19 @@ class ZeroConfigHybridGenerator
     private function generateRadiusSetup(array $params): array
     {
         $rs  = $params['radius_server'];
-        $sec = $params['radius_secret'];
+        // Escape secret for safe RouterOS string embedding
+        $sec = str_replace(['\\', '"', '$'], ['\\\\', '\\"', '\\$'], (string) $params['radius_secret']);
         $id  = $params['id'];
 
         return [
-            "# RADIUS - RADIUS-ONLY AAA",
+            "# RADIUS - RADIUS-ONLY AAA (hotspot + PPPoE)",
             ":do { /radius remove [/radius find service=hotspot comment~\"hyb-hs-rad-{$id}\"]; } on-error={}",
             ":do { /radius add service=hotspot address={$rs} secret=\"{$sec}\" authentication-port=1812 accounting-port=1813 timeout=3s comment=\"hyb-hs-rad-{$id}\"; } on-error={ :error \"hyb-hs-rad-fail\" }",
             ":do { /radius remove [/radius find service=ppp comment~\"hyb-pp-rad-{$id}\"]; } on-error={}",
             ":do { /radius add service=ppp address={$rs} secret=\"{$sec}\" authentication-port=1812 accounting-port=1813 timeout=3s comment=\"hyb-pp-rad-{$id}\"; } on-error={ :error \"hyb-pp-rad-fail\" }",
+            // Force PPPoE to use RADIUS for ALL auth + accounting with 5-min interim updates
             "/ppp aaa set use-radius=yes accounting=yes interim-update=5m",
+            // Remove ALL local credentials to enforce RADIUS-only AAA
             ":do { /ip hotspot user remove [/ip hotspot user find] } on-error={}",
             ":do { /ppp secret remove [/ppp secret find] } on-error={}",
             "",
@@ -516,13 +511,16 @@ class ZeroConfigHybridGenerator
         $mport = '22,8291,8728,8729';
         $rs    = $params['radius_server'] ?? '10.8.0.1';
 
+        // Rules appended in correct order — NO place-before=0 (which reverses insertion order)
+        // Correct order: established -> allow mgmt -> allow snmp -> allow CoA -> drop unknown
         return [
             "# Management Input Rules",
             ":do { /ip firewall filter remove [/ip firewall filter find comment~\"hyb-mgmt-{$id}\"]; } on-error={}",
-            "/ip firewall filter add chain=input protocol=tcp dst-port={$mport} action=drop place-before=0 comment=\"hyb-mgmt-{$id}-drop\"",
-            "/ip firewall filter add chain=input protocol=udp dst-port=161 src-address={$rs} action=accept place-before=0 comment=\"hyb-mgmt-{$id}-snmp\"",
-            "/ip firewall filter add chain=input protocol=tcp dst-port={$mport} src-address={$mgmt} action=accept place-before=0 comment=\"hyb-mgmt-{$id}-allow\"",
-            "/ip firewall filter add chain=input connection-state=established,related action=accept place-before=0 comment=\"hyb-mgmt-{$id}-est\"",
+            "/ip firewall filter add chain=input connection-state=established,related action=accept comment=\"hyb-mgmt-{$id}-est\"",
+            "/ip firewall filter add chain=input protocol=tcp dst-port={$mport} src-address={$mgmt} action=accept comment=\"hyb-mgmt-{$id}-allow\"",
+            "/ip firewall filter add chain=input protocol=udp dst-port=161 src-address={$rs} action=accept comment=\"hyb-mgmt-{$id}-snmp\"",
+            "/ip firewall filter add chain=input protocol=udp dst-port=3799 src-address={$rs} action=accept comment=\"hyb-mgmt-{$id}-coa\"",
+            "/ip firewall filter add chain=input protocol=tcp dst-port={$mport} action=drop comment=\"hyb-mgmt-{$id}-drop\"",
             "",
         ];
     }
@@ -533,108 +531,66 @@ class ZeroConfigHybridGenerator
      */
     private function generateSecurityHardeningRules(array $params): array
     {
-        $id      = $params['id'];
+        $id       = $params['id'];
         $isLowEnd = $params['is_low_end'] ?? false;
-        
+
         // Determine if we're in VLAN or Bridge mode
         $isVlanMode = isset($params['hotspot_vlan_id']) && isset($params['pppoe_vlan_id']);
-        
+
         if ($isVlanMode) {
             $hsVlan  = $params['hotspot_vlan_id'];
             $ppVlan  = $params['pppoe_vlan_id'];
             $hsIface = "vlan-hs-{$hsVlan}";
             $ppIface = "vlan-pp-{$ppVlan}";
-            $pal     = "PPPOE-ACTIVE-HYB-{$id}";
             $hsPool  = $params['hotspot_pool'];
             $ppPool  = $params['pppoe_pool'];
         } else {
-            // Bridge mode
-            $bridge  = $params['bridge'];
-            $pal     = $params['pppoe_active_list'];
-            $hsPool  = $params['hotspot_pool'];
-            $ppPool  = $params['pppoe_pool'];
+            $bridge = $params['bridge'];
+            $hsPool = $params['hotspot_pool'];
+            $ppPool = $params['pppoe_pool'];
         }
-        
+
         $rules = [
             "# SECURITY HARDENING - BCP 38 Anti-Spoofing & DDoS Protection",
             ":do { /ip firewall filter remove [/ip firewall filter find comment~\"SEC-$id\"]; } on-error={}",
         ];
-        
+
         if ($isLowEnd) {
-            // MINIMAL security for low-end devices
+            // MINIMAL — use actual pool CIDRs for BCP38 anti-spoof
             if ($isVlanMode) {
-                // VLAN Mode - check both interfaces
-                $hsNetwork = explode('/', $hsPool->network_cidr)[0];
-                $hsCidr    = explode('/', $hsPool->network_cidr)[1] ?? '24';
-                $ppNetwork = explode('/', $ppPool->network_cidr)[0];
-                $ppCidr    = explode('/', $ppPool->network_cidr)[1] ?? '24';
-                
-                // BCP 38: Drop spoofed traffic from Hotspot VLAN
-                $rules[] = "/ip firewall filter add chain=forward in-interface={$hsIface} src-address=!{$hsNetwork}/{$hsCidr} action=drop comment=\"SEC-$id-BCP38-HS-SPOOF\"";
-                // BCP 38: Drop spoofed traffic from PPPoE VLAN
-                $rules[] = "/ip firewall filter add chain=forward in-interface={$ppIface} src-address=!{$ppNetwork}/{$ppCidr} action=drop comment=\"SEC-$id-BCP38-PP-SPOOF\"";
-            } else {
-                // Bridge Mode - single bridge interface
-                $hsNetwork = explode('/', $hsPool->network_cidr)[0];
-                $hsCidr    = explode('/', $hsPool->network_cidr)[1] ?? '24';
-                $rules[] = "/ip firewall filter add chain=forward in-interface=\"{$bridge}\" src-address=!{$hsNetwork}/{$hsCidr} action=drop comment=\"SEC-$id-BCP38-HS-SPOOF\"";
-            }
-            
-            // DDoS: SYN flood protection
-            $rules[] = "/ip firewall filter add chain=input protocol=tcp connection-state=new limit=50,5 action=drop comment=\"SEC-$id-DDoS-SYN\"";
-            
-            // DDoS: Connection limit per source IP
-            if ($isVlanMode) {
+                $rules[] = "/ip firewall filter add chain=forward in-interface={$hsIface} src-address=!{$hsPool->network_cidr} action=drop comment=\"SEC-$id-BCP38-HS-SPOOF\"";
+                $rules[] = "/ip firewall filter add chain=forward in-interface={$ppIface} src-address=!{$ppPool->network_cidr} action=drop comment=\"SEC-$id-BCP38-PP-SPOOF\"";
                 $rules[] = "/ip firewall filter add chain=forward in-interface={$hsIface} connection-state=new connection-limit=100,32 action=drop comment=\"SEC-$id-DDoS-HS-CONN\"";
                 $rules[] = "/ip firewall filter add chain=forward in-interface={$ppIface} connection-state=new connection-limit=100,32 action=drop comment=\"SEC-$id-DDoS-PP-CONN\"";
             } else {
+                $rules[] = "/ip firewall filter add chain=forward in-interface=\"{$bridge}\" src-address=!{$hsPool->network_cidr} action=drop comment=\"SEC-$id-BCP38-HS-SPOOF\"";
                 $rules[] = "/ip firewall filter add chain=forward in-interface=\"{$bridge}\" connection-state=new connection-limit=100,32 action=drop comment=\"SEC-$id-DDoS-CONN\"";
             }
-            
-            // DDoS: ICMP flood protection
-            $rules[] = "/ip firewall filter add chain=input protocol=icmp connection-state=new limit=20,5 action=drop comment=\"SEC-$id-DDoS-ICMP\"";
+            // DDoS: rate/interval,burst syntax (RouterOS)
+            $rules[] = "/ip firewall filter add chain=input protocol=tcp connection-state=new limit=50/s,5 action=drop comment=\"SEC-$id-DDoS-SYN\"";
+            $rules[] = "/ip firewall filter add chain=input protocol=icmp connection-state=new limit=20/s,5 action=drop comment=\"SEC-$id-DDoS-ICMP\"";
         } else {
-            // FULL security for high-end devices
-            // BCP 38: Drop private RFC1918 sources from WAN
-            $rules[] = "/ip firewall filter add chain=input in-interface-list=WAN src-address=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,100.64.0.0/10 action=drop comment=\"SEC-$id-BCP38-WAN\"";
-            
-            if ($isVlanMode) {
-                $hsNetwork = explode('/', $hsPool->network_cidr)[0];
-                $hsCidr    = explode('/', $hsPool->network_cidr)[1] ?? '24';
-                $ppNetwork = explode('/', $ppPool->network_cidr)[0];
-                $ppCidr    = explode('/', $ppPool->network_cidr)[1] ?? '24';
-                
-                // BCP 38: Drop spoofed traffic from Hotspot VLAN
-                $rules[] = "/ip firewall filter add chain=forward in-interface={$hsIface} src-address=!{$hsNetwork}/{$hsCidr} action=drop comment=\"SEC-$id-BCP38-HS-SPOOF\"";
-                // BCP 38: Drop spoofed traffic from PPPoE VLAN
-                $rules[] = "/ip firewall filter add chain=forward in-interface={$ppIface} src-address=!{$ppNetwork}/{$ppCidr} action=drop comment=\"SEC-$id-BCP38-PP-SPOOF\"";
-            } else {
-                $hsNetwork = explode('/', $hsPool->network_cidr)[0];
-                $hsCidr    = explode('/', $hsPool->network_cidr)[1] ?? '24';
-                $rules[] = "/ip firewall filter add chain=forward in-interface=\"{$bridge}\" src-address=!{$hsNetwork}/{$hsCidr} action=drop comment=\"SEC-$id-BCP38-HS-SPOOF\"";
+            // FULL — exclude 10.0.0.0/8 from WAN RFC1918 block (WireGuard management uses this range)
+            $wanSpoof = ['172.16.0.0/12', '192.168.0.0/16', '100.64.0.0/10', '0.0.0.0/8'];
+            foreach ($wanSpoof as $cidr) {
+                $rules[] = "/ip firewall filter add chain=input in-interface-list=WAN src-address={$cidr} action=drop comment=\"SEC-$id-BCP38-WAN\"";
             }
-            
-            // BCP 38: Drop martian sources
-            $rules[] = "/ip firewall filter add chain=forward src-address=0.0.0.0/8,127.0.0.0/8,169.254.0.0/16,192.0.2.0/24,198.51.100.0/24,203.0.113.0/24,240.0.0.0/4 action=drop comment=\"SEC-$id-BCP38-MARTIAN\"";
-            
-            // DDoS: SYN flood protection
-            $rules[] = "/ip firewall filter add chain=input protocol=tcp connection-state=new limit=50,5 action=drop comment=\"SEC-$id-DDoS-SYN\"";
-            
-            // DDoS: UDP flood protection
-            $rules[] = "/ip firewall filter add chain=input protocol=udp connection-state=new limit=100,5 action=drop comment=\"SEC-$id-DDoS-UDP\"";
-            
-            // DDoS: ICMP flood protection
-            $rules[] = "/ip firewall filter add chain=input protocol=icmp connection-state=new limit=20,5 action=drop comment=\"SEC-$id-DDoS-ICMP\"";
-            
-            // DDoS: Connection limits per interface
             if ($isVlanMode) {
+                $rules[] = "/ip firewall filter add chain=forward in-interface={$hsIface} src-address=!{$hsPool->network_cidr} action=drop comment=\"SEC-$id-BCP38-HS-SPOOF\"";
+                $rules[] = "/ip firewall filter add chain=forward in-interface={$ppIface} src-address=!{$ppPool->network_cidr} action=drop comment=\"SEC-$id-BCP38-PP-SPOOF\"";
                 $rules[] = "/ip firewall filter add chain=forward in-interface={$hsIface} connection-state=new connection-limit=200,32 action=drop comment=\"SEC-$id-DDoS-HS-LIMIT\"";
                 $rules[] = "/ip firewall filter add chain=forward in-interface={$ppIface} connection-state=new connection-limit=200,32 action=drop comment=\"SEC-$id-DDoS-PP-LIMIT\"";
             } else {
+                $rules[] = "/ip firewall filter add chain=forward in-interface=\"{$bridge}\" src-address=!{$hsPool->network_cidr} action=drop comment=\"SEC-$id-BCP38-HS-SPOOF\"";
                 $rules[] = "/ip firewall filter add chain=forward in-interface=\"{$bridge}\" connection-state=new connection-limit=200,32 action=drop comment=\"SEC-$id-DDoS-CONN-LIMIT\"";
             }
+            $martians = '0.0.0.0/8,127.0.0.0/8,169.254.0.0/16,192.0.2.0/24,198.51.100.0/24,203.0.113.0/24,240.0.0.0/4';
+            $rules[] = "/ip firewall filter add chain=forward src-address={$martians} action=drop comment=\"SEC-$id-BCP38-MARTIAN\"";
+            $rules[] = "/ip firewall filter add chain=input protocol=tcp connection-state=new limit=50/s,5 action=drop comment=\"SEC-$id-DDoS-SYN\"";
+            $rules[] = "/ip firewall filter add chain=input protocol=udp connection-state=new limit=100/s,5 action=drop comment=\"SEC-$id-DDoS-UDP\"";
+            $rules[] = "/ip firewall filter add chain=input protocol=icmp connection-state=new limit=20/s,5 action=drop comment=\"SEC-$id-DDoS-ICMP\"";
         }
-        
+
         $rules[] = "";
         return $rules;
     }
@@ -644,6 +600,9 @@ class ZeroConfigHybridGenerator
         return [
             "# Global Default Drop",
             ":do { /ip firewall filter remove [/ip firewall filter find comment~\"GLOBAL-DEFAULT-DROP-\"]; } on-error={}",
+            ":do { /ip firewall filter remove [/ip firewall filter find comment=\"GLOBAL-EST-IN\"]; } on-error={}",
+            // Accept established/related before dropping — protects active VPN/SSH during re-deploy
+            "/ip firewall filter add chain=input connection-state=established,related action=accept comment=\"GLOBAL-EST-IN\"",
             "/ip firewall filter add chain=input action=drop comment=\"GLOBAL-DEFAULT-DROP-IN\"",
             "/ip firewall filter add chain=forward action=drop comment=\"GLOBAL-DEFAULT-DROP-FWD\"",
             "",

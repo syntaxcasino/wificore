@@ -1075,9 +1075,13 @@ Route::middleware(['auth:sanctum', 'role:admin', 'user.active', 'tenant.context'
         Route::post('/users/{user}/revoke-access', [\App\Http\Controllers\Api\HotspotController::class, 'revokeAccess'])
             ->name('users.revoke-access');
         
-        // List active sessions
+        // List active sessions (DB cache from RadiusSession model)
         Route::get('/sessions', [\App\Http\Controllers\Api\HotspotController::class, 'listSessions'])
             ->name('sessions.index');
+
+        // Live sessions direct from RADIUS accounting (radacct) — authoritative source
+        Route::get('/sessions/live', [\App\Http\Controllers\Api\HotspotController::class, 'listLiveSessions'])
+            ->name('sessions.live');
         
         // Get hotspot statistics
         Route::get('/stats', [\App\Http\Controllers\Api\HotspotController::class, 'getStats'])

@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Models\RadiusSession;
 use App\Models\DataUsageLog;
+use App\Models\PppoeUser;
 use App\Models\Tenant;
 use App\Traits\TenantAwareJob;
 use Illuminate\Bus\Queueable;
@@ -144,11 +145,52 @@ class SyncRadiusAccountingJob implements ShouldQueue
                 }
             }
             
-            Log::info('Finished syncing RADIUS accounting', [
+            Log::info('Finished syncing RADIUS accounting (hotspot)', [
                 'tenant_id' => $this->tenantId,
                 'total_sessions' => $activeSessions->count(),
                 'synced' => $syncedCount,
                 'errors' => $errorCount,
+            ]);
+
+            // -----------------------------------------------------------------
+            // PPPoE: sync data_used for active PPPoE users from radacct
+            // -----------------------------------------------------------------
+            $pppoeUsers = PppoeUser::where('status', 'active')->get();
+            $ppSynced   = 0;
+            $ppErrors   = 0;
+
+            foreach ($pppoeUsers as $ppUser) {
+                try {
+                    // Sum ALL accounting records for this user (active + historic this cycle)
+                    $usage = DB::table('radacct')
+                        ->where('username', $ppUser->username)
+                        ->selectRaw('COALESCE(SUM(acctinputoctets),0) AS bytes_in, COALESCE(SUM(acctoutputoctets),0) AS bytes_out')
+                        ->first();
+
+                    if (!$usage) {
+                        continue;
+                    }
+
+                    $totalBytes = ((int) $usage->bytes_in) + ((int) $usage->bytes_out);
+
+                    $ppUser->update(['data_used' => $totalBytes]);
+
+                    $ppSynced++;
+                } catch (\Exception $e) {
+                    $ppErrors++;
+                    Log::error('Failed to sync PPPoE user accounting', [
+                        'tenant_id' => $this->tenantId,
+                        'username'  => $ppUser->username,
+                        'error'     => $e->getMessage(),
+                    ]);
+                }
+            }
+
+            Log::info('Finished syncing RADIUS accounting (pppoe)', [
+                'tenant_id'   => $this->tenantId,
+                'pppoe_users' => $pppoeUsers->count(),
+                'synced'      => $ppSynced,
+                'errors'      => $ppErrors,
             ]);
         });
     }

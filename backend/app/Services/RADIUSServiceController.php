@@ -203,23 +203,66 @@ class RADIUSServiceController extends TenantAwareService
 
     /**
      * Send CoA Disconnect-Request
-     * Terminates active session by removing it from the NAS (router) via SSH
-     * 
-     * @param array $session
+     *
+     * Strategy (RFC 5176 first, SSH fallback):
+     *  1. Try RFC 5176 Disconnect-Request via CoAService (UDP/3799) — preferred, no SSH needed.
+     *  2. On CoA failure, fall back to SSH-based session removal so the user is always kicked.
+     *
+     * @param array $session  A radacct row cast to array
      * @return bool
      */
     private function sendCoADisconnect(array $session): bool
     {
-        $username = $session['username'] ?? null;
+        $username     = $session['username'] ?? null;
         $nasIpAddress = $session['nasipaddress'] ?? null;
-        
+        $sessionId    = $session['acctsessionid'] ?? null;
+
         if (!$username) {
             Log::warning('CoA disconnect: No username in session', ['session' => $session]);
             return false;
         }
 
+        // ---------------------------------------------------------------
+        // 1. RFC 5176 CoA Disconnect-Request (RADIUS over UDP/3799)
+        // ---------------------------------------------------------------
         try {
-            // Find the router by NAS IP address
+            $coaService = new \App\Services\RADIUS\CoAService(
+                null,   // uses config('services.radius.server')
+                null,   // uses config('services.radius.coa_port', 3799)
+                null    // uses config('services.radius.secret')
+            );
+
+            $result = $coaService->disconnectUser(
+                $username,
+                'Administrative disconnect',
+                $sessionId,
+                $nasIpAddress
+            );
+
+            if ($result->isSuccessful()) {
+                Log::info('CoA disconnect: Session terminated via RFC 5176 CoA', [
+                    'username'   => $username,
+                    'session_id' => $sessionId,
+                    'nas_ip'     => $nasIpAddress,
+                ]);
+                return true;
+            }
+
+            Log::warning('CoA disconnect: RFC 5176 failed, falling back to SSH', [
+                'username' => $username,
+                'message'  => $result->message,
+            ]);
+        } catch (\Exception $e) {
+            Log::warning('CoA disconnect: CoAService exception, falling back to SSH', [
+                'username' => $username,
+                'error'    => $e->getMessage(),
+            ]);
+        }
+
+        // ---------------------------------------------------------------
+        // 2. SSH fallback — terminate session directly on the router
+        // ---------------------------------------------------------------
+        try {
             $router = null;
             if ($nasIpAddress) {
                 $router = \App\Models\Router::where('ip_address', $nasIpAddress)
@@ -228,7 +271,6 @@ class RADIUSServiceController extends TenantAwareService
             }
 
             if (!$router) {
-                // Try to find router from PppoeUser association
                 $pppoeUser = \App\Models\PppoeUser::where('username', $username)->first();
                 if ($pppoeUser) {
                     $router = \App\Models\Router::find($pppoeUser->router_id);
@@ -236,39 +278,36 @@ class RADIUSServiceController extends TenantAwareService
             }
 
             if (!$router) {
-                Log::warning('CoA disconnect: Router not found for session', [
+                Log::warning('CoA disconnect: Router not found for SSH fallback', [
                     'username' => $username,
-                    'nas_ip' => $nasIpAddress,
+                    'nas_ip'   => $nasIpAddress,
                 ]);
                 return false;
             }
 
-            // Disconnect via SSH - remove active PPPoE session
             $ssh = new \App\Services\MikroTik\SshExecutor($router, 15);
-
             $ssh->connect();
 
             try {
                 $escapedUsername = addslashes($username);
-                // Suppress RouterOS errors so command execution remains idempotent.
                 $ssh->exec(sprintf(':do { /ppp active remove [find name="%s"] } on-error={}', $escapedUsername));
                 $ssh->exec(sprintf(':do { /ip hotspot active remove [find user="%s"] } on-error={}', $escapedUsername));
             } finally {
                 $ssh->disconnect();
             }
 
-            Log::info('CoA disconnect: Session terminated via SSH', [
-                'username' => $username,
+            Log::info('CoA disconnect: Session terminated via SSH fallback', [
+                'username'  => $username,
                 'router_id' => $router->id,
-                'nas_ip' => $nasIpAddress,
+                'nas_ip'    => $nasIpAddress,
             ]);
-            
+
             return true;
         } catch (\Exception $e) {
-            Log::error('CoA disconnect: Failed to terminate session', [
+            Log::error('CoA disconnect: SSH fallback also failed', [
                 'username' => $username,
-                'nas_ip' => $nasIpAddress,
-                'error' => $e->getMessage(),
+                'nas_ip'   => $nasIpAddress,
+                'error'    => $e->getMessage(),
             ]);
             return false;
         }
