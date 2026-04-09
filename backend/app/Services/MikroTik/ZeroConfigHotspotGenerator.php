@@ -319,6 +319,8 @@ class ZeroConfigHotspotGenerator
         return [
             "# Global Default Drop",
             ":do { /ip firewall filter remove [/ip firewall filter find comment~\"GLOBAL-DEFAULT-DROP-\"]; } on-error={}",
+            ":do { /ip firewall filter remove [/ip firewall filter find comment=\"GLOBAL-EST-IN\"]; } on-error={}",
+            "/ip firewall filter add chain=input connection-state=established,related action=accept comment=\"GLOBAL-EST-IN\"",
             "/ip firewall filter add chain=input action=drop comment=\"GLOBAL-DEFAULT-DROP-IN\"",
             "/ip firewall filter add chain=forward action=drop comment=\"GLOBAL-DEFAULT-DROP-FWD\"",
             ""
@@ -408,10 +410,12 @@ class ZeroConfigHotspotGenerator
         $sid = $params['short_id'] ?? substr(str_replace('-', '', $params['router_id']), 0, 8);
         $profile = "hs-prof-{$sid}";
         $rs  = $params['radius_server'];
-        $sec = $params['radius_secret'];
+        // Escape secret for safe embedding in RouterOS script string
+        $sec = str_replace(['\\', '"', '$'], ['\\\\', '\\"', '\\$'], (string) $params['radius_secret']);
         return [
             "# RADIUS",
-            ":do { /radius add service=hotspot address={$rs} secret=\"{$sec}\" authentication-port=1812 accounting-port=1813 timeout=3s comment=\"hs-radius-{$sid}\" } on-error={}",
+            ":do { /radius remove [/radius find service=hotspot comment=\"hs-radius-{$sid}\"]; } on-error={}",
+            ":do { /radius add service=hotspot address={$rs} secret=\"{$sec}\" authentication-port=1812 accounting-port=1813 timeout=3s comment=\"hs-radius-{$sid}\"; } on-error={ :error \"hs-{$sid}: RADIUS add failed\" }",
             ":do { /ip hotspot profile set [/ip hotspot profile find name=\"{$profile}\"] use-radius=yes } on-error={}",
             ":do { /ip hotspot user remove [/ip hotspot user find] } on-error={}",
             ""
@@ -424,60 +428,37 @@ class ZeroConfigHotspotGenerator
      */
     private function generateSecurityHardeningRules(array $params): array
     {
-        $sid   = $params['short_id'] ?? substr(str_replace('-', '', $params['router_id']), 0, 8);
-        $iface = $params['bridge_name'] ?? $params['interface'];
+        $sid      = $params['short_id'] ?? substr(str_replace('-', '', $params['router_id']), 0, 8);
+        $iface    = $params['bridge_name'] ?? $params['interface'];
         $isLowEnd = $params['is_low_end'] ?? false;
-        
+        $poolCidr = $params['network_cidr'] ?? '192.168.0.0/24';
+
         $rules = [
             "# SECURITY HARDENING - BCP 38 Anti-Spoofing & DDoS Protection",
             ":do { /ip firewall filter remove [/ip firewall filter find comment~\"SEC-$sid\"]; } on-error={}",
         ];
-        
+
         if ($isLowEnd) {
-            // MINIMAL security for low-end devices - essential rules only
-            // BCP 38: Drop spoofed traffic from Hotspot clients
-            $network = explode('/', $params['network_cidr'])[0];
-            $cidr    = explode('/', $params['network_cidr'])[1] ?? '24';
-            $rules[] = "/ip firewall filter add chain=forward in-interface={$iface} src-address=!{$network}/{$cidr} action=drop comment=\"SEC-$sid-BCP38-SPOOF\"";
-            
-            // DDoS: SYN flood protection (rate limit new TCP connections)
-            $rules[] = "/ip firewall filter add chain=input protocol=tcp connection-state=new limit=50,5 action=drop comment=\"SEC-$sid-DDoS-SYN\"";
-            
-            // DDoS: Connection limit per source IP (prevent exhaustion)
+            // MINIMAL — 4 rules; BCP38 uses actual pool CIDR for anti-spoof
+            $rules[] = "/ip firewall filter add chain=forward in-interface={$iface} src-address=!{$poolCidr} action=drop comment=\"SEC-$sid-BCP38-SPOOF\"";
+            $rules[] = "/ip firewall filter add chain=input protocol=tcp connection-state=new limit=50/s,5 action=drop comment=\"SEC-$sid-DDoS-SYN\"";
+            $rules[] = "/ip firewall filter add chain=input protocol=icmp connection-state=new limit=20/s,5 action=drop comment=\"SEC-$sid-DDoS-ICMP\"";
             $rules[] = "/ip firewall filter add chain=forward in-interface={$iface} connection-state=new connection-limit=100,32 action=drop comment=\"SEC-$sid-DDoS-CONN\"";
-            
-            // DDoS: ICMP flood protection
-            $rules[] = "/ip firewall filter add chain=input protocol=icmp connection-state=new limit=20,5 action=drop comment=\"SEC-$sid-DDoS-ICMP\"";
         } else {
-            // FULL security for high-end devices
-            $network = explode('/', $params['network_cidr'])[0];
-            $cidr    = explode('/', $params['network_cidr'])[1] ?? '24';
-            
-            // BCP 38: Drop private RFC1918 sources from WAN
-            $rules[] = "/ip firewall filter add chain=input in-interface-list=WAN src-address=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,100.64.0.0/10 action=drop comment=\"SEC-$sid-BCP38-WAN\"";
-            
-            // BCP 38: Drop spoofed traffic from Hotspot clients
-            $rules[] = "/ip firewall filter add chain=forward in-interface={$iface} src-address=!{$network}/{$cidr} action=drop comment=\"SEC-$sid-BCP38-SPOOF\"";
-            
-            // BCP 38: Drop martian sources
-            $rules[] = "/ip firewall filter add chain=forward src-address=0.0.0.0/8,127.0.0.0/8,169.254.0.0/16,192.0.2.0/24,198.51.100.0/24,203.0.113.0/24,240.0.0.0/4 action=drop comment=\"SEC-$sid-BCP38-MARTIAN\"";
-            
-            // DDoS: SYN flood protection
-            $rules[] = "/ip firewall filter add chain=input protocol=tcp connection-state=new limit=50,5 action=drop comment=\"SEC-$sid-DDoS-SYN\"";
-            
-            // DDoS: UDP flood protection (DNS amplification prevention)
-            $rules[] = "/ip firewall filter add chain=input protocol=udp connection-state=new limit=100,5 action=drop comment=\"SEC-$sid-DDoS-UDP\"";
-            
-            // DDoS: ICMP flood protection
-            $rules[] = "/ip firewall filter add chain=input protocol=icmp connection-state=new limit=20,5 action=drop comment=\"SEC-$sid-DDoS-ICMP\"";
-            
-            // DDoS: Connection limit per Hotspot user
-            $rules[] = "/ip firewall filter add chain=forward in-interface={$iface} connection-state=new connection-limit=200,32 action=drop comment=\"SEC-$sid-DDoS-CONN-LIMIT\"";
-            
-            // DDoS: Max connections per host
-            $rules[] = "/ip firewall filter add chain=forward in-interface={$iface} connection-state=new connection-limit=100,32 src-address-list={$iface} action=drop comment=\"SEC-$sid-DDoS-HOST-LIMIT\"";
+            // FULL — exclude management subnet (10.x) from RFC1918 WAN block (WireGuard uses it)
+            $wanSpoof = ['172.16.0.0/12', '192.168.0.0/16', '100.64.0.0/10', '0.0.0.0/8'];
+            foreach ($wanSpoof as $cidr) {
+                $rules[] = "/ip firewall filter add chain=input in-interface-list=WAN src-address={$cidr} action=drop comment=\"SEC-$sid-BCP38-WAN\"";
+            }
+            $rules[] = "/ip firewall filter add chain=forward in-interface={$iface} src-address=!{$poolCidr} action=drop comment=\"SEC-$sid-BCP38-SPOOF\"";
+            $martians = '0.0.0.0/8,127.0.0.0/8,169.254.0.0/16,192.0.2.0/24,198.51.100.0/24,203.0.113.0/24,240.0.0.0/4';
+            $rules[] = "/ip firewall filter add chain=forward src-address={$martians} action=drop comment=\"SEC-$sid-BCP38-MARTIAN\"";
+            $rules[] = "/ip firewall filter add chain=input protocol=tcp connection-state=new limit=50/s,5 action=drop comment=\"SEC-$sid-DDoS-SYN\"";
+            $rules[] = "/ip firewall filter add chain=input protocol=udp connection-state=new limit=100/s,5 action=drop comment=\"SEC-$sid-DDoS-UDP\"";
+            $rules[] = "/ip firewall filter add chain=input protocol=icmp connection-state=new limit=20/s,5 action=drop comment=\"SEC-$sid-DDoS-ICMP\"";
+            $rules[] = "/ip firewall filter add chain=forward in-interface={$iface} connection-state=new connection-limit=200,32 action=drop comment=\"SEC-$sid-DDoS-CONN\"";
         }
-        
+
         $rules[] = "";
         return $rules;
     }
@@ -492,40 +473,33 @@ class ZeroConfigHotspotGenerator
         $sid   = $params['short_id'] ?? substr(str_replace('-', '', $params['router_id']), 0, 8);
         $iface = $params['bridge_name'] ?? $params['interface'];
         $isLowEnd = $params['is_low_end'] ?? false;
-        
+
+        // Rules appended in correct order — NO place-before=0 (which reverses insertion order)
+        // Correct order: established/related -> invalid drop -> auth accept -> unauth drop
         if ($isLowEnd) {
-            // MINIMAL FIREWALL for hAP lite (~5 rules)
-            // Core security: Block unauth, allow only authenticated
             return [
                 "# Firewall [MINIMAL] - Essential security for low-end device",
                 ":do { /ip firewall filter remove [/ip firewall filter find comment~\"hs-fw-{$sid}\"] } on-error={}",
-                // CRITICAL: Drop all traffic from unauthenticated users
-                "/ip firewall filter add chain=forward in-interface={$iface} action=drop place-before=0 comment=\"hs-fw-{$sid}-DROP-UNAUTH\"",
-                // CRITICAL: Allow only authenticated hotspot users to WAN
-                "/ip firewall filter add chain=forward in-interface={$iface} hotspot=auth out-interface-list=WAN action=accept place-before=0 comment=\"hs-fw-{$sid}-AUTH-INET\"",
-                // Performance: Allow established/related connections
-                "/ip firewall filter add chain=forward in-interface={$iface} connection-state=established,related action=accept place-before=0 comment=\"hs-fw-{$sid}-EST\"",
-                // Security: Drop invalid packets
-                "/ip firewall filter add chain=forward in-interface={$iface} connection-state=invalid action=drop place-before=0 comment=\"hs-fw-{$sid}-INV\"",
-                // Allow return traffic from WAN
-                "/ip firewall filter add chain=forward in-interface-list=WAN out-interface={$iface} connection-state=established,related action=accept place-before=0 comment=\"hs-fw-{$sid}-WAN-RET\"",
+                "/ip firewall filter add chain=forward in-interface={$iface} connection-state=established,related action=accept comment=\"hs-fw-{$sid}-EST\"",
+                "/ip firewall filter add chain=forward in-interface={$iface} connection-state=invalid action=drop comment=\"hs-fw-{$sid}-INV\"",
+                "/ip firewall filter add chain=forward in-interface-list=WAN out-interface={$iface} connection-state=established,related action=accept comment=\"hs-fw-{$sid}-WAN-RET\"",
+                "/ip firewall filter add chain=forward in-interface={$iface} hotspot=auth out-interface-list=WAN action=accept comment=\"hs-fw-{$sid}-AUTH-INET\"",
+                "/ip firewall filter add chain=forward in-interface={$iface} action=drop comment=\"hs-fw-{$sid}-DROP-UNAUTH\"",
                 ""
             ];
         }
-        
-        // FULL FIREWALL for high-end devices (~8 rules)
-        // Complete security with additional features
+
         return [
             "# Firewall [FULL] - Complete security for high-end device",
             ":do { /ip firewall filter remove [/ip firewall filter find comment~\"hs-fw-{$sid}\"] } on-error={}",
-            "/ip firewall filter add chain=forward in-interface={$iface} action=drop place-before=0 comment=\"hs-fw-{$sid}-DROP-UNAUTH\"",
-            "/ip firewall filter add chain=forward in-interface={$iface} hotspot=auth out-interface-list=WAN action=accept place-before=0 comment=\"hs-fw-{$sid}-AUTH-INET\"",
-            "/ip firewall filter add chain=forward in-interface={$iface} connection-state=invalid action=drop place-before=0 comment=\"hs-fw-{$sid}-INV\"",
-            "/ip firewall filter add chain=forward in-interface={$iface} connection-state=established,related action=accept place-before=0 comment=\"hs-fw-{$sid}-EST\"",
-            "/ip firewall filter add chain=forward in-interface-list=WAN out-interface={$iface} connection-state=established,related action=accept place-before=0 comment=\"hs-fw-{$sid}-WAN-RET\"",
-            // Additional high-end features
-            "/ip firewall filter add chain=forward in-interface={$iface} protocol=icmp action=accept place-before=0 comment=\"hs-fw-{$sid}-ICMP\"",
-            "/ip firewall filter add chain=forward in-interface={$iface} dst-port=53 protocol=udp action=accept place-before=0 comment=\"hs-fw-{$sid}-DNS\"",
+            "/ip firewall filter add chain=forward in-interface={$iface} connection-state=established,related action=accept comment=\"hs-fw-{$sid}-EST\"",
+            "/ip firewall filter add chain=forward in-interface={$iface} connection-state=invalid action=drop comment=\"hs-fw-{$sid}-INV\"",
+            "/ip firewall filter add chain=forward in-interface-list=WAN out-interface={$iface} connection-state=established,related action=accept comment=\"hs-fw-{$sid}-WAN-RET\"",
+            "/ip firewall filter add chain=forward in-interface={$iface} hotspot=auth out-interface-list=WAN action=accept comment=\"hs-fw-{$sid}-AUTH-INET\"",
+            "/ip firewall filter add chain=forward in-interface={$iface} protocol=icmp action=accept comment=\"hs-fw-{$sid}-ICMP\"",
+            "/ip firewall filter add chain=forward in-interface={$iface} dst-port=53 protocol=udp action=accept comment=\"hs-fw-{$sid}-DNS-UDP\"",
+            "/ip firewall filter add chain=forward in-interface={$iface} dst-port=53 protocol=tcp action=accept comment=\"hs-fw-{$sid}-DNS-TCP\"",
+            "/ip firewall filter add chain=forward in-interface={$iface} action=drop comment=\"hs-fw-{$sid}-DROP-UNAUTH\"",
             ""
         ];
     }
@@ -537,13 +511,16 @@ class ZeroConfigHotspotGenerator
         $mport = '22,8291,8728,8729';
         $rs    = $params['radius_server'] ?? '10.8.0.1';
 
+        // Rules appended in order — NO place-before=0 (which would reverse them)
+        // Correct order: established first, then mgmt allow, then snmp allow, then drop unknown mgmt ports
         return [
             "# Management Input Rules",
             ":do { /ip firewall filter remove [/ip firewall filter find comment~\"hs-mgmt-{$sid}\"]; } on-error={}",
-            "/ip firewall filter add chain=input protocol=tcp dst-port={$mport} action=drop place-before=0 comment=\"hs-mgmt-{$sid}-drop\"",
-            "/ip firewall filter add chain=input protocol=udp dst-port=161 src-address={$rs} action=accept place-before=0 comment=\"hs-mgmt-{$sid}-snmp\"",
-            "/ip firewall filter add chain=input protocol=tcp dst-port={$mport} src-address={$mgmt} action=accept place-before=0 comment=\"hs-mgmt-{$sid}-allow\"",
-            "/ip firewall filter add chain=input connection-state=established,related action=accept place-before=0 comment=\"hs-mgmt-{$sid}-est\"",
+            "/ip firewall filter add chain=input connection-state=established,related action=accept comment=\"hs-mgmt-{$sid}-est\"",
+            "/ip firewall filter add chain=input protocol=tcp dst-port={$mport} src-address={$mgmt} action=accept comment=\"hs-mgmt-{$sid}-allow\"",
+            "/ip firewall filter add chain=input protocol=udp dst-port=161 src-address={$rs} action=accept comment=\"hs-mgmt-{$sid}-snmp\"",
+            "/ip firewall filter add chain=input protocol=udp dst-port=3799 src-address={$rs} action=accept comment=\"hs-mgmt-{$sid}-coa\"",
+            "/ip firewall filter add chain=input protocol=tcp dst-port={$mport} action=drop comment=\"hs-mgmt-{$sid}-drop\"",
             ""
         ];
     }
