@@ -537,6 +537,61 @@ export function useRouters() {
     }
   }
 
+  const reprovisionRouter = async (id) => {
+    try {
+      // Optimistically mark router as pending in the list
+      const idx = routers.value.findIndex(r => String(r.id) === String(id))
+      if (idx !== -1) {
+        routers.value[idx] = { ...routers.value[idx], status: 'pending', provisioning_stage: 'pending' }
+      }
+      if (currentRouter.value && String(currentRouter.value.id) === String(id)) {
+        currentRouter.value = { ...currentRouter.value, status: 'pending', provisioning_stage: 'pending' }
+      }
+
+      const response = await axios.post(`/routers/${id}/reset-provisioning`, { start_probing: true })
+
+      if (!response.data?.success) {
+        throw new Error(response.data?.message || 'Reprovisioning request failed')
+      }
+
+      // Subscribe to provisioning progress channel for this router
+      if (window.Echo) {
+        const channelName = `router-provisioning.${id}`
+        const existing = window.Echo.connector?.channels?.[`private-${channelName}`]
+        if (!existing) {
+          window.Echo.private(channelName)
+            .listen('.RouterProvisioningProgress', (event) => {
+              const routerIdx = routers.value.findIndex(r => String(r.id) === String(id))
+              if (routerIdx !== -1 && event.status) {
+                routers.value[routerIdx] = { ...routers.value[routerIdx], status: event.status }
+              }
+              if (currentRouter.value && String(currentRouter.value.id) === String(id) && event.status) {
+                currentRouter.value = { ...currentRouter.value, status: event.status }
+              }
+            })
+            .listen('.RouterProvisioned', (event) => {
+              fetchRouters()
+              window.Echo.leave(channelName)
+            })
+            .listen('.RouterProvisioningFailed', (event) => {
+              const routerIdx = routers.value.findIndex(r => String(r.id) === String(id))
+              if (routerIdx !== -1) {
+                routers.value[routerIdx] = { ...routers.value[routerIdx], status: 'error' }
+              }
+              window.Echo.leave(channelName)
+            })
+        }
+      }
+
+      return response.data
+    } catch (err) {
+      // Revert optimistic status on failure
+      await fetchRouters()
+      console.error('reprovisionRouter error:', err.message, err.response?.data)
+      throw err
+    }
+  }
+
   const openCreateOverlay = () => {
     console.log('>>> openCreateOverlay START <<<')
     showFormOverlay.value = true
@@ -821,6 +876,7 @@ export function useRouters() {
     editRouter,
     updateRouter,
     deleteRouter,
+    reprovisionRouter,
     generateConfigs,
     applyConfigurations,
     formatTimestamp,
