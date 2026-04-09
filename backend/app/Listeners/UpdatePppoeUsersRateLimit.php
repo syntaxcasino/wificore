@@ -7,6 +7,7 @@ use App\Models\PppoeUser;
 use App\Models\Router;
 use App\Services\MikroTik\BandwidthHelper;
 use App\Services\MikroTik\SshExecutor;
+use App\Services\RADIUS\CoAService;
 use App\Services\TenantContext;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Queue\InteractsWithQueue;
@@ -110,12 +111,50 @@ class UpdatePppoeUsersRateLimit implements ShouldQueue
     }
 
     /**
-     * Disconnect PPPoE user to enforce new limits
+     * Apply new rate limit to a PPPoE user's live session.
+     *
+     * Strategy:
+     *  1. Try RADIUS CoA CoA-Request with Mikrotik-Rate-Limit VSA — applies the new
+     *     rate limit to the active session immediately without dropping it.
+     *  2. On CoA failure, fall back to SSH disconnect so the user re-auths and
+     *     picks up the new radreply Mikrotik-Rate-Limit on reconnect.
      */
     protected function disconnectUser(PppoeUser $user): void
     {
+        $username = (string) $user->username;
+
+        if (empty($username)) {
+            return;
+        }
+
+        // ------------------------------------------------------------------
+        // 1. CoA CoA-Request: apply new rate limit to the live session
+        // ------------------------------------------------------------------
         try {
-            if (empty($user->router_id) || empty($user->username)) {
+            $coaService = new CoAService();
+            $result = $coaService->changeBandwidth($username, (string) $user->rate_limit);
+
+            if ($result->isSuccessful()) {
+                Log::info("Rate limit updated via CoA for PPPoE user {$username}", [
+                    'rate_limit' => $user->rate_limit,
+                ]);
+                return;
+            }
+
+            Log::warning("CoA changeBandwidth failed for PPPoE user {$username}, falling back to SSH disconnect", [
+                'message' => $result->message,
+            ]);
+        } catch (\Exception $e) {
+            Log::warning("CoA exception for PPPoE user {$username}, falling back to SSH disconnect", [
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        // ------------------------------------------------------------------
+        // 2. SSH fallback: disconnect the session so re-auth picks up new radreply
+        // ------------------------------------------------------------------
+        try {
+            if (empty($user->router_id)) {
                 return;
             }
 
@@ -124,27 +163,18 @@ class UpdatePppoeUsersRateLimit implements ShouldQueue
                 return;
             }
 
-            $username = (string) $user->username;
-
-            // Use SshExecutor to kick the user with a short timeout
             $ssh = new SshExecutor($router, 5);
-            if (!$ssh->connect()) {
-                Log::warning("Could not connect to router {$router->ip_address} to disconnect user {$username}");
-                return;
-            }
-            
-            // Remove from active connections (try both selectors for compatibility)
-            // PPPoE active sessions typically use the PPP secret name as the active session name.
-            $ssh->exec(sprintf('/ppp active remove [find name="%s"]', addslashes($username)));
-            $ssh->exec(sprintf('/ppp active remove [find user="%s"]', addslashes($username)));
-            
+            $ssh->connect();
+
+            $ssh->exec(sprintf(':do { /ppp active remove [find name="%s"] } on-error={}', addslashes($username)));
+            $ssh->exec(sprintf(':do { /ppp active remove [find user="%s"] } on-error={}', addslashes($username)));
+
             $ssh->disconnect();
-            
-            Log::info("Disconnected PPPoE user {$username} on router {$router->name} to enforce new rate limit");
-            
+
+            Log::info("PPPoE user {$username} disconnected via SSH to enforce new rate limit");
         } catch (\Exception $e) {
-            Log::warning("Failed to disconnect PPPoE user {$user->username} after rate limit update", [
-                'error' => $e->getMessage()
+            Log::warning("Failed to disconnect PPPoE user {$username} after rate limit update", [
+                'error' => $e->getMessage(),
             ]);
         }
     }

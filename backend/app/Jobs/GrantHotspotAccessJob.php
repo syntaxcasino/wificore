@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Models\HotspotUser;
 use App\Models\Package;
 use App\Events\HotspotAccessGranted;
+use App\Services\MikroTik\BandwidthHelper;
 use App\Traits\TenantAwareJob;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -160,17 +161,19 @@ class GrantHotspotAccessJob implements ShouldQueue
             'value' => '300',
         ];
         
-        // Rate limit (MikroTik format: upload/download)
-        $uploadSpeed = $package->upload_speed ?? $package->speed ?? '10M';
-        $downloadSpeed = $package->download_speed ?? $package->speed ?? '10M';
-        $rateLimit = "{$uploadSpeed}/{$downloadSpeed}";
-        
-        $attributes[] = [
-            'username' => $username,
-            'attribute' => 'Mikrotik-Rate-Limit',
-            'op' => ':=',
-            'value' => $rateLimit,
-        ];
+        // Rate limit (MikroTik format: upload/download) — normalised via BandwidthHelper
+        $downloadSpeed = (string) ($package->download_speed ?? $package->speed ?? '10M');
+        $uploadSpeed   = (string) ($package->upload_speed  ?? $package->speed ?? '10M');
+        $rateLimit = BandwidthHelper::formatMikrotikRateLimit($downloadSpeed, $uploadSpeed);
+
+        if ($rateLimit) {
+            $attributes[] = [
+                'username'  => $username,
+                'attribute' => 'Mikrotik-Rate-Limit',
+                'op'        => ':=',
+                'value'     => $rateLimit,
+            ];
+        }
         
         // Data limit (if specified)
         if ($package->data_limit) {
