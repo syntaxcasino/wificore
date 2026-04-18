@@ -22,7 +22,7 @@
                 <Wifi class="w-5 h-5" :class="gatewayActive ? 'text-green-600' : 'text-slate-400'" />
               </div>
               <div>
-                <div class="text-xs text-slate-500">Gateway Status</div>
+                <div class="text-xs text-slate-500 dark:text-slate-400">Gateway Status</div>
                 <div class="text-sm font-semibold" :class="gatewayActive ? 'text-green-700' : 'text-slate-600'">
                   {{ gatewayActive ? 'Active' : 'Not Configured' }}
                 </div>
@@ -35,8 +35,8 @@
                 <CreditCard class="w-5 h-5 text-blue-600" />
               </div>
               <div>
-                <div class="text-xs text-slate-500">Paybill Mode</div>
-                <div class="text-sm font-semibold text-slate-800">
+                <div class="text-xs text-slate-500 dark:text-slate-400">Paybill Mode</div>
+                <div class="text-sm font-semibold text-slate-800 dark:text-slate-100">
                   {{ settingsData?.use_landlord_paybill ? 'System Paybill' : (settingsData?.business_shortcode || 'Not Set') }}
                 </div>
               </div>
@@ -48,7 +48,7 @@
                 <Globe class="w-5 h-5 text-amber-600" />
               </div>
               <div>
-                <div class="text-xs text-slate-500">Environment</div>
+                <div class="text-xs text-slate-500 dark:text-slate-400">Environment</div>
                 <div class="text-sm font-semibold text-slate-800 capitalize">
                   {{ settingsData?.environment || 'sandbox' }}
                 </div>
@@ -60,38 +60,38 @@
         <!-- Gateway Table -->
         <BaseCard :padding="false">
           <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
-            <h3 class="text-sm font-semibold text-slate-900">Configured Payment Gateways</h3>
+            <h3 class="text-sm font-semibold text-slate-900 dark:text-slate-100">Configured Payment Gateways</h3>
           </div>
           <div class="overflow-x-auto">
             <table class="w-full">
-              <thead class="bg-slate-50 border-b border-slate-200">
+              <thead class="bg-slate-50 dark:bg-slate-700/50 border-b border-slate-200 dark:border-slate-700">
                 <tr>
-                  <th class="text-left px-6 py-3 text-xs font-medium text-slate-500 uppercase">Gateway</th>
-                  <th class="text-left px-6 py-3 text-xs font-medium text-slate-500 uppercase">Shortcode</th>
-                  <th class="text-left px-6 py-3 text-xs font-medium text-slate-500 uppercase">Environment</th>
-                  <th class="text-left px-6 py-3 text-xs font-medium text-slate-500 uppercase">Mode</th>
-                  <th class="text-left px-6 py-3 text-xs font-medium text-slate-500 uppercase">Status</th>
-                  <th class="text-left px-6 py-3 text-xs font-medium text-slate-500 uppercase">Last Transaction</th>
-                  <th class="text-right px-6 py-3 text-xs font-medium text-slate-500 uppercase">Actions</th>
+                  <th class="text-left px-6 py-3 text-xs font-medium text-slate-500 dark:text-slate-400 uppercase">Gateway</th>
+                  <th class="text-left px-6 py-3 text-xs font-medium text-slate-500 dark:text-slate-400 uppercase">Shortcode</th>
+                  <th class="text-left px-6 py-3 text-xs font-medium text-slate-500 dark:text-slate-400 uppercase">Environment</th>
+                  <th class="text-left px-6 py-3 text-xs font-medium text-slate-500 dark:text-slate-400 uppercase">Mode</th>
+                  <th class="text-left px-6 py-3 text-xs font-medium text-slate-500 dark:text-slate-400 uppercase">Status</th>
+                  <th class="text-left px-6 py-3 text-xs font-medium text-slate-500 dark:text-slate-400 uppercase">Last Transaction</th>
+                  <th class="text-right px-6 py-3 text-xs font-medium text-slate-500 dark:text-slate-400 uppercase">Actions</th>
                 </tr>
               </thead>
-              <tbody class="divide-y divide-slate-100">
+              <tbody class="divide-y divide-slate-100 dark:divide-slate-700">
                 <tr v-if="loading" class="text-center">
-                  <td colspan="7" class="px-6 py-8 text-sm text-slate-500">Loading...</td>
+                  <td colspan="7" class="px-6 py-8 text-sm text-slate-500 dark:text-slate-400">Loading...</td>
                 </tr>
                 <tr v-else-if="!settingsData" class="text-center">
                   <td colspan="7" class="px-6 py-8">
-                    <div class="text-sm text-slate-500">No payment gateway configured</div>
+                    <div class="text-sm text-slate-500 dark:text-slate-400">No payment gateway configured</div>
                     <button @click="showConfigOverlay = true" class="mt-2 text-sm text-blue-600 hover:text-blue-700 font-medium">
                       Configure M-Pesa Paybill
                     </button>
                   </td>
                 </tr>
-                <tr v-else class="hover:bg-slate-50 cursor-pointer" @click="showDetailOverlay = true">
+                <tr v-else class="hover:bg-slate-50 dark:hover:bg-slate-700/40 cursor-pointer" @click="showDetailOverlay = true">
                   <td class="px-6 py-4">
                     <div class="flex items-center gap-2">
                       <Smartphone class="w-4 h-4 text-green-600" />
-                      <span class="text-sm font-medium text-slate-900">M-Pesa Paybill</span>
+                      <span class="text-sm font-medium text-slate-900 dark:text-slate-100">M-Pesa Paybill</span>
                     </div>
                   </td>
                   <td class="px-6 py-4 text-sm text-slate-700 font-mono">
@@ -111,7 +111,7 @@
                       {{ gatewayActive ? 'Active' : 'Inactive' }}
                     </span>
                   </td>
-                  <td class="px-6 py-4 text-sm text-slate-500">
+                  <td class="px-6 py-4 text-sm text-slate-500 dark:text-slate-400">
                     {{ settingsData.last_transaction_at ? new Date(settingsData.last_transaction_at).toLocaleDateString() : 'Never' }}
                   </td>
                   <td class="px-6 py-4 text-right">
@@ -128,7 +128,7 @@
     </PageContent>
 
     <!-- Configure Gateway Overlay -->
-    <SlideOverlay v-model="showConfigOverlay" title="Configure Payment Gateway" subtitle="M-Pesa Paybill Settings" icon="CreditCard" width="480px">
+    <SlideOverlay v-model="showConfigOverlay" title="Configure Payment Gateway" subtitle="M-Pesa Paybill Settings" icon="CreditCard" width="60%">
       <div class="space-y-6">
         <BaseAlert v-if="landlordPaybillAvailable" variant="info" title="System Paybill Available">
           A system-wide Paybill ({{ landlordShortcode }}) is available. You can use it or configure your own.
@@ -136,7 +136,7 @@
 
         <!-- Paybill Mode -->
         <div class="space-y-3">
-          <h4 class="text-sm font-semibold text-slate-900">Paybill Mode</h4>
+          <h4 class="text-sm font-semibold text-slate-900 dark:text-slate-100">Paybill Mode</h4>
           <div class="flex gap-3">
             <button @click="formData.use_landlord_paybill = true" class="flex-1 p-3 rounded-lg border-2 text-left transition-all" :class="formData.use_landlord_paybill ? 'border-blue-500 bg-blue-50' : 'border-slate-200 hover:border-slate-300'">
               <div class="text-sm font-medium" :class="formData.use_landlord_paybill ? 'text-blue-900' : 'text-slate-700'">Use System Paybill</div>
@@ -151,41 +151,41 @@
 
         <!-- Own Paybill Credentials -->
         <div v-if="!formData.use_landlord_paybill" class="space-y-4">
-          <h4 class="text-sm font-semibold text-slate-900">API Credentials</h4>
+          <h4 class="text-sm font-semibold text-slate-900 dark:text-slate-100">API Credentials</h4>
 
           <div>
-            <label class="block text-sm font-medium text-slate-700 mb-1">Environment</label>
-            <select v-model="formData.environment" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Environment</label>
+            <select v-model="formData.environment" class="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-sm bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
               <option value="sandbox">Sandbox (Testing)</option>
               <option value="production">Production (Live)</option>
             </select>
           </div>
 
           <div>
-            <label class="block text-sm font-medium text-slate-700 mb-1">Business Short Code *</label>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Business Short Code *</label>
             <input v-model="formData.business_shortcode" type="text" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-blue-500" placeholder="174379" />
           </div>
 
           <div>
-            <label class="block text-sm font-medium text-slate-700 mb-1">Consumer Key *</label>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Consumer Key *</label>
             <input v-model="formData.consumer_key" type="text" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-blue-500" placeholder="Enter consumer key" />
           </div>
 
           <div>
-            <label class="block text-sm font-medium text-slate-700 mb-1">Consumer Secret *</label>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Consumer Secret *</label>
             <input v-model="formData.consumer_secret" type="password" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-blue-500" placeholder="Enter consumer secret" />
-            <p v-if="settingsData?.consumer_secret" class="mt-1 text-xs text-slate-500">Leave blank to keep existing</p>
+            <p v-if="settingsData?.consumer_secret" class="mt-1 text-xs text-slate-500 dark:text-slate-400">Leave blank to keep existing</p>
           </div>
 
           <div>
-            <label class="block text-sm font-medium text-slate-700 mb-1">Passkey *</label>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Passkey *</label>
             <input v-model="formData.passkey" type="password" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-blue-500" placeholder="Lipa Na M-Pesa Online Passkey" />
-            <p v-if="settingsData?.passkey" class="mt-1 text-xs text-slate-500">Leave blank to keep existing</p>
+            <p v-if="settingsData?.passkey" class="mt-1 text-xs text-slate-500 dark:text-slate-400">Leave blank to keep existing</p>
           </div>
 
           <div>
-            <label class="block text-sm font-medium text-slate-700 mb-1">Account Reference</label>
-            <input v-model="formData.account_reference" type="text" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" placeholder="e.g. WiFi Payment" />
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Account Reference</label>
+            <input v-model="formData.account_reference" type="text" class="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-sm bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-blue-500" placeholder="e.g. WiFi Payment" />
           </div>
         </div>
 
@@ -206,12 +206,12 @@
         <div class="flex gap-3">
           <button
             @click="showConfigOverlay = false"
-            class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+            class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-600"
           >
             Cancel
           </button>
           <button
-            @click="saveSettings"
+            @click="handleSave"
             :disabled="saving"
             class="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors disabled:opacity-50"
           >
@@ -222,54 +222,54 @@
     </SlideOverlay>
 
     <!-- Gateway Detail Overlay -->
-    <SlideOverlay v-model="showDetailOverlay" title="Payment Gateway Details" subtitle="M-Pesa Paybill Configuration" icon="Eye" width="480px">
+    <SlideOverlay v-model="showDetailOverlay" title="Payment Gateway Details" subtitle="M-Pesa Paybill Configuration" icon="Eye" width="60%">
       <div v-if="settingsData" class="space-y-5">
         <div class="grid grid-cols-2 gap-4">
           <div>
-            <div class="text-xs text-slate-500">Gateway Type</div>
+            <div class="text-xs text-slate-500 dark:text-slate-400">Gateway Type</div>
             <div class="text-sm font-medium text-slate-900 mt-0.5">M-Pesa Paybill</div>
           </div>
           <div>
-            <div class="text-xs text-slate-500">Status</div>
+            <div class="text-xs text-slate-500 dark:text-slate-400">Status</div>
             <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium mt-0.5" :class="gatewayActive ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'">
               <span class="w-1.5 h-1.5 rounded-full" :class="gatewayActive ? 'bg-green-500' : 'bg-slate-400'"></span>
               {{ gatewayActive ? 'Active' : 'Inactive' }}
             </span>
           </div>
           <div>
-            <div class="text-xs text-slate-500">Mode</div>
+            <div class="text-xs text-slate-500 dark:text-slate-400">Mode</div>
             <div class="text-sm font-medium text-slate-900 mt-0.5">{{ settingsData.use_landlord_paybill ? 'System Paybill' : 'Own Paybill' }}</div>
           </div>
           <div>
-            <div class="text-xs text-slate-500">Environment</div>
+            <div class="text-xs text-slate-500 dark:text-slate-400">Environment</div>
             <div class="text-sm font-medium text-slate-900 mt-0.5 capitalize">{{ settingsData.environment }}</div>
           </div>
           <div>
-            <div class="text-xs text-slate-500">Shortcode</div>
+            <div class="text-xs text-slate-500 dark:text-slate-400">Shortcode</div>
             <div class="text-sm font-medium text-slate-900 mt-0.5 font-mono">
               {{ settingsData.use_landlord_paybill ? (landlordShortcode || '—') : (settingsData.business_shortcode || '—') }}
             </div>
           </div>
           <div>
-            <div class="text-xs text-slate-500">Consumer Key</div>
+            <div class="text-xs text-slate-500 dark:text-slate-400">Consumer Key</div>
             <div class="text-sm font-medium text-slate-900 mt-0.5 font-mono">{{ settingsData.consumer_key || '—' }}</div>
           </div>
           <div>
-            <div class="text-xs text-slate-500">Account Reference</div>
+            <div class="text-xs text-slate-500 dark:text-slate-400">Account Reference</div>
             <div class="text-sm font-medium text-slate-900 mt-0.5">{{ settingsData.account_reference || '—' }}</div>
           </div>
           <div>
-            <div class="text-xs text-slate-500">Verified</div>
+            <div class="text-xs text-slate-500 dark:text-slate-400">Verified</div>
             <div class="text-sm font-medium mt-0.5" :class="settingsData.is_verified ? 'text-green-700' : 'text-slate-500'">
               {{ settingsData.is_verified ? 'Yes' : 'No' }}
             </div>
           </div>
           <div>
-            <div class="text-xs text-slate-500">URLs Registered</div>
+            <div class="text-xs text-slate-500 dark:text-slate-400">URLs Registered</div>
             <div class="text-sm font-medium text-slate-900 mt-0.5">{{ settingsData.urls_registered_at || 'Not registered' }}</div>
           </div>
           <div>
-            <div class="text-xs text-slate-500">Last Transaction</div>
+            <div class="text-xs text-slate-500 dark:text-slate-400">Last Transaction</div>
             <div class="text-sm font-medium text-slate-900 mt-0.5">{{ settingsData.last_transaction_at ? new Date(settingsData.last_transaction_at).toLocaleString() : 'Never' }}</div>
           </div>
         </div>
@@ -279,7 +279,7 @@
         <div class="flex gap-3">
           <button
             @click="showDetailOverlay = false"
-            class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+            class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-600"
           >
             Close
           </button>
@@ -296,9 +296,8 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { CreditCard, Settings2, RefreshCw, Smartphone, Wifi, Globe, Zap, Save, CheckCircle, XCircle, Eye } from 'lucide-vue-next'
-import axios from 'axios'
 import PageContainer from '@/modules/common/components/layout/templates/PageContainer.vue'
 import PageHeader from '@/modules/common/components/layout/templates/PageHeader.vue'
 import PageContent from '@/modules/common/components/layout/templates/PageContent.vue'
@@ -306,6 +305,7 @@ import BaseButton from '@/modules/common/components/base/BaseButton.vue'
 import BaseCard from '@/modules/common/components/base/BaseCard.vue'
 import BaseAlert from '@/modules/common/components/base/BaseAlert.vue'
 import SlideOverlay from '@/modules/common/components/base/SlideOverlay.vue'
+import { useMpesaSettings } from '@/modules/tenant/composables/useMpesaSettings.js'
 
 const breadcrumbs = [
   { label: 'Dashboard', to: '/dashboard' },
@@ -313,119 +313,28 @@ const breadcrumbs = [
   { label: 'Payment Gateway' }
 ]
 
-const loading = ref(false)
-const saving = ref(false)
-const testing = ref(false)
-const activating = ref(false)
-const error = ref('')
-const connectionStatus = ref(null)
-
 const showConfigOverlay = ref(false)
 const showDetailOverlay = ref(false)
 
-const settingsData = ref(null)
-const landlordPaybillAvailable = ref(false)
-const landlordShortcode = ref('')
+const {
+  loading, saving, testing, activating, error,
+  settingsData, landlordPaybillAvailable, landlordShortcode,
+  connectionStatus, formData, gatewayActive,
+  fetchSettings, saveSettings, testConnection, activateGateway
+} = useMpesaSettings()
 
-const gatewayActive = computed(() => {
-  if (!settingsData.value) return false
-  return settingsData.value.is_active || settingsData.value.use_landlord_paybill
-})
-
-const formDefaults = {
-  environment: 'sandbox',
-  business_shortcode: '',
-  consumer_key: '',
-  consumer_secret: '',
-  passkey: '',
-  account_reference: '',
-  use_landlord_paybill: true,
-}
-
-const formData = ref({ ...formDefaults })
-
-const fetchSettings = async () => {
-  loading.value = true
-  error.value = ''
-  try {
-    const response = await axios.get('/billing/paybill/settings')
-    const d = response.data
-    settingsData.value = d.data
-    landlordPaybillAvailable.value = d.landlord_paybill_available ?? false
-    landlordShortcode.value = d.landlord_shortcode ?? ''
-
-    if (d.data) {
-      formData.value = {
-        environment: d.data.environment || 'sandbox',
-        business_shortcode: d.data.business_shortcode || '',
-        consumer_key: '',
-        consumer_secret: '',
-        passkey: '',
-        account_reference: d.data.account_reference || '',
-        use_landlord_paybill: d.data.use_landlord_paybill ?? true,
-      }
-    } else {
-      formData.value = { ...formDefaults }
-    }
-  } catch (err) {
-    console.error('fetchSettings error:', err)
-    error.value = err.response?.data?.message || 'Failed to load settings'
-  } finally {
-    loading.value = false
-  }
-}
-
-const saveSettings = async () => {
-  saving.value = true
-  error.value = ''
-  connectionStatus.value = null
-  try {
-    const response = await axios.post('/billing/paybill/settings', formData.value)
-    settingsData.value = response.data?.data || settingsData.value
+const handleSave = async () => {
+  const result = await saveSettings()
+  if (result.success) {
     showConfigOverlay.value = false
-    fetchSettings()
-  } catch (err) {
-    error.value = err.response?.data?.message || 'Failed to save settings'
-  } finally {
-    saving.value = false
+    await fetchSettings()
   }
 }
 
-const testConnection = async () => {
-  testing.value = true
-  connectionStatus.value = null
-  try {
-    const response = await axios.post('/billing/paybill/test')
-    connectionStatus.value = {
-      success: response.data?.success ?? true,
-      message: response.data?.message || 'Connection Successful',
-      details: response.data?.using_landlord_paybill ? 'Using system Paybill' : 'Using own Paybill'
-    }
-  } catch (err) {
-    connectionStatus.value = {
-      success: false,
-      message: 'Connection Failed',
-      details: err.response?.data?.message || 'Please check your credentials'
-    }
-  } finally {
-    testing.value = false
-  }
+const handleActivate = async () => {
+  await activateGateway()
+  showDetailOverlay.value = false
 }
 
-const activateGateway = async () => {
-  activating.value = true
-  try {
-    await axios.post('/billing/paybill/activate')
-    fetchSettings()
-    showDetailOverlay.value = false
-  } catch (err) {
-    error.value = err.response?.data?.message || 'Failed to activate gateway'
-  } finally {
-    activating.value = false
-  }
-}
-
-onMounted(() => {
-  fetchSettings()
-})
+onMounted(fetchSettings)
 </script>

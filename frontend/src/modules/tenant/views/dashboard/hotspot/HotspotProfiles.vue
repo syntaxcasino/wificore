@@ -1,11 +1,30 @@
 <template>
-  <div class="p-6 bg-gray-900 text-gray-200 h-full">
-    <h1 class="text-2xl font-semibold mb-4">Hotspot Profiles</h1>
-    <p>Configure hotspot profiles.</p>
-    <!-- Add profile management UI -->
-  </div>
+  <DataViewContainer
+    title="Hotspot Profiles"
+    subtitle="Configure hotspot user profiles and access policies"
+    color-theme="cyan"
+    :show-search="false"
+    :show-add="false"
+    :show-refresh="false"
+  >
+    <template #icon>
+      <svg class="h-5 w-5 md:h-6 md:w-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0" />
+      </svg>
+    </template>
+
+    <div class="flex flex-col items-center justify-center h-full min-h-[300px] gap-4 text-slate-400 dark:text-slate-500">
+      <svg class="w-16 h-16 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0" />
+      </svg>
+      <div class="text-center">
+        <p class="text-base font-medium text-slate-500 dark:text-slate-400">Coming Soon</p>
+        <p class="text-sm mt-1">Hotspot Profiles is under development</p>
+      </div>
+    </div>
+  </DataViewContainer>
 </template>
 
 <script setup>
-// Add logic for hotspot profiles
+import DataViewContainer from '@/modules/common/components/base/DataViewContainer.vue'
 </script>

@@ -24,15 +24,15 @@
     
     <!-- Content -->
     <div class="space-y-2 text-center max-w-md">
-      <h3 class="text-2xl font-bold text-slate-900">{{ title }}</h3>
-      <p class="text-slate-600">{{ description }}</p>
+      <h3 class="text-2xl font-bold text-slate-900 dark:text-slate-100">{{ title }}</h3>
+      <p class="text-slate-600 dark:text-slate-400">{{ description }}</p>
     </div>
     
     <!-- Action Buttons -->
     <div v-if="showActions" class="mt-6 flex gap-3">
       <button v-if="showClear && hasFilters"
         @click="$emit('clear')"
-        class="px-5 py-2.5 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-all shadow-sm">
+        class="px-5 py-2.5 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-all shadow-sm">
         {{ clearText }}
       </button>
       <button v-if="showAdd"

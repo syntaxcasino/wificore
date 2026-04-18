@@ -4,14 +4,14 @@
     :title="isEditing ? 'Edit Access Point' : 'Add Access Point'"
     :subtitle="isEditing ? 'Update access point details' : 'Create a new access point'"
     icon="wifi"
-    width="480px"
+    width="50%"
     @update:model-value="$emit('update:modelValue', $event)"
     @close="$emit('close')"
   >
     <div class="p-6 space-y-4">
       <!-- Router -->
       <div>
-        <label class="block text-sm font-medium text-slate-700 mb-1">Router <span class="text-red-500">*</span></label>
+        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Router <span class="text-red-500">*</span></label>
         <select
           v-model="formData.router_id"
           required
@@ -26,7 +26,7 @@
 
       <!-- Name -->
       <div>
-        <label class="block text-sm font-medium text-slate-700 mb-1">Name <span class="text-red-500">*</span></label>
+        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Name <span class="text-red-500">*</span></label>
         <input
           v-model="formData.name"
           type="text"
@@ -38,7 +38,7 @@
 
       <!-- Vendor -->
       <div>
-        <label class="block text-sm font-medium text-slate-700 mb-1">Vendor</label>
+        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Vendor</label>
         <select
           v-model="formData.vendor"
           class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white"
@@ -49,7 +49,7 @@
 
       <!-- Model -->
       <div>
-        <label class="block text-sm font-medium text-slate-700 mb-1">Model</label>
+        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Model</label>
         <input
           v-model="formData.model"
           type="text"
@@ -60,7 +60,7 @@
 
       <!-- IP Address -->
       <div>
-        <label class="block text-sm font-medium text-slate-700 mb-1">IP Address <span class="text-red-500">*</span></label>
+        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">IP Address <span class="text-red-500">*</span></label>
         <input
           v-model="formData.ip_address"
           type="text"
@@ -72,7 +72,7 @@
 
       <!-- MAC Address -->
       <div>
-        <label class="block text-sm font-medium text-slate-700 mb-1">MAC Address</label>
+        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">MAC Address</label>
         <input
           v-model="formData.mac_address"
           type="text"
@@ -83,7 +83,7 @@
 
       <!-- Serial Number -->
       <div>
-        <label class="block text-sm font-medium text-slate-700 mb-1">Serial Number</label>
+        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Serial Number</label>
         <input
           v-model="formData.serial_number"
           type="text"
@@ -94,7 +94,7 @@
 
       <!-- Location -->
       <div>
-        <label class="block text-sm font-medium text-slate-700 mb-1">Location</label>
+        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Location</label>
         <input
           v-model="formData.location"
           type="text"
@@ -113,7 +113,7 @@
       <div class="flex gap-3">
         <button
           @click="$emit('close')"
-          class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+          class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-600"
         >
           Cancel
         </button>

@@ -187,6 +187,12 @@ const routes = [
         component: () => import('@/modules/system-admin/views/monitoring/ActivityLogsView.vue'),
         meta: { requiresAuth: true, requiresRole: 'system_admin' }
       },
+      {
+        path: 'script-preview',
+        name: 'system.script-preview',
+        component: () => import('@/modules/system-admin/views/tools/ScriptPreviewView.vue'),
+        meta: { requiresAuth: true, requiresRole: 'system_admin' }
+      },
     ]
   },
 

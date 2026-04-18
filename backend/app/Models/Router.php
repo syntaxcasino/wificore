@@ -158,7 +158,7 @@ class Router extends Model
         'snmp_trap_target',
     ];
 
-    protected $hidden = ['password', 'ssh_key', 'snmp_v3_auth_password', 'snmp_v3_priv_password', 'snmp_trap_community'];
+    protected $hidden = ['password', 'ssh_key', 'config_token', 'snmp_v3_auth_password', 'snmp_v3_priv_password', 'snmp_trap_community'];
 
     protected $appends = [
         'vpn_last_handshake_utc',

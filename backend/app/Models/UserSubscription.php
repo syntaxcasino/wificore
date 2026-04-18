@@ -33,6 +33,10 @@ class UserSubscription extends Model
         'reminder_count',
     ];
 
+    protected $hidden = [
+        'mikrotik_password',
+    ];
+
     protected $casts = [
         'id' => 'string',
         'start_time' => 'datetime',

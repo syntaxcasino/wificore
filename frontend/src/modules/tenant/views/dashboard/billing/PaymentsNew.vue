@@ -19,12 +19,14 @@
   >
     <!-- Icon Slot -->
     <template #icon>
-      <CreditCard class="h-5 w-5 md:h-6 md:w-6 text-white" />
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 md:h-6 md:w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+      </svg>
     </template>
 
     <!-- Action Buttons -->
     <template #actions>
-      <BaseButton @click="exportPayments" variant="outline" size="sm">
+      <BaseButton @click="handleExportPayments" variant="outline" size="sm">
         <Download class="w-4 h-4 mr-1.5" /> Export
       </BaseButton>
       <BaseButton @click="recordPayment" variant="primary" size="sm">
@@ -51,7 +53,7 @@
     </template>
 
     <!-- Data Content -->
-    <div v-if="filteredData.length" class="flex flex-col h-full px-4 md:px-6 pt-2 pb-2 min-h-0">
+    <div v-if="filteredData.length" class="flex flex-col h-full pt-2 pb-2 min-h-0">
       <!-- Mobile Cards -->
       <div class="md:hidden space-y-3 overflow-y-auto flex-1 min-h-0">
         <MobileDataCard
@@ -81,7 +83,7 @@
       </div>
 
       <!-- Desktop Table -->
-      <div class="hidden md:flex bg-white border border-slate-200 shadow-sm overflow-hidden flex-col min-h-0 flex-1">
+      <div class="hidden md:flex bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden flex-col min-h-0 flex-1">
         <div class="overflow-x-auto overflow-y-auto flex-1 min-h-0">
           <table class="w-full">
             <thead class="bg-slate-50 border-b border-slate-200 sticky top-0 z-[5]">
@@ -95,7 +97,7 @@
                 <th class="px-6 py-3 text-right text-xs font-semibold text-slate-700 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
-            <tbody class="divide-y divide-slate-100">
+            <tbody class="divide-y divide-slate-100 dark:divide-slate-700">
               <tr v-for="payment in paginatedData" :key="payment.id" class="hover:bg-emerald-50/50 transition-colors cursor-pointer" @click="viewPayment(payment)">
                 <td class="px-6 py-4">
                   <div class="flex items-center gap-3">
@@ -103,14 +105,14 @@
                       <CreditCard class="w-4 h-4 text-emerald-600" />
                     </div>
                     <div>
-                      <p class="text-sm font-semibold text-slate-900">{{ payment.reference }}</p>
-                      <p class="text-xs text-slate-500">{{ payment.transaction_id }}</p>
+                      <p class="text-sm font-semibold text-slate-900 dark:text-slate-100">{{ payment.reference }}</p>
+                      <p class="text-xs text-slate-500 dark:text-slate-400">{{ payment.transaction_id }}</p>
                     </div>
                   </div>
                 </td>
                 <td class="px-6 py-4">
-                  <p class="text-sm font-medium text-slate-900">{{ payment.customer_name }}</p>
-                  <p class="text-xs text-slate-500">{{ payment.customer_email }}</p>
+                  <p class="text-sm font-medium text-slate-900 dark:text-slate-100">{{ payment.customer_name }}</p>
+                  <p class="text-xs text-slate-500 dark:text-slate-400">{{ payment.customer_email }}</p>
                 </td>
                 <td class="px-6 py-4">
                   <p class="text-sm font-bold text-emerald-600">KES {{ formatMoney(payment.amount) }}</p>
@@ -124,7 +126,7 @@
                 </td>
                 <td class="px-6 py-4">
                   <p class="text-sm text-slate-900">{{ formatDate(payment.payment_date) }}</p>
-                  <p class="text-xs text-slate-500">{{ formatTime(payment.payment_date) }}</p>
+                  <p class="text-xs text-slate-500 dark:text-slate-400">{{ formatTime(payment.payment_date) }}</p>
                 </td>
                 <td class="px-6 py-4 text-right" @click.stop>
                   <div class="flex items-center justify-end gap-1">
@@ -166,12 +168,12 @@
   </DataViewContainer>
 
   <!-- Payment Details Overlay -->
-  <SlideOverlay v-model="showDetailsOverlay" title="Payment Details" :subtitle="selectedPayment?.reference || selectedPayment?.transaction_id" icon="CreditCard" width="480px">
+  <SlideOverlay v-model="showDetailsOverlay" title="Payment Details" :subtitle="selectedPayment?.reference || selectedPayment?.transaction_id" icon="CreditCard" width="60%">
     <div v-if="selectedPayment" class="space-y-6 p-6">
       <div class="grid grid-cols-2 gap-4">
         <div>
           <div class="text-xs text-slate-500 mb-1">Reference</div>
-          <div class="text-sm font-medium text-slate-900">{{ selectedPayment.reference || selectedPayment.transaction_id || 'N/A' }}</div>
+          <div class="text-sm font-medium text-slate-900 dark:text-slate-100">{{ selectedPayment.reference || selectedPayment.transaction_id || 'N/A' }}</div>
         </div>
         <div>
           <div class="text-xs text-slate-500 mb-1">Transaction ID</div>
@@ -179,7 +181,7 @@
         </div>
         <div>
           <div class="text-xs text-slate-500 mb-1">Customer</div>
-          <div class="text-sm font-medium text-slate-900">{{ selectedPayment.customer_name || selectedPayment.user?.name || 'N/A' }}</div>
+          <div class="text-sm font-medium text-slate-900 dark:text-slate-100">{{ selectedPayment.customer_name || selectedPayment.user?.name || 'N/A' }}</div>
         </div>
         <div>
           <div class="text-xs text-slate-500 mb-1">Phone</div>
@@ -215,7 +217,7 @@
       <div class="flex gap-3">
         <button
           @click="showDetailsOverlay = false"
-          class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+          class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-600"
         >
           Close
         </button>
@@ -224,18 +226,18 @@
   </SlideOverlay>
 
   <!-- Record Payment Overlay -->
-  <SlideOverlay v-model="showRecordOverlay" title="Record Payment" subtitle="Manually record a customer payment" icon="Plus" width="480px">
+  <SlideOverlay v-model="showRecordOverlay" title="Record Payment" subtitle="Manually record a customer payment" icon="Plus" width="60%">
     <div class="space-y-4 p-6">
       <div>
-        <label class="block text-sm font-medium text-slate-700 mb-1">Customer Phone</label>
+        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Customer Phone</label>
         <BaseInput v-model="recordForm.phone_number" placeholder="e.g. 254712345678" />
       </div>
       <div>
-        <label class="block text-sm font-medium text-slate-700 mb-1">Amount (KES)</label>
+        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Amount (KES)</label>
         <BaseInput v-model.number="recordForm.amount" type="number" placeholder="0" />
       </div>
       <div>
-        <label class="block text-sm font-medium text-slate-700 mb-1">Payment Method</label>
+        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Payment Method</label>
         <BaseSelect v-model="recordForm.payment_method" class="w-full">
           <option value="cash">Cash</option>
           <option value="mpesa">M-Pesa</option>
@@ -243,7 +245,7 @@
         </BaseSelect>
       </div>
       <div>
-        <label class="block text-sm font-medium text-slate-700 mb-1">Transaction ID (optional)</label>
+        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Transaction ID (optional)</label>
         <BaseInput v-model="recordForm.transaction_id" placeholder="e.g. TXN123" />
       </div>
     </div>
@@ -251,7 +253,7 @@
       <div class="flex gap-3">
         <button
           @click="showRecordOverlay = false"
-          class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+          class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-600"
         >
           Cancel
         </button>
@@ -270,7 +272,6 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { CreditCard, Download, Plus, Eye, Send, Smartphone, Banknote, Building } from 'lucide-vue-next'
-import axios from 'axios'
 import DataViewContainer from '@/modules/common/components/base/DataViewContainer.vue'
 import DataSkeleton from '@/modules/common/components/base/DataSkeleton.vue'
 import DataPagination from '@/modules/common/components/base/DataPagination.vue'
@@ -281,39 +282,22 @@ import BaseSelect from '@/modules/common/components/base/BaseSelect.vue'
 import BaseInput from '@/modules/common/components/base/BaseInput.vue'
 import EntityStatusBadge from '@/modules/common/components/base/EntityStatusBadge.vue'
 import SlideOverlay from '@/modules/common/components/base/SlideOverlay.vue'
-import { useConfirmStore } from '@/stores/confirm'
+import { useAdminPayments } from '@/modules/tenant/composables/useAdminPayments.js'
 
-const confirmStore = useConfirmStore()
+const {
+  loading, refreshing, error, payments, recordSubmitting,
+  selectedPayment, showDetailsOverlay, showRecordOverlay, recordForm,
+  stats,
+  getMethodVariant, getMethodIcon,
+  formatMoney, formatDate, formatTime,
+  fetchPayments, viewPayment, recordPayment,
+  downloadReceipt, sendReceipt, submitRecordPayment, exportPayments
+} = useAdminPayments()
 
-// State
-const loading = ref(false)
-const refreshing = ref(false)
-const error = ref(null)
-const payments = ref([])
 const searchQuery = ref('')
 const currentPage = ref(1)
 const itemsPerPage = ref(10)
-const showDetailsOverlay = ref(false)
-const selectedPayment = ref(null)
-const showRecordOverlay = ref(false)
-const recordSubmitting = ref(false)
-const recordForm = ref({ phone_number: '', amount: 0, payment_method: 'cash', transaction_id: '' })
-
 const filters = ref({ method: '', period: '' })
-
-// Computed
-const stats = computed(() => {
-  const total = payments.value.reduce((sum, p) => sum + p.amount, 0)
-  const mpesa = payments.value.filter(p => p.method === 'mpesa').reduce((sum, p) => sum + p.amount, 0)
-  const cash = payments.value.filter(p => p.method === 'cash').reduce((sum, p) => sum + p.amount, 0)
-  const bank = payments.value.filter(p => p.method === 'bank').reduce((sum, p) => sum + p.amount, 0)
-  const today = payments.value.filter(p => {
-    const payDate = new Date(p.payment_date)
-    const now = new Date()
-    return payDate.toDateString() === now.toDateString()
-  }).reduce((sum, p) => sum + p.amount, 0)
-  return { total, mpesa, cash, bank, today }
-})
 
 const filteredData = computed(() => {
   let data = payments.value
@@ -351,96 +335,17 @@ const paginatedData = computed(() => {
 const totalPages = computed(() => Math.ceil(filteredData.value.length / itemsPerPage.value))
 const hasActiveFilters = computed(() => filters.value.method || filters.value.period)
 
-// Helpers
-const getMethodVariant = (method) => ({ mpesa: 'success', cash: 'warning', bank: 'info', card: 'purple' }[method] || 'default')
-const getMethodIcon = (method) => ({ mpesa: Smartphone, cash: Banknote, bank: Building, card: CreditCard }[method] || CreditCard)
-const formatMoney = (amount) => new Intl.NumberFormat('en-KE').format(amount)
-const formatDate = (date) => date ? new Date(date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : 'N/A'
-const formatTime = (date) => date ? new Date(date).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : 'N/A'
-
-// Actions
-const fetchPayments = async () => {
-  const isInitial = payments.value.length === 0
-  if (isInitial) { loading.value = true; error.value = null }
-  else refreshing.value = true
-
-  try {
-    const params = {}
-    if (searchQuery.value) params.search = searchQuery.value
-    if (filters.value.method) params.payment_method = filters.value.method
-    params.per_page = 100
-
-    const response = await axios.get('/payments', { params })
-    const data = response.data?.payments?.data || response.data?.payments || response.data?.data || []
-
-    payments.value = data.map(p => ({
-      id: p.id, reference: p.reference || `PAY-${p.id}`, transaction_id: p.transaction_id || p.mpesa_receipt || '',
-      customer_name: p.user?.name || p.phone_number || 'Unknown', customer_email: p.user?.email || '',
-      phone_number: p.phone_number || p.user?.phone_number || '', amount: Number(p.amount) || 0,
-      method: p.payment_method || 'mpesa', status: p.status || 'completed', invoice_number: p.invoice_number || null,
-      payment_date: p.created_at || p.paid_at || new Date().toISOString(), package: p.package || null, user: p.user || null, _raw: p
-    }))
-  } catch (err) {
-    if (isInitial) error.value = err.response?.data?.message || 'Failed to load payments.'
-    console.error('fetchPayments error:', err)
-  } finally { loading.value = false; refreshing.value = false }
-}
-
-const viewPayment = (payment) => { selectedPayment.value = payment; showDetailsOverlay.value = true }
-const recordPayment = () => { recordForm.value = { phone_number: '', amount: 0, payment_method: 'cash', transaction_id: '' }; showRecordOverlay.value = true }
-
-const downloadReceipt = (payment) => {
-  const csv = ['Reference,Customer,Amount,Method,Date', `${payment.reference},${payment.customer_name},${payment.amount},${payment.method},${payment.payment_date}`].join('\n')
-  const blob = new Blob([csv], { type: 'text/csv' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `receipt-${payment.reference || payment.id}.csv`
-  a.click()
-  URL.revokeObjectURL(url)
-}
-
-const sendReceipt = async (payment) => {
-  const confirmed = await confirmStore.confirm(`Send receipt to ${payment.customer_email || payment.phone_number}?`)
-  if (confirmed) alert('Receipt sending is not yet configured.')
-}
-
-const submitRecordPayment = async () => {
-  if (!recordForm.value.phone_number || !recordForm.value.amount) {
-    alert('Phone number and amount are required.')
-    return
-  }
-  recordSubmitting.value = true
-  try {
-    await axios.post('/pppoe/payments', recordForm.value)
-    showRecordOverlay.value = false
-    await fetchPayments()
-  } catch (err) {
-    console.error('Record payment error:', err)
-    alert(err.response?.data?.message || 'Failed to record payment')
-  } finally { recordSubmitting.value = false }
-}
-
-const exportPayments = () => {
-  const csv = [
-    ['Reference', 'Customer', 'Amount', 'Method', 'Status', 'Date'].join(','),
-    ...filteredData.value.map(p => [p.reference, p.customer_name, p.amount, p.method, p.status, p.payment_date].join(','))
-  ].join('\n')
-  const blob = new Blob([csv], { type: 'text/csv' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `payments-${new Date().toISOString().slice(0,10)}.csv`
-  a.click()
-  URL.revokeObjectURL(url)
-}
+const handleExportPayments = () => exportPayments(filteredData.value)
 
 onMounted(fetchPayments)
 </script>
 
 <style scoped>
-::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
-::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+/* Scrollbar — no Tailwind equivalent for ::-webkit-scrollbar pseudo-elements */
+::-webkit-scrollbar        { width: 8px; height: 8px; }
+::-webkit-scrollbar-track  { background: #f1f5f9; border-radius: 4px; }
+::-webkit-scrollbar-thumb  { background: #cbd5e1; border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+:global(.dark) ::-webkit-scrollbar-track { background: #1e293b; }
+:global(.dark) ::-webkit-scrollbar-thumb { background: #475569; }
 </style>

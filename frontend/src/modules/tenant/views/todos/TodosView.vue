@@ -52,7 +52,7 @@
       title="Transfer Todo"
       subtitle="Assign this task to another user"
       icon="user-plus"
-      width="400px"
+      width="60%"
       @close="closeTransferModal"
     >
       <div class="p-6">
@@ -76,8 +76,8 @@
                 {{ user.name?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || user.email?.slice(0, 2).toUpperCase() || '?' }}
               </div>
               <div class="flex-1">
-                <p class="text-sm font-medium text-slate-900">{{ user.name || user.full_name || user.email || 'Unknown' }}</p>
-                <p class="text-xs text-slate-500">{{ user.email || '' }}</p>
+                <p class="text-sm font-medium text-slate-900 dark:text-slate-100">{{ user.name || user.full_name || user.email || 'Unknown' }}</p>
+                <p class="text-xs text-slate-500 dark:text-slate-400">{{ user.email || '' }}</p>
               </div>
               <span v-if="user.id === selectedTodo?.assigned_to?.id || user.id === selectedTodo?.handler?.id" class="text-xs text-slate-400">Current</span>
             </button>
@@ -102,7 +102,7 @@
     <DataSkeleton v-else-if="loading" :count="5" />
 
     <!-- Data Content -->
-    <div v-else-if="filteredTodos?.length" class="flex flex-col h-full px-4 md:px-6 pt-2 pb-2 min-h-0">
+    <div v-else-if="filteredTodos?.length" class="flex flex-col h-full pt-2 pb-2 min-h-0">
       <!-- Mobile Cards -->
       <div class="md:hidden space-y-3 overflow-y-auto flex-1 min-h-0">
         <MobileDataCard
@@ -120,7 +120,7 @@
       <!-- Desktop Table -->
       <div class="hidden md:flex bg-white border-x border-t border-slate-200 flex-col min-h-0 flex-1">
         <!-- Fixed Header -->
-        <div class="bg-slate-50 border-b border-slate-200">
+        <div class="bg-slate-50 dark:bg-slate-700/50 border-b border-slate-200 dark:border-slate-700">
           <table class="w-full">
             <thead>
               <tr>
@@ -138,12 +138,12 @@
         <!-- Scrollable Body -->
         <div class="overflow-y-auto flex-1 min-h-0">
           <table class="w-full">
-            <tbody class="divide-y divide-slate-100">
+            <tbody class="divide-y divide-slate-100 dark:divide-slate-700">
               <tr v-for="todo in paginatedTodos" :key="todo?.id" class="hover:bg-blue-50/50 transition-colors">
                 <td class="px-6 py-4 w-[25%]">
                   <div class="flex items-center gap-2">
                     <span :class="getStatusDotClass(todo?.status)" class="w-1.5 h-1.5 rounded-full"></span>
-                    <span class="text-sm font-medium text-slate-900">{{ todo?.title || 'Untitled' }}</span>
+                    <span class="text-sm font-medium text-slate-900 dark:text-slate-100">{{ todo?.title || 'Untitled' }}</span>
                   </div>
                 </td>
                 <td class="px-6 py-4 hidden lg:table-cell w-[20%]">
@@ -155,13 +155,13 @@
                   </span>
                 </td>
                 <td class="px-6 py-4 w-[12%]">
-                  <span class="text-sm text-slate-600">{{ formatDate(todo?.due_date) }}</span>
+                  <span class="text-sm text-slate-600 dark:text-slate-400">{{ formatDate(todo?.due_date) }}</span>
                 </td>
                 <td class="px-6 py-4 w-[10%]">
                   <EntityStatusBadge :status="todo?.status" size="sm" />
                 </td>
                 <td class="px-6 py-4 w-[12%]">
-                  <span class="text-sm text-slate-600">{{ getHandlerDisplay(todo) }}</span>
+                  <span class="text-sm text-slate-600 dark:text-slate-400">{{ getHandlerDisplay(todo) }}</span>
                 </td>
                 <td class="px-6 py-4 text-right w-[15%]">
                   <div class="flex items-center justify-end gap-1">
@@ -214,7 +214,7 @@
 
     <!-- Global Dropdown Menu Portal -->
     <Teleport to="body">
-      <div v-if="activeMenu !== null" data-dropdown-menu :style="menuPosition" class="fixed w-48 bg-white rounded-lg shadow-2xl border border-slate-200 py-1 z-[9999] overflow-hidden">
+      <div v-if="activeMenu !== null" data-dropdown-menu :style="menuPosition" class="fixed w-48 bg-white dark:bg-slate-800 rounded-lg shadow-2xl border border-slate-200 dark:border-slate-700 py-1 z-[9999] overflow-hidden">
         <button v-if="todos.find(t => t.id === activeMenu)?.status === 'pending'" @click="handleStart(todos.find(t => t.id === activeMenu))" class="flex items-center w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-700 transition-colors">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
@@ -255,7 +255,6 @@
 
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
-import axios from '@/modules/common/services/api/axios'
 import { useTodos } from '@/modules/tenant/composables/useTodos'
 import DataViewContainer from '@/modules/common/components/base/DataViewContainer.vue'
 import DataSkeleton from '@/modules/common/components/base/DataSkeleton.vue'
@@ -276,6 +275,7 @@ const {
   completedTodos,
   loading,
   error,
+  users,
   fetchTodos,
   fetchStatistics,
   createTodo,
@@ -286,6 +286,7 @@ const {
   assignTodo,
   fetchTodo,
   searchTodos,
+  fetchUsers,
   setupWebSocketListeners,
   cleanupWebSocketListeners
 } = useTodos()
@@ -310,7 +311,6 @@ const detailsError = ref('')
 // Transfer state
 const showTransferModal = ref(false)
 const transferLoading = ref(false)
-const users = ref([])
 
 // Menu state
 const activeMenu = ref(null)
@@ -579,14 +579,6 @@ const closeTransferModal = () => {
   showTransferModal.value = false
 }
 
-const fetchUsers = async () => {
-  try {
-    const response = await axios.get('/users')
-    users.value = response.data?.users || response.data || []
-  } catch (err) {
-    console.error('Failed to fetch users:', err)
-  }
-}
 
 const handleTransfer = async (userId) => {
   if (!selectedTodo.value || !userId) return
@@ -620,8 +612,11 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
-::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+/* Scrollbar — no Tailwind equivalent for ::-webkit-scrollbar pseudo-elements */
+::-webkit-scrollbar        { width: 8px; height: 8px; }
+::-webkit-scrollbar-track  { background: #f1f5f9; border-radius: 4px; }
+::-webkit-scrollbar-thumb  { background: #cbd5e1; border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+:global(.dark) ::-webkit-scrollbar-track { background: #1e293b; }
+:global(.dark) ::-webkit-scrollbar-thumb { background: #475569; }
 </style>

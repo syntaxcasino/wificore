@@ -27,6 +27,7 @@ class RouterTenantMap extends Model
         'ip_address',
         'vpn_ip',
         'config_token',
+        'vpn_public_key',
     ];
 
     protected $casts = [
@@ -69,9 +70,28 @@ class RouterTenantMap extends Model
     }
 
     /**
+     * Find tenant ID + router ID by WireGuard client public key.
+     * Used by the WireGuard webhook job to resolve tenant context without iterating schemas.
+     *
+     * @return array{tenant_id: string, router_id: string}|null
+     */
+    public static function findByVpnPublicKey(string $publicKey): ?array
+    {
+        $row = static::where('vpn_public_key', $publicKey)
+            ->select('tenant_id', 'router_id')
+            ->first();
+
+        if (!$row) {
+            return null;
+        }
+
+        return ['tenant_id' => $row->tenant_id, 'router_id' => $row->router_id];
+    }
+
+    /**
      * Register or update a router mapping
      */
-    public static function registerRouter(string $routerId, string $tenantId, ?string $ipAddress = null, ?string $vpnIp = null, ?string $configToken = null): self
+    public static function registerRouter(string $routerId, string $tenantId, ?string $ipAddress = null, ?string $vpnIp = null, ?string $configToken = null, ?string $vpnPublicKey = null): self
     {
         return static::updateOrCreate(
             ['router_id' => $routerId],
@@ -80,6 +100,7 @@ class RouterTenantMap extends Model
                 'ip_address' => $ipAddress,
                 'vpn_ip' => $vpnIp,
                 'config_token' => $configToken,
+                'vpn_public_key' => $vpnPublicKey,
             ]
         );
     }

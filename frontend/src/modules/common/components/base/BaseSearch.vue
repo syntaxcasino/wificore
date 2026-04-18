@@ -51,7 +51,7 @@ const props = defineProps({
 const emit = defineEmits(['update:modelValue', 'clear'])
 
 const inputClasses = computed(() => {
-  const base = 'w-full pl-10 pr-10 text-slate-700 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:bg-white focus:outline-none transition-all placeholder:text-slate-400'
+  const base = 'w-full pl-10 pr-10 text-slate-700 dark:text-slate-200 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:bg-white dark:focus:bg-slate-600 focus:outline-none transition-all placeholder:text-slate-400 dark:placeholder:text-slate-500'
   
   const sizes = {
     sm: 'py-1.5 text-xs',

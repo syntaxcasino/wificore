@@ -75,8 +75,8 @@
                           <Wifi class="w-6 h-6" :class="formData.type === 'hotspot' ? 'text-purple-600' : 'text-slate-600'" />
                         </div>
                         <div>
-                          <div class="font-semibold text-slate-900">Hotspot</div>
-                          <div class="text-xs text-slate-500">Voucher-based access</div>
+                          <div class="font-semibold text-slate-900 dark:text-slate-100">Hotspot</div>
+                          <div class="text-xs text-slate-500 dark:text-slate-400">Voucher-based access</div>
                         </div>
                       </div>
                       <div v-if="formData.type === 'hotspot'" class="absolute top-2 right-2">
@@ -96,8 +96,8 @@
                           <Network class="w-6 h-6" :class="formData.type === 'pppoe' ? 'text-cyan-600' : 'text-slate-600'" />
                         </div>
                         <div>
-                          <div class="font-semibold text-slate-900">PPPoE</div>
-                          <div class="text-xs text-slate-500">Direct connection</div>
+                          <div class="font-semibold text-slate-900 dark:text-slate-100">PPPoE</div>
+                          <div class="text-xs text-slate-500 dark:text-slate-400">Direct connection</div>
                         </div>
                       </div>
                       <div v-if="formData.type === 'pppoe'" class="absolute top-2 right-2">
@@ -197,7 +197,7 @@
                 <!-- Data Limit -->
                 <div>
                   <div class="flex items-center justify-between mb-2">
-                    <label class="block text-sm font-medium text-slate-700">
+                    <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">
                       Data Limit
                     </label>
                     <label class="flex items-center gap-2 cursor-pointer">
@@ -206,7 +206,7 @@
                         type="checkbox"
                         class="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                       />
-                      <span class="text-sm text-slate-600">Unlimited</span>
+                      <span class="text-sm text-slate-600 dark:text-slate-400">Unlimited</span>
                     </label>
                   </div>
                   <div v-if="!formData.unlimited_data" class="grid grid-cols-2 gap-4">
@@ -252,7 +252,7 @@
                       placeholder="Upload burst (Mbps)"
                     />
                   </div>
-                  <p class="mt-1 text-xs text-slate-500">Temporary speed boost when bandwidth is available</p>
+                  <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Temporary speed boost when bandwidth is available</p>
                 </div>
               </div>
             </div>
@@ -265,10 +265,10 @@
               
               <div class="space-y-4">
                 <!-- Status -->
-                <div class="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
+                <div class="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-700/50 rounded-lg">
                   <div>
-                    <div class="font-medium text-slate-900">Package Status</div>
-                    <div class="text-sm text-slate-500">Enable this package for new subscriptions</div>
+                    <div class="font-medium text-slate-900 dark:text-slate-100">Package Status</div>
+                    <div class="text-sm text-slate-500 dark:text-slate-400">Enable this package for new subscriptions</div>
                   </div>
                   <label class="relative inline-flex items-center cursor-pointer">
                     <input
@@ -281,10 +281,10 @@
                 </div>
 
                 <!-- Featured Package -->
-                <div class="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
+                <div class="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-700/50 rounded-lg">
                   <div>
-                    <div class="font-medium text-slate-900">Featured Package</div>
-                    <div class="text-sm text-slate-500">Highlight this package on the public page</div>
+                    <div class="font-medium text-slate-900 dark:text-slate-100">Featured Package</div>
+                    <div class="text-sm text-slate-500 dark:text-slate-400">Highlight this package on the public page</div>
                   </div>
                   <label class="relative inline-flex items-center cursor-pointer">
                     <input
@@ -309,7 +309,7 @@
                     class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     placeholder="e.g., 1"
                   />
-                  <p class="mt-1 text-xs text-slate-500">Lower numbers appear first</p>
+                  <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Lower numbers appear first</p>
                 </div>
               </div>
             </div>
@@ -340,8 +340,8 @@
                   <div class="p-6 space-y-4">
                     <div class="flex items-baseline justify-between">
                       <div>
-                        <div class="text-3xl font-bold text-slate-900">KES {{ formatMoney(formData.price || 0) }}</div>
-                        <div class="text-xs text-slate-500">per {{ formData.validity || 'period' }}</div>
+                        <div class="text-3xl font-bold text-slate-900 dark:text-slate-100">KES {{ formatMoney(formData.price || 0) }}</div>
+                        <div class="text-xs text-slate-500 dark:text-slate-400">per {{ formData.validity || 'period' }}</div>
                       </div>
                       <BaseBadge :variant="formData.type === 'hotspot' ? 'purple' : 'info'">
                         {{ formData.type || 'Type' }}
@@ -369,7 +369,7 @@
           </BaseCard>
 
           <!-- Form Actions -->
-          <div class="flex items-center justify-end gap-3 pt-6 border-t border-slate-200">
+          <div class="flex items-center justify-end gap-3 pt-6 border-t border-slate-200 dark:border-slate-700">
             <BaseButton @click="$router.back()" variant="ghost" type="button">
               Cancel
             </BaseButton>
@@ -388,13 +388,11 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { 
+import {
   Package, ArrowLeft, Save, Wifi, Network, CheckCircle,
   Zap, HardDrive, Clock
 } from 'lucide-vue-next'
-import axios from 'axios'
 import PageContainer from '@/modules/common/components/layout/templates/PageContainer.vue'
 import PageHeader from '@/modules/common/components/layout/templates/PageHeader.vue'
 import PageContent from '@/modules/common/components/layout/templates/PageContent.vue'
@@ -402,122 +400,28 @@ import BaseButton from '@/modules/common/components/base/BaseButton.vue'
 import BaseCard from '@/modules/common/components/base/BaseCard.vue'
 import BaseBadge from '@/modules/common/components/base/BaseBadge.vue'
 import BaseSelect from '@/modules/common/components/base/BaseSelect.vue'
+import { useAddPackage } from '@/modules/tenant/composables/useAddPackage.js'
 
 const router = useRouter()
 
-// Breadcrumbs
 const breadcrumbs = [
   { label: 'Dashboard', to: '/dashboard' },
   { label: 'Packages', to: '/dashboard/packages' },
   { label: 'Add Package' }
 ]
 
-// State
-const saving = ref(false)
-const errorMessage = ref('')
-
-const formData = ref({
-  name: '',
-  description: '',
-  type: 'hotspot',
-  price: null,
-  validity: '',
-  download_speed: null,
-  upload_speed: null,
-  data_limit_value: null,
-  data_limit_unit: 'GB',
-  unlimited_data: false,
-  burst_download: null,
-  burst_upload: null,
-  is_active: true,
-  is_featured: false,
-  display_order: 0
-})
-
-// Methods
-const getDataLimitDisplay = () => {
-  if (formData.value.unlimited_data) {
-    return 'Unlimited'
-  }
-  if (formData.value.data_limit_value) {
-    return `${formData.value.data_limit_value} ${formData.value.data_limit_unit}`
-  }
-  return 'Not set'
-}
-
-const formatMoney = (amount) => {
-  return new Intl.NumberFormat('en-KE').format(amount)
-}
-
-const buildPayload = () => {
-  const f = formData.value
-  const dataLimit = f.unlimited_data ? 'Unlimited' : (f.data_limit_value ? `${f.data_limit_value} ${f.data_limit_unit}` : null)
-  const speed = (f.download_speed || f.upload_speed) ? `${f.download_speed || 0}/${f.upload_speed || 0} Mbps` : null
-  return {
-    name: f.name,
-    description: f.description,
-    type: f.type,
-    price: f.price,
-    duration: f.validity,
-    validity: f.validity,
-    download_speed: f.download_speed ? `${f.download_speed}M` : '0M',
-    upload_speed: f.upload_speed ? `${f.upload_speed}M` : '0M',
-    speed: speed,
-    data_limit: dataLimit,
-    devices: 1,
-    status: f.is_active ? 'active' : 'inactive',
-    is_active: f.is_active,
-  }
-}
-
-const resetForm = () => {
-  formData.value = {
-    name: '',
-    description: '',
-    type: 'hotspot',
-    price: null,
-    validity: '',
-    download_speed: null,
-    upload_speed: null,
-    data_limit_value: null,
-    data_limit_unit: 'GB',
-    unlimited_data: false,
-    burst_download: null,
-    burst_upload: null,
-    is_active: true,
-    is_featured: false,
-    display_order: 0
-  }
-  errorMessage.value = ''
-}
+const {
+  saving, errorMessage, formData,
+  getDataLimitDisplay, formatMoney, resetForm, submitPackage
+} = useAddPackage()
 
 const handleSubmit = async () => {
-  saving.value = true
-  errorMessage.value = ''
-  
-  try {
-    await axios.post('/packages', buildPayload())
-    router.push('/dashboard/packages/all')
-  } catch (err) {
-    console.error('Error creating package:', err)
-    errorMessage.value = err.response?.data?.error || err.response?.data?.message || 'Failed to create package'
-  } finally {
-    saving.value = false
-  }
+  const result = await submitPackage()
+  if (result.success) router.push('/dashboard/packages/all')
 }
 
 const handleSaveAndNew = async () => {
-  saving.value = true
-  errorMessage.value = ''
-  
-  try {
-    await axios.post('/packages', buildPayload())
-    resetForm()
-  } catch (err) {
-    console.error('Error creating package:', err)
-    errorMessage.value = err.response?.data?.error || err.response?.data?.message || 'Failed to create package'
-  } finally {
-    saving.value = false
-  }
+  const result = await submitPackage()
+  if (result.success) resetForm()
 }
 </script>

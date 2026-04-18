@@ -1,0 +1,68 @@
+import { ref } from 'vue'
+import axios from 'axios'
+
+const defaultForm = () => ({
+  name: '', description: '',
+  type: 'hotspot',
+  price: null, validity: '',
+  download_speed: null, upload_speed: null,
+  data_limit_value: null, data_limit_unit: 'GB',
+  unlimited_data: false,
+  burst_download: null, burst_upload: null,
+  is_active: true, is_featured: false, display_order: 0
+})
+
+export function useAddPackage() {
+  const saving = ref(false)
+  const errorMessage = ref('')
+  const formData = ref(defaultForm())
+
+  const getDataLimitDisplay = () => {
+    if (formData.value.unlimited_data) return 'Unlimited'
+    if (formData.value.data_limit_value) return `${formData.value.data_limit_value} ${formData.value.data_limit_unit}`
+    return 'Not set'
+  }
+
+  const formatMoney = (amount) => new Intl.NumberFormat('en-KE').format(amount)
+
+  const buildPayload = () => {
+    const f = formData.value
+    const dataLimit = f.unlimited_data ? 'Unlimited'
+      : (f.data_limit_value ? `${f.data_limit_value} ${f.data_limit_unit}` : null)
+    const speed = (f.download_speed || f.upload_speed)
+      ? `${f.download_speed || 0}/${f.upload_speed || 0} Mbps` : null
+    return {
+      name: f.name, description: f.description, type: f.type,
+      price: f.price, duration: f.validity, validity: f.validity,
+      download_speed: f.download_speed ? `${f.download_speed}M` : '0M',
+      upload_speed: f.upload_speed ? `${f.upload_speed}M` : '0M',
+      speed, data_limit: dataLimit, devices: 1,
+      status: f.is_active ? 'active' : 'inactive',
+      is_active: f.is_active,
+    }
+  }
+
+  const resetForm = () => {
+    formData.value = defaultForm()
+    errorMessage.value = ''
+  }
+
+  const submitPackage = async () => {
+    saving.value = true
+    errorMessage.value = ''
+    try {
+      await axios.post('/packages', buildPayload())
+      return { success: true }
+    } catch (err) {
+      errorMessage.value = err.response?.data?.error || err.response?.data?.message || 'Failed to create package'
+      return { success: false }
+    } finally {
+      saving.value = false
+    }
+  }
+
+  return {
+    saving, errorMessage, formData,
+    getDataLimitDisplay, formatMoney, buildPayload, resetForm, submitPackage
+  }
+}

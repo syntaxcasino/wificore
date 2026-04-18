@@ -9,7 +9,7 @@
       </template>
     </PageHeader>
 
-    <div class="px-3 py-3 sm:px-6 sm:py-4 bg-white border-b border-slate-200">
+    <div class="px-3 py-3 sm:px-6 sm:py-4 bg-white border-b border-slate-200 dark:border-slate-700">
       <div class="grid grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
         <div class="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200">
           <div class="flex items-center justify-between">
@@ -48,7 +48,7 @@
         <BaseCard :padding="false">
           <div class="overflow-x-auto">
             <table class="w-full">
-              <thead class="bg-slate-50 border-b border-slate-200">
+              <thead class="bg-slate-50 dark:bg-slate-700/50 border-b border-slate-200 dark:border-slate-700">
                 <tr>
                   <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700">Backup Name</th>
                   <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700">Created</th>
@@ -59,8 +59,8 @@
               </thead>
               <tbody>
                 <tr v-for="backup in backups" :key="backup.id" class="border-b border-slate-100 hover:bg-blue-50/50">
-                  <td class="px-6 py-4 text-sm font-medium text-slate-900">{{ backup.name }}</td>
-                  <td class="px-6 py-4 text-sm text-slate-600">{{ formatDateTime(backup.created_at) }}</td>
+                  <td class="px-6 py-4 text-sm font-medium text-slate-900 dark:text-slate-100">{{ backup.name }}</td>
+                  <td class="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">{{ formatDateTime(backup.created_at) }}</td>
                   <td class="px-6 py-4 text-sm text-slate-900">{{ formatBytes(backup.size) }}</td>
                   <td class="px-6 py-4">
                     <BaseBadge :variant="backup.type === 'auto' ? 'info' : 'success'" size="sm">{{ backup.type }}</BaseBadge>
@@ -92,12 +92,17 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { Database, Plus, Clock, HardDrive, Download, RotateCcw, Trash2 } from 'lucide-vue-next'
+import { useConfirmStore } from '@/stores/confirm'
+import { useToast } from '@/modules/common/composables/useToast.js'
 import PageContainer from '@/modules/common/components/layout/templates/PageContainer.vue'
 import PageHeader from '@/modules/common/components/layout/templates/PageHeader.vue'
 import PageContent from '@/modules/common/components/layout/templates/PageContent.vue'
 import BaseButton from '@/modules/common/components/base/BaseButton.vue'
 import BaseCard from '@/modules/common/components/base/BaseCard.vue'
 import BaseBadge from '@/modules/common/components/base/BaseBadge.vue'
+
+const confirmStore = useConfirmStore()
+const { success: showSuccess, error: showError, info: showInfo } = useToast()
 
 const breadcrumbs = [{ label: 'Dashboard', to: '/dashboard' }, { label: 'Admin', to: '/dashboard/admin' }, { label: 'Backup & Restore' }]
 
@@ -134,18 +139,30 @@ const createBackup = async () => {
     type: 'manual'
   })
   creating.value = false
-  alert('Backup created successfully!')
+  showSuccess('Backup created successfully!')
 }
 
-const downloadBackup = (backup) => alert(`Downloading ${backup.name}`)
-const restoreBackup = (backup) => {
-  if (confirm(`Restore backup ${backup.name}? This will overwrite current data.`)) {
-    alert('Restore initiated!')
-  }
+const downloadBackup = (backup) => showInfo(`Downloading ${backup.name}`)
+
+const restoreBackup = async (backup) => {
+  const confirmed = await confirmStore.open({
+    title: 'Restore Backup',
+    message: `Restore backup ${backup.name}? This will overwrite current data.`,
+    confirmText: 'Restore',
+    cancelText: 'Cancel',
+    variant: 'warning',
+  })
+  if (confirmed) showSuccess('Restore initiated!')
 }
-const deleteBackup = (backup) => {
-  if (confirm(`Delete backup ${backup.name}?`)) {
-    backups.value = backups.value.filter(b => b.id !== backup.id)
-  }
+
+const deleteBackup = async (backup) => {
+  const confirmed = await confirmStore.open({
+    title: 'Delete Backup',
+    message: `Delete backup ${backup.name}?`,
+    confirmText: 'Delete',
+    cancelText: 'Cancel',
+    variant: 'danger',
+  })
+  if (confirmed) backups.value = backups.value.filter(b => b.id !== backup.id)
 }
 </script>

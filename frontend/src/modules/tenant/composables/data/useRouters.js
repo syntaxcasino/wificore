@@ -717,7 +717,7 @@ export function useRouters() {
         }
       }
 
-      if (data.success === false && data.error) {
+      if (data?.success === false && data?.error) {
         detailsError.value = data.error
       }
     } catch (error) {

@@ -96,18 +96,18 @@
       title="PPPoE User Created"
       subtitle="Account credentials generated successfully"
       icon="Key"
-      width="480px"
+      width="60%"
       :closeOnBackdrop="false"
       :closeOnEscape="false"
     >
       <div class="space-y-4">
         <div>
-          <div class="text-sm font-medium text-slate-700">Username</div>
+          <div class="text-sm font-medium text-slate-700 dark:text-slate-300">Username</div>
           <div class="mt-1 text-sm text-slate-900 font-mono">{{ createdUser?.username }}</div>
         </div>
 
         <div>
-          <div class="text-sm font-medium text-slate-700">Generated Password</div>
+          <div class="text-sm font-medium text-slate-700 dark:text-slate-300">Generated Password</div>
           <div class="mt-1 flex items-center gap-2">
             <div class="flex-1 text-sm text-slate-900 font-mono bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
               {{ generatedPassword }}
@@ -116,7 +116,7 @@
               Copy
             </BaseButton>
           </div>
-          <div class="mt-2 text-xs text-slate-500">This password is shown only once. Store it securely.</div>
+          <div class="mt-2 text-xs text-slate-500 dark:text-slate-400">This password is shown only once. Store it securely.</div>
         </div>
       </div>
 

@@ -7,7 +7,9 @@
     @refresh="fetchUpdates"
   >
     <template #icon>
-      <Server class="h-5 w-5 md:h-6 md:w-6 text-white" />
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 md:h-6 md:w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 01-2 2v4a2 2 0 012 2h14a2 2 0 012-2v-4a2 2 0 01-2-2m-2-4h.01M17 16h.01" />
+      </svg>
     </template>
 
     <template #actions>
@@ -78,9 +80,9 @@
     </template>
 
     <!-- Content -->
-    <div class="flex flex-col h-full px-4 md:px-6 pt-2 pb-2 min-h-0">
+    <div class="flex flex-col h-full pt-2 pb-2 min-h-0">
       <!-- Update Types Tabs -->
-      <div class="flex items-center gap-2 mb-4 border-b border-slate-200">
+      <div class="flex items-center gap-2 mb-4 border-b border-slate-200 dark:border-slate-700">
         <button
           v-for="tab in tabs"
           :key="tab.id"
@@ -101,8 +103,8 @@
                 <Server class="w-6 h-6 text-blue-600" />
               </div>
               <div>
-                <h4 class="font-semibold text-slate-900">{{ server.name }}</h4>
-                <p class="text-sm text-slate-500">{{ server.type }} • {{ server.ip }}</p>
+                <h4 class="font-semibold text-slate-900 dark:text-slate-100">{{ server.name }}</h4>
+                <p class="text-sm text-slate-500 dark:text-slate-400">{{ server.type }} • {{ server.ip }}</p>
                 <div class="flex items-center gap-2 mt-1">
                   <span :class="server.status === 'online' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'" class="px-2 py-0.5 rounded-full text-xs font-medium">
                     {{ server.status }}
@@ -114,7 +116,7 @@
             <div class="flex items-center gap-3">
               <div v-if="server.update_available" class="text-right">
                 <div class="text-sm font-medium text-amber-600">v{{ server.latest_version }} available</div>
-                <div class="text-xs text-slate-500">{{ server.update_description }}</div>
+                <div class="text-xs text-slate-500 dark:text-slate-400">{{ server.update_description }}</div>
               </div>
               <button
                 v-if="server.update_available"
@@ -140,8 +142,8 @@
                 <Router class="w-6 h-6 text-emerald-600" />
               </div>
               <div>
-                <h4 class="font-semibold text-slate-900">{{ router.name }}</h4>
-                <p class="text-sm text-slate-500">{{ router.model }} • {{ router.ip_address }}</p>
+                <h4 class="font-semibold text-slate-900 dark:text-slate-100">{{ router.name }}</h4>
+                <p class="text-sm text-slate-500 dark:text-slate-400">{{ router.model }} • {{ router.ip_address }}</p>
                 <div class="flex items-center gap-2 mt-1">
                   <EntityStatusBadge :status="router.status" size="sm" />
                   <span class="text-xs text-slate-400">RouterOS v{{ router.current_ros_version }}</span>
@@ -151,7 +153,7 @@
             <div class="flex items-center gap-3">
               <div v-if="router.update_available" class="text-right">
                 <div class="text-sm font-medium text-amber-600">v{{ router.latest_ros_version }} available</div>
-                <div class="text-xs text-slate-500">{{ router.update_changelog }}</div>
+                <div class="text-xs text-slate-500 dark:text-slate-400">{{ router.update_changelog }}</div>
               </div>
               <button
                 v-if="router.update_available"
@@ -182,8 +184,8 @@
                 <Wifi class="w-6 h-6 text-purple-600" />
               </div>
               <div>
-                <h4 class="font-semibold text-slate-900">{{ ap.name }}</h4>
-                <p class="text-sm text-slate-500">{{ ap.model }} • {{ ap.mac_address }}</p>
+                <h4 class="font-semibold text-slate-900 dark:text-slate-100">{{ ap.name }}</h4>
+                <p class="text-sm text-slate-500 dark:text-slate-400">{{ ap.model }} • {{ ap.mac_address }}</p>
                 <div class="flex items-center gap-2 mt-1">
                   <EntityStatusBadge :status="ap.status" size="sm" />
                   <span class="text-xs text-slate-400">Firmware v{{ ap.current_firmware }}</span>
@@ -214,7 +216,7 @@
         <BaseCard>
           <div class="overflow-x-auto">
             <table class="w-full">
-              <thead class="bg-slate-50 border-b border-slate-200">
+              <thead class="bg-slate-50 dark:bg-slate-700/50 border-b border-slate-200 dark:border-slate-700">
                 <tr>
                   <th class="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">Date</th>
                   <th class="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">Component</th>
@@ -224,12 +226,12 @@
                   <th class="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">Status</th>
                 </tr>
               </thead>
-              <tbody class="divide-y divide-slate-100">
+              <tbody class="divide-y divide-slate-100 dark:divide-slate-700">
                 <tr v-for="update in updateHistory" :key="update.id" class="hover:bg-slate-50">
                   <td class="px-4 py-3 text-sm text-slate-900">{{ formatDate(update.created_at) }}</td>
                   <td class="px-4 py-3 text-sm text-slate-600 capitalize">{{ update.component_type }}</td>
-                  <td class="px-4 py-3 text-sm font-medium text-slate-900">{{ update.component_name }}</td>
-                  <td class="px-4 py-3 text-sm text-slate-500">v{{ update.old_version }}</td>
+                  <td class="px-4 py-3 text-sm font-medium text-slate-900 dark:text-slate-100">{{ update.component_name }}</td>
+                  <td class="px-4 py-3 text-sm text-slate-500 dark:text-slate-400">v{{ update.old_version }}</td>
                   <td class="px-4 py-3 text-sm text-slate-900">v{{ update.new_version }}</td>
                   <td class="px-4 py-3">
                     <span :class="getUpdateStatusClass(update.status)" class="px-2 py-0.5 rounded-full text-xs font-medium">
@@ -246,7 +248,7 @@
   </DataViewContainer>
 
   <!-- Router Details Overlay -->
-  <SlideOverlay v-model="showRouterDetails" title="Router Update Details" subtitle="View firmware changelog" icon="Router" width="480px">
+  <SlideOverlay v-model="showRouterDetails" title="Router Update Details" subtitle="View firmware changelog" icon="Router" width="60%">
     <div v-if="selectedRouter" class="space-y-4">
       <div class="bg-slate-50 rounded-lg p-4">
         <h4 class="font-semibold text-slate-900 mb-2">{{ selectedRouter.name }}</h4>
@@ -275,156 +277,35 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { Server, Router, Wifi, RefreshCw, Clock } from 'lucide-vue-next'
-import axios from 'axios'
 import DataViewContainer from '@/modules/common/components/base/DataViewContainer.vue'
 import BaseButton from '@/modules/common/components/base/BaseButton.vue'
 import BaseCard from '@/modules/common/components/base/BaseCard.vue'
 import EntityStatusBadge from '@/modules/common/components/base/EntityStatusBadge.vue'
 import SlideOverlay from '@/modules/common/components/base/SlideOverlay.vue'
+import { useSystemUpdates } from '@/modules/tenant/composables/useSystemUpdates.js'
 
-const loading = ref(false)
-const checking = ref(false)
+const {
+  loading, checking, servers, routers, accessPoints, updateHistory, lastCheck,
+  showRouterDetails, selectedRouter, tabs,
+  stats, lastCheckText, lastCheckTime,
+  formatDate, getUpdateStatusClass,
+  fetchUpdates, checkForUpdates,
+  updateServer, updateRouter, updateAccessPoint, viewRouterDetails
+} = useSystemUpdates()
+
 const activeTab = ref('servers')
-const showRouterDetails = ref(false)
-const selectedRouter = ref(null)
 
-const tabs = [
-  { id: 'servers', label: 'Servers' },
-  { id: 'routers', label: 'Routers' },
-  { id: 'access-points', label: 'Access Points' },
-  { id: 'history', label: 'Update History' }
-]
-
-const servers = ref([])
-const routers = ref([])
-const accessPoints = ref([])
-const updateHistory = ref([])
-const lastCheck = ref(null)
-
-const stats = computed(() => ({
-  servers: servers.value.length,
-  routers: routers.value.length,
-  accessPoints: accessPoints.value.length,
-  serverUpdates: servers.value.filter(s => s.update_available).length,
-  routerUpdates: routers.value.filter(r => r.update_available).length,
-  apUpdates: accessPoints.value.filter(ap => ap.update_available).length
-}))
-
-const lastCheckText = computed(() => {
-  if (!lastCheck.value) return 'Never'
-  const diff = (new Date() - new Date(lastCheck.value)) / 1000 / 60
-  if (diff < 1) return 'Just now'
-  if (diff < 60) return `${Math.floor(diff)}m ago`
-  return `${Math.floor(diff / 60)}h ago`
-})
-
-const lastCheckTime = computed(() => {
-  if (!lastCheck.value) return ''
-  return new Date(lastCheck.value).toLocaleString()
-})
-
-const formatDate = (date) => {
-  if (!date) return '-'
-  return new Date(date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
-}
-
-const getUpdateStatusClass = (status) => {
-  const classes = {
-    success: 'bg-emerald-100 text-emerald-700',
-    failed: 'bg-red-100 text-red-700',
-    pending: 'bg-amber-100 text-amber-700',
-    in_progress: 'bg-blue-100 text-blue-700'
-  }
-  return classes[status] || 'bg-slate-100 text-slate-700'
-}
-
-const fetchUpdates = async () => {
-  loading.value = true
-  try {
-    const [serversRes, routersRes, apsRes, historyRes] = await Promise.all([
-      axios.get('/system-updates/servers').catch(() => ({ data: { servers: [] } })),
-      axios.get('/system-updates/routers').catch(() => ({ data: { routers: [] } })),
-      axios.get('/system-updates/access-points').catch(() => ({ data: { access_points: [] } })),
-      axios.get('/system-updates/history').catch(() => ({ data: { history: [] } }))
-    ])
-    servers.value = serversRes.data?.servers || []
-    routers.value = routersRes.data?.routers || []
-    accessPoints.value = apsRes.data?.access_points || []
-    updateHistory.value = historyRes.data?.history || []
-    lastCheck.value = new Date().toISOString()
-  } catch (err) {
-    console.error('fetchUpdates error:', err)
-  } finally {
-    loading.value = false
-  }
-}
-
-const checkForUpdates = async () => {
-  checking.value = true
-  try {
-    await axios.post('/system-updates/check')
-    await fetchUpdates()
-  } catch (err) {
-    console.error('checkForUpdates error:', err)
-  } finally {
-    checking.value = false
-  }
-}
-
-const updateServer = async (server) => {
-  server.updating = true
-  try {
-    await axios.post(`/system-updates/servers/${server.id}/update`)
-    await fetchUpdates()
-  } catch (err) {
-    console.error('updateServer error:', err)
-    alert(err.response?.data?.message || 'Failed to update server')
-  } finally {
-    server.updating = false
-  }
-}
-
-const updateRouter = async (router) => {
-  router.updating = true
-  try {
-    await axios.post(`/system-updates/routers/${router.id}/update`)
-    await fetchUpdates()
-  } catch (err) {
-    console.error('updateRouter error:', err)
-    alert(err.response?.data?.message || 'Failed to update router')
-  } finally {
-    router.updating = false
-  }
-}
-
-const updateAccessPoint = async (ap) => {
-  ap.updating = true
-  try {
-    await axios.post(`/system-updates/access-points/${ap.id}/update`)
-    await fetchUpdates()
-  } catch (err) {
-    console.error('updateAccessPoint error:', err)
-    alert(err.response?.data?.message || 'Failed to update access point')
-  } finally {
-    ap.updating = false
-  }
-}
-
-const viewRouterDetails = (router) => {
-  selectedRouter.value = router
-  showRouterDetails.value = true
-}
-
-onMounted(() => {
-  fetchUpdates()
-})
+onMounted(fetchUpdates)
 </script>
 
 <style scoped>
-::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
-::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+/* Scrollbar — no Tailwind equivalent for ::-webkit-scrollbar pseudo-elements */
+::-webkit-scrollbar        { width: 8px; height: 8px; }
+::-webkit-scrollbar-track  { background: #f1f5f9; border-radius: 4px; }
+::-webkit-scrollbar-thumb  { background: #cbd5e1; border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+:global(.dark) ::-webkit-scrollbar-track { background: #1e293b; }
+:global(.dark) ::-webkit-scrollbar-thumb { background: #475569; }
 </style>

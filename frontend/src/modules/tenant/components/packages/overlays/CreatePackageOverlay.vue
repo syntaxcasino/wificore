@@ -4,7 +4,7 @@
     :title="isEditing ? 'Edit Package' : 'Create New Package'"
     :subtitle="isEditing ? 'Update package details' : 'Add a new internet package'"
     icon="Package"
-    width="480px"
+    width="50%"
     :close-on-backdrop="!formSubmitting"
     @close="$emit('close-form')"
   >
@@ -152,7 +152,7 @@
               </div>
             </div>
 
-            <p class="text-xs text-slate-500">Download speed is used as the package speed label.</p>
+            <p class="text-xs text-slate-500 dark:text-slate-400">Download speed is used as the package speed label.</p>
 
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">Data Limit</label>
@@ -201,7 +201,7 @@
               </div>
             </div>
 
-            <p class="text-xs text-slate-500">Validity defaults to the selected duration.</p>
+            <p class="text-xs text-slate-500 dark:text-slate-400">Validity defaults to the selected duration.</p>
           </div>
         </div>
 

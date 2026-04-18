@@ -29,13 +29,13 @@
       :title="isEditing ? 'Edit Revenue' : 'Add Revenue'"
       :subtitle="isEditing ? 'Update revenue details' : 'Create a new revenue entry'"
       icon="currency"
-      width="480px"
+      width="60%"
       @close="closeForm"
     >
       <div class="p-6 space-y-4">
         <!-- Revenue Number -->
         <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Revenue Number</label>
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Revenue Number</label>
           <input
             v-model="formData.revenue_number"
             type="text"
@@ -46,7 +46,7 @@
 
         <!-- Description -->
         <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Description</label>
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Description</label>
           <textarea
             v-model="formData.description"
             rows="3"
@@ -57,7 +57,7 @@
 
         <!-- Source -->
         <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Source</label>
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Source</label>
           <input
             v-model="formData.source"
             type="text"
@@ -68,7 +68,7 @@
 
         <!-- Amount -->
         <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Amount</label>
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Amount</label>
           <div class="relative">
             <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">$</span>
             <input
@@ -83,7 +83,7 @@
 
         <!-- Revenue Date -->
         <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Revenue Date</label>
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Revenue Date</label>
           <input
             v-model="formData.revenue_date"
             type="date"
@@ -93,7 +93,7 @@
 
         <!-- Status -->
         <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Status</label>
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Status</label>
           <select
             v-model="formData.status"
             class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none bg-white"
@@ -115,7 +115,7 @@
         <div class="flex gap-3">
           <button
             @click="closeForm"
-            class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+            class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-600"
           >
             Cancel
           </button>
@@ -145,7 +145,7 @@
     <DataSkeleton v-else-if="loading" :count="5" />
 
     <!-- Data Content -->
-    <div v-else-if="filteredRevenues.length" class="flex flex-col h-full px-4 md:px-6 pt-2 pb-2 min-h-0">
+    <div v-else-if="filteredRevenues.length" class="flex flex-col h-full pt-2 pb-2 min-h-0">
       <!-- Mobile Cards -->
       <div class="md:hidden space-y-3 overflow-y-auto flex-1 min-h-0">
         <MobileDataCard
@@ -163,7 +163,7 @@
       </div>
 
       <!-- Desktop Table -->
-      <div class="hidden md:flex bg-white border border-slate-200 shadow-sm overflow-hidden flex-col min-h-0 flex-1">
+      <div class="hidden md:flex bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden flex-col min-h-0 flex-1">
         <div class="overflow-x-auto overflow-y-auto flex-1 min-h-0">
           <table class="w-full">
             <thead class="bg-slate-50 border-b border-slate-200 sticky top-0 z-[5]">
@@ -177,19 +177,19 @@
                 <th class="px-6 py-3 text-right text-xs font-semibold text-slate-700 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
-            <tbody class="divide-y divide-slate-100">
+            <tbody class="divide-y divide-slate-100 dark:divide-slate-700">
               <tr v-for="revenue in paginatedRevenues" :key="revenue.id" class="hover:bg-emerald-50/50 transition-colors">
                 <td class="px-6 py-4">
                   <div class="flex items-center gap-2">
                     <span :class="getStatusDotClass(revenue.status)" class="w-1.5 h-1.5 rounded-full"></span>
-                    <span class="text-sm font-medium text-slate-900">{{ revenue.revenue_number }}</span>
+                    <span class="text-sm font-medium text-slate-900 dark:text-slate-100">{{ revenue.revenue_number }}</span>
                   </div>
                 </td>
                 <td class="px-6 py-4">
                   <span class="text-sm text-slate-700">{{ revenue.description }}</span>
                 </td>
                 <td class="px-6 py-4">
-                  <span class="text-sm text-slate-600">{{ revenue.source || '-' }}</span>
+                  <span class="text-sm text-slate-600 dark:text-slate-400">{{ revenue.source || '-' }}</span>
                 </td>
                 <td class="px-6 py-4">
                   <span class="text-sm font-semibold text-emerald-600">${{ formatAmount(revenue.amount) }}</span>
@@ -198,7 +198,7 @@
                   <EntityStatusBadge :status="revenue.status === 'confirmed' ? 'confirmed' : 'pending'" size="sm" />
                 </td>
                 <td class="px-6 py-4 hidden lg:table-cell">
-                  <span class="text-xs text-slate-500">{{ formatDate(revenue.revenue_date) }}</span>
+                  <span class="text-xs text-slate-500 dark:text-slate-400">{{ formatDate(revenue.revenue_date) }}</span>
                 </td>
                 <td class="px-6 py-4 text-right">
                   <div class="flex items-center justify-end gap-1">
@@ -254,6 +254,7 @@
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRevenues } from '@/modules/tenant/composables/useRevenues'
+import { useConfirmStore } from '@/stores/confirm'
 import DataViewContainer from '@/modules/common/components/base/DataViewContainer.vue'
 import DataSkeleton from '@/modules/common/components/base/DataSkeleton.vue'
 import MobileDataCard from '@/modules/common/components/base/MobileDataCard.vue'
@@ -261,6 +262,8 @@ import DataPagination from '@/modules/common/components/base/DataPagination.vue'
 import DataEmptyState from '@/modules/common/components/base/DataEmptyState.vue'
 import EntityStatusBadge from '@/modules/common/components/base/EntityStatusBadge.vue'
 import SlideOverlay from '@/modules/common/components/base/SlideOverlay.vue'
+
+const confirmStore = useConfirmStore()
 
 const {
   revenues,
@@ -398,7 +401,14 @@ const handleConfirm = async (revenue) => {
 }
 
 const handleDelete = async (revenue) => {
-  if (confirm(`Are you sure you want to delete ${revenue.revenue_number}?`)) {
+  const confirmed = await confirmStore.open({
+    title: 'Delete Revenue',
+    message: `Are you sure you want to delete ${revenue.revenue_number}?`,
+    confirmText: 'Delete',
+    cancelText: 'Cancel',
+    variant: 'danger',
+  })
+  if (confirmed) {
     try { await deleteRevenue(revenue.id) } catch (err) { console.error('Failed to delete revenue:', err) }
   }
 }
@@ -414,8 +424,11 @@ onUnmounted(() => cleanupWebSocketListeners())
 </script>
 
 <style scoped>
-::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
-::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+/* Scrollbar — no Tailwind equivalent for ::-webkit-scrollbar pseudo-elements */
+::-webkit-scrollbar        { width: 8px; height: 8px; }
+::-webkit-scrollbar-track  { background: #f1f5f9; border-radius: 4px; }
+::-webkit-scrollbar-thumb  { background: #cbd5e1; border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+:global(.dark) ::-webkit-scrollbar-track { background: #1e293b; }
+:global(.dark) ::-webkit-scrollbar-thumb { background: #475569; }
 </style>

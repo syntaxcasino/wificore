@@ -13,7 +13,7 @@
       </template>
     </PageHeader>
 
-    <div class="px-3 py-3 sm:px-6 sm:py-4 bg-white border-b border-slate-200">
+    <div class="px-3 py-3 sm:px-6 sm:py-4 bg-white border-b border-slate-200 dark:border-slate-700">
       <div class="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
         <div class="bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg p-4 border border-green-200">
           <div class="flex items-center justify-between">
@@ -57,7 +57,7 @@
       </div>
     </div>
 
-    <div class="px-3 py-3 sm:px-6 sm:py-4 bg-white border-b border-slate-200">
+    <div class="px-3 py-3 sm:px-6 sm:py-4 bg-white border-b border-slate-200 dark:border-slate-700">
       <div class="flex flex-col sm:flex-row sm:items-center gap-3 flex-wrap">
         <div class="flex-1 min-w-0 sm:min-w-[250px] max-w-md">
           <BaseSearch v-model="searchQuery" placeholder="Search by user..." />
@@ -92,7 +92,7 @@
         <BaseCard :padding="false">
           <div class="overflow-x-auto">
             <table class="w-full">
-              <thead class="bg-slate-50 border-b border-slate-200">
+              <thead class="bg-slate-50 dark:bg-slate-700/50 border-b border-slate-200 dark:border-slate-700">
                 <tr>
                   <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700">User</th>
                   <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700">Balance</th>
@@ -110,8 +110,8 @@
                         {{ wallet.username.slice(0, 2).toUpperCase() }}
                       </div>
                       <div>
-                        <div class="text-sm font-medium text-slate-900">{{ wallet.username }}</div>
-                        <div class="text-xs text-slate-500">{{ wallet.email }}</div>
+                        <div class="text-sm font-medium text-slate-900 dark:text-slate-100">{{ wallet.username }}</div>
+                        <div class="text-xs text-slate-500 dark:text-slate-400">{{ wallet.email }}</div>
                       </div>
                     </div>
                   </td>
@@ -122,7 +122,7 @@
                   </td>
                   <td class="px-6 py-4">
                     <div class="text-sm text-slate-900">KES {{ formatMoney(wallet.last_topup) }}</div>
-                    <div class="text-xs text-slate-500">{{ formatDateTime(wallet.last_topup_date) }}</div>
+                    <div class="text-xs text-slate-500 dark:text-slate-400">{{ formatDateTime(wallet.last_topup_date) }}</div>
                   </td>
                   <td class="px-6 py-4 text-sm text-slate-900">KES {{ formatMoney(wallet.total_topups) }}</td>
                   <td class="px-6 py-4">
@@ -154,28 +154,28 @@
     </PageContent>
 
     <PageFooter>
-      <div class="text-sm text-slate-600">
+      <div class="text-sm text-slate-600 dark:text-slate-400">
         Showing {{ paginationInfo.start }} to {{ paginationInfo.end }} of {{ paginationInfo.total }} wallets
       </div>
       <BasePagination v-model="currentPage" :total-pages="totalPages" :total-items="filteredData.length" />
     </PageFooter>
 
     <!-- View History Overlay -->
-    <SlideOverlay v-model="showHistoryOverlay" title="Wallet History" :subtitle="selectedWallet?.username" icon="Wallet" width="480px">
+    <SlideOverlay v-model="showHistoryOverlay" title="Wallet History" :subtitle="selectedWallet?.username" icon="Wallet" width="60%">
       <div v-if="selectedWallet" class="p-6 space-y-4">
         <div class="grid grid-cols-2 gap-4">
-          <div><span class="text-xs text-slate-500">Username</span><div class="text-sm font-semibold text-slate-900">{{ selectedWallet.username }}</div></div>
-          <div><span class="text-xs text-slate-500">Email</span><div class="text-sm text-slate-900">{{ selectedWallet.email }}</div></div>
-          <div><span class="text-xs text-slate-500">Current Balance</span><div class="text-lg font-bold" :class="getBalanceColor(selectedWallet.balance)">KES {{ formatMoney(selectedWallet.balance) }}</div></div>
-          <div><span class="text-xs text-slate-500">Total Topups</span><div class="text-sm font-medium text-slate-900">KES {{ formatMoney(selectedWallet.total_topups) }}</div></div>
+          <div><span class="text-xs text-slate-500 dark:text-slate-400">Username</span><div class="text-sm font-semibold text-slate-900 dark:text-slate-100">{{ selectedWallet.username }}</div></div>
+          <div><span class="text-xs text-slate-500 dark:text-slate-400">Email</span><div class="text-sm text-slate-900">{{ selectedWallet.email }}</div></div>
+          <div><span class="text-xs text-slate-500 dark:text-slate-400">Current Balance</span><div class="text-lg font-bold" :class="getBalanceColor(selectedWallet.balance)">KES {{ formatMoney(selectedWallet.balance) }}</div></div>
+          <div><span class="text-xs text-slate-500 dark:text-slate-400">Total Topups</span><div class="text-sm font-medium text-slate-900 dark:text-slate-100">KES {{ formatMoney(selectedWallet.total_topups) }}</div></div>
         </div>
         <div v-if="walletHistory.length" class="mt-4">
           <h4 class="text-sm font-semibold text-slate-700 mb-2">Recent Transactions</h4>
           <div class="space-y-2">
-            <div v-for="tx in walletHistory" :key="tx.id" class="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+            <div v-for="tx in walletHistory" :key="tx.id" class="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-700/50 rounded-lg">
               <div>
-                <div class="text-sm font-medium text-slate-900">{{ tx.description || tx.type }}</div>
-                <div class="text-xs text-slate-500">{{ formatDateTime(tx.created_at) }}</div>
+                <div class="text-sm font-medium text-slate-900 dark:text-slate-100">{{ tx.description || tx.type }}</div>
+                <div class="text-xs text-slate-500 dark:text-slate-400">{{ formatDateTime(tx.created_at) }}</div>
               </div>
               <div class="text-sm font-bold" :class="tx.amount > 0 ? 'text-green-600' : 'text-red-600'">{{ tx.amount > 0 ? '+' : '' }}KES {{ formatMoney(Math.abs(tx.amount)) }}</div>
             </div>
@@ -187,7 +187,7 @@
         <div class="flex gap-3">
           <button
             @click="showHistoryOverlay = false"
-            class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+            class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-600"
           >
             Close
           </button>
@@ -196,14 +196,14 @@
     </SlideOverlay>
 
     <!-- Add Balance Overlay -->
-    <SlideOverlay v-model="showAddBalanceOverlay" title="Add Balance" :subtitle="balanceTarget?.username || 'Select a user'" icon="Plus" width="480px">
+    <SlideOverlay v-model="showAddBalanceOverlay" title="Add Balance" :subtitle="balanceTarget?.username || 'Select a user'" icon="Plus" width="60%">
       <div class="p-6 space-y-4">
         <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Amount (KES)</label>
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Amount (KES)</label>
           <input v-model.number="balanceAmount" type="number" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="0" />
         </div>
         <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Description</label>
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Description</label>
           <input v-model="balanceDescription" type="text" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="Reason for adjustment" />
         </div>
       </div>
@@ -211,7 +211,7 @@
         <div class="flex gap-3">
           <button
             @click="showAddBalanceOverlay = false"
-            class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+            class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-600"
           >
             Cancel
           </button>
@@ -231,7 +231,6 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { Wallet, RefreshCw, Plus, X, Users, TrendingUp, DollarSign, Eye, Minus } from 'lucide-vue-next'
-import axios from 'axios'
 import PageContainer from '@/modules/common/components/layout/templates/PageContainer.vue'
 import PageHeader from '@/modules/common/components/layout/templates/PageHeader.vue'
 import PageContent from '@/modules/common/components/layout/templates/PageContent.vue'
@@ -244,6 +243,7 @@ import BaseSelect from '@/modules/common/components/base/BaseSelect.vue'
 import BasePagination from '@/modules/common/components/base/BasePagination.vue'
 import BaseLoading from '@/modules/common/components/base/BaseLoading.vue'
 import SlideOverlay from '@/modules/common/components/base/SlideOverlay.vue'
+import { useWalletBalance } from '@/modules/tenant/composables/useWalletBalance.js'
 
 const breadcrumbs = [
   { label: 'Dashboard', to: '/dashboard' },
@@ -251,47 +251,32 @@ const breadcrumbs = [
   { label: 'Wallet Balance' }
 ]
 
-const loading = ref(false)
-const refreshing = ref(false)
+const {
+  loading, refreshing, submitting,
+  wallets, walletHistory, selectedWallet,
+  balanceTarget, balanceAmount, balanceDescription, balanceAction,
+  showHistoryOverlay, showAddBalanceOverlay,
+  stats,
+  formatMoney, formatDateTime,
+  getBalanceColor, getStatusVariant, getStatusLabel,
+  fetchWallets, refreshData, viewHistory,
+  openAddBalanceModal, addBalance, deductBalance, submitBalance
+} = useWalletBalance()
+
 const searchQuery = ref('')
 const currentPage = ref(1)
 const itemsPerPage = ref(15)
-const showHistoryOverlay = ref(false)
-const showAddBalanceOverlay = ref(false)
-const selectedWallet = ref(null)
-const balanceTarget = ref(null)
-const balanceAmount = ref(0)
-const balanceDescription = ref('')
-const balanceAction = ref('credit')
-const submitting = ref(false)
-const walletHistory = ref([])
-
 const filters = ref({ status: '' })
-
-const wallets = ref([])
-
-const stats = computed(() => {
-  const total = wallets.value.reduce((sum, w) => sum + (w.balance || 0), 0)
-  return {
-    totalBalance: total,
-    activeWallets: wallets.value.filter(w => w.balance > 0).length,
-    todayTopups: wallets.value.reduce((sum, w) => sum + (w.today_topups || 0), 0),
-    avgBalance: wallets.value.length ? Math.floor(total / wallets.value.length) : 0
-  }
-})
 
 const filteredData = computed(() => {
   let data = wallets.value
-
   if (searchQuery.value) {
     const query = searchQuery.value.toLowerCase()
     data = data.filter(w => w.username.toLowerCase().includes(query) || w.email.toLowerCase().includes(query))
   }
-
   if (filters.value.status === 'active') data = data.filter(w => w.balance > 1000)
   if (filters.value.status === 'low') data = data.filter(w => w.balance > 0 && w.balance <= 1000)
   if (filters.value.status === 'zero') data = data.filter(w => w.balance === 0)
-
   return data
 })
 
@@ -309,121 +294,7 @@ const paginationInfo = computed(() => {
 })
 
 const hasActiveFilters = computed(() => filters.value.status || searchQuery.value)
+const clearFilters = () => { filters.value = { status: '' }; searchQuery.value = '' }
 
-const formatMoney = (amount) => new Intl.NumberFormat('en-KE').format(amount)
-const formatDateTime = (date) => new Date(date).toLocaleDateString()
-
-const getBalanceColor = (balance) => {
-  if (balance === 0) return 'text-red-600'
-  if (balance < 1000) return 'text-amber-600'
-  return 'text-green-600'
-}
-
-const getStatusVariant = (balance) => {
-  if (balance === 0) return 'danger'
-  if (balance < 1000) return 'warning'
-  return 'success'
-}
-
-const getStatusLabel = (balance) => {
-  if (balance === 0) return 'Zero'
-  if (balance < 1000) return 'Low'
-  return 'Active'
-}
-
-const clearFilters = () => {
-  filters.value = { status: '' }
-  searchQuery.value = ''
-}
-
-const fetchWallets = async () => {
-  const isInitial = wallets.value.length === 0
-  if (isInitial) loading.value = true
-  try {
-    const response = await axios.get('/billing/wallets')
-    const data = response.data?.wallets || response.data?.data || []
-    wallets.value = data.map(w => ({
-      id: w.id,
-      username: w.username || w.user?.name || `User ${w.user_id || w.id}`,
-      email: w.email || w.user?.email || '',
-      balance: Number(w.balance || 0),
-      last_topup: Number(w.last_topup_amount || w.last_topup || 0),
-      last_topup_date: w.last_topup_date || w.last_topup_at || '',
-      total_topups: Number(w.total_topups || w.total_credits || 0),
-      today_topups: Number(w.today_topups || 0),
-      user_id: w.user_id || w.id
-    }))
-  } catch (err) {
-    console.error('fetchWallets error:', err)
-  } finally {
-    loading.value = false
-  }
-}
-
-const refreshData = async () => {
-  refreshing.value = true
-  await fetchWallets()
-  refreshing.value = false
-}
-
-const viewHistory = async (wallet) => {
-  selectedWallet.value = wallet
-  walletHistory.value = []
-  showHistoryOverlay.value = true
-  try {
-    const response = await axios.get(`/billing/wallets/${wallet.id}/history`)
-    walletHistory.value = response.data?.transactions || response.data?.data || []
-  } catch (err) {
-    console.error('fetchHistory error:', err)
-  }
-}
-
-const openAddBalanceModal = () => {
-  balanceTarget.value = null
-  balanceAmount.value = 0
-  balanceDescription.value = ''
-  showAddBalanceOverlay.value = true
-}
-
-const addBalance = (wallet) => {
-  balanceTarget.value = wallet
-  balanceAction.value = 'credit'
-  balanceAmount.value = 0
-  balanceDescription.value = ''
-  showAddBalanceOverlay.value = true
-}
-
-const deductBalance = (wallet) => {
-  balanceTarget.value = wallet
-  balanceAction.value = 'debit'
-  balanceAmount.value = 0
-  balanceDescription.value = ''
-  showAddBalanceOverlay.value = true
-}
-
-const submitBalance = async (type) => {
-  if (!balanceTarget.value || !balanceAmount.value) {
-    alert('Please select a user and enter an amount.')
-    return
-  }
-  submitting.value = true
-  try {
-    await axios.post(`/billing/wallets/${balanceTarget.value.id}/adjust`, {
-      type: type || balanceAction.value,
-      amount: balanceAmount.value,
-      description: balanceDescription.value
-    })
-    showAddBalanceOverlay.value = false
-    await fetchWallets()
-  } catch (err) {
-    console.error('submitBalance error:', err)
-    alert(err.response?.data?.message || 'Failed to adjust balance')
-  } finally {
-    submitting.value = false
-  }
-}
-
-onMounted(() => {
-  fetchWallets()
-})
+onMounted(fetchWallets)
 </script>

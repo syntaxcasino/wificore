@@ -1,19 +1,19 @@
 <template>
-  <div class="chart-container">
-    <h3>Payments</h3>
-    <p class="subtitle">Payments and expenses trend.</p>
+  <div class="bg-white dark:bg-slate-800 rounded-lg p-5 shadow-sm">
+    <h3 class="text-base font-semibold text-slate-900 dark:text-slate-100 mb-1">Payments</h3>
+    <p class="text-sm text-slate-400 dark:text-slate-500 mb-5">Payments and expenses trend.</p>
 
-    <div class="chart">
-      <div class="y-axis">
-        <div v-for="(tick, index) in yAxisTicks" :key="index" class="tick">
-          {{ tick }}
-        </div>
+    <div class="flex h-[250px]">
+      <div class="flex flex-col-reverse justify-between mr-2.5 text-xs text-slate-500 dark:text-slate-400">
+        <div v-for="(tick, index) in yAxisTicks" :key="index">{{ tick }}</div>
       </div>
-
-      <div class="bars-container">
-        <div v-for="(value, index) in paymentsData.data" :key="index" class="bar-wrapper">
-          <div class="bar" :style="{ height: `${(value / maxValue) * 100}%` }"></div>
-          <div class="x-axis-label">{{ paymentsData.labels[index] }}</div>
+      <div class="flex flex-grow items-end gap-4">
+        <div v-for="(value, index) in paymentsData.data" :key="index" class="flex flex-col items-center flex-grow h-full">
+          <div
+            class="w-full bg-blue-500 rounded-t transition-all duration-300"
+            :style="{ height: `${(value / maxValue) * 100}%` }"
+          ></div>
+          <div class="mt-1 text-xs text-slate-500 dark:text-slate-400">{{ paymentsData.labels[index] }}</div>
         </div>
       </div>
     </div>
@@ -25,73 +25,11 @@ import { computed } from 'vue'
 import { useDashboardData } from '@/composables/useDashboardData'
 
 const { dashboardData } = useDashboardData()
-
 const paymentsData = computed(() => dashboardData.value.payments)
-
 const maxValue = computed(() => Math.max(...paymentsData.value.data) * 1.1)
-
 const yAxisTicks = computed(() => {
   const ticks = []
-  for (let i = 4000; i >= 0; i -= 500) {
-    ticks.push(i)
-  }
+  for (let i = 4000; i >= 0; i -= 500) ticks.push(i)
   return ticks
 })
 </script>
-
-<style scoped>
-.chart-container {
-  background: white;
-  border-radius: 8px;
-  padding: 20px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-
-.subtitle {
-  margin: 0 0 20px 0;
-  color: #888;
-  font-size: 0.9rem;
-}
-
-.chart {
-  display: flex;
-  height: 250px;
-}
-
-.y-axis {
-  display: flex;
-  flex-direction: column-reverse;
-  justify-content: space-between;
-  margin-right: 10px;
-  font-size: 0.8rem;
-  color: #666;
-}
-
-.bars-container {
-  display: flex;
-  flex-grow: 1;
-  align-items: flex-end;
-  gap: 15px;
-}
-
-.bar-wrapper {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  flex-grow: 1;
-  height: 100%;
-}
-
-.bar {
-  width: 100%;
-  background-color: #4a90e2;
-  border-radius: 4px 4px 0 0;
-  transition: height 0.3s ease;
-}
-
-.x-axis-label {
-  margin-top: 5px;
-  font-size: 0.8rem;
-  color: #666;
-}
-</style>

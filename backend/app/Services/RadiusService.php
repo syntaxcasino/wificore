@@ -63,6 +63,10 @@ class RadiusService extends TenantAwareService
      * IMPORTANT: This method uses the current tenant context (search_path).
      * Ensure tenant context is set before calling this method.
      * 
+     * SECURITY: By default, stores SHA-256 hashed password. Cleartext-Password
+     * can be disabled via RADIUS_ALLOW_CLEARTEXT=false env variable.
+     * NT-Password is always stored for MSCHAPv2 compatibility.
+     * 
      * @param string $username
      * @param string $password
      * @param string|null $tenantSchemaName Optional tenant schema (if not set, uses current context)
@@ -81,15 +85,33 @@ class RadiusService extends TenantAwareService
             $searchPath = \DB::selectOne("SHOW search_path")->search_path ?? 'unknown';
             \Log::debug("RADIUS: Current search_path: {$searchPath}");
             
-            // Insert into radcheck table (uses current search_path - tenant schema)
+            // Check if cleartext passwords are allowed (for backward compatibility)
+            $allowCleartext = env('RADIUS_ALLOW_CLEARTEXT', true);
+            
+            // Store SHA-256 hashed password (recommended security practice)
+            $sha256Hash = hash('sha256', $password);
             \DB::table('radcheck')->insert([
                 'username' => $username,
-                'attribute' => 'Cleartext-Password',
+                'attribute' => 'SHA2-256-Password',
                 'op' => ':=',
-                'value' => $password,
+                'value' => $sha256Hash,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
+            \Log::debug("RADIUS: Stored SHA-256 password hash for {$username}");
+            
+            // Optionally store cleartext for backward compatibility (to be deprecated)
+            if ($allowCleartext) {
+                \DB::table('radcheck')->insert([
+                    'username' => $username,
+                    'attribute' => 'Cleartext-Password',
+                    'op' => ':=',
+                    'value' => $password,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+                \Log::warning("RADIUS: Stored cleartext password for {$username} - set RADIUS_ALLOW_CLEARTEXT=false to disable");
+            }
 
             // Store NT-Password hash for CHAP/MSCHAP2 authentication
             // Without this, only PAP works — MSCHAP2 (most common PPPoE auth) fails
@@ -153,16 +175,33 @@ class RadiusService extends TenantAwareService
 
     /**
      * Update user password in RADIUS
+     * 
+     * SECURITY: Updates SHA-256 hash by default. Cleartext-Password is updated
+     * only if RADIUS_ALLOW_CLEARTEXT is true (for backward compatibility).
      */
     public function updatePassword(string $username, string $newPassword): bool
     {
         try {
             \Log::info("RADIUS: Updating password for user: {$username}");
             
-            \DB::table('radcheck')
-                ->where('username', $username)
-                ->where('attribute', 'Cleartext-Password')
-                ->update(['value' => $newPassword]);
+            // Check if cleartext passwords are allowed
+            $allowCleartext = env('RADIUS_ALLOW_CLEARTEXT', true);
+            
+            // Update SHA-256 hashed password (primary)
+            $sha256Hash = hash('sha256', $newPassword);
+            \DB::table('radcheck')->updateOrInsert(
+                ['username' => $username, 'attribute' => 'SHA2-256-Password'],
+                ['op' => ':=', 'value' => $sha256Hash, 'updated_at' => now()]
+            );
+            \Log::debug("RADIUS: Updated SHA-256 password hash for {$username}");
+            
+            // Optionally update cleartext for backward compatibility
+            if ($allowCleartext) {
+                \DB::table('radcheck')
+                    ->where('username', $username)
+                    ->where('attribute', 'Cleartext-Password')
+                    ->update(['value' => $newPassword]);
+            }
 
             // Update NT-Password hash for CHAP/MSCHAP2 compatibility
             $ntHash = strtoupper(hash('md4', mb_convert_encoding($newPassword, 'UTF-16LE', 'UTF-8')));
@@ -235,6 +274,148 @@ class RadiusService extends TenantAwareService
             ]);
 
             throw $e;
+        }
+    }
+
+    /**
+     * Send RADIUS CoA (Change of Authorization) request
+     * 
+     * CoA allows changing user authorization in real-time without
+     * requiring the user to re-authenticate. Used for:
+     * - Disconnecting users (PoD - Packet of Disconnect)
+     * - Changing bandwidth limits
+     * - Updating session timeouts
+     * 
+     * @param string $username User to target
+     * @param string $action 'disconnect', 'update'
+     * @param array $attributes Additional RADIUS attributes to send
+     * @return bool Success status
+     */
+    public function sendCoA(string $username, string $action = 'disconnect', array $attributes = []): bool
+    {
+        try {
+            // Get CoA server configuration
+            $coaServer = env('RADIUS_COA_SERVER', env('RADIUS_SERVER_HOST', 'wificore-freeradius'));
+            $coaPort = (int) env('RADIUS_COA_PORT', 3799);
+            $coaSecret = env('RADIUS_COA_SECRET', env('RADIUS_SECRET', 'testing123'));
+            
+            // Build CoA request using radclient or custom socket
+            // For production, consider using a dedicated CoA library
+            $result = $this->sendCoAPacket($coaServer, $coaPort, $coaSecret, $username, $action, $attributes);
+            
+            if ($result) {
+                \Log::info("RADIUS CoA: {$action} successful for {$username}");
+            } else {
+                \Log::warning("RADIUS CoA: {$action} failed for {$username}");
+            }
+            
+            return $result;
+            
+        } catch (\Exception $e) {
+            \Log::error("RADIUS CoA error for {$username}: " . $e->getMessage());
+            return false;
+        }
+    }
+    
+    /**
+     * Disconnect a user via RADIUS CoA (PoD - Packet of Disconnect)
+     * 
+     * This is more graceful than SSH session termination as it:
+     * 1. Notifies the router via RADIUS
+     * 2. Router sends PPPoE PADT or Hotspot logout
+     * 3. Clean session termination with accounting stop
+     * 
+     * @param string $username User to disconnect
+     * @param string $nasIpAddress NAS (router) IP address
+     * @param string|null $sessionId Optional session ID for specific session
+     * @return bool Success status
+     */
+    public function disconnectUser(string $username, string $nasIpAddress, ?string $sessionId = null): bool
+    {
+        $attributes = [
+            'NAS-IP-Address' => $nasIpAddress,
+            'User-Name' => $username,
+        ];
+        
+        if ($sessionId) {
+            $attributes['Acct-Session-Id'] = $sessionId;
+        }
+        
+        return $this->sendCoA($username, 'disconnect', $attributes);
+    }
+    
+    /**
+     * Send CoA packet using radclient or socket
+     * 
+     * @param string $server RADIUS server IP
+     * @param int $port CoA port (usually 3799)
+     * @param string $secret Shared secret
+     * @param string $username Target username
+     * @param string $action Action type
+     * @param array $attributes RADIUS attributes
+     * @return bool Success status
+     */
+    private function sendCoAPacket(string $server, int $port, string $secret, string $username, string $action, array $attributes): bool
+    {
+        // Method 1: Use radclient CLI if available
+        $radclientPath = env('RADIUS_RADCLIENT_PATH', '/usr/bin/radclient');
+        if (file_exists($radclientPath)) {
+            return $this->sendCoAViaRadclient($radclientPath, $server, $port, $secret, $username, $action, $attributes);
+        }
+        
+        // Method 2: Use socket (simplified implementation)
+        \Log::warning("RADIUS CoA: radclient not found at {$radclientPath}, CoA via socket not implemented");
+        return false;
+    }
+    
+    /**
+     * Send CoA using radclient CLI
+     */
+    private function sendCoAViaRadclient(string $radclientPath, string $server, int $port, string $secret, string $username, string $action, array $attributes): bool
+    {
+        try {
+            // Build attributes string
+            $attrs = "User-Name={$username}\n";
+            foreach ($attributes as $key => $value) {
+                $attrs .= "{$key}={$value}\n";
+            }
+            
+            // Determine CoA code
+            $coaCode = ($action === 'disconnect') ? '40' : '43'; // 40=Disconnect, 43=CoA-Request
+            
+            // Build radclient command
+            $cmd = sprintf(
+                'echo %s | %s -x %s:%d %s %s 2>&1',
+                escapeshellarg($attrs),
+                escapeshellarg($radclientPath),
+                escapeshellarg($server),
+                $port,
+                $coaCode,
+                escapeshellarg($secret)
+            );
+            
+            $output = [];
+            $returnCode = 0;
+            exec($cmd, $output, $returnCode);
+            
+            $outputStr = implode("\n", $output);
+            
+            if ($returnCode === 0 && str_contains($outputStr, 'code 44')) {
+                // Code 44 = CoA-ACK (success)
+                return true;
+            }
+            
+            \Log::warning("RADIUS CoA radclient failed", [
+                'cmd' => $cmd,
+                'return_code' => $returnCode,
+                'output' => $outputStr,
+            ]);
+            
+            return false;
+            
+        } catch (\Exception $e) {
+            \Log::error("RADIUS CoA radclient error: " . $e->getMessage());
+            return false;
         }
     }
 }

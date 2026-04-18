@@ -1,14 +1,14 @@
 <template>
-  <div class="bg-white rounded-2xl shadow-lg border border-gray-100 p-6">
+  <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-gray-100 dark:border-slate-700 p-6">
     <div class="flex items-center justify-between mb-6">
-      <h2 class="text-xl font-bold text-gray-900 flex items-center gap-2">
+      <h2 class="text-xl font-bold text-gray-900 dark:text-slate-100 flex items-center gap-2">
         <svg class="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
         </svg>
         Queue Statistics
       </h2>
-      <button @click="refreshStats" :disabled="loading" class="p-2 hover:bg-gray-100 rounded-lg transition-colors">
-        <svg class="w-5 h-5 text-gray-600" :class="{ 'animate-spin': loading }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <button @click="refreshStats" :disabled="loading" class="p-2 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
+        <svg class="w-5 h-5 text-gray-600 dark:text-slate-400" :class="{ 'animate-spin': loading }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
         </svg>
       </button>
@@ -171,7 +171,7 @@
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
             </svg>
             <p class="text-sm font-medium">{{ queueStats.workers }} worker(s) active</p>
-            <p class="text-xs text-gray-500 mt-1">(Queue breakdown unavailable)</p>
+            <p class="text-xs text-gray-500 dark:text-slate-400 mt-1">(Queue breakdown unavailable)</p>
           </div>
           <div v-else class="text-gray-500">
             <svg class="w-8 h-8 text-gray-400 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">

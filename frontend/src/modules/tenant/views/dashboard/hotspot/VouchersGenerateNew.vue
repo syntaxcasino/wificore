@@ -22,42 +22,42 @@
     </template>
 
     <!-- Create Voucher Overlay -->
-    <SlideOverlay v-model="showCreateOverlay" title="Create Voucher" subtitle="Generate new hotspot vouchers" icon="Ticket" width="480px" @close="closeCreateOverlay">
+    <SlideOverlay v-model="showCreateOverlay" title="Create Voucher" subtitle="Generate new hotspot vouchers" icon="Ticket" width="60%" @close="closeCreateOverlay">
       <form @submit.prevent="generateVouchers" class="space-y-5">
         <!-- Package Selection -->
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Select Package *</label>
+          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Select Package *</label>
           <select v-model="formData.package_id" required class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500">
             <option value="">Choose a package...</option>
             <option v-for="pkg in packages" :key="pkg.id" :value="pkg.id">{{ pkg.name }}</option>
           </select>
-          <p v-if="selectedPackage" class="mt-1.5 text-xs text-gray-500">
+          <p v-if="selectedPackage" class="mt-1.5 text-xs text-gray-500 dark:text-slate-400">
             Price: KES {{ selectedPackage.price }} | Speed: {{ selectedPackage.download_speed || '-' }} | Validity: {{ selectedPackage.validity || '-' }}
           </p>
         </div>
 
         <!-- Quantity -->
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Number of Vouchers *</label>
+          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Number of Vouchers *</label>
           <input v-model.number="formData.quantity" type="number" min="1" max="100" required class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500" placeholder="1-100" />
           <p class="mt-1 text-xs text-gray-400">Maximum 100 vouchers per batch</p>
         </div>
 
         <!-- Prefix -->
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Voucher Prefix (Optional)</label>
+          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Voucher Prefix (Optional)</label>
           <input v-model="formData.prefix" type="text" maxlength="10" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500" placeholder="e.g., WIFI, HOT" />
         </div>
 
         <!-- Expiry Date -->
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Expiry Date (Optional)</label>
+          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Expiry Date (Optional)</label>
           <input v-model="formData.expires_at" type="date" :min="minDate" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500" />
         </div>
 
         <!-- Notes -->
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Notes (Optional)</label>
+          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Notes (Optional)</label>
           <textarea v-model="formData.notes" rows="2" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500" placeholder="Any notes..."></textarea>
         </div>
 
@@ -78,7 +78,7 @@
 
       <template #footer>
         <div class="flex gap-3">
-          <button type="button" @click="closeCreateOverlay" class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors">Cancel</button>
+          <button type="button" @click="closeCreateOverlay" class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/40 transition-colors">Cancel</button>
           <button @click="handleGenerate" :disabled="generating || !formData.package_id || !formData.quantity" class="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-white bg-cyan-600 rounded-lg hover:bg-cyan-700 transition-colors disabled:opacity-50">
             <Ticket class="w-4 h-4" />
             {{ generating ? 'Generating...' : `Generate ${formData.quantity || 0} Voucher${formData.quantity !== 1 ? 's' : ''}` }}
@@ -88,51 +88,51 @@
     </SlideOverlay>
 
     <!-- Voucher Detail Overlay -->
-    <SlideOverlay v-model="showDetailOverlay" title="Voucher Details" subtitle="View voucher information" icon="Ticket" width="480px" @close="closeDetailOverlay">
+    <SlideOverlay v-model="showDetailOverlay" title="Voucher Details" subtitle="View voucher information" icon="Ticket" width="60%" @close="closeDetailOverlay">
       <div v-if="selectedVoucher" class="space-y-3">
         <div class="flex items-center justify-center p-4 bg-cyan-50 rounded-lg">
           <span class="font-mono text-xl font-bold text-cyan-700">{{ selectedVoucher.code }}</span>
         </div>
-        <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-          <span class="text-sm font-medium text-gray-600">Status</span>
+        <div class="flex items-center justify-between p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg">
+          <span class="text-sm font-medium text-gray-600 dark:text-slate-400">Status</span>
           <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium" :class="statusClass(selectedVoucher.status)">{{ selectedVoucher.status }}</span>
         </div>
-        <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-          <span class="text-sm font-medium text-gray-600">Package</span>
-          <span class="text-sm font-semibold text-gray-900">{{ selectedVoucher.package?.name || '-' }}</span>
+        <div class="flex items-center justify-between p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg">
+          <span class="text-sm font-medium text-gray-600 dark:text-slate-400">Package</span>
+          <span class="text-sm font-semibold text-gray-900 dark:text-slate-100">{{ selectedVoucher.package?.name || '-' }}</span>
         </div>
-        <div v-if="selectedVoucher.package?.price" class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-          <span class="text-sm font-medium text-gray-600">Price</span>
-          <span class="text-sm font-semibold text-gray-900">KES {{ selectedVoucher.package.price }}</span>
+        <div v-if="selectedVoucher.package?.price" class="flex items-center justify-between p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg">
+          <span class="text-sm font-medium text-gray-600 dark:text-slate-400">Price</span>
+          <span class="text-sm font-semibold text-gray-900 dark:text-slate-100">KES {{ selectedVoucher.package.price }}</span>
         </div>
-        <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-          <span class="text-sm font-medium text-gray-600">Router</span>
-          <span class="text-sm text-gray-900">{{ selectedVoucher.router?.name || 'Any' }}</span>
+        <div class="flex items-center justify-between p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg">
+          <span class="text-sm font-medium text-gray-600 dark:text-slate-400">Router</span>
+          <span class="text-sm text-gray-900 dark:text-slate-100">{{ selectedVoucher.router?.name || 'Any' }}</span>
         </div>
-        <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-          <span class="text-sm font-medium text-gray-600">Expires</span>
-          <span class="text-sm text-gray-900">{{ selectedVoucher.expires_at ? formatDate(selectedVoucher.expires_at) : 'No expiry' }}</span>
+        <div class="flex items-center justify-between p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg">
+          <span class="text-sm font-medium text-gray-600 dark:text-slate-400">Expires</span>
+          <span class="text-sm text-gray-900 dark:text-slate-100">{{ selectedVoucher.expires_at ? formatDate(selectedVoucher.expires_at) : 'No expiry' }}</span>
         </div>
-        <div v-if="selectedVoucher.used_at" class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-          <span class="text-sm font-medium text-gray-600">Used At</span>
-          <span class="text-sm text-gray-900">{{ formatDate(selectedVoucher.used_at) }}</span>
+        <div v-if="selectedVoucher.used_at" class="flex items-center justify-between p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg">
+          <span class="text-sm font-medium text-gray-600 dark:text-slate-400">Used At</span>
+          <span class="text-sm text-gray-900 dark:text-slate-100">{{ formatDate(selectedVoucher.used_at) }}</span>
         </div>
-        <div v-if="selectedVoucher.notes" class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-          <span class="text-sm font-medium text-gray-600">Notes</span>
+        <div v-if="selectedVoucher.notes" class="flex items-center justify-between p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg">
+          <span class="text-sm font-medium text-gray-600 dark:text-slate-400">Notes</span>
           <span class="text-sm text-gray-900 text-right max-w-[60%]">{{ selectedVoucher.notes }}</span>
         </div>
-        <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-          <span class="text-sm font-medium text-gray-600">Created</span>
-          <span class="text-sm text-gray-900">{{ formatDate(selectedVoucher.created_at) }}</span>
+        <div class="flex items-center justify-between p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg">
+          <span class="text-sm font-medium text-gray-600 dark:text-slate-400">Created</span>
+          <span class="text-sm text-gray-900 dark:text-slate-100">{{ formatDate(selectedVoucher.created_at) }}</span>
         </div>
-        <div v-if="selectedVoucher.batch_id" class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-          <span class="text-sm font-medium text-gray-600">Batch ID</span>
+        <div v-if="selectedVoucher.batch_id" class="flex items-center justify-between p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg">
+          <span class="text-sm font-medium text-gray-600 dark:text-slate-400">Batch ID</span>
           <span class="text-xs font-mono text-gray-500">{{ selectedVoucher.batch_id }}</span>
         </div>
       </div>
       <template #footer>
         <div class="flex gap-3">
-          <button type="button" @click="closeDetailOverlay" class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors">Close</button>
+          <button type="button" @click="closeDetailOverlay" class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/40 transition-colors">Close</button>
           <button v-if="selectedVoucher?.status === 'unused'" @click="handleRevoke(selectedVoucher)" class="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors">
             <Ban class="w-4 h-4" />Revoke
           </button>
@@ -167,7 +167,7 @@
     <DataSkeleton v-else-if="loading && !vouchers.length" :count="5" />
 
     <!-- Data Content -->
-    <div v-else-if="filteredVouchers.length" class="flex flex-col h-full px-4 md:px-6 pt-2 pb-2 min-h-0">
+    <div v-else-if="filteredVouchers.length" class="flex flex-col h-full pt-2 pb-2 min-h-0">
       <!-- Mobile Cards -->
       <div class="md:hidden space-y-3 overflow-y-auto flex-1 min-h-0">
         <MobileDataCard
@@ -189,7 +189,7 @@
       <!-- Desktop Table -->
       <div class="hidden md:flex bg-white border-x border-t border-slate-200 flex-col min-h-0 flex-1">
         <!-- Fixed Header -->
-        <div class="bg-slate-50 border-b border-slate-200">
+        <div class="bg-slate-50 dark:bg-slate-700/50 border-b border-slate-200 dark:border-slate-700">
           <table class="w-full">
             <thead>
               <tr>
@@ -206,7 +206,7 @@
         <!-- Scrollable Body -->
         <div class="overflow-y-auto flex-1 min-h-0">
           <table class="w-full">
-            <tbody class="divide-y divide-slate-100">
+            <tbody class="divide-y divide-slate-100 dark:divide-slate-700">
               <tr v-for="voucher in paginatedVouchers" :key="voucher.id" class="hover:bg-cyan-50/50 transition-colors">
                 <td class="px-6 py-4 w-[20%]">
                   <span class="font-mono text-sm font-semibold text-cyan-700">{{ voucher.code }}</span>
@@ -218,10 +218,10 @@
                   <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium capitalize" :class="statusClass(voucher.status)">{{ voucher.status }}</span>
                 </td>
                 <td class="px-6 py-4 w-[18%]">
-                  <span class="text-xs text-slate-500">{{ voucher.expires_at ? formatDate(voucher.expires_at) : 'No expiry' }}</span>
+                  <span class="text-xs text-slate-500 dark:text-slate-400">{{ voucher.expires_at ? formatDate(voucher.expires_at) : 'No expiry' }}</span>
                 </td>
                 <td class="px-6 py-4 w-[15%]">
-                  <span class="text-xs text-slate-500">{{ formatDate(voucher.created_at) }}</span>
+                  <span class="text-xs text-slate-500 dark:text-slate-400">{{ formatDate(voucher.created_at) }}</span>
                 </td>
                 <td class="px-6 py-4 text-right w-[10%]">
                   <div class="flex items-center justify-end gap-1">
@@ -432,8 +432,11 @@ onMounted(() => {
 </script>
 
 <style scoped>
-::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
-::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+/* Scrollbar — no Tailwind equivalent for ::-webkit-scrollbar pseudo-elements */
+::-webkit-scrollbar        { width: 8px; height: 8px; }
+::-webkit-scrollbar-track  { background: #f1f5f9; border-radius: 4px; }
+::-webkit-scrollbar-thumb  { background: #cbd5e1; border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+:global(.dark) ::-webkit-scrollbar-track { background: #1e293b; }
+:global(.dark) ::-webkit-scrollbar-thumb { background: #475569; }
 </style>

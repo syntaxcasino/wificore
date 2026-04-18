@@ -43,7 +43,17 @@ class WireguardPeerHealthService
 
     protected function refreshPeerStatsWithinTenant(string $tenantId): array
     {
+        Log::info('Starting refreshPeerStatsWithinTenant', [
+            'tenant_id' => $tenantId,
+            'time' => now()->toIso8601String(),
+        ]);
+
         $tunnels = TenantVpnTunnel::where('tenant_id', $tenantId)->get();
+        Log::info('Found tunnels for tenant', [
+            'tenant_id' => $tenantId,
+            'tunnel_count' => $tunnels->count(),
+        ]);
+
         if ($tunnels->isEmpty()) {
             Log::info('No VPN tunnels found for tenant during peer refresh', [
                 'tenant_id' => $tenantId,
@@ -56,6 +66,13 @@ class WireguardPeerHealthService
         $hasWireGuard = $this->isWireGuardInstalled();
         $controllerUrl = config('services.wireguard.controller_url');
         $apiKey = config('services.wireguard.api_key');
+
+        Log::info('WireGuard configuration', [
+            'tenant_id' => $tenantId,
+            'has_wireguard_binary' => $hasWireGuard,
+            'controller_url' => $controllerUrl,
+            'api_key_set' => !empty($apiKey),
+        ]);
 
         if (!$hasWireGuard && (empty($controllerUrl) || empty($apiKey))) {
             Log::warning('WireGuard dump unavailable (no wg binary or controller config)', [
@@ -87,18 +104,26 @@ class WireguardPeerHealthService
                 continue;
             }
 
-            foreach ($this->parseDump($output) as $peer) {
+            $peersFromDump = $this->parseDump($output);
+            $peerCount = count($peersFromDump);
+            Log::info('Parsed peers from WireGuard dump', [
+                'tenant_id' => $tenantId,
+                'interface' => $tunnel->interface_name,
+                'peer_count' => $peerCount,
+            ]);
+
+            foreach ($peersFromDump as $peer) {
                 $seenPeerPublicKeys[] = $peer['public_key']; // Track seen peer
-                
+
                 // Use absolute time difference to handle clock skew (router clock ahead/behind server)
                 $handshakeAge = $peer['latest_handshake'] ? abs(now()->diffInSeconds($peer['latest_handshake'], false)) : null;
-                Log::debug('Processing peer from dump', [
+                Log::info('Processing peer from dump', [
                     'public_key' => substr($peer['public_key'], 0, 20) . '...',
                     'handshake_at' => $peer['latest_handshake']?->toIso8601String(),
                     'handshake_age_seconds' => $handshakeAge,
                     'endpoint' => $peer['endpoint'],
                 ]);
-                
+
                 $vpnConfig = VpnConfiguration::where('client_public_key', $peer['public_key'])->first();
 
                 if (!$vpnConfig) {
@@ -110,12 +135,20 @@ class WireguardPeerHealthService
                     continue;
                 }
 
+                Log::info('WireGuard peer mapped to VPN config', [
+                    'tenant_id' => $tenantId,
+                    'public_key' => substr($peer['public_key'], 0, 20) . '...',
+                    'router_id' => $vpnConfig->router_id,
+                    'handshake_at' => $peer['latest_handshake']?->toIso8601String(),
+                    'handshake_age_seconds' => $handshakeAge,
+                ]);
+
                 $router = $vpnConfig->router;
                 $handshakeAt = $peer['latest_handshake'];
                 $vpnConfigStatus = $this->resolveVpnConfigStatus($handshakeAt, $vpnConfig->status);
                 $routerVpnStatus = $this->resolveRouterVpnStatus($handshakeAt);
 
-                WireguardPeer::updateOrCreate(
+                $wgPeer = WireguardPeer::updateOrCreate(
                     ['public_key' => $peer['public_key']],
                     [
                         'router_id' => $vpnConfig->router_id,
@@ -128,6 +161,13 @@ class WireguardPeerHealthService
                     ]
                 );
 
+                Log::info('WireguardPeer updated', [
+                    'peer_id' => $wgPeer->id,
+                    'public_key' => substr($peer['public_key'], 0, 20) . '...',
+                    'last_handshake' => $wgPeer->last_handshake?->toIso8601String(),
+                    'was_recently_created' => $wgPeer->wasRecentlyCreated,
+                ]);
+
                 $vpnConfig->update([
                     'last_handshake_at' => $handshakeAt,
                     'rx_bytes' => $peer['transfer_rx'],
@@ -136,9 +176,26 @@ class WireguardPeerHealthService
                 ]);
 
                 if ($router) {
-                    $router->update([
+                    // Mark router as online when WireGuard handshake is active
+                    $routerStatus = $routerVpnStatus === 'active' ? 'online' : $router->status;
+                    $updateData = [
                         'vpn_status' => $routerVpnStatus,
                         'vpn_last_handshake' => $handshakeAt,
+                        'status' => $routerStatus,
+                        'last_checked' => now(),
+                    ];
+                    if ($routerStatus === 'online') {
+                        $updateData['last_seen'] = now();
+                    }
+                    $router->update($updateData);
+
+                    Log::info('Router status updated from WireGuard peer', [
+                        'tenant_id' => $tenantId,
+                        'router_id' => $router->id,
+                        'router_name' => $router->name,
+                        'new_status' => $routerStatus,
+                        'vpn_status' => $routerVpnStatus,
+                        'handshake_age_seconds' => $handshakeAge,
                     ]);
 
                     $updatedRouters[$router->id] = array_merge([
@@ -146,11 +203,11 @@ class WireguardPeerHealthService
                         'ip_address' => $router->ip_address,
                         'vpn_ip' => $router->vpn_ip,
                         'name' => $router->name,
-                        'status' => $router->status,
+                        'status' => $routerStatus, // Use the NEW status, not old
                         'last_checked' => $router->last_checked,
                         'model' => $router->model,
                         'os_version' => $router->os_version,
-                        'last_seen' => $router->last_seen,
+                        'last_seen' => $routerStatus === 'online' ? now() : $router->last_seen,
                         'vpn_status' => $routerVpnStatus,
                         'vpn_last_handshake' => $handshakeAt,
                     ], $this->buildHandshakeTimezonePayload($handshakeAt));
@@ -219,6 +276,8 @@ class WireguardPeerHealthService
                     $router->update([
                         'vpn_status' => 'inactive',
                         'vpn_last_handshake' => null,
+                        'status' => 'offline',
+                        'last_checked' => now(),
                     ]);
 
                     $updatedRouters[$router->id] = array_merge([
@@ -226,7 +285,7 @@ class WireguardPeerHealthService
                         'ip_address' => $router->ip_address,
                         'vpn_ip' => $router->vpn_ip,
                         'name' => $router->name,
-                        'status' => $router->status,
+                        'status' => 'offline',
                         'last_checked' => $router->last_checked,
                         'model' => $router->model,
                         'os_version' => $router->os_version,
@@ -295,6 +354,8 @@ class WireguardPeerHealthService
                 $router->update([
                     'vpn_status' => 'inactive',
                     'vpn_last_handshake' => null,
+                    'status' => 'offline',
+                    'last_checked' => now(),
                 ]);
 
                 $updatedRouters[$router->id] = array_merge([
@@ -302,7 +363,7 @@ class WireguardPeerHealthService
                     'ip_address' => $router->ip_address,
                     'vpn_ip' => $router->vpn_ip,
                     'name' => $router->name,
-                    'status' => $router->status,
+                    'status' => 'offline',
                     'last_checked' => $router->last_checked,
                     'model' => $router->model,
                     'os_version' => $router->os_version,

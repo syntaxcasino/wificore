@@ -375,10 +375,22 @@ export function useHotspot() {
     }
   })
   
+  // Package options for filter dropdowns
+  const packages = ref([])
+  const fetchPackages = async () => {
+    try {
+      const response = await axios.get('/hotspot/packages', { params: { per_page: 100 } })
+      packages.value = response.data?.packages?.data || response.data?.packages || []
+    } catch (err) {
+      console.error('fetchPackages error:', err)
+    }
+  }
+
   return {
     // State
     users,
     sessions,
+    packages,
     loading,
     error,
     pagination,
@@ -393,6 +405,7 @@ export function useHotspot() {
     // Methods
     fetchUsers,
     fetchSessions,
+    fetchPackages,
     disconnectUser,
     grantAccess,
     revokeAccess,

@@ -46,7 +46,7 @@
 
     <DataSkeleton v-else-if="loading" :count="5" />
 
-    <div v-else-if="filteredData.length" class="flex flex-col h-full px-4 md:px-6 pt-2 pb-2 min-h-0">
+    <div v-else-if="filteredData.length" class="flex flex-col h-full pt-2 pb-2 min-h-0">
       <div class="md:hidden space-y-3 overflow-y-auto flex-1 min-h-0">
         <MobileDataCard
           v-for="session in paginatedData"
@@ -61,7 +61,7 @@
       </div>
 
       <div class="hidden md:flex bg-white border-x border-t border-slate-200 flex-col min-h-0 flex-1">
-        <div class="bg-slate-50 border-b border-slate-200">
+        <div class="bg-slate-50 dark:bg-slate-700/50 border-b border-slate-200 dark:border-slate-700">
           <table class="w-full">
             <thead>
               <tr>
@@ -78,7 +78,7 @@
         </div>
         <div class="overflow-y-auto flex-1 min-h-0">
           <table class="w-full">
-            <tbody class="divide-y divide-slate-100">
+            <tbody class="divide-y divide-slate-100 dark:divide-slate-700">
               <tr v-for="session in paginatedData" :key="session.id" class="hover:bg-cyan-50/50 transition-colors">
                 <td class="px-6 py-4 w-[18%]">
                   <div class="flex items-center gap-3">
@@ -86,8 +86,8 @@
                       {{ getUserInitials(session.user) }}
                     </div>
                     <div>
-                      <p class="text-sm font-medium text-slate-900">{{ session.user?.name || session.username }}</p>
-                      <p class="text-xs text-slate-500">{{ session.user?.phone || 'No phone' }}</p>
+                      <p class="text-sm font-medium text-slate-900 dark:text-slate-100">{{ session.user?.name || session.username }}</p>
+                      <p class="text-xs text-slate-500 dark:text-slate-400">{{ session.user?.phone || 'No phone' }}</p>
                     </div>
                   </div>
                 </td>
@@ -96,16 +96,16 @@
                   <p class="text-xs text-slate-500 font-mono">{{ session.mac_address }}</p>
                 </td>
                 <td class="px-6 py-4 w-[12%]">
-                  <p class="text-sm font-medium text-slate-900">{{ session.package?.name || 'N/A' }}</p>
-                  <p class="text-xs text-slate-500">{{ session.package?.speed || 'N/A' }}</p>
+                  <p class="text-sm font-medium text-slate-900 dark:text-slate-100">{{ session.package?.name || 'N/A' }}</p>
+                  <p class="text-xs text-slate-500 dark:text-slate-400">{{ session.package?.speed || 'N/A' }}</p>
                 </td>
                 <td class="px-6 py-4 w-[12%]">
                   <p class="text-sm text-slate-900">{{ formatDuration(session.duration) }}</p>
-                  <p class="text-xs text-slate-500">Since {{ formatTime(session.start_time) }}</p>
+                  <p class="text-xs text-slate-500 dark:text-slate-400">Since {{ formatTime(session.start_time) }}</p>
                 </td>
                 <td class="px-6 py-4 w-[15%]">
                   <p class="text-sm text-slate-900">{{ formatBytes(session.bytes_in + session.bytes_out) }}</p>
-                  <p class="text-xs text-slate-500">
+                  <p class="text-xs text-slate-500 dark:text-slate-400">
                     <span class="text-emerald-600">↓ {{ formatBytes(session.bytes_in) }}</span>
                     <span class="mx-1">•</span>
                     <span class="text-blue-600">↑ {{ formatBytes(session.bytes_out) }}</span>
@@ -151,7 +151,7 @@
     />
 
     <Teleport to="body">
-      <div v-if="activeMenu !== null" data-dropdown-menu :style="menuPosition" class="fixed w-48 bg-white rounded-lg shadow-2xl border border-slate-200 py-1 z-[9999] overflow-hidden">
+      <div v-if="activeMenu !== null" data-dropdown-menu :style="menuPosition" class="fixed w-48 bg-white dark:bg-slate-800 rounded-lg shadow-2xl border border-slate-200 dark:border-slate-700 py-1 z-[9999] overflow-hidden">
         <button @click="viewSessionDetails(sessions.find(s => s.id === activeMenu))" class="flex items-center w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-cyan-50 hover:text-cyan-700 transition-colors">
           <Eye class="w-4 h-4 mr-3" />View Details
         </button>
@@ -331,8 +331,11 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
-::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+/* Scrollbar — no Tailwind equivalent for ::-webkit-scrollbar pseudo-elements */
+::-webkit-scrollbar        { width: 8px; height: 8px; }
+::-webkit-scrollbar-track  { background: #f1f5f9; border-radius: 4px; }
+::-webkit-scrollbar-thumb  { background: #cbd5e1; border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+:global(.dark) ::-webkit-scrollbar-track { background: #1e293b; }
+:global(.dark) ::-webkit-scrollbar-thumb { background: #475569; }
 </style>

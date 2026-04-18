@@ -334,9 +334,22 @@ export function useAccessPoints() {
     window.removeEventListener('access-point-deleted', handleAccessPointDeleted)
   }
 
+  // Router options for AP assignment
+  const availableRouters = ref([])
+  const fetchAvailableRouters = async () => {
+    try {
+      const response = await axios.get('/routers')
+      availableRouters.value = response.data?.data || response.data?.routers || response.data || []
+    } catch (err) {
+      console.error('fetchAvailableRouters error:', err)
+      availableRouters.value = []
+    }
+  }
+
   return {
     // Reactive data
     accessPoints,
+    availableRouters,
     stats,
     onlineAccessPoints,
     offlineAccessPoints,
@@ -366,6 +379,9 @@ export function useAccessPoints() {
 
     // WebSocket setup
     setupWebSocketListeners,
-    cleanupWebSocketListeners
+    cleanupWebSocketListeners,
+
+    // Options helpers
+    fetchAvailableRouters
   }
 }

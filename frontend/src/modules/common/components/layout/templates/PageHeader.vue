@@ -1,6 +1,6 @@
 <template>
-  <div class="flex-shrink-0 bg-white border-b border-slate-200 shadow-sm relative z-10">
-    <div class="px-3 py-3 sm:px-6 sm:py-5">
+  <div class="flex-shrink-0 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 shadow-sm relative z-10">
+    <div class="px-4 md:px-6 py-3 md:py-5">
       <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-6">
         <!-- Left: Title & Icon -->
         <div class="flex items-center gap-2.5 sm:gap-3 min-w-0">

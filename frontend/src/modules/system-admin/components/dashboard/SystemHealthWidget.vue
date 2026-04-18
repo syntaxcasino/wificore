@@ -1,7 +1,7 @@
 <template>
-  <div class="bg-white rounded-2xl shadow-lg border border-gray-100 p-6">
+  <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-gray-100 dark:border-slate-700 p-6">
     <div class="flex items-center justify-between mb-6">
-      <h2 class="text-xl font-bold text-gray-900 flex items-center gap-2">
+      <h2 class="text-xl font-bold text-gray-900 dark:text-slate-100 flex items-center gap-2">
         <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
         </svg>
@@ -20,11 +20,11 @@
     <!-- Health Metrics -->
     <div v-else class="space-y-4">
       <!-- Database Health -->
-      <div class="p-4 bg-gray-50 rounded-xl">
+      <div class="p-4 bg-gray-50 dark:bg-slate-700/50 rounded-xl">
         <div class="flex items-center justify-between mb-3">
           <div class="flex items-center gap-2">
             <div class="w-3 h-3 rounded-full" :class="healthData.database?.status === 'healthy' ? 'bg-green-500' : 'bg-red-500'"></div>
-            <span class="text-sm font-semibold text-gray-700">Database</span>
+            <span class="text-sm font-semibold text-gray-700 dark:text-slate-300">Database</span>
           </div>
           <span class="text-xs font-medium" :class="healthData.database?.status === 'healthy' ? 'text-green-600' : 'text-red-600'">
             {{ healthData.database?.status || 'Unknown' }}
@@ -32,12 +32,12 @@
         </div>
         <div class="grid grid-cols-2 gap-3 text-xs">
           <div>
-            <p class="text-gray-600">Connections</p>
-            <p class="font-bold text-gray-900">{{ healthData.database?.connections || 0 }}/{{ healthData.database?.maxConnections || 100 }}</p>
+            <p class="text-gray-600 dark:text-slate-400">Connections</p>
+            <p class="font-bold text-gray-900 dark:text-slate-100">{{ healthData.database?.connections || 0 }}/{{ healthData.database?.maxConnections || 100 }}</p>
           </div>
           <div>
-            <p class="text-gray-600">Response Time</p>
-            <p class="font-bold text-gray-900">{{ healthData.database?.responseTime || '0' }}ms</p>
+            <p class="text-gray-600 dark:text-slate-400">Response Time</p>
+            <p class="font-bold text-gray-900 dark:text-slate-100">{{ healthData.database?.responseTime || '0' }}ms</p>
           </div>
         </div>
         <div class="mt-2">
@@ -52,11 +52,11 @@
       </div>
 
       <!-- Redis Cache -->
-      <div class="p-4 bg-gray-50 rounded-xl">
+      <div class="p-4 bg-gray-50 dark:bg-slate-700/50 rounded-xl">
         <div class="flex items-center justify-between mb-3">
           <div class="flex items-center gap-2">
             <div class="w-3 h-3 rounded-full" :class="healthData.redis?.status === 'healthy' ? 'bg-green-500' : 'bg-yellow-500'"></div>
-            <span class="text-sm font-semibold text-gray-700">Redis Cache</span>
+            <span class="text-sm font-semibold text-gray-700 dark:text-slate-300">Redis Cache</span>
           </div>
           <span class="text-xs font-medium" :class="healthData.redis?.status === 'healthy' ? 'text-green-600' : 'text-yellow-600'">
             {{ healthData.redis?.status || 'Unknown' }}
@@ -64,12 +64,12 @@
         </div>
         <div class="grid grid-cols-2 gap-3 text-xs">
           <div>
-            <p class="text-gray-600">Hit Rate</p>
-            <p class="font-bold text-gray-900">{{ healthData.redis?.hitRate || 0 }}%</p>
+            <p class="text-gray-600 dark:text-slate-400">Hit Rate</p>
+            <p class="font-bold text-gray-900 dark:text-slate-100">{{ healthData.redis?.hitRate || 0 }}%</p>
           </div>
           <div>
-            <p class="text-gray-600">Memory Used</p>
-            <p class="font-bold text-gray-900">{{ healthData.redis?.memoryUsed || '0' }}MB</p>
+            <p class="text-gray-600 dark:text-slate-400">Memory Used</p>
+            <p class="font-bold text-gray-900 dark:text-slate-100">{{ healthData.redis?.memoryUsed || '0' }}MB</p>
           </div>
         </div>
         <div class="mt-2">
@@ -83,11 +83,11 @@
       </div>
 
       <!-- Queue Workers -->
-      <div class="p-4 bg-gray-50 rounded-xl">
+      <div class="p-4 bg-gray-50 dark:bg-slate-700/50 rounded-xl">
         <div class="flex items-center justify-between mb-3">
           <div class="flex items-center gap-2">
             <div class="w-3 h-3 rounded-full" :class="getQueueHealthColor()"></div>
-            <span class="text-sm font-semibold text-gray-700">Queue Workers</span>
+            <span class="text-sm font-semibold text-gray-700 dark:text-slate-300">Queue Workers</span>
           </div>
           <span class="text-xs font-medium" :class="getQueueHealthTextColor()">
             {{ getQueueHealthStatus() }}
@@ -95,12 +95,12 @@
         </div>
         <div class="grid grid-cols-2 gap-3 text-xs">
           <div>
-            <p class="text-gray-600">Active Workers</p>
-            <p class="font-bold text-gray-900">{{ healthData.queue?.activeWorkers || 0 }}</p>
+            <p class="text-gray-600 dark:text-slate-400">Active Workers</p>
+            <p class="font-bold text-gray-900 dark:text-slate-100">{{ healthData.queue?.activeWorkers || 0 }}</p>
           </div>
           <div>
-            <p class="text-gray-600">Failed Jobs</p>
-            <p class="font-bold text-gray-900">{{ healthData.queue?.failedJobs || 0 }}</p>
+            <p class="text-gray-600 dark:text-slate-400">Failed Jobs</p>
+            <p class="font-bold text-gray-900 dark:text-slate-100">{{ healthData.queue?.failedJobs || 0 }}</p>
           </div>
         </div>
         <div class="mt-2">
@@ -115,11 +115,11 @@
       </div>
 
       <!-- Disk Space -->
-      <div class="p-4 bg-gray-50 rounded-xl">
+      <div class="p-4 bg-gray-50 dark:bg-slate-700/50 rounded-xl">
         <div class="flex items-center justify-between mb-3">
           <div class="flex items-center gap-2">
             <div class="w-3 h-3 rounded-full" :class="getDiskHealthColor(healthData.disk?.usedPercentage)"></div>
-            <span class="text-sm font-semibold text-gray-700">Disk Space</span>
+            <span class="text-sm font-semibold text-gray-700 dark:text-slate-300">Disk Space</span>
           </div>
           <span class="text-xs font-medium" :class="getDiskHealthTextColor(healthData.disk?.usedPercentage)">
             {{ healthData.disk?.usedPercentage || 0 }}% Used
@@ -127,12 +127,12 @@
         </div>
         <div class="grid grid-cols-2 gap-3 text-xs">
           <div>
-            <p class="text-gray-600">Total</p>
-            <p class="font-bold text-gray-900">{{ healthData.disk?.total || '0' }}GB</p>
+            <p class="text-gray-600 dark:text-slate-400">Total</p>
+            <p class="font-bold text-gray-900 dark:text-slate-100">{{ healthData.disk?.total || '0' }}GB</p>
           </div>
           <div>
-            <p class="text-gray-600">Available</p>
-            <p class="font-bold text-gray-900">{{ healthData.disk?.available || '0' }}GB</p>
+            <p class="text-gray-600 dark:text-slate-400">Available</p>
+            <p class="font-bold text-gray-900 dark:text-slate-100">{{ healthData.disk?.available || '0' }}GB</p>
           </div>
         </div>
         <div class="mt-2">

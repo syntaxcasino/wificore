@@ -176,8 +176,10 @@ class ConnectionStatsController extends Controller
             // Get active hotspot sessions from radius_sessions table
             $radiusSessions = RadiusSession::query()
                 ->with(['hotspotUser'])
-                ->whereNull('acct_stop_time')
-                ->orWhere('acct_stop_time', '>=', now()->subMinutes(5))
+                ->where(function ($q) {
+                    $q->whereNull('acct_stop_time')
+                      ->orWhere('acct_stop_time', '>=', now()->subMinutes(5));
+                })
                 ->limit(1000)
                 ->get();
             
@@ -205,8 +207,10 @@ class ConnectionStatsController extends Controller
             // Also check hotspot_sessions table if exists
             if (Schema::hasTable('hotspot_sessions')) {
                 $dbSessions = HotspotSession::query()
-                    ->where('status', 'active')
-                    ->orWhere('updated_at', '>=', now()->subMinutes(5))
+                    ->where(function ($q) {
+                        $q->where('status', 'active')
+                          ->orWhere('updated_at', '>=', now()->subMinutes(5));
+                    })
                     ->limit(1000)
                     ->get();
                 

@@ -3,7 +3,7 @@
     <div 
       v-for="i in count" 
       :key="i" 
-      class="bg-white rounded-lg p-4 shadow-sm border border-slate-200"
+      class="bg-white dark:bg-slate-800 rounded-lg p-4 shadow-sm border border-slate-200 dark:border-slate-700"
     >
       <div class="flex items-center space-x-4">
         <!-- Avatar/Icon skeleton -->

@@ -51,7 +51,7 @@ class SnmpConfigurationService
             "/snmp set location=\"{$location}\"",
             // Ensure community exists (idempotent: remove then re-add)
             ":do { /snmp community remove [find name=\"{$community}\"]; } on-error={} ",
-            "/snmp community add name=\"{$community}\" addresses={$snmpSubnet} security=none read-access=yes write-access=no",
+            "/snmp community add name=\"{$community}\" addresses=\"{$snmpSubnet}\" security=none read-access=yes write-access=no",
             "/snmp set trap-community=\"{$community}\" trap-version=2",
         ];
 
@@ -117,7 +117,7 @@ class SnmpConfigurationService
             // Remove existing v3 user before adding (idempotent)
             ":do { /snmp community remove [find name={$user}]; } on-error={}",
             // Add SNMPv3 user
-            "/snmp community add name={$user} addresses={$snmpSubnet} security=private " .
+            "/snmp community add name=\"{$user}\" addresses=\"{$snmpSubnet}\" security=private " .
             "authentication-protocol={$authProtocol} authentication-password=\"{$authPassword}\" " .
             "encryption-protocol={$privProtocol} encryption-password=\"{$privPassword}\"",
         ];
@@ -203,7 +203,7 @@ class SnmpConfigurationService
 /snmp set contact="{$contact}"
 /snmp set location="{$location}"
 :do { /snmp community remove [find name="{$community}"]; } on-error={}
-/snmp community add name="{$community}" addresses={$snmpSubnet} security=none read-access=yes write-access=no
+/snmp community add name=\"{$community}\" addresses=\"{$snmpSubnet}\" security=none read-access=yes write-access=no
 /snmp set trap-community="{$community}" trap-version=2
 SCRIPT;
     }

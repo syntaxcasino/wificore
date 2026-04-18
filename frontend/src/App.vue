@@ -28,7 +28,11 @@ import { ref } from 'vue'
 import EventMonitor from '@/modules/common/components/debug/EventMonitor.vue'
 import NotificationToast from '@/modules/common/components/app/NotificationToast.vue'
 import ConfirmDialog from '@/modules/common/components/app/ConfirmDialog.vue'
+import { useDarkModeStore } from '@/stores/darkMode'
 
 const isDevelopment = import.meta.env.DEV
 const showEventMonitor = ref(isDevelopment)
+
+// Initialize dark mode (applies class to <html> immediately)
+useDarkModeStore()
 </script>

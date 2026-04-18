@@ -2,9 +2,16 @@
   <DataViewContainer
     title="Support Tickets"
     subtitle="Create and manage support tickets"
-    icon="MessageSquare"
+    color-theme="indigo"
     :breadcrumbs="breadcrumbs"
   >
+    <!-- Icon Slot -->
+    <template #icon>
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 md:h-6 md:w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+      </svg>
+    </template>
+
     <template #actions>
       <BaseButton @click="openCreateOverlay" variant="primary">
         <Plus class="w-4 h-4 mr-1" />
@@ -32,12 +39,12 @@
       title="New Support Ticket"
       subtitle="Create a new support ticket for a customer"
       icon="Plus"
-      width="480px"
+      width="60%"
       @close="closeCreateOverlay"
     >
       <div class="p-6 space-y-4">
         <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Subject *</label>
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Subject *</label>
           <input
             v-model="formData.subject"
             type="text"
@@ -48,7 +55,7 @@
         </div>
 
         <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Category *</label>
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Category *</label>
           <BaseSelect v-model="formData.category" required class="w-full">
             <option value="">Select category...</option>
             <option value="technical">Technical Support</option>
@@ -59,7 +66,7 @@
         </div>
 
         <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Priority *</label>
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Priority *</label>
           <BaseSelect v-model="formData.priority" required class="w-full">
             <option value="low">Low</option>
             <option value="medium">Medium</option>
@@ -69,7 +76,7 @@
         </div>
 
         <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Description *</label>
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Description *</label>
           <textarea
             v-model="formData.description"
             rows="6"
@@ -80,7 +87,7 @@
         </div>
 
         <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Customer Name</label>
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Customer Name</label>
           <input
             v-model="formData.customer_name"
             type="text"
@@ -90,7 +97,7 @@
         </div>
 
         <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Customer Email</label>
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Customer Email</label>
           <input
             v-model="formData.customer_email"
             type="email"
@@ -104,7 +111,7 @@
         <div class="flex gap-3">
           <button
             @click="closeCreateOverlay"
-            class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+            class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-600"
           >
             Cancel
           </button>
@@ -129,8 +136,10 @@ import DataViewContainer from '@/modules/common/components/base/DataViewContaine
 import BaseButton from '@/modules/common/components/base/BaseButton.vue'
 import BaseSelect from '@/modules/common/components/base/BaseSelect.vue'
 import SlideOverlay from '@/modules/common/components/base/SlideOverlay.vue'
+import { useToast } from '@/modules/common/composables/useToast.js'
 
 const router = useRouter()
+const { success: showSuccess, error: showError } = useToast()
 
 const breadcrumbs = [
   { label: 'Dashboard', to: '/dashboard' },
@@ -171,12 +180,12 @@ const handleSubmit = async () => {
   
   try {
     await new Promise(resolve => setTimeout(resolve, 1000))
-    alert('Ticket created successfully!')
+    showSuccess('Ticket created successfully!')
     closeCreateOverlay()
     router.push('/dashboard/support/all-tickets')
   } catch (err) {
     console.error(err)
-    alert('Failed to create ticket')
+    showError('Failed to create ticket')
   } finally {
     saving.value = false
   }

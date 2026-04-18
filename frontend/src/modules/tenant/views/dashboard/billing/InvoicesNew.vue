@@ -18,7 +18,9 @@
   >
     <!-- Icon Slot -->
     <template #icon>
-      <FileText class="h-5 w-5 md:h-6 md:w-6 text-white" />
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 md:h-6 md:w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+      </svg>
     </template>
 
     <!-- Action Buttons -->
@@ -54,7 +56,7 @@
     <DataSkeleton v-if="loading" :count="5" />
 
     <!-- Data Content -->
-    <div v-else-if="filteredData.length" class="flex flex-col h-full px-4 md:px-6 pt-2 pb-2 min-h-0">
+    <div v-else-if="filteredData.length" class="flex flex-col h-full pt-2 pb-2 min-h-0">
       <!-- Mobile Cards -->
       <div class="md:hidden space-y-3 overflow-y-auto flex-1 min-h-0">
         <MobileDataCard
@@ -70,7 +72,7 @@
       </div>
 
       <!-- Desktop Table -->
-      <div class="hidden md:flex bg-white border border-slate-200 shadow-sm overflow-hidden flex-col min-h-0 flex-1">
+      <div class="hidden md:flex bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden flex-col min-h-0 flex-1">
         <div class="overflow-x-auto overflow-y-auto flex-1 min-h-0">
           <table class="w-full">
             <thead class="bg-slate-50 border-b border-slate-200 sticky top-0 z-[5]">
@@ -84,22 +86,22 @@
                 <th class="px-6 py-3 text-right text-xs font-semibold text-slate-700 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
-            <tbody class="divide-y divide-slate-100">
+            <tbody class="divide-y divide-slate-100 dark:divide-slate-700">
               <tr v-for="invoice in paginatedData" :key="invoice.id" class="hover:bg-blue-50/50 transition-colors">
                 <td class="px-6 py-4">
                   <div class="flex items-center gap-2">
                     <FileText class="w-4 h-4 text-blue-600" />
-                    <span class="text-sm font-medium text-slate-900">{{ invoice.invoice_number }}</span>
+                    <span class="text-sm font-medium text-slate-900 dark:text-slate-100">{{ invoice.invoice_number }}</span>
                   </div>
                 </td>
                 <td class="px-6 py-4">
                   <div class="text-sm text-slate-900">{{ invoice.customer_name }}</div>
-                  <div class="text-xs text-slate-500">{{ invoice.customer_email }}</div>
+                  <div class="text-xs text-slate-500 dark:text-slate-400">{{ invoice.customer_email }}</div>
                 </td>
-                <td class="px-6 py-4 text-sm text-slate-600">{{ formatDate(invoice.invoice_date) }}</td>
-                <td class="px-6 py-4 text-sm text-slate-600">{{ formatDate(invoice.due_date) }}</td>
+                <td class="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">{{ formatDate(invoice.invoice_date) }}</td>
+                <td class="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">{{ formatDate(invoice.due_date) }}</td>
                 <td class="px-6 py-4">
-                  <div class="text-sm font-bold text-slate-900">{{ formatMoney(invoice.total_amount) }}</div>
+                  <div class="text-sm font-bold text-slate-900 dark:text-slate-100">{{ formatMoney(invoice.total_amount) }}</div>
                 </td>
                 <td class="px-6 py-4">
                   <EntityStatusBadge :status="invoice.status" size="sm" />
@@ -146,19 +148,19 @@
     title="Create Invoice"
     subtitle="Generate a new customer invoice"
     icon="FileText"
-    width="480px"
+    width="60%"
     @close="closeCreateOverlay"
   >
     <div class="p-6 space-y-4">
       <div>
-        <label class="block text-sm font-medium text-slate-700 mb-1">Customer</label>
+        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Customer</label>
         <BaseSelect v-model="formData.customer_id" placeholder="Select customer">
           <option value="">Select customer</option>
           <option v-for="customer in customers" :key="customer.id" :value="customer.id">{{ customer.name }}</option>
         </BaseSelect>
       </div>
       <div>
-        <label class="block text-sm font-medium text-slate-700 mb-1">Due Date</label>
+        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Due Date</label>
         <BaseInput v-model="formData.due_date" type="date" />
       </div>
       <div class="border-t border-slate-200 pt-4">
@@ -173,8 +175,8 @@
         </div>
         <button @click="addItem" class="text-sm text-blue-600 hover:text-blue-700 font-medium">+ Add Item</button>
         <div class="mt-4 text-right">
-          <span class="text-sm text-slate-600">Total: </span>
-          <span class="text-lg font-bold text-slate-900">{{ formatMoney(calculateTotal) }}</span>
+          <span class="text-sm text-slate-600 dark:text-slate-400">Total: </span>
+          <span class="text-lg font-bold text-slate-900 dark:text-slate-100">{{ formatMoney(calculateTotal) }}</span>
         </div>
       </div>
       <div v-if="formMessage.text" :class="formMessage.type === 'error' ? 'text-red-600' : 'text-green-600'" class="text-sm">
@@ -185,12 +187,12 @@
       <div class="flex gap-3">
         <button
           @click="closeCreateOverlay"
-          class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+          class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-600"
         >
           Cancel
         </button>
         <button
-          @click="submitInvoice"
+          @click="handleSubmitInvoice"
           :disabled="formSubmitting"
           class="flex-1 px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors disabled:opacity-50"
         >
@@ -204,7 +206,6 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { FileText, Plus, Download, Trash2, CheckCircle } from 'lucide-vue-next'
-import axios from 'axios'
 import DataViewContainer from '@/modules/common/components/base/DataViewContainer.vue'
 import DataSkeleton from '@/modules/common/components/base/DataSkeleton.vue'
 import MobileDataCard from '@/modules/common/components/base/MobileDataCard.vue'
@@ -215,33 +216,22 @@ import SlideOverlay from '@/modules/common/components/base/SlideOverlay.vue'
 import BaseButton from '@/modules/common/components/base/BaseButton.vue'
 import BaseSelect from '@/modules/common/components/base/BaseSelect.vue'
 import BaseInput from '@/modules/common/components/base/BaseInput.vue'
+import { useInvoices } from '@/modules/tenant/composables/useInvoices.js'
 
-// State
-const loading = ref(false)
-const invoices = ref([])
-const customers = ref([])
+const {
+  loading, invoices, customers, formSubmitting, formMessage, formData,
+  stats, calculateTotal,
+  formatMoney, formatDate,
+  fetchInvoices, fetchCustomers, markAsPaid,
+  resetForm, addItem, removeItem, submitInvoice,
+  viewInvoice, downloadInvoice, exportInvoices
+} = useInvoices()
+
 const searchQuery = ref('')
 const currentPage = ref(1)
 const itemsPerPage = ref(10)
 const showCreateOverlay = ref(false)
-const formSubmitting = ref(false)
-const formMessage = ref({ type: '', text: '' })
-
 const filters = ref({ status: '', dateRange: '' })
-
-const formData = ref({
-  customer_id: '',
-  due_date: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-  items: [{ description: '', quantity: 1, unit_price: 0 }]
-})
-
-// Computed
-const stats = computed(() => {
-  const paid = invoices.value.filter(i => i.status === 'paid').length
-  const pending = invoices.value.filter(i => i.status === 'sent').length
-  const overdue = invoices.value.filter(i => i.status === 'overdue').length
-  return { total: invoices.value.length, paid, pending, overdue }
-})
 
 const filteredData = computed(() => {
   let data = invoices.value
@@ -252,9 +242,7 @@ const filteredData = computed(() => {
       i.customer_name.toLowerCase().includes(query)
     )
   }
-  if (filters.value.status) {
-    data = data.filter(i => i.status === filters.value.status)
-  }
+  if (filters.value.status) data = data.filter(i => i.status === filters.value.status)
   return data
 })
 
@@ -266,77 +254,14 @@ const paginatedData = computed(() => {
 const totalPages = computed(() => Math.ceil(filteredData.value.length / itemsPerPage.value))
 const hasActiveFilters = computed(() => filters.value.status || filters.value.dateRange || searchQuery.value)
 
-const calculateTotal = computed(() => {
-  return formData.value.items.reduce((sum, item) => sum + (Number(item.quantity) || 0) * (Number(item.unit_price) || 0), 0)
-})
-
-// Helpers
-const formatMoney = (amount) => new Intl.NumberFormat('en-KE', { style: 'currency', currency: 'KES' }).format(amount)
-const formatDate = (date) => date ? new Date(date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/A'
-
 const getInvoiceActions = (invoice) => [
   { label: 'View', onClick: () => viewInvoice(invoice) },
   { label: 'PDF', onClick: () => downloadInvoice(invoice) },
   ...(invoice.status !== 'paid' ? [{ label: 'Mark Paid', onClick: () => markAsPaid(invoice), class: 'text-green-700 bg-green-50 hover:bg-green-100' }] : [])
 ]
 
-// Actions
-const fetchInvoices = async () => {
-  loading.value = true
-  try {
-    const response = await axios.get('/billing/invoices')
-    const data = response.data?.invoices?.data || response.data?.invoices || response.data?.data || []
-    invoices.value = data.map(i => ({
-      id: i.id,
-      invoice_number: i.invoice_number || `#${i.id}`,
-      customer_name: i.customer_name || i.customer?.name || 'Unknown',
-      customer_email: i.customer_email || i.customer?.email || '',
-      invoice_date: i.invoice_date || i.created_at,
-      due_date: i.due_date,
-      total_amount: Number(i.total_amount) || 0,
-      status: i.status || 'draft'
-    }))
-  } catch (err) {
-    console.error('fetchInvoices error:', err)
-  } finally {
-    loading.value = false
-  }
-}
-
-const fetchCustomers = async () => {
-  try {
-    const response = await axios.get('/users/customers', { params: { per_page: 1000 } })
-    customers.value = response.data?.customers?.data || response.data?.customers || []
-  } catch (err) {
-    console.error('fetchCustomers error:', err)
-  }
-}
-
-const viewInvoice = (invoice) => {
-  window.open(`/billing/invoices/${invoice.id}/view`, '_blank')
-}
-
-const downloadInvoice = (invoice) => {
-  window.open(`/billing/invoices/${invoice.id}/pdf`, '_blank')
-}
-
-const markAsPaid = async (invoice) => {
-  try {
-    await axios.patch(`/billing/invoices/${invoice.id}`, { status: 'paid', paid_at: new Date().toISOString() })
-    await fetchInvoices()
-  } catch (err) {
-    console.error('markAsPaid error:', err)
-    alert(err.response?.data?.message || 'Failed to mark as paid')
-  }
-}
-
 const openCreateOverlay = () => {
-  formData.value = {
-    customer_id: '',
-    due_date: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-    items: [{ description: '', quantity: 1, unit_price: 0 }]
-  }
-  formMessage.value = { type: '', text: '' }
+  resetForm()
   showCreateOverlay.value = true
 }
 
@@ -345,53 +270,7 @@ const closeCreateOverlay = () => {
   formMessage.value = { type: '', text: '' }
 }
 
-const addItem = () => {
-  formData.value.items.push({ description: '', quantity: 1, unit_price: 0 })
-}
-
-const removeItem = (index) => {
-  if (formData.value.items.length > 1) {
-    formData.value.items.splice(index, 1)
-  }
-}
-
-const submitInvoice = async () => {
-  if (!formData.value.customer_id) {
-    formMessage.value = { type: 'error', text: 'Please select a customer' }
-    return
-  }
-  if (formData.value.items.some(i => !i.description)) {
-    formMessage.value = { type: 'error', text: 'All items must have a description' }
-    return
-  }
-  formSubmitting.value = true
-  try {
-    await axios.post('/billing/invoices', {
-      ...formData.value,
-      total_amount: calculateTotal.value
-    })
-    closeCreateOverlay()
-    await fetchInvoices()
-  } catch (err) {
-    formMessage.value = { type: 'error', text: err.response?.data?.message || 'Failed to create invoice' }
-  } finally {
-    formSubmitting.value = false
-  }
-}
-
-const exportInvoices = () => {
-  const csv = [
-    ['Invoice #', 'Customer', 'Date', 'Due Date', 'Amount', 'Status'].join(','),
-    ...invoices.value.map(i => [i.invoice_number, i.customer_name, i.invoice_date, i.due_date, i.total_amount, i.status].join(','))
-  ].join('\n')
-  const blob = new Blob([csv], { type: 'text/csv' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `invoices-${new Date().toISOString().slice(0, 10)}.csv`
-  a.click()
-  URL.revokeObjectURL(url)
-}
+const handleSubmitInvoice = () => submitInvoice(closeCreateOverlay)
 
 onMounted(() => {
   fetchInvoices()
@@ -400,8 +279,11 @@ onMounted(() => {
 </script>
 
 <style scoped>
-::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
-::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+/* Scrollbar — no Tailwind equivalent for ::-webkit-scrollbar pseudo-elements */
+::-webkit-scrollbar        { width: 8px; height: 8px; }
+::-webkit-scrollbar-track  { background: #f1f5f9; border-radius: 4px; }
+::-webkit-scrollbar-thumb  { background: #cbd5e1; border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+:global(.dark) ::-webkit-scrollbar-track { background: #1e293b; }
+:global(.dark) ::-webkit-scrollbar-thumb { background: #475569; }
 </style>

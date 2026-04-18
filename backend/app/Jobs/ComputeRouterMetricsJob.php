@@ -96,11 +96,7 @@ class ComputeRouterMetricsJob implements ShouldQueue
                         $now = time();
                         $start = $this->rangeStartFromNow($timeRange, $now);
 
-                        // Clear old cache to force fresh data
-                        foreach ($routerIds as $routerId) {
-                            $cacheKey = "router:{$routerId}:metrics:{$timeRange}";
-                            Cache::forget($cacheKey);
-                        }
+                        // REMOVED: Cache clearing - no longer caching metrics to avoid stale data
 
                         // Fetch traffic metrics for all routers
                         $trafficMetrics = $this->fetchBatchTrafficMetrics($vm, $routerIds, $start, $now, $step);
@@ -122,15 +118,7 @@ class ComputeRouterMetricsJob implements ShouldQueue
                                 $trafficData = $trafficMetrics[$routerId] ?? [];
                                 $resourceData = $resourceMetrics[$routerId] ?? [];
 
-                                // Cache the computed data
-                                $cacheKey = "router:{$routerId}:metrics:{$timeRange}";
-                                $cachedData = [
-                                    'traffic' => $trafficData,
-                                    'resources' => $resourceData,
-                                    'computed_at' => now()->toIso8601String(),
-                                    'time_range' => $timeRange,
-                                ];
-                                Cache::put($cacheKey, $cachedData, now()->addSeconds(30));
+                                // REMOVED: Metrics caching - now always fetch fresh data from VictoriaMetrics
 
                                 // Broadcast event for real-time updates
                                 if (!empty($trafficData)) {

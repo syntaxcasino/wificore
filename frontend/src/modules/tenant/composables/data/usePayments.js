@@ -19,9 +19,9 @@ export function usePayment() {
         mac_address: macAddress,
       })
 
-      const data = response.data
+      const data = response.data || {}
 
-      if (data.success) {
+      if (data?.success) {
         paymentStatus.value = {
           type: 'success',
           message:
@@ -32,7 +32,7 @@ export function usePayment() {
       } else {
         paymentStatus.value = {
           type: 'error',
-          message: data.message || 'Payment initiation failed.',
+          message: data?.message || 'Payment initiation failed.',
         }
         return { success: false }
       }

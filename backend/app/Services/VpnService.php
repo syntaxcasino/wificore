@@ -8,6 +8,7 @@ use App\Models\Tenant;
 use App\Models\Router;
 use App\Models\TenantVpnTunnel;
 use App\Models\WireguardPeer;
+use App\Models\RouterTenantMap;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -173,6 +174,11 @@ class VpnService extends TenantAwareService
 
                 $vpnConfig->status = 'active';
                 $vpnConfig->save();
+
+                // Store vpn_public_key in public-schema map so webhook job can resolve tenant
+                // without iterating all tenant schemas.
+                RouterTenantMap::where('router_id', $router->id)
+                    ->update(['vpn_public_key' => $vpnConfig->client_public_key]);
 
                 Log::info('VPN configuration created and activated for router', [
                     'tenant_id' => $tenant->id,

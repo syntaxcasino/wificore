@@ -105,9 +105,11 @@ class RouterProbingJob implements ShouldQueue
 
             // Router not connected yet, check if we should continue probing
             if ($this->attempts < $this->maxAttempts) {
+                // Use a shorter interval for the first 6 attempts (~30 s) for faster initial detection
+                $nextDelay = $this->attempts < 6 ? min(5, $this->checkInterval) : $this->checkInterval;
                 // Schedule next probe
                 self::dispatch($this->routerId, $this->tenantId, $this->attempts + 1, $this->maxAttempts, $this->checkInterval)
-                    ->delay(now()->addSeconds($this->checkInterval))
+                    ->delay(now()->addSeconds($nextDelay))
                     ->onQueue('router-monitoring');
 
                 Log::debug('Router not connected, scheduling next probe', [

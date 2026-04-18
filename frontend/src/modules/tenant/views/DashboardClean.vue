@@ -1,171 +1,165 @@
 <template>
-  <div class="min-h-screen bg-gray-50 -mx-2 -my-2 px-2 py-4 sm:-mx-6 sm:-my-6 sm:px-6 sm:py-6">
-    <!-- Simple Header -->
-    <div class="mb-4 sm:mb-6">
+  <div class="min-h-screen bg-gray-50 dark:bg-slate-900 transition-colors duration-200">
+    <!-- Header -->
+    <div class="px-4 md:px-6 py-3 md:py-5 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
       <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <h1 class="text-xl sm:text-2xl font-bold text-gray-900">Dashboard</h1>
-          <p class="text-xs sm:text-sm text-gray-600 mt-1">Monitor your network performance</p>
+        <div class="flex items-center gap-3">
+          <div class="w-9 h-9 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-xl flex items-center justify-center shadow flex-shrink-0">
+            <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+            </svg>
+          </div>
+          <div>
+            <h1 class="text-lg sm:text-xl font-bold text-slate-900 dark:text-slate-100 leading-tight">Dashboard</h1>
+            <p class="text-xs text-slate-500 dark:text-slate-400">Network performance &amp; billing overview</p>
+          </div>
         </div>
-        <div class="flex items-center gap-2 sm:gap-3">
+        <div class="flex items-center gap-2">
           <button
             @click="refreshStats"
-            class="px-3 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            :disabled="loading"
+            class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors shadow-sm disabled:opacity-50"
           >
-            <svg class="w-4 h-4 inline-block mr-1 sm:mr-2" :class="{ 'animate-spin': loading }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg class="w-3.5 h-3.5" :class="loading ? 'animate-spin text-blue-500' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
             Refresh
           </button>
-          <div class="flex items-center gap-2 px-3 py-1.5 sm:py-2 rounded-lg" :class="isConnected ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'">
+          <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold shadow"
+            :class="isConnected ? 'bg-emerald-600 text-white' : 'bg-red-500 text-white'">
             <span class="relative flex h-2 w-2">
-              <span v-if="isConnected" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-              <span class="relative inline-flex rounded-full h-2 w-2" :class="isConnected ? 'bg-green-500' : 'bg-red-500'"></span>
+              <span v-if="isConnected" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-60"></span>
+              <span class="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
             </span>
-            <span class="text-xs font-semibold">{{ isConnected ? 'Live' : 'Offline' }}</span>
+            {{ isConnected ? 'Live' : 'Offline' }}
           </div>
         </div>
       </div>
     </div>
 
     <!-- Loading State -->
-    <div v-if="loading" class="flex items-center justify-center py-32">
+    <div v-if="loading" class="flex items-center justify-center py-24">
       <div class="text-center">
-        <div class="w-12 h-12 border-3 border-gray-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-3"></div>
-        <p class="text-sm text-gray-600">Loading dashboard...</p>
+        <div class="w-10 h-10 border-2 border-blue-100 dark:border-blue-900 border-t-blue-600 rounded-full animate-spin mx-auto mb-3"></div>
+        <p class="text-sm text-slate-500 dark:text-slate-400">Loading dashboard...</p>
       </div>
     </div>
 
     <!-- Dashboard Content -->
-    <div v-else class="space-y-4 sm:space-y-6">
-      
-      <!-- KEY METRICS - Top Row -->
+    <div v-else class="space-y-5 p-4 md:p-6">
+
+      <!-- ── ROW 1: 4 KPI CARDS ── -->
       <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+
         <!-- Total Revenue -->
-        <div class="bg-white rounded-lg border border-gray-200 p-3 sm:p-5">
+        <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 hover:shadow-md dark:hover:shadow-slate-900/50 hover:-translate-y-0.5 transition-all">
           <div class="flex items-center justify-between mb-3">
-            <div class="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-              <svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div class="w-8 h-8 bg-green-100 dark:bg-green-900/40 rounded-lg flex items-center justify-center">
+              <svg class="w-4 h-4 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
-            <span v-if="revenueGrowth" class="text-xs font-semibold px-2 py-1 rounded-full" :class="revenueGrowth.isPositive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'">
+            <span v-if="revenueGrowth" class="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+              :class="revenueGrowth.isPositive ? 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400' : 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-400'">
               {{ revenueGrowth.isPositive ? '+' : '' }}{{ revenueGrowth.value }}%
             </span>
           </div>
-          <p class="text-xs sm:text-sm font-medium text-gray-600 mb-1">Total Revenue</p>
-          <h3 class="text-lg sm:text-2xl font-bold text-gray-900">{{ formatCurrency(stats.totalRevenue) }}</h3>
+          <div class="text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100">{{ formatCurrency(stats.totalRevenue) }}</div>
+          <div class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Total Revenue</div>
+          <div class="text-[10px] text-slate-400 dark:text-slate-500 mt-1">{{ formatCurrency(stats.monthlyRevenue) }} this month</div>
         </div>
 
-        <!-- Active Users -->
-        <div class="bg-white rounded-lg border border-gray-200 p-3 sm:p-5">
+        <!-- Active Sessions -->
+        <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 hover:shadow-md dark:hover:shadow-slate-900/50 hover:-translate-y-0.5 transition-all">
           <div class="flex items-center justify-between mb-3">
-            <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-              <svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div class="w-8 h-8 bg-blue-100 dark:bg-blue-900/40 rounded-lg flex items-center justify-center">
+              <svg class="w-4 h-4 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
               </svg>
             </div>
             <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
           </div>
-          <p class="text-xs sm:text-sm font-medium text-gray-600 mb-1">Active Sessions</p>
-          <h3 class="text-lg sm:text-2xl font-bold text-gray-900">{{ stats.activeSessions || 0 }}</h3>
-          <p class="text-xs text-gray-500 mt-1">{{ stats.totalUsers || 0 }} total users</p>
+          <div class="text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100">{{ stats.activeSessions || 0 }}</div>
+          <div class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Active Sessions</div>
+          <div class="text-[10px] text-slate-400 dark:text-slate-500 mt-1">{{ stats.totalUsers || 0 }} total users</div>
         </div>
 
         <!-- Network Health -->
-        <div class="bg-white rounded-lg border border-gray-200 p-3 sm:p-5">
+        <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 hover:shadow-md dark:hover:shadow-slate-900/50 hover:-translate-y-0.5 transition-all">
           <div class="flex items-center justify-between mb-3">
-            <div class="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center">
-              <svg class="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div class="w-8 h-8 bg-indigo-100 dark:bg-indigo-900/40 rounded-lg flex items-center justify-center">
+              <svg class="w-4 h-4 text-indigo-600 dark:text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904 3.905 10.236 3.905 14.142 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0" />
               </svg>
             </div>
-            <span class="text-xs font-semibold px-2 py-1 rounded-full" :class="routerHealthStatus?.bgColor + ' ' + routerHealthStatus?.color">
+            <span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full" :class="routerHealthStatus?.bgColor + ' ' + routerHealthStatus?.color">
               {{ routerHealthStatus?.label }}
             </span>
           </div>
-          <p class="text-xs sm:text-sm font-medium text-gray-600 mb-1">Network Health</p>
-          <h3 class="text-lg sm:text-2xl font-bold text-gray-900">{{ stats.onlineRouters || 0 }}/{{ stats.totalRouters || 0 }}</h3>
-          <p class="text-xs text-gray-500 mt-1">Routers online</p>
+          <div class="text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100">{{ stats.onlineRouters || 0 }}<span class="text-sm font-normal text-slate-400">/{{ stats.totalRouters || 0 }}</span></div>
+          <div class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Network Health</div>
+          <div class="text-[10px] text-slate-400 dark:text-slate-500 mt-1">{{ stats.offlineRouters || 0 }} offline</div>
         </div>
 
         <!-- Data Usage -->
-        <div class="bg-white rounded-lg border border-gray-200 p-3 sm:p-5">
+        <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 hover:shadow-md dark:hover:shadow-slate-900/50 hover:-translate-y-0.5 transition-all">
           <div class="flex items-center justify-between mb-3">
-            <div class="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
-              <svg class="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div class="w-8 h-8 bg-purple-100 dark:bg-purple-900/40 rounded-lg flex items-center justify-center">
+              <svg class="w-4 h-4 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
               </svg>
             </div>
           </div>
-          <p class="text-xs sm:text-sm font-medium text-gray-600 mb-1">Data Usage</p>
-          <h3 class="text-lg sm:text-2xl font-bold text-gray-900">{{ formatDataSize(stats.dataUsage) }}</h3>
-          <p class="text-xs text-gray-500 mt-1">Total transferred</p>
+          <div class="text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100">{{ formatDataSize(stats.dataUsage) }}</div>
+          <div class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Data Usage</div>
+          <div class="text-[10px] text-slate-400 dark:text-slate-500 mt-1">Total transferred</div>
+        </div>
+
+      </div>
+
+      <!-- ── ROW 2: SECONDARY METRICS ── -->
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 px-4 py-3">
+          <div class="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1">Daily Income</div>
+          <div class="text-lg font-bold text-slate-900 dark:text-slate-100">{{ formatCurrency(stats.dailyIncome) }}</div>
+        </div>
+        <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 px-4 py-3">
+          <div class="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1">Weekly</div>
+          <div class="text-lg font-bold text-slate-900 dark:text-slate-100">{{ formatCurrency(stats.weeklyIncome) }}</div>
+        </div>
+        <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 px-4 py-3">
+          <div class="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1">Hotspot Users</div>
+          <div class="text-lg font-bold text-slate-900 dark:text-slate-100">{{ stats.hotspotUsers || 0 }}</div>
+        </div>
+        <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 px-4 py-3">
+          <div class="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1">PPPoE Users</div>
+          <div class="text-lg font-bold text-slate-900 dark:text-slate-100">{{ stats.pppoeUsers || 0 }}</div>
         </div>
       </div>
 
-      <!-- PAYMENT ANALYTICS -->
+      <!-- ── ROW 3: WIDGETS ── -->
       <PaymentWidget :paymentData="paymentData" />
 
-      <!-- TWO COLUMN LAYOUT -->
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <!-- SMS Expenses -->
+      <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
         <ExpensesWidget :expensesData="expensesData" />
-
-        <!-- Business Analytics -->
         <BusinessAnalyticsWidget :analyticsData="analyticsData" />
       </div>
 
-      <!-- QUICK ACTIONS -->
-      <div class="bg-white rounded-lg border border-gray-200 p-4 sm:p-6">
-        <h3 class="text-sm sm:text-base font-semibold text-gray-900 mb-3 sm:mb-4">Quick Actions</h3>
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
-          <router-link 
-            to="/dashboard/hotspot/users"
-            class="flex flex-col items-center gap-3 p-4 rounded-lg border-2 border-gray-200 hover:border-blue-500 hover:bg-blue-50 transition-all group"
+      <!-- ── ROW 4: QUICK ACTIONS ── -->
+      <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 sm:p-5">
+        <h3 class="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-4">Quick Actions</h3>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <router-link
+            v-for="action in quickActions"
+            :key="action.to"
+            :to="action.to"
+            class="flex flex-col items-center gap-2.5 p-4 rounded-xl border-2 border-slate-200 dark:border-slate-700 hover:border-current hover:bg-current/5 dark:hover:bg-current/10 transition-all group"
+            :class="action.borderClass"
           >
-            <div class="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center group-hover:bg-blue-200 transition-colors">
-              <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-              </svg>
+            <div class="w-11 h-11 rounded-lg flex items-center justify-center transition-colors" :class="action.iconBg">
+              <component :is="action.icon" class="w-5 h-5" :class="action.iconColor" />
             </div>
-            <span class="text-sm font-semibold text-gray-900">Manage Users</span>
-          </router-link>
-
-          <router-link 
-            to="/dashboard/routers/mikrotik"
-            class="flex flex-col items-center gap-3 p-4 rounded-lg border-2 border-gray-200 hover:border-green-500 hover:bg-green-50 transition-all group"
-          >
-            <div class="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center group-hover:bg-green-200 transition-colors">
-              <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904 3.905 10.236 3.905 14.142 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0" />
-              </svg>
-            </div>
-            <span class="text-sm font-semibold text-gray-900">Routers</span>
-          </router-link>
-
-          <router-link 
-            to="/dashboard/packages/all"
-            class="flex flex-col items-center gap-3 p-4 rounded-lg border-2 border-gray-200 hover:border-purple-500 hover:bg-purple-50 transition-all group"
-          >
-            <div class="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center group-hover:bg-purple-200 transition-colors">
-              <svg class="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-              </svg>
-            </div>
-            <span class="text-sm font-semibold text-gray-900">Packages</span>
-          </router-link>
-
-          <router-link 
-            to="/dashboard/reports/revenue"
-            class="flex flex-col items-center gap-3 p-4 rounded-lg border-2 border-gray-200 hover:border-amber-500 hover:bg-amber-50 transition-all group"
-          >
-            <div class="w-12 h-12 bg-amber-100 rounded-lg flex items-center justify-center group-hover:bg-amber-200 transition-colors">
-              <svg class="w-6 h-6 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-              </svg>
-            </div>
-            <span class="text-sm font-semibold text-gray-900">Reports</span>
+            <span class="text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-200 text-center">{{ action.label }}</span>
           </router-link>
         </div>
       </div>
@@ -175,13 +169,14 @@
 </template>
 
 <script setup>
-import { onMounted } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useBroadcasting } from '@/modules/common/composables/websocket/useBroadcasting'
 import { useAuth } from '@/modules/common/composables/auth/useAuth'
 import { useDashboard } from '@/modules/tenant/composables/data/useDashboard'
 import PaymentWidget from '@/modules/tenant/components/dashboard/PaymentWidgetClean.vue'
 import ExpensesWidget from '@/modules/tenant/components/dashboard/ExpensesWidgetClean.vue'
 import BusinessAnalyticsWidget from '@/modules/tenant/components/dashboard/BusinessAnalyticsWidgetClean.vue'
+import { Users, Wifi, Package, BarChart3, Radio, CreditCard, Settings, Activity } from 'lucide-vue-next'
 
 const { user } = useAuth()
 const { isConnected, subscribeToPrivateChannel } = useBroadcasting()
@@ -201,10 +196,20 @@ const {
   revenueGrowth,
 } = useDashboard()
 
-// Subscribe to WebSocket channels (tenant-specific for security)
+const quickActions = computed(() => [
+  { to: '/dashboard/hotspot/users', label: 'Hotspot Users', icon: Radio, iconBg: 'bg-blue-100 dark:bg-blue-900/40', iconColor: 'text-blue-600 dark:text-blue-400', borderClass: 'hover:border-blue-500' },
+  { to: '/dashboard/routers/mikrotik', label: 'Routers', icon: Wifi, iconBg: 'bg-green-100 dark:bg-green-900/40', iconColor: 'text-green-600 dark:text-green-400', borderClass: 'hover:border-green-500' },
+  { to: '/dashboard/packages/all', label: 'Packages', icon: Package, iconBg: 'bg-purple-100 dark:bg-purple-900/40', iconColor: 'text-purple-600 dark:text-purple-400', borderClass: 'hover:border-purple-500' },
+  { to: '/dashboard/billing/payments', label: 'Payments', icon: CreditCard, iconBg: 'bg-emerald-100 dark:bg-emerald-900/40', iconColor: 'text-emerald-600 dark:text-emerald-400', borderClass: 'hover:border-emerald-500' },
+  { to: '/dashboard/users/all', label: 'All Users', icon: Users, iconBg: 'bg-indigo-100 dark:bg-indigo-900/40', iconColor: 'text-indigo-600 dark:text-indigo-400', borderClass: 'hover:border-indigo-500' },
+  { to: '/dashboard/reports/revenue', label: 'Reports', icon: BarChart3, iconBg: 'bg-amber-100 dark:bg-amber-900/40', iconColor: 'text-amber-600 dark:text-amber-400', borderClass: 'hover:border-amber-500' },
+  { to: '/dashboard/monitoring/system-logs', label: 'Monitoring', icon: Activity, iconBg: 'bg-rose-100 dark:bg-rose-900/40', iconColor: 'text-rose-600 dark:text-rose-400', borderClass: 'hover:border-rose-500' },
+  { to: '/dashboard/settings/general', label: 'Settings', icon: Settings, iconBg: 'bg-slate-100 dark:bg-slate-700', iconColor: 'text-slate-600 dark:text-slate-300', borderClass: 'hover:border-slate-400' },
+])
+
 onMounted(() => {
   fetchDashboardStats()
-  
+
   const tenantId = user.value?.tenant_id
   if (!tenantId) {
     console.warn('No tenant_id available - cannot subscribe to tenant channels')
@@ -212,12 +217,8 @@ onMounted(() => {
   }
 
   subscribeToPrivateChannel(`tenant.${tenantId}.dashboard-stats`, {
-    'DashboardStatsUpdated': (event) => {
-      if (event.stats) updateStatsFromEvent(event.stats)
-    },
-    '.DashboardStatsUpdated': (event) => {
-      if (event.stats) updateStatsFromEvent(event.stats)
-    },
+    'DashboardStatsUpdated': (event) => { if (event.stats) updateStatsFromEvent(event.stats) },
+    '.DashboardStatsUpdated': (event) => { if (event.stats) updateStatsFromEvent(event.stats) },
     'PackageCreated': () => fetchDashboardStats(),
     'PackageDeleted': () => fetchDashboardStats(),
     'PppoeUserCreated': () => fetchDashboardStats(),
@@ -239,12 +240,8 @@ onMounted(() => {
   })
 
   subscribeToPrivateChannel(`tenant.${tenantId}.routers`, {
-    'RouterStatusUpdated': (event) => {
-      if (event.stats) updateStatsFromEvent(event.stats)
-    },
-    '.RouterStatusUpdated': (event) => {
-      if (event.stats) updateStatsFromEvent(event.stats)
-    },
+    'RouterStatusUpdated': (event) => { if (event.stats) updateStatsFromEvent(event.stats) },
+    '.RouterStatusUpdated': (event) => { if (event.stats) updateStatsFromEvent(event.stats) },
     '.RouterCreated': () => fetchDashboardStats(),
   })
 })

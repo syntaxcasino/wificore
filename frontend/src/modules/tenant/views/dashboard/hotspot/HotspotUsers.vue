@@ -19,7 +19,9 @@
   >
     <!-- Icon Slot -->
     <template #icon>
-      <Wifi class="h-5 w-5 md:h-6 md:w-6 text-white" />
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 md:h-6 md:w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0" />
+      </svg>
     </template>
 
     <!-- Filters -->
@@ -38,7 +40,9 @@
 
     <!-- Error State -->
     <div v-if="error" class="flex flex-col items-center justify-center gap-4 p-8 text-red-500">
-      <AlertCircle class="w-10 h-10" />
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
       <p class="text-center">{{ error }}</p>
       <button @click="fetchUsers" class="px-4 py-2 text-sm font-medium text-white bg-red-500 rounded-md hover:bg-red-600 transition-colors">Retry</button>
     </div>
@@ -47,7 +51,7 @@
     <DataSkeleton v-else-if="loading" :count="5" />
 
     <!-- Data Content -->
-    <div v-else-if="filteredData.length" class="flex flex-col h-full px-4 md:px-6 pt-2 pb-2 min-h-0">
+    <div v-else-if="filteredData.length" class="flex flex-col h-full pt-2 pb-2 min-h-0">
       <!-- Mobile Cards -->
       <div class="md:hidden space-y-3 overflow-y-auto flex-1 min-h-0">
         <MobileDataCard
@@ -66,7 +70,7 @@
       <!-- Desktop Table -->
       <div class="hidden md:flex bg-white border-x border-t border-slate-200 flex-col min-h-0 flex-1">
         <!-- Fixed Header -->
-        <div class="bg-slate-50 border-b border-slate-200">
+        <div class="bg-slate-50 dark:bg-slate-700/50 border-b border-slate-200 dark:border-slate-700">
           <table class="w-full">
             <thead>
               <tr>
@@ -84,16 +88,16 @@
         <!-- Scrollable Body -->
         <div class="overflow-y-auto flex-1 min-h-0">
           <table class="w-full">
-            <tbody class="divide-y divide-slate-100">
+            <tbody class="divide-y divide-slate-100 dark:divide-slate-700">
               <tr v-for="user in paginatedData" :key="user.id" class="hover:bg-cyan-50/50 transition-colors">
                 <td class="px-6 py-4 w-[18%]">
                   <div class="flex items-center gap-2">
                     <User class="w-4 h-4 text-cyan-600" />
-                    <span class="text-sm font-medium text-slate-900">{{ user.username }}</span>
+                    <span class="text-sm font-medium text-slate-900 dark:text-slate-100">{{ user.username }}</span>
                   </div>
                 </td>
                 <td class="px-6 py-4 w-[18%]">
-                  <div class="text-sm text-slate-600">{{ user.phone || user.email || '—' }}</div>
+                  <div class="text-sm text-slate-600 dark:text-slate-400">{{ user.phone || user.email || '—' }}</div>
                 </td>
                 <td class="px-6 py-4 w-[15%]">
                   <span class="text-sm text-slate-700">{{ user.package_name || '—' }}</span>
@@ -147,7 +151,7 @@
 
     <!-- Global Dropdown Menu Portal -->
     <Teleport to="body">
-      <div v-if="activeMenu !== null" data-dropdown-menu :style="menuPosition" class="fixed w-48 bg-white rounded-lg shadow-2xl border border-slate-200 py-1 z-[9999] overflow-hidden">
+      <div v-if="activeMenu !== null" data-dropdown-menu :style="menuPosition" class="fixed w-48 bg-white dark:bg-slate-800 rounded-lg shadow-2xl border border-slate-200 dark:border-slate-700 py-1 z-[9999] overflow-hidden">
         <button @click="viewDetails(users.find(u => u.id === activeMenu))" class="flex items-center w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-cyan-50 hover:text-cyan-700 transition-colors">
           <Eye class="w-4 h-4 mr-3" />
           View Details
@@ -169,14 +173,14 @@
   </DataViewContainer>
 
   <!-- User Details SlideOverlay -->
-  <SlideOverlay v-model="showDetailsOverlay" title="User Details" subtitle="Hotspot user information" icon="User" width="480px" @close="closeDetails">
+  <SlideOverlay v-model="showDetailsOverlay" title="User Details" subtitle="Hotspot user information" icon="User" width="60%" @close="closeDetails">
     <div v-if="selectedUser" class="p-6 space-y-6">
       <div class="flex items-center gap-4">
         <div class="w-16 h-16 bg-cyan-100 rounded-full flex items-center justify-center text-cyan-700 text-2xl font-bold">
           {{ selectedUser.username.charAt(0).toUpperCase() }}
         </div>
         <div>
-          <h3 class="text-lg font-semibold text-slate-900">{{ selectedUser.username }}</h3>
+          <h3 class="text-lg font-semibold text-slate-900 dark:text-slate-100">{{ selectedUser.username }}</h3>
           <EntityStatusBadge :status="selectedUser.status" size="sm" />
         </div>
       </div>
@@ -184,15 +188,15 @@
       <div class="grid grid-cols-2 gap-4">
         <div class="bg-slate-50 rounded-lg p-4">
           <div class="text-xs text-slate-500 uppercase tracking-wider">Phone</div>
-          <div class="text-sm font-medium text-slate-900">{{ selectedUser.phone || '—' }}</div>
+          <div class="text-sm font-medium text-slate-900 dark:text-slate-100">{{ selectedUser.phone || '—' }}</div>
         </div>
         <div class="bg-slate-50 rounded-lg p-4">
           <div class="text-xs text-slate-500 uppercase tracking-wider">Email</div>
-          <div class="text-sm font-medium text-slate-900">{{ selectedUser.email || '—' }}</div>
+          <div class="text-sm font-medium text-slate-900 dark:text-slate-100">{{ selectedUser.email || '—' }}</div>
         </div>
         <div class="bg-slate-50 rounded-lg p-4">
           <div class="text-xs text-slate-500 uppercase tracking-wider">Package</div>
-          <div class="text-sm font-medium text-slate-900">{{ selectedUser.package_name || '—' }}</div>
+          <div class="text-sm font-medium text-slate-900 dark:text-slate-100">{{ selectedUser.package_name || '—' }}</div>
         </div>
         <div class="bg-slate-50 rounded-lg p-4">
           <div class="text-xs text-slate-500 uppercase tracking-wider">IP Address</div>
@@ -206,18 +210,18 @@
           <div class="flex-1 h-2 bg-slate-200 rounded-full overflow-hidden">
             <div class="h-full rounded-full transition-all" :class="getDataUsageColor(selectedUser.data_usage, selectedUser.data_limit)" :style="{ width: getDataUsagePercent(selectedUser.data_usage, selectedUser.data_limit) }"></div>
           </div>
-          <span class="text-sm font-medium text-slate-900">{{ formatDataUsage(selectedUser.data_usage) }} / {{ formatDataUsage(selectedUser.data_limit) }}</span>
+          <span class="text-sm font-medium text-slate-900 dark:text-slate-100">{{ formatDataUsage(selectedUser.data_usage) }} / {{ formatDataUsage(selectedUser.data_limit) }}</span>
         </div>
       </div>
 
       <div class="grid grid-cols-2 gap-4">
         <div class="bg-slate-50 rounded-lg p-4">
           <div class="text-xs text-slate-500 uppercase tracking-wider">Created</div>
-          <div class="text-sm font-medium text-slate-900">{{ formatDateTime(selectedUser.created_at) }}</div>
+          <div class="text-sm font-medium text-slate-900 dark:text-slate-100">{{ formatDateTime(selectedUser.created_at) }}</div>
         </div>
         <div class="bg-slate-50 rounded-lg p-4">
           <div class="text-xs text-slate-500 uppercase tracking-wider">Expires</div>
-          <div class="text-sm font-medium text-slate-900" :class="getExpiryClass(selectedUser.expiry)">{{ formatExpiry(selectedUser.expiry) }}</div>
+          <div class="text-sm font-medium text-slate-900 dark:text-slate-100" :class="getExpiryClass(selectedUser.expiry)">{{ formatExpiry(selectedUser.expiry) }}</div>
         </div>
       </div>
 
@@ -230,7 +234,7 @@
       <div class="flex gap-3">
         <button
           @click="closeDetails"
-          class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+          class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-600"
         >
           Close
         </button>
@@ -248,7 +252,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { Wifi, AlertCircle, User, MoreVertical, WifiOff, Eye, Ban } from 'lucide-vue-next'
+import { User, MoreVertical, WifiOff, Eye, Ban } from 'lucide-vue-next'
 import { useHotspot } from '@/modules/tenant/composables/useHotspot'
 import { useToast } from '@/modules/common/composables/useToast'
 import { useConfirmStore } from '@/stores/confirm'
@@ -260,12 +264,12 @@ import DataEmptyState from '@/modules/common/components/base/DataEmptyState.vue'
 import EntityStatusBadge from '@/modules/common/components/base/EntityStatusBadge.vue'
 import SlideOverlay from '@/modules/common/components/base/SlideOverlay.vue'
 import BaseSelect from '@/modules/common/components/base/BaseSelect.vue'
-import axios from 'axios'
 
 // Get composable state and methods
 const { 
   users,
   sessions,
+  packages,
   loading,
   error: hotspotError,
   pagination,
@@ -275,6 +279,7 @@ const {
   activeSessions,
   fetchUsers,
   fetchSessions,
+  fetchPackages,
   disconnectUser: disconnectUserAction,
   grantAccess,
   revokeAccess,
@@ -294,7 +299,6 @@ const currentPage = ref(1)
 const itemsPerPage = ref(10)
 const showDetailsOverlay = ref(false)
 const selectedUser = ref(null)
-const packages = ref([])
 const filters = ref({ status: '', package: '' })
 
 // Menu state for dropdown actions
@@ -512,14 +516,6 @@ const closeDetails = () => {
   setTimeout(() => { selectedUser.value = null }, 300)
 }
 
-const fetchPackages = async () => {
-  try {
-    const response = await axios.get('/hotspot/packages', { params: { per_page: 100 } })
-    packages.value = response.data?.packages?.data || response.data?.packages || []
-  } catch (err) {
-    console.error('fetchPackages error:', err)
-  }
-}
 
 // Mobile card actions
 const getUserActions = (user) => [
@@ -544,8 +540,11 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
-::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+/* Scrollbar — no Tailwind equivalent for ::-webkit-scrollbar pseudo-elements */
+::-webkit-scrollbar        { width: 8px; height: 8px; }
+::-webkit-scrollbar-track  { background: #f1f5f9; border-radius: 4px; }
+::-webkit-scrollbar-thumb  { background: #cbd5e1; border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+:global(.dark) ::-webkit-scrollbar-track { background: #1e293b; }
+:global(.dark) ::-webkit-scrollbar-thumb { background: #475569; }
 </style>

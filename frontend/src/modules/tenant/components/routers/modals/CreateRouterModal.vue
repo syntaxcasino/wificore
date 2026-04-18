@@ -70,34 +70,51 @@
       title="Router Provisioning"
       :subtitle="provisioningRouter ? provisioningRouter.name : 'Configure your MikroTik router'"
       icon="Wifi"
-      width="480px"
+      :gradient="true"
+      :badge="currentStage === 3 && provisioningProgress === 100 ? 'Complete' : `Stage ${currentStage}`"
+      width="60%"
       :close-on-backdrop="!waitingForJobCompletion"
+      no-padding
       @update:modelValue="val => { if (!val) $emit('close-form') }"
       @close="$emit('close-form')"
     >
-        <!-- Progress Bar - Compact -->
-        <div class="px-4 py-2 border-b border-gray-200 bg-white flex-shrink-0">
-          <div class="flex items-center justify-between mb-1.5">
+      <template #status-bar>
+        <!-- Progress Bar -->
+        <div class="px-4 py-2 bg-white border-b border-gray-100">
+          <div class="flex items-center justify-between mb-1">
             <div class="flex items-center gap-1.5">
-              <div class="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse"></div>
-              <span class="text-xs font-semibold text-gray-700">Progress</span>
+              <div class="w-1.5 h-1.5 rounded-full animate-pulse" :class="provisioningProgress >= 100 ? 'bg-green-500' : 'bg-blue-500'"></div>
+              <span class="text-[11px] font-semibold text-gray-600">{{ currentStageText }}</span>
             </div>
-            <span class="text-sm font-bold text-blue-600">{{ Math.round(provisioningProgress) }}%</span>
+            <span class="text-xs font-bold" :class="provisioningProgress >= 100 ? 'text-green-600' : 'text-blue-600'">{{ Math.round(provisioningProgress) }}%</span>
           </div>
-          <div class="relative w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+          <div class="relative w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
             <div
-              class="absolute inset-0 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full transition-all duration-500 ease-out"
+              class="absolute inset-0 rounded-full transition-all duration-500 ease-out"
+              :class="provisioningProgress >= 100 ? 'bg-gradient-to-r from-green-400 to-emerald-500' : 'bg-gradient-to-r from-blue-500 to-indigo-600'"
               :style="{ width: provisioningProgress + '%' }"
             ></div>
           </div>
-          <div class="flex justify-between mt-1.5 text-xs">
-            <span class="text-gray-600">{{ currentStageText }}</span>
-            <span class="text-gray-700">{{ provisioningStatus }}</span>
-          </div>
+          <div class="mt-1 text-[10px] text-gray-500 text-right">{{ provisioningStatus }}</div>
         </div>
+        <!-- Stage pills -->
+        <div class="flex items-center px-4 py-2 gap-1 bg-gray-50 border-b border-gray-100 overflow-x-auto">
+          <template v-for="(lbl, idx) in ['Setup', 'Monitoring', 'Deploy']" :key="idx">
+            <div class="flex items-center gap-1 flex-shrink-0">
+              <div class="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold ring-1.5 transition-all"
+                :class="currentStage > idx+1 ? 'bg-green-500 ring-green-300 text-white' : currentStage === idx+1 ? 'bg-blue-600 ring-blue-300 text-white' : 'bg-white ring-gray-300 text-gray-400'">
+                <svg v-if="currentStage > idx+1" class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>
+                <span v-else>{{ idx+1 }}</span>
+              </div>
+              <span class="text-[10px] font-medium" :class="currentStage > idx+1 ? 'text-green-600' : currentStage === idx+1 ? 'text-blue-600' : 'text-gray-400'">{{ lbl }}</span>
+            </div>
+            <div v-if="idx < 2" class="flex-1 h-px min-w-[8px] mx-0.5 transition-colors" :class="currentStage > idx+1 ? 'bg-green-300' : 'bg-gray-200'" />
+          </template>
+        </div>
+      </template>
 
         <!-- Main Content - Scrollable -->
-        <div class="flex-1 overflow-y-auto p-4 bg-gray-50">
+        <div class="p-4 bg-gray-50">
             <!-- Stage 1: Router Identity & Initial Config -->
             <div v-if="currentStage === 1" class="space-y-4">
               <!-- Router Name Input - Show only if config not generated -->
@@ -480,19 +497,19 @@
         </div>
 
         <!-- Real-time Logs -->
-        <div class="border-t border-gray-200 bg-gray-50">
-          <div class="p-4">
-            <div class="flex items-center justify-between mb-3">
-              <h5 class="text-sm font-semibold text-gray-800">Activity Logs</h5>
-              <button @click="clearLogs" class="text-xs text-blue-600 hover:text-blue-700 font-medium">Clear</button>
+        <div class="border-t border-gray-100 bg-gray-50">
+          <div class="px-4 pt-3 pb-2">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-xs font-semibold text-gray-600">Activity Logs</span>
+              <button @click="clearLogs" class="text-[10px] text-blue-500 hover:text-blue-700 font-medium">Clear</button>
             </div>
-            <div class="max-h-48 overflow-y-auto space-y-1 bg-white p-3 rounded-lg border border-gray-200">
-              <div v-for="(log, index) in provisioningLogs.slice().reverse()" :key="index" class="flex items-start space-x-2 text-xs">
-                <span class="text-gray-500 font-mono text-[10px]">{{ formatLogTime(log.timestamp) }}</span>
-                <span :class="getLogLevelClass(log.level)" class="font-semibold">{{ log.level.toUpperCase() }}</span>
-                <span class="text-gray-700 flex-1">{{ log.message }}</span>
+            <div class="max-h-40 overflow-y-auto space-y-0.5 bg-slate-900 p-2.5 rounded-lg font-mono">
+              <div v-for="(log, index) in provisioningLogs.slice().reverse()" :key="index" class="flex items-start gap-2 text-[11px]">
+                <span class="text-slate-500 flex-shrink-0 w-14">{{ formatLogTime(log.timestamp) }}</span>
+                <span :class="getLogLevelClass(log.level)" class="font-bold flex-shrink-0 w-12">{{ log.level.toUpperCase() }}</span>
+                <span class="text-slate-300 flex-1 leading-tight">{{ log.message }}</span>
               </div>
-              <div v-if="provisioningLogs.length === 0" class="text-xs text-gray-500 italic text-center py-2">No activity yet...</div>
+              <div v-if="provisioningLogs.length === 0" class="text-[11px] text-slate-500 italic text-center py-2">No activity yet...</div>
             </div>
           </div>
         </div>
@@ -503,7 +520,7 @@
             <button
               v-if="currentStage === 1 && !initialConfig"
               @click="$emit('close-form')"
-              class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+              class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-600"
             >
               Cancel
             </button>
@@ -520,7 +537,7 @@
             <button
               v-if="currentStage === 1 && initialConfig"
               @click="$emit('close-form')"
-              class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+              class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-600"
             >
               Close
             </button>
@@ -554,7 +571,7 @@
             <button
               v-if="currentStage === 3 && provisioningProgress >= 100"
               @click="resetForm; $emit('close-form')"
-              class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+              class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-600"
             >
               Add Another Router
             </button>
@@ -644,102 +661,13 @@ const {
 </script>
 
 <style scoped>
-/* Shimmer animation for progress bar */
-@keyframes shimmer {
-  0% {
-    transform: translateX(-100%);
-  }
-  100% {
-    transform: translateX(100%);
-  }
-}
+/* Shimmer keyframe — no Tailwind equivalent */
+@keyframes shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+.animate-shimmer { animation: shimmer 2s infinite; }
 
-.animate-shimmer {
-  animation: shimmer 2s infinite;
-}
-
-/* Smooth transitions */
-* {
-  transition-property: background-color, border-color, color, fill, stroke, opacity, box-shadow, transform;
-  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-  transition-duration: 150ms;
-}
-
-/* Custom scrollbar */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-::-webkit-scrollbar-track {
-  background: rgba(31, 41, 55, 0.5);
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb {
-  background: rgba(75, 85, 99, 0.8);
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(107, 114, 128, 0.9);
-}
-
-/* Pulse animation for status indicators */
-@keyframes pulse {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.5;
-  }
-}
-
-.animate-pulse {
-  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
-
-/* Fade in animation */
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.space-y-4 > * {
-  animation: fadeIn 0.3s ease-out;
-}
-
-/* Hover effects for interactive elements */
-button:not(:disabled):hover {
-  transform: translateY(-1px);
-}
-
-button:not(:disabled):active {
-  transform: translateY(0);
-}
-
-/* Focus styles */
-input:focus,
-select:focus,
-textarea:focus {
-  outline: none;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
-}
-
-/* Loading spinner enhancement */
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.animate-spin {
-  animation: spin 1s linear infinite;
-}
+/* Scrollbar */
+::-webkit-scrollbar        { width: 8px; height: 8px; }
+::-webkit-scrollbar-track  { background: rgba(31,41,55,0.5); border-radius: 4px; }
+::-webkit-scrollbar-thumb  { background: rgba(75,85,99,0.8); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(107,114,128,0.9); }
 </style>

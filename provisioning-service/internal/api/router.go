@@ -34,6 +34,7 @@ func SetupRouter(logger *logrus.Logger) *gin.Engine {
 	{
 		// Provisioning endpoints
 		v1.POST("/provision", handler.ProvisionRouter)
+		v1.POST("/deploy-script", handler.DeployScript)
 		v1.POST("/verify", handler.VerifyConnectivity)
 		
 		// Live data endpoints

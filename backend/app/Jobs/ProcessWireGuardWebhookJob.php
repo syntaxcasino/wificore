@@ -4,13 +4,17 @@ namespace App\Jobs;
 
 use App\Events\RouterStatusUpdated;
 use App\Models\Router;
+use App\Models\RouterTenantMap;
+use App\Models\Tenant;
 use App\Models\WireguardPeer;
 use App\Services\CacheInvalidationService;
+use App\Traits\TenantAwareJob;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Carbon;
@@ -23,7 +27,7 @@ use Illuminate\Support\Carbon;
  */
 class ProcessWireGuardWebhookJob implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, TenantAwareJob;
 
     public array $eventData;
     public $tries = 3;
@@ -75,7 +79,10 @@ class ProcessWireGuardWebhookJob implements ShouldQueue
     }
 
     /**
-     * Process single peer handshake event
+     * Process single peer handshake event.
+     *
+     * Resolves tenant via RouterTenantMap (public schema), then switches to the
+     * correct tenant schema before touching wireguard_peers / routers.
      */
     private function processHandshake(): void
     {
@@ -83,197 +90,279 @@ class ProcessWireGuardWebhookJob implements ShouldQueue
         $handshakeTimestamp = $this->eventData['latest_handshake'];
         $endpoint = $this->eventData['endpoint'] ?? null;
 
-        // Find peer by public key
-        $peer = WireguardPeer::where('public_key', $publicKey)->first();
+        // --- Cross-tenant resolution via public-schema map ---
+        $map = RouterTenantMap::findByVpnPublicKey($publicKey);
 
-        if (!$peer) {
-            Log::debug('Peer not found for handshake', [
+        if (!$map) {
+            Log::debug('WireGuard handshake: no router_tenant_map entry for public key', [
                 'public_key' => substr($publicKey, 0, 20) . '...',
             ]);
             return;
         }
 
-        // Update peer handshake
-        $handshakeAt = Carbon::createFromTimestamp($handshakeTimestamp);
-        $peer->update([
-            'last_handshake' => $handshakeAt,
-            'endpoint' => $endpoint,
-        ]);
+        $tenantId = $map['tenant_id'];
+        $tenant = Tenant::find($tenantId);
 
-        // Update associated router
-        $router = $peer->router;
-        if (!$router) {
-            Log::debug('No router associated with peer', [
-                'peer_id' => $peer->id,
+        if (!$tenant || !$tenant->schema_created) {
+            Log::warning('WireGuard handshake: tenant not found or schema not ready', [
+                'tenant_id' => $tenantId,
             ]);
             return;
         }
 
-        // Only update if router is currently offline or needs status refresh
-        $previousStatus = $router->status;
-        $previousVpnStatus = $router->vpn_status;
+        // --- All DB work runs inside the correct tenant schema ---
+        $this->tenantId = $tenantId;
+        $this->executeInTenantContext(function () use ($publicKey, $handshakeTimestamp, $endpoint, $tenantId) {
+            $peer = WireguardPeer::where('public_key', $publicKey)->first();
 
-        $now = now();
-        $inProvisioning = in_array($router->status, $this->provisioningStatuses, true);
-
-        $router->update([
-            'status' => $inProvisioning ? ($router->status === 'pending' ? 'provisioning' : $router->status) : 'online',
-            'provisioning_stage' => $inProvisioning ? ($router->provisioning_stage ?? 'handshake_detected') : $router->provisioning_stage,
-            'vpn_status' => $inProvisioning ? $router->vpn_status : 'active',
-            'vpn_last_handshake' => $handshakeAt,
-            'last_seen' => $now,
-            'last_checked' => $now,
-        ]);
-
-        // Broadcast status update immediately
-        $this->broadcastStatusUpdate($router, $previousStatus, $previousVpnStatus);
-
-        Log::info('Router marked online via WireGuard handshake event', [
-            'router_id' => $router->id,
-            'router_name' => $router->name,
-            'previous_status' => $previousStatus,
-            'handshake_age_seconds' => abs(now()->diffInSeconds($handshakeAt, false)),
-        ]);
-    }
-
-    /**
-     * Process peer expired event
-     */
-    private function processExpired(): void
-    {
-        $publicKey = $this->eventData['public_key'];
-
-        $peer = WireguardPeer::where('public_key', $publicKey)->first();
-
-        if (!$peer) {
-            return;
-        }
-
-        // Clear handshake
-        $peer->update(['last_handshake' => null]);
-
-        $router = $peer->router;
-        if (!$router) {
-            return;
-        }
-
-        $previousStatus = $router->status;
-        $previousVpnStatus = $router->vpn_status;
-        $inProvisioning = in_array($router->status, $this->provisioningStatuses, true);
-
-        // Mark router offline only if operational
-        $router->update([
-            'status' => $inProvisioning ? $router->status : 'offline',
-            'provisioning_stage' => $inProvisioning ? $router->provisioning_stage : $router->provisioning_stage,
-            'vpn_status' => 'inactive',
-            'vpn_last_handshake' => null,
-            'last_checked' => now(),
-        ]);
-
-        $this->broadcastStatusUpdate($router, $previousStatus, $previousVpnStatus);
-
-        Log::info('Router marked offline via WireGuard expired event', [
-            'router_id' => $router->id,
-            'router_name' => $router->name,
-            'previous_status' => $previousStatus,
-        ]);
-    }
-
-    /**
-     * Process batch peer update
-     */
-    private function processBatch(): void
-    {
-        $peers = $this->eventData['peers'] ?? [];
-        $updatedRouters = [];
-
-        foreach ($peers as $peerData) {
-            if (empty($peerData['latest_handshake'])) {
-                continue;
-            }
-
-            $peer = WireguardPeer::where('public_key', $peerData['public_key'])->first();
             if (!$peer) {
-                continue;
+                Log::debug('WireGuard handshake: peer not found in tenant schema', [
+                    'public_key' => substr($publicKey, 0, 20) . '...',
+                    'tenant_id' => $tenantId,
+                ]);
+                return;
             }
 
-            $handshakeAt = Carbon::createFromTimestamp($peerData['latest_handshake']);
-            
-            // Only update if handshake is newer
-            if ($peer->last_handshake && $peer->last_handshake->gte($handshakeAt)) {
-                continue;
-            }
-
+            $handshakeAt = Carbon::createFromTimestamp($handshakeTimestamp);
             $peer->update([
                 'last_handshake' => $handshakeAt,
-                'endpoint' => $peerData['endpoint'] ?? null,
+                'endpoint' => $endpoint,
             ]);
 
             $router = $peer->router;
-            if (!$router || isset($updatedRouters[$router->id])) {
-                continue;
+            if (!$router) {
+                return;
             }
 
             $previousStatus = $router->status;
-            $inProvisioning = in_array($router->status, $this->provisioningStatuses, true);
+            $previousVpnStatus = $router->vpn_status;
             $now = now();
-            
+            $inProvisioning = in_array($router->status, $this->provisioningStatuses, true);
+
+            // On first handshake a router always becomes online regardless of provisioning state.
+            // The WireGuard tunnel is live — that IS the proof of connectivity.
             $router->update([
-                'status' => $inProvisioning ? ($router->status === 'pending' ? 'provisioning' : $router->status) : 'online',
-                'provisioning_stage' => $inProvisioning ? ($router->provisioning_stage ?? 'handshake_detected') : $router->provisioning_stage,
-                'vpn_status' => $inProvisioning ? $router->vpn_status : 'active',
+                'status' => 'online',
+                'provisioning_stage' => $inProvisioning ? 'completed' : $router->provisioning_stage,
+                'vpn_status' => 'active',
                 'vpn_last_handshake' => $handshakeAt,
                 'last_seen' => $now,
                 'last_checked' => $now,
             ]);
 
-            $updatedRouters[$router->id] = [
-                'router' => $router,
-                'previous_status' => $previousStatus,
-            ];
-        }
+            $this->broadcastStatusUpdate($router, $previousStatus, $previousVpnStatus, $tenantId);
 
-        // Broadcast batch update
-        if (!empty($updatedRouters)) {
-            $payload = [];
-            $firstTenantId = null;
-            foreach ($updatedRouters as $data) {
-                $router = $data['router'];
-                if ($firstTenantId === null) {
-                    $firstTenantId = (string) $router->tenant_id;
+            // If the router was in a provisioning state, trigger interface discovery now.
+            // This is the earliest possible moment to run discovery after the WireGuard
+            // tunnel is confirmed live. Uses a dedup cache to avoid duplicate dispatches.
+            if ($inProvisioning) {
+                $discoveryKey = 'discovery_dispatch_' . $router->id;
+                if (!Cache::has($discoveryKey)) {
+                    Cache::put($discoveryKey, true, 30);
+                    dispatch(new DiscoverRouterInterfacesJob($tenantId, $router->id))
+                        ->onQueue('router-provisioning');
+
+                    Log::info('WireGuard handshake triggered discovery for provisioning router', [
+                        'router_id' => $router->id,
+                        'router_name' => $router->name,
+                        'tenant_id' => $tenantId,
+                    ]);
                 }
-                $payload[] = [
-                    'id' => $router->id,
-                    'name' => $router->name,
-                    'ip_address' => $router->ip_address,
-                    'vpn_ip' => $router->vpn_ip,
-                    'status' => 'online',
-                    'previous_status' => $data['previous_status'],
-                    'vpn_status' => 'active',
-                    'last_seen' => $router->last_seen,
-                    'tenant_id' => (string) $router->tenant_id,
-                ];
-                CacheInvalidationService::invalidateRouterCache((string) $router->tenant_id, (string) $router->id);
             }
 
-            broadcast(new RouterStatusUpdated($payload, $firstTenantId))->toOthers();
-
-            Log::info('Batch updated routers from WireGuard peers', [
-                'count' => count($updatedRouters),
+            Log::info('Router marked online via WireGuard handshake', [
+                'router_id' => $router->id,
+                'router_name' => $router->name,
+                'previous_status' => $previousStatus,
+                'handshake_age_seconds' => abs(now()->diffInSeconds($handshakeAt, false)),
+                'tenant_id' => $tenantId,
             ]);
+        });
+    }
+
+    /**
+     * Process peer expired event.
+     *
+     * Resolves tenant via RouterTenantMap then switches to the correct schema.
+     */
+    private function processExpired(): void
+    {
+        $publicKey = $this->eventData['public_key'];
+
+        $map = RouterTenantMap::findByVpnPublicKey($publicKey);
+
+        if (!$map) {
+            Log::debug('WireGuard expired: no router_tenant_map entry for public key', [
+                'public_key' => substr($publicKey, 0, 20) . '...',
+            ]);
+            return;
+        }
+
+        $tenantId = $map['tenant_id'];
+        $tenant = Tenant::find($tenantId);
+
+        if (!$tenant || !$tenant->schema_created) {
+            return;
+        }
+
+        $this->tenantId = $tenantId;
+        $this->executeInTenantContext(function () use ($publicKey, $tenantId) {
+            $peer = WireguardPeer::where('public_key', $publicKey)->first();
+
+            if (!$peer) {
+                return;
+            }
+
+            $peer->update(['last_handshake' => null]);
+
+            $router = $peer->router;
+            if (!$router) {
+                return;
+            }
+
+            $previousStatus = $router->status;
+            $previousVpnStatus = $router->vpn_status;
+            $inProvisioning = in_array($router->status, $this->provisioningStatuses, true);
+
+            // Mark router offline only if operational; leave provisioning routers alone
+            $router->update([
+                'status' => $inProvisioning ? $router->status : 'offline',
+                'vpn_status' => 'inactive',
+                'vpn_last_handshake' => null,
+                'last_checked' => now(),
+            ]);
+
+            $this->broadcastStatusUpdate($router, $previousStatus, $previousVpnStatus, $tenantId);
+
+            Log::info('Router marked offline via WireGuard expired event', [
+                'router_id' => $router->id,
+                'router_name' => $router->name,
+                'previous_status' => $previousStatus,
+                'tenant_id' => $tenantId,
+            ]);
+        });
+    }
+
+    /**
+     * Process batch peer update.
+     *
+     * Groups peers by tenant (resolved via RouterTenantMap), then processes
+     * each tenant group within the correct schema context.
+     */
+    private function processBatch(): void
+    {
+        $peers = $this->eventData['peers'] ?? [];
+
+        // Group peers by tenant using the public-schema map — avoids cross-schema queries
+        $byTenant = [];
+        foreach ($peers as $peerData) {
+            if (empty($peerData['latest_handshake'])) {
+                continue;
+            }
+            $map = RouterTenantMap::findByVpnPublicKey($peerData['public_key']);
+            if (!$map) {
+                continue;
+            }
+            $byTenant[$map['tenant_id']][] = $peerData;
+        }
+
+        foreach ($byTenant as $tenantId => $tenantPeers) {
+            $tenant = Tenant::find($tenantId);
+            if (!$tenant || !$tenant->schema_created) {
+                continue;
+            }
+
+            $this->tenantId = $tenantId;
+            $this->executeInTenantContext(function () use ($tenantPeers, $tenantId) {
+                $payload = [];
+
+                foreach ($tenantPeers as $peerData) {
+                    $peer = WireguardPeer::where('public_key', $peerData['public_key'])->first();
+                    if (!$peer) {
+                        continue;
+                    }
+
+                    $handshakeAt = Carbon::createFromTimestamp($peerData['latest_handshake']);
+
+                    // Only update if handshake is newer
+                    if ($peer->last_handshake && $peer->last_handshake->gte($handshakeAt)) {
+                        continue;
+                    }
+
+                    $peer->update([
+                        'last_handshake' => $handshakeAt,
+                        'endpoint' => $peerData['endpoint'] ?? null,
+                    ]);
+
+                    $router = $peer->router;
+                    if (!$router) {
+                        continue;
+                    }
+
+                    $previousStatus = $router->status;
+                    $inProvisioning = in_array($router->status, $this->provisioningStatuses, true);
+                    $now = now();
+
+                    // WireGuard handshake = tunnel live = router online, always
+                    $router->update([
+                        'status' => 'online',
+                        'provisioning_stage' => $inProvisioning ? 'completed' : $router->provisioning_stage,
+                        'vpn_status' => 'active',
+                        'vpn_last_handshake' => $handshakeAt,
+                        'last_seen' => $now,
+                        'last_checked' => $now,
+                    ]);
+
+                    CacheInvalidationService::invalidateRouterCache($tenantId, (string) $router->id);
+
+                    if ($inProvisioning) {
+                        $discoveryKey = 'discovery_dispatch_' . $router->id;
+                        if (!Cache::has($discoveryKey)) {
+                            Cache::put($discoveryKey, true, 30);
+                            dispatch(new DiscoverRouterInterfacesJob($tenantId, $router->id))
+                                ->onQueue('router-provisioning');
+                        }
+                    }
+
+                    $payload[] = [
+                        'id' => $router->id,
+                        'name' => $router->name,
+                        'ip_address' => $router->ip_address,
+                        'vpn_ip' => $router->vpn_ip,
+                        'status' => 'online',
+                        'previous_status' => $previousStatus,
+                        'vpn_status' => 'active',
+                        'last_seen' => $router->last_seen,
+                        'tenant_id' => $tenantId,
+                    ];
+                }
+
+                if (!empty($payload)) {
+                    try {
+                        broadcast(new RouterStatusUpdated($payload, $tenantId))->toOthers();
+                    } catch (\Exception $e) {
+                        Log::warning('WireGuard batch: failed to broadcast', ['error' => $e->getMessage()]);
+                    }
+
+                    Log::info('WireGuard batch: updated routers for tenant', [
+                        'tenant_id' => $tenantId,
+                        'count' => count($payload),
+                    ]);
+                }
+            });
         }
     }
 
     /**
-     * Broadcast status update event
+     * Broadcast status update event.
+     *
+     * @param string $tenantId Passed explicitly — avoids the extra DB lookup
+     *                         that $router->tenant_id triggers via RouterTenantMap.
      */
-    private function broadcastStatusUpdate(Router $router, string $previousStatus, string $previousVpnStatus): void
+    private function broadcastStatusUpdate(Router $router, string $previousStatus, string $previousVpnStatus, string $tenantId): void
     {
         try {
-            CacheInvalidationService::invalidateRouterCache(
-                (string) $router->tenant_id, 
-                (string) $router->id
-            );
+            CacheInvalidationService::invalidateRouterCache($tenantId, (string) $router->id);
 
             $payload = [
                 [
@@ -287,16 +376,15 @@ class ProcessWireGuardWebhookJob implements ShouldQueue
                     'previous_vpn_status' => $previousVpnStatus,
                     'last_seen' => $router->last_seen,
                     'last_checked' => now(),
-                    'tenant_id' => (string) $router->tenant_id,
+                    'tenant_id' => $tenantId,
                     'vpn_last_handshake' => $router->vpn_last_handshake,
                 ]
             ];
 
-            broadcast(new RouterStatusUpdated($payload, (string) $router->tenant_id))->toOthers();
+            broadcast(new RouterStatusUpdated($payload, $tenantId))->toOthers();
 
-            // Also publish to Redis
             Redis::publish('router:status:changed', json_encode([
-                'tenant_id' => $router->tenant_id,
+                'tenant_id' => $tenantId,
                 'routers' => $payload,
                 'timestamp' => now()->toIso8601String(),
             ]));

@@ -1,7 +1,7 @@
 <template>
-  <div class="bg-white rounded-b-lg rounded-t-none border border-slate-200 shadow-sm px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+  <div class="bg-white dark:bg-slate-800 rounded-b-lg rounded-t-none border border-slate-200 dark:border-slate-700 shadow-sm px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
     <!-- Info Text -->
-    <div class="text-sm text-slate-600">
+    <div class="text-sm text-slate-600 dark:text-slate-400">
       <slot name="info">
         Showing {{ start }} to {{ end }} of {{ total }} {{ itemName }}
       </slot>
@@ -11,11 +11,11 @@
     <div class="flex flex-col sm:flex-row sm:items-center gap-3">
       <!-- Items per page -->
       <div v-if="showItemsPerPage" class="flex items-center gap-2">
-        <span class="text-sm text-slate-600">Show:</span>
+        <span class="text-sm text-slate-600 dark:text-slate-400">Show:</span>
         <select 
           :value="itemsPerPage" 
           @change="handleItemsPerPageChange"
-          class="h-9 px-2.5 text-sm bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:outline-none"
+          class="h-9 px-2.5 text-sm bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:outline-none"
         >
           <option v-for="opt in itemsPerPageOptions" :key="opt" :value="opt">{{ opt }}</option>
         </select>
@@ -26,31 +26,31 @@
         <button 
           @click="goToFirst" 
           :disabled="currentPage <= 1"
-          class="h-9 px-3 text-sm font-medium bg-white border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-50 transition-colors"
+          class="h-9 px-3 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-600 disabled:opacity-50 transition-colors"
         >
           First
         </button>
         <button 
           @click="goToPrevious" 
           :disabled="currentPage <= 1"
-          class="h-9 px-3 text-sm font-medium bg-white border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-50 transition-colors"
+          class="h-9 px-3 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-600 disabled:opacity-50 transition-colors"
         >
           &lt;
         </button>
-        <div class="h-9 px-3 flex items-center text-sm text-slate-700 bg-slate-50 border border-slate-200 rounded-lg">
+        <div class="h-9 px-3 flex items-center text-sm text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-lg">
           {{ currentPage }} / {{ totalPages || 1 }}
         </div>
         <button 
           @click="goToNext" 
           :disabled="currentPage >= totalPages"
-          class="h-9 px-3 text-sm font-medium bg-white border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-50 transition-colors"
+          class="h-9 px-3 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-600 disabled:opacity-50 transition-colors"
         >
           &gt;
         </button>
         <button 
           @click="goToLast" 
           :disabled="currentPage >= totalPages"
-          class="h-9 px-3 text-sm font-medium bg-white border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-50 transition-colors"
+          class="h-9 px-3 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-600 disabled:opacity-50 transition-colors"
         >
           Last
         </button>

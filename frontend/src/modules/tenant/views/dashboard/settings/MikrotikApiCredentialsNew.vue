@@ -41,10 +41,10 @@
               </div>
             </div>
 
-            <div class="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+            <div class="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-700/50 rounded-lg">
               <div>
-                <div class="text-sm font-medium text-slate-900">Use SSL</div>
-                <div class="text-xs text-slate-500">Enable secure API connection</div>
+                <div class="text-sm font-medium text-slate-900 dark:text-slate-100">Use SSL</div>
+                <div class="text-xs text-slate-500 dark:text-slate-400">Enable secure API connection</div>
               </div>
               <label class="relative inline-flex items-center cursor-pointer">
                 <input v-model="formData.use_ssl" type="checkbox" class="sr-only peer" />
@@ -74,18 +74,18 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { Router, Zap, Save, CheckCircle, XCircle } from 'lucide-vue-next'
-import axios from 'axios'
 import PageContainer from '@/modules/common/components/layout/templates/PageContainer.vue'
 import PageHeader from '@/modules/common/components/layout/templates/PageHeader.vue'
 import PageContent from '@/modules/common/components/layout/templates/PageContent.vue'
 import BaseButton from '@/modules/common/components/base/BaseButton.vue'
 import BaseCard from '@/modules/common/components/base/BaseCard.vue'
+import { useSettings } from '@/modules/tenant/composables/useSettings.js'
 
-const breadcrumbs = [{ label: 'Dashboard', to: '/dashboard' }, { label: 'Settings', to: '/dashboard/settings' }, { label: 'Mikrotik API' }]
-
-const saving = ref(false)
-const testing = ref(false)
-const connectionStatus = ref(null)
+const breadcrumbs = [
+  { label: 'Dashboard', to: '/dashboard' },
+  { label: 'Settings', to: '/dashboard/settings' },
+  { label: 'Mikrotik API' }
+]
 
 const defaults = {
   router_ip: '',
@@ -95,53 +95,21 @@ const defaults = {
   use_ssl: false
 }
 
-const formData = ref({ ...defaults })
+const connectionStatus = ref(null)
 
-const fetchSettings = async () => {
-  try {
-    const response = await axios.get('/settings/mikrotik')
-    const data = response.data?.settings || response.data?.data || response.data || {}
-    formData.value = { ...defaults, ...data, password: '' }
-  } catch (err) {
-    console.error('fetchMikrotikSettings error:', err)
-  }
-}
-
-const saveSettings = async () => {
-  saving.value = true
-  try {
-    await axios.post('/settings/mikrotik', formData.value)
-    alert('Settings saved!')
-  } catch (err) {
-    console.error('saveSettings error:', err)
-    alert(err.response?.data?.message || 'Failed to save settings')
-  } finally {
-    saving.value = false
-  }
-}
-
-const testConnection = async () => {
-  testing.value = true
-  connectionStatus.value = null
-  try {
-    const response = await axios.post('/settings/mikrotik/test', formData.value)
-    connectionStatus.value = {
-      success: response.data?.success ?? true,
-      message: response.data?.message || 'Connection Successful',
-      details: response.data?.details || 'Mikrotik API is reachable'
-    }
-  } catch (err) {
-    connectionStatus.value = {
-      success: false,
-      message: 'Connection Failed',
-      details: err.response?.data?.message || 'Please check your credentials and network'
-    }
-  } finally {
-    testing.value = false
-  }
-}
-
-onMounted(() => {
-  fetchSettings()
+const {
+  saving, testing, formData,
+  fetchSettings, saveSettings, testConnection
+} = useSettings('/settings/mikrotik', defaults, {
+  testEndpoint: '/settings/mikrotik/test',
+  successMessage: 'Settings saved!',
+  mapResponse: (data) => ({ ...data, password: '' })
 })
+
+const handleTestConnection = async () => {
+  const result = await testConnection()
+  if (result) connectionStatus.value = result
+}
+
+onMounted(fetchSettings)
 </script>

@@ -77,7 +77,7 @@ class RouterHandshakeMonitorJob implements ShouldQueue
                 // Get routers that are online or offline (process all non-provisioning)
                 // Metrics check will determine if offline routers should come online
                 $routers = Router::whereNotIn('status', ['pending', 'deploying', 'provisioning', 'verifying'])
-                    ->select('id', 'status', 'vpn_status', 'vpn_last_handshake', 'name', 'ip_address', 'vpn_ip')
+                    ->select('id', 'status', 'vpn_status', 'vpn_last_handshake', 'name', 'ip_address', 'vpn_ip', 'last_seen')
                     ->get();
 
                 if ($routers->isEmpty()) {
@@ -137,10 +137,24 @@ class RouterHandshakeMonitorJob implements ShouldQueue
         $cachedHandshake = Cache::get($cacheKey);
         $cachedStatus = Cache::get(self::STATUS_CACHE_PREFIX . $router->id);
 
+        // Post-deployment grace period: skip offline transition for recently-deployed routers.
+        // DeployRouterServiceJob sets last_seen=now() and status=online, but the WireGuard
+        // handshake record in the DB may not be synced yet. Give 3 minutes before allowing
+        // this monitor to flip the router back to offline.
+        $deployGracePeriodSeconds = 180;
+        $recentlyDeployed = $router->last_seen
+            && abs(now()->diffInSeconds($router->last_seen, false)) <= $deployGracePeriodSeconds;
+
         // Determine current status based on handshake
         if (!$latestHandshake) {
-            $newStatus = 'offline';
-            $newVpnStatus = 'inactive';
+            // If router was recently set online (e.g. just deployed), keep it online during grace period
+            if ($recentlyDeployed && $router->status === 'online') {
+                $newStatus = 'online';
+                $newVpnStatus = 'active';
+            } else {
+                $newStatus = 'offline';
+                $newVpnStatus = 'inactive';
+            }
             $handshakeAge = null;
         } else {
             $handshakeAge = abs(now()->diffInSeconds($latestHandshake, false));

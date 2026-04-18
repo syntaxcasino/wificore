@@ -1,5 +1,5 @@
 <template>
-  <div class="flex-1 bg-white">
+  <div class="flex-1 bg-white dark:bg-slate-800/50">
     <div :class="contentClasses">
       <slot />
     </div>
@@ -25,13 +25,13 @@ const contentClasses = computed(() => {
   if (!props.padding || props.size === 'none') {
     return ''
   }
-  
+
   const sizes = {
-    sm: 'p-3 sm:p-4',
-    md: 'p-3 sm:p-6',
-    lg: 'p-4 sm:p-8'
+    sm: 'p-3',
+    md: 'p-4 md:p-6',
+    lg: 'p-6 md:p-8'
   }
-  
+
   return sizes[props.size]
 })
 </script>

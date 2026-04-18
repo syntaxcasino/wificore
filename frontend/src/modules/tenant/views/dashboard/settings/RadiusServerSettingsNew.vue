@@ -62,18 +62,18 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { Shield, Zap, Save, CheckCircle, XCircle } from 'lucide-vue-next'
-import axios from 'axios'
 import PageContainer from '@/modules/common/components/layout/templates/PageContainer.vue'
 import PageHeader from '@/modules/common/components/layout/templates/PageHeader.vue'
 import PageContent from '@/modules/common/components/layout/templates/PageContent.vue'
 import BaseButton from '@/modules/common/components/base/BaseButton.vue'
 import BaseCard from '@/modules/common/components/base/BaseCard.vue'
+import { useSettings } from '@/modules/tenant/composables/useSettings.js'
 
-const breadcrumbs = [{ label: 'Dashboard', to: '/dashboard' }, { label: 'Settings', to: '/dashboard/settings' }, { label: 'RADIUS Server' }]
-
-const saving = ref(false)
-const testing = ref(false)
-const connectionStatus = ref(null)
+const breadcrumbs = [
+  { label: 'Dashboard', to: '/dashboard' },
+  { label: 'Settings', to: '/dashboard/settings' },
+  { label: 'RADIUS Server' }
+]
 
 const defaults = {
   server_ip: '127.0.0.1',
@@ -82,51 +82,21 @@ const defaults = {
   secret: ''
 }
 
-const formData = ref({ ...defaults })
+const connectionStatus = ref(null)
 
-const fetchSettings = async () => {
-  try {
-    const response = await axios.get('/settings/radius')
-    const data = response.data?.settings || response.data?.data || response.data || {}
-    formData.value = { ...defaults, ...data, secret: '' }
-  } catch (err) {
-    console.error('fetchRadiusSettings error:', err)
-  }
-}
-
-const saveSettings = async () => {
-  saving.value = true
-  try {
-    await axios.post('/settings/radius', formData.value)
-    alert('Settings saved!')
-  } catch (err) {
-    console.error('saveSettings error:', err)
-    alert(err.response?.data?.message || 'Failed to save settings')
-  } finally {
-    saving.value = false
-  }
-}
-
-const testConnection = async () => {
-  testing.value = true
-  connectionStatus.value = null
-  try {
-    const response = await axios.post('/settings/radius/test', formData.value)
-    connectionStatus.value = {
-      success: response.data?.success ?? true,
-      message: response.data?.message || 'RADIUS Server Connected'
-    }
-  } catch (err) {
-    connectionStatus.value = {
-      success: false,
-      message: err.response?.data?.message || 'Connection Failed - check server IP and credentials'
-    }
-  } finally {
-    testing.value = false
-  }
-}
-
-onMounted(() => {
-  fetchSettings()
+const {
+  saving, testing, formData,
+  fetchSettings, saveSettings, testConnection
+} = useSettings('/settings/radius', defaults, {
+  testEndpoint: '/settings/radius/test',
+  successMessage: 'Settings saved!',
+  mapResponse: (data) => ({ ...data, secret: '' })
 })
+
+const handleTestConnection = async () => {
+  const result = await testConnection()
+  if (result) connectionStatus.value = result
+}
+
+onMounted(fetchSettings)
 </script>

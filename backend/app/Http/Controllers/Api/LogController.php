@@ -16,8 +16,10 @@ class LogController extends Controller
         try {
          $query = SystemLog::query();
         if ($request->has('search')) {
-            $query->where('action', 'like', '%' . $request->search . '%')
+            $query->where(function ($q) use ($request) {
+                $q->where('action', 'like', '%' . $request->search . '%')
                   ->orWhere('details', 'like', '%' . $request->search . '%');
+            });
         }
         return $query->where('created_at', '>=', now()->subDays(30))->orderByDesc('id')->paginate(100);
 

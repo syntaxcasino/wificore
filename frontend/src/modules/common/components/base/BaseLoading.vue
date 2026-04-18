@@ -6,7 +6,7 @@
         <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
       </svg>
     </div>
-    <span v-if="text" class="ml-3 text-sm text-slate-600">{{ text }}</span>
+    <span v-if="text" class="ml-3 text-sm text-slate-600 dark:text-slate-400">{{ text }}</span>
   </div>
   
   <div v-else-if="type === 'skeleton'" class="animate-pulse space-y-4">
@@ -14,7 +14,7 @@
   </div>
   
   <div v-else-if="type === 'table'" class="animate-pulse space-y-4">
-    <div v-for="i in rows" :key="i" class="bg-white rounded-lg p-4 shadow-sm border border-gray-200">
+    <div v-for="i in rows" :key="i" class="bg-white dark:bg-slate-800 rounded-lg p-4 shadow-sm border border-gray-200 dark:border-slate-700">
       <div class="flex items-center space-x-4">
         <div class="w-12 h-12 bg-slate-200 rounded-lg"></div>
         <div class="flex-1 space-y-2">
@@ -30,7 +30,7 @@
   </div>
   
   <div v-else-if="type === 'card'" class="animate-pulse">
-    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+    <div class="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-6">
       <div class="space-y-3">
         <div class="h-4 bg-slate-200 rounded w-3/4"></div>
         <div class="h-4 bg-slate-200 rounded w-1/2"></div>
