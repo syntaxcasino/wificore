@@ -496,10 +496,12 @@ class ZeroConfigHotspotGenerator
             "# Management & Service Hardening",
             ":do { /ip firewall filter remove [/ip firewall filter find comment~\"hs-mgmt-{$sid}\"] } on-error={}",
         ];
-        // Shared bootstrap: service hardening, firewall logging, brute-force
+        // Shared bootstrap: service hardening, system clock, NTP, firewall logging, brute-force
         $vpnIp = $params['vpn_ip'] ?? null;
-        $allowAddr = ($vpnIp && filter_var($vpnIp, FILTER_VALIDATE_IP)) ? $vpnIp . '/32' : $mgmt;
+        $allowAddr = $mgmt; // Use only mgmt subnet for ACLs
         $rules = array_merge($rules, $this->bootstrapServiceHardening("hs-{$sid}", $mgmt, $vpnIp));
+        $rules = array_merge($rules, $this->bootstrapSystemClock());
+        $rules = array_merge($rules, $this->bootstrapNtpClient());
         $rules = array_merge($rules, $this->bootstrapFirewallLogging("hs-{$sid}"));
         // Established connections
         $rules[] = "/ip firewall filter add chain=input connection-state=\"established,related\" action=\"accept\" comment=\"hs-mgmt-{$sid}-est\"";
