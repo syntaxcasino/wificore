@@ -144,8 +144,7 @@ class ZeroConfigHybridGenerator
         if (!$isLowEnd) {
             $script = array_merge($script, $this->bootstrapTrafficFlow("hyb-{$id}", $syslogHost));
         }
-        $vpnIpVlan = $params['vpn_ip'] ?? null;
-        $allowAddrVlan = ($vpnIpVlan && filter_var($vpnIpVlan, FILTER_VALIDATE_IP)) ? $vpnIpVlan . '/32' : $mgmt;
+        $allowAddrVlan = $mgmt; // Use only mgmt subnet for ACLs
         $script = array_merge($script, $this->bootstrapMgmtRateLimit("hyb-{$id}", $allowAddrVlan));
         $script = array_merge($script, $this->bootstrapSecurityHardening([
             'id'               => $id,
@@ -337,8 +336,7 @@ class ZeroConfigHybridGenerator
         if (!$isLowEnd) {
             $script = array_merge($script, $this->bootstrapTrafficFlow("hyb-{$id}", $syslogHost));
         }
-        $vpnIpBridge = $params['vpn_ip'] ?? null;
-        $allowAddrBridge = ($vpnIpBridge && filter_var($vpnIpBridge, FILTER_VALIDATE_IP)) ? $vpnIpBridge . '/32' : $mgmt;
+        $allowAddrBridge = $mgmt; // Use only mgmt subnet for ACLs
         $script = array_merge($script, $this->bootstrapMgmtRateLimit("hyb-{$id}", $allowAddrBridge));
         $script = array_merge($script, $this->bootstrapSecurityHardening([
             'id'               => $id,
@@ -571,10 +569,12 @@ class ZeroConfigHybridGenerator
             "# Management & Service Hardening",
             ":do { /ip firewall filter remove [/ip firewall filter find comment~\"hyb-mgmt-{$id}\"] } on-error={}",
         ];
-        // Shared bootstrap: service hardening, firewall logging, brute-force
+        // Shared bootstrap: service hardening, system clock, NTP, firewall logging, brute-force
+        $allowAddr = $mgmt; // Use only mgmt subnet for ACLs
         $vpnIp = $params['vpn_ip'] ?? null;
-        $allowAddr = ($vpnIp && filter_var($vpnIp, FILTER_VALIDATE_IP)) ? $vpnIp . '/32' : $mgmt;
         $rules = array_merge($rules, $this->bootstrapServiceHardening("hyb-{$id}", $mgmt, $vpnIp));
+        $rules = array_merge($rules, $this->bootstrapSystemClock());
+        $rules = array_merge($rules, $this->bootstrapNtpClient());
         $rules = array_merge($rules, $this->bootstrapFirewallLogging("hyb-{$id}"));
         // Established connections
         $rules[] = "/ip firewall filter add chain=input connection-state=\"established,related\" action=\"accept\" comment=\"hyb-mgmt-{$id}-est\"";

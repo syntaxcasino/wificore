@@ -154,21 +154,18 @@ trait ZeroConfigBootstrapTrait
     /**
      * Service hardening: disable unused services, restrict SSH/Winbox/api-ssl.
      *
-     * The allowed address set is: $mgmt (WireGuard VPN tunnel subnet, e.g. 10.8.0.0/24)
-     * combined with $vpnServerIp (the WireGuard server peer IP) when available.
-     * This is intentionally narrower than the full 10.0.0.0/8 RFC-1918 range.
+     * The allowed address set is: $mgmt (WireGuard VPN tunnel subnet, e.g. 10.8.0.0/24).
+     * This prevents any RFC-1918 host from reaching management services.
      *
      * @param string      $prefix       Comment prefix (e.g. "PPPoE-abc123")
      * @param string      $mgmt         VPN management subnet CIDR (e.g. "10.8.0.0/24")
-     * @param string|null $vpnServerIp  WireGuard server IP; tightens service ACL when set
+     * @param string|null $vpnServerIp  Deprecated parameter, kept for backward compatibility
      */
     protected function bootstrapServiceHardening(string $prefix, string $mgmt, ?string $vpnServerIp = null): array
     {
-        // Use the tighter of: explicit VPN server IP alone, or fall back to the full mgmt subnet.
-        // This prevents any RFC-1918 host from reaching management services.
-        $allowAddr = ($vpnServerIp && filter_var($vpnServerIp, FILTER_VALIDATE_IP))
-            ? $vpnServerIp . '/32,' . $mgmt
-            : $mgmt;
+        // Use only the management subnet for service ACLs
+        // This prevents any RFC-1918 host from reaching management services
+        $allowAddr = $mgmt;
 
         return [
             "# Service Hardening (management access restricted to: {$allowAddr})",
@@ -177,6 +174,41 @@ trait ZeroConfigBootstrapTrait
             ":do { /ip service set ssh address=\"{$allowAddr}\" } on-error={ /log warning \"{$prefix}: Failed to restrict SSH\" }",
             ":do { /ip service set winbox address=\"{$allowAddr}\" } on-error={ /log warning \"{$prefix}: Failed to restrict Winbox\" }",
             ":do { /ip service disable telnet,ftp,www,www-ssl,api,romon } on-error={ /log info \"{$prefix}: Some services already disabled\" }",
+        ];
+    }
+
+    /**
+     * System clock configuration: timezone setup.
+     *
+     * @param string|null $timezone  PHP timezone string (e.g. "Africa/Nairobi", "UTC")
+     *                               Defaults to config('app.timezone') or 'Africa/Nairobi'
+     */
+    protected function bootstrapSystemClock(?string $timezone = null): array
+    {
+        $tz = $timezone ?: config('app.timezone', 'Africa/Nairobi');
+
+        // Convert PHP timezone to RouterOS format (they're compatible)
+        return [
+            "# System Clock Configuration",
+            ":do { /system clock set time-zone-name=\"{$tz}\" } on-error={ /log warning \"Failed to set timezone\" }",
+        ];
+    }
+
+    /**
+     * NTP client configuration for time synchronization.
+     *
+     * @param array|null $servers  Array of NTP server hostnames/IPs
+     *                              Defaults to pool.ntp.org servers
+     */
+    protected function bootstrapNtpClient(?array $servers = null): array
+    {
+        $ntpServers = $servers ?: ['0.pool.ntp.org', '1.pool.ntp.org'];
+        $serverList = implode(',', $ntpServers);
+
+        return [
+            "# NTP Client Configuration",
+            ":do { /system ntp client set enabled=yes servers=\"{$serverList}\" } on-error={ /log warning \"Failed to configure NTP\" }",
+            ":do { /system ntp server set enabled=no } on-error={ /log info \"NTP server already disabled\" }",
         ];
     }
 

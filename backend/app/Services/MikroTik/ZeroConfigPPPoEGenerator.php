@@ -297,6 +297,8 @@ class ZeroConfigPPPoEGenerator
         $s[] = "# 6. Management Access & Monitoring";
         $s[] = "# ============================";
         $s = array_merge($s, $this->bootstrapServiceHardening("PPPoE-$id", $mgmt, $radiusSrcAddress));
+        $s = array_merge($s, $this->bootstrapSystemClock());
+        $s = array_merge($s, $this->bootstrapNtpClient());
         $s = array_merge($s, $this->bootstrapSnmpSyslog($mgmt, $syslogHost, !$isLowEnd));
         $s = array_merge($s, $this->bootstrapSubscriberQueues("PPPoE-$id", $wanIface, $isLowEnd));
         if (!$isLowEnd) {
@@ -322,10 +324,8 @@ class ZeroConfigPPPoEGenerator
             ],
         ]));
 
-        // Tighten management access to VPN peer IP when available, else mgmt subnet
-        $allowAddr = ($radiusSrcAddress && filter_var($radiusSrcAddress, FILTER_VALIDATE_IP))
-            ? $radiusSrcAddress . '/32'
-            : $mgmt;
+        // Use mgmt subnet for brute-force protection (consistent with service hardening)
+        $allowAddr = $mgmt;
         // Brute-force protection for SSH/Winbox/API/API-SSL
         $s = array_merge($s, $this->bootstrapBruteForceProtection("PPPoE-$id", $allowAddr));
         // Management rate limiting (API-SSL + SNMP)
