@@ -239,7 +239,7 @@ class ZeroConfigPPPoEGenerator
         $s[] = ":do { /ppp profile set [/ppp profile find name=\"$prof\"] local-address=\"\" remote-address=\"\"  } on-error={ /log error \"PPPoE-$id: FATAL - profile set failed\" }";
         $s[] = ":do { /ppp aaa set use-radius=yes } on-error={ :log error \"PPPoE-$id: FATAL - radius aaa set failed\" }; :do { /ppp profile set [/ppp profile find name=\"$prof\"] rate-limit=\"\" } on-error={ :log error \"PPPoE-$id: FATAL - profile rate-limit set failed\" }";
         $s[] = ":do { /ppp profile set [/ppp profile find name=\"$prof\"] interface-list=\"$pal\" } on-error={ /log warning \"PPPoE-$id: Failed to set profile interface-list (non-fatal)\" }";
-        $s[] = ":do { /ppp profile set [/ppp profile find name=\"$prof\"] change-tcp-mss=yes use-compression=no only-one=yes } on-error={ /log warning \"PPPoE-$id: Failed to set profile TCP options (non-fatal)\" }";
+        $s[] = ":do { /ppp profile set [/ppp profile find name=\"$prof\"] change-tcp-mss=yes use-compression=no only-one=yes radius-accounting=yes } on-error={ /log warning \"PPPoE-$id: Failed to set profile options (non-fatal)\" }";
         $s = array_merge($s, $this->bootstrapPppAaaHardening("PPPoE-$id", $prof));
         $s = array_merge($s, $this->bootstrapPppSessionLogging("PPPoE-$id", $prof));
 
