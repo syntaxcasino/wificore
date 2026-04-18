@@ -197,9 +197,9 @@ class ZeroConfigPPPoEGenerator
         $pppLogComment = "PPPoE-$id-PPP-LOG";
         $pppoeLogComment = "PPPoE-$id-PPPOE-LOG";
         $s[] = ":do { /system logging remove [/system logging find comment=\"$pppLogComment\"]; } on-error={}";
-        $s[] = ":do { /system logging add action=\"memory\" topics=\"ppp\" comment=\"$pppLogComment\" } on-error={}";
+        $s[] = ":do { /system logging add action=\"memory\" topics=\"ppp\" } on-error={}";
         $s[] = ":do { /system logging remove [/system logging find comment=\"$pppoeLogComment\"]; } on-error={}";
-        $s[] = ":do { /system logging add action=\"memory\" topics=\"pppoe\" comment=\"$pppoeLogComment\" } on-error={}";
+        $s[] = ":do { /system logging add action=\"memory\" topics=\"pppoe\" } on-error={}";
         // Log dropped packets for visibility
         $s = array_merge($s, $this->bootstrapFirewallLogging("PPPoE-$id"));
 

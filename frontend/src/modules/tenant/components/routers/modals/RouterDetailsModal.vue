@@ -1570,31 +1570,53 @@ export default {
           })
       }
 
-      const count = 5 // Reduced from 6 to 5 for better spacing
+      const count = 6
       const data = this.trafficData
       const step = Math.floor((data.length - 1) / (count - 1)) || 1
       const padding = 5 // 5% padding on each side
       const usableWidth = 100 - (padding * 2)
 
-      return data
-        .filter((_, i) => i % step === 0 || i === data.length - 1)
-        .slice(0, count) // Limit to exactly count items
-        .map((d, idx) => {
-          const x = padding + ((idx / (count - 1)) * usableWidth)
-          let label = ''
-          try {
-            label = new Date(d.ts * 1000).toLocaleTimeString([], {
-              hour: '2-digit',
-              minute: '2-digit',
-            })
-          } catch (e) {
-            label = ''
-          }
-          return {
-            x,
-            label,
-          }
-        })
+      const seenLabels = new Set()
+      const ticks = []
+      let tickIndex = 0
+
+      for (let i = 0; i < data.length; i += step) {
+        const d = data[i]
+        let label = ''
+        try {
+          label = new Date(d.ts * 1000).toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit',
+          })
+        } catch (e) {
+          label = ''
+        }
+
+        // Skip duplicate labels, but always include first and last
+        if (seenLabels.has(label) && i > 0 && i < data.length - 1) {
+          continue
+        }
+        seenLabels.add(label)
+
+        const x = padding + ((tickIndex / (count - 1)) * usableWidth)
+        ticks.push({ x, label })
+        tickIndex++
+
+        if (ticks.length >= count) break
+      }
+
+      // Ensure last data point is included
+      const lastData = data[data.length - 1]
+      const lastLabel = new Date(lastData.ts * 1000).toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+      if (ticks.length > 0 && ticks[ticks.length - 1].label !== lastLabel) {
+        const lastX = padding + usableWidth
+        ticks.push({ x: lastX, label: lastLabel })
+      }
+
+      return ticks
     },
     // Resource graph computed properties
     trafficStats() {
@@ -1692,22 +1714,47 @@ export default {
       const padding = 5 // 5% padding on each side
       const usableWidth = 100 - (padding * 2)
 
-      return data
-        .filter((_, i) => i % step === 0 || i === data.length - 1)
-        .slice(0, count) // Limit to exactly count items
-        .map((d, idx) => {
-          const x = padding + ((idx / (count - 1)) * usableWidth)
-          let label = ''
-          try {
-            label = new Date(d.ts * 1000).toLocaleTimeString([], {
-              hour: '2-digit',
-              minute: '2-digit',
-            })
-          } catch (e) {
-            label = ''
-          }
-          return { x, label }
-        })
+      const seenLabels = new Set()
+      const ticks = []
+      let tickIndex = 0
+
+      for (let i = 0; i < data.length; i += step) {
+        const d = data[i]
+        let label = ''
+        try {
+          label = new Date(d.ts * 1000).toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit',
+          })
+        } catch (e) {
+          label = ''
+        }
+
+        // Skip duplicate labels, but always include first and last
+        if (seenLabels.has(label) && i > 0 && i < data.length - 1) {
+          continue
+        }
+        seenLabels.add(label)
+
+        const x = padding + ((tickIndex / (count - 1)) * usableWidth)
+        ticks.push({ x, label })
+        tickIndex++
+
+        if (ticks.length >= count) break
+      }
+
+      // Ensure last data point is included
+      const lastData = data[data.length - 1]
+      const lastLabel = new Date(lastData.ts * 1000).toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+      if (ticks.length > 0 && ticks[ticks.length - 1].label !== lastLabel) {
+        const lastX = padding + usableWidth
+        ticks.push({ x: lastX, label: lastLabel })
+      }
+
+      return ticks
     },
     // Resource stats computed property for real-time updates
     resourceStats() {

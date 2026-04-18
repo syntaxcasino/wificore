@@ -221,7 +221,7 @@ trait ZeroConfigBootstrapTrait
     {
         return [
             ":do { /system logging remove [/system logging find comment=\"{$prefix}-FW-LOG\"] } on-error={}",
-            ":do { /system logging add action=\"memory\" topics=\"firewall\" comment=\"{$prefix}-FW-LOG\" } on-error={}",
+            ":do { /system logging add action=\"memory\" topics=\"firewall\" } on-error={}",
         ];
     }
 
