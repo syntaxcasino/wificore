@@ -156,7 +156,7 @@ class PppoeSessionController extends Controller
                     'router_id' => $routerId,
                     'router_name' => $routerName,
                     'user' => [
-                        'phone' => null,
+                        'phone' => $pppoeUser?->customer_phone ?? null,
                     ],
                     'framed_ip' => $row->framedipaddress ?? null,
                     'ip_address' => $row->framedipaddress ?? null,
