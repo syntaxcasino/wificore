@@ -60,42 +60,27 @@ class MikrotikSshService
         }
 
         $this->retry(function () use ($poolKey) {
-            // Try VPN IP first, then fall back to management IP
-            $hostsToTry = [];
-            if (!empty($this->router->vpn_ip)) {
-                $hostsToTry[] = explode('/', $this->router->vpn_ip)[0];
-            }
-            if (!empty($this->router->ip_address) && $this->router->ip_address !== ($this->router->vpn_ip ?? '')) {
-                $hostsToTry[] = explode('/', $this->router->ip_address)[0];
-            }
 
-            if (empty($hostsToTry)) {
-                throw new \RuntimeException('No router IP configured');
-            }
-
+            $host = explode('/', $this->router->vpn_ip ?? $this->router->ip_address ?? '')[0];
             $port = $this->resolveSshPort();
+            $ssh  = new SSH2($host, $port);
+            $ssh->setTimeout($this->timeout);
+
             $username = $this->router->username;
             $password = PasswordEncryptionService::safeDecrypt($this->router);
 
-            $lastError = null;
-            foreach ($hostsToTry as $host) {
-                try {
-                    $ssh = new SSH2($host, $port, $this->timeout);
-                    $loginSuccess = false;
+            $loginSuccess = false;
 
-                    // Try SSH key first (encrypted blob stored in router->ssh_key)
-                    if (!empty($this->router->ssh_key)) {
-                        try {
-                            $rawKey = Crypt::decrypt($this->router->ssh_key);
-                            $key = PublicKeyLoader::load($rawKey);
-                            $loginSuccess = $ssh->login($username, $key);
-                        } catch (Throwable $e) {
-                            $this->log('warning', 'SSH key login failed, fallback to password', [
-                                'host' => $host,
-                                'error' => $e->getMessage()
-                            ]);
-                        }
-                    }
+            // Try SSH key first (encrypted blob stored in router->ssh_key)
+            if (!empty($this->router->ssh_key)) {
+                try {
+                    $rawKey = Crypt::decrypt($this->router->ssh_key);
+                    $key = PublicKeyLoader::load($rawKey);
+                    $loginSuccess = $ssh->login($username, $key);
+                } catch (Throwable $e) {
+                    $this->log('warning', 'SSH key login failed, fallback to password', ['error' => $e->getMessage()]);
+                }
+            }
 
             // Global key fallback
             if (!$loginSuccess) {
@@ -117,11 +102,9 @@ class MikrotikSshService
 
             if (!$loginSuccess) {
                 $this->recordFailure();
-                $lastError = "SSH authentication failed for {$host}";
-                continue; // Try next host
+                throw new \RuntimeException("SSH authentication failed");
             }
 
-            $this->log('info', 'SSH login successful', ['host' => $host]);
             $sftp = new SFTP($host, $port);
             $sftpLoggedIn = false;
 
@@ -154,21 +137,7 @@ class MikrotikSshService
             $this->connected = true;
 
             $this->resetCircuit();
-            $this->log('info', 'Connected (pooled)', ['host' => $host]);
-            return; // Success - exit the foreach loop
-
-                } catch (\Exception $e) {
-                    $this->log('warning', 'SSH connection failed for host, trying next', [
-                        'host' => $host,
-                        'error' => $e->getMessage()
-                    ]);
-                    $lastError = $e->getMessage();
-                    continue; // Try next host
-                }
-            }
-
-            // All hosts failed
-            throw new \RuntimeException("SSH connection failed to all hosts: " . ($lastError ?? 'Unknown error'));
+            $this->log('info', 'Connected (pooled)');
         });
     }
 
