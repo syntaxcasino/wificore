@@ -72,24 +72,38 @@ class DeployRouterServiceJob implements ShouldQueue
                 return null;
             }
 
-            // Skip if already deployed
+            // Skip if already deployed - but broadcast success so UI doesn't show error
             if ($service->deployment_status === RouterService::DEPLOYMENT_DEPLOYED) {
                 Log::info('DeployRouterServiceJob: Already deployed, skipping', [
                     'service_id' => $service->id,
                     'router_id' => $service->router_id,
                 ]);
+                // Broadcast completed status so frontend shows success instead of error
+                $this->broadcastServiceProgress($service, 'completed', 100, 'Service already deployed');
                 return null;
             }
 
+            // Collect ALL sibling rows for the same service_type on this router.
+            // This prevents N jobs each generating a full N-interface script.
+            // We merge them into ONE representative service so the generator runs once.
+            $siblings = RouterService::with(['router', 'ipPool', 'vlans'])
+                ->where('router_id', $service->router_id)
+                ->where('service_type', $service->service_type)
+                ->get();
+
+            $siblingIds = $siblings->pluck('id')->toArray();
+            $merged     = $this->mergeServiceGroup($siblings, $service);
+
             // Generate configuration before releasing transaction
-            $config = $this->generateConfiguration($service);
-            
+            $config = $this->generateConfiguration($merged);
+
             // Return data needed for deployment phase
             return [
-                'service' => $service,
-                'router' => $service->router,
-                'config' => $config,
-                'service_type' => $service->service_type,
+                'service'     => $service,
+                'siblingIds'  => $siblingIds,
+                'router'      => $service->router,
+                'config'      => $config,
+                'service_type'=> $service->service_type,
             ];
         });
 
@@ -99,9 +113,10 @@ class DeployRouterServiceJob implements ShouldQueue
         }
 
         // Phase 2: Acquire lock and run SSH deployment OUTSIDE transaction
-        $service = $deployData['service'];
-        $router = $deployData['router'];
-        $config = $deployData['config'];
+        $service    = $deployData['service'];
+        $router     = $deployData['router'];
+        $config     = $deployData['config'];
+        $siblingIds = $deployData['siblingIds'] ?? [$service->id];
         
         $lockKey = 'deploy_router_' . $router->id;
         $lock = Cache::lock($lockKey, 60);
@@ -146,17 +161,18 @@ class DeployRouterServiceJob implements ShouldQueue
         }
 
         // Phase 3: Update status in new transaction
-        $this->executeInTenantContext(function () use ($service, $result, $exception) {
+        $this->executeInTenantContext(function () use ($service, $siblingIds, $result, $exception) {
             if ($exception !== null) {
                 $this->handleDeploymentException($service, $exception);
                 return;
             }
 
             if ($result && $result['success']) {
-                $service->update([
+                // Mark ALL sibling rows for this service type as deployed in one query
+                RouterService::whereIn('id', $siblingIds)->update([
                     'deployment_status' => RouterService::DEPLOYMENT_DEPLOYED,
-                    'status' => RouterService::STATUS_ACTIVE,
-                    'deployed_at' => now(),
+                    'status'            => RouterService::STATUS_ACTIVE,
+                    'deployed_at'       => now(),
                 ]);
 
                 $router = Router::find($service->router_id);
@@ -189,8 +205,9 @@ class DeployRouterServiceJob implements ShouldQueue
                 $this->broadcastServiceProgress($service, 'completed', 100, 'Service deployed successfully');
 
                 Log::info('DeployRouterServiceJob: Deployed successfully', [
-                    'service_id' => $service->id,
-                    'router_id' => $service->router_id,
+                    'service_id'  => $service->id,
+                    'sibling_ids' => $siblingIds,
+                    'router_id'   => $service->router_id,
                 ]);
             } else {
                 throw new \Exception($result['message'] ?? 'Deployment failed');
@@ -295,105 +312,58 @@ class DeployRouterServiceJob implements ShouldQueue
     }
 
     /**
-     * Generate configuration based on service type
+     * Merge all RouterService rows of the same type into one representative service
+     * with all interface names combined. Falls back to $primary if only one row.
+     */
+    private function mergeServiceGroup(
+        \Illuminate\Support\Collection $group,
+        RouterService $primary
+    ): RouterService {
+        if ($group->count() === 1) {
+            return $primary;
+        }
+
+        $allInterfaces = $group->flatMap(function (RouterService $svc) {
+            $raw = $svc->interface_name;
+            if (is_array($raw)) {
+                return $raw;
+            }
+            $decoded = json_decode((string) $raw, true);
+            return is_array($decoded) ? $decoded : [$raw];
+        })
+        ->filter(fn ($i) => is_string($i) && preg_match('/^[a-zA-Z0-9_\-\.]+$/', trim($i)))
+        ->unique()
+        ->values()
+        ->toArray();
+
+        $merged = $primary->replicate();
+        $merged->id             = $primary->id;
+        $merged->interface_name = $allInterfaces;
+        $merged->setRelation('router', $primary->router);
+        $merged->setRelation('ipPool', $primary->ipPool);
+        $merged->setRelation('vlans', $primary->vlans);
+
+        return $merged;
+    }
+
+    /**
+     * Generate configuration based on service type.
+     * The service passed here is already merged — all interfaces present.
      */
     private function generateConfiguration(RouterService $service): string
     {
         switch ($service->service_type) {
             case RouterService::TYPE_HOTSPOT:
-                $generator = new ZeroConfigHotspotGenerator();
-                return $generator->generate($service);
+                return (new ZeroConfigHotspotGenerator())->generate($service);
 
             case RouterService::TYPE_PPPOE:
-                // Collect all interfaces from all PPPoE services on this router
-                $cleanInterfaces = $this->collectCleanInterfaces($service->router_id);
-
-                // CRITICAL: Clone the service model to avoid corrupting the original
-                // The original model will be used for DB updates later
-                $serviceForGeneration = $service->replicate();
-                $serviceForGeneration->id = $service->id;
-                $serviceForGeneration->setRelation('router', $service->router);
-                $serviceForGeneration->setRelation('ipPool', $service->ipPool);
-                
-                if (!empty($cleanInterfaces)) {
-                    $serviceForGeneration->interface_name = $cleanInterfaces;
-                }
-
-                $generator = new ZeroConfigPPPoEGenerator();
-                return $generator->generate($serviceForGeneration);
+                return (new ZeroConfigPPPoEGenerator())->generate($service);
 
             case RouterService::TYPE_HYBRID:
-                $generator = new ZeroConfigHybridGenerator();
-                return $generator->generate($service);
+                return (new ZeroConfigHybridGenerator())->generate($service);
 
             default:
                 throw new \Exception("Unsupported service type: {$service->service_type}");
-        }
-    }
-
-    /**
-     * Collect and clean interface names from all PPPoE services on router
-     */
-    private function collectCleanInterfaces(string $routerId): array
-    {
-        $allInterfaces = [];
-        $pppoeServices = RouterService::where('router_id', $routerId)
-            ->where('service_type', RouterService::TYPE_PPPOE)
-            ->pluck('interface_name');
-
-        foreach ($pppoeServices as $iface) {
-            if (empty($iface)) {
-                continue;
-            }
-            $this->extractInterfaces($iface, $allInterfaces);
-        }
-
-        // Clean: unique, non-empty, valid interface names only
-        return array_values(array_unique(array_filter($allInterfaces, function ($i) {
-            return is_string($i) && preg_match('/^[a-zA-Z0-9_\-\.]+$/', trim($i));
-        })));
-    }
-
-    /**
-     * Recursively extract interface names from potentially nested JSON
-     */
-    private function extractInterfaces($value, array &$interfaces): void
-    {
-        if (is_array($value)) {
-            foreach ($value as $item) {
-                $this->extractInterfaces($item, $interfaces);
-            }
-            return;
-        }
-
-        if (!is_string($value) || empty($value)) {
-            return;
-        }
-
-        // Try JSON decode
-        $decoded = json_decode($value, true);
-        if (is_array($decoded)) {
-            foreach ($decoded as $item) {
-                $this->extractInterfaces($item, $interfaces);
-            }
-            return;
-        }
-
-        // Check if comma-separated
-        if (str_contains($value, ',')) {
-            foreach (explode(',', $value) as $part) {
-                $trimmed = trim($part);
-                if (!empty($trimmed) && preg_match('/^[a-zA-Z0-9_\-\.]+$/', $trimmed)) {
-                    $interfaces[] = $trimmed;
-                }
-            }
-            return;
-        }
-
-        // Plain interface name
-        $trimmed = trim($value);
-        if (!empty($trimmed) && preg_match('/^[a-zA-Z0-9_\-\.]+$/', $trimmed)) {
-            $interfaces[] = $trimmed;
         }
     }
 

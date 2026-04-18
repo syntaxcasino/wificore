@@ -3,7 +3,7 @@
     <!-- Animated Background Elements -->
     <div class="absolute inset-0 pointer-events-none">
       <div class="absolute inset-0 reg-bg-grid reg-bg-anim"></div>
-      <div class="reg-bg-card reg-bg-anim" style="top: 9%; left: 6%; width: 260px;">
+      <div class="reg-bg-card reg-bg-anim top-[9%] left-[6%] w-[260px]">
         <div class="reg-bg-card-title">
           <span class="reg-bg-pill"></span>
           <span class="reg-bg-pill"></span>
@@ -15,10 +15,10 @@
         <div class="reg-bg-spark"></div>
       </div>
 
-      <div class="reg-bg-card reg-bg-anim" style="top: 64%; left: 10%; width: 220px;">
+      <div class="reg-bg-card reg-bg-anim top-[64%] left-[10%] w-[220px]">
         <div class="reg-bg-card-title">
           <span class="reg-bg-dot"></span>
-          <span class="reg-bg-line reg-bg-line-sm" style="margin: 0;"></span>
+          <span class="reg-bg-line reg-bg-line-sm !m-0"></span>
         </div>
         <div class="reg-bg-metric">
           <div class="reg-bg-bar reg-bg-anim"></div>
@@ -28,11 +28,11 @@
         </div>
       </div>
 
-      <div class="reg-bg-card reg-bg-anim" style="top: 18%; right: 7%; width: 280px;">
+      <div class="reg-bg-card reg-bg-anim top-[18%] right-[7%] w-[280px]">
         <div class="reg-bg-card-title">
           <span class="reg-bg-dot"></span>
-          <span class="reg-bg-pill" style="width: 64px;"></span>
-          <span class="reg-bg-pill" style="width: 44px;"></span>
+          <span class="reg-bg-pill w-16"></span>
+          <span class="reg-bg-pill w-11"></span>
         </div>
         <div class="reg-bg-timeline">
           <span class="reg-bg-tick"></span>
@@ -46,12 +46,12 @@
         </div>
       </div>
 
-      <div class="reg-bg-orbit reg-bg-anim" style="top: 38%; right: 14%;"></div>
-      <div class="reg-bg-orbit reg-bg-orbit-2 reg-bg-anim" style="top: 76%; right: 22%;"></div>
-      <div class="reg-bg-orbit reg-bg-orbit-3 reg-bg-anim" style="top: 22%; left: 38%;"></div>
+      <div class="reg-bg-orbit reg-bg-anim top-[38%] right-[14%]"></div>
+      <div class="reg-bg-orbit reg-bg-orbit-2 reg-bg-anim top-[76%] right-[22%]"></div>
+      <div class="reg-bg-orbit reg-bg-orbit-3 reg-bg-anim top-[22%] left-[38%]"></div>
     </div>
 
-    <div class="relative z-10 bg-white p-0 rounded-2xl shadow-2xl w-full my-auto overflow-hidden" style="max-width: 90rem;">
+    <div class="relative z-10 bg-white p-0 rounded-2xl shadow-2xl w-full my-auto overflow-hidden max-w-[90rem]">
       <div class="grid grid-cols-1 md:grid-cols-12">
         <!-- Left: Branding + Features -->
         <div class="relative p-8 md:p-10 bg-gradient-to-br from-blue-600 via-indigo-600 to-cyan-600 md:col-span-4 flex">

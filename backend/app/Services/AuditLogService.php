@@ -157,8 +157,7 @@ class AuditLogService
      */
     public static function getRecentSecurityEvents(int $limit = 50)
     {
-        return SystemLog::where('category', 'security')
-            ->orWhere('category', 'authentication')
+        return SystemLog::whereIn('category', ['security', 'authentication'])
             ->orderBy('created_at', 'desc')
             ->limit($limit)
             ->get();

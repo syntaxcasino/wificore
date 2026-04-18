@@ -610,22 +610,15 @@ SCRIPT;
             $ssh = new SshExecutor($router, 10);
             $ssh->connect();
 
-            // Identity and system resource info
+            // Identity and system resource info — two commands only (no interface count needed here)
             $identityOutput = $ssh->exec('/system identity print');
             $resourceOutput = $ssh->exec('/system resource print');
-            $interfacesOutput = $ssh->exec('/interface print count-only');
 
             $identity = $this->parseSingleKeyValueBlock($identityOutput);
             $resource = $this->parseSingleKeyValueBlock($resourceOutput);
 
             $model = $resource['board-name'] ?? 'Unknown';
             $osVersion = $resource['version'] ?? 'Unknown';
-
-            // Parse interface count (best-effort)
-            $interfacesCount = 0;
-            if (!empty($interfacesOutput)) {
-                $interfacesCount = (int) trim($interfacesOutput);
-            }
 
             // Reduced: Removed verbose connectivity success log
 
@@ -880,7 +873,7 @@ SCRIPT;
     {
         $startTime = microtime(true);
         $routerName = $router->name ?? 'Unknown';
-        $scriptName = 'hs_provision_' . $router->id . '_' . time();
+        $scriptName = 'hs_provision_' . $router->id . '_' . md5($script ?? '');
         $client = null;
         $provisionLock = null;
         
@@ -1060,7 +1053,7 @@ SCRIPT;
             }
 
             // 5. Apply configuration via SSH file upload/import
-            $scriptName = "svc_deploy_" . $router->id . "_" . time();
+            $scriptName = "svc_deploy_" . $router->id . "_" . md5($serviceScript);
             
             if ($broadcast) {
                 RouterProvisioningProgress::dispatch(
@@ -1270,14 +1263,46 @@ SCRIPT;
                     );
                 }
 
-                // For low-end devices, try REST API first, then fall back to SSH batching
+                // Try provisioning service first if enabled for SaaS deployment
                 $result = null;
                 
                 // Initialize these for cleanup (only used by executeSingleScript)
                 $remoteScriptFile = null;
                 $tempFile = null;
                 
-                if ($isLowEnd && $serviceScript && $canUseRestApi) {
+                if ($this->shouldUseProvisioningService($router)) {
+                    try {
+                        Log::info('Deploying via provisioning service', [
+                            'router_id' => $router->id,
+                            'script_length' => strlen($serviceScript)
+                        ]);
+                        
+                        $result = $this->provisioningClient->deployScript(
+                            $router,
+                            $serviceScript,
+                            $router->tenant_id
+                        );
+                        
+                        if (!$result['success']) {
+                            throw new \Exception($result['message'] ?? 'Provisioning service deployment failed');
+                        }
+                        
+                        Log::info('Provisioning service deployment completed', [
+                            'router_id' => $router->id
+                        ]);
+                        
+                    } catch (\Exception $provisioningException) {
+                        Log::warning('Provisioning service deployment failed, falling back to SSH', [
+                            'router_id' => $router->id,
+                            'error' => $provisioningException->getMessage()
+                        ]);
+                        // Fall through to SSH deployment
+                    }
+                }
+                
+                // If provisioning service wasn't used or failed, use SSH deployment
+                if ($result === null) {
+                    if ($isLowEnd && $serviceScript && $canUseRestApi) {
                     try {
                         // Extract config from script for API deployment
                         $apiConfig = $this->extractConfigFromScript($serviceScript, $router);
@@ -1327,9 +1352,10 @@ SCRIPT;
                         $result = $this->executeBatchedCommands($ssh, $serviceScript, $router, $validator);
                     }
                 } else {
-                    $remoteScriptFile = "svc_deploy_{$router->id}_" . time() . '.rsc';
+                    $remoteScriptFile = "svc_deploy_{$router->id}_" . md5($serviceScript) . '.rsc';
                     $tempFile = tempnam(sys_get_temp_dir(), 'mikrotik_script_');
                     $result = $this->executeSingleScript($ssh, $serviceScript, $router, $validator, $remoteScriptFile, $tempFile);
+                }
                 }
 
                 // Brief wait for router to stabilize
@@ -1437,8 +1463,12 @@ SCRIPT;
                 $ssh->disconnect();
             }
 
-            // Only override result if not already set by API success
+            // Only override result if not already set by a successful API result
             if (!$result || !isset($result['method']) || $result['method'] !== 'API') {
+                if (!$result || empty($result['success'])) {
+                    $errorMsg = $result['message'] ?? 'Script deployment failed (validation did not pass)';
+                    throw new \Exception($errorMsg, 500);
+                }
                 $result = [
                     'success' => true,
                     'message' => 'Configuration applied successfully via SSH',

@@ -4,7 +4,7 @@
     title="Access Point Details"
     :subtitle="apDetails?.name || 'Device information'"
     icon="wifi"
-    width="480px"
+    width="50%"
     @update:model-value="$emit('update:modelValue', $event)"
     @close="$emit('close')"
   >
@@ -166,7 +166,7 @@
       <div class="flex gap-3">
         <button
           @click="$emit('close')"
-          class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+          class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-600"
         >
           Close
         </button>

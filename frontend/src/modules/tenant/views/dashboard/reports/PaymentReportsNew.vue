@@ -2,9 +2,16 @@
   <DataViewContainer
     title="Payment Reports"
     subtitle="Analyze payment trends and revenue"
-    icon="DollarSign"
+    color-theme="emerald"
     :breadcrumbs="breadcrumbs"
   >
+    <!-- Icon Slot -->
+    <template #icon>
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 md:h-6 md:w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+    </template>
+
     <template #actions>
       <BaseButton @click="refreshData" variant="ghost" :loading="refreshing">
         <RefreshCw class="w-4 h-4 mr-1" :class="{ 'animate-spin': refreshing }" />
@@ -17,7 +24,7 @@
     </template>
 
     <template #stats>
-      <div class="px-3 py-3 sm:px-6 sm:py-4 bg-white border-b border-slate-200">
+      <div class="px-3 py-3 sm:px-6 sm:py-4 bg-white border-b border-slate-200 dark:border-slate-700">
         <div class="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
           <div class="bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg p-4 border border-green-200">
             <div class="flex items-center justify-between">
@@ -63,7 +70,7 @@
     </template>
 
     <template #filters>
-      <div class="px-3 py-3 sm:px-6 sm:py-4 bg-white border-b border-slate-200">
+      <div class="px-3 py-3 sm:px-6 sm:py-4 bg-white border-b border-slate-200 dark:border-slate-700">
         <div class="flex items-center gap-3 flex-wrap">
           <BaseSelect v-model="filters.period" class="w-36 sm:w-40">
             <option value="today">Today</option>
@@ -94,8 +101,8 @@
           <div class="space-y-4">
             <div v-for="method in paymentMethods" :key="method.name">
               <div class="flex items-center justify-between mb-2">
-                <span class="text-sm font-medium text-slate-700">{{ method.name }}</span>
-                <span class="text-sm font-bold text-slate-900">KES {{ formatMoney(method.amount) }}</span>
+                <span class="text-sm font-medium text-slate-700 dark:text-slate-300">{{ method.name }}</span>
+                <span class="text-sm font-bold text-slate-900 dark:text-slate-100">KES {{ formatMoney(method.amount) }}</span>
               </div>
               <div class="w-full bg-slate-200 rounded-full h-2">
                 <div 
@@ -124,7 +131,7 @@
                   <th class="px-4 py-3 text-left text-xs font-semibold text-slate-700">Cash</th>
                 </tr>
               </thead>
-              <tbody class="divide-y divide-slate-100">
+              <tbody class="divide-y divide-slate-100 dark:divide-slate-700">
                 <tr v-for="day in dailyRevenue" :key="day.date" class="hover:bg-slate-50">
                   <td class="px-4 py-3 text-sm text-slate-900">{{ formatDate(day.date) }}</td>
                   <td class="px-4 py-3 text-sm text-slate-900">{{ day.count }}</td>
@@ -142,14 +149,14 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { onMounted } from 'vue'
 import { DollarSign, RefreshCw, Download, CreditCard, TrendingUp, Smartphone } from 'lucide-vue-next'
-import axios from 'axios'
 import DataViewContainer from '@/modules/common/components/base/DataViewContainer.vue'
 import BaseButton from '@/modules/common/components/base/BaseButton.vue'
 import BaseCard from '@/modules/common/components/base/BaseCard.vue'
 import BaseSelect from '@/modules/common/components/base/BaseSelect.vue'
 import BaseLoading from '@/modules/common/components/base/BaseLoading.vue'
+import { usePaymentReports } from '@/modules/tenant/composables/usePaymentReports.js'
 
 const breadcrumbs = [
   { label: 'Dashboard', to: '/dashboard' },
@@ -157,108 +164,14 @@ const breadcrumbs = [
   { label: 'Payment Reports' }
 ]
 
-const loading = ref(false)
-const refreshing = ref(false)
-const payments = ref([])
+const {
+  loading, refreshing, payments, filters,
+  stats, paymentMethods, dailyRevenue,
+  formatMoney, formatDate,
+  fetchPayments, refreshData, exportReport
+} = usePaymentReports()
 
-const filters = ref({
-  period: 'month',
-  method: ''
-})
+const handleExport = () => exportReport(dailyRevenue.value)
 
-const stats = computed(() => {
-  const total = payments.value.reduce((sum, p) => sum + Number(p.amount || 0), 0)
-  const count = payments.value.length
-  const mpesaCount = payments.value.filter(p => (p.payment_method || '').toLowerCase().includes('mpesa') || (p.payment_method || '').toLowerCase().includes('m-pesa')).length
-  return {
-    totalRevenue: total,
-    totalPayments: count,
-    avgPayment: count > 0 ? Math.round(total / count) : 0,
-    mpesaPercentage: count > 0 ? Math.round((mpesaCount / count) * 100) : 0
-  }
-})
-
-const methodColors = { 'M-Pesa': 'bg-green-500', 'Cash': 'bg-amber-500', 'Bank Transfer': 'bg-blue-500' }
-
-const paymentMethods = computed(() => {
-  const grouped = {}
-  payments.value.forEach(p => {
-    const method = p.payment_method || 'Other'
-    if (!grouped[method]) grouped[method] = 0
-    grouped[method] += Number(p.amount || 0)
-  })
-  const total = Object.values(grouped).reduce((s, v) => s + v, 0)
-  return Object.entries(grouped).map(([name, amount]) => ({
-    name,
-    amount,
-    percentage: total > 0 ? Math.round((amount / total) * 100) : 0,
-    color: methodColors[name] || 'bg-slate-500'
-  })).sort((a, b) => b.amount - a.amount)
-})
-
-const dailyRevenue = computed(() => {
-  const grouped = {}
-  payments.value.forEach(p => {
-    const date = (p.created_at || '').slice(0, 10)
-    if (!date) return
-    if (!grouped[date]) grouped[date] = { date, count: 0, total: 0, mpesa: 0, cash: 0 }
-    grouped[date].count++
-    grouped[date].total += Number(p.amount || 0)
-    const method = (p.payment_method || '').toLowerCase()
-    if (method.includes('mpesa') || method.includes('m-pesa')) grouped[date].mpesa += Number(p.amount || 0)
-    if (method.includes('cash')) grouped[date].cash += Number(p.amount || 0)
-  })
-  return Object.values(grouped).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 30)
-})
-
-const formatMoney = (amount) => {
-  return new Intl.NumberFormat('en-KE').format(amount)
-}
-
-const formatDate = (date) => {
-  return new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-}
-
-const fetchPayments = async () => {
-  const isInitial = payments.value.length === 0
-  if (isInitial) loading.value = true
-  try {
-    const params = {}
-    if (filters.value.method) params.payment_method = filters.value.method
-    if (filters.value.period) params.period = filters.value.period
-    const response = await axios.get('/payments', { params })
-    const data = response.data?.data || response.data?.payments || []
-    payments.value = Array.isArray(data) ? data : []
-  } catch (err) {
-    console.error('fetchPayments error:', err)
-  } finally {
-    loading.value = false
-  }
-}
-
-const refreshData = async () => {
-  refreshing.value = true
-  await fetchPayments()
-  refreshing.value = false
-}
-
-const exportReport = () => {
-  const csv = [
-    ['Date', 'Payments', 'Total Revenue', 'M-Pesa', 'Cash'].join(','),
-    ...dailyRevenue.value.map(d => [d.date, d.count, d.total, d.mpesa, d.cash].join(','))
-  ].join('\n')
-  const blob = new Blob([csv], { type: 'text/csv' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `payment-report-${new Date().toISOString().slice(0,10)}.csv`
-  a.click()
-  URL.revokeObjectURL(url)
-}
-
-watch(() => [filters.value.period, filters.value.method], () => fetchPayments())
-
-onMounted(() => {
-  fetchPayments()
-})
+onMounted(fetchPayments)
 </script>

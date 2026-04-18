@@ -1,7 +1,7 @@
 <template>
-  <div class="flex flex-col h-full rounded-lg shadow-lg overflow-hidden" :class="gradientClass">
+  <div class="flex flex-col h-full overflow-hidden" :class="gradientClass">
     <!-- Header -->
-    <div class="flex-shrink-0 bg-white border-b border-slate-200 shadow-sm relative">
+    <div class="flex-shrink-0 bg-white dark:bg-slate-800 dark:border-slate-700 border-b border-slate-200 shadow-sm relative">
       <div class="px-4 md:px-6 py-3 md:py-5">
         <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 md:gap-6">
           <!-- Left: Title & Icon -->
@@ -15,8 +15,8 @@
                 </slot>
               </div>
               <div>
-                <h2 class="text-lg md:text-xl font-bold text-slate-900">{{ title }}</h2>
-                <p v-if="subtitle" class="text-xs text-slate-500 mt-0.5 hidden md:block">{{ subtitle }}</p>
+                <h2 class="text-lg md:text-xl font-bold text-slate-900 dark:text-slate-100">{{ title }}</h2>
+                <p v-if="subtitle" class="text-xs text-slate-500 dark:text-slate-400 mt-0.5 hidden md:block">{{ subtitle }}</p>
               </div>
             </div>
           </div>
@@ -33,7 +33,7 @@
           <!-- Right: Stats & Actions -->
           <div class="flex items-center justify-between md:justify-end gap-2 md:gap-3">
             <!-- Quick Stats -->
-            <div v-if="stats.length" class="hidden md:flex items-center gap-2 px-3 py-2 bg-slate-50 rounded-lg border border-slate-200">
+            <div v-if="stats.length" class="hidden md:flex items-center gap-2 px-3 py-2 bg-slate-50 dark:bg-slate-900/50 rounded-lg border border-slate-200 dark:border-slate-700">
               <template v-for="(stat, index) in stats" :key="index">
                 <div class="flex items-center gap-1.5" :title="stat.tooltip || ''">
                   <span class="w-2 h-2 rounded-full" :class="stat.color"></span>
@@ -43,12 +43,13 @@
               </template>
               <span v-if="showTotal" class="text-slate-300">|</span>
               <span v-if="showTotal" class="text-xs font-semibold" :class="totalColorClass">{{ total }}</span>
+              <span v-for="(stat, index) in stats" :key="'label-'+index" class="text-xs text-slate-700 dark:text-slate-300 font-semibold hidden"></span>
             </div>
             
             <!-- Action Buttons -->
             <slot name="actions">
               <button v-if="showRefresh" @click="$emit('refresh')" :disabled="loading"
-                class="inline-flex items-center gap-1.5 px-2 md:px-3 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 hover:border-slate-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all">
+                class="inline-flex items-center gap-1.5 px-2 md:px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-600 hover:border-slate-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all">
                 <svg xmlns="http://www.w3.org/2000/svg" :class="loading ? 'animate-spin' : ''" class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
                   <path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd" />
                 </svg>
@@ -70,7 +71,7 @@
     </div>
 
     <!-- Main Content Slot -->
-    <div class="flex-1 min-h-0 overflow-hidden flex flex-col">
+    <div class="flex-1 min-h-0 overflow-hidden flex flex-col dark:bg-slate-800/50 p-4 md:p-6">
       <slot />
     </div>
   </div>
@@ -115,14 +116,14 @@ const searchValue = computed({
 })
 
 const gradientThemes = {
-  blue: 'from-slate-50 via-gray-50 to-blue-50/30',
-  emerald: 'from-slate-50 via-gray-50 to-emerald-50/30',
-  purple: 'from-slate-50 via-gray-50 to-purple-50/30',
-  cyan: 'from-slate-50 via-gray-50 to-cyan-50/30',
-  violet: 'from-slate-50 via-gray-50 to-violet-50/30',
-  indigo: 'from-slate-50 via-gray-50 to-indigo-50/30',
-  rose: 'from-slate-50 via-gray-50 to-rose-50/30',
-  amber: 'from-slate-50 via-gray-50 to-amber-50/30'
+  blue: 'from-slate-50 via-gray-50 to-blue-50/30 dark:from-slate-900 dark:via-slate-800 dark:to-slate-800',
+  emerald: 'from-slate-50 via-gray-50 to-emerald-50/30 dark:from-slate-900 dark:via-slate-800 dark:to-slate-800',
+  purple: 'from-slate-50 via-gray-50 to-purple-50/30 dark:from-slate-900 dark:via-slate-800 dark:to-slate-800',
+  cyan: 'from-slate-50 via-gray-50 to-cyan-50/30 dark:from-slate-900 dark:via-slate-800 dark:to-slate-800',
+  violet: 'from-slate-50 via-gray-50 to-violet-50/30 dark:from-slate-900 dark:via-slate-800 dark:to-slate-800',
+  indigo: 'from-slate-50 via-gray-50 to-indigo-50/30 dark:from-slate-900 dark:via-slate-800 dark:to-slate-800',
+  rose: 'from-slate-50 via-gray-50 to-rose-50/30 dark:from-slate-900 dark:via-slate-800 dark:to-slate-800',
+  amber: 'from-slate-50 via-gray-50 to-amber-50/30 dark:from-slate-900 dark:via-slate-800 dark:to-slate-800'
 }
 
 const gradientClass = computed(() => `bg-gradient-to-br ${gradientThemes[props.colorTheme]}`)
@@ -168,19 +169,11 @@ const totalColorClass = computed(() => totalColorThemes[props.colorTheme])
 </script>
 
 <style scoped>
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-::-webkit-scrollbar-track {
-  background: #f1f5f9;
-  border-radius: 4px;
-}
-::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 4px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
-}
+/* Scrollbar — no Tailwind equivalent for ::-webkit-scrollbar pseudo-elements */
+::-webkit-scrollbar        { width: 8px; height: 8px; }
+::-webkit-scrollbar-track  { background: #f1f5f9; border-radius: 4px; }
+::-webkit-scrollbar-thumb  { background: #cbd5e1; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+:global(.dark) ::-webkit-scrollbar-track { background: #1e293b; }
+:global(.dark) ::-webkit-scrollbar-thumb { background: #475569; }
 </style>

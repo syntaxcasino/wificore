@@ -1,11 +1,18 @@
 <template>
-  <div class="flex flex-col h-screen bg-white rounded-xl shadow-lg overflow-hidden border border-gray-100">
+  <div class="flex flex-col h-full bg-slate-50 dark:bg-slate-900 overflow-hidden">
     <!-- Header -->
-    <div class="sticky top-0 z-30 flex-shrink-0 px-6 py-4 bg-white border-b border-gray-100">
+    <div class="sticky top-0 z-30 flex-shrink-0 px-4 md:px-6 py-3 md:py-5 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 shadow-sm">
       <div class="flex items-center justify-between">
-        <div>
-          <h2 class="text-2xl font-semibold text-gray-800">System Logs</h2>
-          <p class="text-sm text-gray-500 mt-1">Monitor and review system activities</p>
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 md:w-11 md:h-11 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg">
+            <svg class="h-5 w-5 md:h-6 md:w-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+          </div>
+          <div>
+            <h2 class="text-lg md:text-xl font-bold text-slate-900 dark:text-slate-100">System Logs</h2>
+            <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5 hidden md:block">Monitor and review system activities</p>
+          </div>
         </div>
         <button
           @click="fetchLogs()"

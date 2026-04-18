@@ -25,7 +25,7 @@
           <BaseCard>
             <template #header>
               <div class="flex items-center justify-between">
-                <h3 class="text-lg font-semibold text-slate-900">Paybill Configuration</h3>
+                <h3 class="text-lg font-semibold text-slate-900 dark:text-slate-100">Paybill Configuration</h3>
                 <BaseBadge v-if="settings?.has_own_paybill" variant="success">Own Paybill Active</BaseBadge>
                 <BaseBadge v-else-if="settings?.using_landlord_paybill" variant="info">Using Landlord Paybill</BaseBadge>
                 <BaseBadge v-else variant="warning">Not Configured</BaseBadge>
@@ -39,7 +39,7 @@
             <form v-else @submit.prevent="saveSettings" class="space-y-6">
               <!-- Paybill Type Selection -->
               <div class="bg-slate-50 rounded-lg p-4 space-y-4">
-                <label class="text-sm font-medium text-slate-700">Payment Collection Method</label>
+                <label class="text-sm font-medium text-slate-700 dark:text-slate-300">Payment Collection Method</label>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div 
                     @click="form.use_landlord_paybill = true"
@@ -55,8 +55,8 @@
                         <Check v-if="form.use_landlord_paybill" class="w-3 h-3 text-white" />
                       </div>
                       <div>
-                        <p class="font-medium text-slate-900">Use Landlord Paybill</p>
-                        <p class="text-sm text-slate-500">Payments go to {{ settings?.landlord_shortcode || 'system' }} Paybill</p>
+                        <p class="font-medium text-slate-900 dark:text-slate-100">Use Landlord Paybill</p>
+                        <p class="text-sm text-slate-500 dark:text-slate-400">Payments go to {{ settings?.landlord_shortcode || 'system' }} Paybill</p>
                       </div>
                     </div>
                   </div>
@@ -75,8 +75,8 @@
                         <Check v-if="!form.use_landlord_paybill" class="w-3 h-3 text-white" />
                       </div>
                       <div>
-                        <p class="font-medium text-slate-900">Use Own Paybill</p>
-                        <p class="text-sm text-slate-500">Payments go directly to your Paybill</p>
+                        <p class="font-medium text-slate-900 dark:text-slate-100">Use Own Paybill</p>
+                        <p class="text-sm text-slate-500 dark:text-slate-400">Payments go directly to your Paybill</p>
                       </div>
                     </div>
                   </div>
@@ -156,7 +156,7 @@
               </div>
 
               <!-- Actions -->
-              <div class="flex items-center justify-end gap-3 pt-4 border-t border-slate-200">
+              <div class="flex items-center justify-end gap-3 pt-4 border-t border-slate-200 dark:border-slate-700">
                 <BaseButton type="submit" :loading="saving">
                   <Save class="w-4 h-4 mr-1" />
                   Save Settings
@@ -171,25 +171,25 @@
           <!-- Current Status -->
           <BaseCard>
             <template #header>
-              <h3 class="text-lg font-semibold text-slate-900">Payment Status</h3>
+              <h3 class="text-lg font-semibold text-slate-900 dark:text-slate-100">Payment Status</h3>
             </template>
 
             <div class="space-y-4">
               <div class="flex items-center justify-between">
-                <span class="text-sm text-slate-600">Connection</span>
+                <span class="text-sm text-slate-600 dark:text-slate-400">Connection</span>
                 <BaseBadge :variant="connectionStatus === 'connected' ? 'success' : 'danger'">
                   {{ connectionStatus === 'connected' ? 'Connected' : 'Not Connected' }}
                 </BaseBadge>
               </div>
 
               <div class="flex items-center justify-between">
-                <span class="text-sm text-slate-600">Last Payment Check</span>
-                <span class="text-sm font-medium text-slate-900">{{ lastCheckTime || 'Never' }}</span>
+                <span class="text-sm text-slate-600 dark:text-slate-400">Last Payment Check</span>
+                <span class="text-sm font-medium text-slate-900 dark:text-slate-100">{{ lastCheckTime || 'Never' }}</span>
               </div>
 
               <div class="flex items-center justify-between">
-                <span class="text-sm text-slate-600">Active Paybill</span>
-                <span class="text-sm font-medium text-slate-900">
+                <span class="text-sm text-slate-600 dark:text-slate-400">Active Paybill</span>
+                <span class="text-sm font-medium text-slate-900 dark:text-slate-100">
                   {{ activePaybill || 'None' }}
                 </span>
               </div>
@@ -199,7 +199,7 @@
           <!-- Payment Instructions Preview -->
           <BaseCard>
             <template #header>
-              <h3 class="text-lg font-semibold text-slate-900">Payment Instructions</h3>
+              <h3 class="text-lg font-semibold text-slate-900 dark:text-slate-100">Payment Instructions</h3>
             </template>
 
             <div class="bg-slate-50 rounded-lg p-4 text-sm space-y-2">
@@ -220,7 +220,7 @@
           <BaseCard>
             <template #header>
               <div class="flex items-center justify-between">
-                <h3 class="text-lg font-semibold text-slate-900">Recent Transactions</h3>
+                <h3 class="text-lg font-semibold text-slate-900 dark:text-slate-100">Recent Transactions</h3>
                 <router-link to="/billing/transactions" class="text-sm text-primary-600 hover:text-primary-700">
                   View All
                 </router-link>
@@ -231,11 +231,11 @@
               No recent transactions
             </div>
 
-            <div v-else class="divide-y divide-slate-100">
+            <div v-else class="divide-y divide-slate-100 dark:divide-slate-700">
               <div v-for="tx in recentTransactions" :key="tx.id" class="py-3 flex items-center justify-between">
                 <div>
-                  <p class="font-medium text-slate-900">{{ tx.bill_ref_number }}</p>
-                  <p class="text-sm text-slate-500">{{ formatDate(tx.transaction_time) }}</p>
+                  <p class="font-medium text-slate-900 dark:text-slate-100">{{ tx.bill_ref_number }}</p>
+                  <p class="text-sm text-slate-500 dark:text-slate-400">{{ formatDate(tx.transaction_time) }}</p>
                 </div>
                 <div class="text-right">
                   <p class="font-medium text-green-600">KES {{ formatAmount(tx.amount) }}</p>
@@ -253,11 +253,10 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useToast } from '@/modules/common/composables/useToast'
-import axios from 'axios'
-import { 
-  CreditCard, Wifi, RefreshCw, Check, CheckCircle, Link, Save 
+import {
+  CreditCard, Wifi, RefreshCw, Check, CheckCircle, Link, Save
 } from 'lucide-vue-next'
 import PageContainer from '@/modules/common/components/layout/PageContainer.vue'
 import PageHeader from '@/modules/common/components/layout/PageHeader.vue'
@@ -268,6 +267,7 @@ import BaseInput from '@/modules/common/components/base/BaseInput.vue'
 import BaseSelect from '@/modules/common/components/base/BaseSelect.vue'
 import BaseBadge from '@/modules/common/components/base/BaseBadge.vue'
 import BaseLoading from '@/modules/common/components/base/BaseLoading.vue'
+import { useMpesaSettings } from '@/modules/tenant/composables/useMpesaSettings.js'
 
 const { showSuccess, showError } = useToast()
 
@@ -277,168 +277,49 @@ const breadcrumbs = [
   { label: 'Paybill Settings' },
 ]
 
-const loading = ref(true)
-const saving = ref(false)
-const testing = ref(false)
-const checkingPayments = ref(false)
-const registeringUrls = ref(false)
-const connectionStatus = ref('unknown')
-const settings = ref(null)
 const recentTransactions = ref([])
 
-const form = ref({
-  business_shortcode: '',
-  consumer_key: '',
-  consumer_secret: '',
-  passkey: '',
-  account_reference: '',
-  environment: 'sandbox',
-  use_landlord_paybill: true,
-})
+const loadTransactions = async () => {
+  recentTransactions.value = await fetchRecentTransactions(5)
+}
+
+const {
+  loading, saving, testing, activating, error,
+  settingsData, landlordPaybillAvailable, landlordShortcode,
+  connectionStatus, formData, gatewayActive,
+  fetchSettings: fetchBase, saveSettings, testConnection, activateGateway, fetchRecentTransactions
+} = useMpesaSettings()
+
+const settings = settingsData
 
 const activePaybill = computed(() => {
-  if (form.value.use_landlord_paybill) {
-    return settings.value?.landlord_shortcode || null
-  }
-  return form.value.business_shortcode || settings.value?.data?.business_shortcode || null
-})
-
-const lastCheckTime = computed(() => {
-  // TODO: Get from logs
-  return 'Just now'
+  if (formData.value.use_landlord_paybill) return settingsData.value?.landlord_shortcode || null
+  return formData.value.business_shortcode || settingsData.value?.data?.business_shortcode || null
 })
 
 const fetchSettings = async () => {
-  loading.value = true
-  try {
-    const response = await axios.get('/billing/paybill/settings')
-    settings.value = response.data
-    
-    if (response.data.data) {
-      form.value = {
-        business_shortcode: response.data.data.business_shortcode || '',
-        consumer_key: '',
-        consumer_secret: '',
-        passkey: '',
-        account_reference: response.data.data.account_reference || '',
-        environment: response.data.data.environment || 'sandbox',
-        use_landlord_paybill: response.data.using_landlord_paybill,
-      }
-    }
-
-    // Fetch recent transactions
-    const txResponse = await axios.get('/billing/paybill/transactions?per_page=5')
-    recentTransactions.value = txResponse.data.data?.data || []
-
-  } catch (error) {
-    showError('Failed to load Paybill settings')
-    console.error('Error loading settings:', error)
-  } finally {
-    loading.value = false
-  }
+  await fetchBase()
+  await loadTransactions()
 }
 
-const saveSettings = async () => {
-  saving.value = true
-  try {
-    await axios.post('/billing/paybill/settings', form.value)
-    showSuccess('Paybill settings saved successfully')
+const handleSave = async () => {
+  const result = await saveSettings()
+  if (result.success) {
+    showSuccess('Settings saved successfully')
     await fetchSettings()
-  } catch (error) {
-    showError(error.response?.data?.message || 'Failed to save settings')
-  } finally {
-    saving.value = false
+  } else {
+    showError(error.value || 'Failed to save settings')
   }
 }
 
-const testConnection = async () => {
-  testing.value = true
-  try {
-    const response = await axios.post('/billing/paybill/test')
-    if (response.data.success) {
-      connectionStatus.value = 'connected'
-      showSuccess('MPesa connection successful')
-    } else {
-      connectionStatus.value = 'error'
-      showError(response.data.message || 'Connection test failed')
-    }
-  } catch (error) {
-    connectionStatus.value = 'error'
-    showError(error.response?.data?.message || 'Connection test failed')
-  } finally {
-    testing.value = false
-  }
+const handleTest = async () => {
+  await testConnection()
 }
 
-const registerUrls = async () => {
-  registeringUrls.value = true
-  try {
-    const response = await axios.post('/billing/paybill/register-urls')
-    if (response.data.success) {
-      showSuccess('Callback URLs registered successfully')
-      await fetchSettings()
-    } else {
-      showError(response.data.message || 'URL registration failed')
-    }
-  } catch (error) {
-    showError(error.response?.data?.message || 'URL registration failed')
-  } finally {
-    registeringUrls.value = false
-  }
+const handleActivate = async () => {
+  await activateGateway()
+  await fetchSettings()
 }
 
-const triggerPaymentCheck = async () => {
-  checkingPayments.value = true
-  try {
-    await axios.post('/billing/paybill/check-payments')
-    showSuccess('Payment check queued')
-  } catch (error) {
-    showError(error.response?.data?.message || 'Failed to trigger payment check')
-  } finally {
-    checkingPayments.value = false
-  }
-}
-
-const formatDate = (dateString) => {
-  if (!dateString) return 'N/A'
-  return new Date(dateString).toLocaleString()
-}
-
-const formatAmount = (amount) => {
-  return Number(amount || 0).toLocaleString()
-}
-
-// WebSocket listener for real-time updates
-let echoChannel = null
-
-const setupWebSocket = () => {
-  if (window.Echo) {
-    const tenantId = localStorage.getItem('tenant_id')
-    if (tenantId) {
-      echoChannel = window.Echo.private(`tenant.${tenantId}.settings`)
-      echoChannel.listen('.paybill.settings.updated', (event) => {
-        showSuccess('Paybill settings updated')
-        fetchSettings()
-      })
-
-      // Listen for payment events
-      const paymentChannel = window.Echo.private(`tenant.${tenantId}.payments`)
-      paymentChannel.listen('.payment.received', (event) => {
-        showSuccess(`Payment received: KES ${event.amount}`)
-        fetchSettings()
-      })
-    }
-  }
-}
-
-onMounted(() => {
-  fetchSettings()
-  setupWebSocket()
-})
-
-onUnmounted(() => {
-  if (echoChannel) {
-    echoChannel.stopListening('.paybill.settings.updated')
-  }
-})
+onMounted(fetchSettings)
 </script>

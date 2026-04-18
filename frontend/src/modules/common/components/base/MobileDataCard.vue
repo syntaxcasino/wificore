@@ -1,20 +1,20 @@
 <template>
-  <div class="bg-white rounded-lg border border-slate-200 shadow-sm p-4" :class="hoverClass">
+  <div class="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm p-4" :class="hoverClass">
     <!-- Main Content Row -->
     <div class="flex items-start justify-between gap-3">
       <div class="min-w-0 flex-1">
         <!-- Header: Icon/Status + Title -->
         <div class="flex items-center gap-2 min-w-0">
           <span v-if="status" :class="statusDotClass" class="w-2 h-2 rounded-full flex-shrink-0"></span>
-          <div class="text-sm font-semibold text-slate-900 truncate">{{ title }}</div>
+          <div class="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">{{ title }}</div>
         </div>
         
         <!-- Subtitle -->
-        <div v-if="subtitle" class="mt-1 text-xs text-slate-600 truncate">{{ subtitle }}</div>
+        <div v-if="subtitle" class="mt-1 text-xs text-slate-600 dark:text-slate-400 truncate">{{ subtitle }}</div>
         
         <!-- Meta lines -->
         <div v-if="metaLines.length" class="mt-1 space-y-0.5">
-          <div v-for="(line, index) in metaLines" :key="index" class="text-xs" :class="line.class || 'text-slate-500'">
+          <div v-for="(line, index) in metaLines" :key="index" class="text-xs" :class="line.class || 'text-slate-500 dark:text-slate-400'">
             {{ line.text }}
           </div>
         </div>

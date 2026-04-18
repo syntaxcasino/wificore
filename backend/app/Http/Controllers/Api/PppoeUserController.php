@@ -199,6 +199,14 @@ class PppoeUserController extends Controller
             ], 404);
         }
 
+        // Cleartext passwords are only stored when RADIUS_ALLOW_CLEARTEXT=true
+        if (!env('RADIUS_ALLOW_CLEARTEXT', true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Plaintext password retrieval is disabled. Use password reset to set a new password.',
+            ], 403);
+        }
+
         // Get plaintext password from radcheck table
         $password = $this->tenantContext->runInTenantContext($tenant, function () use ($pppoeUser) {
             return DB::table('radcheck')
@@ -211,7 +219,7 @@ class PppoeUserController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Password not available. User may need password reset.',
-            ], 200);
+            ], 404);
         }
 
         Log::info('PPPoE password viewed', [
@@ -258,13 +266,15 @@ class PppoeUserController extends Controller
                 $pppoeUser->password = bcrypt($newPassword);
                 $pppoeUser->save();
 
+                $shortRouterId = substr(str_replace('-', '', (string) $pppoeUser->router_id), 0, 8);
                 $this->syncRadiusCredentials(
                     (string) $pppoeUser->username,
                     $newPassword,
                     $pppoeUser->expires_at,
                     $pppoeUser->rate_limit,
                     (int) $pppoeUser->simultaneous_use,
-                    (string) $tenant->id
+                    (string) $tenant->id,
+                    $pppoeUser->router_id ? 'pppoe-pool-' . $shortRouterId : null
                 );
             });
 
@@ -453,7 +463,10 @@ class PppoeUserController extends Controller
                 ]);
 
                 // STEP 4: Sync RADIUS credentials in tenant schema
-                $this->syncRadiusCredentials($username, $plainPassword, $expiresAt, $rateLimit, $simultaneousUse, (string) $tenant->id);
+                // Pool name matches ZeroConfigPPPoEGenerator formula: pppoe-pool-{short_router_id}
+                $shortRouterId = substr(str_replace('-', '', (string) $router->id), 0, 8);
+                $framedPool = 'pppoe-pool-' . $shortRouterId;
+                $this->syncRadiusCredentials($username, $plainPassword, $expiresAt, $rateLimit, $simultaneousUse, (string) $tenant->id, $framedPool);
 
                 $this->syncRadiusMetaForUser(
                     $pppoeUser->username,
@@ -850,6 +863,15 @@ class PppoeUserController extends Controller
                     );
                 }
 
+                // Restore Framed-Pool so MikroTik assigns an IP (required: PPP profile has remote-address=none)
+                if ($pppoeUser->router_id) {
+                    $shortId = substr(str_replace('-', '', (string) $pppoeUser->router_id), 0, 8);
+                    DB::table('radreply')->updateOrInsert(
+                        ['username' => $pppoeUser->username, 'attribute' => 'Framed-Pool'],
+                        ['op' => ':=', 'value' => 'pppoe-pool-' . $shortId]
+                    );
+                }
+
                 // Restore session timeout if expiry is set
                 if ($pppoeUser->expires_at) {
                     $sessionTimeout = max(60, (int) now()->diffInSeconds($pppoeUser->expires_at, false));
@@ -951,6 +973,15 @@ class PppoeUserController extends Controller
                     DB::table('radreply')->updateOrInsert(
                         ['username' => $pppoeUser->username, 'attribute' => 'Mikrotik-Rate-Limit'],
                         ['op' => ':=', 'value' => $pppoeUser->rate_limit]
+                    );
+                }
+
+                // Restore Framed-Pool so MikroTik assigns an IP (required: PPP profile has remote-address=none)
+                if ($pppoeUser->router_id) {
+                    $shortId = substr(str_replace('-', '', (string) $pppoeUser->router_id), 0, 8);
+                    DB::table('radreply')->updateOrInsert(
+                        ['username' => $pppoeUser->username, 'attribute' => 'Framed-Pool'],
+                        ['op' => ':=', 'value' => 'pppoe-pool-' . $shortId]
                     );
                 }
 
@@ -1069,7 +1100,7 @@ class PppoeUserController extends Controller
      * IMPORTANT: This method assumes TenantContext has already set the correct search_path.
      * It operates on the tenant's radcheck and radreply tables, NOT public schema.
      */
-    private function syncRadiusCredentials(string $username, string $plainPassword, $expiresAt, ?string $rateLimit, int $simultaneousUse, string $tenantId): void
+    private function syncRadiusCredentials(string $username, string $plainPassword, $expiresAt, ?string $rateLimit, int $simultaneousUse, string $tenantId, ?string $framedPool = null): void
     {
         $ntPassword = $this->calculateNtPasswordHash($plainPassword);
 
@@ -1135,6 +1166,17 @@ class PppoeUserController extends Controller
                 'attribute' => 'Mikrotik-Rate-Limit',
                 'op' => ':=',
                 'value' => $rateLimit,
+            ];
+        }
+
+        // Framed-Pool: tells MikroTik which IP pool to assign from.
+        // Required because PPP profile uses remote-address=none (RADIUS-only, no local fallback).
+        if ($framedPool) {
+            $replyRows[] = [
+                'username' => $username,
+                'attribute' => 'Framed-Pool',
+                'op' => ':=',
+                'value' => $framedPool,
             ];
         }
 

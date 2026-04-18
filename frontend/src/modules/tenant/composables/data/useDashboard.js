@@ -92,8 +92,8 @@ export function useDashboard() {
     try {
       const response = await axios.get('/dashboard/stats')
 
-      if (response.data.success) {
-        const data = response.data.data
+      if (response.data?.success) {
+        const data = response.data?.data || {}
 
         // Update stats
         stats.value = {

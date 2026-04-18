@@ -1,37 +1,11 @@
 <template>
-  <div class="data-usage-container">
-    <h3>Data Usage</h3>
-    <p>Data usage trend for PPMG and Hotspot users.</p>
-    <!-- In a real app, you would implement a chart or visualization here -->
-    <div class="placeholder-chart">
-      <p>Data usage visualization would go here</p>
+  <div class="bg-white dark:bg-slate-800 rounded-lg p-5 shadow-sm">
+    <h3 class="text-base font-semibold text-slate-900 dark:text-slate-100 mb-1">Data Usage</h3>
+    <p class="text-sm text-slate-400 dark:text-slate-500 mb-5">Data usage trend for PPMG and Hotspot users.</p>
+    <div class="h-[200px] bg-slate-100 dark:bg-slate-700 rounded flex items-center justify-center text-slate-400 dark:text-slate-500 text-sm">
+      Data usage visualization would go here
     </div>
   </div>
 </template>
 
 <script setup></script>
-
-<style scoped>
-.data-usage-container {
-  background: white;
-  border-radius: 8px;
-  padding: 20px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-
-.data-usage-container p {
-  color: #888;
-  font-size: 0.9rem;
-  margin: 0 0 20px 0;
-}
-
-.placeholder-chart {
-  height: 200px;
-  background-color: #f5f5f5;
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #999;
-}
-</style>

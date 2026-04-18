@@ -45,28 +45,28 @@
       title="Add Admin User"
       subtitle="Create a new administrator account"
       icon="shield"
-      width="480px"
+      width="60%"
       @close="closeCreateForm"
     >
       <div class="p-6 space-y-4">
         <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Name</label>
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Name</label>
           <input v-model="createForm.name" type="text" placeholder="Full name" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none" />
         </div>
         <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Username</label>
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Username</label>
           <input v-model="createForm.username" type="text" placeholder="Username" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none" />
         </div>
         <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Email</label>
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Email</label>
           <input v-model="createForm.email" type="email" placeholder="email@example.com" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none" />
         </div>
         <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Phone</label>
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Phone</label>
           <input v-model="createForm.phone" type="tel" placeholder="Phone number" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none" />
         </div>
         <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Role</label>
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Role</label>
           <select v-model="createForm.role" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none bg-white">
             <option value="staff">Staff</option>
             <option value="admin">Admin</option>
@@ -74,7 +74,7 @@
           </select>
         </div>
         <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Password</label>
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Password</label>
           <input v-model="createForm.password" type="password" placeholder="Set password" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none" />
         </div>
         <div v-if="formError" class="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600">{{ formError }}</div>
@@ -82,7 +82,7 @@
 
       <template #footer>
         <div class="flex gap-3">
-          <button @click="closeCreateForm" class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50">Cancel</button>
+          <button @click="closeCreateForm" class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-600">Cancel</button>
           <button @click="handleCreate" :disabled="formSubmitting" class="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors disabled:opacity-50">
             <span v-if="formSubmitting">Creating...</span>
             <span v-else>Create User</span>
@@ -97,24 +97,24 @@
       title="Edit Admin User"
       subtitle="Update user details"
       icon="edit"
-      width="480px"
+      width="60%"
       @close="closeEditForm"
     >
       <div v-if="selectedUser" class="p-6 space-y-4">
         <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Name</label>
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Name</label>
           <input v-model="editForm.name" type="text" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none" />
         </div>
         <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Email</label>
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Email</label>
           <input v-model="editForm.email" type="email" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none" />
         </div>
         <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Phone</label>
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Phone</label>
           <input v-model="editForm.phone" type="tel" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none" />
         </div>
         <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Role</label>
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Role</label>
           <select v-model="editForm.role" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none bg-white">
             <option value="staff">Staff</option>
             <option value="admin">Admin</option>
@@ -126,7 +126,7 @@
 
       <template #footer>
         <div class="flex gap-3">
-          <button @click="closeEditForm" class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50">Cancel</button>
+          <button @click="closeEditForm" class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-600">Cancel</button>
           <button @click="handleUpdate" :disabled="formSubmitting" class="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors disabled:opacity-50">
             <span v-if="formSubmitting">Updating...</span>
             <span v-else>Update User</span>
@@ -150,7 +150,7 @@
     </div>
 
     <!-- Data Content -->
-    <div v-else-if="filteredData && filteredData.length" class="flex flex-col h-full px-4 md:px-6 pt-2 pb-2 min-h-[300px]">
+    <div v-else-if="filteredData && filteredData.length" class="flex flex-col h-full pt-2 pb-2 min-h-[300px]">
       <!-- Mobile Cards -->
       <div class="md:hidden space-y-3 overflow-y-auto flex-1 min-h-0">
         <MobileDataCard
@@ -166,7 +166,7 @@
       </div>
 
       <!-- Desktop Table -->
-      <div class="hidden md:flex bg-white border border-slate-200 shadow-sm overflow-hidden flex-col min-h-0 flex-1">
+      <div class="hidden md:flex bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden flex-col min-h-0 flex-1">
         <div class="overflow-x-auto overflow-y-auto flex-1 min-h-0">
           <table class="w-full">
             <thead class="bg-slate-50 border-b border-slate-200 sticky top-0 z-[5]">
@@ -180,20 +180,20 @@
                 <th class="px-6 py-3 text-right text-xs font-semibold text-slate-700 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
-            <tbody class="divide-y divide-slate-100">
+            <tbody class="divide-y divide-slate-100 dark:divide-slate-700">
               <tr v-for="user in paginatedData" :key="user.id" class="hover:bg-indigo-50/50 transition-colors">
                 <td class="px-6 py-4">
                   <div class="flex items-center gap-3">
                     <div class="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-500 rounded-full flex items-center justify-center text-white text-sm font-semibold">{{ getUserInitials(user) }}</div>
                     <div>
-                      <div class="text-sm font-medium text-slate-900">{{ user.name || user.username }}</div>
-                      <div class="text-xs text-slate-500">@{{ user.username }}</div>
+                      <div class="text-sm font-medium text-slate-900 dark:text-slate-100">{{ user.name || user.username }}</div>
+                      <div class="text-xs text-slate-500 dark:text-slate-400">@{{ user.username }}</div>
                     </div>
                   </div>
                 </td>
                 <td class="px-6 py-4">
                   <div class="text-sm text-slate-900">{{ user.email || 'N/A' }}</div>
-                  <div class="text-xs text-slate-500">{{ user.phone || 'No phone' }}</div>
+                  <div class="text-xs text-slate-500 dark:text-slate-400">{{ user.phone || 'No phone' }}</div>
                 </td>
                 <td class="px-6 py-4">
                   <EntityStatusBadge :status="user.role || 'staff'" size="sm" />
@@ -201,8 +201,8 @@
                 <td class="px-6 py-4">
                   <EntityStatusBadge :status="user.status || 'inactive'" size="sm" />
                 </td>
-                <td class="px-6 py-4 text-sm text-slate-600">{{ formatDate(user.last_login) }}</td>
-                <td class="px-6 py-4 text-sm text-slate-600">{{ formatDate(user.created_at) }}</td>
+                <td class="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">{{ formatDate(user.last_login) }}</td>
+                <td class="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">{{ formatDate(user.created_at) }}</td>
                 <td class="px-6 py-4 text-right">
                   <div class="flex items-center justify-end gap-1">
                     <button @click="openEditModal(user)" class="px-2 py-1 text-xs font-medium text-slate-700 bg-slate-100 rounded hover:bg-slate-200 transition-colors">Edit</button>
@@ -240,6 +240,8 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { Plus, X, RefreshCw } from 'lucide-vue-next'
+import { useConfirmStore } from '@/stores/confirm'
+import { useToast } from '@/modules/common/composables/useToast.js'
 import DataViewContainer from '@/modules/common/components/base/DataViewContainer.vue'
 import DataSkeleton from '@/modules/common/components/base/DataSkeleton.vue'
 import MobileDataCard from '@/modules/common/components/base/MobileDataCard.vue'
@@ -251,6 +253,9 @@ import BaseSelect from '@/modules/common/components/base/BaseSelect.vue'
 import { useUsers } from '@/modules/tenant/composables/data/useUsers'
 import { useFilters } from '@/modules/common/composables/utils/useFilters'
 import { usePagination } from '@/modules/common/composables/utils/usePagination'
+
+const confirmStore = useConfirmStore()
+const { error: showError } = useToast()
 
 // Data management
 const { users, loading, error, activeUsers, inactiveUsers, totalUsers, fetchUsers, deleteUser, toggleUserStatus, createUser, updateUser } = useUsers()
@@ -353,21 +358,37 @@ const handleUpdate = async () => {
 
 const handleToggleStatus = async (user) => {
   const action = user.status === 'inactive' ? 'activate' : 'deactivate'
-  if (!confirm(`Are you sure you want to ${action} ${user.name || user.username}?`)) return
+  const confirmed = await confirmStore.open({
+    title: `${action.charAt(0).toUpperCase() + action.slice(1)} User`,
+    message: `Are you sure you want to ${action} ${user.name || user.username}?`,
+    confirmText: action.charAt(0).toUpperCase() + action.slice(1),
+    cancelText: 'Cancel',
+    variant: action === 'deactivate' ? 'warning' : 'success',
+  })
+  if (!confirmed) return
   try {
     await toggleUserStatus(user.id, action === 'deactivate')
     await fetchUsers()
   } catch (err) {
     console.error(`Failed to ${action} user:`, err)
+    showError(`Failed to ${action} user`)
   }
 }
 
 const handleDelete = async (user) => {
-  if (!confirm(`Are you sure you want to delete ${user.name || user.username}? This cannot be undone.`)) return
+  const confirmed = await confirmStore.open({
+    title: 'Delete User',
+    message: `Are you sure you want to delete ${user.name || user.username}? This cannot be undone.`,
+    confirmText: 'Delete',
+    cancelText: 'Cancel',
+    variant: 'danger',
+  })
+  if (!confirmed) return
   try {
     await deleteUser(user.id)
   } catch (err) {
     console.error('Failed to delete user:', err)
+    showError('Failed to delete user')
   }
 }
 
@@ -376,8 +397,11 @@ onMounted(() => fetchUsers())
 </script>
 
 <style scoped>
-::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
-::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+/* Scrollbar — no Tailwind equivalent for ::-webkit-scrollbar pseudo-elements */
+::-webkit-scrollbar        { width: 8px; height: 8px; }
+::-webkit-scrollbar-track  { background: #f1f5f9; border-radius: 4px; }
+::-webkit-scrollbar-thumb  { background: #cbd5e1; border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+:global(.dark) ::-webkit-scrollbar-track { background: #1e293b; }
+:global(.dark) ::-webkit-scrollbar-thumb { background: #475569; }
 </style>

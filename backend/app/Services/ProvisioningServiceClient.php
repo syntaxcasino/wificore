@@ -151,6 +151,53 @@ class ProvisioningServiceClient
     }
 
     /**
+     * Deploy a full script to router (for SaaS provisioning)
+     *
+     * @param Router $router
+     * @param string $script Full script content to deploy
+     * @param string $tenantId Tenant ID for isolation
+     * @return array Deployment results
+     * @throws \Exception
+     */
+    public function deployScript(Router $router, string $script, string $tenantId): array
+    {
+        try {
+            Log::debug('Deploying script via provisioning service', [
+                'router_id' => $router->id,
+                'tenant_id' => $tenantId,
+                'script_length' => strlen($script)
+            ]);
+
+            $response = $this->getHttpClient()
+                ->post($this->baseUrl . '/api/v1/deploy-script', [
+                    'router_id' => $router->id,
+                    'tenant_id' => $tenantId,
+                    'script' => $script
+                ]);
+
+            if ($response->failed()) {
+                throw new \Exception('Script deployment failed: ' . $response->body());
+            }
+
+            $data = $response->json();
+
+            if (!$data['success']) {
+                throw new \Exception($data['error'] ?? 'Unknown script deployment error');
+            }
+
+            return $data;
+
+        } catch (\Exception $e) {
+            Log::error('Script deployment error', [
+                'router_id' => $router->id,
+                'tenant_id' => $tenantId,
+                'error' => $e->getMessage()
+            ]);
+            throw $e;
+        }
+    }
+
+    /**
      * Execute commands on a router
      *
      * @param Router $router

@@ -2,9 +2,16 @@
   <DataViewContainer
     title="Roles & Permissions"
     subtitle="Manage user roles and access control"
-    icon="Shield"
+    color-theme="indigo"
     :breadcrumbs="breadcrumbs"
   >
+    <!-- Icon Slot -->
+    <template #icon>
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 md:h-6 md:w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+      </svg>
+    </template>
+
     <template #actions>
       <BaseButton @click="openCreateModal" variant="primary">
         <Plus class="w-4 h-4 mr-1" />
@@ -33,7 +40,7 @@
                 <CheckCircle class="w-4 h-4 text-green-600" />
                 <span class="text-slate-700">{{ perm }}</span>
               </div>
-              <div v-if="role.permissions.length > 5" class="text-xs text-slate-500">
+              <div v-if="role.permissions.length > 5" class="text-xs text-slate-500 dark:text-slate-400">
                 +{{ role.permissions.length - 5 }} more
               </div>
             </div>
@@ -58,12 +65,12 @@
       :title="isEditing ? 'Edit Role' : 'Add Role'"
       :subtitle="isEditing ? 'Update role details and permissions' : 'Create a new role with permissions'"
       icon="Shield"
-      width="480px"
+      width="60%"
       @close="closeModal"
     >
       <div class="p-6 space-y-4">
         <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Role Name</label>
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Role Name</label>
           <input
             v-model="formData.name"
             type="text"
@@ -73,7 +80,7 @@
         </div>
 
         <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Description</label>
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Description</label>
           <textarea
             v-model="formData.description"
             rows="3"
@@ -102,7 +109,7 @@
         <div class="flex gap-3">
           <button
             @click="closeModal"
-            class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+            class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-600"
           >
             Cancel
           </button>
@@ -122,10 +129,13 @@
 <script setup>
 import { ref } from 'vue'
 import { Shield, Plus, Edit2, Trash2, CheckCircle } from 'lucide-vue-next'
+import { useConfirmStore } from '@/stores/confirm'
 import DataViewContainer from '@/modules/common/components/base/DataViewContainer.vue'
 import BaseButton from '@/modules/common/components/base/BaseButton.vue'
 import BaseBadge from '@/modules/common/components/base/BaseBadge.vue'
 import SlideOverlay from '@/modules/common/components/base/SlideOverlay.vue'
+
+const confirmStore = useConfirmStore()
 
 const breadcrumbs = [{ label: 'Dashboard', to: '/dashboard' }, { label: 'Admin', to: '/dashboard/admin' }, { label: 'Roles & Permissions' }]
 
@@ -239,9 +249,9 @@ const saveRole = async () => {
   }
 }
 
-const deleteRole = (role) => {
-  if (!role.is_system && confirm(`Delete role ${role.name}?`)) {
-    roles.value = roles.value.filter(r => r.id !== role.id)
-  }
+const deleteRole = async (role) => {
+  if (role.is_system) return
+  const confirmed = await confirmStore.open({ title: 'Delete Role', message: `Delete role ${role.name}?`, confirmText: 'Delete', cancelText: 'Cancel', variant: 'danger' })
+  if (confirmed) roles.value = roles.value.filter(r => r.id !== role.id)
 }
 </script>

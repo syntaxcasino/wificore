@@ -4,7 +4,7 @@
     title="Session Details"
     :subtitle="session?.user?.name || session?.username || 'Session information'"
     icon="Activity"
-    width="480px"
+    width="50%"
     @close="$emit('close')"
   >
     <div v-if="session" class="space-y-4">
@@ -12,24 +12,24 @@
       <div class="bg-gradient-to-br from-slate-50 to-gray-50 rounded-lg p-4 border border-slate-200">
         <div class="flex items-center gap-2 mb-3">
           <Users class="w-4 h-4 text-slate-600" />
-          <h4 class="text-sm font-semibold text-slate-800">User Information</h4>
+          <h4 class="text-sm font-semibold text-slate-800 dark:text-slate-100">User Information</h4>
         </div>
         <div class="grid grid-cols-2 gap-3">
           <div>
             <div class="text-xs text-slate-500 mb-0.5">{{ session.type === 'pppoe' ? 'Username' : 'Name' }}</div>
-            <div class="text-sm font-medium text-slate-900">{{ session.user?.name || session.username }}</div>
+            <div class="text-sm font-medium text-slate-900 dark:text-slate-100">{{ session.user?.name || session.username }}</div>
           </div>
           <div>
             <div class="text-xs text-slate-500 mb-0.5">Phone</div>
-            <div class="text-sm font-medium text-slate-900">{{ session.user?.phone || session.phone || 'N/A' }}</div>
+            <div class="text-sm font-medium text-slate-900 dark:text-slate-100">{{ session.user?.phone || session.phone || 'N/A' }}</div>
           </div>
           <div v-if="session.package">
             <div class="text-xs text-slate-500 mb-0.5">Package</div>
-            <div class="text-sm font-medium text-slate-900">{{ session.package.name }}</div>
+            <div class="text-sm font-medium text-slate-900 dark:text-slate-100">{{ session.package.name }}</div>
           </div>
           <div v-if="session.package?.speed || session.profile?.speed">
             <div class="text-xs text-slate-500 mb-0.5">Speed</div>
-            <div class="text-sm font-medium text-slate-900">{{ session.package?.speed || session.profile?.speed }}</div>
+            <div class="text-sm font-medium text-slate-900 dark:text-slate-100">{{ session.package?.speed || session.profile?.speed }}</div>
           </div>
         </div>
       </div>
@@ -38,7 +38,7 @@
       <div class="bg-gradient-to-br from-slate-50 to-gray-50 rounded-lg p-4 border border-slate-200">
         <div class="flex items-center gap-2 mb-3">
           <Network class="w-4 h-4 text-slate-600" />
-          <h4 class="text-sm font-semibold text-slate-800">Connection Details</h4>
+          <h4 class="text-sm font-semibold text-slate-800 dark:text-slate-100">Connection Details</h4>
         </div>
         <div class="grid grid-cols-2 gap-3">
           <div>
@@ -55,7 +55,7 @@
           </div>
           <div>
             <div class="text-xs text-slate-500 mb-0.5">NAS IP</div>
-            <div class="text-sm font-medium text-slate-900">{{ session.nas_ip_address || session.nas_ip || 'N/A' }}</div>
+            <div class="text-sm font-medium text-slate-900 dark:text-slate-100">{{ session.nas_ip_address || session.nas_ip || 'N/A' }}</div>
           </div>
         </div>
       </div>
@@ -85,11 +85,11 @@
           </div>
           <div>
             <div class="text-xs text-slate-600 mb-0.5">Total Data</div>
-            <div class="text-sm font-semibold text-slate-900">{{ formatBytes((session.bytes_in || session.input_octets || 0) + (session.bytes_out || session.output_octets || 0)) }}</div>
+            <div class="text-sm font-semibold text-slate-900 dark:text-slate-100">{{ formatBytes((session.bytes_in || session.input_octets || 0) + (session.bytes_out || session.output_octets || 0)) }}</div>
           </div>
           <div v-if="session.current_bandwidth || session.download_speed">
             <div class="text-xs text-slate-600 mb-0.5">Current Speed</div>
-            <div class="text-sm font-semibold text-slate-900">{{ formatBytes(session.current_bandwidth || session.download_speed) }}/s</div>
+            <div class="text-sm font-semibold text-slate-900 dark:text-slate-100">{{ formatBytes(session.current_bandwidth || session.download_speed) }}/s</div>
           </div>
         </div>
       </div>
@@ -153,7 +153,7 @@
       <div class="flex gap-3">
         <button
           @click="$emit('close')"
-          class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
+          class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/40 transition-colors"
         >
           Close
         </button>

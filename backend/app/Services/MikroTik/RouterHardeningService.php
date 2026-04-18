@@ -133,7 +133,7 @@ SCRIPT;
 :log info "Configuring SSH restrictions"
 
 # Restrict SSH to specific source IPs (VPN subnet)
-/ip service set ssh address={$ipList}
+/ip service set ssh address=\"{$ipList}\"
 
 # Change SSH port to non-standard (optional security through obscurity)
 # /ip service set ssh port=2222
@@ -162,7 +162,7 @@ SCRIPT;
 # ============================================================
 
 /ip firewall address-list
-add list=vpn_subnet address={$vpnSubnet} comment="WiFiCore VPN Subnet"
+add list=vpn_subnet address=\"{$vpnSubnet}\" comment=\"WiFiCore VPN Subnet\"
 add list=vpn_subnet address=10.8.0.1/32 comment="WiFiCore Server VPN IP"
 
 # Bogon addresses (should never appear on WAN)
@@ -271,7 +271,7 @@ add chain=input src-address-list=port_scanners action=drop \
 # ============================================================
 
 # Drop bogon addresses from WAN
-add chain=input in-interface={$wanInterface} \
+add chain=input in-interface=\"{$wanInterface}\" \
     src-address-list=bogons action=drop \
     comment="Drop bogon addresses from WAN"
 
@@ -366,7 +366,7 @@ SCRIPT;
 # Ensure management user exists with proper permissions
 /user
 :if ([:len [find name="{$username}"]] = 0) do={
-    add name={$username} group=full disabled=no
+    add name=\"{$username}\" group=full disabled=no
     :log info "Created management user: {$username}"
 } else={
     set [find name="{$username}"] group=full disabled=no
@@ -408,7 +408,7 @@ SCRIPT;
 /tool mac-server mac-winbox set allowed-interface-list=none
 
 # Disable neighbor discovery on WAN
-/ip neighbor discovery-settings set discover-interface-list=!{$wanInterface}
+/ip neighbor discovery-settings set discover-interface-list=!\"{$wanInterface}\"
 
 # Enable SYN flood protection
 /ip settings set tcp-syncookies=yes
@@ -450,7 +450,7 @@ set allow-remote-requests=yes \
 # Block external DNS queries to router
 add chain=input protocol=udp dst-port=53 \
     src-address-list=!vpn_subnet \
-    in-interface={$wanInterface} action=drop \
+    in-interface=\"{$wanInterface}\" action=drop \
     comment="Block external DNS queries"
 
 # Force clients to use router DNS (prevent DNS hijacking)
@@ -558,7 +558,7 @@ set enabled=yes \
     location="Managed by WiFiCore"
 
 :do { /snmp community remove [find name="{$snmpCommunity}"]; } on-error={}
-/snmp community add name="{$snmpCommunity}" addresses={$snmpSubnet} security=none read-access=yes write-access=no \
+/snmp community add name=\"{$snmpCommunity}\" addresses=\"{$snmpSubnet}\" security=none read-access=yes write-access=no \
     comment="WiFiCore VPN Monitoring"
 
 /snmp set trap-community="{$snmpCommunity}" trap-version=2

@@ -4,7 +4,7 @@
     :title="currentPackage?.name || 'Package Details'"
     subtitle="Package Details"
     icon="Package"
-    width="480px"
+    width="50%"
     @close="$emit('close-details')"
   >
     <div class="space-y-6">
@@ -171,7 +171,7 @@
         <button
           type="button"
           @click="$emit('close-details')"
-          class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
+          class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/40 transition-colors"
         >
           Close
         </button>

@@ -23,7 +23,7 @@
     </PageHeader>
 
     <!-- Stats -->
-    <div class="px-3 py-3 sm:px-6 sm:py-4 bg-white border-b border-slate-200">
+    <div class="px-3 py-3 sm:px-6 sm:py-4 bg-white border-b border-slate-200 dark:border-slate-700">
       <div class="grid grid-cols-2 md:grid-cols-5 gap-3 sm:gap-4">
         <div class="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200">
           <div class="flex items-center justify-between">
@@ -78,7 +78,7 @@
     </div>
 
     <!-- Filters -->
-    <div class="px-3 py-3 sm:px-6 sm:py-4 bg-white border-b border-slate-200">
+    <div class="px-3 py-3 sm:px-6 sm:py-4 bg-white border-b border-slate-200 dark:border-slate-700">
       <div class="flex flex-col sm:flex-row sm:items-center gap-3 flex-wrap">
         <div class="flex-1 min-w-0 sm:min-w-[250px] max-w-md">
           <BaseSearch v-model="searchQuery" placeholder="Search logs..." />
@@ -136,7 +136,7 @@
 
       <div v-else class="p-6">
         <BaseCard :padding="false">
-          <div class="divide-y divide-slate-100">
+          <div class="divide-y divide-slate-100 dark:divide-slate-700">
             <div
               v-for="log in paginatedData"
               :key="log.id"
@@ -158,7 +158,7 @@
                     <BaseBadge variant="secondary" size="sm">
                       {{ log.category }}
                     </BaseBadge>
-                    <span class="text-xs text-slate-500">{{ formatDateTime(log.timestamp) }}</span>
+                    <span class="text-xs text-slate-500 dark:text-slate-400">{{ formatDateTime(log.timestamp) }}</span>
                   </div>
                   
                   <div class="text-sm font-medium text-slate-900 mb-1">{{ log.message }}</div>
@@ -167,7 +167,7 @@
                     {{ log.details }}
                   </div>
                   
-                  <div class="flex items-center gap-4 mt-2 text-xs text-slate-500">
+                  <div class="flex items-center gap-4 mt-2 text-xs text-slate-500 dark:text-slate-400">
                     <span>User: {{ log.user || 'System' }}</span>
                     <span>IP: {{ log.ip_address || 'N/A' }}</span>
                   </div>
@@ -180,7 +180,7 @@
     </PageContent>
 
     <PageFooter>
-      <div class="text-sm text-slate-600">
+      <div class="text-sm text-slate-600 dark:text-slate-400">
         Showing {{ paginationInfo.start }} to {{ paginationInfo.end }} of {{ paginationInfo.total }} logs
       </div>
       <BasePagination
@@ -211,6 +211,11 @@ import BasePagination from '@/modules/common/components/base/BasePagination.vue'
 import BaseLoading from '@/modules/common/components/base/BaseLoading.vue'
 import BaseEmpty from '@/modules/common/components/base/BaseEmpty.vue'
 import BaseAlert from '@/modules/common/components/base/BaseAlert.vue'
+import { useConfirmStore } from '@/stores/confirm'
+import { useToast } from '@/modules/common/composables/useToast.js'
+
+const confirmStore = useConfirmStore()
+const { info: showInfo } = useToast()
 
 const breadcrumbs = [
   { label: 'Dashboard', to: '/dashboard' },
@@ -397,13 +402,12 @@ const viewLog = (log) => {
 }
 
 const exportLogs = () => {
-  alert('Export feature coming soon!')
+  showInfo('Export feature coming soon!')
 }
 
-const clearLogs = () => {
-  if (confirm('Clear all logs? This cannot be undone.')) {
-    logs.value = []
-  }
+const clearLogs = async () => {
+  const confirmed = await confirmStore.open({ title: 'Clear Logs', message: 'Clear all logs? This cannot be undone.', confirmText: 'Clear', cancelText: 'Cancel', variant: 'danger' })
+  if (confirmed) logs.value = []
 }
 
 let refreshInterval

@@ -59,12 +59,12 @@
       <!-- KPI Cards Grid -->
       <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
         <!-- Traffic Card -->
-        <div class="bg-white rounded-lg border border-slate-200 p-4">
+        <div class="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 p-4">
           <div class="flex items-center justify-between mb-2">
             <span class="text-xs text-slate-500 uppercase tracking-wider">Current Traffic</span>
             <Activity class="w-4 h-4 text-blue-500" />
           </div>
-          <div class="text-2xl font-bold text-slate-900">{{ formatSpeed(trafficData.current) }}</div>
+          <div class="text-2xl font-bold text-slate-900 dark:text-slate-100">{{ formatSpeed(trafficData.current) }}</div>
           <div class="flex items-center gap-2 mt-1 text-xs">
             <span class="text-green-600">↓ {{ formatSpeed(trafficData.download) }}</span>
             <span class="text-purple-600">↑ {{ formatSpeed(trafficData.upload) }}</span>
@@ -72,37 +72,37 @@
         </div>
 
         <!-- Active Users Card -->
-        <div class="bg-white rounded-lg border border-slate-200 p-4">
+        <div class="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 p-4">
           <div class="flex items-center justify-between mb-2">
             <span class="text-xs text-slate-500 uppercase tracking-wider">Active Users</span>
             <Users class="w-4 h-4 text-emerald-500" />
           </div>
-          <div class="text-2xl font-bold text-slate-900">{{ usageMetrics.activeUsers.toLocaleString() }}</div>
-          <div class="text-xs text-slate-500 mt-1">Peak: {{ usageMetrics.peakConcurrent.toLocaleString() }}</div>
+          <div class="text-2xl font-bold text-slate-900 dark:text-slate-100">{{ usageMetrics.activeUsers.toLocaleString() }}</div>
+          <div class="text-xs text-slate-500 dark:text-slate-400 mt-1">Peak: {{ usageMetrics.peakConcurrent.toLocaleString() }}</div>
         </div>
 
         <!-- Total Data Card -->
-        <div class="bg-white rounded-lg border border-slate-200 p-4">
+        <div class="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 p-4">
           <div class="flex items-center justify-between mb-2">
             <span class="text-xs text-slate-500 uppercase tracking-wider">Total Data</span>
             <Database class="w-4 h-4 text-amber-500" />
           </div>
-          <div class="text-2xl font-bold text-slate-900">{{ formatBytes(usageMetrics.totalDataConsumed) }}</div>
-          <div class="text-xs text-slate-500 mt-1">Across {{ usageMetrics.totalSessions }} sessions</div>
+          <div class="text-2xl font-bold text-slate-900 dark:text-slate-100">{{ formatBytes(usageMetrics.totalDataConsumed) }}</div>
+          <div class="text-xs text-slate-500 dark:text-slate-400 mt-1">Across {{ usageMetrics.totalSessions }} sessions</div>
         </div>
 
         <!-- Revenue Card -->
-        <div class="bg-white rounded-lg border border-slate-200 p-4">
+        <div class="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 p-4">
           <div class="flex items-center justify-between mb-2">
             <span class="text-xs text-slate-500 uppercase tracking-wider">Revenue</span>
             <DollarSign class="w-4 h-4 text-purple-500" />
           </div>
-          <div class="text-2xl font-bold text-slate-900">₱{{ (revenueMetrics.totalRevenue / 1000).toFixed(1) }}k</div>
-          <div class="text-xs text-slate-500 mt-1">₱{{ revenueMetrics.revenuePerUser.toFixed(0) }}/user</div>
+          <div class="text-2xl font-bold text-slate-900 dark:text-slate-100">₱{{ (revenueMetrics.totalRevenue / 1000).toFixed(1) }}k</div>
+          <div class="text-xs text-slate-500 dark:text-slate-400 mt-1">₱{{ revenueMetrics.revenuePerUser.toFixed(0) }}/user</div>
         </div>
 
         <!-- Performance Card -->
-        <div class="bg-white rounded-lg border border-slate-200 p-4">
+        <div class="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 p-4">
           <div class="flex items-center justify-between mb-2">
             <span class="text-xs text-slate-500 uppercase tracking-wider">Latency</span>
             <Gauge class="w-4 h-4 text-cyan-500" />
@@ -116,7 +116,7 @@
         </div>
 
         <!-- System Health Card -->
-        <div class="bg-white rounded-lg border border-slate-200 p-4">
+        <div class="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 p-4">
           <div class="flex items-center justify-between mb-2">
             <span class="text-xs text-slate-500 uppercase tracking-wider">System Health</span>
             <Server class="w-4 h-4 text-indigo-500" />
@@ -146,9 +146,9 @@
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <!-- Traffic History Chart -->
         <div class="lg:col-span-2 bg-white rounded-lg border border-slate-200">
-          <div class="p-4 border-b border-slate-200">
-            <h3 class="text-lg font-semibold text-slate-900">Traffic History</h3>
-            <p class="text-sm text-slate-500">Download vs Upload over time</p>
+          <div class="p-4 border-b border-slate-200 dark:border-slate-700">
+            <h3 class="text-lg font-semibold text-slate-900 dark:text-slate-100">Traffic History</h3>
+            <p class="text-sm text-slate-500 dark:text-slate-400">Download vs Upload over time</p>
           </div>
           <div class="p-4">
             <div class="h-64 flex items-end gap-1">
@@ -165,21 +165,21 @@
             <div class="flex items-center justify-center gap-6 mt-4">
               <div class="flex items-center gap-2">
                 <div class="w-4 h-4 bg-green-500 rounded"></div>
-                <span class="text-sm text-slate-600">Download</span>
+                <span class="text-sm text-slate-600 dark:text-slate-400">Download</span>
               </div>
               <div class="flex items-center gap-2">
                 <div class="w-4 h-4 bg-purple-500 rounded"></div>
-                <span class="text-sm text-slate-600">Upload</span>
+                <span class="text-sm text-slate-600 dark:text-slate-400">Upload</span>
               </div>
             </div>
           </div>
         </div>
 
         <!-- Top Data Consumers -->
-        <div class="bg-white rounded-lg border border-slate-200">
-          <div class="p-4 border-b border-slate-200">
-            <h3 class="text-lg font-semibold text-slate-900">Top Consumers</h3>
-            <p class="text-sm text-slate-500">Highest bandwidth users</p>
+        <div class="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
+          <div class="p-4 border-b border-slate-200 dark:border-slate-700">
+            <h3 class="text-lg font-semibold text-slate-900 dark:text-slate-100">Top Consumers</h3>
+            <p class="text-sm text-slate-500 dark:text-slate-400">Highest bandwidth users</p>
           </div>
           <div class="p-4">
             <div class="space-y-3">
@@ -190,8 +190,8 @@
                     {{ user.username.slice(0, 2).toUpperCase() }}
                   </div>
                   <div>
-                    <div class="text-sm font-medium text-slate-900">{{ user.username }}</div>
-                    <div class="text-xs text-slate-500">{{ formatBytes(user.totalData) }} total</div>
+                    <div class="text-sm font-medium text-slate-900 dark:text-slate-100">{{ user.username }}</div>
+                    <div class="text-xs text-slate-500 dark:text-slate-400">{{ formatBytes(user.totalData) }} total</div>
                   </div>
                 </div>
                 <span class="text-sm font-bold text-blue-600">{{ formatSpeed(user.bandwidth) }}</span>
@@ -204,14 +204,14 @@
       <!-- Network Performance & Capacity -->
       <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
         <!-- Performance Metrics -->
-        <div class="bg-white rounded-lg border border-slate-200">
-          <div class="p-4 border-b border-slate-200">
-            <h3 class="text-lg font-semibold text-slate-900">Network Performance</h3>
+        <div class="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
+          <div class="p-4 border-b border-slate-200 dark:border-slate-700">
+            <h3 class="text-lg font-semibold text-slate-900 dark:text-slate-100">Network Performance</h3>
           </div>
           <div class="p-4 space-y-4">
             <div>
               <div class="flex justify-between mb-1">
-                <span class="text-sm text-slate-600">Latency</span>
+                <span class="text-sm text-slate-600 dark:text-slate-400">Latency</span>
                 <span class="text-sm font-medium" :class="performanceMetrics.latency > alertThresholds.latency ? 'text-red-600' : 'text-slate-900'">{{ performanceMetrics.latency.toFixed(0) }}ms</span>
               </div>
               <div class="w-full bg-slate-200 rounded-full h-2">
@@ -220,7 +220,7 @@
             </div>
             <div>
               <div class="flex justify-between mb-1">
-                <span class="text-sm text-slate-600">Packet Loss</span>
+                <span class="text-sm text-slate-600 dark:text-slate-400">Packet Loss</span>
                 <span class="text-sm font-medium" :class="performanceMetrics.packetLoss > alertThresholds.packetLoss ? 'text-red-600' : 'text-slate-900'">{{ performanceMetrics.packetLoss.toFixed(2) }}%</span>
               </div>
               <div class="w-full bg-slate-200 rounded-full h-2">
@@ -229,8 +229,8 @@
             </div>
             <div>
               <div class="flex justify-between mb-1">
-                <span class="text-sm text-slate-600">Jitter</span>
-                <span class="text-sm font-medium text-slate-900">{{ performanceMetrics.jitter.toFixed(1) }}ms</span>
+                <span class="text-sm text-slate-600 dark:text-slate-400">Jitter</span>
+                <span class="text-sm font-medium text-slate-900 dark:text-slate-100">{{ performanceMetrics.jitter.toFixed(1) }}ms</span>
               </div>
               <div class="w-full bg-slate-200 rounded-full h-2">
                 <div class="h-2 rounded-full bg-amber-500 transition-all" :style="{ width: Math.min((performanceMetrics.jitter / 50) * 100, 100) + '%' }"></div>
@@ -238,7 +238,7 @@
             </div>
             <div v-if="performanceMetrics.rssi !== null">
               <div class="flex justify-between mb-1">
-                <span class="text-sm text-slate-600">Signal Quality (RSSI)</span>
+                <span class="text-sm text-slate-600 dark:text-slate-400">Signal Quality (RSSI)</span>
                 <span class="text-sm font-medium" :class="performanceMetrics.rssi < -70 ? 'text-red-600' : performanceMetrics.rssi < -50 ? 'text-amber-600' : 'text-green-600'">{{ performanceMetrics.rssi }}dBm</span>
               </div>
               <div class="w-full bg-slate-200 rounded-full h-2">
@@ -249,14 +249,14 @@
         </div>
 
         <!-- Capacity & Utilization -->
-        <div class="bg-white rounded-lg border border-slate-200">
-          <div class="p-4 border-b border-slate-200">
-            <h3 class="text-lg font-semibold text-slate-900">Capacity & Utilization</h3>
+        <div class="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
+          <div class="p-4 border-b border-slate-200 dark:border-slate-700">
+            <h3 class="text-lg font-semibold text-slate-900 dark:text-slate-100">Capacity & Utilization</h3>
           </div>
           <div class="p-4 space-y-4">
             <div>
               <div class="flex justify-between mb-1">
-                <span class="text-sm text-slate-600">Link Utilization</span>
+                <span class="text-sm text-slate-600 dark:text-slate-400">Link Utilization</span>
                 <span class="text-sm font-medium" :class="capacityMetrics.linkUtilization > alertThresholds.bandwidthSaturation ? 'text-red-600' : 'text-slate-900'">{{ capacityMetrics.linkUtilization.toFixed(1) }}%</span>
               </div>
               <div class="w-full bg-slate-200 rounded-full h-2">
@@ -265,7 +265,7 @@
             </div>
             <div>
               <div class="flex justify-between mb-1">
-                <span class="text-sm text-slate-600">System CPU</span>
+                <span class="text-sm text-slate-600 dark:text-slate-400">System CPU</span>
                 <span class="text-sm font-medium" :class="systemHealth.avgCpuUsage > alertThresholds.cpuUsage ? 'text-red-600' : 'text-slate-900'">{{ systemHealth.avgCpuUsage.toFixed(1) }}%</span>
               </div>
               <div class="w-full bg-slate-200 rounded-full h-2">
@@ -274,7 +274,7 @@
             </div>
             <div>
               <div class="flex justify-between mb-1">
-                <span class="text-sm text-slate-600">System Memory</span>
+                <span class="text-sm text-slate-600 dark:text-slate-400">System Memory</span>
                 <span class="text-sm font-medium" :class="systemHealth.avgMemoryUsage > alertThresholds.memoryUsage ? 'text-red-600' : 'text-slate-900'">{{ systemHealth.avgMemoryUsage.toFixed(1) }}%</span>
               </div>
               <div class="w-full bg-slate-200 rounded-full h-2">
@@ -297,48 +297,48 @@
       <!-- User Behavior & Revenue -->
       <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
         <!-- User Behavior Metrics -->
-        <div class="bg-white rounded-lg border border-slate-200">
-          <div class="p-4 border-b border-slate-200">
-            <h3 class="text-lg font-semibold text-slate-900">User Behavior</h3>
+        <div class="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
+          <div class="p-4 border-b border-slate-200 dark:border-slate-700">
+            <h3 class="text-lg font-semibold text-slate-900 dark:text-slate-100">User Behavior</h3>
           </div>
           <div class="p-4">
             <div class="grid grid-cols-2 gap-4">
-              <div class="text-center p-3 bg-slate-50 rounded-lg">
-                <div class="text-2xl font-bold text-slate-900">{{ formatDuration(userBehavior.avgSessionDuration) }}</div>
-                <div class="text-xs text-slate-500 mt-1">Avg Session</div>
+              <div class="text-center p-3 bg-slate-50 dark:bg-slate-700/50 rounded-lg">
+                <div class="text-2xl font-bold text-slate-900 dark:text-slate-100">{{ formatDuration(userBehavior.avgSessionDuration) }}</div>
+                <div class="text-xs text-slate-500 dark:text-slate-400 mt-1">Avg Session</div>
               </div>
-              <div class="text-center p-3 bg-slate-50 rounded-lg">
+              <div class="text-center p-3 bg-slate-50 dark:bg-slate-700/50 rounded-lg">
                 <div class="text-2xl font-bold" :class="userBehavior.reconnectRate > 10 ? 'text-red-600' : 'text-slate-900'">{{ userBehavior.reconnectRate.toFixed(1) }}%</div>
-                <div class="text-xs text-slate-500 mt-1">Reconnect Rate</div>
+                <div class="text-xs text-slate-500 dark:text-slate-400 mt-1">Reconnect Rate</div>
               </div>
-              <div class="text-center p-3 bg-slate-50 rounded-lg">
+              <div class="text-center p-3 bg-slate-50 dark:bg-slate-700/50 rounded-lg">
                 <div class="text-2xl font-bold text-emerald-600">{{ userBehavior.newUsers }}</div>
-                <div class="text-xs text-slate-500 mt-1">New Users</div>
+                <div class="text-xs text-slate-500 dark:text-slate-400 mt-1">New Users</div>
               </div>
-              <div class="text-center p-3 bg-slate-50 rounded-lg">
+              <div class="text-center p-3 bg-slate-50 dark:bg-slate-700/50 rounded-lg">
                 <div class="text-2xl font-bold text-blue-600">{{ userBehavior.returningUsers }}</div>
-                <div class="text-xs text-slate-500 mt-1">Returning</div>
+                <div class="text-xs text-slate-500 dark:text-slate-400 mt-1">Returning</div>
               </div>
             </div>
           </div>
         </div>
 
         <!-- Revenue Metrics -->
-        <div class="bg-white rounded-lg border border-slate-200">
-          <div class="p-4 border-b border-slate-200">
-            <h3 class="text-lg font-semibold text-slate-900">Revenue Impact</h3>
+        <div class="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
+          <div class="p-4 border-b border-slate-200 dark:border-slate-700">
+            <h3 class="text-lg font-semibold text-slate-900 dark:text-slate-100">Revenue Impact</h3>
           </div>
           <div class="p-4 space-y-4">
             <div class="flex justify-between items-center">
-              <span class="text-sm text-slate-600">Revenue per GB</span>
-              <span class="text-lg font-semibold text-slate-900">₱{{ revenueMetrics.revenuePerGb.toFixed(2) }}</span>
+              <span class="text-sm text-slate-600 dark:text-slate-400">Revenue per GB</span>
+              <span class="text-lg font-semibold text-slate-900 dark:text-slate-100">₱{{ revenueMetrics.revenuePerGb.toFixed(2) }}</span>
             </div>
             <div class="flex justify-between items-center">
-              <span class="text-sm text-slate-600">Revenue per User</span>
-              <span class="text-lg font-semibold text-slate-900">₱{{ revenueMetrics.revenuePerUser.toFixed(2) }}</span>
+              <span class="text-sm text-slate-600 dark:text-slate-400">Revenue per User</span>
+              <span class="text-lg font-semibold text-slate-900 dark:text-slate-100">₱{{ revenueMetrics.revenuePerUser.toFixed(2) }}</span>
             </div>
             <div class="flex justify-between items-center pt-3 border-t border-slate-100">
-              <span class="text-sm font-medium text-slate-700">Total Revenue</span>
+              <span class="text-sm font-medium text-slate-700 dark:text-slate-300">Total Revenue</span>
               <span class="text-xl font-bold text-purple-600">₱{{ revenueMetrics.totalRevenue.toLocaleString() }}</span>
             </div>
             <div v-if="capacityMetrics.congestedLinks.length > 0" class="mt-3 p-3 bg-amber-50 rounded-lg">
@@ -352,9 +352,9 @@
       </div>
 
       <!-- Recent Alerts Table -->
-      <div v-if="alerts.length > 0" class="bg-white rounded-lg border border-slate-200">
+      <div v-if="alerts.length > 0" class="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
         <div class="p-4 border-b border-slate-200 flex justify-between items-center">
-          <h3 class="text-lg font-semibold text-slate-900">Recent Alerts</h3>
+          <h3 class="text-lg font-semibold text-slate-900 dark:text-slate-100">Recent Alerts</h3>
           <button @click="showAlertPanel = true" class="text-sm text-blue-600 hover:text-blue-800">View All</button>
         </div>
         <div class="overflow-x-auto">
@@ -368,7 +368,7 @@
                 <th class="px-4 py-3 text-right text-xs font-semibold text-slate-700 uppercase">Action</th>
               </tr>
             </thead>
-            <tbody class="divide-y divide-slate-100">
+            <tbody class="divide-y divide-slate-100 dark:divide-slate-700">
               <tr v-for="alert in alerts.slice(0, 5)" :key="alert.id" class="hover:bg-slate-50">
                 <td class="px-4 py-3">
                   <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium" :class="{
@@ -380,8 +380,8 @@
                   </span>
                 </td>
                 <td class="px-4 py-3 text-sm text-slate-900">{{ alert.message }}</td>
-                <td class="px-4 py-3 text-sm text-slate-500">{{ alert.source }}</td>
-                <td class="px-4 py-3 text-sm text-slate-500">{{ formatTime(alert.timestamp) }}</td>
+                <td class="px-4 py-3 text-sm text-slate-500 dark:text-slate-400">{{ alert.source }}</td>
+                <td class="px-4 py-3 text-sm text-slate-500 dark:text-slate-400">{{ formatTime(alert.timestamp) }}</td>
                 <td class="px-4 py-3 text-right">
                   <button @click="acknowledgeAlert(alert.id)" class="text-sm text-blue-600 hover:text-blue-800">Ack</button>
                 </td>
@@ -393,39 +393,39 @@
     </div>
 
     <!-- Alert Settings Modal -->
-    <SlideOverlay v-model="showAlertSettings" title="Alert Settings" subtitle="Configure monitoring thresholds" width="480px">
+    <SlideOverlay v-model="showAlertSettings" title="Alert Settings" subtitle="Configure monitoring thresholds" width="60%">
       <div class="p-6 space-y-4">
         <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Latency Threshold (ms)</label>
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Latency Threshold (ms)</label>
           <input v-model.number="alertThresholds.latency" type="number" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
         </div>
         <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Packet Loss Threshold (%)</label>
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Packet Loss Threshold (%)</label>
           <input v-model.number="alertThresholds.packetLoss" type="number" step="0.1" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
         </div>
         <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Bandwidth Saturation (%)</label>
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Bandwidth Saturation (%)</label>
           <input v-model.number="alertThresholds.bandwidthSaturation" type="number" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
         </div>
         <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">CPU Usage Threshold (%)</label>
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">CPU Usage Threshold (%)</label>
           <input v-model.number="alertThresholds.cpuUsage" type="number" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
         </div>
         <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Memory Usage Threshold (%)</label>
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Memory Usage Threshold (%)</label>
           <input v-model.number="alertThresholds.memoryUsage" type="number" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
         </div>
       </div>
       <template #footer>
         <div class="flex gap-3">
-          <button @click="showAlertSettings = false" class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50">Cancel</button>
+          <button @click="showAlertSettings = false" class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-600">Cancel</button>
           <button @click="saveThresholds" class="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg">Save</button>
         </div>
       </template>
     </SlideOverlay>
 
     <!-- Alert Panel Modal -->
-    <SlideOverlay v-model="showAlertPanel" title="All Alerts" subtitle="Active and recent alerts" width="640px">
+    <SlideOverlay v-model="showAlertPanel" title="All Alerts" subtitle="Active and recent alerts" width="60%">
       <div class="p-6">
         <div v-if="alerts.length === 0" class="text-center py-8 text-slate-500">
           <CheckCircle class="w-12 h-12 mx-auto mb-3 text-green-500" />
@@ -447,8 +447,8 @@
                   {{ alert.severity }}
                 </span>
                 <div>
-                  <p class="text-sm font-medium text-slate-900">{{ alert.message }}</p>
-                  <p class="text-xs text-slate-500 mt-1">{{ alert.source }} • {{ formatTime(alert.timestamp) }}</p>
+                  <p class="text-sm font-medium text-slate-900 dark:text-slate-100">{{ alert.message }}</p>
+                  <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ alert.source }} • {{ formatTime(alert.timestamp) }}</p>
                 </div>
               </div>
               <button @click="acknowledgeAlert(alert.id)" class="text-sm text-slate-500 hover:text-slate-700">Dismiss</button>

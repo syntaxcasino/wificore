@@ -1,14 +1,14 @@
 <template>
-  <div class="bg-white rounded-2xl shadow-lg border border-gray-100 p-6">
+  <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-gray-100 dark:border-slate-700 p-6">
     <div class="flex items-center justify-between mb-6">
-      <h2 class="text-xl font-bold text-gray-900 flex items-center gap-2">
+      <h2 class="text-xl font-bold text-gray-900 dark:text-slate-100 flex items-center gap-2">
         <svg class="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
         </svg>
         Performance Metrics
       </h2>
-      <button @click="refreshMetrics" :disabled="loading" class="p-2 hover:bg-gray-100 rounded-lg transition-colors">
-        <svg class="w-5 h-5 text-gray-600" :class="{ 'animate-spin': loading }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <button @click="refreshMetrics" :disabled="loading" class="p-2 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
+        <svg class="w-5 h-5 text-gray-600 dark:text-slate-400" :class="{ 'animate-spin': loading }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
         </svg>
       </button>
@@ -74,11 +74,11 @@
           <h3 class="text-sm font-semibold text-green-700">Database Performance</h3>
         </div>
         <div class="grid grid-cols-2 gap-3">
-          <div class="p-3 bg-white rounded-lg">
+          <div class="p-3 bg-white dark:bg-slate-700/50 rounded-lg">
             <p class="text-xs text-green-600 mb-1">Active Connections</p>
             <p class="text-2xl font-bold text-green-900">{{ metrics.database?.active_connections || 0 }}</p>
           </div>
-          <div class="p-3 bg-white rounded-lg">
+          <div class="p-3 bg-white dark:bg-slate-700/50 rounded-lg">
             <p class="text-xs text-green-600 mb-1">Slow Queries</p>
             <p class="text-2xl font-bold text-green-900">{{ metrics.database?.slow_queries || 0 }}</p>
           </div>
@@ -147,7 +147,7 @@
       </div>
 
       <!-- Last Updated -->
-      <div class="mt-4 text-center text-xs text-gray-500">
+      <div class="mt-4 text-center text-xs text-gray-500 dark:text-slate-400">
         Last updated: {{ formatTimestamp(metrics.timestamp) }}
       </div>
     </div>

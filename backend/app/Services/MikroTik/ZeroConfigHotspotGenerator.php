@@ -15,6 +15,7 @@ use App\Support\SubnetHelper;
  */
 class ZeroConfigHotspotGenerator
 {
+    use ZeroConfigBootstrapTrait;
     /**
      * Generate Hotspot configuration from RouterService
      */
@@ -52,17 +53,21 @@ class ZeroConfigHotspotGenerator
             $portalHost = "{$tenant->subdomain}.{$baseHost}";
         }
 
+        $syslogHost = config('services.syslog.host', $resolvedRadiusServer);
+
         $script = [
             "/log info \"=== ISP-Grade Multi-Interface Hotspot Deployment ===\"",
             "/log info \"Router: {$router->id}\"",
             ""
         ];
 
+        $script = array_merge($script, $this->bootstrapRadiusAaaAttributes());
+
         $script = array_merge($script, [
             "# Interface Lists",
-            ":if ([:len [/interface list find name=\"LAN\"]] = 0) do={ /interface list add name=LAN comment=\"Local Area Network\" }",
-            ":if ([:len [/interface list find name=\"WAN\"]] = 0) do={ /interface list add name=WAN comment=\"Wide Area Network\" }",
-            ":if ([:len [/interface list member find list=WAN interface=ether1]] = 0) do={ /interface list member add list=WAN interface=ether1 }",
+            ":if ([:len [/interface list find name=\"LAN\"]] = 0) do={ /interface list add name=\"LAN\" comment=\"Local Area Network\" }",
+            ":if ([:len [/interface list find name=\"WAN\"]] = 0) do={ /interface list add name=\"WAN\" comment=\"Wide Area Network\" }",
+            ":if ([:len [/interface list member find list=\"WAN\" interface=\"ether1\"]] = 0) do={ /interface list member add list=\"WAN\" interface=\"ether1\" }",
             ""
         ]);
 
@@ -124,7 +129,7 @@ class ZeroConfigHotspotGenerator
                 $script = array_merge($script, [
                     "# VLAN Setup",
                     ":do { /interface vlan remove [/interface vlan find name=\"{$vlanIface}\"] } on-error={}",
-                    "/interface vlan add name=\"{$vlanIface}\" vlan-id={$vlanId} interface=\"{$ifaceName}\" comment=\"Hotspot VLAN ({$router->id})\"",
+                    "/interface vlan add name=\"{$vlanIface}\" vlan-id=\"{$vlanId}\" interface=\"{$ifaceName}\" comment=\"Hotspot VLAN ({$router->id})\"",
                     ""
                 ]);
                 $accessIfaces[] = $vlanIface;
@@ -185,9 +190,10 @@ class ZeroConfigHotspotGenerator
         }
 
         // Verify ALL expected bridge ports were added
+        // Wrapped in { } block so :local variable is visible to :if on the next line
+        // (top-level lines in /import .rsc each get their own scope — variables don't persist)
         $expectedPortCount = count($accessIfaces);
-        $script[] = ":local actualPorts [:len [/interface bridge port find bridge=\"{$bridgeName}\" comment~\"hs-port\"]]";  
-        $script[] = ":if (\$actualPorts < {$expectedPortCount}) do={ :error \"hs-port-count-mismatch-{$shortId}\" }";
+        $script[] = "{ :local actualPorts [:len [/interface bridge port find bridge=\"{$bridgeName}\" comment~\"hs-port\"]]; :if (\$actualPorts < {$expectedPortCount}) do={ :error \"hs-port-count-mismatch-{$shortId}\" } }";
         $script[] = "/log info \"hs-{$shortId}-ports-ok\"";
         $script[] = "";
 
@@ -213,6 +219,8 @@ class ZeroConfigHotspotGenerator
             'portal_host' => $portalHost,
             'interface_index' => 0,
             'bridge_name' => null,
+            'syslog_host'  => $syslogHost,
+            'vpn_ip'       => $router->vpn_ip ? explode('/', (string) $router->vpn_ip)[0] : null,
         ];
 
         $script = array_merge($script, $this->buildInterfaceConfig($params));
@@ -282,6 +290,10 @@ class ZeroConfigHotspotGenerator
         $isLowEnd = RouterResourceManager::getRouterTierByModel($routerModel) === 'low_end';
         $params['is_low_end'] = $isLowEnd;
 
+        $mgmt = SubnetHelper::normalize($params['management_subnet'] ?? '10.0.0.0/8');
+        $sid  = $params['short_id'] ?? substr(str_replace('-', '', $params['router_id']), 0, 8);
+        $syslogHost = $params['syslog_host'] ?? config('services.syslog.host', $params['radius_server'] ?? '10.8.0.1');
+
         $script = array_merge(
             $script,
             $this->generateIpSetup($params),
@@ -291,9 +303,20 @@ class ZeroConfigHotspotGenerator
             $this->generateRadiusSetup($params),
             $this->generateWalledGarden($params),
             $this->generateManagementInputRules($params),
-            $this->generateSecurityHardeningRules($params),
+            $this->bootstrapSnmpSyslog($mgmt, $syslogHost, !$isLowEnd),
+            $this->bootstrapSubscriberQueues("hs-{$sid}", 'ether1', $isLowEnd),
+            $isLowEnd ? [] : $this->bootstrapTrafficFlow("hs-{$sid}", $syslogHost),
+            $this->bootstrapMgmtRateLimit("hs-{$sid}", ($params['vpn_ip'] ?? null) ? ($params['vpn_ip'] . '/32') : $mgmt),
+            $this->bootstrapSecurityHardening([
+                'id'               => $sid,
+                'is_low_end'       => $isLowEnd,
+                'wan_list'         => 'WAN',
+                'subscriber_ifaces' => [
+                    ['in' => $params['bridge_name'] ?? $params['interface'], 'is_list' => false, 'pool_cidr' => $params['network_cidr'] ?? '192.168.0.0/24', 'tag' => 'HS'],
+                ],
+            ]),
             $this->generateFirewallRules($params),
-            $this->generateGlobalDefaultDropRules(),
+            $this->bootstrapGlobalDefaultDrop("hs-{$sid}"),
             $this->generateNatRules($params)
         );
 
@@ -314,24 +337,12 @@ class ZeroConfigHotspotGenerator
         ];
     }
 
-    private function generateGlobalDefaultDropRules(): array
-    {
-        return [
-            "# Global Default Drop",
-            ":do { /ip firewall filter remove [/ip firewall filter find comment~\"GLOBAL-DEFAULT-DROP-\"]; } on-error={}",
-            ":do { /ip firewall filter remove [/ip firewall filter find comment=\"GLOBAL-EST-IN\"]; } on-error={}",
-            "/ip firewall filter add chain=input connection-state=established,related action=accept comment=\"GLOBAL-EST-IN\"",
-            "/ip firewall filter add chain=input action=drop comment=\"GLOBAL-DEFAULT-DROP-IN\"",
-            "/ip firewall filter add chain=forward action=drop comment=\"GLOBAL-DEFAULT-DROP-FWD\"",
-            ""
-        ];
-    }
 
     private function generateVlanSetup(array $params): array
     {
         return [
             "# VLAN Setup",
-            ":do { /interface vlan add name={$params['interface']} vlan-id={$params['vlan_id']} interface={$params['parent_interface']} comment=\"Hotspot VLAN\" } on-error={}",
+            ":do { /interface vlan add name=\"{$params['interface']}\" vlan-id=\"{$params['vlan_id']}\" interface=\"{$params['parent_interface']}\" comment=\"Hotspot VLAN\" } on-error={}",
             ""
         ];
     }
@@ -343,7 +354,7 @@ class ZeroConfigHotspotGenerator
 
         return [
             "# IP Addressing",
-            ":do { /ip address add address={$params['gateway_ip']}/{$cidr} interface=\"{$iface}\" comment=\"Hotspot Gateway\" } on-error={}",
+            ":do { /ip address add address=\"{$params['gateway_ip']}/{$cidr}\" interface=\"{$iface}\" comment=\"Hotspot Gateway\" } on-error={}",
             ""
         ];
     }
@@ -354,25 +365,28 @@ class ZeroConfigHotspotGenerator
         $poolName = "hs-pool-{$sid}";
         return [
             "# IP Pool",
-            ":do { /ip pool add name={$poolName} ranges={$params['range_start']}-{$params['range_end']} comment=\"hs-{$sid}\" } on-error={}",
+            ":do { /ip pool remove [/ip pool find name=\"{$poolName}\"] } on-error={}",
+            ":do { /ip pool add name=\"{$poolName}\" ranges=\"{$params['range_start']}-{$params['range_end']}\" comment=\"hs-{$sid}\" } on-error={ /log error \"hs-{$sid}: FATAL - pool add failed\" }",
             ""
         ];
     }
 
     private function generateDhcpSetup(array $params): array
     {
-        $sid = $params['short_id'] ?? substr(str_replace('-', '', $params['router_id']), 0, 8);
+        $sid   = $params['short_id'] ?? substr(str_replace('-', '', $params['router_id']), 0, 8);
         $dhcpName = "hs-dhcp-{$sid}";
         $poolName = "hs-pool-{$sid}";
         $network = explode('/', $params['network_cidr'])[0];
-        $cidr = explode('/', $params['network_cidr'])[1] ?? '24';
+        $cidr    = explode('/', $params['network_cidr'])[1] ?? '24';
         $dns = "{$params['dns_primary']},{$params['dns_secondary']}";
         $iface = $params['bridge_name'] ?? $params['interface'];
 
         return [
             "# DHCP Server",
-            ":do { /ip dhcp-server add name={$dhcpName} interface=\"{$iface}\" address-pool={$poolName} lease-time=1h disabled=no authoritative=yes } on-error={}",
-            ":do { /ip dhcp-server network add address={$network}/{$cidr} gateway={$params['gateway_ip']} dns-server=\"{$dns}\" comment=\"hs-net-{$sid}\" } on-error={}",
+            ":do { /ip dhcp-server remove [/ip dhcp-server find name=\"{$dhcpName}\"] } on-error={}",
+            ":do { /ip dhcp-server add name=\"{$dhcpName}\" interface=\"{$iface}\" address-pool=\"{$poolName}\" lease-time=1h disabled=no authoritative=yes } on-error={ /log error \"hs-{$sid}: FATAL - DHCP server add failed\" }",
+            ":do { /ip dhcp-server network remove [/ip dhcp-server network find comment=\"hs-net-{$sid}\"]; } on-error={}",
+            ":do { /ip dhcp-server network add address=\"{$network}/{$cidr}\" gateway=\"{$params['gateway_ip']}\" dns-server=\"{$dns}\" comment=\"hs-net-{$sid}\" } on-error={ /log error \"hs-{$sid}: FATAL - DHCP network add failed\" }",
             ""
         ];
     }
@@ -393,14 +407,15 @@ class ZeroConfigHotspotGenerator
         return array_values(array_filter([
             "# Hotspot Profile",
             ":do { /ip hotspot profile remove [/ip hotspot profile find name=\"{$profile}\"] } on-error={}",
-            ":do { /ip hotspot profile add name=\"{$profile}\" hotspot-address={$params['gateway_ip']} login-by=http-chap,http-pap use-radius=yes html-directory=hotspot dns-name=hotspot.local http-cookie-lifetime=1d } on-error={}",
-            ($portalUrl ? ":do { /file set hotspot/login.html contents=\"{$portalUrl}\" } on-error={}" : null),
+            ":do { /ip hotspot profile add name=\"{$profile}\" hotspot-address=\"{$params['gateway_ip']}\" login-by=http-chap,http-pap use-radius=yes html-directory=hotspot dns-name=hotspot.local http-cookie-lifetime=1d } on-error={ /log error \"hs-{$sid}: FATAL - hotspot profile add failed\" }",
+            //($portalUrl ? ":do { /file set hotspot/login.html contents=\"{$portalUrl}\" } on-error={ /log warning \"hs-{$sid}: Failed to set portal URL (non-fatal)\" }" : null),
+           ($portalUrl ? ":do { /file set [/file find name=\"hotspot/login.html\"] contents=\"{$portalUrl}\" } on-error={ /log warning \"hs-{$sid}: Failed to set portal URL (non-fatal)\" }" : null),
             "# Hotspot Server",
             ":do { /ip hotspot remove [/ip hotspot find name=\"{$server}\"] } on-error={}",
-            ":do { /ip hotspot add name=\"{$server}\" interface=\"{$iface}\" profile=\"{$profile}\" address-pool={$poolName} addresses-per-mac=2 idle-timeout=5m keepalive-timeout=2m disabled=no } on-error={}",
-            "# User Profile",
+            ":do { /ip hotspot add name=\"{$server}\" interface=\"{$iface}\" profile=\"{$profile}\" address-pool=\"{$poolName}\" addresses-per-mac=2 idle-timeout=5m keepalive-timeout=2m disabled=no } on-error={ /log error \"hs-{$sid}: FATAL - hotspot server add failed\" }",
+            "# User Profile - RADIUS-only: no local rate-limit fallback",
             ":do { /ip hotspot user profile remove [/ip hotspot user profile find name=\"{$userProf}\"] } on-error={}",
-            ":do { /ip hotspot user profile add name=\"{$userProf}\" add-mac-cookie=yes shared-users=1 session-timeout=6h } on-error={}",
+            ":do { /ip hotspot user profile add name=\"{$userProf}\" add-mac-cookie=yes shared-users=1 session-timeout=0 rate-limit=\"\" } on-error={ /log warning \"hs-{$sid}: Failed to add user profile (non-fatal, default will be used)\" }",
             ""
         ], fn ($line) => $line !== null && $line !== ''));
     }
@@ -410,57 +425,22 @@ class ZeroConfigHotspotGenerator
         $sid = $params['short_id'] ?? substr(str_replace('-', '', $params['router_id']), 0, 8);
         $profile = "hs-prof-{$sid}";
         $rs  = $params['radius_server'];
-        // Escape secret for safe embedding in RouterOS script string
-        $sec = str_replace(['\\', '"', '$'], ['\\\\', '\\"', '\\$'], (string) $params['radius_secret']);
-        return [
-            "# RADIUS",
-            ":do { /radius remove [/radius find service=hotspot comment=\"hs-radius-{$sid}\"]; } on-error={}",
-            ":do { /radius add service=hotspot address={$rs} secret=\"{$sec}\" authentication-port=1812 accounting-port=1813 timeout=3s comment=\"hs-radius-{$sid}\"; } on-error={ :error \"hs-{$sid}: RADIUS add failed\" }",
-            ":do { /ip hotspot profile set [/ip hotspot profile find name=\"{$profile}\"] use-radius=yes } on-error={}",
-            ":do { /ip hotspot user remove [/ip hotspot user find] } on-error={}",
-            ""
-        ];
-    }
-
-    /**
-     * Generate security hardening rules (BCP 38 anti-spoofing + DDoS protection)
-     * These rules are added before service-specific firewall rules
-     */
-    private function generateSecurityHardeningRules(array $params): array
-    {
-        $sid      = $params['short_id'] ?? substr(str_replace('-', '', $params['router_id']), 0, 8);
-        $iface    = $params['bridge_name'] ?? $params['interface'];
-        $isLowEnd = $params['is_low_end'] ?? false;
-        $poolCidr = $params['network_cidr'] ?? '192.168.0.0/24';
-
-        $rules = [
-            "# SECURITY HARDENING - BCP 38 Anti-Spoofing & DDoS Protection",
-            ":do { /ip firewall filter remove [/ip firewall filter find comment~\"SEC-$sid\"]; } on-error={}",
-        ];
-
-        if ($isLowEnd) {
-            // MINIMAL — 4 rules; BCP38 uses actual pool CIDR for anti-spoof
-            $rules[] = "/ip firewall filter add chain=forward in-interface={$iface} src-address=!{$poolCidr} action=drop comment=\"SEC-$sid-BCP38-SPOOF\"";
-            $rules[] = "/ip firewall filter add chain=input protocol=tcp connection-state=new limit=50/s,5 action=drop comment=\"SEC-$sid-DDoS-SYN\"";
-            $rules[] = "/ip firewall filter add chain=input protocol=icmp connection-state=new limit=20/s,5 action=drop comment=\"SEC-$sid-DDoS-ICMP\"";
-            $rules[] = "/ip firewall filter add chain=forward in-interface={$iface} connection-state=new connection-limit=100,32 action=drop comment=\"SEC-$sid-DDoS-CONN\"";
-        } else {
-            // FULL — exclude management subnet (10.x) from RFC1918 WAN block (WireGuard uses it)
-            $wanSpoof = ['172.16.0.0/12', '192.168.0.0/16', '100.64.0.0/10', '0.0.0.0/8'];
-            foreach ($wanSpoof as $cidr) {
-                $rules[] = "/ip firewall filter add chain=input in-interface-list=WAN src-address={$cidr} action=drop comment=\"SEC-$sid-BCP38-WAN\"";
-            }
-            $rules[] = "/ip firewall filter add chain=forward in-interface={$iface} src-address=!{$poolCidr} action=drop comment=\"SEC-$sid-BCP38-SPOOF\"";
-            $martians = '0.0.0.0/8,127.0.0.0/8,169.254.0.0/16,192.0.2.0/24,198.51.100.0/24,203.0.113.0/24,240.0.0.0/4';
-            $rules[] = "/ip firewall filter add chain=forward src-address={$martians} action=drop comment=\"SEC-$sid-BCP38-MARTIAN\"";
-            $rules[] = "/ip firewall filter add chain=input protocol=tcp connection-state=new limit=50/s,5 action=drop comment=\"SEC-$sid-DDoS-SYN\"";
-            $rules[] = "/ip firewall filter add chain=input protocol=udp connection-state=new limit=100/s,5 action=drop comment=\"SEC-$sid-DDoS-UDP\"";
-            $rules[] = "/ip firewall filter add chain=input protocol=icmp connection-state=new limit=20/s,5 action=drop comment=\"SEC-$sid-DDoS-ICMP\"";
-            $rules[] = "/ip firewall filter add chain=forward in-interface={$iface} connection-state=new connection-limit=200,32 action=drop comment=\"SEC-$sid-DDoS-CONN\"";
-        }
-
-        $rules[] = "";
-        return $rules;
+        // Escape secret for safe embedding in RouterOS script string (uses shared trait method)
+        $sec = $this->escapeRouterOsString((string) $params['radius_secret']);
+        return array_merge(
+            [
+                "# RADIUS - RADIUS-only AAA: Mikrotik-Rate-Limit and session attrs enforced per-user",
+                ":do { /radius remove [/radius find service=hotspot comment=\"hs-radius-{$sid}\"]; } on-error={}",
+                ":do { /radius add service=hotspot address=\"{$rs}\" secret=\"{$sec}\" authentication-port=1812 accounting-port=1813 timeout=3s comment=\"hs-radius-{$sid}\"; } on-error={ :error \"hs-{$sid}: RADIUS add failed\" }",
+                ":do { /ip hotspot profile set [/ip hotspot profile find name=\"{$profile}\"] use-radius=yes } on-error={}",
+            ],
+            $this->bootstrapRadiusNetwatch("hs-{$sid}", $rs),
+            [
+                ":local pingResult [/ping address=\"{$rs}\" count=2 interval=500ms]; :if (\$pingResult = 0) do={ /log warning \"hs-{$sid}: CRITICAL - RADIUS {$rs} unreachable at deploy time.\" } else={ /log info \"hs-{$sid}: RADIUS {$rs} reachable (\$pingResult replies). Netwatch monitoring active.\" }",
+                ":do { /ip hotspot user remove [/ip hotspot user find] } on-error={}",
+                ""
+            ]
+        );
     }
 
     /**
@@ -480,11 +460,11 @@ class ZeroConfigHotspotGenerator
             return [
                 "# Firewall [MINIMAL] - Essential security for low-end device",
                 ":do { /ip firewall filter remove [/ip firewall filter find comment~\"hs-fw-{$sid}\"] } on-error={}",
-                "/ip firewall filter add chain=forward in-interface={$iface} connection-state=established,related action=accept comment=\"hs-fw-{$sid}-EST\"",
-                "/ip firewall filter add chain=forward in-interface={$iface} connection-state=invalid action=drop comment=\"hs-fw-{$sid}-INV\"",
-                "/ip firewall filter add chain=forward in-interface-list=WAN out-interface={$iface} connection-state=established,related action=accept comment=\"hs-fw-{$sid}-WAN-RET\"",
-                "/ip firewall filter add chain=forward in-interface={$iface} hotspot=auth out-interface-list=WAN action=accept comment=\"hs-fw-{$sid}-AUTH-INET\"",
-                "/ip firewall filter add chain=forward in-interface={$iface} action=drop comment=\"hs-fw-{$sid}-DROP-UNAUTH\"",
+                "/ip firewall filter add chain=\"forward\" in-interface=\"{$iface}\" connection-state=\"established,related\" action=\"accept\" comment=\"hs-fw-{$sid}-EST\"",
+                "/ip firewall filter add chain=\"forward\" in-interface=\"{$iface}\" connection-state=\"invalid\" action=\"drop\" comment=\"hs-fw-{$sid}-INV\"",
+                "/ip firewall filter add chain=\"forward\" in-interface-list=\"WAN\" out-interface=\"{$iface}\" connection-state=\"established,related\" action=\"accept\" comment=\"hs-fw-{$sid}-WAN-RET\"",
+                "/ip firewall filter add chain=\"forward\" in-interface=\"{$iface}\" hotspot=\"auth\" out-interface-list=\"WAN\" action=\"accept\" comment=\"hs-fw-{$sid}-AUTH-INET\"",
+                "/ip firewall filter add chain=\"forward\" in-interface=\"{$iface}\" action=\"drop\" log=\"yes\" log-prefix=\"hs-DROP-UNAUTH\" comment=\"hs-fw-{$sid}-DROP-UNAUTH\"",
                 ""
             ];
         }
@@ -492,14 +472,14 @@ class ZeroConfigHotspotGenerator
         return [
             "# Firewall [FULL] - Complete security for high-end device",
             ":do { /ip firewall filter remove [/ip firewall filter find comment~\"hs-fw-{$sid}\"] } on-error={}",
-            "/ip firewall filter add chain=forward in-interface={$iface} connection-state=established,related action=accept comment=\"hs-fw-{$sid}-EST\"",
-            "/ip firewall filter add chain=forward in-interface={$iface} connection-state=invalid action=drop comment=\"hs-fw-{$sid}-INV\"",
-            "/ip firewall filter add chain=forward in-interface-list=WAN out-interface={$iface} connection-state=established,related action=accept comment=\"hs-fw-{$sid}-WAN-RET\"",
-            "/ip firewall filter add chain=forward in-interface={$iface} hotspot=auth out-interface-list=WAN action=accept comment=\"hs-fw-{$sid}-AUTH-INET\"",
-            "/ip firewall filter add chain=forward in-interface={$iface} protocol=icmp action=accept comment=\"hs-fw-{$sid}-ICMP\"",
-            "/ip firewall filter add chain=forward in-interface={$iface} dst-port=53 protocol=udp action=accept comment=\"hs-fw-{$sid}-DNS-UDP\"",
-            "/ip firewall filter add chain=forward in-interface={$iface} dst-port=53 protocol=tcp action=accept comment=\"hs-fw-{$sid}-DNS-TCP\"",
-            "/ip firewall filter add chain=forward in-interface={$iface} action=drop comment=\"hs-fw-{$sid}-DROP-UNAUTH\"",
+            "/ip firewall filter add chain=\"forward\" in-interface=\"{$iface}\" connection-state=\"established,related\" action=\"accept\" comment=\"hs-fw-{$sid}-EST\"",
+            "/ip firewall filter add chain=\"forward\" in-interface=\"{$iface}\" connection-state=\"invalid\" action=\"drop\" comment=\"hs-fw-{$sid}-INV\"",
+            "/ip firewall filter add chain=\"forward\" in-interface-list=\"WAN\" out-interface=\"{$iface}\" connection-state=\"established,related\" action=\"accept\" comment=\"hs-fw-{$sid}-WAN-RET\"",
+            "/ip firewall filter add chain=\"forward\" in-interface=\"{$iface}\" hotspot=\"auth\" out-interface-list=\"WAN\" action=\"accept\" comment=\"hs-fw-{$sid}-AUTH-INET\"",
+            "/ip firewall filter add chain=\"forward\" in-interface=\"{$iface}\" protocol=\"icmp\" action=\"accept\" comment=\"hs-fw-{$sid}-ICMP\"",
+            "/ip firewall filter add chain=\"forward\" in-interface=\"{$iface}\" dst-port=\"53\" protocol=\"udp\" action=\"accept\" comment=\"hs-fw-{$sid}-DNS-UDP\"",
+            "/ip firewall filter add chain=\"forward\" in-interface=\"{$iface}\" dst-port=\"53\" protocol=\"tcp\" action=\"accept\" comment=\"hs-fw-{$sid}-DNS-TCP\"",
+            "/ip firewall filter add chain=\"forward\" in-interface=\"{$iface}\" action=\"drop\" log=\"yes\" log-prefix=\"hs-DROP-UNAUTH\" comment=\"hs-fw-{$sid}-DROP-UNAUTH\"",
             ""
         ];
     }
@@ -510,19 +490,35 @@ class ZeroConfigHotspotGenerator
         $mgmt  = SubnetHelper::normalize($params['management_subnet'] ?? '10.0.0.0/8');
         $mport = '22,8291,8728,8729';
         $rs    = $params['radius_server'] ?? '10.8.0.1';
+        $isLowEnd = $params['is_low_end'] ?? false;
 
-        // Rules appended in order — NO place-before=0 (which would reverse them)
-        // Correct order: established first, then mgmt allow, then snmp allow, then drop unknown mgmt ports
-        return [
-            "# Management Input Rules",
-            ":do { /ip firewall filter remove [/ip firewall filter find comment~\"hs-mgmt-{$sid}\"]; } on-error={}",
-            "/ip firewall filter add chain=input connection-state=established,related action=accept comment=\"hs-mgmt-{$sid}-est\"",
-            "/ip firewall filter add chain=input protocol=tcp dst-port={$mport} src-address={$mgmt} action=accept comment=\"hs-mgmt-{$sid}-allow\"",
-            "/ip firewall filter add chain=input protocol=udp dst-port=161 src-address={$rs} action=accept comment=\"hs-mgmt-{$sid}-snmp\"",
-            "/ip firewall filter add chain=input protocol=udp dst-port=3799 src-address={$rs} action=accept comment=\"hs-mgmt-{$sid}-coa\"",
-            "/ip firewall filter add chain=input protocol=tcp dst-port={$mport} action=drop comment=\"hs-mgmt-{$sid}-drop\"",
-            ""
+        $rules = [
+            "# Management & Service Hardening",
+            ":do { /ip firewall filter remove [/ip firewall filter find comment~\"hs-mgmt-{$sid}\"] } on-error={}",
         ];
+        // Shared bootstrap: service hardening, firewall logging, brute-force
+        $vpnIp = $params['vpn_ip'] ?? null;
+        $allowAddr = ($vpnIp && filter_var($vpnIp, FILTER_VALIDATE_IP)) ? $vpnIp . '/32' : $mgmt;
+        $rules = array_merge($rules, $this->bootstrapServiceHardening("hs-{$sid}", $mgmt, $vpnIp));
+        $rules = array_merge($rules, $this->bootstrapFirewallLogging("hs-{$sid}"));
+        // Established connections
+        $rules[] = "/ip firewall filter add chain=input connection-state=\"established,related\" action=\"accept\" comment=\"hs-mgmt-{$sid}-est\"";
+        $rules = array_merge($rules, $this->bootstrapBruteForceProtection("hs-mgmt-{$sid}", $allowAddr));
+        // Management allow
+        $rules[] = "/ip firewall filter add chain=input protocol=\"tcp\" dst-port=\"{$mport}\" src-address=\"{$allowAddr}\" action=\"accept\" comment=\"hs-mgmt-{$sid}-allow\"";
+        $rules[] = "/ip firewall filter add chain=input protocol=\"udp\" dst-port=\"161\" src-address=\"{$rs}\" action=\"accept\" comment=\"hs-mgmt-{$sid}-snmp\"";
+        $rules[] = "/ip firewall filter add chain=input protocol=\"udp\" dst-port=\"3799\" src-address=\"{$rs}\" action=\"accept\" comment=\"hs-mgmt-{$sid}-coa\"";
+        $rules[] = "/ip firewall filter add chain=input protocol=\"tcp\" dst-port=\"{$mport}\" action=\"drop\" log=\"yes\" log-prefix=\"hs-mgmt-drop\" comment=\"hs-mgmt-{$sid}-drop\"";
+
+        // TCP flag anomaly detection (high-end only)
+        if (!$isLowEnd) {
+            $rules = array_merge($rules, $this->bootstrapTcpFlagAnomalyDetection("hs-mgmt-{$sid}"));
+        }
+
+        // Connection tracking
+        $rules[] = $this->bootstrapConnectionTracking();
+        $rules[] = "";
+        return $rules;
     }
 
     private function generateNatRules(array $params): array
@@ -535,9 +531,9 @@ class ZeroConfigHotspotGenerator
         return [
             "# NAT Rules",
             ":do { /ip firewall nat remove [/ip firewall nat find comment=\"hs-nat-{$sid}\"] } on-error={}",
-            ":do { /ip firewall nat add chain=srcnat action=masquerade src-address={$network}/{$cidr} out-interface-list=WAN comment=\"hs-nat-{$sid}\" } on-error={}",
-            ":do { /ip firewall nat add chain=dstnat action=redirect to-ports=64872 protocol=tcp dst-port=80 in-interface={$iface} comment=\"hs-redir80-{$sid}\" } on-error={}",
-            ":do { /ip firewall nat add chain=dstnat action=redirect to-ports=64875 protocol=tcp dst-port=443 in-interface={$iface} comment=\"hs-redir443-{$sid}\" } on-error={}",
+            ":do { /ip firewall nat add chain=\"srcnat\" action=\"masquerade\" src-address=\"{$network}/{$cidr}\" out-interface-list=\"WAN\" comment=\"hs-nat-{$sid}\" } on-error={}",
+            ":do { /ip firewall nat add chain=\"dstnat\" action=\"redirect\" to-ports=\"64872\" protocol=\"tcp\" dst-port=\"80\" in-interface=\"{$iface}\" comment=\"hs-redir80-{$sid}\" } on-error={}",
+            ":do { /ip firewall nat add chain=\"dstnat\" action=\"redirect\" to-ports=\"64875\" protocol=\"tcp\" dst-port=\"443\" in-interface=\"{$iface}\" comment=\"hs-redir443-{$sid}\" } on-error={}",
             ""
         ];
     }
@@ -561,31 +557,12 @@ class ZeroConfigHotspotGenerator
             "# Walled Garden - Allow Portal Access Without Authentication",
             "# CRITICAL: Users must access portal to view packages and make payments",
             ":do { /ip hotspot walled-garden remove [/ip hotspot walled-garden find comment=\"WiFiCore Portal\"] } on-error={}",
-            ":do { /ip hotspot walled-garden add dst-host={$portalHost} action=allow comment=\"WiFiCore Portal\" } on-error={}",
+            ":do { /ip hotspot walled-garden add dst-host=\"{$portalHost}\" action=\"allow\" comment=\"WiFiCore Portal\" } on-error={}",
             "# Allow API endpoints for package loading and payment",
             ":do { /ip hotspot walled-garden ip remove [/ip hotspot walled-garden ip find comment=\"WiFiCore API\"] } on-error={}",
             ""
         ];
     }
 
-    private function getSafeGatewayIp(string $networkCidr, ?string $gatewayIp): string
-    {
-        $parts = explode('/', $networkCidr, 2);
-        $networkIp = $parts[0] ?? '';
-        $cidr = (int) ($parts[1] ?? 24);
-        $networkLong = ip2long($networkIp);
-        if ($networkLong === false) return (string) $gatewayIp;
-        if ($cidr < 0 || $cidr > 32) $cidr = 24;
-
-        $mask = $cidr === 0 ? 0 : ((-1 << (32 - $cidr)) & 0xFFFFFFFF);
-        $networkAddrLong = $networkLong & $mask;
-        $broadcastLong = $networkAddrLong | (~$mask & 0xFFFFFFFF);
-        $candidateLong = $gatewayIp ? ip2long($gatewayIp) : false;
-
-        if ($candidateLong === false || ($candidateLong & $mask) !== $networkAddrLong || $candidateLong === $networkAddrLong || $candidateLong === $broadcastLong) {
-            return long2ip($networkAddrLong + 1);
-        }
-
-        return $gatewayIp;
-    }
+    // getSafeGatewayIp() provided by ZeroConfigBootstrapTrait
 }

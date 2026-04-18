@@ -18,7 +18,9 @@
   >
     <!-- Icon Slot -->
     <template #icon>
-      <List class="h-5 w-5 md:h-6 md:w-6 text-white" />
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 md:h-6 md:w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+      </svg>
     </template>
 
     <!-- Action Buttons -->
@@ -50,7 +52,7 @@
     <DataSkeleton v-if="loading" :count="5" />
 
     <!-- Data Content -->
-    <div v-else-if="filteredData.length" class="flex flex-col h-full px-4 md:px-6 pt-2 pb-2 min-h-0">
+    <div v-else-if="filteredData.length" class="flex flex-col h-full pt-2 pb-2 min-h-0">
       <!-- Mobile Cards -->
       <div class="md:hidden space-y-3 overflow-y-auto flex-1 min-h-0">
         <MobileDataCard
@@ -65,7 +67,7 @@
       </div>
 
       <!-- Desktop Table -->
-      <div class="hidden md:flex bg-white border border-slate-200 shadow-sm overflow-hidden flex-col min-h-0 flex-1">
+      <div class="hidden md:flex bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden flex-col min-h-0 flex-1">
         <div class="overflow-x-auto overflow-y-auto flex-1 min-h-0">
           <table class="w-full">
             <thead class="bg-slate-50 border-b border-slate-200 sticky top-0 z-[5]">
@@ -79,13 +81,13 @@
                 <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider hidden lg:table-cell">Duration</th>
               </tr>
             </thead>
-            <tbody class="divide-y divide-slate-100">
+            <tbody class="divide-y divide-slate-100 dark:divide-slate-700">
               <tr v-for="log in paginatedData" :key="log.id" class="hover:bg-blue-50/50 transition-colors">
-                <td class="px-6 py-4 text-sm text-slate-600">{{ formatDateTime(log.created_at) }}</td>
+                <td class="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">{{ formatDateTime(log.created_at) }}</td>
                 <td class="px-6 py-4">
                   <div class="flex items-center gap-2">
                     <User class="w-4 h-4 text-slate-400" />
-                    <span class="text-sm font-medium text-slate-900">{{ log.username }}</span>
+                    <span class="text-sm font-medium text-slate-900 dark:text-slate-100">{{ log.username }}</span>
                   </div>
                 </td>
                 <td class="px-6 py-4">
@@ -127,7 +129,6 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { List, Download, User, LogIn, LogOut, Clock, AlertCircle } from 'lucide-vue-next'
-import axios from 'axios'
 import DataViewContainer from '@/modules/common/components/base/DataViewContainer.vue'
 import DataSkeleton from '@/modules/common/components/base/DataSkeleton.vue'
 import MobileDataCard from '@/modules/common/components/base/MobileDataCard.vue'
@@ -136,23 +137,19 @@ import DataEmptyState from '@/modules/common/components/base/DataEmptyState.vue'
 import EntityStatusBadge from '@/modules/common/components/base/EntityStatusBadge.vue'
 import BaseButton from '@/modules/common/components/base/BaseButton.vue'
 import BaseSelect from '@/modules/common/components/base/BaseSelect.vue'
+import { useSessionLogs } from '@/modules/tenant/composables/useSessionLogs.js'
 
-// State
-const loading = ref(false)
-const logs = ref([])
+const {
+  loading, logs, stats,
+  formatDateTime, formatDuration,
+  getEventIcon, getEventIconColor, getLogStatus,
+  fetchLogs, exportLogs
+} = useSessionLogs()
+
 const searchQuery = ref('')
 const currentPage = ref(1)
 const itemsPerPage = ref(10)
-
 const filters = ref({ event_type: '', timeRange: '' })
-
-// Computed
-const stats = computed(() => ({
-  total: logs.value.length,
-  logins: logs.value.filter(l => l.event_type === 'login').length,
-  logouts: logs.value.filter(l => l.event_type === 'logout').length,
-  errors: logs.value.filter(l => l.event_type === 'error').length
-}))
 
 const filteredData = computed(() => {
   let data = logs.value
@@ -164,9 +161,7 @@ const filteredData = computed(() => {
       (l.mac_address && l.mac_address.toLowerCase().includes(query))
     )
   }
-  if (filters.value.event_type) {
-    data = data.filter(l => l.event_type === filters.value.event_type)
-  }
+  if (filters.value.event_type) data = data.filter(l => l.event_type === filters.value.event_type)
   if (filters.value.timeRange) {
     const now = new Date()
     const ranges = { '1h': 60 * 60 * 1000, '24h': 24 * 60 * 60 * 1000, '7d': 7 * 24 * 60 * 60 * 1000, '30d': 30 * 24 * 60 * 60 * 1000 }
@@ -186,85 +181,17 @@ const paginatedData = computed(() => {
 
 const totalPages = computed(() => Math.ceil(filteredData.value.length / itemsPerPage.value))
 const hasActiveFilters = computed(() => filters.value.event_type || filters.value.timeRange || searchQuery.value)
-
-// Helpers
-const formatDateTime = (date) => {
-  if (!date) return '—'
-  return new Date(date).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
-}
-
-const formatDuration = (seconds) => {
-  if (!seconds) return '—'
-  const hours = Math.floor(seconds / 3600)
-  const mins = Math.floor((seconds % 3600) / 60)
-  if (hours > 0) return `${hours}h ${mins}m`
-  return `${mins}m ${seconds % 60}s`
-}
-
-const getEventIcon = (eventType) => {
-  const icons = { login: LogIn, logout: LogOut, timeout: Clock, error: AlertCircle }
-  return icons[eventType] || Clock
-}
-
-const getEventIconColor = (eventType) => {
-  const colors = { login: 'text-emerald-600', logout: 'text-blue-600', timeout: 'text-amber-600', error: 'text-red-600' }
-  return colors[eventType] || 'text-slate-600'
-}
-
-const getLogStatus = (eventType) => {
-  const statuses = { login: 'success', logout: 'info', timeout: 'warning', error: 'error' }
-  return statuses[eventType] || 'default'
-}
-
-// Actions
-const fetchLogs = async () => {
-  loading.value = true
-  try {
-    const response = await axios.get('/monitoring/session-logs', { params: { per_page: 500 } })
-    const data = response.data?.logs?.data || response.data?.logs || response.data?.data || []
-    logs.value = data.map(l => ({
-      id: l.id,
-      username: l.username || 'Unknown',
-      event_type: l.event_type || 'unknown',
-      ip_address: l.ip_address || null,
-      mac_address: l.mac_address || null,
-      session_duration: l.session_duration || null,
-      created_at: l.created_at || new Date().toISOString()
-    }))
-  } catch (err) {
-    console.error('fetchLogs error:', err)
-  } finally {
-    loading.value = false
-  }
-}
-
-const exportLogs = () => {
-  const csv = [
-    ['Time', 'Username', 'Event', 'IP Address', 'MAC Address', 'Duration'].join(','),
-    ...logs.value.map(l => [
-      l.created_at,
-      l.username,
-      l.event_type,
-      l.ip_address || '',
-      l.mac_address || '',
-      l.session_duration || ''
-    ].join(','))
-  ].join('\n')
-  const blob = new Blob([csv], { type: 'text/csv' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `session-logs-${new Date().toISOString().slice(0, 10)}.csv`
-  a.click()
-  URL.revokeObjectURL(url)
-}
+const handleExport = () => exportLogs(logs.value)
 
 onMounted(fetchLogs)
 </script>
 
 <style scoped>
-::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
-::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+/* Scrollbar — no Tailwind equivalent for ::-webkit-scrollbar pseudo-elements */
+::-webkit-scrollbar        { width: 8px; height: 8px; }
+::-webkit-scrollbar-track  { background: #f1f5f9; border-radius: 4px; }
+::-webkit-scrollbar-thumb  { background: #cbd5e1; border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+:global(.dark) ::-webkit-scrollbar-track { background: #1e293b; }
+:global(.dark) ::-webkit-scrollbar-thumb { background: #475569; }
 </style>

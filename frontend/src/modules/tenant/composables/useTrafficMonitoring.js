@@ -86,6 +86,11 @@ export function useTrafficMonitoring() {
     memoryUsage: 85 // %
   })
 
+  // Router list and traffic data for TrafficGraphsNew
+  const routers = ref([])
+  const rawTrafficPoints = ref([])
+  const routerTraffic = ref({})
+
   // Computed Stats for DataViewContainer
   const stats = computed(() => [
     { color: 'bg-blue-500', value: formatSpeed(trafficData.value.current), tooltip: 'Current Bandwidth' },
@@ -109,7 +114,7 @@ export function useTrafficMonitoring() {
         params: { timeRange: timeRange.value }
       })
       if (response.data?.success) {
-        const data = response.data.data
+        const data = response.data?.data || {}
         trafficData.value = {
           current: data.current || 0,
           download: data.download || 0,
@@ -137,7 +142,7 @@ export function useTrafficMonitoring() {
     try {
       const response = await axios.get('/monitoring/network/performance')
       if (response.data?.success) {
-        const data = response.data.data
+        const data = response.data?.data || {}
         performanceMetrics.value = {
           latency: data.latency || 0,
           packetLoss: data.packetLoss || 0,
@@ -156,7 +161,7 @@ export function useTrafficMonitoring() {
     try {
       const response = await axios.get('/monitoring/system/health')
       if (response.data?.success) {
-        const data = response.data.data
+        const data = response.data?.data || {}
         systemHealth.value = {
           uptime: data.uptime || 100,
           onlineRouters: data.onlineRouters || 0,
@@ -179,7 +184,7 @@ export function useTrafficMonitoring() {
         params: { timeRange: timeRange.value }
       })
       if (response.data?.success) {
-        const data = response.data.data
+        const data = response.data?.data || {}
         revenueMetrics.value = {
           revenuePerGb: data.revenuePerGb || 0,
           revenuePerUser: data.revenuePerUser || 0,
@@ -198,7 +203,7 @@ export function useTrafficMonitoring() {
     try {
       const response = await axios.get('/monitoring/capacity/status')
       if (response.data?.success) {
-        const data = response.data.data
+        const data = response.data?.data || {}
         capacityMetrics.value = {
           linkUtilization: data.linkUtilization || 0,
           peakHourTraffic: data.peakHourTraffic || null,
@@ -219,7 +224,7 @@ export function useTrafficMonitoring() {
         params: { timeRange: timeRange.value }
       })
       if (response.data?.success) {
-        const data = response.data.data
+        const data = response.data?.data || {}
         userBehavior.value = {
           avgSessionDuration: data.avgSessionDuration || 0,
           reconnectRate: data.reconnectRate || 0,
@@ -369,12 +374,73 @@ export function useTrafficMonitoring() {
     fetchAllMetrics()
   }
 
+  // Router list for dropdown filters
+  const fetchRouters = async () => {
+    try {
+      const response = await axios.get('/routers')
+      const fetched = Array.isArray(response.data) ? response.data : (response.data?.data || [])
+      routers.value = Array.isArray(fetched) ? fetched : []
+    } catch (err) {
+      console.warn('Failed to load routers:', err.message)
+      routers.value = []
+    }
+  }
+
+  // Router-specific traffic metrics from VictoriaMetrics/Prometheus
+  const fetchRouterTraffic = async (routerId = '', range = '1h') => {
+    const url = routerId ? `/routers/${routerId}/metrics/traffic` : '/routers/metrics/traffic'
+    try {
+      const response = await axios.get(url, { params: { range, step: '30s' } })
+      const data = response.data || {}
+      if (!data?.success) return null
+
+      const parseVmSeries = (series) => {
+        if (!series || !Array.isArray(series.values)) return []
+        return series.values.map((v, i) => ({
+          t: series.timestamps?.[i] || i,
+          v: typeof v === 'number' ? v : 0
+        }))
+      }
+
+      if (routerId) {
+        const inSeries = parseVmSeries(data.in)
+        const outSeries = parseVmSeries(data.out)
+        const maxLen = Math.max(inSeries.length, outSeries.length)
+        const points = []
+        for (let i = 0; i < maxLen; i++) {
+          points.push({ download: inSeries[i]?.v ?? 0, upload: outSeries[i]?.v ?? 0 })
+        }
+        rawTrafficPoints.value = points.slice(-60)
+        const currentIn = inSeries.length ? inSeries[inSeries.length - 1].v : 0
+        const currentOut = outSeries.length ? outSeries[outSeries.length - 1].v : 0
+        routerTraffic.value = { [routerId]: currentIn + currentOut }
+        return { points: rawTrafficPoints.value, currentIn, currentOut }
+      }
+
+      const totalIn = parseVmSeries(data.total_in)
+      const totalOut = parseVmSeries(data.total_out)
+      const maxLen = Math.max(totalIn.length, totalOut.length)
+      const points = []
+      for (let i = 0; i < maxLen; i++) {
+        points.push({ download: totalIn[i]?.v ?? 0, upload: totalOut[i]?.v ?? 0 })
+      }
+      rawTrafficPoints.value = points.slice(-60)
+      return { points: rawTrafficPoints.value }
+    } catch (err) {
+      console.warn('Failed to load router traffic:', err.message)
+      return null
+    }
+  }
+
   return {
     // Reactive data
     loading,
     error,
     timeRange,
     trafficData,
+    routers,
+    rawTrafficPoints,
+    routerTraffic,
     usageMetrics,
     performanceMetrics,
     systemHealth,
@@ -395,6 +461,8 @@ export function useTrafficMonitoring() {
     fetchUserBehavior,
     fetchAlerts,
     fetchAllMetrics,
+    fetchRouters,
+    fetchRouterTraffic,
     acknowledgeAlert,
     updateThresholds,
 

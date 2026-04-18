@@ -4,7 +4,7 @@
     title="Create New User"
     subtitle="Add a new administrator or staff account"
     icon="UserPlus"
-    width="480px"
+    width="50%"
     @close="handleClose"
   >
     <form @submit.prevent="handleSubmit">

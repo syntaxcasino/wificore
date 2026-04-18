@@ -1,138 +1,125 @@
 <template>
-  <div class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm">
-    <div class="bg-white rounded-xl shadow-2xl w-full max-w-4xl mx-4 max-h-[90vh] overflow-hidden">
+  <div class="fixed inset-0 z-[9999] flex items-end sm:items-center justify-center p-0 sm:p-4">
+    <div class="absolute inset-0 bg-slate-900/50 backdrop-blur-[2px]" @click="$emit('close')" />
+    <div class="relative bg-white w-full sm:max-w-2xl sm:rounded-2xl rounded-t-2xl shadow-2xl ring-1 ring-black/10 flex flex-col overflow-hidden max-h-[92vh]">
       <!-- Header -->
-      <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-blue-600 to-blue-700 text-white">
-        <div class="flex items-center justify-between">
-          <div>
-            <h2 class="text-xl font-bold">Router Provisioning</h2>
-            <p class="text-blue-100 text-sm">
-              {{ router ? `Provisioning: ${router.name}` : 'Add New Router' }}
-            </p>
-          </div>
-          <button @click="$emit('close')"
-            class="p-2 hover:bg-white hover:bg-opacity-20 rounded-full transition-colors">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+      <div class="bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-700 px-5 py-3.5 flex items-center justify-between flex-shrink-0">
+        <div>
+          <h2 class="text-sm font-bold text-white">Router Provisioning</h2>
+          <p class="text-blue-200 text-xs mt-0.5">{{ router ? router.name : 'New Router' }}</p>
         </div>
+        <button @click="$emit('close')" class="p-1.5 text-white/70 hover:text-white hover:bg-white/15 rounded-lg transition-colors">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+      <!-- Progress bar -->
+      <div class="h-1 bg-blue-100 flex-shrink-0">
+        <div class="h-full bg-gradient-to-r from-blue-500 to-indigo-500 transition-all duration-700" :style="{ width: progressPct + '%' }" />
+      </div>
+      <!-- Stepper -->
+      <div class="px-5 py-3 border-b border-gray-100 bg-gray-50 flex-shrink-0">
+        <ol class="flex items-center">
+          <li v-for="(step, i) in steps" :key="i" class="flex items-center" :class="i < steps.length - 1 ? 'flex-1' : ''">
+            <div class="flex flex-col items-center">
+              <div class="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ring-2 transition-all" :class="stepBubbleClass(i)">
+                <svg v-if="stepStatus(i)==='done'" class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>
+                <span v-else-if="stepStatus(i)==='active'" class="w-2 h-2 rounded-full bg-white animate-pulse"/>
+                <span v-else>{{ i+1 }}</span>
+              </div>
+              <span class="text-[10px] font-medium mt-0.5 whitespace-nowrap" :class="stepStatus(i)==='active' ? 'text-blue-600' : stepStatus(i)==='done' ? 'text-green-600' : 'text-gray-400'">{{ step }}</span>
+            </div>
+            <div v-if="i < steps.length-1" class="flex-1 h-px mx-1 transition-colors" :class="stepStatus(i)==='done' ? 'bg-green-400' : 'bg-gray-200'" />
+          </li>
+        </ol>
       </div>
 
-      <!-- Content -->
-      <div class="flex flex-col max-h-[calc(90vh-120px)]">
-        <!-- Stage Content -->
-        <div class="flex-1 overflow-y-auto p-6">
-          <!-- Stage 1: Router Identity & Initial Config -->
-          <div v-if="currentStage === 1" class="space-y-6">
-            <div class="text-center">
-              <div class="mx-auto w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-4">
-                <svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                        d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                </svg>
+      <!-- Stage content -->
+      <div class="flex-1 overflow-y-auto px-5 py-4">
+          <!-- Stage 1 -->
+          <div v-if="currentStage === 1" class="space-y-4">
+            <div class="flex items-center gap-3 p-4 bg-blue-50 rounded-xl border border-blue-100">
+              <div class="w-9 h-9 bg-blue-600 rounded-lg flex items-center justify-center flex-shrink-0">
+                <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
               </div>
-              <h3 class="text-lg font-semibold text-gray-900 mb-2">Create Router Identity</h3>
-              <p class="text-gray-600">Enter a name for your router and we'll generate the initial configuration.</p>
-            </div>
-
-            <form @submit.prevent="handleStage1Submit" class="max-w-md mx-auto space-y-4">
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Router Name</label>
-                <input v-model="stage1Data.name"
-                       type="text"
-                       required
-                       class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <p class="text-sm font-semibold text-gray-800">Create Router Identity</p>
+                <p class="text-xs text-gray-500">Name your router and generate the initial config</p>
               </div>
-
-              <button type="submit"
-                      class="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors">
-                Generate Configuration
-              </button>
+            </div>
+            <form @submit.prevent="handleStage1Submit" class="space-y-3">
+              <div>
+                <label class="block text-xs font-semibold text-gray-700 mb-1">Router Name</label>
+                <input v-model="stage1Data.name" type="text" required placeholder="e.g. GGN-HSP-01"
+                  class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <button type="submit" class="w-full py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors">Generate Configuration</button>
             </form>
           </div>
 
-          <!-- Stage 2: Router Probing -->
-          <div v-else-if="currentStage === 2" class="space-y-6">
-            <div class="text-center">
-              <div class="mx-auto w-16 h-16 bg-yellow-100 rounded-full flex items-center justify-center mb-4">
-                <svg class="w-8 h-8 text-yellow-600 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                </svg>
-              </div>
-              <h3 class="text-lg font-semibold text-gray-900 mb-2">Waiting for Router Connection</h3>
-              <p class="text-gray-600">Monitoring for router connectivity...</p>
+          <!-- Stage 2 -->
+          <div v-else-if="currentStage === 2" class="flex flex-col items-center text-center gap-4 py-10">
+            <div class="relative w-14 h-14 bg-yellow-100 rounded-full flex items-center justify-center">
+              <svg class="w-7 h-7 text-yellow-500 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+              <span class="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-yellow-400 rounded-full border-2 border-white animate-ping"/>
+            </div>
+            <div>
+              <p class="text-sm font-semibold text-gray-800">Waiting for Router Connection</p>
+              <p class="text-xs text-gray-500 mt-1">Apply the config script, then the system will detect your router automatically</p>
             </div>
           </div>
 
-          <!-- Stage 3: Interface Selection -->
-          <div v-else-if="currentStage === 3" class="space-y-6">
-            <div class="text-center">
-              <div class="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4">
-                <svg class="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <h3 class="text-lg font-semibold text-gray-900 mb-2">Router Connected Successfully!</h3>
-              <p class="text-gray-600">Router is connected. Configuring services...</p>
+          <!-- Stage 3 -->
+          <div v-else-if="currentStage === 3" class="flex flex-col items-center text-center gap-4 py-10">
+            <div class="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center ring-4 ring-green-50">
+              <svg class="w-7 h-7 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            </div>
+            <div>
+              <p class="text-sm font-semibold text-gray-800">Router Connected!</p>
+              <p class="text-xs text-gray-500 mt-1">Configuring services...</p>
             </div>
           </div>
 
-          <!-- Stage 4: Service Configuration -->
-          <div v-else-if="currentStage === 4" class="space-y-6">
-            <div class="text-center">
-              <div class="mx-auto w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mb-4">
-                <svg class="w-8 h-8 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-              </div>
-              <h3 class="text-lg font-semibold text-gray-900 mb-2">Service Configuration</h3>
-              <p class="text-gray-600">Configuring router services...</p>
+          <!-- Stage 4 -->
+          <div v-else-if="currentStage === 4" class="flex flex-col items-center text-center gap-4 py-10">
+            <div class="w-14 h-14 bg-purple-100 rounded-full flex items-center justify-center">
+              <svg class="w-7 h-7 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+            </div>
+            <div>
+              <p class="text-sm font-semibold text-gray-800">Deploying Configuration</p>
+              <p class="text-xs text-gray-500 mt-1">Applying service settings to the router...</p>
             </div>
           </div>
 
-          <!-- Stage 5: Deployment Complete -->
-          <div v-else-if="currentStage === 5" class="space-y-6">
-            <div class="text-center">
-              <div class="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4">
-                <svg class="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <h3 class="text-lg font-semibold text-gray-900 mb-2">Provisioning Complete!</h3>
-              <p class="text-gray-600">Router has been successfully provisioned.</p>
+          <!-- Stage 5 -->
+          <div v-else-if="currentStage === 5" class="flex flex-col items-center text-center gap-4 py-10">
+            <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center ring-4 ring-green-200">
+              <svg class="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
             </div>
-
-            <button @click="$emit('close')"
-                    class="w-full bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 transition-colors">
-              Close & Return to Dashboard
+            <div>
+              <p class="text-base font-bold text-gray-800">Provisioning Complete!</p>
+              <p class="text-xs text-gray-500 mt-1">Router has been successfully provisioned.</p>
+            </div>
+            <button @click="$emit('close')" class="px-6 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 rounded-xl shadow-md transition-all">
+              Close &amp; Return to Dashboard
             </button>
           </div>
+      </div>
+
+      <!-- Activity log panel -->
+      <div class="border-t border-gray-100 bg-gray-50 px-5 py-3 flex-shrink-0">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xs font-semibold text-gray-600">Activity Log</span>
+          <span class="text-[10px] text-gray-400 bg-gray-200 rounded-full px-2 py-0.5">{{ logs.length }}</span>
         </div>
-
-        <!-- Logs Panel -->
-        <div class="border-t border-gray-200 bg-gray-50 px-6 py-4">
-          <div class="flex items-center justify-between mb-3">
-            <h4 class="font-medium text-gray-900">Activity Log</h4>
-            <span class="text-xs text-gray-500">{{ logs.length }} entries</span>
+        <div ref="logScrollRef" class="max-h-28 overflow-y-auto space-y-0.5 font-mono">
+          <div v-for="log in logs.slice(-20)" :key="log.timestamp" class="flex items-start gap-1.5 text-[11px] py-0.5">
+            <span class="text-gray-400 flex-shrink-0 w-14">{{ new Date(log.timestamp).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'}) }}</span>
+            <span :class="getLogLevelClass(log.level)" class="flex-shrink-0 w-12 uppercase font-semibold">{{ log.level }}</span>
+            <span class="text-gray-600 leading-tight">{{ log.message }}</span>
           </div>
-
-          <div class="max-h-32 overflow-y-auto space-y-1">
-            <div v-for="log in logs.slice(-10)" :key="log.timestamp" class="flex items-start text-xs">
-              <span class="text-gray-400 w-16 flex-shrink-0">
-                {{ new Date(log.timestamp).toLocaleTimeString() }}
-              </span>
-              <span :class="getLogLevelClass(log.level)" class="ml-2 flex-shrink-0 w-12 uppercase font-medium">
-                {{ log.level }}
-              </span>
-              <span class="ml-2 text-gray-700">{{ log.message }}</span>
-            </div>
-
-            <div v-if="logs.length === 0" class="text-xs text-gray-500 italic">
-              No activity yet...
-            </div>
-          </div>
+          <div v-if="logs.length === 0" class="text-[11px] text-gray-400 italic py-1">No activity yet...</div>
         </div>
       </div>
     </div>
@@ -140,7 +127,7 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
+import { ref, reactive, computed, watch, nextTick } from 'vue'
 
 // Props
 const props = defineProps({
@@ -191,6 +178,38 @@ const stage3Data = reactive({
   selectedInterface: '' // Changed from selectedInterfaces array to string
 })
 
+// Stepper
+const steps = ['Identity', 'Connecting', 'Connected', 'Configuring', 'Done']
+
+const progressPct = computed(() => {
+  const pct = props.progress ?? 0
+  if (pct > 0) return pct
+  return Math.min(((props.currentStage - 1) / (steps.length - 1)) * 100, 100)
+})
+
+const stepStatus = (i) => {
+  const active = props.currentStage - 1
+  if (i < active) return 'done'
+  if (i === active) return 'active'
+  return 'pending'
+}
+
+const stepBubbleClass = (i) => {
+  const s = stepStatus(i)
+  if (s === 'done') return 'bg-green-500 ring-green-300 text-white'
+  if (s === 'active') return 'bg-blue-600 ring-blue-300 text-white'
+  return 'bg-white ring-gray-300 text-gray-400'
+}
+
+// Auto-scroll log
+const logScrollRef = ref(null)
+watch(() => props.logs?.length, async () => {
+  await nextTick()
+  if (logScrollRef.value) {
+    logScrollRef.value.scrollTop = logScrollRef.value.scrollHeight
+  }
+})
+
 // Methods
 const handleStage1Submit = () => {
   if (!stage1Data.name.trim()) return
@@ -220,31 +239,25 @@ const handleStage4Submit = () => {
 
 const getLogLevelClass = (level) => {
   const classes = {
-    'info': 'text-blue-600',
-    'success': 'text-green-600',
-    'warning': 'text-yellow-600',
-    'error': 'text-red-600'
+    'info': 'text-blue-400',
+    'success': 'text-emerald-400',
+    'warning': 'text-amber-400',
+    'error': 'text-red-400'
   }
-  return classes[level] || 'text-gray-600'
+  return classes[level] || 'text-slate-400'
 }
 </script>
 
 <style scoped>
-/* Custom scrollbar for logs */
-.max-h-32::-webkit-scrollbar {
-  width: 4px;
-}
+/* Scrollbar — no Tailwind equivalent for ::-webkit-scrollbar pseudo-elements */
+.font-mono::-webkit-scrollbar         { width: 4px; }
+.font-mono::-webkit-scrollbar-track   { background: transparent; }
+.font-mono::-webkit-scrollbar-thumb   { background: rgba(100,116,139,0.5); border-radius: 4px; }
+.font-mono::-webkit-scrollbar-thumb:hover { background: rgba(100,116,139,0.8); }
 
-.max-h-32::-webkit-scrollbar-track {
-  background: #f1f1f1;
-}
-
-.max-h-32::-webkit-scrollbar-thumb {
-  background: #c1c1c1;
-  border-radius: 2px;
-}
-
-.max-h-32::-webkit-scrollbar-thumb:hover {
-  background: #a8a8a8;
-}
+.overflow-y-auto::-webkit-scrollbar        { width: 5px; }
+.overflow-y-auto::-webkit-scrollbar-track  { background: transparent; }
+.overflow-y-auto::-webkit-scrollbar-thumb  { background: #e2e8f0; border-radius: 4px; }
+.overflow-y-auto::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
+:global(.dark) .overflow-y-auto::-webkit-scrollbar-thumb { background: #475569; }
 </style>

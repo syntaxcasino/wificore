@@ -90,8 +90,11 @@ class UnifiedAuthController extends Controller
         
         // Find user by username or email (without tenant scope for now)
         $user = User::withoutGlobalScope(\App\Models\Scopes\TenantScope::class)
-            ->where('username', $request->username)
-            ->orWhere('email', $request->username)
+            ->withoutGlobalScope(\App\Scopes\TenantScope::class)
+            ->where(function ($q) use ($request) {
+                $q->where('username', $request->username)
+                  ->orWhere('email', $request->username);
+            })
             ->first();
 
         // Check if user exists

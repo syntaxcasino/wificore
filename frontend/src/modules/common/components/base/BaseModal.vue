@@ -33,17 +33,17 @@
               aria-modal="true"
             >
               <!-- Header -->
-              <div v-if="$slots.header || title" class="flex items-center justify-between p-6 border-b border-slate-200">
+              <div v-if="$slots.header || title" class="flex items-center justify-between p-6 border-b border-slate-200 dark:border-slate-700">
                 <slot name="header">
-                  <h3 class="text-xl font-semibold text-slate-900">{{ title }}</h3>
+                  <h3 class="text-xl font-semibold text-slate-900 dark:text-slate-100">{{ title }}</h3>
                 </slot>
                 <button
                   v-if="closable"
                   @click="handleClose"
-                  class="p-1 rounded-lg hover:bg-slate-100 transition-colors"
+                  class="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
                   type="button"
                 >
-                  <svg class="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg class="w-5 h-5 text-slate-500 dark:text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
                   </svg>
                 </button>
@@ -55,7 +55,7 @@
               </div>
               
               <!-- Footer -->
-              <div v-if="$slots.footer" class="flex items-center justify-end gap-3 p-6 border-t border-slate-200 bg-slate-50">
+              <div v-if="$slots.footer" class="flex items-center justify-end gap-3 p-6 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
                 <slot name="footer" />
               </div>
             </div>
@@ -94,7 +94,7 @@ const props = defineProps({
 const emit = defineEmits(['update:modelValue', 'close'])
 
 const modalClasses = computed(() => {
-  const base = 'relative bg-white rounded-xl shadow-2xl'
+  const base = 'relative bg-white dark:bg-slate-800 rounded-xl shadow-2xl'
   
   const sizes = {
     sm: 'w-full max-w-md',

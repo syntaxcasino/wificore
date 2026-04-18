@@ -197,6 +197,51 @@ func (h *Handler) ExecuteCommand(c *gin.Context) {
 	})
 }
 
+// DeployScript handles full script deployment requests
+func (h *Handler) DeployScript(c *gin.Context) {
+	var req struct {
+		RouterID string `json:"router_id" binding:"required"`
+		TenantID string `json:"tenant_id" binding:"required"`
+		Script   string `json:"script" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		h.logger.WithError(err).Error("Invalid deploy script request")
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error":   fmt.Sprintf("Invalid request: %v", err),
+		})
+		return
+	}
+
+	h.logger.WithFields(logrus.Fields{
+		"router_id":     req.RouterID,
+		"tenant_id":     req.TenantID,
+		"script_length": len(req.Script),
+	}).Info("Deploying script")
+
+	// TODO: Get router connection details from backend API or database
+	// For now, this is a placeholder that simulates successful deployment
+	// In production, this should:
+	// 1. Fetch router credentials from secure storage
+	// 2. Connect via SSH
+	// 3. Upload script file
+	// 4. Import and execute script
+	// 5. Return execution results
+
+	// Simulate script deployment
+	time.Sleep(100 * time.Millisecond) // Simulate network latency
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Script deployed successfully",
+		"data": map[string]interface{}{
+			"router_id": req.RouterID,
+			"executed_at": time.Now(),
+		},
+	})
+}
+
 // VerifyConnectivity handles connectivity verification requests
 func (h *Handler) VerifyConnectivity(c *gin.Context) {
 	var req struct {

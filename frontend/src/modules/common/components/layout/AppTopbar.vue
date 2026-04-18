@@ -1,38 +1,38 @@
 <template>
   <header
-    class="fixed top-0 left-0 right-0 h-14 sm:h-16 bg-white shadow z-50 flex items-center justify-between px-2 sm:px-4"
+    class="fixed top-0 left-0 right-0 h-14 sm:h-16 bg-white dark:bg-slate-900 dark:border-b dark:border-slate-700/60 shadow z-50 flex items-center justify-between px-2 sm:px-4 transition-colors duration-200"
   >
     <div class="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
       <button
         @click="$emit('toggle-sidebar')"
-        class="p-2 rounded-md hover:bg-gray-100 active:bg-gray-200 transition-colors duration-150 flex-shrink-0"
+        class="p-2 rounded-md hover:bg-gray-100 dark:hover:bg-slate-800 active:bg-gray-200 transition-colors duration-150 flex-shrink-0"
       >
-        <Menu class="w-5 h-5 sm:w-6 sm:h-6 text-gray-800" />
+        <Menu class="w-5 h-5 sm:w-6 sm:h-6 text-gray-800 dark:text-slate-300" />
       </button>
       
       <!-- Company Name -->
-      <h1 class="text-sm sm:text-xl font-bold text-gray-800 truncate">{{ tenantName }}</h1>
+      <h1 class="text-sm sm:text-xl font-bold text-gray-800 dark:text-slate-100 truncate">{{ tenantName }}</h1>
       
       <!-- Divider (hidden on mobile) -->
-      <div class="hidden sm:block h-6 w-px bg-gray-300 flex-shrink-0"></div>
+      <div class="hidden sm:block h-6 w-px bg-gray-300 dark:bg-slate-700 flex-shrink-0"></div>
       
       <!-- Page Icon and Breadcrumbs (hidden on mobile) -->
       <div class="hidden sm:flex items-center gap-3 min-w-0">
         <component 
           v-if="pageIcon" 
           :is="pageIcon" 
-          class="w-5 h-5 text-blue-600 flex-shrink-0"
+          class="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0"
         />
         <nav class="flex items-center gap-2 text-sm min-w-0">
           <router-link 
             v-for="(crumb, index) in breadcrumbs" 
             :key="index"
             :to="crumb.to || '#'"
-            class="hover:text-blue-600 transition-colors whitespace-nowrap"
+            class="hover:text-blue-600 dark:hover:text-blue-400 transition-colors whitespace-nowrap"
             :class="[
               index === breadcrumbs.length - 1 
-                ? 'text-gray-900 font-semibold truncate' 
-                : 'text-gray-600'
+                ? 'text-gray-900 dark:text-slate-100 font-semibold truncate' 
+                : 'text-gray-600 dark:text-slate-400'
             ]"
           >
             {{ crumb.label }}
@@ -42,39 +42,48 @@
       </div>
     </div>
 
-    <!-- User Menu -->
+    <!-- Right side: User Menu -->
     <div class="flex items-center gap-2 sm:gap-3 flex-shrink-0" v-if="user">
       <div class="relative">
         <button
           @click="toggleUserMenu"
-          class="flex items-center gap-2 p-2 rounded-md hover:bg-gray-100 active:bg-gray-200 transition-colors duration-150"
+          class="flex items-center gap-2 p-2 rounded-md hover:bg-gray-100 dark:hover:bg-slate-800 active:bg-gray-200 transition-colors duration-150"
         >
           <div class="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white font-semibold text-xs sm:text-sm">
             {{ userInitials }}
           </div>
           <div class="hidden md:block text-left">
-            <div class="text-sm font-medium text-gray-800">{{ user.name || user.username || 'User' }}</div>
-            <div class="text-xs text-gray-500">{{ user.email || 'No email' }}</div>
+            <div class="text-sm font-medium text-gray-800 dark:text-slate-200">{{ user.name || user.username || 'User' }}</div>
+            <div class="text-xs text-gray-500 dark:text-slate-400">{{ user.email || 'No email' }}</div>
           </div>
-          <ChevronDown class="w-4 h-4 text-gray-500 hidden sm:block" :class="{ 'rotate-180': isUserMenuOpen }" />
+          <ChevronDown class="w-4 h-4 text-gray-500 dark:text-slate-400 hidden sm:block" :class="{ 'rotate-180': isUserMenuOpen }" />
         </button>
 
         <!-- Dropdown Menu -->
         <div
           v-if="isUserMenuOpen"
-          class="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg border border-gray-200 z-50"
+          class="absolute right-0 mt-2 w-48 bg-white dark:bg-slate-800 rounded-md shadow-lg border border-gray-200 dark:border-slate-700 z-50"
           @click.stop
         >
           <div class="py-1">
-            <div class="px-4 py-2 border-b border-gray-100">
-              <div class="text-sm font-medium text-gray-800">{{ user.name || user.username || 'User' }}</div>
-              <div class="text-xs text-gray-500">{{ user.email || 'No email' }}</div>
-              <div class="text-xs text-gray-400 mt-1">Role: {{ user.role || 'User' }}</div>
+            <div class="px-4 py-2 border-b border-gray-100 dark:border-slate-700">
+              <div class="text-sm font-medium text-gray-800 dark:text-slate-200">{{ user.name || user.username || 'User' }}</div>
+              <div class="text-xs text-gray-500 dark:text-slate-400">{{ user.email || 'No email' }}</div>
+              <div class="text-xs text-gray-400 dark:text-slate-500 mt-1">Role: {{ user.role || 'User' }}</div>
             </div>
 
             <button
+              @click="darkMode.toggle(); closeUserMenu()"
+              class="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-700 flex items-center gap-2"
+            >
+              <Sun v-if="darkMode.isDark" class="w-4 h-4 text-amber-400" />
+              <Moon v-else class="w-4 h-4 text-slate-500" />
+              {{ darkMode.isDark ? 'Light Mode' : 'Dark Mode' }}
+            </button>
+
+            <button
               @click="viewProfile"
-              class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+              class="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-700 flex items-center gap-2"
             >
               <User class="w-4 h-4" />
               Profile
@@ -82,7 +91,7 @@
 
             <button
               @click="handleLogout"
-              class="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+              class="w-full text-left px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2"
             >
               <LogOut class="w-4 h-4" />
               Logout
@@ -102,10 +111,11 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { Menu, ChevronDown, User, LogOut, Wifi, Users, Package, Activity, Settings, Shield } from 'lucide-vue-next'
+import { Menu, ChevronDown, User, LogOut, Wifi, Users, Package, Activity, Settings, Shield, Sun, Moon } from 'lucide-vue-next'
 import { useAuthStore } from '@/stores/auth'
+import { useDarkModeStore } from '@/stores/darkMode'
 
 // Props
 const props = defineProps({
@@ -120,6 +130,7 @@ const props = defineProps({
 })
 
 const authStore = useAuthStore()
+const darkMode = useDarkModeStore()
 const user = computed(() => authStore.user)
 const router = useRouter()
 const route = useRoute()
@@ -182,11 +193,6 @@ const userInitials = computed(() => {
     .slice(0, 2)
 })
 
-// Debug watcher
-watch(user, (newUser) => {
-  console.log('User changed:', newUser)
-  console.log('New initials:', userInitials.value)
-})
 
 // Methods
 const toggleUserMenu = () => {

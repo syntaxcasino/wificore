@@ -77,7 +77,7 @@ class ServiceTemplateService extends TenantAwareService
 # 1. Create bridge interface with security features
 /interface bridge
 :if ([:len [find name="{$bridgeName}"]] = 0) do={
-    add name={$bridgeName} \
+    add name=\"{$bridgeName}\" \
         protocol-mode=rstp \
         igmp-snooping=yes \
         unknown-unicast-flood=no \
@@ -88,7 +88,7 @@ class ServiceTemplateService extends TenantAwareService
 # 2. Add physical interface to bridge with BPDU guard
 /interface bridge port
 :if ([:len [find interface="{$interface}"]] = 0) do={
-    add bridge={$bridgeName} interface={$interface} \
+    add bridge=\"{$bridgeName}\" interface=\"{$interface}\" \
         bpdu-guard=yes \
         edge=yes \
         point-to-point=yes \
@@ -99,25 +99,25 @@ class ServiceTemplateService extends TenantAwareService
 # 3. Configure IP address on bridge
 /ip address
 :if ([:len [find address="{$gateway}/24"]] = 0) do={
-    add address={$gateway}/24 interface={$bridgeName} comment="Hotspot Gateway"
+    add address=\"{$gateway}/24\" interface=\"{$bridgeName}\" comment=\"Hotspot Gateway\"
 }
 
 # 4. Create IP pool for Hotspot clients
 /ip pool
 :if ([:len [find name="hotspot-pool"]] = 0) do={
-    add name=hotspot-pool ranges={$ipPool} comment="Hotspot DHCP Pool"
+    add name="hotspot-pool" ranges="{$ipPool}" comment="Hotspot DHCP Pool"
 }
 
 # 5. Configure DHCP server
 /ip dhcp-server network
 :if ([:len [find address="{$network}"]] = 0) do={
-    add address={$network} gateway={$gateway} dns-server={$dnsServers} \
+    add address=\"{$network}\" gateway=\"{$gateway}\" dns-server=\"{$dnsServers}\" \
         comment="Hotspot Network"
 }
 
 /ip dhcp-server
 :if ([:len [find name="hotspot-dhcp"]] = 0) do={
-    add name=hotspot-dhcp interface={$bridgeName} address-pool=hotspot-pool \
+    add name=\"hotspot-dhcp\" interface=\"{$bridgeName}\" address-pool=\"hotspot-pool\" \
         lease-time=1h disabled=no
 }
 
@@ -135,15 +135,15 @@ class ServiceTemplateService extends TenantAwareService
 
 /ip hotspot
 :if ([:len [find name="{$hotspotName}"]] = 0) do={
-    add name={$hotspotName} interface={$bridgeName} \
-        address-pool=hotspot-pool profile=hotspot-profile \
+    add name=\"{$hotspotName}\" interface=\"{$bridgeName}\" \
+        address-pool=\"hotspot-pool\" profile=\"hotspot-profile\" \
         disabled=no
 }
 
 # 7. Configure RADIUS
 /radius
 :if ([:len [find address="{$radiusServer}"]] = 0) do={
-    add address={$radiusServer} secret={$radiusSecret} \
+    add address="{$radiusServer}" secret="{$radiusSecret}" \
         service=hotspot,login timeout=3s comment="WiFiCore RADIUS"
 }
 
@@ -152,7 +152,7 @@ set [find name="hotspot-profile"] use-radius=yes
 
 # 8. Configure firewall for Hotspot
 /ip firewall nat
-add chain=srcnat out-interface={$wanInterface} action=masquerade \
+add chain=srcnat out-interface=\"{$wanInterface}\" action=masquerade \
     comment="Hotspot NAT"
 
 # 9. User isolation (prevent client-to-client communication)
@@ -196,7 +196,7 @@ SCRIPT;
 # 1. Create bridge interface with security features
 /interface bridge
 :if ([:len [find name="{$bridgeName}"]] = 0) do={
-    add name={$bridgeName} \
+    add name=\"{$bridgeName}\" \
         protocol-mode=rstp \
         igmp-snooping=yes \
         unknown-unicast-flood=no \
@@ -207,7 +207,7 @@ SCRIPT;
 # 2. Add physical interface to bridge with BPDU guard
 /interface bridge port
 :if ([:len [find interface="{$interface}"]] = 0) do={
-    add bridge={$bridgeName} interface={$interface} \
+    add bridge=\"{$bridgeName}\" interface=\"{$interface}\" \
         bpdu-guard=yes \
         edge=yes \
         point-to-point=yes \
@@ -218,14 +218,14 @@ SCRIPT;
 # 3. Create IP pool for PPPoE clients
 /ip pool
 :if ([:len [find name="pppoe-pool"]] = 0) do={
-    add name=pppoe-pool ranges={$ipPool} comment="PPPoE Client Pool"
+    add name="pppoe-pool" ranges="{$ipPool}" comment="PPPoE Client Pool"
 }
 
 # 4. Configure PPPoE profile
 /ppp profile
 :if ([:len [find name="pppoe-profile"]] = 0) do={
-    add name=pppoe-profile \
-        local-address={$localAddress} \
+    add name=\"pppoe-profile\" \
+        local-address=\"{$localAddress}\" \
         remote-address=pppoe-pool \
         use-compression=no \
         use-encryption=no \
@@ -233,7 +233,7 @@ SCRIPT;
         use-upnp=no \
         only-one=yes \
         change-tcp-mss=yes \
-        dns-server={$dnsServers} \
+        dns-server="{$dnsServers}" \
         comment="WiFiCore PPPoE Profile"
 }
 
@@ -241,7 +241,7 @@ SCRIPT;
 /radius
 :do { /radius remove [/radius find service=ppp comment~"WiFiCore PPPoE"]; } on-error={}
 :if ([:len [find address="{$radiusServer}" service~"ppp"]] = 0) do={
-    add address={$radiusServer} secret={$radiusSecret} \
+    add address="{$radiusServer}" secret="{$radiusSecret}" \
         service=ppp timeout=3s comment="WiFiCore RADIUS PPPoE"
 }
 
@@ -252,20 +252,20 @@ set use-radius=yes
 # 7. Create PPPoE server on bridge
 /interface pppoe-server server
 :if ([:len [find interface="{$bridgeName}"]] = 0) do={
-    add interface={$bridgeName} \
+    add interface=\"{$bridgeName}\" \
         service-name=wificore-pppoe \
         default-profile=pppoe-profile \
         authentication=pap,chap,mschap1,mschap2 \
         keepalive-timeout=60 \
-        max-mtu={$mtu} \
-        max-mru={$mtu} \
+        max-mtu=\"{$mtu}\" \
+        max-mru=\"{$mtu}\" \
         disabled=no \
         comment="WiFiCore PPPoE Server"
 }
 
 # 8. Configure firewall for PPPoE
 /ip firewall nat
-add chain=srcnat out-interface={$wanInterface} src-address={$ipPool} \
+add chain=srcnat out-interface="{$wanInterface}" src-address="{$ipPool}" \
     action=masquerade comment="PPPoE NAT"
 
 # 9. Configure simple queue for bandwidth management
@@ -326,7 +326,7 @@ SCRIPT;
 # Create bridge for Hotspot with security features
 /interface bridge
 :if ([:len [find name="{$hotspotBridge}"]] = 0) do={
-    add name={$hotspotBridge} \
+    add name=\"{$hotspotBridge}\" \
         protocol-mode=rstp \
         igmp-snooping=yes \
         unknown-unicast-flood=no \
@@ -336,7 +336,7 @@ SCRIPT;
 
 # Create bridge for PPPoE with security features
 :if ([:len [find name="{$pppoeBridge}"]] = 0) do={
-    add name={$pppoeBridge} \
+    add name=\"{$pppoeBridge}\" \
         protocol-mode=rstp \
         igmp-snooping=yes \
         unknown-unicast-flood=no \
@@ -351,25 +351,25 @@ SCRIPT;
 # Create VLAN on Hotspot interface and add to bridge
 /interface vlan
 :if ([:len [find name="vlan-hotspot"]] = 0) do={
-    add name=vlan-hotspot vlan-id={$hotspotVlan} interface={$hotspotInterface} \
+    add name=\"vlan-hotspot\" vlan-id=\"{$hotspotVlan}\" interface=\"{$hotspotInterface}\" \
         comment="Hotspot VLAN"
 }
 
 /interface bridge port
 :if ([:len [find interface="vlan-hotspot"]] = 0) do={
-    add bridge={$hotspotBridge} interface=vlan-hotspot comment="Hotspot VLAN Port"
+    add bridge=\"{$hotspotBridge}\" interface=vlan-hotspot comment=\"Hotspot VLAN Port\"
 }
 
 # Create VLAN on PPPoE interface and add to bridge
 /interface vlan
 :if ([:len [find name="vlan-pppoe"]] = 0) do={
-    add name=vlan-pppoe vlan-id={$pppoeVlan} interface={$pppoeInterface} \
+    add name=\"vlan-pppoe\" vlan-id=\"{$pppoeVlan}\" interface=\"{$pppoeInterface}\" \
         comment="PPPoE VLAN"
 }
 
 /interface bridge port
 :if ([:len [find interface="vlan-pppoe"]] = 0) do={
-    add bridge={$pppoeBridge} interface=vlan-pppoe comment="PPPoE VLAN Port"
+    add bridge=\"{$pppoeBridge}\" interface=vlan-pppoe comment=\"PPPoE VLAN Port\"
 }
 
 # ============================================================
@@ -381,27 +381,25 @@ SCRIPT;
 # IP address for Hotspot bridge
 /ip address
 :if ([:len [find address="{$hotspotGateway}/24"]] = 0) do={
-    add address={$hotspotGateway}/24 interface={$hotspotBridge} \
+    add address=\"{$hotspotGateway}/24\" interface=\"{$hotspotBridge}\" \
         comment="Hotspot Gateway"
-}
-
 # IP pool for Hotspot
 /ip pool
 :if ([:len [find name="hotspot-pool"]] = 0) do={
-    add name=hotspot-pool ranges={$hotspotPool} comment="Hotspot Pool"
+    add name="hotspot-pool" ranges="{$hotspotPool}" comment="Hotspot Pool"
 }
 
 # DHCP network
 /ip dhcp-server network
 :if ([:len [find address="{$hotspotNetwork}"]] = 0) do={
-    add address={$hotspotNetwork} gateway={$hotspotGateway} \
-        dns-server={$dnsServers} comment="Hotspot Network"
+    add address="{$hotspotNetwork}" gateway="{$hotspotGateway}" \
+        dns-server=\"{$dnsServers}\" comment="Hotspot Network"
 }
 
 # DHCP server
 /ip dhcp-server
 :if ([:len [find name="hotspot-dhcp"]] = 0) do={
-    add name=hotspot-dhcp interface={$hotspotBridge} \
+    add name=\"hotspot-dhcp\" interface=\"{$hotspotBridge}\" \
         address-pool=hotspot-pool lease-time=1h disabled=no
 }
 
@@ -409,7 +407,7 @@ SCRIPT;
 /ip hotspot profile
 :if ([:len [find name="hotspot-profile"]] = 0) do={
     add name=hotspot-profile \
-        hotspot-address={$hotspotGateway} \
+        hotspot-address=\"{$hotspotGateway}\" \
         dns-name=login.wificore.local \
         html-directory=hotspot \
         login-by=http-chap,http-pap \
@@ -419,7 +417,7 @@ SCRIPT;
 # Hotspot server
 /ip hotspot
 :if ([:len [find name="wificore-hotspot"]] = 0) do={
-    add name=wificore-hotspot interface={$hotspotBridge} \
+    add name=\"wificore-hotspot\" interface=\"{$hotspotBridge}\" \
         address-pool=hotspot-pool profile=hotspot-profile disabled=no
 }
 
@@ -432,26 +430,27 @@ SCRIPT;
 # IP pool for PPPoE
 /ip pool
 :if ([:len [find name="pppoe-pool"]] = 0) do={
-    add name=pppoe-pool ranges={$pppoePool} comment="PPPoE Pool"
+    add name="pppoe-pool" ranges="{$pppoePool}" comment="PPPoE Pool"
 }
 
 # PPPoE profile
 /ppp profile
 :if ([:len [find name="pppoe-profile"]] = 0) do={
-    add name=pppoe-profile \
-        local-address={$pppoeLocal} \
+    add name="pppoe-profile" \
+        local-address="{$pppoeLocal}" \
+        local-address=\"{$pppoeLocal}\" \
         remote-address=pppoe-pool \
         use-compression=no \
         only-one=yes \
         change-tcp-mss=yes \
-        dns-server={$dnsServers} \
+        dns-server="{$dnsServers}" \
         comment="PPPoE Profile"
 }
 
 # PPPoE server on bridge
 /interface pppoe-server server
 :if ([:len [find interface="{$pppoeBridge}"]] = 0) do={
-    add interface={$pppoeBridge} \
+    add interface=\"{$pppoeBridge}\" \
         service-name=wificore-pppoe \
         default-profile=pppoe-profile \
         authentication=pap,chap,mschap1,mschap2 \
@@ -469,7 +468,7 @@ SCRIPT;
 
 /radius
 :if ([:len [find address="{$radiusServer}"]] = 0) do={
-    add address={$radiusServer} secret={$radiusSecret} \
+    add address="{$radiusServer}" secret="{$radiusSecret}" \
         service=hotspot,ppp,login timeout=3s \
         comment="WiFiCore RADIUS (Shared)"
 }
@@ -486,18 +485,18 @@ set use-radius=yes
 
 # NAT for both services
 /ip firewall nat
-add chain=srcnat out-interface={$wanInterface} src-address={$hotspotNetwork} \
+add chain=srcnat out-interface=\"{$wanInterface}\" src-address=\"{$hotspotNetwork}\" \
     action=masquerade comment="Hotspot NAT"
-add chain=srcnat out-interface={$wanInterface} src-address={$pppoePool} \
+add chain=srcnat out-interface=\"{$wanInterface}\" src-address=\"{$pppoePool}\" \
     action=masquerade comment="PPPoE NAT"
 
 # Prevent cross-service communication (security)
 /ip firewall filter
-add chain=forward src-address={$hotspotNetwork} \
-    dst-address={$pppoePool} action=drop \
+add chain=forward src-address=\"{$hotspotNetwork}\" \
+    dst-address=\"{$pppoePool}\" action=drop \
     comment="Block Hotspot -> PPPoE"
-add chain=forward src-address={$pppoePool} \
-    dst-address={$hotspotNetwork} action=drop \
+add chain=forward src-address=\"{$pppoePool}\" \
+    dst-address=\"{$hotspotNetwork}\" action=drop \
     comment="Block PPPoE -> Hotspot"
 
 :log info "Hybrid service configured successfully with bridges"

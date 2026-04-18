@@ -28,8 +28,12 @@ class WireGuardWebhookController extends Controller
         
         $token = substr($authHeader, 7);
         $expectedKey = config('services.wireguard.webhook_key', config('services.wireguard.api_key'));
-        
-        return $token === $expectedKey;
+
+        if (!$expectedKey) {
+            return false;
+        }
+
+        return hash_equals((string) $expectedKey, (string) $token);
     }
 
     /**

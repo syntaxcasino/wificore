@@ -2,8 +2,8 @@
   <div class="space-y-6">
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
       <div>
-        <h1 class="text-xl sm:text-2xl font-bold text-gray-900">Metrics & Queues</h1>
-        <p class="text-xs sm:text-sm text-gray-500 mt-1">System performance metrics and queue processing statistics</p>
+        <h1 class="text-xl sm:text-2xl font-bold text-gray-900 dark:text-slate-100">Metrics & Queues</h1>
+        <p class="text-xs sm:text-sm text-gray-500 dark:text-slate-400 mt-1">System performance metrics and queue processing statistics</p>
       </div>
       <div class="flex gap-2">
         <button @click="retryFailed" :disabled="retrying" class="inline-flex items-center gap-1.5 sm:gap-2 px-3 py-1.5 sm:px-4 sm:py-2 bg-yellow-100 text-yellow-700 text-xs sm:text-sm font-medium rounded-lg hover:bg-yellow-200 transition-colors disabled:opacity-50">
@@ -18,51 +18,51 @@
       </div>
     </div>
 
-    <div v-if="loading && !metrics" class="bg-white rounded-xl border border-gray-200 p-8 text-center text-gray-500">
+    <div v-if="loading && !metrics" class="bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 p-8 text-center text-gray-500">
       <div class="animate-spin w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full mx-auto mb-3"></div>
       Loading metrics...
     </div>
-    <div v-else-if="error" class="bg-white rounded-xl border border-gray-200 p-8 text-center text-red-500">
+    <div v-else-if="error" class="bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 p-8 text-center text-red-500">
       {{ error }}
       <button @click="fetchAll" class="block mx-auto mt-2 text-blue-600 hover:underline text-sm">Retry</button>
     </div>
     <template v-else>
       <!-- Queue Statistics Table -->
-      <div class="bg-white rounded-xl border border-gray-200 overflow-hidden overflow-x-auto">
-        <div class="px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-200">
-          <h2 class="text-base sm:text-lg font-semibold text-gray-900">Queue Statistics</h2>
+      <div class="bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 overflow-hidden overflow-x-auto">
+        <div class="px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-200 dark:border-slate-700">
+          <h2 class="text-base sm:text-lg font-semibold text-gray-900 dark:text-slate-100">Queue Statistics</h2>
         </div>
         <table class="w-full min-w-[400px]">
-          <thead class="bg-gray-50 border-b border-gray-200">
+          <thead class="bg-gray-50 dark:bg-slate-700/50 border-b border-gray-200 dark:border-slate-700">
             <tr>
-              <th class="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">Metric</th>
-              <th class="text-right px-6 py-3 text-xs font-medium text-gray-500 uppercase">Count</th>
-              <th class="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">Status</th>
+              <th class="text-left px-6 py-3 text-xs font-medium text-gray-500 dark:text-slate-400 uppercase">Metric</th>
+              <th class="text-right px-6 py-3 text-xs font-medium text-gray-500 dark:text-slate-400 uppercase">Count</th>
+              <th class="text-left px-6 py-3 text-xs font-medium text-gray-500 dark:text-slate-400 uppercase">Status</th>
             </tr>
           </thead>
-          <tbody class="divide-y divide-gray-100">
-            <tr class="hover:bg-gray-50 transition-colors">
-              <td class="px-6 py-4 text-sm font-medium text-gray-900">Pending Jobs</td>
+          <tbody class="divide-y divide-gray-100 dark:divide-slate-700">
+            <tr class="hover:bg-gray-50 dark:hover:bg-slate-700/40 transition-colors">
+              <td class="px-6 py-4 text-sm font-medium text-gray-900 dark:text-slate-100">Pending Jobs</td>
               <td class="px-6 py-4 text-sm font-semibold text-blue-600 text-right font-mono">{{ queueStats.pending ?? 0 }}</td>
               <td class="px-6 py-4"><span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium" :class="(queueStats.pending ?? 0) > 100 ? 'bg-yellow-100 text-yellow-700' : 'bg-blue-100 text-blue-700'">{{ (queueStats.pending ?? 0) > 100 ? 'High' : 'Normal' }}</span></td>
             </tr>
-            <tr class="hover:bg-gray-50 transition-colors">
-              <td class="px-6 py-4 text-sm font-medium text-gray-900">Processing</td>
+            <tr class="hover:bg-gray-50 dark:hover:bg-slate-700/40 transition-colors">
+              <td class="px-6 py-4 text-sm font-medium text-gray-900 dark:text-slate-100">Processing</td>
               <td class="px-6 py-4 text-sm font-semibold text-green-600 text-right font-mono">{{ queueStats.processing ?? 0 }}</td>
               <td class="px-6 py-4"><span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">Active</span></td>
             </tr>
-            <tr class="hover:bg-gray-50 transition-colors">
-              <td class="px-6 py-4 text-sm font-medium text-gray-900">Completed</td>
+            <tr class="hover:bg-gray-50 dark:hover:bg-slate-700/40 transition-colors">
+              <td class="px-6 py-4 text-sm font-medium text-gray-900 dark:text-slate-100">Completed</td>
               <td class="px-6 py-4 text-sm font-semibold text-gray-900 text-right font-mono">{{ queueStats.completed ?? 0 }}</td>
               <td class="px-6 py-4"><span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">Done</span></td>
             </tr>
-            <tr class="hover:bg-gray-50 transition-colors">
-              <td class="px-6 py-4 text-sm font-medium text-gray-900">Failed Jobs</td>
+            <tr class="hover:bg-gray-50 dark:hover:bg-slate-700/40 transition-colors">
+              <td class="px-6 py-4 text-sm font-medium text-gray-900 dark:text-slate-100">Failed Jobs</td>
               <td class="px-6 py-4 text-sm font-semibold text-right font-mono" :class="(queueStats.failed ?? 0) > 0 ? 'text-red-600' : 'text-gray-900'">{{ queueStats.failed ?? 0 }}</td>
               <td class="px-6 py-4"><span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium" :class="(queueStats.failed ?? 0) > 0 ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'">{{ (queueStats.failed ?? 0) > 0 ? 'Attention' : 'Clear' }}</span></td>
             </tr>
-            <tr class="hover:bg-gray-50 transition-colors">
-              <td class="px-6 py-4 text-sm font-medium text-gray-900">Active Workers</td>
+            <tr class="hover:bg-gray-50 dark:hover:bg-slate-700/40 transition-colors">
+              <td class="px-6 py-4 text-sm font-medium text-gray-900 dark:text-slate-100">Active Workers</td>
               <td class="px-6 py-4 text-sm font-semibold text-purple-600 text-right font-mono">{{ queueStats.workers ?? 0 }}</td>
               <td class="px-6 py-4"><span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium" :class="(queueStats.workers ?? 0) > 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'">{{ (queueStats.workers ?? 0) > 0 ? 'Running' : 'Stopped' }}</span></td>
             </tr>
@@ -71,20 +71,20 @@
       </div>
 
       <!-- Workers by Queue Table -->
-      <div v-if="queueStats.workersByQueue && Object.keys(queueStats.workersByQueue).length" class="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <div class="px-6 py-4 border-b border-gray-200">
-          <h2 class="text-lg font-semibold text-gray-900">Workers by Queue</h2>
+      <div v-if="queueStats.workersByQueue && Object.keys(queueStats.workersByQueue).length" class="bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-200 dark:border-slate-700">
+          <h2 class="text-lg font-semibold text-gray-900 dark:text-slate-100">Workers by Queue</h2>
         </div>
         <table class="w-full">
-          <thead class="bg-gray-50 border-b border-gray-200">
+          <thead class="bg-gray-50 dark:bg-slate-700/50 border-b border-gray-200 dark:border-slate-700">
             <tr>
-              <th class="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">Queue</th>
-              <th class="text-right px-6 py-3 text-xs font-medium text-gray-500 uppercase">Workers</th>
+              <th class="text-left px-6 py-3 text-xs font-medium text-gray-500 dark:text-slate-400 uppercase">Queue</th>
+              <th class="text-right px-6 py-3 text-xs font-medium text-gray-500 dark:text-slate-400 uppercase">Workers</th>
             </tr>
           </thead>
-          <tbody class="divide-y divide-gray-100">
-            <tr v-for="(count, queue) in queueStats.workersByQueue" :key="queue" class="hover:bg-gray-50 transition-colors">
-              <td class="px-6 py-4 text-sm font-medium text-gray-900">{{ queue }}</td>
+          <tbody class="divide-y divide-gray-100 dark:divide-slate-700">
+            <tr v-for="(count, queue) in queueStats.workersByQueue" :key="queue" class="hover:bg-gray-50 dark:hover:bg-slate-700/40 transition-colors">
+              <td class="px-6 py-4 text-sm font-medium text-gray-900 dark:text-slate-100">{{ queue }}</td>
               <td class="px-6 py-4 text-sm font-semibold text-blue-600 text-right font-mono">{{ count }}</td>
             </tr>
           </tbody>
@@ -92,20 +92,20 @@
       </div>
 
       <!-- System Metrics Table -->
-      <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <div class="px-6 py-4 border-b border-gray-200">
-          <h2 class="text-lg font-semibold text-gray-900">System Metrics</h2>
+      <div class="bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-200 dark:border-slate-700">
+          <h2 class="text-lg font-semibold text-gray-900 dark:text-slate-100">System Metrics</h2>
         </div>
         <table class="w-full">
-          <thead class="bg-gray-50 border-b border-gray-200">
+          <thead class="bg-gray-50 dark:bg-slate-700/50 border-b border-gray-200 dark:border-slate-700">
             <tr>
-              <th class="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">Metric</th>
-              <th class="text-right px-6 py-3 text-xs font-medium text-gray-500 uppercase">Value</th>
-              <th class="text-right px-6 py-3 text-xs font-medium text-gray-500 uppercase">Details</th>
+              <th class="text-left px-6 py-3 text-xs font-medium text-gray-500 dark:text-slate-400 uppercase">Metric</th>
+              <th class="text-right px-6 py-3 text-xs font-medium text-gray-500 dark:text-slate-400 uppercase">Value</th>
+              <th class="text-right px-6 py-3 text-xs font-medium text-gray-500 dark:text-slate-400 uppercase">Details</th>
             </tr>
           </thead>
-          <tbody class="divide-y divide-gray-100">
-            <tr v-for="(value, key) in flatMetrics" :key="key" class="hover:bg-gray-50 transition-colors cursor-pointer" @click="openMetricDetail(key, value)">
+          <tbody class="divide-y divide-gray-100 dark:divide-slate-700">
+            <tr v-for="(value, key) in flatMetrics" :key="key" class="hover:bg-gray-50 dark:hover:bg-slate-700/40 transition-colors cursor-pointer" @click="openMetricDetail(key, value)">
               <td class="px-6 py-4 text-sm font-medium text-gray-900 capitalize">{{ key.replace(/_/g, ' ') }}</td>
               <td class="px-6 py-4 text-sm font-semibold text-blue-600 text-right font-mono">{{ formatMetric(value) }}</td>
               <td class="px-6 py-4 text-right">
@@ -113,53 +113,53 @@
               </td>
             </tr>
             <tr v-if="!Object.keys(flatMetrics).length">
-              <td colspan="3" class="px-6 py-8 text-center text-gray-400 text-sm">No metrics available</td>
+              <td colspan="3" class="px-6 py-8 text-center text-gray-400 dark:text-slate-500 text-sm">No metrics available</td>
             </tr>
           </tbody>
         </table>
       </div>
 
       <!-- Raw Data -->
-      <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200">
-          <h2 class="text-lg font-semibold text-gray-900">Raw Data</h2>
+      <div class="bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 overflow-hidden">
+        <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-slate-700">
+          <h2 class="text-lg font-semibold text-gray-900 dark:text-slate-100">Raw Data</h2>
           <button @click="showRawOverlay = true" class="p-1.5 text-blue-500 hover:bg-blue-50 rounded-md transition-colors" title="Expand"><Eye class="w-4 h-4" /></button>
         </div>
         <div class="px-6 py-4">
-          <pre class="text-xs bg-gray-50 p-4 rounded-lg overflow-auto max-h-48 text-gray-700">{{ JSON.stringify({ metrics, queueStats }, null, 2) }}</pre>
+          <pre class="text-xs bg-gray-50 dark:bg-slate-700/50 p-4 rounded-lg overflow-auto max-h-48 text-gray-700 dark:text-slate-300">{{ JSON.stringify({ metrics, queueStats }, null, 2) }}</pre>
         </div>
       </div>
     </template>
 
     <!-- Metric Detail Overlay -->
-    <SlideOverlay v-model="showMetricOverlay" :title="selectedMetricKey" subtitle="Metric details and context" icon="BarChart3" width="40%" @close="showMetricOverlay = false">
+    <SlideOverlay v-model="showMetricOverlay" :title="selectedMetricKey" subtitle="Metric details and context" icon="BarChart3" width="50%" @close="showMetricOverlay = false">
       <div class="space-y-4">
         <div class="flex items-center justify-between p-4 bg-blue-50 rounded-lg">
           <span class="text-sm font-medium text-gray-700">Current Value</span>
           <span class="text-2xl font-bold text-blue-700">{{ formatMetric(selectedMetricValue) }}</span>
         </div>
-        <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-          <span class="text-sm font-medium text-gray-600">Metric Name</span>
-          <span class="text-sm font-mono text-gray-900">{{ selectedMetricRawKey }}</span>
+        <div class="flex items-center justify-between p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg">
+          <span class="text-sm font-medium text-gray-600 dark:text-slate-400">Metric Name</span>
+          <span class="text-sm font-mono text-gray-900 dark:text-slate-100">{{ selectedMetricRawKey }}</span>
         </div>
-        <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-          <span class="text-sm font-medium text-gray-600">Type</span>
-          <span class="text-sm text-gray-900">{{ typeof selectedMetricValue === 'number' ? 'Numeric' : 'String' }}</span>
+        <div class="flex items-center justify-between p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg">
+          <span class="text-sm font-medium text-gray-600 dark:text-slate-400">Type</span>
+          <span class="text-sm text-gray-900 dark:text-slate-100">{{ typeof selectedMetricValue === 'number' ? 'Numeric' : 'String' }}</span>
         </div>
       </div>
       <template #footer>
         <div class="flex justify-end">
-          <button type="button" @click="showMetricOverlay = false" class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">Close</button>
+          <button type="button" @click="showMetricOverlay = false" class="px-4 py-2 text-sm font-medium text-gray-700 dark:text-slate-300 bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-600 transition-colors">Close</button>
         </div>
       </template>
     </SlideOverlay>
 
     <!-- Raw Data Overlay -->
     <SlideOverlay v-model="showRawOverlay" title="Raw Metrics Data" subtitle="Complete metrics and queue statistics" icon="FileText" width="50%" @close="showRawOverlay = false">
-      <pre class="text-xs bg-gray-50 p-4 rounded-lg overflow-auto text-gray-700 whitespace-pre-wrap">{{ JSON.stringify({ metrics, queueStats }, null, 2) }}</pre>
+      <pre class="text-xs bg-gray-50 dark:bg-slate-700/50 p-4 rounded-lg overflow-auto text-gray-700 dark:text-slate-300 whitespace-pre-wrap">{{ JSON.stringify({ metrics, queueStats }, null, 2) }}</pre>
       <template #footer>
         <div class="flex justify-end">
-          <button type="button" @click="showRawOverlay = false" class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">Close</button>
+          <button type="button" @click="showRawOverlay = false" class="px-4 py-2 text-sm font-medium text-gray-700 dark:text-slate-300 bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-600 transition-colors">Close</button>
         </div>
       </template>
     </SlideOverlay>
@@ -171,6 +171,9 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import axios from 'axios'
 import { RefreshCw, RotateCcw, Eye } from 'lucide-vue-next'
 import SlideOverlay from '@/modules/common/components/base/SlideOverlay.vue'
+import { useToast } from '@/modules/common/composables/useToast.js'
+
+const { error: showError } = useToast()
 
 const metrics = ref(null)
 const queueStats = ref({})
@@ -233,7 +236,7 @@ const retryFailed = async () => {
     await axios.post('/system/queue/retry-failed')
     await fetchAll()
   } catch (err) {
-    alert(err.response?.data?.message || 'Failed to retry jobs')
+    showError(err.response?.data?.message || 'Failed to retry jobs')
   } finally {
     retrying.value = false
   }

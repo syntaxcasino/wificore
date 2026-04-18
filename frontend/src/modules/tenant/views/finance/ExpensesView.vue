@@ -29,13 +29,13 @@
       :title="isEditing ? 'Edit Expense' : 'Add Expense'"
       :subtitle="isEditing ? 'Update expense details' : 'Create a new expense entry'"
       icon="wallet"
-      width="480px"
+      width="60%"
       @close="closeForm"
     >
       <div class="p-6 space-y-4">
         <!-- Expense Number -->
         <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Expense Number</label>
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Expense Number</label>
           <input
             v-model="formData.expense_number"
             type="text"
@@ -46,7 +46,7 @@
 
         <!-- Description -->
         <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Description</label>
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Description</label>
           <textarea
             v-model="formData.description"
             rows="3"
@@ -57,7 +57,7 @@
 
         <!-- Vendor -->
         <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Vendor Name</label>
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Vendor Name</label>
           <input
             v-model="formData.vendor_name"
             type="text"
@@ -68,7 +68,7 @@
 
         <!-- Amount -->
         <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Amount</label>
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Amount</label>
           <div class="relative">
             <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">$</span>
             <input
@@ -83,7 +83,7 @@
 
         <!-- Status -->
         <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Status</label>
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Status</label>
           <select
             v-model="formData.status"
             class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none bg-white"
@@ -106,7 +106,7 @@
         <div class="flex gap-3">
           <button
             @click="closeForm"
-            class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+            class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-600"
           >
             Cancel
           </button>
@@ -136,7 +136,7 @@
     <DataSkeleton v-else-if="loading" :count="5" />
 
     <!-- Data Content -->
-    <div v-else-if="filteredExpenses.length" class="flex flex-col h-full px-4 md:px-6 pt-2 pb-2 min-h-0">
+    <div v-else-if="filteredExpenses.length" class="flex flex-col h-full pt-2 pb-2 min-h-0">
       <!-- Mobile Cards -->
       <div class="md:hidden space-y-3 overflow-y-auto flex-1 min-h-0">
         <MobileDataCard
@@ -154,7 +154,7 @@
       </div>
 
       <!-- Desktop Table -->
-      <div class="hidden md:flex bg-white border border-slate-200 shadow-sm overflow-hidden flex-col min-h-0 flex-1">
+      <div class="hidden md:flex bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden flex-col min-h-0 flex-1">
         <div class="overflow-x-auto overflow-y-auto flex-1 min-h-0">
           <table class="w-full">
             <thead class="bg-slate-50 border-b border-slate-200 sticky top-0 z-[5]">
@@ -168,28 +168,28 @@
                 <th class="px-6 py-3 text-right text-xs font-semibold text-slate-700 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
-            <tbody class="divide-y divide-slate-100">
+            <tbody class="divide-y divide-slate-100 dark:divide-slate-700">
               <tr v-for="expense in paginatedExpenses" :key="expense.id" class="hover:bg-purple-50/50 transition-colors">
                 <td class="px-6 py-4">
                   <div class="flex items-center gap-2">
                     <span :class="getStatusDotClass(expense.status)" class="w-1.5 h-1.5 rounded-full"></span>
-                    <span class="text-sm font-medium text-slate-900">{{ expense.expense_number }}</span>
+                    <span class="text-sm font-medium text-slate-900 dark:text-slate-100">{{ expense.expense_number }}</span>
                   </div>
                 </td>
                 <td class="px-6 py-4">
                   <span class="text-sm text-slate-700">{{ expense.description }}</span>
                 </td>
                 <td class="px-6 py-4">
-                  <span class="text-sm text-slate-600">{{ expense.vendor_name || '-' }}</span>
+                  <span class="text-sm text-slate-600 dark:text-slate-400">{{ expense.vendor_name || '-' }}</span>
                 </td>
                 <td class="px-6 py-4">
-                  <span class="text-sm font-semibold text-slate-900">${{ formatAmount(expense.amount) }}</span>
+                  <span class="text-sm font-semibold text-slate-900 dark:text-slate-100">${{ formatAmount(expense.amount) }}</span>
                 </td>
                 <td class="px-6 py-4">
                   <EntityStatusBadge :status="expense.status" size="sm" />
                 </td>
                 <td class="px-6 py-4 hidden lg:table-cell">
-                  <span class="text-xs text-slate-500">{{ formatDate(expense.created_at) }}</span>
+                  <span class="text-xs text-slate-500 dark:text-slate-400">{{ formatDate(expense.created_at) }}</span>
                 </td>
                 <td class="px-6 py-4 text-right">
                   <div class="flex items-center justify-end gap-1">
@@ -252,6 +252,7 @@
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useExpenses } from '@/modules/tenant/composables/useExpenses'
+import { useConfirmStore } from '@/stores/confirm'
 import DataViewContainer from '@/modules/common/components/base/DataViewContainer.vue'
 import DataSkeleton from '@/modules/common/components/base/DataSkeleton.vue'
 import MobileDataCard from '@/modules/common/components/base/MobileDataCard.vue'
@@ -259,6 +260,8 @@ import DataPagination from '@/modules/common/components/base/DataPagination.vue'
 import DataEmptyState from '@/modules/common/components/base/DataEmptyState.vue'
 import EntityStatusBadge from '@/modules/common/components/base/EntityStatusBadge.vue'
 import SlideOverlay from '@/modules/common/components/base/SlideOverlay.vue'
+
+const confirmStore = useConfirmStore()
 
 const {
   expenses,
@@ -406,7 +409,14 @@ const handlePay = async (expense) => {
 }
 
 const handleDelete = async (expense) => {
-  if (confirm(`Are you sure you want to delete ${expense.expense_number}?`)) {
+  const confirmed = await confirmStore.open({
+    title: 'Delete Expense',
+    message: `Are you sure you want to delete ${expense.expense_number}?`,
+    confirmText: 'Delete',
+    cancelText: 'Cancel',
+    variant: 'danger',
+  })
+  if (confirmed) {
     try { await deleteExpense(expense.id) } catch (err) { console.error('Failed to delete expense:', err) }
   }
 }
@@ -422,8 +432,11 @@ onUnmounted(() => cleanupWebSocketListeners())
 </script>
 
 <style scoped>
-::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
-::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+/* Scrollbar — no Tailwind equivalent for ::-webkit-scrollbar pseudo-elements */
+::-webkit-scrollbar        { width: 8px; height: 8px; }
+::-webkit-scrollbar-track  { background: #f1f5f9; border-radius: 4px; }
+::-webkit-scrollbar-thumb  { background: #cbd5e1; border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+:global(.dark) ::-webkit-scrollbar-track { background: #1e293b; }
+:global(.dark) ::-webkit-scrollbar-thumb { background: #475569; }
 </style>

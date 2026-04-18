@@ -2,9 +2,16 @@
   <DataViewContainer
     title="User Session History"
     subtitle="View detailed user session records"
-    icon="History"
+    color-theme="blue"
     :breadcrumbs="breadcrumbs"
   >
+    <!-- Icon Slot -->
+    <template #icon>
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 md:h-6 md:w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+    </template>
+
     <template #actions>
       <BaseButton @click="refreshData" variant="ghost" :loading="refreshing">
         <RefreshCw class="w-4 h-4 mr-1" :class="{ 'animate-spin': refreshing }" />
@@ -87,7 +94,7 @@
         <BaseCard :padding="false">
           <div class="overflow-x-auto">
             <table class="w-full">
-              <thead class="bg-slate-50 border-b border-slate-200">
+              <thead class="bg-slate-50 dark:bg-slate-700/50 border-b border-slate-200 dark:border-slate-700">
                 <tr>
                   <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700">User</th>
                   <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700">Type</th>
@@ -99,11 +106,11 @@
               </thead>
               <tbody>
                 <tr v-for="session in paginatedData" :key="session.id" class="border-b border-slate-100 hover:bg-blue-50/50">
-                  <td class="px-6 py-4 text-sm font-medium text-slate-900">{{ session.username }}</td>
+                  <td class="px-6 py-4 text-sm font-medium text-slate-900 dark:text-slate-100">{{ session.username }}</td>
                   <td class="px-6 py-4">
                     <BaseBadge :variant="session.type === 'hotspot' ? 'purple' : 'info'" size="sm">{{ session.type }}</BaseBadge>
                   </td>
-                  <td class="px-6 py-4 text-sm text-slate-600">{{ formatDateTime(session.start_time) }}</td>
+                  <td class="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">{{ formatDateTime(session.start_time) }}</td>
                   <td class="px-6 py-4 text-sm text-slate-900">{{ formatDuration(session.duration) }}</td>
                   <td class="px-6 py-4 text-sm font-semibold text-blue-600">{{ formatBytes(session.data_used) }}</td>
                   <td class="px-6 py-4 text-sm text-slate-600 font-mono">{{ session.ip_address }}</td>
@@ -116,7 +123,7 @@
     </PageContent>
 
     <PageFooter>
-      <div class="text-sm text-slate-600">
+      <div class="text-sm text-slate-600 dark:text-slate-400">
         Showing {{ paginationInfo.start }} to {{ paginationInfo.end }} of {{ paginationInfo.total }} sessions
       </div>
       <BasePagination v-model="currentPage" :total-pages="totalPages" :total-items="filteredData.length" />
@@ -125,151 +132,41 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
-import { History, RefreshCw, Download, Clock, HardDrive, Users } from 'lucide-vue-next'
-import axios from 'axios'
-import DataViewContainer from '@/modules/common/components/base/DataViewContainer.vue'
-import PageContent from '@/modules/common/components/layout/templates/PageContent.vue'
-import PageFooter from '@/modules/common/components/layout/templates/PageFooter.vue'
-import BaseButton from '@/modules/common/components/base/BaseButton.vue'
-import BaseCard from '@/modules/common/components/base/BaseCard.vue'
-import BaseBadge from '@/modules/common/components/base/BaseBadge.vue'
-import BaseSearch from '@/modules/common/components/base/BaseSearch.vue'
-import BaseSelect from '@/modules/common/components/base/BaseSelect.vue'
-import BasePagination from '@/modules/common/components/base/BasePagination.vue'
-import BaseLoading from '@/modules/common/components/base/BaseLoading.vue'
+import { ref, computed, onMounted } from 'vue'
+import { Clock, RefreshCw, Download, Wifi, Network } from 'lucide-vue-next'
+import DataViewContainer from "@/modules/common/components/base/DataViewContainer.vue"
+import BaseButton from "@/modules/common/components/base/BaseButton.vue"
+import BaseSelect from "@/modules/common/components/base/BaseSelect.vue"
+import BaseLoading from "@/modules/common/components/base/BaseLoading.vue"
+import EntityStatusBadge from "@/modules/common/components/base/EntityStatusBadge.vue"
+import { useSessionReports } from "@/modules/tenant/composables/useSessionReports.js"
 
 const breadcrumbs = [
-  { label: 'Dashboard', to: '/dashboard' },
-  { label: 'Reports', to: '/dashboard/reports' },
-  { label: 'Session History' }
+  { label: "Dashboard", to: "/dashboard" },
+  { label: "Reports", to: "/dashboard/reports" },
+  { label: "Session History" }
 ]
 
-const loading = ref(false)
-const refreshing = ref(false)
-const searchQuery = ref('')
-const currentPage = ref(1)
-const itemsPerPage = ref(15)
+const { loading, refreshing, sessions, stats, formatDateTime, formatDuration, formatBytes, fetchSessions, refreshData } = useSessionReports()
+const filters = ref({ period: "week", type: "" })
 
-const filters = ref({ period: 'week', type: '' })
-
-const sessions = ref([])
-
-const stats = computed(() => {
-  const total = sessions.value.length
-  const uniqueSet = new Set(sessions.value.map(s => s.username))
-  const durations = sessions.value.map(s => Number(s.duration || 0)).filter(d => d > 0)
-  const avgSec = durations.length > 0 ? durations.reduce((a, b) => a + b, 0) / durations.length : 0
-  const totalData = sessions.value.reduce((sum, s) => sum + Number(s.data_used || 0), 0)
-  return {
-    total,
-    avgDuration: (avgSec / 3600).toFixed(1),
-    totalData,
-    uniqueUsers: uniqueSet.size
-  }
-})
-
-const filteredData = computed(() => {
+const filteredSessions = computed(() => {
   let data = sessions.value
-  if (searchQuery.value) {
-    const query = searchQuery.value.toLowerCase()
-    data = data.filter(s => s.username.toLowerCase().includes(query) || s.ip_address.includes(query))
+  if (filters.value.type) data = data.filter(s => s._type === filters.value.type)
+  if (filters.value.period) {
+    const now = new Date()
+    data = data.filter(s => {
+      const d = new Date(s.created_at || s.start_time)
+      switch (filters.value.period) {
+        case "today": return d.toDateString() === now.toDateString()
+        case "week": return d >= new Date(now - 7 * 86400000)
+        case "month": return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
+        default: return true
+      }
+    })
   }
-  if (filters.value.type) data = data.filter(s => s.type === filters.value.type)
   return data
 })
 
-const totalPages = computed(() => Math.ceil(filteredData.value.length / itemsPerPage.value))
-
-const paginatedData = computed(() => {
-  const start = (currentPage.value - 1) * itemsPerPage.value
-  return filteredData.value.slice(start, start + itemsPerPage.value)
-})
-
-const paginationInfo = computed(() => {
-  const start = (currentPage.value - 1) * itemsPerPage.value + 1
-  const end = Math.min(start + itemsPerPage.value - 1, filteredData.value.length)
-  return { start, end, total: filteredData.value.length }
-})
-
-const formatBytes = (bytes) => {
-  if (!bytes) return '0 B'
-  const k = 1024
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i]
-}
-
-const formatDuration = (seconds) => {
-  const h = Math.floor(seconds / 3600)
-  const m = Math.floor((seconds % 3600) / 60)
-  return h > 0 ? `${h}h ${m}m` : `${m}m`
-}
-
-const formatDateTime = (date) => new Date(date).toLocaleString()
-
-const fetchSessions = async () => {
-  const isInitial = sessions.value.length === 0
-  if (isInitial) loading.value = true
-  try {
-    const results = []
-    if (!filters.value.type || filters.value.type === 'hotspot') {
-      const res = await axios.get('/hotspot/sessions')
-      const data = res.data?.sessions || res.data?.data || []
-      results.push(...data.map(s => ({
-        id: s.id || s.session_id,
-        username: s.username || s.user?.name || 'Unknown',
-        type: 'hotspot',
-        start_time: s.start_time || s.created_at,
-        duration: Number(s.duration || s.session_time || 0),
-        data_used: Number(s.bytes_in || 0) + Number(s.bytes_out || 0),
-        ip_address: s.ip_address || s.framed_ip_address || '-'
-      })))
-    }
-    if (!filters.value.type || filters.value.type === 'pppoe') {
-      const res = await axios.get('/pppoe/sessions/live')
-      const data = res.data?.sessions || res.data?.data || []
-      results.push(...data.map(s => ({
-        id: s.id || s.session_id,
-        username: s.username || s.user?.name || 'Unknown',
-        type: 'pppoe',
-        start_time: s.start_time || s.created_at,
-        duration: Number(s.duration || s.session_time || 0),
-        data_used: Number(s.bytes_in || 0) + Number(s.bytes_out || 0),
-        ip_address: s.ip_address || s.framed_ip_address || '-'
-      })))
-    }
-    sessions.value = results
-  } catch (err) {
-    console.error('fetchSessions error:', err)
-  } finally {
-    loading.value = false
-  }
-}
-
-const refreshData = async () => {
-  refreshing.value = true
-  await fetchSessions()
-  refreshing.value = false
-}
-
-const exportReport = () => {
-  const csv = [
-    ['User', 'Type', 'Start Time', 'Duration (s)', 'Data Used', 'IP Address'].join(','),
-    ...filteredData.value.map(s => [s.username, s.type, s.start_time, s.duration, s.data_used, s.ip_address].join(','))
-  ].join('\n')
-  const blob = new Blob([csv], { type: 'text/csv' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `session-history-${new Date().toISOString().slice(0,10)}.csv`
-  a.click()
-  URL.revokeObjectURL(url)
-}
-
-watch(() => [filters.value.period, filters.value.type], () => fetchSessions())
-
-onMounted(() => {
-  fetchSessions()
-})
+onMounted(fetchSessions)
 </script>

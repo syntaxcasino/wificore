@@ -10,7 +10,6 @@ use Laravel\Sanctum\HasApiTokens;
 use App\Notifications\VerifyEmailNotification;
 use App\Traits\HasUuid;
 use App\Traits\BelongsToTenant;
-use App\Models\Scopes\TenantScope;
 
 class User extends Authenticatable implements MustVerifyEmail
 {
@@ -21,14 +20,6 @@ class User extends Authenticatable implements MustVerifyEmail
     const ROLE_SYSTEM_ADMIN = 'system_admin';  // Platform administrator (SaaS level)
     const ROLE_ADMIN = 'admin';                 // Tenant administrator
     const ROLE_HOTSPOT_USER = 'hotspot_user';   // End user
-
-    /**
-     * The "booted" method of the model.
-     */
-    protected static function booted(): void
-    {
-        static::addGlobalScope(new TenantScope());
-    }
 
     /**
      * The attributes that are mass assignable.

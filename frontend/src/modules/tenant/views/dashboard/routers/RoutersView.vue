@@ -42,6 +42,12 @@
       @retry="fetchRouters" 
       @refresh-routers="fetchRouters" 
     />
+    <ReprovisionOverlay
+      :visible="showReprovisionOverlay"
+      :router="reprovisioningRouter"
+      @close="closeReprovisionOverlay"
+      @retry="handleReprovisionRetry"
+    />
     <UpdateOverlay 
       :show-update-overlay="showUpdateOverlay" 
       :selected-router="selectedRouter" 
@@ -85,7 +91,7 @@
     <DataSkeleton v-else-if="loading" :count="5" />
 
     <!-- Data Content -->
-    <div v-else-if="filteredRouters.length" class="flex flex-col h-full px-4 md:px-6 pt-2 pb-2 min-h-0">
+    <div v-else-if="filteredRouters.length" class="flex flex-col h-full px-2 md:px-4 pt-1 pb-1 min-h-0">
       <!-- Mobile Cards -->
       <div class="md:hidden space-y-3 overflow-y-auto flex-1 min-h-0">
         <MobileDataCard
@@ -101,23 +107,23 @@
       </div>
 
       <!-- Desktop Table -->
-      <div class="hidden md:flex bg-white border-x border-t border-slate-200 flex-col min-h-0 flex-1">
+      <div class="hidden md:flex bg-white dark:bg-slate-800 border-x border-t border-slate-200 dark:border-slate-700 flex-col min-h-0 flex-1">
         <!-- Fixed Header -->
-        <div class="bg-slate-50 border-b border-slate-200">
+        <div class="bg-slate-50 dark:bg-slate-700/50 border-b border-slate-200 dark:border-slate-700">
           <table class="w-full table-fixed">
             <thead>
               <tr>
-                <th class="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[22%]">
+                <th class="px-4 py-3 text-left text-xs font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wider w-[22%]">
                   <div class="flex items-center gap-2"><div class="w-7 h-7"></div><span>Router</span></div>
                 </th>
-                <th class="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[14%] hidden lg:table-cell">IP Address</th>
-                <th class="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[10%]">Status</th>
-                <th class="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[10%] hidden xl:table-cell">CPU</th>
-                <th class="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[10%] hidden xl:table-cell">Memory</th>
-                <th class="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[10%] hidden xl:table-cell">Disk</th>
-                <th class="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[12%] hidden lg:table-cell">Model</th>
-                <th class="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[12%] hidden lg:table-cell">Last Seen</th>
-                <th class="px-4 py-3 text-right text-xs font-semibold text-slate-700 uppercase tracking-wider w-[15%]">Actions</th>
+                <th class="px-4 py-3 text-left text-xs font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wider w-[14%] hidden lg:table-cell">IP Address</th>
+                <th class="px-4 py-3 text-left text-xs font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wider w-[10%]">Status</th>
+                <th class="px-4 py-3 text-left text-xs font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wider w-[10%] hidden xl:table-cell">CPU</th>
+                <th class="px-4 py-3 text-left text-xs font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wider w-[10%] hidden xl:table-cell">Memory</th>
+                <th class="px-4 py-3 text-left text-xs font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wider w-[10%] hidden xl:table-cell">Disk</th>
+                <th class="px-4 py-3 text-left text-xs font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wider w-[12%] hidden lg:table-cell">Model</th>
+                <th class="px-4 py-3 text-left text-xs font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wider w-[12%] hidden lg:table-cell">Last Seen</th>
+                <th class="px-4 py-3 text-right text-xs font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wider w-[15%]">Actions</th>
               </tr>
             </thead>
           </table>
@@ -125,7 +131,7 @@
         <!-- Scrollable Body -->
         <div class="overflow-y-auto flex-1 min-h-0">
           <table class="w-full table-fixed">
-            <tbody class="divide-y divide-slate-100">
+            <tbody class="divide-y divide-slate-100 dark:divide-slate-700">
               <tr v-for="router in paginatedRouters" :key="router.id" class="hover:bg-blue-50/50 transition-colors cursor-pointer group" @click="openDetails(router)">
                 <td class="px-4 py-4 w-[22%]">
                   <div class="flex items-center gap-3">
@@ -136,16 +142,16 @@
                     </div>
                     <div class="flex items-center gap-1.5 min-w-0">
                       <span :class="getStatusDotClass(router.status)" class="w-1.5 h-1.5 rounded-full flex-shrink-0"></span>
-                      <span class="text-sm font-semibold text-slate-900 truncate">{{ router.name }}</span>
+                      <span class="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">{{ router.name }}</span>
                     </div>
                   </div>
                 </td>
                 <td class="px-4 py-4 w-[14%] hidden lg:table-cell">
                   <div class="flex items-center gap-1.5">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 text-slate-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 text-slate-400 dark:text-slate-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
                     </svg>
-                    <span class="text-xs text-slate-600 truncate">{{ router.ip_address || 'No IP' }}</span>
+                    <span class="text-xs text-slate-600 dark:text-slate-400 truncate">{{ router.ip_address || 'No IP' }}</span>
                   </div>
                 </td>
                 <td class="px-4 py-4 w-[10%]"><EntityStatusBadge :status="router.status" size="sm" /></td>
@@ -154,35 +160,35 @@
                     <div class="flex-1 h-1.5 bg-slate-200 rounded-full overflow-hidden min-w-[30px]">
                       <div :class="getCpuColorClass(router.live_data.cpu_load)" class="h-full rounded-full transition-all" :style="{ width: router.live_data.cpu_load + '%' }"></div>
                     </div>
-                    <span class="text-xs font-medium text-slate-700 w-6 text-right">{{ router.live_data.cpu_load }}%</span>
+                    <span class="text-xs font-medium text-slate-700 dark:text-slate-300 w-6 text-right">{{ router.live_data.cpu_load }}%</span>
                   </div>
-                  <span v-else class="text-xs text-slate-400">—</span>
+                  <span v-else class="text-xs text-slate-400 dark:text-slate-500">—</span>
                 </td>
                 <td class="px-4 py-4 w-[10%] hidden xl:table-cell">
                   <div v-if="getMemoryUsage(router) !== null" class="flex items-center gap-1.5">
                     <div class="flex-1 h-1.5 bg-slate-200 rounded-full overflow-hidden min-w-[30px]">
                       <div :class="getMemoryColorClass(getMemoryUsage(router))" class="h-full rounded-full transition-all" :style="{ width: getMemoryUsage(router) + '%' }"></div>
                     </div>
-                    <span class="text-xs font-medium text-slate-700 w-6 text-right">{{ getMemoryUsage(router) }}%</span>
+                    <span class="text-xs font-medium text-slate-700 dark:text-slate-300 w-6 text-right">{{ getMemoryUsage(router) }}%</span>
                   </div>
-                  <span v-else class="text-xs text-slate-400">—</span>
+                  <span v-else class="text-xs text-slate-400 dark:text-slate-500">—</span>
                 </td>
                 <td class="px-4 py-4 w-[10%] hidden xl:table-cell">
                   <div v-if="getDiskUsage(router) !== null" class="flex items-center gap-1.5">
                     <div class="flex-1 h-1.5 bg-slate-200 rounded-full overflow-hidden min-w-[30px]">
                       <div :class="getDiskColorClass(getDiskUsage(router))" class="h-full rounded-full transition-all" :style="{ width: getDiskUsage(router) + '%' }"></div>
                     </div>
-                    <span class="text-xs font-medium text-slate-700 w-6 text-right">{{ getDiskUsage(router) }}%</span>
+                    <span class="text-xs font-medium text-slate-700 dark:text-slate-300 w-6 text-right">{{ getDiskUsage(router) }}%</span>
                   </div>
-                  <span v-else class="text-xs text-slate-400">—</span>
+                  <span v-else class="text-xs text-slate-400 dark:text-slate-500">—</span>
                 </td>
                 <td class="px-4 py-4 w-[12%] hidden lg:table-cell">
-                  <span v-if="getRouterModel(router)" class="text-xs text-slate-500 truncate block" :title="getRouterModel(router)">{{ formatModel(getRouterModel(router)) }}</span>
-                  <span v-else class="text-xs text-slate-400">—</span>
+                  <span v-if="getRouterModel(router)" class="text-xs text-slate-500 dark:text-slate-400 truncate block" :title="getRouterModel(router)">{{ formatModel(getRouterModel(router)) }}</span>
+                  <span v-else class="text-xs text-slate-400 dark:text-slate-500">—</span>
                 </td>
                 <td class="px-4 py-4 w-[12%] hidden lg:table-cell">
-                  <span v-if="router.last_updated || router.last_seen" class="text-xs text-slate-500 truncate block">{{ formatTimeAgo(router.last_updated || router.last_seen) }}</span>
-                  <span v-else class="text-xs text-slate-400">—</span>
+                  <span v-if="router.last_updated || router.last_seen" class="text-xs text-slate-500 dark:text-slate-400 truncate block">{{ formatTimeAgo(router.last_updated || router.last_seen) }}</span>
+                  <span v-else class="text-xs text-slate-400 dark:text-slate-500">—</span>
                 </td>
                 <td class="px-4 py-4 text-right w-[15%]" @click.stop>
                   <div class="flex items-center justify-end gap-1">
@@ -219,7 +225,7 @@
 
       <!-- Global Dropdown Menu Portal -->
       <Teleport to="body">
-        <div v-if="activeMenu !== null" data-dropdown-menu :style="menuPosition" class="fixed w-48 bg-white rounded-lg shadow-2xl border border-slate-200 py-1 z-[9999] overflow-hidden">
+        <div v-if="activeMenu !== null" data-dropdown-menu :style="menuPosition" class="fixed w-48 bg-white dark:bg-slate-800 rounded-lg shadow-2xl border border-slate-200 dark:border-slate-700 py-1 z-[9999] overflow-hidden">
           <button @click="handleEdit(routers.find(r => r.id === activeMenu))" class="flex items-center w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-700 transition-colors">
             <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -276,6 +282,7 @@ import BaseSelect from '@/modules/common/components/base/BaseSelect.vue'
 import UpdateOverlay from '@/modules/tenant/components/routers/modals/UpdateRouterModal.vue'
 import DetailsOverlay from '@/modules/tenant/components/routers/modals/RouterDetailsModal.vue'
 import Overlay from '@/modules/tenant/components/routers/modals/CreateRouterModal.vue'
+import ReprovisionOverlay from '@/modules/tenant/components/routers/modals/ReprovisionOverlay.vue'
 
 const confirmStore = useConfirmStore()
 
@@ -297,6 +304,9 @@ const {
   getStatusDotClass, getCpuColorClass, getMemoryColorClass, getDiskColorClass,
   getMemoryUsage, getDiskUsage, getRouterModel, formatModel, formatTimeAgo,
 } = useRouterUtils()
+
+const showReprovisionOverlay = ref(false)
+const reprovisioningRouter = ref(null)
 
 const activeMenu = ref(null)
 const menuPosition = ref({})
@@ -435,10 +445,25 @@ const handleReProv = (router) => {
   menuPosition.value = {}
 }
 
+const closeReprovisionOverlay = () => {
+  showReprovisionOverlay.value = false
+  reprovisioningRouter.value = null
+  fetchRouters()
+}
+
+const handleReprovisionRetry = async (router) => {
+  if (!router) return
+  try {
+    await reprovisionRouter(router.id)
+  } catch (err) {
+    const errorMessage = err.response?.data?.message || err.response?.data?.error || err.message || 'Failed to reprovision router'
+    showError(`Reprovision failed: ${errorMessage}`)
+  }
+}
+
 const handleReprovision = async (router) => {
   if (!router) return
 
-  // Hide menu immediately before showing dialog
   activeMenu.value = null
   menuPosition.value = {}
 
@@ -452,12 +477,12 @@ const handleReprovision = async (router) => {
   if (!confirmed) return
 
   try {
-    const result = await reprovisionRouter(router.id)
-    const msg = result?.probing_started
-      ? `Reprovisioning started for "${router.name}". Status updates will appear in real-time.`
-      : `Provisioning state reset for "${router.name}".`
-    showSuccess(msg)
+    reprovisioningRouter.value = router
+    showReprovisionOverlay.value = true
+    await reprovisionRouter(router.id)
   } catch (err) {
+    showReprovisionOverlay.value = false
+    reprovisioningRouter.value = null
     const errorMessage = err.response?.data?.message || err.response?.data?.error || err.message || 'Failed to reprovision router'
     showError(`Reprovision failed: ${errorMessage}`)
     console.error('Reprovision error:', err)
@@ -531,8 +556,11 @@ const handleClickOutside = (event) => {
 </script>
 
 <style scoped>
-::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
-::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+/* Scrollbar — no Tailwind equivalent for ::-webkit-scrollbar pseudo-elements */
+::-webkit-scrollbar        { width: 8px; height: 8px; }
+::-webkit-scrollbar-track  { background: #f1f5f9; border-radius: 4px; }
+::-webkit-scrollbar-thumb  { background: #cbd5e1; border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+:global(.dark) ::-webkit-scrollbar-track { background: #1e293b; }
+:global(.dark) ::-webkit-scrollbar-thumb { background: #475569; }
 </style>

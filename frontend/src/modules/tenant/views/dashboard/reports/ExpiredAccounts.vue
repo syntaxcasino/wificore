@@ -13,7 +13,7 @@
       </template>
     </PageHeader>
 
-    <div class="px-3 py-3 sm:px-6 sm:py-4 bg-white border-b border-slate-200">
+    <div class="px-3 py-3 sm:px-6 sm:py-4 bg-white border-b border-slate-200 dark:border-slate-700">
       <div class="grid grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
         <div class="bg-gradient-to-br from-red-50 to-rose-50 rounded-lg p-4 border border-red-200">
           <div class="flex items-center justify-between">
@@ -45,7 +45,7 @@
       </div>
     </div>
 
-    <div class="px-3 py-3 sm:px-6 sm:py-4 bg-white border-b border-slate-200">
+    <div class="px-3 py-3 sm:px-6 sm:py-4 bg-white border-b border-slate-200 dark:border-slate-700">
       <div class="flex flex-col sm:flex-row sm:items-center gap-3 flex-wrap">
         <div class="flex-1 min-w-0 sm:min-w-[250px] max-w-md">
           <BaseSearch v-model="searchQuery" placeholder="Search expired accounts..." />
@@ -74,7 +74,7 @@
         <BaseCard :padding="false">
           <div class="overflow-x-auto">
             <table class="w-full">
-              <thead class="bg-slate-50 border-b border-slate-200">
+              <thead class="bg-slate-50 dark:bg-slate-700/50 border-b border-slate-200 dark:border-slate-700">
                 <tr>
                   <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700">Username</th>
                   <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700">Type</th>
@@ -85,12 +85,12 @@
               </thead>
               <tbody>
                 <tr v-for="user in paginatedData" :key="user.id" class="border-b border-slate-100 hover:bg-red-50/50">
-                  <td class="px-6 py-4 text-sm font-medium text-slate-900">{{ user.username }}</td>
+                  <td class="px-6 py-4 text-sm font-medium text-slate-900 dark:text-slate-100">{{ user.username }}</td>
                   <td class="px-6 py-4">
                     <BaseBadge :variant="user.type === 'hotspot' ? 'purple' : 'info'" size="sm">{{ user.type }}</BaseBadge>
                   </td>
-                  <td class="px-6 py-4 text-sm text-slate-600">{{ user.package_name || '-' }}</td>
-                  <td class="px-6 py-4 text-sm text-slate-600">{{ formatDateTime(user.expired_at) }}</td>
+                  <td class="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">{{ user.package_name || '-' }}</td>
+                  <td class="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">{{ formatDateTime(user.expired_at) }}</td>
                   <td class="px-6 py-4">
                     <BaseBadge variant="danger" size="sm">Expired</BaseBadge>
                   </td>
@@ -103,7 +103,7 @@
     </PageContent>
 
     <PageFooter>
-      <div class="text-sm text-slate-600">
+      <div class="text-sm text-slate-600 dark:text-slate-400">
         Showing {{ paginationInfo.start }} to {{ paginationInfo.end }} of {{ paginationInfo.total }}
       </div>
       <BasePagination v-model="currentPage" :total-pages="totalPages" :total-items="filteredData.length" />
@@ -113,125 +113,36 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { UserX, RefreshCw, Download, Wifi, Network } from 'lucide-vue-next'
-import axios from 'axios'
-import PageContainer from '@/modules/common/components/layout/templates/PageContainer.vue'
-import PageHeader from '@/modules/common/components/layout/templates/PageHeader.vue'
-import PageContent from '@/modules/common/components/layout/templates/PageContent.vue'
-import PageFooter from '@/modules/common/components/layout/templates/PageFooter.vue'
-import BaseButton from '@/modules/common/components/base/BaseButton.vue'
-import BaseCard from '@/modules/common/components/base/BaseCard.vue'
-import BaseBadge from '@/modules/common/components/base/BaseBadge.vue'
-import BaseSearch from '@/modules/common/components/base/BaseSearch.vue'
-import BaseSelect from '@/modules/common/components/base/BaseSelect.vue'
-import BasePagination from '@/modules/common/components/base/BasePagination.vue'
-import BaseLoading from '@/modules/common/components/base/BaseLoading.vue'
-import BaseEmpty from '@/modules/common/components/base/BaseEmpty.vue'
+import { UserX, RefreshCw, Wifi, Network } from 'lucide-vue-next'
+import DataViewContainer from "@/modules/common/components/base/DataViewContainer.vue"
+import BaseButton from "@/modules/common/components/base/BaseButton.vue"
+import BaseSelect from "@/modules/common/components/base/BaseSelect.vue"
+import BaseLoading from "@/modules/common/components/base/BaseLoading.vue"
+import EntityStatusBadge from "@/modules/common/components/base/EntityStatusBadge.vue"
+import { useSessionReports } from "@/modules/tenant/composables/useSessionReports.js"
 
 const breadcrumbs = [
-  { label: 'Dashboard', to: '/dashboard' },
-  { label: 'Reports', to: '/dashboard/reports' },
-  { label: 'Expired Accounts' }
+  { label: "Dashboard", to: "/dashboard" },
+  { label: "Reports", to: "/dashboard/reports" },
+  { label: "Expired Accounts" }
 ]
 
-const loading = ref(false)
-const refreshing = ref(false)
-const searchQuery = ref('')
-const currentPage = ref(1)
-const itemsPerPage = ref(15)
-const users = ref([])
-const filters = ref({ type: '' })
+const { loading, refreshing, users, formatDateTime, fetchExpired, refreshExpired } = useSessionReports()
+const filters = ref({ type: "" })
 
-const stats = computed(() => ({
-  expired: users.value.length,
-  hotspot: users.value.filter(u => u.type === 'hotspot').length,
-  pppoe: users.value.filter(u => u.type === 'pppoe').length
-}))
-
-const filteredData = computed(() => {
+const filteredUsers = computed(() => {
   let data = users.value
-  if (searchQuery.value) {
-    const q = searchQuery.value.toLowerCase()
-    data = data.filter(u => u.username.toLowerCase().includes(q) || (u.package_name || '').toLowerCase().includes(q))
-  }
-  if (filters.value.type) data = data.filter(u => u.type === filters.value.type)
+  if (filters.value.type) data = data.filter(u => u._type === filters.value.type)
   return data
 })
 
-const totalPages = computed(() => Math.ceil(filteredData.value.length / itemsPerPage.value))
+const stats = computed(() => ({
+  total: users.value.length,
+  hotspot: users.value.filter(u => u._type === "hotspot").length,
+  pppoe: users.value.filter(u => u._type === "pppoe").length
+}))
 
-const paginatedData = computed(() => {
-  const start = (currentPage.value - 1) * itemsPerPage.value
-  return filteredData.value.slice(start, start + itemsPerPage.value)
-})
+const refreshData = () => refreshExpired()
 
-const paginationInfo = computed(() => {
-  const start = (currentPage.value - 1) * itemsPerPage.value + 1
-  const end = Math.min(start + itemsPerPage.value - 1, filteredData.value.length)
-  return { start: Math.min(start, filteredData.value.length), end, total: filteredData.value.length }
-})
-
-const formatDateTime = (date) => {
-  if (!date) return '-'
-  return new Date(date).toLocaleString()
-}
-
-const fetchExpired = async () => {
-  const isInitial = users.value.length === 0
-  if (isInitial) loading.value = true
-  try {
-    const results = []
-    try {
-      const res = await axios.get('/hotspot/users', { params: { status: 'expired' } })
-      const data = res.data?.users || res.data?.data || []
-      results.push(...data.map(u => ({
-        id: `hs-${u.id}`,
-        username: u.username || u.name || 'Unknown',
-        type: 'hotspot',
-        package_name: u.package?.name || u.package_name || '-',
-        expired_at: u.expires_at || u.expired_at || u.updated_at || ''
-      })))
-    } catch (e) { /* hotspot endpoint may not support expired filter */ }
-    try {
-      const res = await axios.get('/pppoe/users', { params: { status: 'expired' } })
-      const data = res.data?.users || res.data?.data || []
-      results.push(...data.map(u => ({
-        id: `pp-${u.id}`,
-        username: u.username || u.name || 'Unknown',
-        type: 'pppoe',
-        package_name: u.package?.name || u.package_name || '-',
-        expired_at: u.expires_at || u.expired_at || u.updated_at || ''
-      })))
-    } catch (e) { /* pppoe endpoint may not support expired filter */ }
-    users.value = results
-  } catch (err) {
-    console.error('fetchExpired error:', err)
-  } finally {
-    loading.value = false
-  }
-}
-
-const refreshData = async () => {
-  refreshing.value = true
-  await fetchExpired()
-  refreshing.value = false
-}
-
-const exportReport = () => {
-  const csv = [
-    ['Username', 'Type', 'Package', 'Expired At'].join(','),
-    ...filteredData.value.map(u => [u.username, u.type, u.package_name, u.expired_at].join(','))
-  ].join('\n')
-  const blob = new Blob([csv], { type: 'text/csv' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `expired-accounts-${new Date().toISOString().slice(0,10)}.csv`
-  a.click()
-  URL.revokeObjectURL(url)
-}
-
-onMounted(() => {
-  fetchExpired()
-})
+onMounted(fetchExpired)
 </script>

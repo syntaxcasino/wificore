@@ -48,7 +48,7 @@
     <DataSkeleton v-else-if="loading" :count="5" />
 
     <!-- Data Content -->
-    <div v-else-if="filteredData.length" class="flex flex-col h-full px-4 md:px-6 pt-2 pb-2 min-h-0">
+    <div v-else-if="filteredData.length" class="flex flex-col h-full pt-2 pb-2 min-h-0">
       <!-- Mobile Cards -->
       <div class="md:hidden space-y-3 overflow-y-auto flex-1 min-h-0">
         <MobileDataCard
@@ -69,7 +69,7 @@
     <!-- Desktop Table -->
     <div class="hidden md:flex bg-white border-x border-t border-slate-200 flex-col min-h-0 flex-1">
       <!-- Fixed Header -->
-      <div class="bg-slate-50 border-b border-slate-200">
+      <div class="bg-slate-50 dark:bg-slate-700/50 border-b border-slate-200 dark:border-slate-700">
         <table class="w-full">
           <thead>
             <tr>
@@ -86,23 +86,23 @@
       <!-- Scrollable Body -->
       <div class="overflow-y-auto flex-1 min-h-0">
         <table class="w-full">
-          <tbody class="divide-y divide-slate-100">
+          <tbody class="divide-y divide-slate-100 dark:divide-slate-700">
             <tr v-for="session in paginatedData" :key="session.id" class="hover:bg-purple-50/50 transition-colors">
               <td class="px-6 py-4 w-[20%]">
                 <div class="flex items-center gap-3">
                   <div class="w-10 h-10 bg-gradient-to-br from-purple-500 to-indigo-500 rounded-full flex items-center justify-center text-white text-sm font-semibold">{{ getUserInitials(session) }}</div>
                   <div>
-                    <div class="text-sm font-medium text-slate-900">{{ session.username }}</div>
-                    <div class="text-xs text-slate-500">{{ session.user?.phone || 'No phone' }}</div>
+                    <div class="text-sm font-medium text-slate-900 dark:text-slate-100">{{ session.username }}</div>
+                    <div class="text-xs text-slate-500 dark:text-slate-400">{{ session.user?.phone || 'No phone' }}</div>
                   </div>
                 </div>
               </td>
               <td class="px-6 py-4 w-[18%]">
                 <div class="text-sm text-slate-900">{{ session.ip_address || session.framed_ip }}</div>
-                <div class="text-xs text-slate-500">{{ session.mac_address || session.calling_station_id }}</div>
+                <div class="text-xs text-slate-500 dark:text-slate-400">{{ session.mac_address || session.calling_station_id }}</div>
               </td>
               <td class="px-6 py-4 w-[15%]">
-                <div class="text-sm font-medium text-slate-900">{{ session.router_name || 'N/A' }}</div>
+                <div class="text-sm font-medium text-slate-900 dark:text-slate-100">{{ session.router_name || 'N/A' }}</div>
               </td>
               <td class="px-6 py-4 w-[18%]">
                 <div class="space-y-1">
@@ -112,7 +112,7 @@
               </td>
               <td class="px-6 py-4 w-[18%]">
                 <div class="text-sm text-slate-900">{{ formatDuration(session.uptime || session.duration) }}</div>
-                <div class="text-xs text-slate-500">{{ formatDateTime(session.connected_at || session.start_time) }}</div>
+                <div class="text-xs text-slate-500 dark:text-slate-400">{{ formatDateTime(session.connected_at || session.start_time) }}</div>
               </td>
               <td class="px-6 py-4 text-right w-[11%]">
                 <div class="flex items-center justify-end gap-1">
@@ -261,8 +261,11 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
-::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+/* Scrollbar — no Tailwind equivalent for ::-webkit-scrollbar pseudo-elements */
+::-webkit-scrollbar        { width: 8px; height: 8px; }
+::-webkit-scrollbar-track  { background: #f1f5f9; border-radius: 4px; }
+::-webkit-scrollbar-thumb  { background: #cbd5e1; border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+:global(.dark) ::-webkit-scrollbar-track { background: #1e293b; }
+:global(.dark) ::-webkit-scrollbar-thumb { background: #475569; }
 </style>

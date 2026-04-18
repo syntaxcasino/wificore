@@ -1,66 +1,66 @@
 <template>
-  <div class="widget-container">
-    <h3 class="widget-title">Payment Analytics</h3>
-    <p class="widget-subtitle">Click any card to view detailed breakdown</p>
+  <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-6 transition-colors">
+    <h3 class="text-lg font-bold text-slate-900 dark:text-slate-100 mb-1">Payment Analytics</h3>
+    <p class="text-sm text-slate-500 dark:text-slate-400 mb-5">Click any card to view detailed breakdown</p>
     
-    <div class="cards-grid">
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
       <!-- Daily Card -->
       <button
         @click="openDetails('daily')"
-        class="action-card group"
+        class="flex items-start gap-4 p-5 bg-white dark:bg-slate-700/50 border-2 border-slate-200 dark:border-slate-600 rounded-xl hover:border-slate-400 dark:hover:border-slate-500 hover:shadow-md transition-all cursor-pointer text-left w-full group"
       >
-        <div class="card-icon bg-green-100 group-hover:bg-green-200">
+        <div class="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 transition-colors bg-green-100 dark:bg-green-900/40 group-hover:bg-green-200 dark:group-hover:bg-green-900/60">
           <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
         </div>
         <div class="card-content">
           <div class="card-header-row">
-            <span class="card-label">Daily Income</span>
-            <span class="card-badge badge-green">Today</span>
+            <span class="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-2">Daily Income</span>
+            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400">Today</span>
           </div>
-          <p class="card-amount">{{ formatCurrency(paymentData.daily.amount) }}</p>
-          <p class="card-meta">{{ paymentData.daily.count }} payments</p>
+          <p class="text-2xl font-extrabold text-slate-900 dark:text-slate-100 mb-1">{{ formatCurrency(paymentData.daily.amount) }}</p>
+          <p class="text-sm text-slate-500 dark:text-slate-400">{{ paymentData.daily.count }} payments</p>
         </div>
       </button>
 
       <!-- Weekly Card -->
       <button
         @click="openDetails('weekly')"
-        class="action-card group"
+        class="flex items-start gap-4 p-5 bg-white dark:bg-slate-700/50 border-2 border-slate-200 dark:border-slate-600 rounded-xl hover:border-slate-400 dark:hover:border-slate-500 hover:shadow-md transition-all cursor-pointer text-left w-full group"
       >
-        <div class="card-icon bg-blue-100 group-hover:bg-blue-200">
+        <div class="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 transition-colors bg-blue-100 dark:bg-blue-900/40 group-hover:bg-blue-200 dark:group-hover:bg-blue-900/60">
           <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
           </svg>
         </div>
         <div class="card-content">
           <div class="card-header-row">
-            <span class="card-label">Weekly Income</span>
-            <span class="card-badge badge-blue">7 Days</span>
+            <span class="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-2">Weekly Income</span>
+            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400">7 Days</span>
           </div>
-          <p class="card-amount">{{ formatCurrency(paymentData.weekly.amount) }}</p>
-          <p class="card-meta">{{ paymentData.weekly.count }} payments</p>
+          <p class="text-2xl font-extrabold text-slate-900 dark:text-slate-100 mb-1">{{ formatCurrency(paymentData.weekly.amount) }}</p>
+          <p class="text-sm text-slate-500 dark:text-slate-400">{{ paymentData.weekly.count }} payments</p>
         </div>
       </button>
 
       <!-- Monthly Card -->
       <button
         @click="openDetails('monthly')"
-        class="action-card group"
+        class="flex items-start gap-4 p-5 bg-white dark:bg-slate-700/50 border-2 border-slate-200 dark:border-slate-600 rounded-xl hover:border-slate-400 dark:hover:border-slate-500 hover:shadow-md transition-all cursor-pointer text-left w-full group"
       >
-        <div class="card-icon bg-purple-100 group-hover:bg-purple-200">
+        <div class="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 transition-colors bg-purple-100 dark:bg-purple-900/40 group-hover:bg-purple-200 dark:group-hover:bg-purple-900/60">
           <svg class="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
           </svg>
         </div>
         <div class="card-content">
           <div class="card-header-row">
-            <span class="card-label">Monthly Income</span>
-            <span class="card-badge badge-purple">Month</span>
+            <span class="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-2">Monthly Income</span>
+            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-400">Month</span>
           </div>
-          <p class="card-amount">{{ formatCurrency(paymentData.monthly.amount) }}</p>
-          <p class="card-meta">{{ paymentData.monthly.count }} payments</p>
+          <p class="text-2xl font-extrabold text-slate-900 dark:text-slate-100 mb-1">{{ formatCurrency(paymentData.monthly.amount) }}</p>
+          <p class="text-sm text-slate-500 dark:text-slate-400">{{ paymentData.monthly.count }} payments</p>
         </div>
       </button>
     </div>
@@ -75,100 +75,88 @@
       @close="closeDetails"
     >
       <!-- Daily Details -->
-      <div v-if="activePanel === 'daily'" class="details-content">
-        <div class="stat-card">
-          <div class="stat-label">Total Amount</div>
-          <div class="stat-value">{{ formatCurrency(paymentData.daily.amount) }}</div>
+      <div v-if="activePanel === 'daily'" class="flex flex-col gap-6">
+        <div class="bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-xl p-5">
+          <div class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-2">Total Amount</div>
+          <div class="text-3xl font-extrabold text-slate-900 dark:text-slate-100">{{ formatCurrency(paymentData.daily.amount) }}</div>
         </div>
-        <div class="stat-card">
-          <div class="stat-label">Total Payments</div>
-          <div class="stat-value">{{ paymentData.daily.count }}</div>
+        <div class="bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-xl p-5">
+          <div class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-2">Total Payments</div>
+          <div class="text-3xl font-extrabold text-slate-900 dark:text-slate-100">{{ paymentData.daily.count }}</div>
         </div>
-        <div class="stat-card">
-          <div class="stat-label">Date</div>
-          <div class="stat-value text-lg">{{ paymentData.daily.date }}</div>
+        <div class="bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-xl p-5">
+          <div class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-2">Date</div>
+          <div class="text-lg font-extrabold text-slate-900 dark:text-slate-100">{{ paymentData.daily.date }}</div>
         </div>
-        
-        <div class="section-title">Payment Methods</div>
-        <div class="method-list">
-          <div class="method-item">
-            <div class="method-info">
-              <span class="method-name">M-Pesa</span>
-              <span class="method-count">45 transactions</span>
-            </div>
-            <span class="method-amount">{{ formatCurrency(paymentData.daily.amount * 0.6) }}</span>
+        <div class="text-base font-bold text-slate-900 dark:text-slate-100 mt-2">Payment Methods</div>
+        <div class="flex flex-col gap-3">
+          <div class="flex justify-between items-center p-4 bg-white dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-xl">
+            <div class="flex flex-col gap-1"><span class="text-sm font-semibold text-slate-900 dark:text-slate-100">M-Pesa</span><span class="text-xs text-slate-500 dark:text-slate-400">45 transactions</span></div>
+            <span class="text-lg font-bold text-slate-900 dark:text-slate-100">{{ formatCurrency(paymentData.daily.amount * 0.6) }}</span>
           </div>
-          <div class="method-item">
-            <div class="method-info">
-              <span class="method-name">Cash</span>
-              <span class="method-count">12 transactions</span>
-            </div>
-            <span class="method-amount">{{ formatCurrency(paymentData.daily.amount * 0.3) }}</span>
+          <div class="flex justify-between items-center p-4 bg-white dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-xl">
+            <div class="flex flex-col gap-1"><span class="text-sm font-semibold text-slate-900 dark:text-slate-100">Cash</span><span class="text-xs text-slate-500 dark:text-slate-400">12 transactions</span></div>
+            <span class="text-lg font-bold text-slate-900 dark:text-slate-100">{{ formatCurrency(paymentData.daily.amount * 0.3) }}</span>
           </div>
-          <div class="method-item">
-            <div class="method-info">
-              <span class="method-name">Bank Transfer</span>
-              <span class="method-count">5 transactions</span>
-            </div>
-            <span class="method-amount">{{ formatCurrency(paymentData.daily.amount * 0.1) }}</span>
+          <div class="flex justify-between items-center p-4 bg-white dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-xl">
+            <div class="flex flex-col gap-1"><span class="text-sm font-semibold text-slate-900 dark:text-slate-100">Bank Transfer</span><span class="text-xs text-slate-500 dark:text-slate-400">5 transactions</span></div>
+            <span class="text-lg font-bold text-slate-900 dark:text-slate-100">{{ formatCurrency(paymentData.daily.amount * 0.1) }}</span>
           </div>
         </div>
       </div>
 
       <!-- Weekly Details -->
-      <div v-if="activePanel === 'weekly'" class="details-content">
-        <div class="stat-card">
-          <div class="stat-label">Total Amount</div>
-          <div class="stat-value">{{ formatCurrency(paymentData.weekly.amount) }}</div>
+      <div v-if="activePanel === 'weekly'" class="flex flex-col gap-6">
+        <div class="bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-xl p-5">
+          <div class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-2">Total Amount</div>
+          <div class="text-3xl font-extrabold text-slate-900 dark:text-slate-100">{{ formatCurrency(paymentData.weekly.amount) }}</div>
         </div>
-        <div class="stat-card">
-          <div class="stat-label">Total Payments</div>
-          <div class="stat-value">{{ paymentData.weekly.count }}</div>
+        <div class="bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-xl p-5">
+          <div class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-2">Total Payments</div>
+          <div class="text-3xl font-extrabold text-slate-900 dark:text-slate-100">{{ paymentData.weekly.count }}</div>
         </div>
-        <div class="stat-card">
-          <div class="stat-label">Average per Day</div>
-          <div class="stat-value">{{ formatCurrency(paymentData.weekly.amount / 7) }}</div>
+        <div class="bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-xl p-5">
+          <div class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-2">Average per Day</div>
+          <div class="text-3xl font-extrabold text-slate-900 dark:text-slate-100">{{ formatCurrency(paymentData.weekly.amount / 7) }}</div>
         </div>
-        
-        <div class="section-title">Daily Breakdown</div>
-        <div class="breakdown-chart">
-          <div v-for="day in paymentData.weekly.dailyBreakdown" :key="day.date" class="chart-bar">
-            <div class="bar-container">
-              <div class="bar-fill" :style="{ height: day.percentage + '%' }">
-                <div class="bar-tooltip">{{ formatCurrency(day.amount) }}</div>
+        <div class="text-base font-bold text-slate-900 dark:text-slate-100 mt-2">Daily Breakdown</div>
+        <div class="flex items-end justify-between gap-3 h-48 p-5 bg-slate-50 dark:bg-slate-700/50 rounded-xl">
+          <div v-for="day in paymentData.weekly.dailyBreakdown" :key="day.date" class="flex-1 flex flex-col items-center gap-2">
+            <div class="w-full flex items-end justify-center h-[120px]">
+              <div class="w-4/5 bg-gradient-to-t from-blue-600 to-blue-400 dark:from-blue-500 dark:to-blue-300 rounded-t min-h-[8px] relative group/bar transition-all" :style="{ height: day.percentage + '%' }">
+                <div class="absolute bottom-full left-1/2 -translate-x-1/2 -translate-y-2 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-[10px] font-semibold px-2 py-1 rounded whitespace-nowrap opacity-0 group-hover/bar:opacity-100 transition-opacity pointer-events-none">{{ formatCurrency(day.amount) }}</div>
               </div>
             </div>
-            <div class="bar-label">{{ day.day }}</div>
-            <div class="bar-value">{{ formatCurrency(day.amount) }}</div>
+            <span class="text-[11px] font-semibold text-slate-500 dark:text-slate-400">{{ day.day }}</span>
+            <span class="text-[10px] text-slate-400 dark:text-slate-500">{{ formatCurrency(day.amount) }}</span>
           </div>
         </div>
       </div>
 
       <!-- Monthly Details -->
-      <div v-if="activePanel === 'monthly'" class="details-content">
-        <div class="stat-card">
-          <div class="stat-label">Total Amount</div>
-          <div class="stat-value">{{ formatCurrency(paymentData.monthly.amount) }}</div>
+      <div v-if="activePanel === 'monthly'" class="flex flex-col gap-6">
+        <div class="bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-xl p-5">
+          <div class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-2">Total Amount</div>
+          <div class="text-3xl font-extrabold text-slate-900 dark:text-slate-100">{{ formatCurrency(paymentData.monthly.amount) }}</div>
         </div>
-        <div class="stat-card">
-          <div class="stat-label">Total Payments</div>
-          <div class="stat-value">{{ paymentData.monthly.count }}</div>
+        <div class="bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-xl p-5">
+          <div class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-2">Total Payments</div>
+          <div class="text-3xl font-extrabold text-slate-900 dark:text-slate-100">{{ paymentData.monthly.count }}</div>
         </div>
-        <div class="stat-card">
-          <div class="stat-label">Period</div>
-          <div class="stat-value text-lg">{{ paymentData.monthly.month }} {{ paymentData.monthly.year }}</div>
+        <div class="bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-xl p-5">
+          <div class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-2">Period</div>
+          <div class="text-lg font-extrabold text-slate-900 dark:text-slate-100">{{ paymentData.monthly.month }} {{ paymentData.monthly.year }}</div>
         </div>
-        
-        <div class="section-title">Weekly Breakdown</div>
-        <div class="week-breakdown">
-          <div v-for="week in paymentData.monthly.weeklyBreakdown" :key="week.week" class="week-card">
-            <div class="week-header">
-              <span class="week-label">Week {{ week.week }}</span>
-              <span class="week-amount">{{ formatCurrency(week.amount) }}</span>
+        <div class="text-base font-bold text-slate-900 dark:text-slate-100 mt-2">Weekly Breakdown</div>
+        <div class="flex flex-col gap-4">
+          <div v-for="week in paymentData.monthly.weeklyBreakdown" :key="week.week" class="p-4 bg-white dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-xl">
+            <div class="flex justify-between items-center mb-2">
+              <span class="text-sm font-bold text-slate-900 dark:text-slate-100">Week {{ week.week }}</span>
+              <span class="text-base font-bold text-slate-900 dark:text-slate-100">{{ formatCurrency(week.amount) }}</span>
             </div>
-            <div class="week-dates">{{ week.startDate }} - {{ week.endDate }}</div>
-            <div class="week-progress">
-              <div class="progress-bar" :style="{ width: week.percentage + '%' }"></div>
+            <div class="text-xs text-slate-500 dark:text-slate-400 mb-3">{{ week.startDate }} - {{ week.endDate }}</div>
+            <div class="w-full h-2 bg-slate-200 dark:bg-slate-600 rounded-full overflow-hidden">
+              <div class="h-full bg-gradient-to-r from-purple-500 to-violet-600 rounded-full transition-all duration-500" :style="{ width: week.percentage + '%' }"></div>
             </div>
           </div>
         </div>
@@ -178,7 +166,7 @@
         <div class="flex gap-3">
           <button
             @click="closeDetails"
-            class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+            class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-600 transition-colors"
           >
             Close
           </button>
@@ -245,325 +233,4 @@ const formatCurrency = (value) => {
 </script>
 
 <style scoped>
-.widget-container {
-  background: white;
-  border-radius: 12px;
-  border: 1px solid #e5e7eb;
-  padding: 24px;
-}
-
-.widget-title {
-  font-size: 18px;
-  font-weight: 700;
-  color: #111827;
-  margin: 0 0 4px 0;
-}
-
-.widget-subtitle {
-  font-size: 14px;
-  color: #6b7280;
-  margin: 0 0 20px 0;
-}
-
-.cards-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 16px;
-}
-
-.action-card {
-  display: flex;
-  align-items: flex-start;
-  gap: 16px;
-  padding: 20px;
-  background: white;
-  border: 2px solid #e5e7eb;
-  border-radius: 12px;
-  transition: all 0.2s;
-  cursor: pointer;
-  text-align: left;
-  width: 100%;
-}
-
-.action-card:hover {
-  border-color: #9ca3af;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-}
-
-.card-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  transition: all 0.2s;
-}
-
-.card-content {
-  flex: 1;
-  min-width: 0;
-}
-
-.card-header-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
-  gap: 8px;
-}
-
-.card-label {
-  font-size: 13px;
-  font-weight: 600;
-  color: #6b7280;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.card-badge {
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  flex-shrink: 0;
-}
-
-.badge-green {
-  background: #d1fae5;
-  color: #065f46;
-}
-
-.badge-blue {
-  background: #dbeafe;
-  color: #1e40af;
-}
-
-.badge-purple {
-  background: #ede9fe;
-  color: #5b21b6;
-}
-
-.card-amount {
-  font-size: 24px;
-  font-weight: 800;
-  color: #111827;
-  margin: 0 0 4px 0;
-}
-
-.card-meta {
-  font-size: 13px;
-  color: #6b7280;
-  margin: 0;
-}
-
-.details-content {
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-}
-
-.stat-card {
-  background: #f9fafb;
-  border: 1px solid #e5e7eb;
-  border-radius: 12px;
-  padding: 20px;
-}
-
-.stat-label {
-  font-size: 13px;
-  font-weight: 600;
-  color: #6b7280;
-  margin-bottom: 8px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.stat-value {
-  font-size: 32px;
-  font-weight: 800;
-  color: #111827;
-}
-
-.section-title {
-  font-size: 16px;
-  font-weight: 700;
-  color: #111827;
-  margin-top: 8px;
-  margin-bottom: 16px;
-}
-
-.method-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.method-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px;
-  background: white;
-  border: 1px solid #e5e7eb;
-  border-radius: 10px;
-}
-
-.method-info {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.method-name {
-  font-size: 14px;
-  font-weight: 600;
-  color: #111827;
-}
-
-.method-count {
-  font-size: 12px;
-  color: #6b7280;
-}
-
-.method-amount {
-  font-size: 18px;
-  font-weight: 700;
-  color: #111827;
-}
-
-.breakdown-chart {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 12px;
-  height: 240px;
-  padding: 20px;
-  background: #f9fafb;
-  border-radius: 12px;
-}
-
-.chart-bar {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-}
-
-.bar-container {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-}
-
-.bar-fill {
-  width: 80%;
-  background: linear-gradient(180deg, #3b82f6, #2563eb);
-  border-radius: 6px 6px 0 0;
-  min-height: 8px;
-  position: relative;
-  transition: all 0.3s ease;
-}
-
-.bar-fill:hover {
-  background: linear-gradient(180deg, #2563eb, #1d4ed8);
-  transform: scaleY(1.05);
-}
-
-.bar-tooltip {
-  position: absolute;
-  bottom: 100%;
-  left: 50%;
-  transform: translateX(-50%) translateY(-8px);
-  background: #111827;
-  color: white;
-  padding: 6px 10px;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  white-space: nowrap;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.3s;
-}
-
-.bar-fill:hover .bar-tooltip {
-  opacity: 1;
-}
-
-.bar-label {
-  font-size: 12px;
-  font-weight: 600;
-  color: #6b7280;
-}
-
-.bar-value {
-  font-size: 11px;
-  color: #9ca3af;
-}
-
-.week-breakdown {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.week-card {
-  padding: 16px;
-  background: white;
-  border: 1px solid #e5e7eb;
-  border-radius: 10px;
-}
-
-.week-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
-}
-
-.week-label {
-  font-size: 14px;
-  font-weight: 700;
-  color: #111827;
-}
-
-.week-amount {
-  font-size: 16px;
-  font-weight: 700;
-  color: #111827;
-}
-
-.week-dates {
-  font-size: 12px;
-  color: #6b7280;
-  margin-bottom: 12px;
-}
-
-.week-progress {
-  width: 100%;
-  height: 8px;
-  background: #f3f4f6;
-  border-radius: 999px;
-  overflow: hidden;
-}
-
-.progress-bar {
-  height: 100%;
-  background: linear-gradient(90deg, #8b5cf6, #7c3aed);
-  border-radius: 999px;
-  transition: width 0.5s ease;
-}
-
-@media (max-width: 768px) {
-  .cards-grid {
-    grid-template-columns: 1fr;
-  }
-}
 </style>

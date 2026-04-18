@@ -7,7 +7,9 @@
     @refresh="fetchGateways"
   >
     <template #icon>
-      <CreditCard class="h-5 w-5 md:h-6 md:w-6 text-white" />
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 md:h-6 md:w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+      </svg>
     </template>
 
     <template #actions>
@@ -28,7 +30,9 @@
 
     <!-- Error State -->
     <div v-if="error" class="flex flex-col items-center justify-center gap-4 p-8 text-red-500">
-      <AlertCircle class="w-10 h-10" />
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
       <p class="text-center">{{ error }}</p>
       <button @click="fetchGateways" class="px-4 py-2 text-sm font-medium text-white bg-red-500 rounded-md hover:bg-red-600 transition-colors">
         Retry
@@ -39,7 +43,7 @@
     <DataSkeleton v-else-if="loading" :count="5" />
 
     <!-- Data Content -->
-    <div v-else-if="gateways.length" class="flex flex-col h-full px-4 md:px-6 pt-2 pb-2 min-h-0">
+    <div v-else-if="gateways.length" class="flex flex-col h-full pt-2 pb-2 min-h-0">
       <!-- Mobile Cards -->
       <div class="md:hidden space-y-3 overflow-y-auto flex-1 min-h-0">
         <MobileDataCard
@@ -58,7 +62,7 @@
       </div>
 
       <!-- Desktop Table -->
-      <div class="hidden md:flex bg-white border border-slate-200 shadow-sm overflow-hidden flex-col min-h-0 flex-1">
+      <div class="hidden md:flex bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden flex-col min-h-0 flex-1">
         <div class="overflow-x-auto overflow-y-auto flex-1 min-h-0">
           <table class="w-full">
             <thead class="bg-slate-50 border-b border-slate-200 sticky top-0 z-[5]">
@@ -71,12 +75,12 @@
                 <th class="px-6 py-3 text-right text-xs font-semibold text-slate-700 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
-            <tbody class="divide-y divide-slate-100">
+            <tbody class="divide-y divide-slate-100 dark:divide-slate-700">
               <tr v-for="gateway in gateways" :key="gateway.id" class="hover:bg-emerald-50/50 transition-colors">
                 <td class="px-6 py-4">
                   <div class="flex items-center gap-2">
                     <CreditCard class="w-4 h-4 text-emerald-600" />
-                    <span class="text-sm font-medium text-slate-900">{{ gateway.name }}</span>
+                    <span class="text-sm font-medium text-slate-900 dark:text-slate-100">{{ gateway.name }}</span>
                   </div>
                 </td>
                 <td class="px-6 py-4">
@@ -132,15 +136,15 @@
   </DataViewContainer>
 
   <!-- Create Overlay -->
-  <SlideOverlay v-model="showCreateOverlay" title="Add Payment Gateway" subtitle="Configure a new payment gateway" icon="Plus" width="480px">
+  <SlideOverlay v-model="showCreateOverlay" title="Add Payment Gateway" subtitle="Configure a new payment gateway" icon="Plus" width="60%">
     <div class="p-6 space-y-4">
       <div>
-        <label class="block text-sm font-medium text-slate-700 mb-1">Gateway Name *</label>
+        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Gateway Name *</label>
         <input v-model="form.name" type="text" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 text-sm" placeholder="e.g. Main M-Pesa" />
       </div>
 
       <div>
-        <label class="block text-sm font-medium text-slate-700 mb-1">Provider *</label>
+        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Provider *</label>
         <select v-model="form.provider" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 text-sm" @change="onProviderChange">
           <option value="">Select provider...</option>
           <option value="mpesa">M-Pesa (Daraja)</option>
@@ -152,7 +156,7 @@
       </div>
 
       <div>
-        <label class="block text-sm font-medium text-slate-700 mb-1">Environment *</label>
+        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Environment *</label>
         <select v-model="form.environment" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 text-sm">
           <option value="sandbox">Sandbox (Test)</option>
           <option value="live">Live (Production)</option>
@@ -188,7 +192,7 @@
       <div class="flex gap-3">
         <button
           @click="showCreateOverlay = false"
-          class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+          class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-600"
         >
           Cancel
         </button>
@@ -204,12 +208,12 @@
   </SlideOverlay>
 
   <!-- View Overlay -->
-  <SlideOverlay v-model="showViewOverlay" title="Gateway Details" :subtitle="selectedGateway?.name || ''" icon="Eye" width="480px">
+  <SlideOverlay v-model="showViewOverlay" title="Gateway Details" :subtitle="selectedGateway?.name || ''" icon="Eye" width="60%">
     <div v-if="selectedGateway" class="space-y-4 p-6">
       <div class="grid grid-cols-2 gap-4">
         <div>
           <div class="text-xs font-medium text-slate-500 uppercase tracking-wider">Name</div>
-          <div class="mt-1 text-sm font-semibold text-slate-900">{{ selectedGateway.name }}</div>
+          <div class="mt-1 text-sm font-semibold text-slate-900 dark:text-slate-100">{{ selectedGateway.name }}</div>
         </div>
         <div>
           <div class="text-xs font-medium text-slate-500 uppercase tracking-wider">Provider</div>
@@ -250,7 +254,7 @@
       <div class="flex gap-3">
         <button
           @click="showViewOverlay = false"
-          class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+          class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-600"
         >
           Close
         </button>
@@ -265,15 +269,15 @@
   </SlideOverlay>
 
   <!-- Edit Overlay -->
-  <SlideOverlay v-model="showEditOverlay" title="Edit Payment Gateway" subtitle="Update gateway configuration" icon="Pencil" width="480px">
+  <SlideOverlay v-model="showEditOverlay" title="Edit Payment Gateway" subtitle="Update gateway configuration" icon="Pencil" width="60%">
     <div class="p-6 space-y-4">
       <div>
-        <label class="block text-sm font-medium text-slate-700 mb-1">Gateway Name *</label>
+        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Gateway Name *</label>
         <input v-model="editForm.name" type="text" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 text-sm" />
       </div>
 
       <div>
-        <label class="block text-sm font-medium text-slate-700 mb-1">Environment *</label>
+        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Environment *</label>
         <select v-model="editForm.environment" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 text-sm">
           <option value="sandbox">Sandbox (Test)</option>
           <option value="live">Live (Production)</option>
@@ -309,7 +313,7 @@
       <div class="flex gap-3">
         <button
           @click="showEditOverlay = false"
-          class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+          class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-600"
         >
           Cancel
         </button>
@@ -326,9 +330,8 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { onMounted } from 'vue'
 import { CreditCard, Plus, AlertCircle, Eye, Pencil, Trash2 } from 'lucide-vue-next'
-import axios from 'axios'
 import DataViewContainer from '@/modules/common/components/base/DataViewContainer.vue'
 import DataSkeleton from '@/modules/common/components/base/DataSkeleton.vue'
 import MobileDataCard from '@/modules/common/components/base/MobileDataCard.vue'
@@ -336,216 +339,27 @@ import DataEmptyState from '@/modules/common/components/base/DataEmptyState.vue'
 import EntityStatusBadge from '@/modules/common/components/base/EntityStatusBadge.vue'
 import BaseButton from '@/modules/common/components/base/BaseButton.vue'
 import SlideOverlay from '@/modules/common/components/base/SlideOverlay.vue'
+import { usePaymentGateways } from '@/modules/tenant/composables/usePaymentGateways.js'
 
-const loading = ref(false)
-const error = ref(null)
-const gateways = ref([])
+const {
+  loading, error, gateways, selectedGateway, formSubmitting, formError,
+  testing, testAmount, testResult,
+  showCreateOverlay, showViewOverlay, showEditOverlay,
+  form, editForm, activeGateways, credentialFields, editCredentialFields,
+  formatProvider, onProviderChange,
+  fetchGateways, openCreateOverlay, openViewOverlay, openEditOverlay,
+  handleCreate, handleUpdate, handleDelete, setDefault, testGateway, getGatewayActions
+} = usePaymentGateways()
 
-const showCreateOverlay = ref(false)
-const showViewOverlay = ref(false)
-const showEditOverlay = ref(false)
-const selectedGateway = ref(null)
-const formSubmitting = ref(false)
-const formError = ref(null)
-
-const testAmount = ref('')
-const testing = ref(false)
-const testResult = ref(null)
-
-const activeGateways = computed(() => gateways.value.filter(g => g.is_active))
-
-const credentialFields = computed(() => getCredentialFields(form.value.provider))
-const editCredentialFields = computed(() => getCredentialFields(editForm.value.provider))
-
-const form = ref({
-  name: '',
-  provider: '',
-  environment: 'sandbox',
-  is_active: true,
-  is_default: false,
-  credentials: {}
-})
-
-const editForm = ref({
-  id: null,
-  name: '',
-  provider: '',
-  environment: 'sandbox',
-  is_active: true,
-  is_default: false,
-  credentials: {}
-})
-
-const getCredentialFields = (provider) => {
-  const fields = {
-    mpesa: [
-      { key: 'consumer_key', label: 'Consumer Key' },
-      { key: 'consumer_secret', label: 'Consumer Secret', secret: true },
-      { key: 'passkey', label: 'Passkey', secret: true },
-      { key: 'shortcode', label: 'Shortcode', placeholder: 'e.g. 174379' }
-    ],
-    stripe: [
-      { key: 'publishable_key', label: 'Publishable Key' },
-      { key: 'secret_key', label: 'Secret Key', secret: true }
-    ],
-    paypal: [
-      { key: 'client_id', label: 'Client ID' },
-      { key: 'client_secret', label: 'Client Secret', secret: true }
-    ],
-    flutterwave: [
-      { key: 'public_key', label: 'Public Key' },
-      { key: 'secret_key', label: 'Secret Key', secret: true }
-    ],
-    custom: [
-      { key: 'api_key', label: 'API Key', secret: true },
-      { key: 'api_endpoint', label: 'API Endpoint', placeholder: 'https://api.example.com/pay' }
-    ]
-  }
-  return fields[provider] || fields.custom
-}
-
-const formatProvider = (p) => {
-  const map = { mpesa: "M-Pesa (Daraja)", stripe: 'Stripe', paypal: 'PayPal', flutterwave: 'Flutterwave', custom: 'Custom API' }
-  return map[p] || p
-}
-
-const onProviderChange = () => {
-  form.value.credentials = {}
-}
-
-const fetchGateways = async () => {
-  loading.value = true
-  error.value = null
-  try {
-    const response = await axios.get('/settings/payment-gateways')
-    gateways.value = response.data?.gateways || []
-  } catch (err) {
-    error.value = err.response?.data?.message || 'Failed to load payment gateways'
-    console.error('fetchGateways error:', err)
-  } finally {
-    loading.value = false
-  }
-}
-
-const openCreateOverlay = () => {
-  form.value = { name: '', provider: '', environment: 'sandbox', is_active: true, is_default: false, credentials: {} }
-  formError.value = null
-  showCreateOverlay.value = true
-}
-
-const openViewOverlay = (gateway) => {
-  selectedGateway.value = gateway
-  testAmount.value = ''
-  testResult.value = null
-  showViewOverlay.value = true
-}
-
-const openEditOverlay = (gateway) => {
-  showViewOverlay.value = false
-  editForm.value = {
-    id: gateway.id,
-    name: gateway.name,
-    provider: gateway.provider,
-    environment: gateway.environment,
-    is_active: gateway.is_active,
-    is_default: gateway.is_default,
-    credentials: {}
-  }
-  formError.value = null
-  showEditOverlay.value = true
-}
-
-const handleCreate = async () => {
-  formSubmitting.value = true
-  formError.value = null
-  try {
-    await axios.post('/settings/payment-gateways', form.value)
-    showCreateOverlay.value = false
-    await fetchGateways()
-  } catch (err) {
-    formError.value = err.response?.data?.message || 'Failed to create gateway'
-  } finally {
-    formSubmitting.value = false
-  }
-}
-
-const handleUpdate = async () => {
-  formSubmitting.value = true
-  formError.value = null
-  try {
-    const payload = { ...editForm.value }
-    delete payload.id
-    delete payload.provider
-    if (payload.credentials) {
-      const filtered = {}
-      for (const [k, v] of Object.entries(payload.credentials)) {
-        if (v && v.trim()) filtered[k] = v
-      }
-      if (Object.keys(filtered).length === 0) {
-        delete payload.credentials
-      } else {
-        payload.credentials = filtered
-      }
-    }
-    await axios.patch(`/settings/payment-gateways/${editForm.value.id}`, payload)
-    showEditOverlay.value = false
-    await fetchGateways()
-  } catch (err) {
-    formError.value = err.response?.data?.message || 'Failed to update gateway'
-  } finally {
-    formSubmitting.value = false
-  }
-}
-
-const handleDelete = async (gateway) => {
-  if (!confirm(`Delete gateway "${gateway.name}"? This cannot be undone.`)) return
-  try {
-    await axios.delete(`/settings/payment-gateways/${gateway.id}`)
-    await fetchGateways()
-  } catch (err) {
-    console.error('Failed to delete gateway:', err)
-    alert(err.response?.data?.message || 'Failed to delete gateway')
-  }
-}
-
-const setDefault = async (gateway) => {
-  try {
-    await axios.patch(`/settings/payment-gateways/${gateway.id}`, { is_default: true })
-    await fetchGateways()
-  } catch (err) {
-    console.error('Failed to set default:', err)
-    alert(err.response?.data?.message || 'Failed to set as default')
-  }
-}
-
-const testGateway = async () => {
-  if (!selectedGateway.value || !testAmount.value) return
-  testing.value = true
-  testResult.value = null
-  try {
-    const res = await axios.post(`/settings/payment-gateways/${selectedGateway.value.id}/test`, { amount: testAmount.value })
-    testResult.value = { success: true, message: res.data?.message || 'Test initiated' }
-  } catch (err) {
-    testResult.value = { success: false, message: err.response?.data?.message || 'Test failed' }
-  } finally {
-    testing.value = false
-  }
-}
-
-const getGatewayActions = (gateway) => [
-  { label: 'View', onClick: () => openViewOverlay(gateway), class: 'text-blue-700 bg-blue-50 hover:bg-blue-100' },
-  { label: 'Edit', onClick: () => openEditOverlay(gateway), class: 'text-slate-700 bg-slate-100 hover:bg-slate-200' },
-  ...(gateway.is_active && !gateway.is_default ? [{ label: 'Set Default', onClick: () => setDefault(gateway), class: 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100' }] : [])
-]
-
-onMounted(() => {
-  fetchGateways()
-})
+onMounted(fetchGateways)
 </script>
 
 <style scoped>
-::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
-::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+/* Scrollbar — no Tailwind equivalent for ::-webkit-scrollbar pseudo-elements */
+::-webkit-scrollbar        { width: 8px; height: 8px; }
+::-webkit-scrollbar-track  { background: #f1f5f9; border-radius: 4px; }
+::-webkit-scrollbar-thumb  { background: #cbd5e1; border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+:global(.dark) ::-webkit-scrollbar-track { background: #1e293b; }
+:global(.dark) ::-webkit-scrollbar-thumb { background: #475569; }
 </style>

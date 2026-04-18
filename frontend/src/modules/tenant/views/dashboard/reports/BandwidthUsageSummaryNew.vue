@@ -2,9 +2,16 @@
   <DataViewContainer
     title="Bandwidth Usage Summary"
     subtitle="Analyze network bandwidth consumption"
-    icon="Activity"
+    color-theme="blue"
     :breadcrumbs="breadcrumbs"
   >
+    <!-- Icon Slot -->
+    <template #icon>
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 md:h-6 md:w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+      </svg>
+    </template>
+
     <template #actions>
       <BaseButton @click="refreshData" variant="ghost" :loading="refreshing">
         <RefreshCw class="w-4 h-4 mr-1" :class="{ 'animate-spin': refreshing }" />
@@ -91,13 +98,13 @@
                     <th class="px-4 py-3 text-left text-xs font-semibold text-slate-700">Sessions</th>
                   </tr>
                 </thead>
-                <tbody class="divide-y divide-slate-100">
+                <tbody class="divide-y divide-slate-100 dark:divide-slate-700">
                   <tr v-for="user in topUsers" :key="user.id" class="hover:bg-slate-50">
-                    <td class="px-4 py-3 text-sm font-medium text-slate-900">{{ user.username }}</td>
+                    <td class="px-4 py-3 text-sm font-medium text-slate-900 dark:text-slate-100">{{ user.username }}</td>
                     <td class="px-4 py-3 text-sm font-bold text-blue-600">{{ formatBytes(user.total) }}</td>
                     <td class="px-4 py-3 text-sm text-green-600">{{ formatBytes(user.download) }}</td>
                     <td class="px-4 py-3 text-sm text-purple-600">{{ formatBytes(user.upload) }}</td>
-                    <td class="px-4 py-3 text-sm text-slate-600">{{ user.sessions }}</td>
+                    <td class="px-4 py-3 text-sm text-slate-600 dark:text-slate-400">{{ user.sessions }}</td>
                   </tr>
                 </tbody>
               </table>
@@ -115,7 +122,7 @@
                   <div class="w-full bg-purple-500 rounded" :style="{ height: (day.upload / maxDaily * 100) + '%' }"></div>
                 </div>
                 <div class="text-xs text-slate-600 mt-2">{{ formatDate(day.date) }}</div>
-                <div class="text-xs font-semibold text-slate-900">{{ formatBytes(day.total) }}</div>
+                <div class="text-xs font-semibold text-slate-900 dark:text-slate-100">{{ formatBytes(day.total) }}</div>
               </div>
             </div>
           </div>
@@ -126,132 +133,49 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
-import { Activity, RefreshCw, Download, ArrowDown, ArrowUp, Users } from 'lucide-vue-next'
-import axios from 'axios'
-import DataViewContainer from '@/modules/common/components/base/DataViewContainer.vue'
-import PageContent from '@/modules/common/components/layout/templates/PageContent.vue'
-import BaseButton from '@/modules/common/components/base/BaseButton.vue'
-import BaseCard from '@/modules/common/components/base/BaseCard.vue'
-import BaseSelect from '@/modules/common/components/base/BaseSelect.vue'
-import BaseLoading from '@/modules/common/components/base/BaseLoading.vue'
+import { ref, computed, onMounted } from 'vue'
+import { Activity, RefreshCw, Download } from 'lucide-vue-next'
+import DataViewContainer from "@/modules/common/components/base/DataViewContainer.vue"
+import BaseButton from "@/modules/common/components/base/BaseButton.vue"
+import BaseSelect from "@/modules/common/components/base/BaseSelect.vue"
+import BaseLoading from "@/modules/common/components/base/BaseLoading.vue"
+import { useSessionReports } from "@/modules/tenant/composables/useSessionReports.js"
 
 const breadcrumbs = [
-  { label: 'Dashboard', to: '/dashboard' },
-  { label: 'Reports', to: '/dashboard/reports' },
-  { label: 'Bandwidth Usage' }
+  { label: "Dashboard", to: "/dashboard" },
+  { label: "Reports", to: "/dashboard/reports" },
+  { label: "Bandwidth Usage" }
 ]
 
-const loading = ref(false)
-const refreshing = ref(false)
-const sessions = ref([])
-const filters = ref({ period: 'week', type: '' })
+const { loading, refreshing, sessions, formatBytes, formatDateTime, fetchSessions, refreshData } = useSessionReports()
+const filters = ref({ period: "week", type: "" })
+
+const filteredSessions = computed(() => {
+  let data = sessions.value
+  if (filters.value.type) data = data.filter(s => s._type === filters.value.type)
+  if (filters.value.period) {
+    const now = new Date()
+    data = data.filter(s => {
+      const d = new Date(s.created_at || s.start_time)
+      switch (filters.value.period) {
+        case "today": return d.toDateString() === now.toDateString()
+        case "week": return d >= new Date(now - 7 * 86400000)
+        case "month": return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
+        default: return true
+      }
+    })
+  }
+  return data
+})
 
 const stats = computed(() => {
-  let totalDown = 0, totalUp = 0
-  const userSet = new Set()
-  sessions.value.forEach(s => {
-    totalDown += Number(s.bytes_in || s.download || 0)
-    totalUp += Number(s.bytes_out || s.upload || 0)
-    userSet.add(s.username || s.user_id)
-  })
-  const total = totalDown + totalUp
+  const totalIn = filteredSessions.value.reduce((s, u) => s + Number(u.input_bytes || u.bytes_in || u.acct_input_octets || 0), 0)
+  const totalOut = filteredSessions.value.reduce((s, u) => s + Number(u.output_bytes || u.bytes_out || u.acct_output_octets || 0), 0)
   return {
-    totalUsage: total,
-    download: totalDown,
-    upload: totalUp,
-    avgPerUser: userSet.size > 0 ? Math.round(total / userSet.size) : 0
+    totalIn, totalOut, total: totalIn + totalOut,
+    sessions: filteredSessions.value.length
   }
 })
 
-const topUsers = computed(() => {
-  const grouped = {}
-  sessions.value.forEach(s => {
-    const user = s.username || s.user_id || 'unknown'
-    if (!grouped[user]) grouped[user] = { id: user, username: user, download: 0, upload: 0, sessions: 0 }
-    grouped[user].download += Number(s.bytes_in || s.download || 0)
-    grouped[user].upload += Number(s.bytes_out || s.upload || 0)
-    grouped[user].sessions++
-  })
-  return Object.values(grouped)
-    .map(u => ({ ...u, total: u.download + u.upload }))
-    .sort((a, b) => b.total - a.total)
-    .slice(0, 10)
-})
-
-const dailyTrend = computed(() => {
-  const grouped = {}
-  sessions.value.forEach(s => {
-    const date = (s.start_time || s.created_at || '').slice(0, 10)
-    if (!date) return
-    if (!grouped[date]) grouped[date] = { date, download: 0, upload: 0 }
-    grouped[date].download += Number(s.bytes_in || s.download || 0)
-    grouped[date].upload += Number(s.bytes_out || s.upload || 0)
-  })
-  return Object.values(grouped)
-    .map(d => ({ ...d, total: d.download + d.upload }))
-    .sort((a, b) => a.date.localeCompare(b.date))
-    .slice(-7)
-})
-
-const maxDaily = computed(() => Math.max(...dailyTrend.value.map(d => d.total), 1))
-
-const formatBytes = (bytes) => {
-  if (!bytes) return '0 B'
-  const k = 1024
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i]
-}
-
-const formatDate = (date) => new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-
-const fetchSessions = async () => {
-  const isInitial = sessions.value.length === 0
-  if (isInitial) loading.value = true
-  try {
-    const results = []
-    if (!filters.value.type || filters.value.type === 'hotspot') {
-      const res = await axios.get('/hotspot/sessions')
-      const data = res.data?.sessions || res.data?.data || []
-      results.push(...data.map(s => ({ ...s, type: 'hotspot', start_time: s.start_time || s.created_at })))
-    }
-    if (!filters.value.type || filters.value.type === 'pppoe') {
-      const res = await axios.get('/pppoe/sessions/live')
-      const data = res.data?.sessions || res.data?.data || []
-      results.push(...data.map(s => ({ ...s, type: 'pppoe', start_time: s.start_time || s.created_at })))
-    }
-    sessions.value = results
-  } catch (err) {
-    console.error('fetchSessions error:', err)
-  } finally {
-    loading.value = false
-  }
-}
-
-const refreshData = async () => {
-  refreshing.value = true
-  await fetchSessions()
-  refreshing.value = false
-}
-
-const exportReport = () => {
-  const csv = [
-    ['User', 'Total', 'Download', 'Upload', 'Sessions'].join(','),
-    ...topUsers.value.map(u => [u.username, u.total, u.download, u.upload, u.sessions].join(','))
-  ].join('\n')
-  const blob = new Blob([csv], { type: 'text/csv' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `bandwidth-report-${new Date().toISOString().slice(0,10)}.csv`
-  a.click()
-  URL.revokeObjectURL(url)
-}
-
-watch(() => [filters.value.period, filters.value.type], () => fetchSessions())
-
-onMounted(() => {
-  fetchSessions()
-})
+onMounted(fetchSessions)
 </script>

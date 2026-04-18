@@ -1,6 +1,6 @@
 <template>
   <div class="w-full">
-    <label v-if="label" :for="selectId" class="block text-sm font-medium text-slate-700 mb-1">
+    <label v-if="label" :for="selectId" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
       {{ label }}
       <span v-if="required" class="text-red-500">*</span>
     </label>
@@ -25,8 +25,8 @@
       </div>
     </div>
     
-    <p v-if="error" class="mt-1 text-sm text-red-600">{{ error }}</p>
-    <p v-else-if="hint" class="mt-1 text-sm text-slate-500">{{ hint }}</p>
+    <p v-if="error" class="mt-1 text-sm text-red-600 dark:text-red-400">{{ error }}</p>
+    <p v-else-if="hint" class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{ hint }}</p>
   </div>
 </template>
 
@@ -51,9 +51,9 @@ const selectId = computed(() => props.id || `select-${Math.random().toString(36)
 const selectClasses = computed(() => {
   const base = 'block w-full rounded-lg border transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-0 text-sm appearance-none pr-10 py-2 pl-3'
   const state = props.error
-    ? 'border-red-300 text-red-900 focus:ring-red-500 focus:border-red-500'
-    : 'border-slate-300 text-slate-900 focus:ring-blue-500 focus:border-blue-500'
-  const disabled = props.disabled ? 'bg-slate-100 cursor-not-allowed' : 'bg-white'
+    ? 'border-red-300 dark:border-red-600 text-red-900 dark:text-red-300 focus:ring-red-500 focus:border-red-500'
+    : 'border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400'
+  const disabled = props.disabled ? 'bg-slate-100 dark:bg-slate-700 cursor-not-allowed' : 'bg-white dark:bg-slate-800'
   
   return [base, state, disabled].filter(Boolean).join(' ')
 })

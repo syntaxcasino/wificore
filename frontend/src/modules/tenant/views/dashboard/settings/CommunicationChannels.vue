@@ -1,7 +1,7 @@
 <template>
-  <div class="flex flex-col h-full bg-gradient-to-br from-slate-50 via-gray-50 to-blue-50/30 rounded-lg shadow-lg overflow-hidden">
+  <div class="flex flex-col h-full bg-slate-50 dark:bg-slate-900 overflow-hidden">
     <!-- Header -->
-    <div class="flex-shrink-0 bg-white border-b border-slate-200 shadow-sm">
+    <div class="flex-shrink-0 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 shadow-sm">
       <div class="px-4 md:px-6 py-3 md:py-5">
         <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 md:gap-6">
           <div class="flex items-center gap-3">
@@ -9,7 +9,7 @@
               <MessageSquare class="h-5 w-5 md:h-6 md:w-6 text-white" />
             </div>
             <div>
-              <h2 class="text-lg md:text-xl font-bold text-slate-900">Communication Channels</h2>
+              <h2 class="text-lg md:text-xl font-bold text-slate-900 dark:text-slate-100">Communication Channels</h2>
               <p class="text-xs text-slate-500 mt-0.5 hidden md:block">Configure SMS, WhatsApp & Email messaging</p>
             </div>
           </div>
@@ -42,7 +42,7 @@
     </div>
 
     <!-- Main Content -->
-    <div class="flex-1 min-h-0 overflow-y-auto">
+    <div class="flex-1 min-h-0 overflow-y-auto p-4 md:p-6">
       <!-- Loading -->
       <div v-if="loading && !channels.length" class="p-6 space-y-4">
         <div class="animate-pulse space-y-4">
@@ -60,7 +60,9 @@
 
       <!-- Error -->
       <div v-else-if="error && !channels.length" class="flex flex-col items-center justify-center gap-4 p-8 text-red-500">
-        <AlertCircle class="w-10 h-10" />
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
         <p class="text-center">{{ error }}</p>
         <button @click="fetchChannels" class="px-4 py-2 text-sm font-medium text-white bg-red-500 rounded-md hover:bg-red-600 transition-colors">Retry</button>
       </div>
@@ -83,7 +85,7 @@
         <div class="hidden md:block bg-white border border-slate-200 shadow-sm overflow-hidden flex-col">
           <table class="w-full">
             <thead>
-              <tr class="bg-slate-50 border-b border-slate-200">
+              <tr class="bg-slate-50 dark:bg-slate-700/50 border-b border-slate-200 dark:border-slate-700">
                 <th class="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Channel</th>
                 <th class="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Type</th>
                 <th class="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Provider</th>
@@ -93,7 +95,7 @@
                 <th class="px-4 py-3 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
-            <tbody class="divide-y divide-slate-100">
+            <tbody class="divide-y divide-slate-100 dark:divide-slate-700">
               <tr v-for="ch in channels" :key="ch.id" class="hover:bg-slate-50/50 transition-colors">
                 <td class="px-4 py-3">
                   <div class="flex items-center gap-3">
@@ -101,7 +103,7 @@
                       <component :is="getTypeIcon(ch.type)" class="w-4 h-4 text-white" />
                     </div>
                     <div>
-                      <div class="text-sm font-semibold text-slate-900">{{ ch.name }}</div>
+                      <div class="text-sm font-semibold text-slate-900 dark:text-slate-100">{{ ch.name }}</div>
                       <div v-if="ch.is_default" class="text-[10px] font-medium text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded inline-block mt-0.5">DEFAULT</div>
                     </div>
                   </div>
@@ -110,7 +112,7 @@
                   <span :class="getTypeBadge(ch.type)" class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium capitalize">{{ ch.type }}</span>
                 </td>
                 <td class="px-4 py-3 text-sm text-slate-600 capitalize">{{ formatProvider(ch.provider) }}</td>
-                <td class="px-4 py-3 text-sm text-slate-600">{{ ch.sender_id || ch.phone_number || '—' }}</td>
+                <td class="px-4 py-3 text-sm text-slate-600 dark:text-slate-400">{{ ch.sender_id || ch.phone_number || '—' }}</td>
                 <td class="px-4 py-3 text-center">
                   <span :class="ch.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'" class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium">
                     {{ ch.is_active ? 'Active' : 'Inactive' }}
@@ -141,14 +143,14 @@
 
         <!-- Mobile Cards -->
         <div class="md:hidden space-y-3">
-          <div v-for="ch in channels" :key="ch.id" class="bg-white rounded-lg border border-slate-200 shadow-sm p-4 cursor-pointer" @click="openViewOverlay(ch)">
+          <div v-for="ch in channels" :key="ch.id" class="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm p-4 cursor-pointer" @click="openViewOverlay(ch)">
             <div class="flex items-start justify-between gap-3">
               <div class="flex items-center gap-3">
                 <div :class="getTypeIconBg(ch.type)" class="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0">
                   <component :is="getTypeIcon(ch.type)" class="w-4 h-4 text-white" />
                 </div>
                 <div>
-                  <div class="text-sm font-semibold text-slate-900">{{ ch.name }}</div>
+                  <div class="text-sm font-semibold text-slate-900 dark:text-slate-100">{{ ch.name }}</div>
                   <div class="text-xs text-slate-500 capitalize">{{ ch.type }} / {{ formatProvider(ch.provider) }}</div>
                 </div>
               </div>
@@ -162,16 +164,16 @@
     </div>
 
     <!-- CREATE OVERLAY -->
-    <SlideOverlay v-model="showCreateOverlay" title="Add Communication Channel" subtitle="Configure a new messaging channel" icon="Plus" width="480px">
+    <SlideOverlay v-model="showCreateOverlay" title="Add Communication Channel" subtitle="Configure a new messaging channel" icon="Plus" width="60%">
       <form @submit.prevent="handleCreate" class="space-y-5">
         <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Channel Name *</label>
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Channel Name *</label>
           <input v-model="form.name" type="text" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm" placeholder="e.g. Main SMS Gateway" />
         </div>
 
         <div class="grid grid-cols-2 gap-4">
           <div>
-            <label class="block text-sm font-medium text-slate-700 mb-1">Type *</label>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Type *</label>
             <select v-model="form.type" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 text-sm" @change="onTypeChange">
               <option value="">Select type...</option>
               <option value="sms">SMS</option>
@@ -180,7 +182,7 @@
             </select>
           </div>
           <div>
-            <label class="block text-sm font-medium text-slate-700 mb-1">Provider *</label>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Provider *</label>
             <select v-model="form.provider" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 text-sm">
               <option value="">Select provider...</option>
               <option v-for="p in availableProviders" :key="p" :value="p">{{ formatProvider(p) }}</option>
@@ -190,11 +192,11 @@
 
         <div class="grid grid-cols-2 gap-4">
           <div>
-            <label class="block text-sm font-medium text-slate-700 mb-1">Sender ID</label>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Sender ID</label>
             <input v-model="form.sender_id" type="text" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 text-sm" placeholder="TRAIDNET" />
           </div>
           <div>
-            <label class="block text-sm font-medium text-slate-700 mb-1">Phone Number</label>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Phone Number</label>
             <input v-model="form.phone_number" type="text" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 text-sm" placeholder="+254..." />
           </div>
         </div>
@@ -229,7 +231,7 @@
           <button
             @click="showCreateOverlay = false"
             type="button"
-            class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+            class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-600"
           >
             Cancel
           </button>
@@ -245,16 +247,16 @@
     </SlideOverlay>
 
     <!-- EDIT OVERLAY -->
-    <SlideOverlay v-model="showEditOverlay" title="Edit Communication Channel" subtitle="Update channel configuration" icon="Pencil" width="480px">
+    <SlideOverlay v-model="showEditOverlay" title="Edit Communication Channel" subtitle="Update channel configuration" icon="Pencil" width="60%">
       <form @submit.prevent="handleUpdate" class="space-y-5">
         <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Channel Name *</label>
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Channel Name *</label>
           <input v-model="editForm.name" type="text" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm" />
         </div>
 
         <div class="grid grid-cols-2 gap-4">
           <div>
-            <label class="block text-sm font-medium text-slate-700 mb-1">Type *</label>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Type *</label>
             <select v-model="editForm.type" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 text-sm" @change="onEditTypeChange">
               <option value="sms">SMS</option>
               <option value="whatsapp">WhatsApp</option>
@@ -262,7 +264,7 @@
             </select>
           </div>
           <div>
-            <label class="block text-sm font-medium text-slate-700 mb-1">Provider *</label>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Provider *</label>
             <select v-model="editForm.provider" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 text-sm">
               <option v-for="p in editAvailableProviders" :key="p" :value="p">{{ formatProvider(p) }}</option>
             </select>
@@ -271,11 +273,11 @@
 
         <div class="grid grid-cols-2 gap-4">
           <div>
-            <label class="block text-sm font-medium text-slate-700 mb-1">Sender ID</label>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Sender ID</label>
             <input v-model="editForm.sender_id" type="text" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 text-sm" />
           </div>
           <div>
-            <label class="block text-sm font-medium text-slate-700 mb-1">Phone Number</label>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Phone Number</label>
             <input v-model="editForm.phone_number" type="text" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 text-sm" />
           </div>
         </div>
@@ -310,7 +312,7 @@
           <button
             @click="showEditOverlay = false"
             type="button"
-            class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+            class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-600"
           >
             Cancel
           </button>
@@ -326,12 +328,12 @@
     </SlideOverlay>
 
     <!-- VIEW OVERLAY -->
-    <SlideOverlay v-model="showViewOverlay" title="Channel Details" :subtitle="selectedChannel?.name || ''" icon="Eye" width="480px">
+    <SlideOverlay v-model="showViewOverlay" title="Channel Details" :subtitle="selectedChannel?.name || ''" icon="Eye" width="60%">
       <div v-if="selectedChannel" class="space-y-6">
         <div class="grid grid-cols-2 gap-4">
           <div>
             <div class="text-xs font-medium text-slate-500 uppercase tracking-wider">Name</div>
-            <div class="mt-1 text-sm font-semibold text-slate-900">{{ selectedChannel.name }}</div>
+            <div class="mt-1 text-sm font-semibold text-slate-900 dark:text-slate-100">{{ selectedChannel.name }}</div>
           </div>
           <div>
             <div class="text-xs font-medium text-slate-500 uppercase tracking-wider">Type</div>
@@ -397,7 +399,7 @@
         <div class="flex gap-3">
           <button
             @click="showViewOverlay = false"
-            class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+            class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-600"
           >
             Close
           </button>
@@ -420,9 +422,11 @@ import SlideOverlay from '@/modules/common/components/base/SlideOverlay.vue'
 import { useCommunicationChannels } from '@/modules/tenant/composables/data/useCommunicationChannels'
 import { useBroadcasting } from '@/modules/common/composables/websocket/useBroadcasting'
 import { useAuthStore } from '@/stores/auth'
+import { useConfirmStore } from '@/stores/confirm'
 
 const authStore = useAuthStore()
 const { subscribeToPrivateChannel, unsubscribeFromChannel } = useBroadcasting()
+const confirmStore = useConfirmStore()
 
 const {
   channels,
@@ -628,7 +632,8 @@ const handleUpdate = async () => {
 }
 
 const confirmDelete = async (ch) => {
-  if (!confirm(`Delete channel "${ch.name}"? This cannot be undone.`)) return
+  const ok = await confirmStore.open({ title: 'Delete Channel', message: `Delete channel "${ch.name}"? This cannot be undone.`, confirmText: 'Delete', cancelText: 'Cancel', variant: 'danger' })
+  if (!ok) return
   try {
     await deleteChannel(ch.id)
   } catch (err) {

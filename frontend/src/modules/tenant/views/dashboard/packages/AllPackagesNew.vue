@@ -77,7 +77,7 @@
     <DataSkeleton v-else-if="loading" :count="5" />
 
     <!-- Data Content -->
-    <div v-else-if="filteredData?.length" class="flex flex-col h-full px-4 md:px-6 pt-2 pb-2 min-h-0">
+    <div v-else-if="filteredData?.length" class="flex flex-col h-full pt-2 pb-2 min-h-0">
       <!-- Mobile Cards -->
       <div class="md:hidden space-y-3 overflow-y-auto flex-1 min-h-0">
         <MobileDataCard
@@ -95,7 +95,7 @@
       <!-- Desktop Table -->
       <div class="hidden md:flex bg-white border-x border-t border-slate-200 flex-col min-h-0 flex-1">
         <!-- Fixed Header -->
-        <div class="bg-slate-50 border-b border-slate-200">
+        <div class="bg-slate-50 dark:bg-slate-700/50 border-b border-slate-200 dark:border-slate-700">
           <table class="w-full">
             <thead>
               <tr>
@@ -113,7 +113,7 @@
         <!-- Scrollable Body -->
         <div class="overflow-y-auto flex-1 min-h-0">
           <table class="w-full">
-            <tbody class="divide-y divide-slate-100">
+            <tbody class="divide-y divide-slate-100 dark:divide-slate-700">
               <tr
                 v-for="pkg in paginatedData"
                 :key="pkg.id"
@@ -133,7 +133,7 @@
                 </td>
 
                 <td class="px-6 py-4 w-[12%]">
-                  <span class="text-sm font-semibold text-slate-900">KES {{ formatMoney(pkg.price) }}</span>
+                  <span class="text-sm font-semibold text-slate-900 dark:text-slate-100">KES {{ formatMoney(pkg.price) }}</span>
                 </td>
 
                 <td class="px-6 py-4 hidden xl:table-cell w-[15%]">
@@ -204,7 +204,7 @@
         v-if="activeMenu !== null"
         data-dropdown-menu
         :style="menuPosition"
-        class="fixed w-48 bg-white rounded-lg shadow-2xl border border-slate-200 py-1 z-[9999] overflow-hidden"
+        class="fixed w-48 bg-white dark:bg-slate-800 rounded-lg shadow-2xl border border-slate-200 dark:border-slate-700 py-1 z-[9999] overflow-hidden"
       >
         <button @click="handleViewMenu()"
           class="flex items-center w-full px-4 py-2.5 text-sm text-blue-600 hover:bg-blue-50 transition-colors md:hidden">
@@ -260,9 +260,11 @@ import { usePackages } from '@/modules/tenant/composables/data/usePackages'
 import { useFilters } from '@/modules/common/composables/utils/useFilters'
 import { usePagination } from '@/modules/common/composables/utils/usePagination'
 import { useConfirmStore } from '@/stores/confirm'
+import { useToast } from '@/modules/common/composables/useToast.js'
 import { useBroadcasting } from '@/modules/common/composables/websocket/useBroadcasting'
 import { useAuthStore } from '@/stores/auth'
 import DataViewContainer from '@/modules/common/components/base/DataViewContainer.vue'
+
 import DataSkeleton from '@/modules/common/components/base/DataSkeleton.vue'
 import MobileDataCard from '@/modules/common/components/base/MobileDataCard.vue'
 import DataPagination from '@/modules/common/components/base/DataPagination.vue'
@@ -271,6 +273,8 @@ import EntityStatusBadge from '@/modules/common/components/base/EntityStatusBadg
 import BaseSelect from '@/modules/common/components/base/BaseSelect.vue'
 import CreatePackageOverlay from '@/modules/tenant/components/packages/overlays/CreatePackageOverlay.vue'
 import ViewPackageOverlay from '@/modules/tenant/components/packages/overlays/ViewPackageOverlay.vue'
+
+const { error: showError } = useToast()
 
 const {
   packages,
@@ -363,7 +367,7 @@ const handleToggleStatus = async (pkg) => {
   try {
     await toggleStatus(pkg)
   } catch (err) {
-    alert(`Failed to ${action} package`)
+    showError(`Failed to ${action} package`)
   }
 }
 
@@ -402,7 +406,7 @@ const handleDelete = async (pkg) => {
   try {
     await deletePackage(pkg.id)
   } catch (err) {
-    alert('Failed to delete package')
+    showError('Failed to delete package')
   }
 }
 
@@ -467,7 +471,7 @@ const handleDeleteMenu = async () => {
     try {
       await deletePackage(pkg.id)
     } catch (err) {
-      alert('Failed to delete package')
+      showError('Failed to delete package')
     }
   }
 }

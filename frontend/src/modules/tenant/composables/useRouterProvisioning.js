@@ -170,7 +170,7 @@ export function useRouterProvisioning(props, emit) {
           
           // Fetch the full VPN config with scripts
           const detailResponse = await axios.get(`/vpn/${routerVpnConfig.id}`)
-          if (detailResponse.data.success) {
+          if (detailResponse.data?.success) {
             vpnScript.value = detailResponse.data.data.mikrotik_script
             addLog('success', 'VPN configuration ready!')
             provisioningRouter.value.vpn_ip = detailResponse.data.data.client_ip
@@ -614,8 +614,8 @@ export function useRouterProvisioning(props, emit) {
 
       const response = await axios.post(`/routers/${provisioningRouter.value.id}/generate-service-config`, payload)
 
-      if (response.data.success) {
-        serviceScript.value = response.data.service_script || response.data.script
+      if (response.data?.success) {
+        serviceScript.value = response.data?.service_script || response.data?.script
         currentStage.value = 4
         provisioningProgress.value = 90
         provisioningStatus.value = 'Configuration generated - Ready to deploy'
@@ -660,7 +660,7 @@ export function useRouterProvisioning(props, emit) {
         commands: commands,
       })
 
-      if (response.data.success) {
+      if (response.data?.success) {
         addLog('success', 'Deployment job dispatched')
         provisioningStatus.value = 'Deployment in progress...'
         currentStage.value = 5
@@ -782,12 +782,12 @@ export function useRouterProvisioning(props, emit) {
 
   const getLogLevelClass = (level) => {
     const classes = {
-      info: 'text-blue-600',
-      success: 'text-green-600',
-      warning: 'text-yellow-600',
-      error: 'text-red-600',
+      info: 'text-blue-400',
+      success: 'text-emerald-400',
+      warning: 'text-amber-400',
+      error: 'text-red-400',
     }
-    return classes[level] || 'text-gray-600'
+    return classes[level] || 'text-slate-400'
   }
 
   const copyToClipboard = async (text) => {

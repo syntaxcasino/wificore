@@ -120,7 +120,24 @@ class CreateHotspotUserJob implements ShouldQueue
                         'value' => $package->duration_hours * 3600,
                     ],
                 ];
-                
+
+                // Enforce bandwidth via Mikrotik-Rate-Limit — no local fallback cap on hotspot user profile
+                $rateLimit = null;
+                if ($package->download_speed && $package->upload_speed) {
+                    $rateLimit = \App\Services\MikroTik\BandwidthHelper::formatMikrotikRateLimit(
+                        (string) $package->download_speed,
+                        (string) $package->upload_speed
+                    );
+                }
+                if ($rateLimit) {
+                    $radiusAttributes[] = [
+                        'username'  => $username,
+                        'attribute' => 'Mikrotik-Rate-Limit',
+                        'op'        => ':=',
+                        'value'     => $rateLimit,
+                    ];
+                }
+
                 // Add data limit if specified
                 if ($package->data_limit_bytes) {
                     $radiusAttributes[] = [

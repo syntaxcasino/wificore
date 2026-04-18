@@ -328,6 +328,8 @@ Route::middleware(['auth:sanctum', 'system.admin'])->prefix('system')->name('api
         ->name('dashboard');
     Route::get('/dashboard/stats', [SystemAdminController::class, 'getDashboardStats'])
         ->name('dashboard.stats');
+    Route::post('/dashboard/refresh', [SystemAdminController::class, 'refreshDashboardStats'])
+        ->name('dashboard.refresh');
     
     // -------------------------------------------------------------------------
     // System Metrics & Monitoring
@@ -408,6 +410,20 @@ Route::middleware(['auth:sanctum', 'system.admin'])->prefix('system')->name('api
         Route::post('/tenants/{tenant}/payment', [\App\Http\Controllers\Api\LandlordBillingController::class, 'recordPayment'])
             ->name('tenant.payment');
     });
+
+    // -------------------------------------------------------------------------
+    // Script Generator Preview (real DB records in tenant schema, same as production)
+    // -------------------------------------------------------------------------
+    Route::get('/script-preview/models', [\App\Http\Controllers\Api\ScriptPreviewController::class, 'routerModels'])
+        ->name('script-preview.models');
+    Route::post('/script-preview/router', [\App\Http\Controllers\Api\ScriptPreviewController::class, 'createRouter'])
+        ->name('script-preview.create-router');
+    Route::post('/script-preview/{routerId}/configure', [\App\Http\Controllers\Api\ScriptPreviewController::class, 'configureService'])
+        ->name('script-preview.configure');
+    Route::post('/script-preview/{routerId}/generate', [\App\Http\Controllers\Api\ScriptPreviewController::class, 'generateScript'])
+        ->name('script-preview.generate');
+    Route::delete('/script-preview/{routerId}', [\App\Http\Controllers\Api\ScriptPreviewController::class, 'destroy'])
+        ->name('script-preview.destroy');
 });
 
 // =============================================================================
@@ -868,9 +884,11 @@ Route::middleware(['auth:sanctum', 'role:admin', 'user.active', 'tenant.context'
             $users = \App\Models\User::with('activeSubscription')
                 ->when($request->role, fn($q, $role) => $q->where('role', $role))
                 ->when($request->search, fn($q, $search) => 
-                    $q->where('name', 'like', "%{$search}%")
-                      ->orWhere('email', 'like', "%{$search}%")
-                      ->orWhere('phone_number', 'like', "%{$search}%")
+                    $q->where(function ($q) use ($search) {
+                        $q->where('name', 'like', "%{$search}%")
+                          ->orWhere('email', 'like', "%{$search}%")
+                          ->orWhere('phone_number', 'like', "%{$search}%");
+                    })
                 )
                 ->latest()
                 ->paginate($request->per_page ?? 20);
@@ -947,8 +965,10 @@ Route::middleware(['auth:sanctum', 'role:admin', 'user.active', 'tenant.context'
                 ->when($request->status, fn($q, $status) => $q->where('status', $status))
                 ->when($request->payment_method, fn($q, $method) => $q->where('payment_method', $method))
                 ->when($request->search, fn($q, $search) => 
-                    $q->where('phone_number', 'like', "%{$search}%")
-                      ->orWhere('transaction_id', 'like', "%{$search}%")
+                    $q->where(function ($q) use ($search) {
+                        $q->where('phone_number', 'like', "%{$search}%")
+                          ->orWhere('transaction_id', 'like', "%{$search}%");
+                    })
                 )
                 ->latest()
                 ->paginate($request->per_page ?? 20);
@@ -1130,7 +1150,7 @@ Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
 // =============================================================================
 // ROUTER VPN MANAGEMENT ROUTES
 // =============================================================================
-Route::middleware('auth:sanctum')->prefix('routers/{router}')->group(function () {
+Route::middleware(['auth:sanctum', 'role:admin', 'user.active', 'tenant.context'])->prefix('routers/{router}')->group(function () {
     // Create VPN configuration
     Route::post('/vpn', [RouterVpnController::class, 'createVpnConfig'])
         ->name('api.routers.vpn.create');
@@ -1185,7 +1205,7 @@ Route::prefix('webhooks/wireguard')->group(function () {
 // =============================================================================
 // TENANT ROUTES - Tenant-specific data (auto-filtered by TenantScope)
 // =============================================================================
-Route::middleware(['auth:sanctum', 'role:admin,tenant'])->prefix('tenant')->group(function () {
+Route::middleware(['auth:sanctum', 'role:admin,tenant', 'user.active', 'tenant.context'])->prefix('tenant')->group(function () {
     // Dashboard & Statistics
     Route::get('/dashboard', [TenantDashboardController::class, 'index'])
         ->name('api.tenant.dashboard');

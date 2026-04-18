@@ -27,13 +27,9 @@ use App\Jobs\CheckHotspotExpirationsJob;
 
 Schedule::job(new CheckRoutersJob)->everyMinute();
 
-// NEW: Event-based router status monitoring - runs every 5 seconds for near-realtime updates
-// This provides instant status changes when routers go online/offline
-Schedule::job(new RouterHandshakeMonitorJob)
-    ->everyFiveSeconds()
-    ->name('router-handshake-monitor')
-    ->withoutOverlapping()
-    ->onOneServer();
+// REMOVED: RouterHandshakeMonitorJob was conflicting with UpdateVpnStatusJob
+// UpdateVpnStatusJob (every 30s) already handles WireGuard peer health and sets router status
+// Keeping this commented to prevent status flip-flopping between the two jobs
 
 // Regenerate Telegraf config every 5 minutes to pick up new routers
 Schedule::command('telegraf:generate-config')

@@ -51,7 +51,7 @@
     <DataSkeleton v-else-if="loading" :count="5" />
 
     <!-- Data Content -->
-    <div v-else-if="filteredData.length" class="flex flex-col h-full px-4 md:px-6 pt-2 pb-2 min-h-0">
+    <div v-else-if="filteredData.length" class="flex flex-col h-full pt-2 pb-2 min-h-0">
       <!-- Mobile Cards -->
       <div class="md:hidden space-y-3 overflow-y-auto flex-1 min-h-0">
         <MobileDataCard
@@ -69,7 +69,7 @@
       <!-- Desktop Table -->
       <div class="hidden md:flex bg-white border-x border-t border-slate-200 flex-col min-h-0 flex-1">
         <!-- Fixed Header -->
-        <div class="bg-slate-50 border-b border-slate-200">
+        <div class="bg-slate-50 dark:bg-slate-700/50 border-b border-slate-200 dark:border-slate-700">
           <table class="w-full">
             <thead>
               <tr>
@@ -86,21 +86,21 @@
         <!-- Scrollable Body -->
         <div class="overflow-y-auto flex-1 min-h-0">
           <table class="w-full">
-            <tbody class="divide-y divide-slate-100">
+            <tbody class="divide-y divide-slate-100 dark:divide-slate-700">
               <tr v-for="user in paginatedData" :key="user.id" class="hover:bg-purple-50/50 transition-colors cursor-pointer" @click="openUserDetails(user)">
                 <td class="px-6 py-4 w-[22%]">
                   <div class="flex items-center gap-3">
                     <div class="w-10 h-10 bg-gradient-to-br from-purple-500 to-indigo-500 rounded-full flex items-center justify-center text-white text-sm font-semibold">{{ getUserInitials(user) }}</div>
                     <div>
-                      <div class="text-sm font-medium text-slate-900">{{ user.name || user.username }}</div>
-                      <div class="text-xs text-slate-500">{{ user.username }}</div>
+                      <div class="text-sm font-medium text-slate-900 dark:text-slate-100">{{ user.name || user.username }}</div>
+                      <div class="text-xs text-slate-500 dark:text-slate-400">{{ user.username }}</div>
                     </div>
                   </div>
                 </td>
                 <td class="px-6 py-4 text-sm text-slate-900 w-[18%]">{{ user.router?.name || 'N/A' }}</td>
                 <td class="px-6 py-4 w-[18%]">
-                  <div class="text-sm font-medium text-slate-900">{{ user.package?.name || 'No package' }}</div>
-                  <div class="text-xs text-slate-500">{{ formatPackageSpeed(user.package) }}</div>
+                  <div class="text-sm font-medium text-slate-900 dark:text-slate-100">{{ user.package?.name || 'No package' }}</div>
+                  <div class="text-xs text-slate-500 dark:text-slate-400">{{ formatPackageSpeed(user.package) }}</div>
                 </td>
                 <td class="px-6 py-4 w-[12%]">
                   <EntityStatusBadge :status="user.status || 'inactive'" size="sm" />
@@ -144,7 +144,7 @@
 
   <!-- Global Dropdown Menu Portal -->
   <Teleport to="body">
-    <div v-if="activeMenu !== null" data-dropdown-menu :style="menuPosition" class="fixed w-48 bg-white rounded-lg shadow-2xl border border-slate-200 py-1 z-[9999] overflow-hidden">
+    <div v-if="activeMenu !== null" data-dropdown-menu :style="menuPosition" class="fixed w-48 bg-white dark:bg-slate-800 rounded-lg shadow-2xl border border-slate-200 dark:border-slate-700 py-1 z-[9999] overflow-hidden">
       <button @click="handleEdit(users.find(u => u.id === activeMenu))" class="flex items-center w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-purple-50 hover:text-purple-700 transition-colors">
         <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -179,7 +179,7 @@
     title="Add PPPoE User"
     subtitle="Create a PPPoE customer account"
     icon="Network"
-    width="480px"
+    width="60%"
     :closeOnBackdrop="false"
     @close="closeAddUser"
   >
@@ -226,7 +226,7 @@
     title="Edit PPPoE User"
     subtitle="Update PPPoE account settings"
     icon="Network"
-    width="480px"
+    width="60%"
     :closeOnBackdrop="false"
     @close="closeEditUser"
   >
@@ -279,22 +279,22 @@
     title="PPPoE User Created"
     subtitle="Account credentials generated successfully"
     icon="Key"
-    width="480px"
+    width="60%"
     :closeOnBackdrop="false"
     :closeOnEscape="false"
   >
     <div class="p-6 space-y-4">
       <div>
-        <div class="text-sm font-medium text-slate-700">Username</div>
+        <div class="text-sm font-medium text-slate-700 dark:text-slate-300">Username</div>
         <div class="mt-1 text-sm text-slate-900 font-mono">{{ createdUser?.username }}</div>
       </div>
       <div>
-        <div class="text-sm font-medium text-slate-700">Generated Password</div>
+        <div class="text-sm font-medium text-slate-700 dark:text-slate-300">Generated Password</div>
         <div class="mt-1 flex items-center gap-2">
           <div class="flex-1 text-sm text-slate-900 font-mono bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">{{ generatedPassword }}</div>
           <BaseButton variant="secondary" size="sm" @click="copyPassword">Copy</BaseButton>
         </div>
-        <div class="mt-2 text-xs text-slate-500">This password is shown only once. Store it securely.</div>
+        <div class="mt-2 text-xs text-slate-500 dark:text-slate-400">This password is shown only once. Store it securely.</div>
       </div>
     </div>
     <template #footer>
@@ -315,7 +315,7 @@
     title="PPPoE User Details"
     subtitle="View PPPoE account information"
     icon="Network"
-    width="480px"
+    width="60%"
     :closeOnBackdrop="true"
   >
     <div class="p-6 space-y-5">
@@ -323,16 +323,16 @@
         <h4 class="text-sm font-semibold text-slate-700 mb-3">Account Information</h4>
         <div class="mb-4 p-3 bg-white rounded-lg border border-slate-200">
           <div class="text-xs text-slate-500 mb-1">PPPoE Username</div>
-          <div class="text-lg font-mono font-semibold text-slate-900">{{ selectedUser?.username || 'N/A' }}</div>
+          <div class="text-lg font-mono font-semibold text-slate-900 dark:text-slate-100">{{ selectedUser?.username || 'N/A' }}</div>
           <div class="text-sm font-mono text-indigo-600 mt-1">ACC({{ selectedUser?.account_number || 'N/A' }})</div>
         </div>
         <div class="grid grid-cols-2 gap-4">
           <div>
-            <div class="text-xs text-slate-500">Status</div>
+            <div class="text-xs text-slate-500 dark:text-slate-400">Status</div>
             <div class="mt-1"><EntityStatusBadge :status="selectedUser?.status || 'inactive'" size="sm" /></div>
           </div>
           <div>
-            <div class="text-xs text-slate-500">Created</div>
+            <div class="text-xs text-slate-500 dark:text-slate-400">Created</div>
             <div class="text-sm text-slate-900">{{ formatDate(selectedUser?.created_at) }}</div>
           </div>
         </div>
@@ -342,7 +342,7 @@
         <h4 class="text-sm font-semibold text-slate-700 mb-3">Credentials</h4>
         <div class="flex items-center justify-between">
           <div class="flex-1">
-            <div class="text-xs text-slate-500">Password</div>
+            <div class="text-xs text-slate-500 dark:text-slate-400">Password</div>
             <div class="flex items-center gap-2 mt-1">
               <div class="text-sm font-mono text-slate-900 bg-white border border-slate-200 rounded px-3 py-1.5 flex-1">{{ showPasswordValue ? userPassword : '••••••••••••' }}</div>
               <BaseButton v-if="!showPasswordValue" variant="secondary" size="sm" @click="handleViewPassword" :loading="loadingPassword"><Eye class="w-4 h-4 mr-1" /> View</BaseButton>
@@ -354,21 +354,21 @@
       </div>
 
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div><div class="text-xs text-slate-500">Router</div><div class="text-sm text-slate-900">{{ selectedUser?.router?.name || 'N/A' }}</div></div>
-        <div><div class="text-xs text-slate-500">Package</div><div class="text-sm text-slate-900">{{ selectedUser?.package?.name || 'N/A' }}</div><div class="text-xs text-slate-500">{{ formatPackageSpeed(selectedUser?.package) }}</div></div>
-        <div><div class="text-xs text-slate-500">Rate Limit</div><div class="text-sm text-slate-900">{{ selectedUser?.rate_limit || 'Not set' }}</div></div>
-        <div><div class="text-xs text-slate-500">Simultaneous Sessions</div><div class="text-sm text-slate-900">{{ selectedUser?.simultaneous_use || 1 }}</div></div>
+        <div><div class="text-xs text-slate-500 dark:text-slate-400">Router</div><div class="text-sm text-slate-900">{{ selectedUser?.router?.name || 'N/A' }}</div></div>
+        <div><div class="text-xs text-slate-500 dark:text-slate-400">Package</div><div class="text-sm text-slate-900">{{ selectedUser?.package?.name || 'N/A' }}</div><div class="text-xs text-slate-500 dark:text-slate-400">{{ formatPackageSpeed(selectedUser?.package) }}</div></div>
+        <div><div class="text-xs text-slate-500 dark:text-slate-400">Rate Limit</div><div class="text-sm text-slate-900">{{ selectedUser?.rate_limit || 'Not set' }}</div></div>
+        <div><div class="text-xs text-slate-500 dark:text-slate-400">Simultaneous Sessions</div><div class="text-sm text-slate-900">{{ selectedUser?.simultaneous_use || 1 }}</div></div>
       </div>
 
       <div class="bg-amber-50 rounded-lg p-4">
         <h4 class="text-sm font-semibold text-slate-700 mb-3">Subscription & Payment</h4>
         <div class="grid grid-cols-2 gap-4">
-          <div><div class="text-xs text-slate-500">Expiry Date</div><div class="text-sm text-slate-900">{{ formatDate(selectedUser?.expires_at) }}</div></div>
-          <div><div class="text-xs text-slate-500">Days to Expiry</div><div :class="['text-sm font-semibold', getDaysToExpiryClass(selectedUser?.days_to_expiry)]">{{ formatDaysToExpiry(selectedUser?.days_to_expiry) }}</div></div>
-          <div><div class="text-xs text-slate-500">Payment Status</div><div class="mt-1"><EntityStatusBadge :status="selectedUser?.payment_status || 'unpaid'" size="sm" /></div></div>
-          <div><div class="text-xs text-slate-500">Last Payment</div><div class="text-sm text-slate-900">{{ formatDate(selectedUser?.last_payment_date) || 'Never' }}</div></div>
-          <div><div class="text-xs text-slate-500">Next Payment Due</div><div class="text-sm text-slate-900">{{ formatDate(selectedUser?.next_payment_due) }}</div></div>
-          <div><div class="text-xs text-slate-500">Amount Due</div><div class="text-sm font-semibold text-slate-900">KES {{ selectedUser?.amount_due || 0 }}</div></div>
+          <div><div class="text-xs text-slate-500 dark:text-slate-400">Expiry Date</div><div class="text-sm text-slate-900">{{ formatDate(selectedUser?.expires_at) }}</div></div>
+          <div><div class="text-xs text-slate-500 dark:text-slate-400">Days to Expiry</div><div :class="['text-sm font-semibold', getDaysToExpiryClass(selectedUser?.days_to_expiry)]">{{ formatDaysToExpiry(selectedUser?.days_to_expiry) }}</div></div>
+          <div><div class="text-xs text-slate-500 dark:text-slate-400">Payment Status</div><div class="mt-1"><EntityStatusBadge :status="selectedUser?.payment_status || 'unpaid'" size="sm" /></div></div>
+          <div><div class="text-xs text-slate-500 dark:text-slate-400">Last Payment</div><div class="text-sm text-slate-900">{{ formatDate(selectedUser?.last_payment_date) || 'Never' }}</div></div>
+          <div><div class="text-xs text-slate-500 dark:text-slate-400">Next Payment Due</div><div class="text-sm text-slate-900">{{ formatDate(selectedUser?.next_payment_due) }}</div></div>
+          <div><div class="text-xs text-slate-500 dark:text-slate-400">Amount Due</div><div class="text-sm font-semibold text-slate-900 dark:text-slate-100">KES {{ selectedUser?.amount_due || 0 }}</div></div>
         </div>
       </div>
     </div>
@@ -376,7 +376,7 @@
       <div class="flex gap-3">
         <button
           @click="showUserDetailsModal = false"
-          class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+          class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-600"
         >
           Close
         </button>
@@ -762,8 +762,11 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
-::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+/* Scrollbar — no Tailwind equivalent for ::-webkit-scrollbar pseudo-elements */
+::-webkit-scrollbar        { width: 8px; height: 8px; }
+::-webkit-scrollbar-track  { background: #f1f5f9; border-radius: 4px; }
+::-webkit-scrollbar-thumb  { background: #cbd5e1; border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+:global(.dark) ::-webkit-scrollbar-track { background: #1e293b; }
+:global(.dark) ::-webkit-scrollbar-thumb { background: #475569; }
 </style>

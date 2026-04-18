@@ -4,17 +4,17 @@
     title="User Details"
     subtitle="View user account information"
     icon="User"
-    width="480px"
+    width="50%"
     @close="handleClose"
   >
     <div v-if="user" class="space-y-6">
       <!-- User Header -->
-      <div class="flex items-center gap-4 pb-4 border-b border-slate-200">
+      <div class="flex items-center gap-4 pb-4 border-b border-slate-200 dark:border-slate-700">
         <div class="w-16 h-16 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-full flex items-center justify-center text-white text-2xl font-semibold">
           {{ getUserInitials(user) }}
         </div>
         <div class="flex-1">
-          <h3 class="text-lg font-semibold text-slate-900">{{ user.name || user.username }}</h3>
+          <h3 class="text-lg font-semibold text-slate-900 dark:text-slate-100">{{ user.name || user.username }}</h3>
           <div class="flex items-center gap-2 mt-1">
             <BaseBadge :variant="getStatusVariant(user.status)" :dot="user.status === 'active'" :pulse="user.status === 'active'">
               {{ user.status || 'inactive' }}
@@ -29,27 +29,27 @@
       <!-- User Information -->
       <div class="grid grid-cols-2 gap-4">
         <div>
-          <label class="text-xs font-medium text-slate-500 uppercase">Username</label>
+          <label class="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase">Username</label>
           <p class="text-sm text-slate-900 mt-1">{{ user.username || 'N/A' }}</p>
         </div>
         <div>
-          <label class="text-xs font-medium text-slate-500 uppercase">User ID</label>
+          <label class="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase">User ID</label>
           <p class="text-sm text-slate-900 mt-1">{{ user.id }}</p>
         </div>
         <div>
-          <label class="text-xs font-medium text-slate-500 uppercase">Email</label>
+          <label class="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase">Email</label>
           <p class="text-sm text-slate-900 mt-1">{{ user.email || 'Not provided' }}</p>
         </div>
         <div>
-          <label class="text-xs font-medium text-slate-500 uppercase">Phone</label>
+          <label class="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase">Phone</label>
           <p class="text-sm text-slate-900 mt-1">{{ user.phone || 'Not provided' }}</p>
         </div>
         <div>
-          <label class="text-xs font-medium text-slate-500 uppercase">Package</label>
+          <label class="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase">Package</label>
           <p class="text-sm text-slate-900 mt-1">{{ user.package?.name || 'No package assigned' }}</p>
         </div>
         <div>
-          <label class="text-xs font-medium text-slate-500 uppercase">Created</label>
+          <label class="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase">Created</label>
           <p class="text-sm text-slate-900 mt-1">{{ formatDate(user.created_at) }}</p>
         </div>
       </div>
@@ -59,19 +59,19 @@
         <h4 class="text-sm font-semibold text-slate-900 mb-3">Current Session</h4>
         <div class="grid grid-cols-2 gap-4">
           <div>
-            <label class="text-xs font-medium text-slate-500 uppercase">Session Start</label>
+            <label class="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase">Session Start</label>
             <p class="text-sm text-slate-900 mt-1">{{ formatDateTime(user.session.start_time) }}</p>
           </div>
           <div>
-            <label class="text-xs font-medium text-slate-500 uppercase">Duration</label>
+            <label class="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase">Duration</label>
             <p class="text-sm text-slate-900 mt-1">{{ formatDuration(user.session.duration) }}</p>
           </div>
           <div>
-            <label class="text-xs font-medium text-slate-500 uppercase">Data Used</label>
+            <label class="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase">Data Used</label>
             <p class="text-sm text-slate-900 mt-1">{{ formatBytes(user.session.data_used) }}</p>
           </div>
           <div>
-            <label class="text-xs font-medium text-slate-500 uppercase">IP Address</label>
+            <label class="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase">IP Address</label>
             <p class="text-sm text-slate-900 mt-1">{{ user.session.ip_address || 'N/A' }}</p>
           </div>
         </div>
@@ -107,7 +107,7 @@
       <div class="flex gap-3">
         <button
           @click="handleClose"
-          class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+          class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-600"
         >
           Close
         </button>

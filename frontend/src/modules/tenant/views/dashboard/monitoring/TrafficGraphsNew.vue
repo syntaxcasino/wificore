@@ -54,12 +54,12 @@
         <!-- KPI Cards Grid -->
         <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
           <!-- Traffic Card -->
-          <div class="bg-white rounded-lg border border-slate-200 p-4">
+          <div class="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 p-4">
             <div class="flex items-center justify-between mb-2">
               <span class="text-xs text-slate-500 uppercase tracking-wider">Current Traffic</span>
               <Activity class="w-4 h-4 text-blue-500" />
             </div>
-            <div class="text-2xl font-bold text-slate-900">{{ formatSpeed(computedStats.current) }}</div>
+            <div class="text-2xl font-bold text-slate-900 dark:text-slate-100">{{ formatSpeed(computedStats.current) }}</div>
             <div class="flex items-center gap-2 mt-1 text-xs">
               <span class="text-green-600">↓ {{ formatSpeed(computedStats.download) }}</span>
               <span class="text-purple-600">↑ {{ formatSpeed(computedStats.upload) }}</span>
@@ -67,37 +67,37 @@
           </div>
 
           <!-- Active Users Card -->
-          <div class="bg-white rounded-lg border border-slate-200 p-4">
+          <div class="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 p-4">
             <div class="flex items-center justify-between mb-2">
               <span class="text-xs text-slate-500 uppercase tracking-wider">Active Users</span>
               <Users class="w-4 h-4 text-emerald-500" />
             </div>
-            <div class="text-2xl font-bold text-slate-900">{{ usageMetrics.activeUsers.toLocaleString() }}</div>
-            <div class="text-xs text-slate-500 mt-1">Peak: {{ usageMetrics.peakConcurrent.toLocaleString() }}</div>
+            <div class="text-2xl font-bold text-slate-900 dark:text-slate-100">{{ usageMetrics.activeUsers.toLocaleString() }}</div>
+            <div class="text-xs text-slate-500 dark:text-slate-400 mt-1">Peak: {{ usageMetrics.peakConcurrent.toLocaleString() }}</div>
           </div>
 
           <!-- Total Data Card -->
-          <div class="bg-white rounded-lg border border-slate-200 p-4">
+          <div class="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 p-4">
             <div class="flex items-center justify-between mb-2">
               <span class="text-xs text-slate-500 uppercase tracking-wider">Total Data</span>
               <Database class="w-4 h-4 text-amber-500" />
             </div>
-            <div class="text-2xl font-bold text-slate-900">{{ formatBytes(usageMetrics.totalDataConsumed) }}</div>
-            <div class="text-xs text-slate-500 mt-1">Across {{ usageMetrics.totalSessions }} sessions</div>
+            <div class="text-2xl font-bold text-slate-900 dark:text-slate-100">{{ formatBytes(usageMetrics.totalDataConsumed) }}</div>
+            <div class="text-xs text-slate-500 dark:text-slate-400 mt-1">Across {{ usageMetrics.totalSessions }} sessions</div>
           </div>
 
           <!-- Revenue Card -->
-          <div class="bg-white rounded-lg border border-slate-200 p-4">
+          <div class="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 p-4">
             <div class="flex items-center justify-between mb-2">
               <span class="text-xs text-slate-500 uppercase tracking-wider">Revenue</span>
               <DollarSign class="w-4 h-4 text-purple-500" />
             </div>
-            <div class="text-2xl font-bold text-slate-900">₱{{ (revenueMetrics.totalRevenue / 1000).toFixed(1) }}k</div>
-            <div class="text-xs text-slate-500 mt-1">₱{{ revenueMetrics.revenuePerUser.toFixed(0) }}/user</div>
+            <div class="text-2xl font-bold text-slate-900 dark:text-slate-100">₱{{ (revenueMetrics.totalRevenue / 1000).toFixed(1) }}k</div>
+            <div class="text-xs text-slate-500 dark:text-slate-400 mt-1">₱{{ revenueMetrics.revenuePerUser.toFixed(0) }}/user</div>
           </div>
 
           <!-- Performance Card -->
-          <div class="bg-white rounded-lg border border-slate-200 p-4">
+          <div class="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 p-4">
             <div class="flex items-center justify-between mb-2">
               <span class="text-xs text-slate-500 uppercase tracking-wider">Latency</span>
               <Gauge class="w-4 h-4 text-cyan-500" />
@@ -111,7 +111,7 @@
           </div>
 
           <!-- System Health Card -->
-          <div class="bg-white rounded-lg border border-slate-200 p-4">
+          <div class="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 p-4">
             <div class="flex items-center justify-between mb-2">
               <span class="text-xs text-slate-500 uppercase tracking-wider">System Health</span>
               <Server class="w-4 h-4 text-indigo-500" />
@@ -138,11 +138,11 @@
             <div class="flex items-center justify-center gap-6 mt-4">
               <div class="flex items-center gap-2">
                 <div class="w-4 h-4 bg-green-500 rounded"></div>
-                <span class="text-sm text-slate-600">Download</span>
+                <span class="text-sm text-slate-600 dark:text-slate-400">Download</span>
               </div>
               <div class="flex items-center gap-2">
                 <div class="w-4 h-4 bg-purple-500 rounded"></div>
-                <span class="text-sm text-slate-600">Upload</span>
+                <span class="text-sm text-slate-600 dark:text-slate-400">Upload</span>
               </div>
             </div>
           </div>
@@ -158,7 +158,7 @@
                     <div class="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-full flex items-center justify-center text-white text-xs font-semibold">
                       {{ user.username.slice(0, 2).toUpperCase() }}
                     </div>
-                    <span class="text-sm font-medium text-slate-900">{{ user.username }}</span>
+                    <span class="text-sm font-medium text-slate-900 dark:text-slate-100">{{ user.username }}</span>
                   </div>
                   <span class="text-sm font-bold text-blue-600">{{ formatBytes(user.bandwidth) }}/s</span>
                 </div>
@@ -172,8 +172,8 @@
               <div class="space-y-4">
                 <div v-for="router in displayedRouters" :key="router.id">
                   <div class="flex items-center justify-between mb-2">
-                    <span class="text-sm font-medium text-slate-700">{{ router.name }}</span>
-                    <span class="text-sm font-bold text-slate-900">{{ formatBytes(router.traffic) }}/s</span>
+                    <span class="text-sm font-medium text-slate-700 dark:text-slate-300">{{ router.name }}</span>
+                    <span class="text-sm font-bold text-slate-900 dark:text-slate-100">{{ formatBytes(router.traffic) }}/s</span>
                   </div>
                   <div class="w-full bg-slate-200 rounded-full h-2">
                     <div class="h-2 rounded-full bg-gradient-to-r from-blue-500 to-indigo-500 transition-all" :style="{ width: router.percentage + '%' }"></div>
@@ -189,10 +189,9 @@
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
-import axios from 'axios'
-import { 
-  RefreshCw, Download, Activity, Users, Database, DollarSign, 
-  Gauge, Server 
+import {
+  RefreshCw, Download, Activity, Users, Database, DollarSign,
+  Gauge, Server
 } from 'lucide-vue-next'
 import { useTrafficMonitoring } from '@/modules/tenant/composables/useTrafficMonitoring'
 import DataViewContainer from '@/modules/common/components/base/DataViewContainer.vue'
@@ -216,7 +215,11 @@ const {
   alertThresholds,
   stats,
   alertSummary,
+  routers,
+  routerTraffic,
   fetchAllMetrics,
+  fetchRouters,
+  fetchRouterTraffic,
   acknowledgeAlert,
   updateThresholds,
   formatBytes: formatBytesUtil,
@@ -246,8 +249,6 @@ const localStats = ref({
 
 const trafficData = ref([])
 const topConsumers = ref([])
-const routers = ref([])
-const routerTraffic = ref({})
 
 // Computed stats for header (combine local traffic + monitoring composable)
 const containerStats = computed(() => [
@@ -312,7 +313,7 @@ const refreshAllData = async () => {
   refreshing.value = true
   await Promise.allSettled([
     loadTraffic(),
-    loadRouters(),
+    fetchRouters(),
     fetchAllMetrics()
   ])
   refreshing.value = false
@@ -336,149 +337,30 @@ const exportData = () => {
   URL.revokeObjectURL(url)
 }
 
-const parseVmSeriesValues = (vmResponse) => {
-  const result = vmResponse?.data?.result ?? vmResponse?.result
-  if (!Array.isArray(result) || !result.length) return []
-
-  const values = result[0]?.values
-  if (!Array.isArray(values)) return []
-
-  return values
-    .map((pair) => {
-      if (!Array.isArray(pair) || pair.length < 2) return null
-      const ts = Number(pair[0])
-      const v = Number(pair[1])
-      if (!Number.isFinite(ts) || !Number.isFinite(v)) return null
-      return { ts, v }
-    })
-    .filter(Boolean)
-}
-
-const parseVmMatrixByRouter = (vmResponse) => {
-  const result = vmResponse?.data?.result ?? vmResponse?.result
-  if (!Array.isArray(result) || !result.length) return {}
-
-  const out = {}
-  for (const series of result) {
-    const rid = String(series?.metric?.router_id ?? '')
-    if (!rid) continue
-    const values = Array.isArray(series?.values) ? series.values : []
-    const points = values
-      .map((pair) => {
-        if (!Array.isArray(pair) || pair.length < 2) return null
-        const ts = Number(pair[0])
-        const v = Number(pair[1])
-        if (!Number.isFinite(ts) || !Number.isFinite(v)) return null
-        return { ts, v }
-      })
-      .filter(Boolean)
-    out[rid] = points
-  }
-  return out
-}
-
-const getLastValue = (points) => {
-  if (!Array.isArray(points) || points.length === 0) return 0
-  return points[points.length - 1]?.v ?? 0
-}
-
-const loadRouters = async () => {
-  try {
-    const response = await axios.get('/routers')
-    const fetched = Array.isArray(response.data) ? response.data : (response.data?.data || [])
-    routers.value = Array.isArray(fetched) ? fetched : []
-  } catch (err) {
-    console.warn('Failed to load routers:', err.message)
-    routers.value = []
-  }
-}
-
 const loadTraffic = async () => {
   const range = filters.value.timeRange
   const routerId = String(filters.value.router ?? '')
-
-  const url = routerId
-    ? `/routers/${routerId}/metrics/traffic`
-    : '/routers/metrics/traffic'
-
-  try {
-    const response = await axios.get(url, {
-      params: {
-        range,
-        step: '30s',
-      },
-    })
-
-    const data = response.data || {}
-    if (!data.success) {
-      return
-    }
-
-    if (routerId) {
-      const inSeries = parseVmSeriesValues(data.in)
-      const outSeries = parseVmSeriesValues(data.out)
-      const maxLen = Math.max(inSeries.length, outSeries.length)
-      const points = []
-
-      for (let i = 0; i < maxLen; i++) {
-        points.push({
-          download: inSeries[i]?.v ?? 0,
-          upload: outSeries[i]?.v ?? 0,
-        })
-      }
-
-      trafficData.value = points.slice(-60)
-      const currentIn = getLastValue(inSeries)
-      const currentOut = getLastValue(outSeries)
-      localStats.value.download = currentIn
-      localStats.value.upload = currentOut
-      localStats.value.current = currentIn + currentOut
-      localStats.value.peak = points.reduce((m, p) => Math.max(m, (p.download || 0) + (p.upload || 0)), 0)
-
-      routerTraffic.value = {
-        [routerId]: currentIn + currentOut,
-      }
-      return
-    }
-
-    const totalIn = parseVmSeriesValues(data.total_in)
-    const totalOut = parseVmSeriesValues(data.total_out)
-    const maxLen = Math.max(totalIn.length, totalOut.length)
-    const points = []
-
-    for (let i = 0; i < maxLen; i++) {
-      points.push({
-        download: totalIn[i]?.v ?? 0,
-        upload: totalOut[i]?.v ?? 0,
-      })
-    }
-
-    trafficData.value = points.slice(-60)
-    const currentIn = getLastValue(totalIn)
-    const currentOut = getLastValue(totalOut)
+  const result = await fetchRouterTraffic(routerId, range)
+  if (!result) return
+  trafficData.value = result.points
+  if (result.currentIn !== undefined && result.currentOut !== undefined) {
+    localStats.value.download = result.currentIn
+    localStats.value.upload = result.currentOut
+    localStats.value.current = result.currentIn + result.currentOut
+    localStats.value.peak = result.points.reduce((m, p) => Math.max(m, (p.download || 0) + (p.upload || 0)), 0)
+  } else {
+    const currentIn = result.points.length ? result.points[result.points.length - 1].download : 0
+    const currentOut = result.points.length ? result.points[result.points.length - 1].upload : 0
     localStats.value.download = currentIn
     localStats.value.upload = currentOut
     localStats.value.current = currentIn + currentOut
-    localStats.value.peak = points.reduce((m, p) => Math.max(m, (p.download || 0) + (p.upload || 0)), 0)
-
-    const byRouterIn = parseVmMatrixByRouter(data.by_router_in)
-    const byRouterOut = parseVmMatrixByRouter(data.by_router_out)
-    const totals = {}
-
-    for (const rid of Object.keys({ ...byRouterIn, ...byRouterOut })) {
-      const rin = getLastValue(byRouterIn[rid])
-      const rout = getLastValue(byRouterOut[rid])
-      totals[rid] = rin + rout
-    }
-    routerTraffic.value = totals
-  } catch (err) {
-    console.warn('Failed to load traffic:', err.message, err.response?.data)
+    localStats.value.peak = result.points.reduce((m, p) => Math.max(m, (p.download || 0) + (p.upload || 0)), 0)
   }
 }
 
 onMounted(async () => {
   await Promise.allSettled([
-    loadRouters(),
+    fetchRouters(),
     loadTraffic(),
     fetchAllMetrics()
   ])

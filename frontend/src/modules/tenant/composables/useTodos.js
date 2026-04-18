@@ -348,8 +348,20 @@ export function useTodos() {
     window.removeEventListener('todo-deleted', handleTodoDeleted)
   }
 
+  // Users for todo assignment
+  const users = ref([])
+  const fetchUsers = async () => {
+    try {
+      const response = await axios.get('/users')
+      users.value = response.data?.users || response.data || []
+    } catch (err) {
+      console.error('Failed to fetch users:', err)
+    }
+  }
+
   return {
     // Reactive data
+    users,
     todos,
     stats,
     pendingTodos,
@@ -385,6 +397,9 @@ export function useTodos() {
 
     // WebSocket setup
     setupWebSocketListeners,
-    cleanupWebSocketListeners
+    cleanupWebSocketListeners,
+
+    // Options helpers
+    fetchUsers
   }
 }

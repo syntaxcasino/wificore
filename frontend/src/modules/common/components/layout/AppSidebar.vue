@@ -1,14 +1,10 @@
 <template>
   <aside
     class="fixed left-0 w-64 bg-gradient-to-b from-gray-900 via-gray-900 to-gray-950 text-gray-100 flex flex-col justify-between border-r border-gray-800/50 shadow-2xl transition-all duration-300 ease-in-out"
-    :class="{
-      'sidebar-open': isSidebarOpen,
-      'sidebar-closed': !isSidebarOpen,
-      'sidebar-mobile': isMobile,
-      'sidebar-desktop': !isMobile,
-      'top-0 h-screen': isMobile,
-      'top-16 h-[calc(100vh-4rem)]': !isMobile,
-    }"
+    :class="[
+      isSidebarOpen ? 'translate-x-0' : '-translate-x-full',
+      isMobile ? 'z-[100] top-0 h-screen shadow-[2px_0_10px_rgba(0,0,0,0.3)]' : 'z-[60] top-16 h-[calc(100vh-4rem)]',
+    ]"
   >
     <!-- Mobile header with close button -->
     <div v-if="isMobile" class="flex items-center justify-between px-4 py-3 border-b border-gray-800/50">
@@ -649,35 +645,3 @@ const isOnSystemAdminRoute = computed(() => route.path.startsWith('/system-admin
 const isSystemAdmin = computed(() => authStore.user?.role === 'system_admin')
 </script>
 
-<style scoped>
-/* Desktop sidebar - always visible when open */
-.sidebar-desktop.sidebar-open {
-  transform: translateX(0);
-  z-index: 60;
-}
-
-.sidebar-desktop.sidebar-closed {
-  transform: translateX(-100%);
-  z-index: 60;
-}
-
-/* Mobile sidebar - slides over content */
-.sidebar-mobile {
-  z-index: 100;
-}
-
-.sidebar-mobile.sidebar-open {
-  transform: translateX(0);
-}
-
-.sidebar-mobile.sidebar-closed {
-  transform: translateX(-100%);
-}
-
-/* Mobile responsive */
-@media (max-width: 768px) {
-  aside {
-    box-shadow: 2px 0 10px rgba(0, 0, 0, 0.3);
-  }
-}
-</style>

@@ -16,33 +16,33 @@
       <div class="space-y-6">
         <BaseCard>
           <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
-            <h3 class="text-sm font-semibold text-slate-900">Regional Settings</h3>
+            <h3 class="text-sm font-semibold text-slate-900 dark:text-slate-100">Regional Settings</h3>
             <button @click="openEditOverlay" class="text-sm text-blue-600 hover:text-blue-700 font-medium">Edit</button>
           </div>
           <div class="p-6">
             <div class="grid grid-cols-2 md:grid-cols-3 gap-x-8 gap-y-5">
               <div>
-                <div class="text-xs text-slate-500">Timezone</div>
+                <div class="text-xs text-slate-500 dark:text-slate-400">Timezone</div>
                 <div class="text-sm font-medium text-slate-900 mt-0.5">{{ formData.timezone }}</div>
               </div>
               <div>
-                <div class="text-xs text-slate-500">Language</div>
+                <div class="text-xs text-slate-500 dark:text-slate-400">Language</div>
                 <div class="text-sm font-medium text-slate-900 mt-0.5">{{ languageLabel }}</div>
               </div>
               <div>
-                <div class="text-xs text-slate-500">Currency</div>
+                <div class="text-xs text-slate-500 dark:text-slate-400">Currency</div>
                 <div class="text-sm font-medium text-slate-900 mt-0.5">{{ formData.currency }}</div>
               </div>
               <div>
-                <div class="text-xs text-slate-500">Date Format</div>
+                <div class="text-xs text-slate-500 dark:text-slate-400">Date Format</div>
                 <div class="text-sm font-medium text-slate-900 mt-0.5">{{ formData.date_format }}</div>
               </div>
               <div>
-                <div class="text-xs text-slate-500">Time Format</div>
+                <div class="text-xs text-slate-500 dark:text-slate-400">Time Format</div>
                 <div class="text-sm font-medium text-slate-900 mt-0.5">{{ formData.time_format === '24' ? '24 Hour' : '12 Hour' }}</div>
               </div>
               <div>
-                <div class="text-xs text-slate-500">First Day of Week</div>
+                <div class="text-xs text-slate-500 dark:text-slate-400">First Day of Week</div>
                 <div class="text-sm font-medium text-slate-900 mt-0.5">{{ formData.first_day_of_week === '0' ? 'Sunday' : 'Monday' }}</div>
               </div>
             </div>
@@ -52,11 +52,11 @@
     </PageContent>
 
     <!-- Edit Overlay -->
-    <SlideOverlay v-model="showEditOverlay" title="Edit Timezone & Locale" subtitle="Update regional display settings" icon="Globe" width="480px">
+    <SlideOverlay v-model="showEditOverlay" title="Edit Timezone & Locale" subtitle="Update regional display settings" icon="Globe" width="60%">
       <div class="space-y-4">
         <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Timezone *</label>
-          <select v-model="editData.timezone" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Timezone *</label>
+          <select v-model="editData.timezone" class="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-sm bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-blue-500">
             <option value="Africa/Nairobi">Africa/Nairobi (EAT)</option>
             <option value="Africa/Lagos">Africa/Lagos (WAT)</option>
             <option value="Africa/Johannesburg">Africa/Johannesburg (SAST)</option>
@@ -69,16 +69,16 @@
         </div>
 
         <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Language *</label>
-          <select v-model="editData.language" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Language *</label>
+          <select v-model="editData.language" class="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-sm bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-blue-500">
             <option value="en">English</option>
             <option value="sw">Swahili</option>
           </select>
         </div>
 
         <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Currency *</label>
-          <select v-model="editData.currency" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Currency *</label>
+          <select v-model="editData.currency" class="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-sm bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-blue-500">
             <option value="KES">KES - Kenyan Shilling</option>
             <option value="USD">USD - US Dollar</option>
             <option value="EUR">EUR - Euro</option>
@@ -86,8 +86,8 @@
         </div>
 
         <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Date Format *</label>
-          <select v-model="editData.date_format" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Date Format *</label>
+          <select v-model="editData.date_format" class="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-sm bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-blue-500">
             <option value="DD/MM/YYYY">DD/MM/YYYY</option>
             <option value="MM/DD/YYYY">MM/DD/YYYY</option>
             <option value="YYYY-MM-DD">YYYY-MM-DD</option>
@@ -95,16 +95,16 @@
         </div>
 
         <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Time Format *</label>
-          <select v-model="editData.time_format" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Time Format *</label>
+          <select v-model="editData.time_format" class="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-sm bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-blue-500">
             <option value="12">12 Hour</option>
             <option value="24">24 Hour</option>
           </select>
         </div>
 
         <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">First Day of Week</label>
-          <select v-model="editData.first_day_of_week" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">First Day of Week</label>
+          <select v-model="editData.first_day_of_week" class="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-sm bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-blue-500">
             <option value="0">Sunday</option>
             <option value="1">Monday</option>
           </select>
@@ -117,7 +117,7 @@
         <div class="flex gap-3">
           <button
             @click="showEditOverlay = false"
-            class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+            class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-600"
           >
             Cancel
           </button>
@@ -137,20 +137,19 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { Globe, Save, Pencil, RefreshCw } from 'lucide-vue-next'
-import axios from 'axios'
 import PageContainer from '@/modules/common/components/layout/templates/PageContainer.vue'
 import PageHeader from '@/modules/common/components/layout/templates/PageHeader.vue'
 import PageContent from '@/modules/common/components/layout/templates/PageContent.vue'
 import BaseButton from '@/modules/common/components/base/BaseButton.vue'
 import BaseCard from '@/modules/common/components/base/BaseCard.vue'
 import SlideOverlay from '@/modules/common/components/base/SlideOverlay.vue'
+import { useSettings } from '@/modules/tenant/composables/useSettings.js'
 
-const breadcrumbs = [{ label: 'Dashboard', to: '/dashboard' }, { label: 'Settings', to: '/dashboard/settings' }, { label: 'Timezone & Locale' }]
-
-const saving = ref(false)
-const loading = ref(false)
-const error = ref('')
-const showEditOverlay = ref(false)
+const breadcrumbs = [
+  { label: 'Dashboard', to: '/dashboard' },
+  { label: 'Settings', to: '/dashboard/settings' },
+  { label: 'Timezone & Locale' }
+]
 
 const defaults = {
   timezone: 'Africa/Nairobi',
@@ -161,8 +160,13 @@ const defaults = {
   first_day_of_week: '1'
 }
 
-const formData = ref({ ...defaults })
+const showEditOverlay = ref(false)
 const editData = ref({ ...defaults })
+
+const {
+  loading, saving, error, formData,
+  fetchSettings, saveSettings
+} = useSettings('/settings/locale', defaults)
 
 const languageLabel = computed(() => formData.value.language === 'en' ? 'English' : 'Swahili')
 
@@ -172,34 +176,13 @@ const openEditOverlay = () => {
   showEditOverlay.value = true
 }
 
-const fetchSettings = async () => {
-  loading.value = true
-  try {
-    const response = await axios.get('/settings/locale')
-    const data = response.data?.settings || response.data?.data || response.data || {}
-    formData.value = { ...defaults, ...data }
-  } catch (err) {
-    console.error('fetchLocaleSettings error:', err)
-  } finally {
-    loading.value = false
-  }
-}
-
-const saveSettings = async () => {
-  saving.value = true
-  error.value = ''
-  try {
-    await axios.post('/settings/locale', editData.value)
+const handleSave = async () => {
+  const result = await saveSettings(editData.value)
+  if (result.success) {
     formData.value = { ...editData.value }
     showEditOverlay.value = false
-  } catch (err) {
-    error.value = err.response?.data?.message || 'Failed to save settings'
-  } finally {
-    saving.value = false
   }
 }
 
-onMounted(() => {
-  fetchSettings()
-})
+onMounted(fetchSettings)
 </script>

@@ -1,25 +1,34 @@
 <template>
-  <div class="dashboard-layout">
+  <div class="flex min-h-screen bg-[#f5f7fa] dark:bg-slate-950 relative transition-colors duration-200">
     <!-- Mobile overlay -->
-    <div 
-      v-if="isMobile && isSidebarOpen" 
-      class="mobile-overlay"
+    <div
+      v-if="isMobile && isSidebarOpen"
+      class="fixed inset-0 bg-black/50 z-[90] animate-[fadeIn_0.3s_ease-in-out]"
       @click="closeSidebar"
     ></div>
 
     <component
       :is="isSystemAdmin ? AdminSidebar : AppSidebar"
-      :isSidebarOpen="isSidebarOpen" 
+      :isSidebarOpen="isSidebarOpen"
       :isMobile="isMobile"
       @toggle-sidebar="toggleSidebar"
-      @close-sidebar="closeSidebar" 
+      @close-sidebar="closeSidebar"
     />
 
-    <div class="main-content" :class="{ 'sidebar-closed': !isSidebarOpen, 'mobile': isMobile }">
+    <div
+      class="flex flex-col min-h-screen transition-[margin-left,width] duration-300 ease-in-out"
+      :class="[
+        isMobile || !isSidebarOpen
+          ? 'ml-0 w-full'
+          : 'ml-64 w-[calc(100%-16rem)]'
+      ]"
+    >
       <AppHeader @toggle-sidebar="toggleSidebar" />
 
-      <div class="content-area">
-        <!-- Router view for nested routes -->
+      <div
+        class="flex-1 flex flex-col min-h-0 overflow-y-auto overflow-x-hidden relative transition-colors duration-200 dark:bg-slate-950"
+        :class="isMobile ? 'pt-[66px] sm:pt-[62px]' : 'pt-20'"
+      >
         <router-view />
       </div>
     </div>
@@ -72,86 +81,3 @@ onUnmounted(() => {
 })
 </script>
 
-<style scoped>
-.dashboard-layout {
-  display: flex;
-  min-height: 100vh;
-  background-color: #f5f7fa;
-  position: relative;
-}
-
-/* Mobile overlay */
-.mobile-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: rgba(0, 0, 0, 0.5);
-  z-index: 90;
-  animation: fadeIn 0.3s ease-in-out;
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-.main-content {
-  flex: 1;
-  margin-left: 256px; /* Sidebar width (w-64 = 256px) */
-  display: flex;
-  flex-direction: column;
-  min-height: 100vh;
-  transition: margin-left 0.3s ease-in-out;
-  width: calc(100% - 256px);
-}
-
-/* When sidebar is closed, expand content to full width */
-.main-content.sidebar-closed {
-  margin-left: 0;
-  width: 100%;
-}
-
-/* Mobile: always full width */
-.main-content.mobile {
-  margin-left: 0 !important;
-  width: 100% !important;
-}
-
-.content-area {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding: 20px;
-  padding-top: 80px;
-  position: relative;
-}
-
-/* Responsive adjustments */
-@media (max-width: 768px) {
-  .main-content {
-    margin-left: 0 !important;
-    width: 100% !important;
-  }
-
-  .content-area {
-    padding: 10px;
-    padding-top: 66px; /* h-14 (56px) + 10px spacing */
-  }
-}
-
-@media (max-width: 480px) {
-  .content-area {
-    padding: 8px;
-    padding-top: 62px;
-  }
-}
-</style>

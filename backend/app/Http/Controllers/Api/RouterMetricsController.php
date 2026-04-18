@@ -95,20 +95,8 @@ class RouterMetricsController extends Controller
         $range = (string) $request->query('range', '1h');
         $step = (string) $request->query('step', '30s');
 
-        // Check for pre-computed cached data first
-        $cacheKey = "router:{$routerId}:metrics:{$range}";
-        $cached = \Cache::get($cacheKey);
-
-        if ($cached && isset($cached['traffic'])) {
-            return response()->json([
-                'success' => true,
-                'router_id' => $routerId,
-                'cached' => true,
-                'computed_at' => $cached['computed_at'] ?? null,
-                'in' => ['data' => ['result' => [['values' => array_map(fn($p) => [$p['ts'], $p['upload']], $cached['traffic'])]]]],
-                'out' => ['data' => ['result' => [['values' => array_map(fn($p) => [$p['ts'], $p['download']], $cached['traffic'])]]]],
-            ]);
-        }
+        // REMOVED: Metrics caching - always fetch fresh data from VictoriaMetrics
+        // Caching was serving stale data when routers reconnect
 
         $now = time();
         $start = $this->rangeStartFromNow($range, $now);
@@ -215,22 +203,8 @@ class RouterMetricsController extends Controller
         $range = (string) $request->query('range', '1h');
         $step = (string) $request->query('step', '30s');
 
-        // Check for pre-computed cached data first
-        $cacheKey = "router:{$routerId}:metrics:{$range}";
-        $cached = \Cache::get($cacheKey);
-
-        if ($cached && isset($cached['resources'])) {
-            $resources = $cached['resources'];
-            return response()->json([
-                'success' => true,
-                'router_id' => $routerId,
-                'cached' => true,
-                'computed_at' => $cached['computed_at'] ?? null,
-                'cpu' => ['data' => ['result' => [['values' => $resources['cpu'] ?? []]]]],
-                'memory' => ['data' => ['result' => [['values' => $resources['memory'] ?? []]]]],
-                'disk' => ['data' => ['result' => [['values' => $resources['disk'] ?? []]]]],
-            ]);
-        }
+        // REMOVED: Metrics caching - always fetch fresh data from VictoriaMetrics
+        // Caching was serving stale data when routers reconnect
 
         $now = time();
         $start = $this->rangeStartFromNow($range, $now);

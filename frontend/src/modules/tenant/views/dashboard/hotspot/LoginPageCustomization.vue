@@ -1,6 +1,7 @@
 <script setup>
 import { ref, reactive } from 'vue'
 import { Plus, Palette, Check, Eye, Edit2, Trash2 } from 'lucide-vue-next'
+import { useConfirmStore } from '@/stores/confirm'
 import DataViewContainer from '@/modules/common/components/base/DataViewContainer.vue'
 import SlideOverlay from '@/modules/common/components/base/SlideOverlay.vue'
 import BaseButton from '@/modules/common/components/base/BaseButton.vue'
@@ -8,6 +9,8 @@ import BaseCard from '@/modules/common/components/base/BaseCard.vue'
 import BaseInput from '@/modules/common/components/base/BaseInput.vue'
 import BaseTextarea from '@/modules/common/components/base/BaseTextarea.vue'
 import BaseBadge from '@/modules/common/components/base/BaseBadge.vue'
+
+const confirmStore = useConfirmStore()
 
 const breadcrumbs = [
   { label: 'Dashboard', to: '/dashboard' },
@@ -78,10 +81,9 @@ const activateTemplate = (id) => {
   templates.value.forEach(t => t.isActive = t.id === id)
 }
 
-const deleteTemplate = (id) => {
-  if (confirm('Delete this template?')) {
-    templates.value = templates.value.filter(t => t.id !== id)
-  }
+const deleteTemplate = async (id) => {
+  const confirmed = await confirmStore.open({ title: 'Delete Template', message: 'Delete this template?', confirmText: 'Delete', cancelText: 'Cancel', variant: 'danger' })
+  if (confirmed) templates.value = templates.value.filter(t => t.id !== id)
 }
 
 const previewTemplate = (template) => {
@@ -94,9 +96,16 @@ const previewTemplate = (template) => {
   <DataViewContainer
     title="Branding Templates"
     subtitle="Manage hotspot login page templates"
-    icon="Palette"
+    color-theme="cyan"
     :breadcrumbs="breadcrumbs"
   >
+    <!-- Icon Slot -->
+    <template #icon>
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 md:h-6 md:w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
+      </svg>
+    </template>
+
     <template #actions>
       <BaseButton @click="openCreateOverlay" variant="primary">
         <Plus class="w-4 h-4 mr-1" />
@@ -149,7 +158,7 @@ const previewTemplate = (template) => {
       </BaseCard>
     </div>
 
-    <SlideOverlay v-model="showCreateOverlay" title="Create Branding Template" width="480px">
+    <SlideOverlay v-model="showCreateOverlay" title="Create Branding Template" width="60%">
       <div class="space-y-6">
         <BaseInput v-model="form.name" label="Template Name" placeholder="e.g., Holiday Theme" required />
         <BaseInput v-model="form.companyName" label="Company Name" placeholder="Your company name" required />
@@ -157,17 +166,17 @@ const previewTemplate = (template) => {
 
         <div class="grid grid-cols-2 gap-4">
           <div>
-            <label class="block text-sm font-medium text-slate-700 mb-1">Primary Color</label>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Primary Color</label>
             <div class="flex items-center space-x-2">
               <input v-model="form.primaryColor" type="color" class="w-10 h-10 rounded-lg border border-slate-300 cursor-pointer" />
-              <span class="text-sm text-slate-600">{{ form.primaryColor }}</span>
+              <span class="text-sm text-slate-600 dark:text-slate-400">{{ form.primaryColor }}</span>
             </div>
           </div>
           <div>
-            <label class="block text-sm font-medium text-slate-700 mb-1">Secondary Color</label>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Secondary Color</label>
             <div class="flex items-center space-x-2">
               <input v-model="form.secondaryColor" type="color" class="w-10 h-10 rounded-lg border border-slate-300 cursor-pointer" />
-              <span class="text-sm text-slate-600">{{ form.secondaryColor }}</span>
+              <span class="text-sm text-slate-600 dark:text-slate-400">{{ form.secondaryColor }}</span>
             </div>
           </div>
         </div>
@@ -190,7 +199,7 @@ const previewTemplate = (template) => {
         <div class="flex gap-3">
           <button
             @click="closeCreateOverlay"
-            class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+            class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-600"
           >
             Cancel
           </button>
@@ -205,7 +214,7 @@ const previewTemplate = (template) => {
       </template>
     </SlideOverlay>
 
-    <SlideOverlay v-model="showPreviewOverlay" title="Preview" width="480px">
+    <SlideOverlay v-model="showPreviewOverlay" title="Preview" width="60%">
       <div v-if="selectedTemplate" class="space-y-4">
         <div 
           class="h-48 rounded-lg flex items-center justify-center"
@@ -221,7 +230,7 @@ const previewTemplate = (template) => {
         <div class="flex gap-3">
           <button
             @click="showPreviewOverlay = false"
-            class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+            class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-600"
           >
             Close
           </button>

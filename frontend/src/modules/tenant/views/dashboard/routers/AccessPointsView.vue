@@ -52,7 +52,7 @@
     <DataSkeleton v-else-if="loading" :count="5" />
 
     <!-- Data Content -->
-    <div v-else-if="filteredAccessPoints?.length" class="flex flex-col h-full px-4 md:px-6 pt-2 pb-2 min-h-0">
+    <div v-else-if="filteredAccessPoints?.length" class="flex flex-col h-full pt-2 pb-2 min-h-0">
       <!-- Mobile Cards -->
       <div class="md:hidden space-y-3 overflow-y-auto flex-1 min-h-0">
         <MobileDataCard
@@ -70,7 +70,7 @@
       <!-- Desktop Table -->
       <div class="hidden md:flex bg-white border-x border-t border-slate-200 flex-col min-h-0 flex-1">
         <!-- Fixed Header -->
-        <div class="bg-slate-50 border-b border-slate-200">
+        <div class="bg-slate-50 dark:bg-slate-700/50 border-b border-slate-200 dark:border-slate-700">
           <table class="w-full">
             <thead>
               <tr>
@@ -88,7 +88,7 @@
         <!-- Scrollable Body -->
         <div class="overflow-y-auto flex-1 min-h-0">
           <table class="w-full">
-            <tbody class="divide-y divide-slate-100">
+            <tbody class="divide-y divide-slate-100 dark:divide-slate-700">
               <tr v-for="ap in paginatedAccessPoints" :key="ap?.id" class="hover:bg-blue-50/50 transition-colors">
                 <td class="px-6 py-4 w-[22%]">
                   <div class="flex items-center gap-2">
@@ -98,8 +98,8 @@
                         {{ ap?.name?.charAt(0).toUpperCase() || '?' }}
                       </div>
                       <div>
-                        <p class="text-sm font-medium text-slate-900">{{ ap?.name || 'Unnamed' }}</p>
-                        <p class="text-xs text-slate-500">{{ ap?.location || 'No Location' }}</p>
+                        <p class="text-sm font-medium text-slate-900 dark:text-slate-100">{{ ap?.name || 'Unnamed' }}</p>
+                        <p class="text-xs text-slate-500 dark:text-slate-400">{{ ap?.location || 'No Location' }}</p>
                       </div>
                     </div>
                   </div>
@@ -114,7 +114,7 @@
                   <EntityStatusBadge :status="ap?.status" size="sm" />
                 </td>
                 <td class="px-6 py-4 w-[12%]">
-                  <p class="text-sm font-medium text-slate-700">{{ ap?.active_users || 0 }}</p>
+                  <p class="text-sm font-medium text-slate-700 dark:text-slate-300">{{ ap?.active_users || 0 }}</p>
                 </td>
                 <td class="px-6 py-4 hidden lg:table-cell w-[12%]">
                   <p class="text-sm text-slate-600 capitalize">{{ ap?.vendor || '—' }}</p>
@@ -191,7 +191,7 @@
 
   <!-- Global Dropdown Menu Portal -->
   <Teleport to="body">
-    <div v-if="activeMenu !== null" data-dropdown-menu :style="menuPosition" class="fixed w-48 bg-white rounded-lg shadow-2xl border border-slate-200 py-1 z-[9999] overflow-hidden">
+    <div v-if="activeMenu !== null" data-dropdown-menu :style="menuPosition" class="fixed w-48 bg-white dark:bg-slate-800 rounded-lg shadow-2xl border border-slate-200 dark:border-slate-700 py-1 z-[9999] overflow-hidden">
       <button v-if="currentAP?.status !== 'online'" @click="handleSync(currentAP)" :disabled="syncingIds.has(activeMenu) || !currentAP" class="flex items-center w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-700 transition-colors disabled:opacity-50">
         <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" :class="{ 'animate-spin': syncingIds.has(activeMenu) }">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -224,7 +224,6 @@
 
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
-import axios from '@/modules/common/services/api/axios'
 import { useAccessPoints } from '@/modules/tenant/composables/useAccessPoints'
 import DataViewContainer from '@/modules/common/components/base/DataViewContainer.vue'
 import DataSkeleton from '@/modules/common/components/base/DataSkeleton.vue'
@@ -242,6 +241,7 @@ const {
   accessPoints,
   onlineAccessPoints,
   offlineAccessPoints,
+  availableRouters,
   loading,
   error,
   fetchAccessPoints,
@@ -252,6 +252,7 @@ const {
   syncAccessPoint,
   fetchAccessPoint,
   searchAccessPoints,
+  fetchAvailableRouters,
   setupWebSocketListeners,
   cleanupWebSocketListeners
 } = useAccessPoints()
@@ -289,22 +290,6 @@ const totalActiveUsers = computed(() =>
   accessPoints.value?.reduce((sum, ap) => sum + (ap?.active_users || 0), 0) ?? 0
 )
 
-// Mock data - should fetch from API
-const availableRouters = ref([])
-
-const fetchRouters = async () => {
-  try {
-    const response = await axios.get('/routers')
-    availableRouters.value = response.data?.data || response.data?.routers || response.data || []
-  } catch (err) {
-    console.error('Failed to fetch routers:', err)
-    // Fallback to mock data
-    availableRouters.value = [
-      { id: 1, name: 'Main Router', ip_address: '192.168.1.1' },
-      { id: 2, name: 'Branch Router', ip_address: '192.168.2.1' },
-    ]
-  }
-}
 
 // Filter and paginate
 const filteredAccessPoints = computed(() => {
@@ -420,7 +405,7 @@ const openCreateModal = () => {
   isEditing.value = false
   editingAP.value = null
   formError.value = ''
-  fetchRouters() // Fetch fresh router list
+  fetchAvailableRouters() // Fetch fresh router list
   showFormOverlay.value = true
 }
 
@@ -429,7 +414,7 @@ const handleEdit = (ap) => {
   if (!ap) return
   isEditing.value = true
   editingAP.value = ap
-  fetchRouters() // Fetch routers for dropdown
+  fetchAvailableRouters() // Fetch routers for dropdown
   showFormOverlay.value = true
 }
 
@@ -541,8 +526,11 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
-::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+/* Scrollbar — no Tailwind equivalent for ::-webkit-scrollbar pseudo-elements */
+::-webkit-scrollbar        { width: 8px; height: 8px; }
+::-webkit-scrollbar-track  { background: #f1f5f9; border-radius: 4px; }
+::-webkit-scrollbar-thumb  { background: #cbd5e1; border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+:global(.dark) ::-webkit-scrollbar-track { background: #1e293b; }
+:global(.dark) ::-webkit-scrollbar-thumb { background: #475569; }
 </style>

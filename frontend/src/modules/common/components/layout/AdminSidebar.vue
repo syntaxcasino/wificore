@@ -1,14 +1,10 @@
 <template>
   <aside
     class="fixed left-0 w-64 bg-gradient-to-b from-gray-900 via-gray-900 to-gray-950 text-gray-100 flex flex-col justify-between border-r border-gray-800/50 shadow-2xl transition-all duration-300 ease-in-out"
-    :class="{
-      'sidebar-open': isSidebarOpen,
-      'sidebar-closed': !isSidebarOpen,
-      'sidebar-mobile': isMobile,
-      'sidebar-desktop': !isMobile,
-      'top-0 h-screen': isMobile,
-      'top-16 h-[calc(100vh-4rem)]': !isMobile,
-    }"
+    :class="[
+      isSidebarOpen ? 'translate-x-0' : '-translate-x-full',
+      isMobile ? 'z-[100] top-0 h-screen shadow-[2px_0_10px_rgba(0,0,0,0.3)]' : 'z-[60] top-16 h-[calc(100vh-4rem)]',
+    ]"
   >
     <!-- Mobile header with close button -->
     <div v-if="isMobile" class="flex items-center justify-between px-4 py-3 border-b border-gray-800/50">
@@ -113,6 +109,21 @@
 
         <!-- Divider -->
         <div class="h-px bg-gray-800/50 my-2"></div>
+        <div class="px-2 py-1 text-[9px] font-bold text-gray-600 uppercase tracking-wider">Tooling</div>
+
+        <!-- Script Preview — /api/system/script-preview -->
+        <router-link
+          to="/system/script-preview"
+          class="w-full flex items-center gap-2.5 py-2 px-3 rounded-md hover:bg-gray-800/60 transition-all duration-150 group"
+          :class="route.path.startsWith('/system/script-preview') ? 'bg-gray-800/80 text-white font-medium' : 'text-gray-300'"
+          @click="isMobile && $emit('close-sidebar')"
+        >
+          <Terminal class="w-4 h-4 flex-shrink-0" :class="route.path.startsWith('/system/script-preview') ? 'text-emerald-400' : ''" />
+          <span class="text-sm">Script Preview</span>
+        </router-link>
+
+        <!-- Divider -->
+        <div class="h-px bg-gray-800/50 my-2"></div>
         <div class="px-2 py-1 text-[9px] font-bold text-gray-600 uppercase tracking-wider">Monitoring</div>
 
         <!-- System Health — /api/system/health/* -->
@@ -170,6 +181,7 @@ import {
   HeartPulse,
   TrendingUp,
   ScrollText,
+  Terminal,
   ChevronDown,
   X
 } from 'lucide-vue-next'
@@ -202,32 +214,3 @@ const toggleMenu = (menu) => {
 const isDashboardActive = computed(() => route.path === '/dashboard' || route.path === '/dashboard/home')
 </script>
 
-<style scoped>
-.sidebar-desktop.sidebar-open {
-  transform: translateX(0);
-  z-index: 60;
-}
-
-.sidebar-desktop.sidebar-closed {
-  transform: translateX(-100%);
-  z-index: 60;
-}
-
-.sidebar-mobile {
-  z-index: 100;
-}
-
-.sidebar-mobile.sidebar-open {
-  transform: translateX(0);
-}
-
-.sidebar-mobile.sidebar-closed {
-  transform: translateX(-100%);
-}
-
-@media (max-width: 768px) {
-  aside {
-    box-shadow: 2px 0 10px rgba(0, 0, 0, 0.3);
-  }
-}
-</style>

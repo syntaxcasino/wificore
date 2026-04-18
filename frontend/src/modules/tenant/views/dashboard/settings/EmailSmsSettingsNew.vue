@@ -55,10 +55,10 @@
               </div>
             </div>
 
-            <div class="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+            <div class="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-700/50 rounded-lg">
               <div>
-                <div class="text-sm font-medium text-slate-900">Use TLS/SSL</div>
-                <div class="text-xs text-slate-500">Enable secure connection</div>
+                <div class="text-sm font-medium text-slate-900 dark:text-slate-100">Use TLS/SSL</div>
+                <div class="text-xs text-slate-500 dark:text-slate-400">Enable secure connection</div>
               </div>
               <label class="relative inline-flex items-center cursor-pointer">
                 <input v-model="formData.smtp_encryption" type="checkbox" class="sr-only peer" />
@@ -104,10 +104,10 @@
           <div class="p-6 space-y-3">
             <h3 class="text-lg font-semibold text-slate-900 mb-4">Notification Preferences</h3>
             
-            <div class="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+            <div class="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-700/50 rounded-lg">
               <div>
-                <div class="text-sm font-medium text-slate-900">Welcome Email</div>
-                <div class="text-xs text-slate-500">Send welcome email to new users</div>
+                <div class="text-sm font-medium text-slate-900 dark:text-slate-100">Welcome Email</div>
+                <div class="text-xs text-slate-500 dark:text-slate-400">Send welcome email to new users</div>
               </div>
               <label class="relative inline-flex items-center cursor-pointer">
                 <input v-model="formData.send_welcome_email" type="checkbox" class="sr-only peer" />
@@ -115,10 +115,10 @@
               </label>
             </div>
 
-            <div class="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+            <div class="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-700/50 rounded-lg">
               <div>
-                <div class="text-sm font-medium text-slate-900">Payment Confirmation</div>
-                <div class="text-xs text-slate-500">Notify users of successful payments</div>
+                <div class="text-sm font-medium text-slate-900 dark:text-slate-100">Payment Confirmation</div>
+                <div class="text-xs text-slate-500 dark:text-slate-400">Notify users of successful payments</div>
               </div>
               <label class="relative inline-flex items-center cursor-pointer">
                 <input v-model="formData.send_payment_confirmation" type="checkbox" class="sr-only peer" />
@@ -126,10 +126,10 @@
               </label>
             </div>
 
-            <div class="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+            <div class="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-700/50 rounded-lg">
               <div>
-                <div class="text-sm font-medium text-slate-900">Expiry Reminders</div>
-                <div class="text-xs text-slate-500">Remind users before package expiry</div>
+                <div class="text-sm font-medium text-slate-900 dark:text-slate-100">Expiry Reminders</div>
+                <div class="text-xs text-slate-500 dark:text-slate-400">Remind users before package expiry</div>
               </div>
               <label class="relative inline-flex items-center cursor-pointer">
                 <input v-model="formData.send_expiry_reminders" type="checkbox" class="sr-only peer" />
@@ -137,10 +137,10 @@
               </label>
             </div>
 
-            <div class="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+            <div class="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-700/50 rounded-lg">
               <div>
-                <div class="text-sm font-medium text-slate-900">Invoice Notifications</div>
-                <div class="text-xs text-slate-500">Send invoice notifications</div>
+                <div class="text-sm font-medium text-slate-900 dark:text-slate-100">Invoice Notifications</div>
+                <div class="text-xs text-slate-500 dark:text-slate-400">Send invoice notifications</div>
               </div>
               <label class="relative inline-flex items-center cursor-pointer">
                 <input v-model="formData.send_invoice_notifications" type="checkbox" class="sr-only peer" />
@@ -163,6 +163,9 @@ import PageContent from '@/modules/common/components/layout/templates/PageConten
 import BaseButton from '@/modules/common/components/base/BaseButton.vue'
 import BaseCard from '@/modules/common/components/base/BaseCard.vue'
 import BaseSelect from '@/modules/common/components/base/BaseSelect.vue'
+import { useToast } from '@/modules/common/composables/useToast.js'
+
+const { success: showSuccess, info: showInfo } = useToast()
 
 const breadcrumbs = [
   { label: 'Dashboard', to: '/dashboard' },
@@ -194,12 +197,12 @@ const saveSettings = async () => {
   saving.value = true
   try {
     await new Promise(resolve => setTimeout(resolve, 1000))
-    alert('Settings saved successfully!')
+    showSuccess('Settings saved successfully!')
   } finally {
     saving.value = false
   }
 }
 
-const testEmail = () => alert('Test email sent!')
-const testSMS = () => alert('Test SMS sent!')
+const testEmail = () => showInfo('Test email sent!')
+const testSMS = () => showInfo('Test SMS sent!')
 </script>
