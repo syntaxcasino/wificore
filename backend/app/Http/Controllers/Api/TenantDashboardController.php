@@ -10,6 +10,7 @@ use App\Models\Payment;
 use App\Models\UserSession;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 
 class TenantDashboardController extends Controller
 {
@@ -69,6 +70,33 @@ class TenantDashboardController extends Controller
                         ->count(),
                     'today' => UserSession::whereDate('created_at', now())
                         ->count(),
+                ],
+                'sms_expenses' => [
+                    'balance' => 0,
+                    'purchases' => 0,
+                    'sent' => 0,
+                    'daily_usage' => 0,
+                    'weekly_usage' => 0,
+                    'monthly_usage' => 0,
+                    'total_spent' => 0,
+                    'this_month' => 0,
+                ],
+                'business_analytics' => [
+                    'user_retention' => 0,
+                    'avg_revenue' => Payment::where('status', 'completed')
+                        ->whereDate('created_at', '>=', now()->subDays(30))
+                        ->avg('amount') ?? 0,
+                    'peak_revenue' => Payment::where('status', 'completed')
+                        ->whereDate('created_at', '>=', now()->subDays(30))
+                        ->max('amount') ?? 0,
+                    'revenue_growth' => 0,
+                    'active_users' => UserSession::where('status', 'active')
+                        ->distinct('user_id')
+                        ->count('user_id'),
+                    'peak_users' => UserSession::whereDate('created_at', '>=', now()->subDays(30))
+                        ->max(DB::raw('COUNT(*)')) ?? 0,
+                    'user_growth' => 0,
+                    'access_points' => Router::where('status', 'active')->count(),
                 ],
             ];
         });
