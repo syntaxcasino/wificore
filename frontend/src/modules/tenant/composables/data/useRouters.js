@@ -78,6 +78,29 @@ export function useRouters() {
     }
   }
 
+  const handleRouterUpdated = (event) => {
+    const router = event.detail?.router || event.detail
+    if (!router?.id) return
+    const index = routers.value.findIndex(r => String(r.id) === String(router.id))
+    if (index !== -1) {
+      routers.value[index] = { ...routers.value[index], ...router }
+    }
+  }
+
+  const handleRouterStatusUpdated = (event) => {
+    const data = event.detail
+    if (!data?.id) return
+    const index = routers.value.findIndex(r => String(r.id) === String(data.id))
+    if (index !== -1) {
+      routers.value[index] = {
+        ...routers.value[index],
+        status: data.status,
+        is_online: data.is_online,
+        last_seen: data.last_seen,
+      }
+    }
+  }
+
   const setupRealtimeUpdates = () => {
     try {
       const tenantId = authStore.tenantId
@@ -88,9 +111,11 @@ export function useRouters() {
         unsubscribeFromChannel(routerUpdatesChannel)
       }
 
-      // Listen for create/delete events dispatched by websocket.js subscribeModuleChannels
+      // Listen for create/delete/update events dispatched by websocket.js subscribeModuleChannels
       window.addEventListener('router-created', handleRouterCreated)
       window.addEventListener('router-deleted', handleRouterDeleted)
+      window.addEventListener('router-updated', handleRouterUpdated)
+      window.addEventListener('router-status-updated', handleRouterStatusUpdated)
 
       routerUpdatesChannel = `tenant.${tenantId}.router-updates`
       

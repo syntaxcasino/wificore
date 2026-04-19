@@ -492,6 +492,12 @@ class RouterController extends Controller
 
             $router->update($updateData);
 
+            // Broadcast router updated event
+            $tenantId = $router->tenant_id ?? null;
+            if ($tenantId) {
+                event(new \App\Events\RouterUpdated($router->toArray(), (string) $tenantId));
+            }
+
             Log::info('Router updated successfully:', [
                 'router_id' => $router->id,
                 'name' => $router->name,
