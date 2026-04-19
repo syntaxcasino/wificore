@@ -408,8 +408,14 @@ class WebSocketService {
         .listen('.RouterCreated', (event) => {
           window.dispatchEvent(new CustomEvent('router-created', { detail: event }))
         })
+        .listen('.RouterUpdated', (event) => {
+          window.dispatchEvent(new CustomEvent('router-updated', { detail: event }))
+        })
         .listen('.RouterDeleted', (event) => {
           window.dispatchEvent(new CustomEvent('router-deleted', { detail: event }))
+        })
+        .listen('.RouterStatusUpdated', (event) => {
+          window.dispatchEvent(new CustomEvent('router-status-updated', { detail: event }))
         })
       this.channels.set(routersChannel, ch)
     }
