@@ -12,19 +12,19 @@ class RadiusService extends TenantAwareService
     {
         $this->radius = new Radius();
         
-        // Add server configuration
+        // Add server configuration — use config() so values survive config:cache
         $this->radius->setServer(
-            env('RADIUS_SERVER_HOST', 'wificore-freeradius')
+            config('radius.server_ip', 'wificore-freeradius')
         );
-        
+
         $this->radius->setSecret(
-            env('RADIUS_SECRET', 'testing123')
+            config('radius.secret', 'testing123')
         );
-        
+
         $this->radius->setAuthenticationPort(
-            (int) env('RADIUS_SERVER_PORT', 1812)
+            (int) config('radius.auth_port', 1812)
         );
-        
+
         // Set NAS identifier
         $this->radius->setNasIpAddress('127.0.0.1');
     }

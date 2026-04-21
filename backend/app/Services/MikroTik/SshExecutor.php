@@ -29,10 +29,15 @@ class SshExecutor
 
     /**
      * Set SSH timeout dynamically (useful for slow devices like hAP lite).
+     * Also updates the live phpseclib3 connection so long-running exec() calls
+     * (e.g. /import of large scripts) don't hit the original connection timeout.
      */
     public function setTimeout(int $timeout): void
     {
         $this->timeout = $timeout;
+        if (isset($this->connection)) {
+            $this->connection->setTimeout($timeout);
+        }
     }
 
     /**
@@ -142,7 +147,7 @@ class SshExecutor
                     throw new \RuntimeException("Command failed: $command | Output: $output");
                 }
 
-                Log::info("SSH command executed successfully", ['router' => $host, 'command' => $command]);
+                Log::debug("SSH command executed successfully", ['router' => $host, 'command' => $command]);
                 return $output;
             } catch (\Exception $e) {
                 Log::warning("SSH command attempt $attempt failed: {$e->getMessage()}", ['router' => $host]);
@@ -281,7 +286,7 @@ class SshExecutor
             }
         }
 
-        $envPort = (int) env('MIKROTIK_SSH_PORT', 22);
+        $envPort = (int) config('mikrotik.ssh_port', 22);
         return $envPort > 0 ? $envPort : 22;
     }
 
@@ -294,25 +299,36 @@ class SshExecutor
      */
     private function isCommandError(string $output): bool
     {
-        // Exact RouterOS error-line prefixes (always at start of a line)
-        $errorPrefixes = [
-            '!trap',
-            '!fatal',
+        if (trim($output) === '') {
+            return false;
+        }
+
+        $outputLower = strtolower($output);
+
+        // These prefixes are always fatal regardless of position
+        $anywhereErrors = ['!trap', '!fatal', 'script error'];
+        foreach ($anywhereErrors as $token) {
+            if (str_contains($outputLower, $token)) {
+                return true;
+            }
+        }
+
+        // GAP-13: These only count as errors when they appear at the start of
+        // a line — RouterOS can print them in benign informational contexts too.
+        $lineStartErrors = [
             'input does not match',
             'bad command name',
             'unknown command',
             'syntax error',
             'expected end of command',
             'no such item',
-            'script error',
         ];
-
-        $outputLower = strtolower($output);
-        foreach ($errorPrefixes as $prefix) {
-            if (str_contains($outputLower, $prefix)) {
+        foreach ($lineStartErrors as $prefix) {
+            if (preg_match('/^' . preg_quote($prefix, '/') . '/m', $outputLower)) {
                 return true;
             }
         }
+
         return false;
     }
 

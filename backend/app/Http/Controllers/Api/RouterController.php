@@ -9,16 +9,18 @@ use App\Models\RouterConfig;
 use App\Models\RouterTenantMap;
 use App\Models\Tenant;
 use App\Services\MikrotikProvisioningService;
+use App\Services\MikrotikSnmpService;
 use App\Services\RouterMetricsService;
 use App\Services\TenantContext;
 use App\Services\TenantMigrationManager;
 use App\Services\VictoriaMetricsClient;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Crypt;
-use Illuminate\Support\Facades\DB;
 
 class RouterController extends Controller
 {
@@ -28,9 +30,11 @@ class RouterController extends Controller
             $withLive = $request->boolean('with_live', false);
             
             // Always return basic router data first (fast response)
+            // GAP-17: paginate to avoid loading all routers + relations in one query
+            $perPage = min((int) $request->input('per_page', 25), 100);
             $routers = Router::with(['services', 'accessPoints'])
                 ->orderBy('created_at', 'desc')
-                ->get();
+                ->paginate($perPage);
             
             if (!$withLive) {
                 return response()->json([
@@ -42,7 +46,7 @@ class RouterController extends Controller
 
             // For with_live=true, return basic data with loading indicators
             // The frontend can then call the live-data endpoint separately
-            $routersWithLoadingState = $routers->map(function ($router) {
+            $routersWithLoadingState = $routers->getCollection()->map(function ($router) {
                 $router->setAttribute('live_data', null);
                 $router->setAttribute('live_status', 'loading');
                 $router->setAttribute('live_error', null);
@@ -702,7 +706,8 @@ class RouterController extends Controller
         Router $router,
         VictoriaMetricsClient $vm,
         TenantContext $tenantContext,
-        RouterMetricsService $metricsService
+        RouterMetricsService $metricsService,
+        MikrotikSnmpService $snmpService
     )
     {
         try {
@@ -723,12 +728,51 @@ class RouterController extends Controller
                 $live['source'] = 'victoriametrics';
             }
 
+            // Direct SNMP fallback: when VictoriaMetrics has no series for this router
+            // (Telegraf not yet collecting or SNMP unreachable), poll the router directly.
+            if (!$hasLive && $router->snmp_enabled !== false) {
+                try {
+                    $snmpLive = $snmpService->fetchLiveData($router);
+                    if (!empty($snmpLive) && ($snmpLive['status'] ?? '') !== 'offline') {
+                        $live = $snmpLive;
+                        $hasLive = true;
+                        $live['source'] = 'snmp_direct';
+                        // Cache for 30 s so FetchRouterLiveData and liveBatch also benefit
+                        Cache::put("router_live_data_{$routerId}", $live, now()->addSeconds(30));
+                    }
+                } catch (\Throwable $snmpErr) {
+                    Log::debug('Direct SNMP fallback failed', [
+                        'router_id' => $routerId,
+                        'error' => $snmpErr->getMessage(),
+                    ]);
+                }
+            }
+
             // Prefer the richer active_connections metric when available, but
             // keep hotspot_active as a fallback for backwards compatibility.
             $activeConnections = $live['active_connections']
                 ?? $live['pppoe_sessions']
                 ?? $live['hotspot_active']
                 ?? 0;
+
+            // If SNMP/VictoriaMetrics returned 0, fall back to counting open radacct
+            // sessions — this is the authoritative source from RADIUS accounting.
+            if ($activeConnections === 0 && Schema::hasTable('radacct')) {
+                $nasIps = array_filter([
+                    $router->vpn_ip ?? null,
+                    $router->ip_address ?? null,
+                ]);
+                if (!empty($nasIps)) {
+                    $radacctCount = DB::table('radacct')
+                        ->whereNull('acctstoptime')
+                        ->whereIn('nasipaddress', $nasIps)
+                        ->count();
+                    if ($radacctCount > 0) {
+                        $activeConnections = $radacctCount;
+                        $live['pppoe_sessions'] = $radacctCount;
+                    }
+                }
+            }
 
             return response()->json([
                 'success' => true,

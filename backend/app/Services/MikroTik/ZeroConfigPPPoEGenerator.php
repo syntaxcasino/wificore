@@ -201,7 +201,7 @@ class ZeroConfigPPPoEGenerator
         $s[] = ":do { /system logging remove [/system logging find comment=\"$pppoeLogComment\"]; } on-error={}";
         $s[] = ":do { /system logging add action=\"memory\" topics=\"pppoe\" } on-error={}";
         // Log dropped packets for visibility
-        $s = array_merge($s, $this->bootstrapFirewallLogging("PPPoE-$id"));
+        $s = array_merge($s, $this->bootstrapFirewallLogging("PPPoE-$id", $isLowEnd));
 
         $s[] = "";
         $s[] = "# ============================";
@@ -224,7 +224,7 @@ class ZeroConfigPPPoEGenerator
         $s[] = ":do { /ip dhcp-client add interface=\"{$wanIface}\" disabled=no } on-error={ /ip dhcp-client set [/ip dhcp-client find interface=\"{$wanIface}\"] disabled=no; }";
         $runningCheckInterfaces = array_values(array_unique(array_merge([$wanIface], $p['interfaces'])));
         foreach ($runningCheckInterfaces as $iface) {
-            $s[] = ":do { /interface ethernet set [find name=\"{$iface}\"] disable-running-check=no } on-error={} ";
+            $s[] = ":do { /interface ethernet set [find name=\"{$iface}\"]  } on-error={} ";
         }
 
 
@@ -239,9 +239,9 @@ class ZeroConfigPPPoEGenerator
         $s[] = ":do { /ppp profile set [/ppp profile find name=\"$prof\"] local-address=\"\" remote-address=\"\"  } on-error={ /log error \"PPPoE-$id: FATAL - profile set failed\" }";
         $s[] = ":do { /ppp aaa set use-radius=yes } on-error={ :log error \"PPPoE-$id: FATAL - radius aaa set failed\" }; :do { /ppp profile set [/ppp profile find name=\"$prof\"] rate-limit=\"\" } on-error={ :log error \"PPPoE-$id: FATAL - profile rate-limit set failed\" }";
         $s[] = ":do { /ppp profile set [/ppp profile find name=\"$prof\"] interface-list=\"$pal\" } on-error={ /log warning \"PPPoE-$id: Failed to set profile interface-list (non-fatal)\" }";
-        $s[] = ":do { /ppp profile set [/ppp profile find name=\"$prof\"] change-tcp-mss=yes use-compression=no only-one=yes radius-accounting=yes } on-error={ /log warning \"PPPoE-$id: Failed to set profile options (non-fatal)\" }";
+        $s[] = ":do { /ppp profile set [/ppp profile find where name=\"$prof\"] change-tcp-mss=yes use-compression=no only-one=yes; /ppp aaa set use-radius=yes accounting=yes } on-error={ /log warning \"PPPoE-$id: Failed to apply PPP settings (non-fatal)\" }";
         $s = array_merge($s, $this->bootstrapPppAaaHardening("PPPoE-$id", $prof));
-        $s = array_merge($s, $this->bootstrapPppSessionLogging("PPPoE-$id", $prof));
+        $s = array_merge($s, $this->bootstrapPppSessionLogging("PPPoE-$id", $prof, $isLowEnd));
 
         // BRIDGE - Clean slate: remove everything first, then rebuild
         $s[] = ":do { /interface bridge port remove [/interface bridge port find bridge=\"$bridge\"]; } on-error={ /log info \"PPPoE-$id: WARN - Failed to remove bridge ports\" }";
@@ -286,11 +286,12 @@ class ZeroConfigPPPoEGenerator
         $s[] = "# 5. PPPoE Server";
         $s[] = "# ============================";
         $s[] = ":do { /interface pppoe-server server remove [/interface pppoe-server server find service-name=\"$svc\"] } on-error={ /log info \"PPPoE-$id: No existing PPPoE server to remove\" }";
-        $s[] = ":do { /interface pppoe-server server add service-name=\"$svc\" interface=\"$bridge\" default-profile=\"$prof\" authentication=\"chap,mschap2\" one-session-per-host=yes keepalive-timeout=\"30\" max-mtu=\"1480\" max-mru=\"1480\" disabled=no } on-error={ /log error \"PPPoE-$id: PPPoE server add FAILED\" }";
+        $keepaliveTimeout = $isLowEnd ? '120' : '30';
+        $s[] = ":do { /interface pppoe-server server add service-name=\"$svc\" interface=\"$bridge\" default-profile=\"$prof\" authentication=\"chap,mschap2\" one-session-per-host=yes keepalive-timeout=\"{$keepaliveTimeout}\" max-mtu=\"1480\" max-mru=\"1480\" disabled=no } on-error={ /log error \"PPPoE-$id: PPPoE server add FAILED\" }";
         $s[] = ":do { /interface list member remove [/interface list member find list=\"$pl\"] } on-error={}";
         $s[] = ":do { /interface list member add list=\"$pl\" interface=\"$bridge\" comment=\"PPPoE-$id-PL\" } on-error={ /log warning \"PPPoE-$id: Failed to add bridge to list $pl\" }";
         $s[] = "/log info \"PPPoE-$id: PPPoE server '$svc' started successfully.\"";
-        $s = array_merge($s, $this->bootstrapOperationalLogging("PPPoE-$id", $svc, $rs));
+        $s = array_merge($s, $this->bootstrapOperationalLogging("PPPoE-$id", $svc, $rs, $isLowEnd));
 
         $s[] = "";
         $s[] = "# ============================";
@@ -320,7 +321,7 @@ class ZeroConfigPPPoEGenerator
             'is_low_end'        => $isLowEnd,
             'wan_list'          => $wan,
             'subscriber_ifaces' => [
-                ['in' => $pal, 'is_list' => true, 'pool_cidr' => $p['network_cidr'], 'tag' => 'PAL'],
+                ['in' => $pal, 'is_list' => true, 'pool_cidr' => $p['network_cidr']],
             ],
         ]));
 
@@ -343,14 +344,14 @@ class ZeroConfigPPPoEGenerator
             $s[] = "/ip firewall filter add chain=\"input\" connection-state=\"established,related\" action=\"accept\" comment=\"PPPoE-$id-EST-IN\"";
             $s[] = "/ip firewall filter add chain=\"input\" protocol=\"tcp\" dst-port=\"$mports\" src-address=\"$allowAddr\" action=\"accept\" comment=\"PPPoE-$id-MGMT\"";
             $s[] = "/ip firewall filter add chain=\"input\" protocol=\"udp\" dst-port=\"161\" src-address=\"$allowAddr\" action=\"accept\" comment=\"PPPoE-$id-SNMP\"";
-            $s[] = "/ip firewall filter add chain=\"input\" in-interface=\"$bridge\" action=\"drop\" log=\"yes\" log-prefix=\"PPPoE-DROP-IN\" comment=\"PPPoE-$id-DROP-IN\"";
+            $s[] = "/ip firewall filter add chain=\"input\" in-interface=\"$bridge\" action=\"drop\" comment=\"PPPoE-$id-DROP-IN\"";
             
             // FORWARD: Auth enforcement - critical security rules (4 rules)
             $s[] = "/ip firewall filter add chain=\"forward\" in-interface-list=\"$pal\" out-interface-list=\"$wan\" action=\"accept\" comment=\"PPPoE-$id-INET-AUTH\"";
             $s[] = "/ip firewall filter add chain=\"forward\" in-interface-list=\"$pal\" connection-state=\"invalid\" action=\"drop\" comment=\"PPPoE-$id-DROP-INV\"";
             $s[] = "/ip firewall filter add chain=\"forward\" in-interface-list=\"$pal\" connection-state=\"established,related\" action=\"accept\" comment=\"PPPoE-$id-EST-FWD\"";
             $s[] = "/ip firewall filter add chain=\"forward\" in-interface-list=\"$wan\" out-interface-list=\"$pal\" connection-state=\"established,related\" action=\"accept\" comment=\"PPPoE-$id-WAN-EST\"";
-            $s[] = "/ip firewall filter add chain=\"forward\" in-interface=\"$bridge\" action=\"drop\" log=\"yes\" log-prefix=\"PPPoE-BLOCK\" comment=\"PPPoE-$id-BLOCK-UNAUTH\"";
+            $s[] = "/ip firewall filter add chain=\"forward\" in-interface=\"$bridge\" action=\"drop\" comment=\"PPPoE-$id-BLOCK-UNAUTH\"";
         } else {
             // FULL FIREWALL for high-end devices - ~15 rules
             // Includes all security features plus extras like ICMP, SNMP, etc.
@@ -419,24 +420,7 @@ class ZeroConfigPPPoEGenerator
         if (empty($model)) {
             return false; // Default to fast profile if unknown
         }
-        
-        $lowEndPatterns = [
-            'hAP ac lite', 'hAP lite', 'hAP mini', 'hAP 2n',
-            'cAP lite', 'cAP ac', 'wAP', 'wsAP',
-            'OmniTIK 5 PoE ac', 'mAP',
-            'RB941', 'RB951', 'RB952', 'RB750',
-            'LDF', 'QRT', 'SXT',
-            'grooveA', 'Metal',
-        ];
-        
-        $modelLower = strtolower($model);
-        foreach ($lowEndPatterns as $pattern) {
-            if (stripos($modelLower, strtolower($pattern)) !== false) {
-                return true;
-            }
-        }
-        
-        return false;
+        return \App\Services\RouterResourceManager::getRouterTierByModel($model) === 'low_end';
     }
 
     // escapeRouterOsString() and getSafeGatewayIp() provided by ZeroConfigBootstrapTrait

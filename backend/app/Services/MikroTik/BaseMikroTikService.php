@@ -194,8 +194,8 @@ abstract class BaseMikroTikService extends TenantAwareService
      */
     protected function validateInterface(string $interface): string
     {
-        // Remove any dangerous characters
-        $interface = preg_replace('/[^a-zA-Z0-9\-_]/', '', $interface);
+        // Remove any dangerous characters (dots allowed: RouterOS VLAN sub-interfaces use ether2.100)
+        $interface = preg_replace('/[^a-zA-Z0-9\-_.]/', '', $interface);
         
         if (empty($interface)) {
             throw new \Exception('Invalid interface name');

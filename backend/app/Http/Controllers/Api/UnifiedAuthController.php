@@ -34,9 +34,7 @@ class UnifiedAuthController extends Controller
     {
         \Log::info('=== LOGIN ATTEMPT ===', [
             'username' => $request->username,
-            'has_password' => !empty($request->password),
             'ip' => $request->ip(),
-            'payload' => $request->except('password')
         ]);
         
         // Rate limiting

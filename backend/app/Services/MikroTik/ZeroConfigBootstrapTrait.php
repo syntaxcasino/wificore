@@ -214,11 +214,17 @@ trait ZeroConfigBootstrapTrait
 
     /**
      * Firewall logging: add topics=firewall memory logging.
+     * On low-end devices (hAP lite etc.) firewall topic logging causes constant
+     * flash writes on every dropped packet, spiking CPU. Skip on low-end.
      *
-     * @param string $prefix  Comment prefix (e.g. "PPPoE-abc123")
+     * @param string $prefix    Comment prefix (e.g. "PPPoE-abc123")
+     * @param bool   $isLowEnd  Skip firewall topic logging on memory/CPU-constrained devices
      */
-    protected function bootstrapFirewallLogging(string $prefix): array
+    protected function bootstrapFirewallLogging(string $prefix, bool $isLowEnd = false): array
     {
+        if ($isLowEnd) {
+            return [];
+        }
         return [
             ":do { /system logging remove [/system logging find comment=\"{$prefix}-FW-LOG\"] } on-error={}",
             ":do { /system logging add action=\"memory\" topics=\"firewall\" } on-error={}",
@@ -288,11 +294,17 @@ trait ZeroConfigBootstrapTrait
      */
     protected function bootstrapSnmpSyslog(string $mgmt, string $syslogHost, bool $enableSyslog = true): array
     {
+        $snmpCommunity = config('telegraf.snmp_community', 'traidnet-monitor');
+        // Always allow monitoring from the WireGuard server IP (10.8.0.1/32).
+        // Telegraf and the backend SNMP service both originate from this IP.
+        // Using security=none (SNMPv2c) to match Telegraf's polling configuration.
+        $snmpSubnet = '10.8.0.1/32';
+
         $rules = [
             "# SNMP & Syslog Export",
-            ":do { /snmp community remove [/snmp community find name=\"public\"] } on-error={}",
-            ":do { /snmp community add name=\"wificore-ro\" address=\"{$mgmt}\" security=\"authorized\" read-access=\"yes\" write-access=\"no\" comment=\"WifiCore SNMP\" } on-error={ /log warning \"SNMP: community add failed\" }",
-            ":do { /snmp set enabled=\"yes\" contact=\"noc@wificore\" location=\"WifiCore\" } on-error={ /log warning \"SNMP: enable failed\" }",
+            ":do { /snmp community remove [/snmp community find name=\"{$snmpCommunity}\"] } on-error={}",
+            ":do { /snmp community add name=\"{$snmpCommunity}\" addresses=\"{$snmpSubnet}\" security=\"none\" read-access=\"yes\" write-access=\"no\" comment=\"WifiCore SNMP\" } on-error={ /log warning \"SNMP: community add failed\" }",
+            ":do { /snmp set enabled=\"yes\" contact=\"noc@wificore\" location=\"WifiCore\" trap-community=\"{$snmpCommunity}\" trap-version=2 } on-error={ /log warning \"SNMP: enable failed\" }",
         ];
         if ($enableSyslog) {
             $rules[] = ":do { /system logging action remove [/system logging action find name=\"remote-syslog\"] } on-error={}";
@@ -390,26 +402,53 @@ trait ZeroConfigBootstrapTrait
      * These log lines are emitted at the `info` level and forwarded to remote syslog
      * (since bootstrapSnmpSyslog already includes topics=ppp).
      *
-     * @param string $prefix   Comment prefix
-     * @param string $profName PPP profile name — only sessions using this profile are logged
+     * On low-end devices (hAP lite etc.) the on-up script is simplified to a single
+     * deferred log to avoid multiple /ppp active get calls racing with session commit,
+     * which causes script errors that tear down the session → reconnect loop.
+     *
+     * @param string $prefix    Comment prefix
+     * @param string $profName  PPP profile name — only sessions using this profile are logged
+     * @param bool   $isLowEnd  Use minimal safe script on memory/CPU-constrained devices
      */
-    protected function bootstrapPppSessionLogging(string $prefix, string $profName): array
+    protected function bootstrapPppSessionLogging(string $prefix, string $profName, bool $isLowEnd = false): array
     {
         $upScriptName   = "{$prefix}-ppp-up";
         $downScriptName = "{$prefix}-ppp-down";
 
-        $upBody = implode("\n", [
-            "# Per-session RADIUS attribute confirmation on PPP session-up",
-            ":local u [/ppp active get [/ppp active find name=\$user] uptime]",
-            ":local ip [/ppp active get [/ppp active find name=\$user] address]",
-            ":local rl [/ppp active get [/ppp active find name=\$user] rate-limit]",
-            ":local svc [/ppp active get [/ppp active find name=\$user] service]",
-            ":if ([:len \$rl] > 0) do={",
-            "  /log info \"{$prefix}: SESSION-UP user=\$user ip=\$ip rate-limit=\$rl service=\$svc [RADIUS: rate-limit APPLIED]\"",
-            "} else={",
-            "  /log error \"{$prefix}: SESSION-UP user=\$user ip=\$ip rate-limit=NONE service=\$svc [RADIUS: Mikrotik-Rate-Limit MISSING — check radreply]\"",
-            "}",
-        ]);
+        if ($isLowEnd) {
+            // On hAP lite the session entry may not be committed when on-up fires.
+            // Multiple /ppp active get calls in rapid succession can fail and crash
+            // the script, which causes RouterOS to tear down the session → reconnect loop.
+            // Use a single guarded get with a small delay to let the entry settle.
+            $upBody = implode("\n", [
+                "# Per-session RADIUS attribute confirmation on PPP session-up (low-end safe)",
+                ":delay 500ms",
+                ":local rlEntry [/ppp active find name=\$user]",
+                ":if ([:len \$rlEntry] > 0) do={",
+                "  :local rl [/ppp active get \$rlEntry rate-limit]",
+                "  :if ([:len \$rl] > 0) do={",
+                "    /log info \"{$prefix}: SESSION-UP user=\$user [RADIUS: rate-limit APPLIED]\"",
+                "  } else={",
+                "    /log error \"{$prefix}: SESSION-UP user=\$user rate-limit=NONE [RADIUS: Mikrotik-Rate-Limit MISSING]\"",
+                "  }",
+                "} else={",
+                "  /log warning \"{$prefix}: SESSION-UP user=\$user (session entry not found yet — non-fatal)\"",
+                "}",
+            ]);
+        } else {
+            $upBody = implode("\n", [
+                "# Per-session RADIUS attribute confirmation on PPP session-up",
+                ":local u [/ppp active get [/ppp active find name=\$user] uptime]",
+                ":local ip [/ppp active get [/ppp active find name=\$user] address]",
+                ":local rl [/ppp active get [/ppp active find name=\$user] rate-limit]",
+                ":local svc [/ppp active get [/ppp active find name=\$user] service]",
+                ":if ([:len \$rl] > 0) do={",
+                "  /log info \"{$prefix}: SESSION-UP user=\$user ip=\$ip rate-limit=\$rl service=\$svc [RADIUS: rate-limit APPLIED]\"",
+                "} else={",
+                "  /log error \"{$prefix}: SESSION-UP user=\$user ip=\$ip rate-limit=NONE service=\$svc [RADIUS: Mikrotik-Rate-Limit MISSING — check radreply]\"",
+                "}",
+            ]);
+        }
 
         $downBody = implode("\n", [
             "# Session teardown audit log (PPP on-down event)",
@@ -431,26 +470,36 @@ trait ZeroConfigBootstrapTrait
     /**
      * Operational event logging: PPPoE server state monitor + sustained RADIUS outage alerting.
      *
-     * Installs a RouterOS scheduler script that runs every 5 minutes:
+     * Installs a RouterOS scheduler script that runs every 5 minutes (15 min on low-end):
      *   1. Checks whether the PPPoE server is disabled and logs an error if so.
      *   2. Checks RADIUS reachability; if unreachable, logs a sustained-outage critical alert
      *      distinct from the netwatch down event, so NOC sees it on each poll cycle.
      *
+     * On low-end devices the RADIUS ping is skipped — netwatch already covers failure
+     * detection and the extra /ping every 5 min adds measurable CPU load on hAP lite.
+     *
      * @param string $prefix      Comment prefix
      * @param string $svcName     PPPoE service-name (the value of service-name= on the server)
      * @param string $radiusIp    RADIUS server IP
+     * @param bool   $isLowEnd    Skip ping check and use longer interval on low-end devices
      */
-    protected function bootstrapOperationalLogging(string $prefix, string $svcName, string $radiusIp): array
+    protected function bootstrapOperationalLogging(string $prefix, string $svcName, string $radiusIp, bool $isLowEnd = false): array
     {
         $scriptName    = "{$prefix}-ops-monitor";
         $schedulerName = "{$prefix}-ops-sched";
 
         // RouterOS script body — single-quoted in PHP, so no PHP variable interpolation inside
         // The script itself uses RouterOS variables and string literals only.
-        $scriptBody = implode("\n", [
-            "# Operational monitor: PPPoE server state + RADIUS sustained outage",
+        $scriptLines = [
+            "# Operational monitor: PPPoE server state" . ($isLowEnd ? '' : ' + RADIUS sustained outage'),
             ":local svcName \"{$svcName}\"",
-            ":local radiusIp \"{$radiusIp}\"",
+        ];
+
+        if (!$isLowEnd) {
+            $scriptLines[] = ":local radiusIp \"{$radiusIp}\"";
+        }
+
+        $scriptLines = array_merge($scriptLines, [
             "",
             "# 1. PPPoE server state check",
             ":local svcDisabled [/interface pppoe-server server get [/interface pppoe-server server find service-name=\$svcName] disabled]",
@@ -459,22 +508,30 @@ trait ZeroConfigBootstrapTrait
             "} else={",
             "  /log info \"{$prefix}: PPPoE server '\$svcName' is running.\"",
             "}",
-            "",
-            "# 2. RADIUS sustained-outage check",
-            ":local pingResult [/ping address=\"$radiusIp\" count=1 interval=500ms]",
-            ":if (\$pingResult = 0) do={",
-            "  /log error \"{$prefix}: SUSTAINED OUTAGE - RADIUS \$radiusIp still unreachable. All new sessions are being REJECTED.\"",
-            "} else={",
-            "  /log debug \"{$prefix}: RADIUS \$radiusIp OK (\$pingResult replies).\"",
-            "}",
         ]);
 
+        if (!$isLowEnd) {
+            $scriptLines = array_merge($scriptLines, [
+                "",
+                "# 2. RADIUS sustained-outage check (skipped on low-end — netwatch covers this)",
+                ":local pingResult [/ping address=\"{$radiusIp}\" count=1 interval=500ms]",
+                ":if (\$pingResult = 0) do={",
+                "  /log error \"{$prefix}: SUSTAINED OUTAGE - RADIUS {$radiusIp} still unreachable. All new sessions are being REJECTED.\"",
+                "} else={",
+                "  /log debug \"{$prefix}: RADIUS {$radiusIp} OK (\$pingResult replies).\"",
+                "}",
+            ]);
+        }
+
+        $scriptBody = implode("\n", $scriptLines);
+        $schedInterval = $isLowEnd ? '15m' : '5m';
+
         return [
-            "# Operational Event Logging — PPPoE server state + RADIUS sustained-outage monitor",
+            "# Operational Event Logging — PPPoE server state" . ($isLowEnd ? '' : ' + RADIUS sustained-outage monitor'),
             ":do { /system script remove [/system script find name=\"{$scriptName}\"] } on-error={}",
             ":do { /system script add name=\"{$scriptName}\" source=\"{$this->escapeScriptSource($scriptBody)}\" comment=\"{$prefix}-OPS-MON\" } on-error={ /log warning \"{$prefix}: Failed to install ops monitor script\" }",
             ":do { /system scheduler remove [/system scheduler find name=\"{$schedulerName}\"] } on-error={}",
-            ":do { /system scheduler add name=\"{$schedulerName}\" interval=5m on-event=\"{$scriptName}\" start-time=startup comment=\"{$prefix}-OPS-SCHED\" } on-error={ /log warning \"{$prefix}: Failed to schedule ops monitor\" }",
+            ":do { /system scheduler add name=\"{$schedulerName}\" interval={$schedInterval} on-event=\"{$scriptName}\" start-time=startup comment=\"{$prefix}-OPS-SCHED\" } on-error={ /log warning \"{$prefix}: Failed to schedule ops monitor\" }",
             "",
         ];
     }
@@ -597,16 +654,42 @@ trait ZeroConfigBootstrapTrait
      */
     protected function bootstrapSecurityHardening(array $config): array
     {
-        $id        = $config['id'];
-        $isLowEnd  = $config['is_low_end'] ?? false;
-        $wan       = $config['wan_list'] ?? 'WAN';
-        $ifaces    = $config['subscriber_ifaces'] ?? [];
+        $id       = $config['id'];
+        $isLowEnd = $config['is_low_end'] ?? false;
+        $ifaces   = $config['subscriber_ifaces'] ?? [];
 
         $rules = [
-            "# SECURITY HARDENING - BCP 38 Anti-Spoofing & DDoS Protection",
+            "# SECURITY HARDENING - BCP 38 Anti-Spoofing & DDoS Protection (GAP-14)",
             ":do { /ip firewall filter remove [/ip firewall filter find comment~\"SEC-$id\"] } on-error={}",
         ];
+
+        // Drop invalid connection states (applies to all tiers)
+        $rules[] = "/ip firewall filter add chain=forward connection-state=\"invalid\" action=\"drop\" comment=\"SEC-$id-INVALID\"";
+
+        // ICMP rate-limit to mitigate ICMP flood / ping-of-death
         $rules[] = "/ip firewall filter add chain=input protocol=\"icmp\" connection-state=\"new\" limit=\"20,5:packet\" action=\"drop\" comment=\"SEC-$id-DDoS-ICMP\"";
+
+        // BCP 38 ingress source-address validation per subscriber interface.
+        // RouterOS v7 does not support src-address=! in /import scripts, so we
+        // use an accept+drop split: first accept traffic with a valid pool source,
+        // then drop everything else from that interface (spoofed source).
+        // Applied to ALL tiers — anti-spoofing is essential even on low-end devices.
+        foreach ($ifaces as $iface) {
+            $in       = $iface['in'] ?? null;
+            $isList   = $iface['is_list'] ?? false;
+            $poolCidr = $iface['pool_cidr'] ?? null;
+
+            if (!$in || !$poolCidr) {
+                continue;
+            }
+
+            $tag     = isset($iface['tag']) ? ('-' . $iface['tag']) : '';
+            $inParam = $isList ? "in-interface-list=\"$in\"" : "in-interface=\"$in\"";
+            // Accept legitimate subscriber traffic (valid source within pool CIDR)
+            $rules[] = "/ip firewall filter add chain=forward $inParam src-address=\"$poolCidr\" action=\"accept\" comment=\"SEC-$id-BCP38{$tag}-SPOOF-OK\"";
+            // Drop spoofed traffic (source outside pool CIDR) from subscriber interface
+            $rules[] = "/ip firewall filter add chain=forward $inParam action=\"drop\" log=\"yes\" log-prefix=\"BCP38-$id\" comment=\"SEC-$id-BCP38{$tag}-SPOOF\"";
+        }
 
         $rules[] = "";
         return $rules;

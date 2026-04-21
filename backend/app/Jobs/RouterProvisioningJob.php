@@ -58,7 +58,8 @@ class RouterProvisioningJob implements ShouldQueue
             }
 
             // Idempotency lock - prevent concurrent provisioning of same router
-            $lock = Cache::lock('provision_router_' . $this->routerId, 600);
+            // GAP-03: unified key 'mikrotik_provision_<id>' matches applyConfigs() inner lock
+            $lock = Cache::lock('mikrotik_provision_' . $this->routerId, 600);
             if (!$lock->get()) {
                 Log::warning('RouterProvisioningJob: Provisioning already in progress (lock held)', [
                     'router_id' => $this->routerId,

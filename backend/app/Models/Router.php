@@ -14,6 +14,9 @@ class Router extends Model
 {
     use HasFactory, HasUuid, TenantRouteBindable;
 
+    /** @var array<string,string|null> Instance-level cache for cross-schema lookups (GAP-16) */
+    private array $resolvedTenantCache = [];
+
     protected static function booted(): void
     {
         // No global scope needed - this table is in tenant schema (schema-based isolation)
@@ -92,7 +95,11 @@ class Router extends Model
         if (empty($this->id)) {
             return null;
         }
-        return RouterTenantMap::findTenantByRouterId($this->id);
+        // GAP-16: cache per-instance to avoid N+1 cross-schema query on every property access
+        if (!array_key_exists('tenant_id', $this->resolvedTenantCache)) {
+            $this->resolvedTenantCache['tenant_id'] = RouterTenantMap::findTenantByRouterId($this->id);
+        }
+        return $this->resolvedTenantCache['tenant_id'];
     }
 
     /**
