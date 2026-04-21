@@ -242,7 +242,7 @@ class MikroTikBinaryApiService implements MikroTikApiInterface
             'service=' . $service,
             'address=' . $address,
             'secret='  . $secret,
-            'timeout=' . $timeout,
+            'timeout=' . $this->secondsToRosTime($timeout),
         ];
         if ($comment) {
             $params[] = 'comment=' . $comment;

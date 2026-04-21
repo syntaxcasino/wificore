@@ -273,8 +273,8 @@ class MikroTikRestApiService implements MikroTikApiInterface
         $data = [
             'service' => $service,
             'address' => $address,
-            'secret' => $secret,
-            'timeout' => $timeout,
+            'secret'  => $secret,
+            'timeout' => $this->secondsToRosTime($timeout),
         ];
         if ($comment) {
             $data['comment'] = $comment;
