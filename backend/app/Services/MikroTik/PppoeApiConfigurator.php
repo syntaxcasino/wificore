@@ -560,10 +560,10 @@ class PppoeApiConfigurator
         }
 
         try {
-            $items = $this->api->fetch($resource . '/print');
+            $items = $this->api->fetch($resource);
             foreach ($items as $item) {
                 if (($item[$field] ?? null) === $name) {
-                    $this->api->executeCommand($resource . '/remove', ['numbers' => $item['.id']]);
+                    $this->api->executeCommand($resource . '/remove', ['.id' => $item['.id']]);
                 }
             }
         } catch (\Exception $e) {
@@ -578,10 +578,10 @@ class PppoeApiConfigurator
         }
 
         try {
-            $items = $this->api->fetch($resource . '/print');
+            $items = $this->api->fetch($resource);
             foreach ($items as $item) {
                 if (($item[$field] ?? null) === $value) {
-                    $this->api->executeCommand($resource . '/remove', ['numbers' => $item['.id']]);
+                    $this->api->executeCommand($resource . '/remove', ['.id' => $item['.id']]);
                 }
             }
         } catch (\Exception $e) {
@@ -592,7 +592,7 @@ class PppoeApiConfigurator
     private function setEthernetRunningCheck(string $interface, bool $disabled): void
     {
         try {
-            $items = $this->api->fetch('/interface/ethernet/print');
+            $items = $this->api->fetch('/interface/ethernet');
             foreach ($items as $item) {
                 $name = $item['default-name'] ?? $item['name'] ?? null;
                 if ($name === $interface) {
