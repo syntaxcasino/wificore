@@ -710,59 +710,35 @@ SCRIPT;
     }
 
     /**
-     * Apply configuration via MikroTik REST API for low-end devices
-     * This avoids SSH connection timeout issues on hAP lite and similar devices
-     * 
-     * @param Router $router The router to configure
-     * @param array $config Configuration array extracted from service parameters
-     * @param bool $broadcast Whether to broadcast progress events
-     * @return array Result of the operation
+     * Apply configuration via the MikroTik Binary API (port 8728).
+     *
+     * Binary API is the primary provisioning transport for ALL device tiers:
+     *  - No SSH crypto overhead (critical for low-end MIPS, 650 MHz hAP lite)
+     *  - Persistent TCP socket, structured responses, works on ROS 5+
+     *  - Traffic encrypted by WireGuard tunnel — no need for api-ssl
+     *
+     * Returns ['success' => false, 'fallback_to_sftp' => true] when Binary API
+     * is unreachable so the caller can fall back to SFTP + /import.
+     *
+     * @param Router $router
+     * @param array  $config  Config extracted by extractConfigFromScript()
+     * @param bool   $broadcast
+     * @return array
      */
     public function applyConfigsViaApi(Router $router, array $config, bool $broadcast = true): array
     {
         $startTime = microtime(true);
-        
-        Log::info('Starting API-based configuration (Binary API primary, REST API fallback)', [
+        $apiMethod = 'BINARY_API';
+
+        Log::info('Starting Binary API provisioning', [
             'router_id' => $router->id,
             'model'     => $router->model,
         ]);
 
         try {
-            // Resolve API transport: Binary API (port 8728) preferred for ALL tiers;
-            // fall back to REST API (ROS7+) if Binary API port is unreachable.
-            $apiService = null;
-            $apiMethod  = 'BINARY_API';
-
-            try {
-                $binaryApi = new MikroTik\MikroTikBinaryApiService($router, 30);
-                if ($binaryApi->testConnection()) {
-                    $apiService = $binaryApi;
-                    $apiMethod  = 'BINARY_API';
-                } else {
-                    throw new \Exception('Binary API testConnection returned false');
-                }
-            } catch (\Throwable $binaryEx) {
-                Log::warning('Binary API unavailable, falling back to REST API', [
-                    'router_id' => $router->id,
-                    'error'     => $binaryEx->getMessage(),
-                ]);
-
-                // REST API fallback (ROS7+ only)
-                try {
-                    $restApi = new MikroTik\MikroTikRestApiService($router, 30);
-                    if ($restApi->testConnection()) {
-                        $apiService = $restApi;
-                        $apiMethod  = 'REST_API';
-                    } else {
-                        throw new \Exception('REST API testConnection returned false');
-                    }
-                } catch (\Throwable $restEx) {
-                    throw new \Exception(
-                        'Both Binary API and REST API are unavailable. ' .
-                        'Binary: ' . $binaryEx->getMessage() . '. ' .
-                        'REST: '   . $restEx->getMessage()
-                    );
-                }
+            $binaryApi = new MikroTik\MikroTikBinaryApiService($router, 30);
+            if (!$binaryApi->testConnection()) {
+                throw new \Exception('Binary API testConnection returned false');
             }
 
             if ($broadcast) {
@@ -775,42 +751,39 @@ SCRIPT;
                 );
             }
 
-            // Open a persistent connection for the batch of provisioning commands.
-            // Binary API: opens TCP socket + authenticates.
-            // REST API: no-op (stateless HTTP).
-            $apiService->connect();
+            // Open a persistent TCP socket + authenticate.
+            $binaryApi->connect();
 
             try {
                 $serviceId   = $config['service_id']   ?? $router->id;
                 $serviceType = $config['service_type'] ?? RouterService::TYPE_PPPOE;
                 if ($serviceType === RouterService::TYPE_HYBRID) {
-                    $configurator = new MikroTik\HybridApiConfigurator($apiService, $serviceId, $config);
+                    $configurator = new MikroTik\HybridApiConfigurator($binaryApi, $serviceId, $config);
                 } elseif ($serviceType === RouterService::TYPE_HOTSPOT) {
-                    $configurator = new MikroTik\HotspotApiConfigurator($apiService, $serviceId, $config);
+                    $configurator = new MikroTik\HotspotApiConfigurator($binaryApi, $serviceId, $config);
                 } else {
-                    $configurator = new MikroTik\PppoeApiConfigurator($apiService, $serviceId, $config);
+                    $configurator = new MikroTik\PppoeApiConfigurator($binaryApi, $serviceId, $config);
                 }
 
                 $result = $configurator->configure();
 
                 if (!$result['success']) {
-                    throw new \Exception($result['message'] ?? 'API configuration failed');
+                    throw new \Exception($result['message'] ?? 'Binary API configuration failed');
                 }
 
-                // Verify the configuration
                 if ($broadcast) {
                     RouterProvisioningProgress::dispatch(
                         $router->id,
                         'verifying',
                         80,
-                        'Verifying API deployment',
+                        'Verifying Binary API deployment',
                         ['method' => $apiMethod]
                     );
                 }
 
                 $verification = $configurator->verify();
                 if (!$verification['valid']) {
-                    throw new \Exception($verification['error'] ?? 'API verification failed');
+                    throw new \Exception($verification['error'] ?? 'Binary API verification failed');
                 }
 
                 if ($broadcast) {
@@ -818,14 +791,14 @@ SCRIPT;
                         $router->id,
                         'completed',
                         95,
-                        'API deployment completed successfully',
+                        'Binary API deployment completed successfully',
                         ['method' => $apiMethod]
                     );
                 }
 
                 $executionTime = round(microtime(true) - $startTime, 2);
 
-                Log::info('API configuration applied successfully', [
+                Log::info('Binary API configuration applied successfully', [
                     'router_id'      => $router->id,
                     'method'         => $apiMethod,
                     'execution_time' => $executionTime . 's',
@@ -834,7 +807,7 @@ SCRIPT;
 
                 return [
                     'success'        => true,
-                    'message'        => 'Configuration applied successfully via ' . $apiMethod,
+                    'message'        => 'Configuration applied successfully via Binary API',
                     'execution_time' => $executionTime . 's',
                     'router_id'      => $router->id,
                     'method'         => $apiMethod,
@@ -842,32 +815,21 @@ SCRIPT;
                 ];
 
             } finally {
-                // Always close the persistent connection (no-op for REST API)
-                $apiService->disconnect();
+                $binaryApi->disconnect();
             }
 
         } catch (\Exception $e) {
-            Log::error('API configuration failed', [
+            Log::warning('Binary API provisioning failed, will fall back to SFTP+import', [
                 'router_id'      => $router->id,
-                'method'         => $apiMethod ?? 'UNKNOWN',
                 'error'          => $e->getMessage(),
                 'execution_time' => round(microtime(true) - $startTime, 2) . 's',
             ]);
 
-            if ($broadcast) {
-                ProvisioningFailed::dispatch(
-                    $router->id,
-                    'api_failed',
-                    'API deployment failed: ' . $e->getMessage(),
-                    ['method' => $apiMethod ?? 'UNKNOWN', 'error' => $e->getMessage()]
-                );
-            }
-
             return [
-                'success'         => false,
-                'message'         => $e->getMessage(),
-                'method'          => $apiMethod ?? 'UNKNOWN',
-                'fallback_to_ssh' => true,
+                'success'          => false,
+                'message'          => $e->getMessage(),
+                'method'           => $apiMethod,
+                'fallback_to_sftp' => true,
             ];
         }
     }
@@ -1287,11 +1249,17 @@ SCRIPT;
                     }
                 }
 
-                // Primary path: Binary API (port 8728) for ALL device tiers.
-                // Binary API avoids SSH crypto overhead (DH2048 key exchange) which
-                // causes 20-40 s handshakes on low-end MIPS devices (hAP lite, 650 MHz).
-                // Falls back to REST API (ROS7+), then SSH batching as last resort.
+                // ── Provisioning transport chain ──────────────────────────────────
+                // 1. Binary API (port 8728) — primary for ALL tiers.
+                //    No SSH crypto overhead; structured responses; ROS 5+ compatible.
+                // 2. SFTP + /import — MikroTik-recommended ZTP method (*.auto.rsc).
+                //    Uploads the generated .rsc via SFTP then triggers /import.
+                //    SSH connection is already open so no extra handshake cost.
+                // 3. Batched SSH commands — low-end absolute last resort only.
+                //    Splits script into small chunks to avoid OOM on hAP lite.
+                // ──────────────────────────────────────────────────────────────────
                 if ($result === null) {
+                    // ── Step 1: Binary API ────────────────────────────────────────
                     $apiConfig = $this->extractConfigFromScript($serviceScript, $router);
 
                     if ($broadcast) {
@@ -1307,29 +1275,53 @@ SCRIPT;
                     $result = $this->applyConfigsViaApi($router, $apiConfig, $broadcast);
 
                     if (!$result['success']) {
-                        // Last resort: SSH script import (same SSH connection already open)
-                        Log::warning('All API methods failed, falling back to SSH script import', [
-                            'router_id'  => $router->id,
-                            'api_error'  => $result['message'] ?? 'unknown',
+                        // ── Step 2: SFTP + /import (.auto.rsc pattern) ───────────
+                        Log::warning('Binary API unavailable, falling back to SFTP + /import', [
+                            'router_id' => $router->id,
+                            'reason'    => $result['message'] ?? 'unknown',
                         ]);
 
                         if ($broadcast) {
                             RouterProvisioningProgress::dispatch(
                                 $router->id,
                                 'compatibility_warning',
-                                38,
-                                'API unavailable; using SSH script import fallback.',
+                                42,
+                                'Binary API unavailable; uploading .rsc via SFTP and importing.',
                                 ['router_os_version' => $routerOsVersion]
                             );
                         }
 
-                        $routerTier = RouterResourceManager::getRouterTierByModel($routerModel ?: '');
-                        if ($routerTier === 'low_end') {
+                        $routerTier       = RouterResourceManager::getRouterTierByModel($routerModel ?: '');
+                        $remoteScriptFile = "svc_deploy_{$router->id}_" . md5($serviceScript) . '.rsc';
+                        $tempFile         = tempnam(sys_get_temp_dir(), 'mikrotik_script_');
+
+                        $result = $this->executeSingleScript(
+                            $ssh,
+                            $serviceScript,
+                            $router,
+                            $validator,
+                            $remoteScriptFile,
+                            $tempFile
+                        );
+
+                        if (!$result['success'] && $routerTier === 'low_end') {
+                            // ── Step 3: Batched SSH commands (low-end last resort) ──
+                            Log::warning('SFTP+import failed on low-end device, trying batched SSH commands', [
+                                'router_id' => $router->id,
+                                'reason'    => $result['message'] ?? 'unknown',
+                            ]);
+
+                            if ($broadcast) {
+                                RouterProvisioningProgress::dispatch(
+                                    $router->id,
+                                    'compatibility_warning',
+                                    44,
+                                    'SFTP failed; using batched SSH command fallback (low-end device).',
+                                    ['router_os_version' => $routerOsVersion]
+                                );
+                            }
+
                             $result = $this->executeBatchedCommands($ssh, $serviceScript, $router, $validator);
-                        } else {
-                            $remoteScriptFile = "svc_deploy_{$router->id}_" . md5($serviceScript) . '.rsc';
-                            $tempFile = tempnam(sys_get_temp_dir(), 'mikrotik_script_');
-                            $result = $this->executeSingleScript($ssh, $serviceScript, $router, $validator, $remoteScriptFile, $tempFile);
                         }
                     }
                 }
@@ -1439,20 +1431,19 @@ SCRIPT;
                 $ssh->disconnect();
             }
 
-            // Only override result if not already set by a successful API result
-            $apiBasedMethods = ['BINARY_API', 'REST_API', 'API'];
-            if (!$result || !isset($result['method']) || !in_array($result['method'], $apiBasedMethods, true)) {
+            // Only override result if not already set by a successful Binary API result
+            if (!$result || !isset($result['method']) || $result['method'] !== 'BINARY_API') {
                 if (!$result || empty($result['success'])) {
                     $errorMsg = $result['message'] ?? 'Script deployment failed (validation did not pass)';
                     throw new \Exception($errorMsg, 500);
                 }
                 $result = [
-                    'success' => true,
-                    'message' => 'Configuration applied successfully via SSH',
+                    'success'        => true,
+                    'message'        => 'Configuration applied successfully via SFTP+import',
                     'execution_time' => round(microtime(true) - $startTime, 2) . 's',
-                    'script_name' => $scriptName,
-                    'router_id' => $router->id,
-                    'method' => 'SSH'
+                    'script_name'    => $scriptName,
+                    'router_id'      => $router->id,
+                    'method'         => 'SFTP_IMPORT',
                 ];
             }
 
@@ -1464,6 +1455,11 @@ SCRIPT;
                     'Service deployment completed successfully',
                     array_merge($result, ['status' => 'completed'])
                 );
+            }
+
+            // Clean up local temp file if created during SFTP fallback
+            if (!empty($tempFile) && file_exists($tempFile)) {
+                @unlink($tempFile);
             }
 
             // Schedule cleanup of orphaned RSC files (only if we have a script file)
