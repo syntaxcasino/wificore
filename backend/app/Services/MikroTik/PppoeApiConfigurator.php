@@ -597,7 +597,7 @@ class PppoeApiConfigurator
                 $name = $item['default-name'] ?? $item['name'] ?? null;
                 if ($name === $interface) {
                     $this->api->executeCommand('/interface/ethernet/set', [
-                        'numbers' => $item['.id'],
+                        '.id' => $item['.id'],
                         'disable-running-check' => $disabled ? 'yes' : 'no',
                     ]);
                     break;
