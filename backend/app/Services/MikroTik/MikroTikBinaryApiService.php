@@ -279,18 +279,21 @@ class MikroTikBinaryApiService implements MikroTikApiInterface
     /**
      * Remove items whose 'comment' field contains $commentPattern as a substring.
      *
-     * RouterOS ?field=value matches exact values only. For substring matching we
-     * use ~field=regex (RouterOS regex: no anchors, dot matches any char).
-     * The pattern is escaped so literal hyphens/dots in service IDs are safe.
+     * The RouterOS Binary API does NOT support regex (~ operator) in query words.
+     * Official docs: "Regular expressions are not supported in API, so do not try
+     * to send a query with the ~ symbol". We therefore fetch all items and filter
+     * in PHP using str_contains().
      */
     public function removeByComment(string $path, string $commentPattern): void
     {
         try {
-            // Escape special RouterOS regex chars in the pattern
-            $escaped = preg_replace('/([.\[\]\\\^$*+?{}|()])/u', '\\\\$1', $commentPattern);
-            $items = $this->command($path . '/print', ['?~comment=' . $escaped]);
+            $items = $this->command($path . '/print');
             foreach ($items as $item) {
-                if (isset($item['.id'])) {
+                if (!isset($item['.id'])) {
+                    continue;
+                }
+                $comment = $item['comment'] ?? '';
+                if (str_contains($comment, $commentPattern)) {
                     try {
                         $this->command($path . '/remove', ['.id=' . $item['.id']]);
                     } catch (\Throwable $e) {
@@ -547,7 +550,9 @@ class MikroTikBinaryApiService implements MikroTikApiInterface
                     }
                 }
                 $records[] = $record;
-            } elseif ($type === '!done') {
+            } elseif ($type === '!done' || $type === '!empty') {
+                // !done  — normal end of response
+                // !empty — ROS 7.18+: command succeeded but returned no records
                 break;
             } elseif ($type === '!trap' || $type === '!fatal') {
                 // Extract error message

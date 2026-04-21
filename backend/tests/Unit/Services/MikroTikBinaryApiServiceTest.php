@@ -119,11 +119,6 @@ class MikroTikBinaryApiServiceTest extends TestCase
                 return $path . '/print';
             }
 
-            // Expose removeByComment regex escaping
-            public function pubEscapeCommentPattern(string $pattern): string
-            {
-                return preg_replace('/([.\[\]\\\^$*+?{}|()])/u', '\\\\$1', $pattern);
-            }
         };
     }
 
@@ -247,31 +242,38 @@ class MikroTikBinaryApiServiceTest extends TestCase
     }
 
     // -------------------------------------------------------------------------
-    // removeByComment pattern escaping
+    // removeByComment — PHP str_contains filtering (regex NOT supported by API)
+    // Docs: "Regular expressions are not supported in API, so do not try to
+    //        send a query with the ~ symbol"
     // -------------------------------------------------------------------------
 
-    public function test_escape_comment_pattern_hyphen_not_escaped(): void
+    public function test_removeByComment_matches_exact_prefix(): void
     {
-        // Hyphens are not special in RouterOS regex outside character classes
-        $svc = $this->makeExposed();
-        $this->assertSame('PPPoE-abc123', $svc->pubEscapeCommentPattern('PPPoE-abc123'));
+        $pattern = 'hs-fw-abc123';
+        $items = [
+            ['comment' => 'hs-fw-abc123-DROP-UNAUTH', '.id' => '*1'],
+            ['comment' => 'hs-fw-abc123-AUTH-INET',   '.id' => '*2'],
+            ['comment' => 'other-rule',                '.id' => '*3'],
+        ];
+        $matched = array_filter($items, fn($i) => str_contains($i['comment'] ?? '', $pattern));
+        $this->assertCount(2, $matched);
+        $this->assertNotContains('*3', array_column($matched, '.id'));
     }
 
-    public function test_escape_comment_pattern_escapes_brackets(): void
+    public function test_removeByComment_no_match_returns_empty(): void
     {
-        $svc = $this->makeExposed();
-        $this->assertSame('a\[b\]', $svc->pubEscapeCommentPattern('a[b]'));
+        $pattern = 'nonexistent-service';
+        $items = [['comment' => 'hs-fw-abc123', '.id' => '*1']];
+        $matched = array_filter($items, fn($i) => str_contains($i['comment'] ?? '', $pattern));
+        $this->assertCount(0, $matched);
     }
 
-    public function test_escape_comment_pattern_plain_id_unchanged(): void
+    public function test_removeByComment_empty_comment_field_skipped(): void
     {
-        $svc = $this->makeExposed();
-        // UUID-like IDs with alphanumeric and hyphens — hyphens ARE escaped (safe)
-        $pattern = 'hs-abcd1234';
-        $escaped = $svc->pubEscapeCommentPattern($pattern);
-        // Result must be a valid RouterOS ~regex that still matches the original
-        $this->assertStringContainsString('hs', $escaped);
-        $this->assertStringContainsString('abcd1234', $escaped);
+        $pattern = 'hs-fw-';
+        $items = [['comment' => '', '.id' => '*1'], ['.id' => '*2']]; // no comment key
+        $matched = array_filter($items, fn($i) => str_contains($i['comment'] ?? '', $pattern));
+        $this->assertCount(0, $matched);
     }
 
     // -------------------------------------------------------------------------
