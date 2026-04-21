@@ -1032,13 +1032,13 @@ SCRIPT;
                 RouterProvisioningProgress::dispatch(
                     $router->id,
                     'applying_config',
-                    40,
-                    'Applying configuration via SSH',
+                    38,
+                    'Preparing configuration deployment',
                     ['script_name' => $scriptName]
                 );
             }
 
-            Log::info('Applying configuration script via SSH (direct commands)', [
+            Log::info('Preparing configuration deployment', [
                 'router_id' => $router->id,
                 'script_name' => $scriptName,
                 'script_length' => strlen($serviceScript),
