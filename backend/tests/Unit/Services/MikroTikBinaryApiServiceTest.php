@@ -241,6 +241,18 @@ class MikroTikBinaryApiServiceTest extends TestCase
         $this->assertSame('a=b=c', $record['comment']);
     }
 
+    public function test_done_sentence_with_ret_is_parsed_as_record(): void
+    {
+        // ROS6 login: challenge arrives as =ret= inside the !done sentence.
+        // Docs example: ">>> !done >>> =ret=93b438ec9b80057c06dd9fe67d56aa9a"
+        // readResponse() must NOT discard !done attribute words.
+        $svc = $this->makeExposed();
+        // Simulate parsing the words after '!done'
+        $words = ['=ret=93b438ec9b80057c06dd9fe67d56aa9a'];
+        $record = $svc->pubParseRecord($words);
+        $this->assertSame('93b438ec9b80057c06dd9fe67d56aa9a', $record['ret']);
+    }
+
     // -------------------------------------------------------------------------
     // removeByComment — PHP str_contains filtering (regex NOT supported by API)
     // Docs: "Regular expressions are not supported in API, so do not try to

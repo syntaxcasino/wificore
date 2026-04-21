@@ -551,8 +551,22 @@ class MikroTikBinaryApiService implements MikroTikApiInterface
                 }
                 $records[] = $record;
             } elseif ($type === '!done' || $type === '!empty') {
-                // !done  — normal end of response
-                // !empty — ROS 7.18+: command succeeded but returned no records
+                // !done  — normal end of response; MAY carry attribute words.
+                //          ROS6 login delivers =ret=<challenge> inside !done
+                //          (per docs example: ">>> !done >>> =ret=93b438ec9b...").
+                // !empty — ROS 7.18+: command succeeded but returned no records.
+                // Parse any attribute words so callers like login() see them.
+                $doneRecord = [];
+                foreach (array_slice($sentence, 1) as $word) {
+                    if (str_starts_with($word, '=')) {
+                        $word = substr($word, 1);
+                        [$key, $value] = explode('=', $word, 2) + ['', ''];
+                        $doneRecord[$key] = $value;
+                    }
+                }
+                if (!empty($doneRecord)) {
+                    $records[] = $doneRecord;
+                }
                 break;
             } elseif ($type === '!trap' || $type === '!fatal') {
                 // Extract error message
