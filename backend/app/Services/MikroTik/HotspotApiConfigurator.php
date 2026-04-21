@@ -509,7 +509,7 @@ class HotspotApiConfigurator
         $shortId = $this->shortId();
         $serverName = $this->config['hotspot_server'] ?? "hs-srv-{$shortId}";
 
-        $hotspots = $this->api->fetch('/ip/hotspot/print');
+        $hotspots = $this->api->fetch('/ip/hotspot');
         foreach ($hotspots as $hotspot) {
             if (($hotspot['name'] ?? null) === $serverName) {
                 return [
@@ -542,10 +542,10 @@ class HotspotApiConfigurator
         }
 
         try {
-            $items = $this->api->fetch($resource . '/print');
+            $items = $this->api->fetch($resource);
             foreach ($items as $item) {
                 if (($item[$field] ?? null) === $name) {
-                    $this->api->executeCommand($resource . '/remove', ['numbers' => $item['.id']]);
+                    $this->api->executeCommand($resource . '/remove', ['.id' => $item['.id']]);
                 }
             }
         } catch (\Exception $e) {
@@ -560,10 +560,10 @@ class HotspotApiConfigurator
         }
 
         try {
-            $items = $this->api->fetch($resource . '/print');
+            $items = $this->api->fetch($resource);
             foreach ($items as $item) {
                 if (($item[$field] ?? null) === $value) {
-                    $this->api->executeCommand($resource . '/remove', ['numbers' => $item['.id']]);
+                    $this->api->executeCommand($resource . '/remove', ['.id' => $item['.id']]);
                 }
             }
         } catch (\Exception $e) {

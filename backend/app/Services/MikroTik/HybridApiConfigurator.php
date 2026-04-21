@@ -679,7 +679,7 @@ class HybridApiConfigurator
         $hotspotOk = false;
         $pppoeOk = false;
 
-        $hotspots = $this->api->fetch('/ip/hotspot/print');
+        $hotspots = $this->api->fetch('/ip/hotspot');
         foreach ($hotspots as $hotspot) {
             if (($hotspot['name'] ?? null) === $hotspotName) {
                 $hotspotOk = true;
@@ -687,7 +687,7 @@ class HybridApiConfigurator
             }
         }
 
-        $pppoeServers = $this->api->fetch('/interface/pppoe-server/server/print');
+        $pppoeServers = $this->api->fetch('/interface/pppoe-server/server');
         foreach ($pppoeServers as $server) {
             if (($server['service-name'] ?? null) === $pppoeService) {
                 $pppoeOk = true;
@@ -730,10 +730,10 @@ class HybridApiConfigurator
         }
 
         try {
-            $items = $this->api->fetch($resource . '/print');
+            $items = $this->api->fetch($resource);
             foreach ($items as $item) {
                 if (($item[$field] ?? null) === $name) {
-                    $this->api->executeCommand($resource . '/remove', ['numbers' => $item['.id']]);
+                    $this->api->executeCommand($resource . '/remove', ['.id' => $item['.id']]);
                 }
             }
         } catch (\Exception $e) {
@@ -748,10 +748,10 @@ class HybridApiConfigurator
         }
 
         try {
-            $items = $this->api->fetch($resource . '/print');
+            $items = $this->api->fetch($resource);
             foreach ($items as $item) {
                 if (($item[$field] ?? null) === $value) {
-                    $this->api->executeCommand($resource . '/remove', ['numbers' => $item['.id']]);
+                    $this->api->executeCommand($resource . '/remove', ['.id' => $item['.id']]);
                 }
             }
         } catch (\Exception $e) {
@@ -762,7 +762,7 @@ class HybridApiConfigurator
     private function setEthernetRunningCheck(string $interface, bool $disabled): void
     {
         try {
-            $items = $this->api->fetch('/interface/ethernet/print');
+            $items = $this->api->fetch('/interface/ethernet');
             foreach ($items as $item) {
                 $name = $item['default-name'] ?? $item['name'] ?? null;
                 if ($name === $interface) {
