@@ -65,15 +65,15 @@ class MikroTikBinaryApiServiceTest extends TestCase
             return $b;
         }
         if (($b & 0xC0) === 0x80) {
-            return (($b & ~0x80) << 8) | $readByte();
+            return (($b & 0x3F) << 8) | $readByte();  // Python: c & 0x3F
         }
         if (($b & 0xE0) === 0xC0) {
             $raw = $readN(2);
-            return (($b & ~0xC0) << 16) | (ord($raw[0]) << 8) | ord($raw[1]);
+            return (($b & 0x1F) << 16) | (ord($raw[0]) << 8) | ord($raw[1]);  // Python: c & 0x1F
         }
         if (($b & 0xF0) === 0xE0) {
             $raw = $readN(3);
-            return (($b & ~0xE0) << 24) | (ord($raw[0]) << 16) | (ord($raw[1]) << 8) | ord($raw[2]);
+            return (($b & 0x0F) << 24) | (ord($raw[0]) << 16) | (ord($raw[1]) << 8) | ord($raw[2]);  // Python: c & 0x0F
         }
         return unpack('N', $readN(4))[1];
     }
@@ -125,6 +125,38 @@ class MikroTikBinaryApiServiceTest extends TestCase
     // -------------------------------------------------------------------------
     // Length encoding round-trips
     // -------------------------------------------------------------------------
+
+    /**
+     * Decode-only tests using hand-crafted byte sequences.
+     * These catch bugs where encode+decode errors cancel each other in round-trips.
+     *
+     * 2-byte form (10xxxxxx xxxxxxxx):
+     *   0x81 0x00 → (0x81 & 0x3F)=0x01, (0x01<<8)|0x00 = 256
+     *   0xBF 0xFF → (0xBF & 0x3F)=0x3F, (0x3F<<8)|0xFF = 0x3FFF = 16383
+     * 3-byte form (110xxxxx xxxxxxxx xxxxxxxx):
+     *   0xC0 0x40 0x00 → (0xC0 & 0x1F)=0x00, (0<<16)|(0x40<<8)|0x00 = 0x4000 = 16384
+     * 4-byte form (1110xxxx xxxxxxxx xxxxxxxx xxxxxxxx):
+     *   0xE0 0x20 0x00 0x00 → (0xE0 & 0x0F)=0x00, (0<<24)|(0x20<<16)|0|0 = 0x200000 = 2097152
+     */
+    public function test_decode_2byte_form_raw_bytes(): void
+    {
+        // (0x81 & 0x3F) << 8 | 0x00 = 0x01 << 8 = 256
+        $this->assertSame(256, $this->decodeLength("\x81\x00"));
+        // (0xBF & 0x3F) << 8 | 0xFF = 0x3F << 8 | 0xFF = 0x3FFF = 16383 (2-byte max)
+        $this->assertSame(0x3FFF, $this->decodeLength("\xBF\xFF"));
+    }
+
+    public function test_decode_3byte_form_raw_bytes(): void
+    {
+        // (0xC0 & 0x1F)=0x00 << 16 | 0x40 << 8 | 0x00 = 0x4000 = 16384 (3-byte min)
+        $this->assertSame(0x4000, $this->decodeLength("\xC0\x40\x00"));
+    }
+
+    public function test_decode_4byte_form_raw_bytes(): void
+    {
+        // (0xE0 & 0x0F)=0 << 24 | 0x20 << 16 | 0 | 0 = 0x200000 = 2097152 (4-byte min)
+        $this->assertSame(0x200000, $this->decodeLength("\xE0\x20\x00\x00"));
+    }
 
     public function test_encode_decode_length_roundtrips_all_boundary_values(): void
     {

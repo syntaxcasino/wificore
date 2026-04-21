@@ -644,15 +644,15 @@ class MikroTikBinaryApiService implements MikroTikApiInterface
         }
         if (($b & 0xC0) === 0x80) {
             $b2 = ord($this->readBytes(1));
-            return (($b & ~0x80) << 8) | $b2;
+            return (($b & 0x3F) << 8) | $b2;  // clear marker bits 7+6, keep payload 5-0
         }
         if (($b & 0xE0) === 0xC0) {
             $raw = $this->readBytes(2);
-            return (($b & ~0xC0) << 16) | (ord($raw[0]) << 8) | ord($raw[1]);
+            return (($b & 0x1F) << 16) | (ord($raw[0]) << 8) | ord($raw[1]);  // clear 7+6+5
         }
         if (($b & 0xF0) === 0xE0) {
             $raw = $this->readBytes(3);
-            return (($b & ~0xE0) << 24) | (ord($raw[0]) << 16) | (ord($raw[1]) << 8) | ord($raw[2]);
+            return (($b & 0x0F) << 24) | (ord($raw[0]) << 16) | (ord($raw[1]) << 8) | ord($raw[2]);  // clear 7+6+5+4
         }
         // 5-byte form
         $raw = $this->readBytes(4);
