@@ -8,12 +8,12 @@ use Illuminate\Support\Facades\Log;
 
 class HybridApiConfigurator
 {
-    private MikroTikRestApiService $api;
+    private MikroTikApiInterface $api;
     private string $serviceId;
     private array $config;
     private array $results = [];
 
-    public function __construct(MikroTikRestApiService $api, string $serviceId, array $config)
+    public function __construct(MikroTikApiInterface $api, string $serviceId, array $config)
     {
         $this->api = $api;
         $this->serviceId = $serviceId;

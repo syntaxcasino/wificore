@@ -21,7 +21,7 @@ use Illuminate\Support\Facades\Log;
  * 
  * API Authentication: Basic Auth (username/password)
  */
-class MikroTikRestApiService
+class MikroTikRestApiService implements MikroTikApiInterface
 {
     private Router $router;
     private string $baseUrl;

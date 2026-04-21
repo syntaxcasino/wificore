@@ -722,9 +722,9 @@ SCRIPT;
     {
         $startTime = microtime(true);
         
-        Log::info('Starting API-based configuration for low-end device', [
+        Log::info('Starting API-based configuration (Binary API primary, REST API fallback)', [
             'router_id' => $router->id,
-            'model' => $router->model,
+            'model'     => $router->model,
         ]);
 
         if ($broadcast) {
@@ -733,27 +733,56 @@ SCRIPT;
                 'init',
                 0,
                 'Starting API-based provisioning',
-                ['method' => 'REST_API', 'router_model' => $router->model]
+                ['method' => 'BINARY_API', 'router_model' => $router->model]
             );
         }
 
         try {
-            // Initialize REST API service
-            $apiService = new MikroTik\MikroTikRestApiService($router, 30);
+            // Resolve API transport: Binary API (port 8728) preferred for ALL tiers;
+            // fall back to REST API (ROS7+) if Binary API port is unreachable.
+            $apiService = null;
+            $apiMethod  = 'BINARY_API';
 
-            // Test API connectivity
             if ($broadcast) {
                 RouterProvisioningProgress::dispatch(
                     $router->id,
                     'connecting',
                     10,
-                    'Connecting to router via REST API',
-                    ['method' => 'REST_API']
+                    'Connecting to router via Binary API (port 8728)',
+                    ['method' => 'BINARY_API']
                 );
             }
 
-            if (!$apiService->testConnection()) {
-                throw new \Exception('Failed to connect to router REST API. Ensure API service is enabled: /ip service enable rest-api');
+            try {
+                $binaryApi = new MikroTik\MikroTikBinaryApiService($router, 30);
+                if ($binaryApi->testConnection()) {
+                    $apiService = $binaryApi;
+                    $apiMethod  = 'BINARY_API';
+                } else {
+                    throw new \Exception('Binary API testConnection returned false');
+                }
+            } catch (\Throwable $binaryEx) {
+                Log::warning('Binary API unavailable, falling back to REST API', [
+                    'router_id' => $router->id,
+                    'error'     => $binaryEx->getMessage(),
+                ]);
+
+                // REST API fallback (ROS7+ only)
+                try {
+                    $restApi = new MikroTik\MikroTikRestApiService($router, 30);
+                    if ($restApi->testConnection()) {
+                        $apiService = $restApi;
+                        $apiMethod  = 'REST_API';
+                    } else {
+                        throw new \Exception('REST API testConnection returned false');
+                    }
+                } catch (\Throwable $restEx) {
+                    throw new \Exception(
+                        'Both Binary API and REST API are unavailable. ' .
+                        'Binary: ' . $binaryEx->getMessage() . '. ' .
+                        'REST: '   . $restEx->getMessage()
+                    );
+                }
             }
 
             if ($broadcast) {
@@ -762,7 +791,7 @@ SCRIPT;
                     'connected',
                     20,
                     'API connection established',
-                    ['method' => 'REST_API']
+                    ['method' => $apiMethod]
                 );
             }
 
@@ -772,8 +801,8 @@ SCRIPT;
                     $router->id,
                     'applying_config',
                     30,
-                    'Applying configuration via API',
-                    ['method' => 'REST_API']
+                    'Applying configuration via ' . $apiMethod,
+                    ['method' => $apiMethod]
                 );
             }
 
@@ -800,7 +829,7 @@ SCRIPT;
                     'verifying',
                     80,
                     'Verifying API deployment',
-                    ['method' => 'REST_API']
+                    ['method' => $apiMethod]
                 );
             }
 
@@ -815,31 +844,33 @@ SCRIPT;
                     'completed',
                     100,
                     'API deployment completed successfully',
-                    ['method' => 'REST_API']
+                    ['method' => $apiMethod]
                 );
             }
 
             $executionTime = round(microtime(true) - $startTime, 2);
-            
+
             Log::info('API configuration applied successfully', [
-                'router_id' => $router->id,
+                'router_id'      => $router->id,
+                'method'         => $apiMethod,
                 'execution_time' => $executionTime . 's',
-                'results' => $result['results'] ?? [],
+                'results'        => $result['results'] ?? [],
             ]);
 
             return [
-                'success' => true,
-                'message' => 'Configuration applied successfully via REST API',
+                'success'        => true,
+                'message'        => 'Configuration applied successfully via ' . $apiMethod,
                 'execution_time' => $executionTime . 's',
-                'router_id' => $router->id,
-                'method' => 'REST_API',
-                'results' => $result['results'] ?? [],
+                'router_id'      => $router->id,
+                'method'         => $apiMethod,
+                'results'        => $result['results'] ?? [],
             ];
 
         } catch (\Exception $e) {
             Log::error('API configuration failed', [
-                'router_id' => $router->id,
-                'error' => $e->getMessage(),
+                'router_id'      => $router->id,
+                'method'         => $apiMethod ?? 'UNKNOWN',
+                'error'          => $e->getMessage(),
                 'execution_time' => round(microtime(true) - $startTime, 2) . 's',
             ]);
 
@@ -848,14 +879,14 @@ SCRIPT;
                     $router->id,
                     'api_failed',
                     'API deployment failed: ' . $e->getMessage(),
-                    ['method' => 'REST_API', 'error' => $e->getMessage()]
+                    ['method' => $apiMethod ?? 'UNKNOWN', 'error' => $e->getMessage()]
                 );
             }
 
             return [
-                'success' => false,
-                'message' => $e->getMessage(),
-                'method' => 'REST_API',
+                'success'         => false,
+                'message'         => $e->getMessage(),
+                'method'          => $apiMethod ?? 'UNKNOWN',
                 'fallback_to_ssh' => true,
             ];
         }
@@ -1240,122 +1271,87 @@ SCRIPT;
                 };
 
                 $routerModel = $detectedModel ?: $router->model;
-                $routerTier = RouterResourceManager::getRouterTierByModel($routerModel);
-                if (empty($routerModel)) {
-                    $routerTier = 'low_end';
-                }
-
-                $osMajor = null;
                 $routerOsVersion = $detectedVersion ?: $router->os_version;
-                if ($routerOsVersion && preg_match('/^(\d+)/', $routerOsVersion, $matches)) {
-                    $osMajor = (int) $matches[1];
-                }
 
-                $isLowEnd = $routerTier === 'low_end';
-                $canUseRestApi = $osMajor === null ? true : $osMajor >= 7;
-                if ($isLowEnd && !$canUseRestApi && $broadcast) {
-                    RouterProvisioningProgress::dispatch(
-                        $router->id,
-                        'compatibility_warning',
-                        35,
-                        'RouterOS < 7 detected; using SSH batching (REST API/WireGuard unavailable).',
-                        ['router_os_version' => $routerOsVersion]
-                    );
-                }
-
-                // Try provisioning service first if enabled for SaaS deployment
-                $result = null;
-                
-                // Initialize these for cleanup (only used by executeSingleScript)
+                // Initialize for cleanup (only used by SSH single-script path)
                 $remoteScriptFile = null;
                 $tempFile = null;
-                
+
+                // Try provisioning-service sidecar first if enabled for SaaS deployment
+                $result = null;
+
                 if ($this->shouldUseProvisioningService($router)) {
                     try {
                         Log::info('Deploying via provisioning service', [
                             'router_id' => $router->id,
                             'script_length' => strlen($serviceScript)
                         ]);
-                        
+
                         $result = $this->provisioningClient->deployScript(
                             $router,
                             $serviceScript,
                             $router->tenant_id
                         );
-                        
+
                         if (!$result['success']) {
                             throw new \Exception($result['message'] ?? 'Provisioning service deployment failed');
                         }
-                        
-                        Log::info('Provisioning service deployment completed', [
-                            'router_id' => $router->id
-                        ]);
-                        
+
+                        Log::info('Provisioning service deployment completed', ['router_id' => $router->id]);
+
                     } catch (\Exception $provisioningException) {
-                        Log::warning('Provisioning service deployment failed, falling back to SSH', [
+                        Log::warning('Provisioning service deployment failed, falling back to API', [
                             'router_id' => $router->id,
                             'error' => $provisioningException->getMessage()
                         ]);
-                        // Fall through to SSH deployment
                     }
                 }
-                
-                // If provisioning service wasn't used or failed, use SSH deployment
+
+                // Primary path: Binary API (port 8728) for ALL device tiers.
+                // Binary API avoids SSH crypto overhead (DH2048 key exchange) which
+                // causes 20-40 s handshakes on low-end MIPS devices (hAP lite, 650 MHz).
+                // Falls back to REST API (ROS7+), then SSH batching as last resort.
                 if ($result === null) {
-                    if ($isLowEnd && $serviceScript && $canUseRestApi) {
-                    try {
-                        // Extract config from script for API deployment
-                        $apiConfig = $this->extractConfigFromScript($serviceScript, $router);
-                        $apiConfigForLog = $apiConfig;
-                        if (!empty($apiConfigForLog['radius_servers'])) {
-                            $apiConfigForLog['radius_servers'] = array_map(static function (array $server): array {
-                                if (isset($server['secret'])) {
-                                    $server['secret'] = '***';
-                                }
+                    $apiConfig = $this->extractConfigFromScript($serviceScript, $router);
 
-                                return $server;
-                            }, $apiConfigForLog['radius_servers']);
-                        }
-                        if (isset($apiConfigForLog['radius_secret'])) {
-                            $apiConfigForLog['radius_secret'] = '***';
-                        }
-
-                        Log::debug('Extracted REST API config for low-end provisioning', [
-                            'router_id' => $router->id,
-                            'service_type' => $apiConfigForLog['service_type'] ?? null,
-                            'config' => $apiConfigForLog,
-                        ]);
-                        
-                        // Try REST API first
-                        $apiResult = $this->applyConfigsViaApi($router, $apiConfig, $broadcast);
-                        
-                        if ($apiResult['success']) {
-                            $result = $apiResult;
-                            Log::info('Low-end device configured via REST API', [
-                                'router_id' => $router->id,
-                                'model' => $router->model,
-                            ]);
-                        } else {
-                            // Fall back to SSH batching if API fails
-                            Log::warning('REST API failed, falling back to SSH batching', [
-                                'router_id' => $router->id,
-                                'api_error' => $apiResult['message'],
-                            ]);
-                            $result = $this->executeBatchedCommands($ssh, $serviceScript, $router, $validator);
-                        }
-                    } catch (\Exception $apiException) {
-                        // API threw an exception - fall back to SSH batching
-                        Log::warning('REST API threw exception, falling back to SSH batching', [
-                            'router_id' => $router->id,
-                            'api_error' => $apiException->getMessage(),
-                        ]);
-                        $result = $this->executeBatchedCommands($ssh, $serviceScript, $router, $validator);
+                    if ($broadcast) {
+                        RouterProvisioningProgress::dispatch(
+                            $router->id,
+                            'applying_config',
+                            40,
+                            'Applying configuration via Binary API',
+                            ['method' => 'BINARY_API']
+                        );
                     }
-                } else {
-                    $remoteScriptFile = "svc_deploy_{$router->id}_" . md5($serviceScript) . '.rsc';
-                    $tempFile = tempnam(sys_get_temp_dir(), 'mikrotik_script_');
-                    $result = $this->executeSingleScript($ssh, $serviceScript, $router, $validator, $remoteScriptFile, $tempFile);
-                }
+
+                    $result = $this->applyConfigsViaApi($router, $apiConfig, $broadcast);
+
+                    if (!$result['success']) {
+                        // Last resort: SSH script import (same SSH connection already open)
+                        Log::warning('All API methods failed, falling back to SSH script import', [
+                            'router_id'  => $router->id,
+                            'api_error'  => $result['message'] ?? 'unknown',
+                        ]);
+
+                        if ($broadcast) {
+                            RouterProvisioningProgress::dispatch(
+                                $router->id,
+                                'compatibility_warning',
+                                38,
+                                'API unavailable; using SSH script import fallback.',
+                                ['router_os_version' => $routerOsVersion]
+                            );
+                        }
+
+                        $routerTier = RouterResourceManager::getRouterTierByModel($routerModel ?: '');
+                        if ($routerTier === 'low_end') {
+                            $result = $this->executeBatchedCommands($ssh, $serviceScript, $router, $validator);
+                        } else {
+                            $remoteScriptFile = "svc_deploy_{$router->id}_" . md5($serviceScript) . '.rsc';
+                            $tempFile = tempnam(sys_get_temp_dir(), 'mikrotik_script_');
+                            $result = $this->executeSingleScript($ssh, $serviceScript, $router, $validator, $remoteScriptFile, $tempFile);
+                        }
+                    }
                 }
 
                 // Brief wait for router to stabilize
@@ -1464,7 +1460,8 @@ SCRIPT;
             }
 
             // Only override result if not already set by a successful API result
-            if (!$result || !isset($result['method']) || $result['method'] !== 'API') {
+            $apiBasedMethods = ['BINARY_API', 'REST_API', 'API'];
+            if (!$result || !isset($result['method']) || !in_array($result['method'], $apiBasedMethods, true)) {
                 if (!$result || empty($result['success'])) {
                     $errorMsg = $result['message'] ?? 'Script deployment failed (validation did not pass)';
                     throw new \Exception($errorMsg, 500);
