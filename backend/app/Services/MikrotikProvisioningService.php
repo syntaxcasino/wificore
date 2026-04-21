@@ -1437,13 +1437,15 @@ SCRIPT;
                     $errorMsg = $result['message'] ?? 'Script deployment failed (validation did not pass)';
                     throw new \Exception($errorMsg, 500);
                 }
+                // Detect which fallback transport actually succeeded
+                $usedMethod = str_contains($result['message'] ?? '', 'batches') ? 'BATCHED_SSH' : 'SFTP_IMPORT';
                 $result = [
                     'success'        => true,
-                    'message'        => 'Configuration applied successfully via SFTP+import',
+                    'message'        => 'Configuration applied successfully via ' . $usedMethod,
                     'execution_time' => round(microtime(true) - $startTime, 2) . 's',
                     'script_name'    => $scriptName,
                     'router_id'      => $router->id,
-                    'method'         => 'SFTP_IMPORT',
+                    'method'         => $usedMethod,
                 ];
             }
 
@@ -1747,7 +1749,12 @@ EOT;
                     'router_id' => $router->id,
                     'error' => $e->getMessage(),
                 ]);
-                
+
+                // Clean up the local temp file that may not have been unlinked yet
+                if (!empty($tempFile) && file_exists($tempFile)) {
+                    @unlink($tempFile);
+                }
+
                 // Schedule cleanup of all batch files created so far
                 $this->scheduleBatchCleanup($router, $batchFiles);
                 
