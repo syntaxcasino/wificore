@@ -727,31 +727,11 @@ SCRIPT;
             'model'     => $router->model,
         ]);
 
-        if ($broadcast) {
-            RouterProvisioningProgress::dispatch(
-                $router->id,
-                'init',
-                0,
-                'Starting API-based provisioning',
-                ['method' => 'BINARY_API', 'router_model' => $router->model]
-            );
-        }
-
         try {
             // Resolve API transport: Binary API (port 8728) preferred for ALL tiers;
             // fall back to REST API (ROS7+) if Binary API port is unreachable.
             $apiService = null;
             $apiMethod  = 'BINARY_API';
-
-            if ($broadcast) {
-                RouterProvisioningProgress::dispatch(
-                    $router->id,
-                    'connecting',
-                    10,
-                    'Connecting to router via Binary API (port 8728)',
-                    ['method' => 'BINARY_API']
-                );
-            }
 
             try {
                 $binaryApi = new MikroTik\MikroTikBinaryApiService($router, 30);
@@ -789,82 +769,82 @@ SCRIPT;
                 RouterProvisioningProgress::dispatch(
                     $router->id,
                     'connected',
-                    20,
+                    45,
                     'API connection established',
                     ['method' => $apiMethod]
                 );
             }
 
-            // Select appropriate API configurator for the deployment
-            if ($broadcast) {
-                RouterProvisioningProgress::dispatch(
-                    $router->id,
-                    'applying_config',
-                    30,
-                    'Applying configuration via ' . $apiMethod,
-                    ['method' => $apiMethod]
-                );
+            // Open a persistent connection for the batch of provisioning commands.
+            // Binary API: opens TCP socket + authenticates.
+            // REST API: no-op (stateless HTTP).
+            $apiService->connect();
+
+            try {
+                $serviceId   = $config['service_id']   ?? $router->id;
+                $serviceType = $config['service_type'] ?? RouterService::TYPE_PPPOE;
+                if ($serviceType === RouterService::TYPE_HYBRID) {
+                    $configurator = new MikroTik\HybridApiConfigurator($apiService, $serviceId, $config);
+                } elseif ($serviceType === RouterService::TYPE_HOTSPOT) {
+                    $configurator = new MikroTik\HotspotApiConfigurator($apiService, $serviceId, $config);
+                } else {
+                    $configurator = new MikroTik\PppoeApiConfigurator($apiService, $serviceId, $config);
+                }
+
+                $result = $configurator->configure();
+
+                if (!$result['success']) {
+                    throw new \Exception($result['message'] ?? 'API configuration failed');
+                }
+
+                // Verify the configuration
+                if ($broadcast) {
+                    RouterProvisioningProgress::dispatch(
+                        $router->id,
+                        'verifying',
+                        80,
+                        'Verifying API deployment',
+                        ['method' => $apiMethod]
+                    );
+                }
+
+                $verification = $configurator->verify();
+                if (!$verification['valid']) {
+                    throw new \Exception($verification['error'] ?? 'API verification failed');
+                }
+
+                if ($broadcast) {
+                    RouterProvisioningProgress::dispatch(
+                        $router->id,
+                        'completed',
+                        95,
+                        'API deployment completed successfully',
+                        ['method' => $apiMethod]
+                    );
+                }
+
+                $executionTime = round(microtime(true) - $startTime, 2);
+
+                Log::info('API configuration applied successfully', [
+                    'router_id'      => $router->id,
+                    'method'         => $apiMethod,
+                    'execution_time' => $executionTime . 's',
+                    'results'        => $result['results'] ?? [],
+                ]);
+
+                return [
+                    'success'        => true,
+                    'message'        => 'Configuration applied successfully via ' . $apiMethod,
+                    'execution_time' => $executionTime . 's',
+                    'router_id'      => $router->id,
+                    'method'         => $apiMethod,
+                    'results'        => $result['results'] ?? [],
+                ];
+
+            } finally {
+                // Always close the persistent connection (no-op for REST API)
+                $apiService->disconnect();
             }
-
-            $serviceId = $config['service_id'] ?? $router->id;
-            $serviceType = $config['service_type'] ?? RouterService::TYPE_PPPOE;
-            if ($serviceType === RouterService::TYPE_HYBRID) {
-                $configurator = new MikroTik\HybridApiConfigurator($apiService, $serviceId, $config);
-            } elseif ($serviceType === RouterService::TYPE_HOTSPOT) {
-                $configurator = new MikroTik\HotspotApiConfigurator($apiService, $serviceId, $config);
-            } else {
-                $configurator = new MikroTik\PppoeApiConfigurator($apiService, $serviceId, $config);
-            }
-            
-            $result = $configurator->configure();
-
-            if (!$result['success']) {
-                throw new \Exception($result['message'] ?? 'API configuration failed');
-            }
-
-            // Verify the configuration
-            if ($broadcast) {
-                RouterProvisioningProgress::dispatch(
-                    $router->id,
-                    'verifying',
-                    80,
-                    'Verifying API deployment',
-                    ['method' => $apiMethod]
-                );
-            }
-
-            $verification = $configurator->verify();
-            if (!$verification['valid']) {
-                throw new \Exception($verification['error'] ?? 'API verification failed');
-            }
-
-            if ($broadcast) {
-                RouterProvisioningProgress::dispatch(
-                    $router->id,
-                    'completed',
-                    100,
-                    'API deployment completed successfully',
-                    ['method' => $apiMethod]
-                );
-            }
-
-            $executionTime = round(microtime(true) - $startTime, 2);
-
-            Log::info('API configuration applied successfully', [
-                'router_id'      => $router->id,
-                'method'         => $apiMethod,
-                'execution_time' => $executionTime . 's',
-                'results'        => $result['results'] ?? [],
-            ]);
-
-            return [
-                'success'        => true,
-                'message'        => 'Configuration applied successfully via ' . $apiMethod,
-                'execution_time' => $executionTime . 's',
-                'router_id'      => $router->id,
-                'method'         => $apiMethod,
-                'results'        => $result['results'] ?? [],
-            ];
 
         } catch (\Exception $e) {
             Log::error('API configuration failed', [
@@ -1503,7 +1483,7 @@ SCRIPT;
                 }
             }
 
-            Log::info('Configuration applied successfully via SSH', $result);
+            Log::info('Configuration applied successfully', array_merge($result, ['method' => $result['method'] ?? 'SSH']));
             return $result;
 
         } catch (\Exception $e) {

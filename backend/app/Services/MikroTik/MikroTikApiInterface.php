@@ -19,6 +19,18 @@ interface MikroTikApiInterface
 {
     public function testConnection(): bool;
 
+    /**
+     * Open a persistent connection for a batch of provisioning commands.
+     * No-op for stateless transports (e.g. REST API).
+     */
+    public function connect(): void;
+
+    /**
+     * Close the persistent connection after provisioning is complete.
+     * No-op for stateless transports.
+     */
+    public function disconnect(): void;
+
     public function createBridge(string $name, ?string $comment = null): array;
     public function removeBridge(string $name): bool;
 
