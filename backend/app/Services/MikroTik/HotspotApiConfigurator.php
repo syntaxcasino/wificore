@@ -348,7 +348,6 @@ class HotspotApiConfigurator
             'protocol' => 'tcp',
             'dst-port' => $mgmtPorts,
             'action' => 'drop',
-            'place-before' => 0,
             'comment' => 'hs-mgmt-' . $this->serviceId . '-drop',
         ]);
 
@@ -359,7 +358,6 @@ class HotspotApiConfigurator
                 'dst-port' => '161',
                 'src-address' => $radiusServer,
                 'action' => 'accept',
-                'place-before' => 0,
                 'comment' => 'hs-mgmt-' . $this->serviceId . '-snmp',
             ]);
         }
@@ -370,7 +368,6 @@ class HotspotApiConfigurator
             'dst-port' => $mgmtPorts,
             'src-address' => $mgmtSubnet,
             'action' => 'accept',
-            'place-before' => 0,
             'comment' => 'hs-mgmt-' . $this->serviceId . '-allow',
         ]);
 
@@ -378,7 +375,6 @@ class HotspotApiConfigurator
             'chain' => 'input',
             'connection-state' => 'established,related',
             'action' => 'accept',
-            'place-before' => 0,
             'comment' => 'hs-mgmt-' . $this->serviceId . '-est',
         ]);
 
@@ -386,7 +382,6 @@ class HotspotApiConfigurator
             'chain' => 'forward',
             'in-interface' => $accessInterface,
             'action' => 'drop',
-            'place-before' => 0,
             'comment' => 'hs-fw-' . $this->serviceId . '-DROP-UNAUTH',
         ]);
 
@@ -396,7 +391,6 @@ class HotspotApiConfigurator
             'hotspot' => 'auth',
             'out-interface-list' => $wanList,
             'action' => 'accept',
-            'place-before' => 0,
             'comment' => 'hs-fw-' . $this->serviceId . '-AUTH-INET',
         ]);
 
@@ -405,7 +399,6 @@ class HotspotApiConfigurator
             'in-interface' => $accessInterface,
             'connection-state' => 'established,related',
             'action' => 'accept',
-            'place-before' => 0,
             'comment' => 'hs-fw-' . $this->serviceId . '-EST',
         ]);
 
@@ -414,7 +407,6 @@ class HotspotApiConfigurator
             'in-interface' => $accessInterface,
             'connection-state' => 'invalid',
             'action' => 'drop',
-            'place-before' => 0,
             'comment' => 'hs-fw-' . $this->serviceId . '-INV',
         ]);
 
@@ -424,7 +416,6 @@ class HotspotApiConfigurator
             'out-interface' => $accessInterface,
             'connection-state' => 'established,related',
             'action' => 'accept',
-            'place-before' => 0,
             'comment' => 'hs-fw-' . $this->serviceId . '-WAN-RET',
         ]);
 
