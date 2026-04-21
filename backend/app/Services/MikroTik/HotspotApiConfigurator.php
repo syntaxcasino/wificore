@@ -343,14 +343,26 @@ class HotspotApiConfigurator
             // member may already exist
         }
 
+        // INPUT chain — order matters: ACCEPTs before DROP for same traffic class.
+        // 1. Accept established/related (return traffic, fast path)
+        $this->api->addFirewallFilterRule([
+            'chain' => 'input',
+            'connection-state' => 'established,related',
+            'action' => 'accept',
+            'comment' => 'hs-mgmt-' . $this->serviceId . '-est',
+        ]);
+
+        // 2. Accept mgmt ports from allowed subnet
         $this->api->addFirewallFilterRule([
             'chain' => 'input',
             'protocol' => 'tcp',
             'dst-port' => $mgmtPorts,
-            'action' => 'drop',
-            'comment' => 'hs-mgmt-' . $this->serviceId . '-drop',
+            'src-address' => $mgmtSubnet,
+            'action' => 'accept',
+            'comment' => 'hs-mgmt-' . $this->serviceId . '-allow',
         ]);
 
+        // 3. Accept SNMP from RADIUS server
         if ($radiusServer) {
             $this->api->addFirewallFilterRule([
                 'chain' => 'input',
@@ -362,29 +374,35 @@ class HotspotApiConfigurator
             ]);
         }
 
+        // 4. Drop mgmt ports from all other sources (after ACCEPTs above)
         $this->api->addFirewallFilterRule([
             'chain' => 'input',
             'protocol' => 'tcp',
             'dst-port' => $mgmtPorts,
-            'src-address' => $mgmtSubnet,
-            'action' => 'accept',
-            'comment' => 'hs-mgmt-' . $this->serviceId . '-allow',
+            'action' => 'drop',
+            'comment' => 'hs-mgmt-' . $this->serviceId . '-drop',
         ]);
 
-        $this->api->addFirewallFilterRule([
-            'chain' => 'input',
-            'connection-state' => 'established,related',
-            'action' => 'accept',
-            'comment' => 'hs-mgmt-' . $this->serviceId . '-est',
-        ]);
-
+        // FORWARD chain — correct order: established/related → invalid drop → auth accept → unauth drop
+        // 1. Accept established/related (return traffic for active sessions)
         $this->api->addFirewallFilterRule([
             'chain' => 'forward',
             'in-interface' => $accessInterface,
-            'action' => 'drop',
-            'comment' => 'hs-fw-' . $this->serviceId . '-DROP-UNAUTH',
+            'connection-state' => 'established,related',
+            'action' => 'accept',
+            'comment' => 'hs-fw-' . $this->serviceId . '-EST',
         ]);
 
+        // 2. Drop invalid packets
+        $this->api->addFirewallFilterRule([
+            'chain' => 'forward',
+            'in-interface' => $accessInterface,
+            'connection-state' => 'invalid',
+            'action' => 'drop',
+            'comment' => 'hs-fw-' . $this->serviceId . '-INV',
+        ]);
+
+        // 3. Accept authenticated hotspot clients to WAN
         $this->api->addFirewallFilterRule([
             'chain' => 'forward',
             'in-interface' => $accessInterface,
@@ -394,22 +412,7 @@ class HotspotApiConfigurator
             'comment' => 'hs-fw-' . $this->serviceId . '-AUTH-INET',
         ]);
 
-        $this->api->addFirewallFilterRule([
-            'chain' => 'forward',
-            'in-interface' => $accessInterface,
-            'connection-state' => 'established,related',
-            'action' => 'accept',
-            'comment' => 'hs-fw-' . $this->serviceId . '-EST',
-        ]);
-
-        $this->api->addFirewallFilterRule([
-            'chain' => 'forward',
-            'in-interface' => $accessInterface,
-            'connection-state' => 'invalid',
-            'action' => 'drop',
-            'comment' => 'hs-fw-' . $this->serviceId . '-INV',
-        ]);
-
+        // 4. Accept WAN return traffic back to hotspot clients
         $this->api->addFirewallFilterRule([
             'chain' => 'forward',
             'in-interface-list' => $wanList,
@@ -417,6 +420,14 @@ class HotspotApiConfigurator
             'connection-state' => 'established,related',
             'action' => 'accept',
             'comment' => 'hs-fw-' . $this->serviceId . '-WAN-RET',
+        ]);
+
+        // 5. Drop unauthenticated clients (after all ACCEPTs)
+        $this->api->addFirewallFilterRule([
+            'chain' => 'forward',
+            'in-interface' => $accessInterface,
+            'action' => 'drop',
+            'comment' => 'hs-fw-' . $this->serviceId . '-DROP-UNAUTH',
         ]);
 
         $this->api->addFirewallFilterRule([

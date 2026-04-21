@@ -270,10 +270,34 @@ class MikroTikBinaryApiService implements MikroTikApiInterface
 
     public function setConnectionTracking(int $tcpEstablishedTimeout = 3600, int $udpTimeout = 30): array
     {
+        // RouterOS time parameters require a unit suffix — bare integers cause !trap.
+        // Convert seconds to RouterOS time string: 3600 → '1h', 30 → '30s', etc.
         return $this->commandOne('/ip/firewall/connection/tracking/set', [
-            'tcp-established-timeout=' . $tcpEstablishedTimeout,
-            'udp-timeout='             . $udpTimeout,
+            'tcp-established-timeout=' . $this->secondsToRosTime($tcpEstablishedTimeout),
+            'udp-timeout='             . $this->secondsToRosTime($udpTimeout),
         ]);
+    }
+
+    /**
+     * Convert an integer number of seconds to a RouterOS time string.
+     * RouterOS accepts: Xs, Xm, Xh, Xd — or compound like 1h30m.
+     * We use the largest single unit that divides evenly, else fall back to Xs.
+     */
+    private function secondsToRosTime(int $seconds): string
+    {
+        if ($seconds === 0) {
+            return '0s';
+        }
+        if ($seconds % 86400 === 0) {
+            return ($seconds / 86400) . 'd';
+        }
+        if ($seconds % 3600 === 0) {
+            return ($seconds / 3600) . 'h';
+        }
+        if ($seconds % 60 === 0) {
+            return ($seconds / 60) . 'm';
+        }
+        return $seconds . 's';
     }
 
     /**
