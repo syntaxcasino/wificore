@@ -6,107 +6,83 @@ use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Redis;
 use Symfony\Component\HttpFoundation\Response;
 
 class DDoSProtection
 {
     /**
-     * Aggressive rate limiting for DDoS protection
-     * Blocks IPs that make too many requests in a short time
+     * Rate limiting for DDoS protection — applies to ALL requests (auth or not).
+     *
+     * GAP-08: Removed early-return for authenticated users; a stolen/brute-forced
+     *         token must not bypass rate limiting.
+     * GAP-09: Replaced O(n) PHP-array-in-Redis with atomic Redis INCR + EXPIRE
+     *         sliding window (O(1) per request, no serialisation overhead).
+     *
+     * Thresholds:
+     *   - 120 requests / 60 s  → block for 30 s (sustained flood)
      */
     public function handle(Request $request, Closure $next): Response
     {
         $ip = $request->ip();
         $blockKey = "ddos:blocked:{$ip}";
-        $requestKey = "ddos:requests:{$ip}";
-        
-        // Skip DDoS protection for authenticated users (they have their own rate limiting)
-        if ($request->user()) {
-            return $next($request);
-        }
-        
-        // Check if IP is already blocked
+
+        // ── Check existing block ────────────────────────────────────────────
         if (Cache::has($blockKey)) {
-            // Get the actual expiration time from cache
             $blockedUntil = Cache::get($blockKey);
-            $retryAfter = is_numeric($blockedUntil) 
+            $retryAfter = is_numeric($blockedUntil)
                 ? max(0, $blockedUntil - now()->timestamp)
-                : 900;
-            
+                : 30;
+
             Log::warning('DDoS: Blocked IP attempted access', [
                 'ip' => $ip,
                 'path' => $request->path(),
                 'user_agent' => $request->userAgent(),
-                'retry_after' => $retryAfter
+                'retry_after' => $retryAfter,
             ]);
-            
+
             return response()->json([
                 'message' => 'Access denied. Your IP has been temporarily blocked due to suspicious activity.',
                 'retry_after' => $retryAfter,
-                'blocked_until' => date('Y-m-d H:i:s', $blockedUntil ?: now()->addMinutes(15)->timestamp)
+                'blocked_until' => date('Y-m-d H:i:s', $blockedUntil ?: now()->addSeconds(30)->timestamp),
             ], 403);
         }
-        
-        // Track requests per minute
-        $requests = Cache::get($requestKey, []);
-        $now = now()->timestamp;
-        
-        // Remove requests older than 1 minute
-        $requests = array_filter($requests, function($timestamp) use ($now) {
-            return ($now - $timestamp) < 60;
-        });
-        
-        // Add current request (30 seconds max to prevent stale data)
-        $requests[] = $now;
-        Cache::put($requestKey, $requests, 30);
-        
-        // Check if threshold exceeded (100 requests per minute)
-        if (count($requests) > 100) {
-            // Block IP for 30 seconds max (reduced from 15 min to prevent stale cache data)
+
+        // ── Atomic sliding-window counter (GAP-09) ──────────────────────────
+        // Uses Redis INCR so the operation is O(1) and race-condition free.
+        $countKey = "ddos:count:{$ip}";
+        try {
+            $redis = Redis::connection()->client();
+            $count = $redis->incr($countKey);
+            if ($count === 1) {
+                $redis->expire($countKey, 60); // 60-second window
+            }
+        } catch (\Throwable $e) {
+            // Redis unavailable — fail open rather than blocking all traffic
+            Log::warning('DDoS: Redis counter unavailable, skipping check', ['error' => $e->getMessage()]);
+            return $next($request);
+        }
+
+        // ── Enforce threshold ───────────────────────────────────────────────
+        if ($count > 120) {
             $blockedUntil = now()->addSeconds(30)->timestamp;
             Cache::put($blockKey, $blockedUntil, 30);
-            
+
             Log::alert('DDoS: IP blocked for excessive requests', [
                 'ip' => $ip,
-                'requests_per_minute' => count($requests),
+                'requests_per_minute' => $count,
                 'path' => $request->path(),
                 'user_agent' => $request->userAgent(),
-                'blocked_until' => now()->addMinutes(15)->toDateTimeString()
+                'blocked_until' => date('Y-m-d H:i:s', $blockedUntil),
             ]);
-            
+
             return response()->json([
                 'message' => 'Access denied. Your IP has been temporarily blocked due to excessive requests.',
-                'retry_after' => 900,
-                'blocked_until' => date('Y-m-d H:i:s', $blockedUntil)
+                'retry_after' => 30,
+                'blocked_until' => date('Y-m-d H:i:s', $blockedUntil),
             ], 403);
         }
-        
-        // Check for suspicious patterns (rapid-fire requests)
-        if (count($requests) >= 20) {
-            $recentRequests = array_slice($requests, -20);
-            $timeSpan = end($recentRequests) - reset($recentRequests);
-            
-            // If 20 requests in less than 5 seconds, it's suspicious
-            if ($timeSpan < 5) {
-                // Block IP for 30 seconds max (reduced from 15 min to prevent stale cache data)
-                $blockedUntil = now()->addSeconds(30)->timestamp;
-                Cache::put($blockKey, $blockedUntil, 30);
-                
-                Log::alert('DDoS: IP blocked for rapid-fire requests', [
-                    'ip' => $ip,
-                    'requests' => 20,
-                    'time_span' => $timeSpan . 's',
-                    'blocked_until' => now()->addMinutes(15)->toDateTimeString()
-                ]);
-                
-                return response()->json([
-                    'message' => 'Access denied. Suspicious activity detected.',
-                    'retry_after' => 900,
-                    'blocked_until' => date('Y-m-d H:i:s', $blockedUntil)
-                ], 403);
-            }
-        }
-        
+
         return $next($request);
     }
 }

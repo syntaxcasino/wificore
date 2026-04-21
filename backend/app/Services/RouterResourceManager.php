@@ -18,12 +18,25 @@ class RouterResourceManager
     const LOW_END_MODELS = [
         'RB941-2nD',        // hAP lite
         'hAP lite',         // hAP lite (common name)
+        'hAP mini',         // hAP mini
+        'hAP 2n',           // hAP 2nD
         'RB951Ui-2HnD',     // hAP
-        'RB750',            // hex lite
+        'RB750',            // hex lite / hex
         'RB750r2',          // hex lite r2
         'RB750Gr3',         // hex
         'RB952Ui-5ac2nD',   // hAP ac lite
         'hAP ac lite',      // hAP ac lite (common name)
+        'cAP lite',         // cAP lite
+        'cAP ac',           // cAP ac
+        'wAP',              // wAP / wAP ac / wAP R
+        'wsAP',             // wsAP
+        'mAP',              // mAP / mAP lite
+        'OmniTIK 5 PoE ac', // OmniTIK outdoor
+        'LDF',              // LDF 5 / LDF 2
+        'QRT',              // QRT 5 / QRT 2
+        'SXT',              // SXT 5 / SXT 2
+        'grooveA',          // groove A
+        'Metal',            // Metal 2 / Metal 5
     ];
     
     /**
@@ -36,7 +49,7 @@ class RouterResourceManager
             'max_concurrent_connections' => 500,
             'polling_interval' => 300,      // 5 minutes
             'command_batch_size' => 5,
-            'ssh_timeout' => 30,            // Increased for slow SSH handshake
+            'ssh_timeout' => 60,            // GAP-01: hAP lite SSH handshake can take 35-50s under load
             'verification_attempts' => 2,
         ],
         'mid_range' => [

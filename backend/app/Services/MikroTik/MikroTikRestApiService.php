@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Services\MikroTik;
 
 use App\Models\Router;
-use Illuminate\Support\Facades\Crypt;
+use App\Services\PasswordEncryptionService;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -50,7 +50,11 @@ class MikroTikRestApiService
         $this->baseUrl = "https://{$ipAddress}:{$port}/rest";
 
         $this->username = $router->username;
-        $this->password = Crypt::decrypt($router->password);
+        $decrypted = PasswordEncryptionService::safeDecrypt($router);
+        if ($decrypted === null) {
+            throw new \RuntimeException('Unable to decrypt router credentials for REST API (router id: ' . $router->id . ')');
+        }
+        $this->password = $decrypted;
     }
 
     /**

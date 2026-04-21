@@ -312,7 +312,7 @@ class ZeroConfigHotspotGenerator
                 'is_low_end'       => $isLowEnd,
                 'wan_list'         => 'WAN',
                 'subscriber_ifaces' => [
-                    ['in' => $params['bridge_name'] ?? $params['interface'], 'is_list' => false, 'pool_cidr' => $params['network_cidr'] ?? '192.168.0.0/24', 'tag' => 'HS'],
+                    ['in' => $params['bridge_name'] ?? $params['interface'], 'is_list' => false, 'pool_cidr' => $params['network_cidr'] ?? '192.168.0.0/24'],
                 ],
             ]),
             $this->generateFirewallRules($params),

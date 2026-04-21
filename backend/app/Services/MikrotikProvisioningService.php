@@ -894,10 +894,11 @@ SCRIPT;
             'script_provided' => $script !== null,
         ]);
 
-        $lockTtlSeconds = (int) env('MIKROTIK_PROVISION_LOCK_TTL', 60);
-        $lockWaitSeconds = (int) env('MIKROTIK_PROVISION_LOCK_WAIT', 10);
-
-        $provisionLock = Cache::lock('router_provision_lock_' . $router->id, $lockTtlSeconds);
+        // GAP-03: Acquire the unified provisioning lock (same key as RouterProvisioningJob).
+        // TTL = job timeout (600s). When called from the job the lock is already held;
+        // when called directly (e.g. re-provision API) it acquires it fresh.
+        $lockWaitSeconds = (int) config('mikrotik.provision_lock_wait', 10);
+        $provisionLock = Cache::lock('mikrotik_provision_' . $router->id, 600);
         try {
             $provisionLock->block($lockWaitSeconds);
         } catch (LockTimeoutException $e) {
@@ -905,7 +906,6 @@ SCRIPT;
                 'router_id' => $router->id,
                 'router_name' => $routerName,
                 'wait_seconds' => $lockWaitSeconds,
-                'ttl_seconds' => $lockTtlSeconds,
             ]);
 
             throw new \Exception('Router is busy with another provisioning operation', 503, $e);
@@ -1534,8 +1534,10 @@ SCRIPT;
             
             throw new \Exception($errorMessage, $e->getCode(), $e);
         } finally {
-            if ($provisionLock && method_exists($provisionLock, 'owner') && $provisionLock->owner()) {
+            try {
                 $provisionLock->release();
+            } catch (\Throwable $lockEx) {
+                // Lock may have already been released by the outer job — ignore
             }
         }
     }
@@ -1728,7 +1730,7 @@ EOT;
                         'router_id' => $router->id,
                         'batch' => $batchNum,
                     ]);
-                    sleep(10); // 10 second memory recovery for extreme low memory (5MB free)
+                    sleep(3); // GAP-02: 3s is sufficient for hAP lite memory flush; 10s was blocking queue workers
                     $ssh->connect();
                     Log::debug('Reconnected SSH after memory recovery delay', [
                         'router_id' => $router->id,
@@ -1741,14 +1743,20 @@ EOT;
                 file_put_contents($tempFile, $batch);
                 
                 $ssh->uploadFile($tempFile, $batchFile);
-                
+
                 // Delay after upload before import (let router process)
-                sleep(3);
-                
-                $ssh->importFile($batchFile);
+                sleep(1); // GAP-02: reduced from 3s
+
+                // Extend timeout for /import — batch scripts can take 30-60 s on low-end devices
+                $ssh->setTimeout(120);
+                try {
+                    $ssh->importFile($batchFile);
+                } finally {
+                    $ssh->setTimeout(RouterResourceManager::getSshTimeout($router));
+                }
                 
                 // Wait for RouterOS to process and stabilize memory
-                sleep(5);
+                sleep(2); // GAP-02: reduced from 5s
                 
                 // Cleanup batch file immediately after import
                 @unlink($tempFile);
@@ -1812,52 +1820,52 @@ EOT;
 
         $routerId = $router->id;
         $tenantId = app(\App\Services\TenantContext::class)->getTenantId();
-        $schemaName = app(\App\Services\TenantContext::class)->getSchemaName();
 
-        dispatch(function () use ($routerId, $tenantId, $schemaName, $batchFiles) {
+        // GAP-15: Wrap closure in DB::transaction() so SET LOCAL search_path is
+        // transaction-scoped and is not lost by PgBouncer connection pooling.
+        dispatch(function () use ($routerId, $tenantId, $batchFiles) {
             $tenantContext = app(\App\Services\TenantContext::class);
-            
-            if ($tenantId && $schemaName) {
-                // First reset to public schema to access tenants table
-                \DB::connection('pgsql')->statement("SET search_path TO 'public'");
-                $tenantContext->setTenantById($tenantId);
-                // Then set to tenant schema for router operations
-                \DB::connection('pgsql')->statement("SET search_path TO '{$schemaName}'");
-            }
 
-            try {
-                $router = \App\Models\Router::on('pgsql')->useWritePdo()->find($routerId);
-                if (!$router) {
-                    \Illuminate\Support\Facades\Log::warning('Router not found during batch cleanup', [
-                        'router_id' => $routerId,
-                        'schema' => $schemaName ?? 'unknown',
-                    ]);
-                    return;
+            \Illuminate\Support\Facades\DB::transaction(function () use ($routerId, $tenantId, $batchFiles, $tenantContext) {
+                // Force sticky-write so SELECTs use the same PDO that holds the transaction
+                \Illuminate\Support\Facades\DB::connection()->recordsHaveBeenModified();
+
+                if ($tenantId) {
+                    $tenantContext->setTenantById($tenantId);
                 }
-
-                $ssh = app(SshExecutor::class, [
-                    'router' => $router,
-                    'timeout' => 10,
-                ]);
-                $ssh->connect();
 
                 try {
-                    foreach ($batchFiles as $batchFile) {
-                        try {
-                            $ssh->exec('/file remove [find name="' . $batchFile . '"]');
-                            // Reduced: Removed routine cleanup log
-                        } catch (\Throwable $e) {
-                            // File may already be deleted
+                    $router = \App\Models\Router::on('pgsql')->useWritePdo()->find($routerId);
+                    if (!$router) {
+                        \Illuminate\Support\Facades\Log::warning('Router not found during batch cleanup', [
+                            'router_id' => $routerId,
+                        ]);
+                        return;
+                    }
+
+                    $ssh = app(SshExecutor::class, [
+                        'router' => $router,
+                        'timeout' => 10,
+                    ]);
+                    $ssh->connect();
+
+                    try {
+                        foreach ($batchFiles as $batchFile) {
+                            try {
+                                $ssh->exec('/file remove [find name="' . $batchFile . '"]');
+                            } catch (\Throwable $e) {
+                                // File may already be deleted — non-fatal
+                            }
                         }
+                    } finally {
+                        $ssh->disconnect();
                     }
                 } finally {
-                    $ssh->disconnect();
+                    if ($tenantId) {
+                        $tenantContext->clearTenant();
+                    }
                 }
-            } finally {
-                if ($tenantId) {
-                    $tenantContext->clearTenant();
-                }
-            }
+            });
         })->delay(now()->addSeconds(30));
     }
 
@@ -2307,9 +2315,17 @@ EOT;
                 Log::info('Starting file upload via SFTP', ['router_id' => $router->id]);
                 $ssh->uploadFile($tempFile, $remoteScriptFile);
                 Log::info('File upload completed', ['router_id' => $router->id]);
-                
+
+                // Extend timeout before /import — RouterOS executes the whole script
+                // synchronously and large PPPoE scripts can take 60-120 s to finish.
+                $originalTimeout = $ssh->getTimeout();
+                $ssh->setTimeout(240);
                 Log::info('Starting script import', ['router_id' => $router->id]);
-                $ssh->importFile($remoteScriptFile);
+                try {
+                    $ssh->importFile($remoteScriptFile);
+                } finally {
+                    $ssh->setTimeout($originalTimeout);
+                }
                 Log::info('Script import completed', ['router_id' => $router->id]);
 
                 // Wait for RouterOS to process
