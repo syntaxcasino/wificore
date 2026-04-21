@@ -169,11 +169,13 @@ trait ZeroConfigBootstrapTrait
 
         return [
             "# Service Hardening (management access restricted to: {$allowAddr})",
+            ":do { /ip service enable api } on-error={ /log info \"{$prefix}: api already enabled\" }",
+            ":do { /ip service set api address=\"{$allowAddr}\" } on-error={ /log warning \"{$prefix}: Failed to restrict api address\" }",
             ":do { /ip service enable api-ssl } on-error={ /log info \"{$prefix}: api-ssl not available\" }",
             ":do { /ip service set api-ssl address=\"{$allowAddr}\" } on-error={ /log warning \"{$prefix}: Failed to set api-ssl address\" }",
             ":do { /ip service set ssh address=\"{$allowAddr}\" } on-error={ /log warning \"{$prefix}: Failed to restrict SSH\" }",
             ":do { /ip service set winbox address=\"{$allowAddr}\" } on-error={ /log warning \"{$prefix}: Failed to restrict Winbox\" }",
-            ":do { /ip service disable telnet,ftp,www,www-ssl,api,romon } on-error={ /log info \"{$prefix}: Some services already disabled\" }",
+            ":do { /ip service disable telnet,ftp,www,www-ssl,romon } on-error={ /log info \"{$prefix}: Some services already disabled\" }",
         ];
     }
 
