@@ -453,7 +453,6 @@ class HybridApiConfigurator
             'protocol' => 'tcp',
             'dst-port' => $mgmtPorts,
             'action' => 'drop',
-            'place-before' => 0,
             'comment' => 'hyb-mgmt-' . $this->serviceId . '-drop',
         ]);
 
@@ -464,7 +463,6 @@ class HybridApiConfigurator
                 'dst-port' => '161',
                 'src-address' => $radiusServer,
                 'action' => 'accept',
-                'place-before' => 0,
                 'comment' => 'hyb-mgmt-' . $this->serviceId . '-snmp',
             ]);
         }
@@ -475,7 +473,6 @@ class HybridApiConfigurator
             'dst-port' => $mgmtPorts,
             'src-address' => $mgmtSubnet,
             'action' => 'accept',
-            'place-before' => 0,
             'comment' => 'hyb-mgmt-' . $this->serviceId . '-allow',
         ]);
 
@@ -483,7 +480,6 @@ class HybridApiConfigurator
             'chain' => 'input',
             'connection-state' => 'established,related',
             'action' => 'accept',
-            'place-before' => 0,
             'comment' => 'hyb-mgmt-' . $this->serviceId . '-est',
         ]);
 
@@ -492,7 +488,6 @@ class HybridApiConfigurator
                 'chain' => 'forward',
                 'in-interface' => $pppoeDropInterface,
                 'action' => 'drop',
-                'place-before' => 0,
                 'comment' => 'hyb-fw-' . $this->serviceId . '-pp-DROP-UNAUTH',
             ]);
         }
@@ -502,7 +497,6 @@ class HybridApiConfigurator
                 'chain' => 'forward',
                 'in-interface' => $hotspotDropInterface,
                 'action' => 'drop',
-                'place-before' => 0,
                 'comment' => 'hyb-fw-' . $this->serviceId . '-hs-DROP-UNAUTH',
             ]);
 
@@ -512,7 +506,6 @@ class HybridApiConfigurator
                 'hotspot' => 'auth',
                 'out-interface-list' => $wanList,
                 'action' => 'accept',
-                'place-before' => 0,
                 'comment' => 'hyb-fw-' . $this->serviceId . '-hs-AUTH-INET',
             ]);
 
@@ -521,7 +514,6 @@ class HybridApiConfigurator
                 'in-interface' => $hotspotDropInterface,
                 'connection-state' => 'established,related',
                 'action' => 'accept',
-                'place-before' => 0,
                 'comment' => 'hyb-fw-' . $this->serviceId . '-hs-EST',
             ]);
 
@@ -531,7 +523,6 @@ class HybridApiConfigurator
                 'out-interface' => $hotspotDropInterface,
                 'connection-state' => 'established,related',
                 'action' => 'accept',
-                'place-before' => 0,
                 'comment' => 'hyb-fw-' . $this->serviceId . '-hs-WAN',
             ]);
 
@@ -540,7 +531,6 @@ class HybridApiConfigurator
                 'in-interface' => $hotspotDropInterface,
                 'connection-state' => 'invalid',
                 'action' => 'drop',
-                'place-before' => 0,
                 'comment' => 'hyb-fw-' . $this->serviceId . '-hs-INV',
             ]);
         }
@@ -550,7 +540,6 @@ class HybridApiConfigurator
             'in-interface-list' => $palList,
             'out-interface-list' => $wanList,
             'action' => 'accept',
-            'place-before' => 0,
             'comment' => 'hyb-fw-' . $this->serviceId . '-pp-AUTH-INET',
         ]);
 
@@ -559,7 +548,6 @@ class HybridApiConfigurator
             'in-interface-list' => $palList,
             'connection-state' => 'established,related',
             'action' => 'accept',
-            'place-before' => 0,
             'comment' => 'hyb-fw-' . $this->serviceId . '-pp-EST',
         ]);
 
@@ -568,7 +556,6 @@ class HybridApiConfigurator
             'in-interface-list' => $palList,
             'connection-state' => 'invalid',
             'action' => 'drop',
-            'place-before' => 0,
             'comment' => 'hyb-fw-' . $this->serviceId . '-pp-INV',
         ]);
 
@@ -578,7 +565,6 @@ class HybridApiConfigurator
             'out-interface-list' => $palList,
             'connection-state' => 'established,related',
             'action' => 'accept',
-            'place-before' => 0,
             'comment' => 'hyb-fw-' . $this->serviceId . '-pp-WAN',
         ]);
 
