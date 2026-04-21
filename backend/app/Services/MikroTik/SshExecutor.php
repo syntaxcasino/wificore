@@ -116,10 +116,6 @@ class SshExecutor
         }
 
         if (!$loginSuccess) {
-            throw new \RuntimeException("No credentials available for SFTP login on router {$host}");
-        }
-
-        if (!$loginSuccess) {
             throw new \RuntimeException("SFTP login failed for router {$host}");
         }
 
