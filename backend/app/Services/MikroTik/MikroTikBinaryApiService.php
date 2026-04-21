@@ -53,11 +53,13 @@ class MikroTikBinaryApiService implements MikroTikApiInterface
         }
         $this->host = $ip;
 
-        // Binary API uses port 8728 (plain) or 8729 (SSL).
-        // We use 8728 — traffic is already encrypted by WireGuard tunnel.
+        // Binary API plain-text port is 8728. The router->port field stores the
+        // API port configured during bootstrap (/ip service set api port=...) which
+        // defaults to 8728. Avoid overriding valid 8729 (api-ssl); only normalise
+        // clearly non-API ports (HTTP/HTTPS) back to 8728.
         $this->port = (int) ($router->port ?? 8728);
-        if ($this->port === 8729 || $this->port === 80 || $this->port === 443) {
-            $this->port = 8728; // Normalise; binary API is always 8728
+        if ($this->port === 80 || $this->port === 443) {
+            $this->port = 8728;
         }
 
         $this->username = $router->username;
@@ -114,21 +116,22 @@ class MikroTikBinaryApiService implements MikroTikApiInterface
 
     /**
      * Test connectivity — connect, issue /system/resource/print, disconnect.
+     * Always disconnects in the finally block to prevent socket leaks.
      */
     public function testConnection(): bool
     {
         try {
             $this->connect();
             $this->command('/system/resource/print');
-            $this->disconnect();
             return true;
         } catch (\Throwable $e) {
             Log::warning('MikroTik Binary API connection test failed', [
                 'router_id' => $this->router->id,
                 'error'     => $e->getMessage(),
             ]);
-            $this->disconnect();
             return false;
+        } finally {
+            $this->disconnect();
         }
     }
 
@@ -268,13 +271,18 @@ class MikroTikBinaryApiService implements MikroTikApiInterface
     }
 
     /**
-     * Remove items by comment pattern (reads all, removes matching).
-     * Uses /path/print with a ?comment query word, then /path/remove.
+     * Remove items whose 'comment' field contains $commentPattern as a substring.
+     *
+     * RouterOS ?field=value matches exact values only. For substring matching we
+     * use ~field=regex (RouterOS regex: no anchors, dot matches any char).
+     * The pattern is escaped so literal hyphens/dots in service IDs are safe.
      */
     public function removeByComment(string $path, string $commentPattern): void
     {
         try {
-            $items = $this->command($path . '/print', ['?comment=' . $commentPattern]);
+            // Escape special RouterOS regex chars in the pattern
+            $escaped = preg_replace('/([.\[\]\\\^$*+?{}|()])/u', '\\\\$1', $commentPattern);
+            $items = $this->command($path . '/print', ['~comment=' . $escaped]);
             foreach ($items as $item) {
                 if (isset($item['.id'])) {
                     try {
@@ -401,22 +409,39 @@ class MikroTikBinaryApiService implements MikroTikApiInterface
 
     /**
      * Execute arbitrary command (compatibility shim used by ApiConfigurators).
+     *
+     * Accepts EITHER:
+     *   - Associative array: ['name' => 'br1', 'comment' => 'x']  → '=name=br1', '=comment=x'
+     *   - Indexed array:     ['name=br1', 'comment=x']            → passed through as-is
      */
     public function executeCommand(string $endpoint, array $params = []): array
     {
         $words = [];
         foreach ($params as $k => $v) {
-            $words[] = $k . '=' . $v;
+            if (is_int($k)) {
+                // Already in 'key=value' form
+                $words[] = (string) $v;
+            } else {
+                $words[] = $k . '=' . $v;
+            }
         }
         return $this->commandOne($endpoint, $words);
     }
 
     /**
      * Fetch list from endpoint (compatibility shim).
+     *
+     * Callers pass paths WITHOUT a trailing '/print' (e.g. '/ip/pool'),
+     * matching the REST API convention used by the configurators.
      */
     public function fetch(string $endpoint): array
     {
-        return $this->command($endpoint . '/print');
+        // Strip trailing '/print' if caller already appended it (defensive)
+        $path = rtrim($endpoint, '/');
+        if (str_ends_with($path, '/print')) {
+            $path = substr($path, 0, -strlen('/print'));
+        }
+        return $this->command($path . '/print');
     }
 
     // -------------------------------------------------------------------------
@@ -427,20 +452,27 @@ class MikroTikBinaryApiService implements MikroTikApiInterface
      * RouterOS API login sequence.
      * ROS6: challenge/MD5 login. ROS7: plaintext token login.
      * We try plaintext first (works on both), fall back to MD5 if rejected.
+     *
+     * ROS7  one-step: /login =name=X =password=Y  → !done
+     * ROS6  two-step: /login =name=X =password=Y  → !trap (wrong password format)
+     *                 /login                       → !done =ret=<challenge_hex>
+     *                 /login =name=X =response=00<md5> → !done
      */
     private function login(): void
     {
         // Attempt modern (ROS7+) plaintext login
         try {
-            $response = $this->command('/login', [
+            $this->command('/login', [
                 'name='     . $this->username,
                 'password=' . $this->password,
             ]);
             // !done with no !trap = success
             return;
         } catch (\RuntimeException $e) {
-            // May be ROS6 challenge-based login; try that path
-            if (!str_contains($e->getMessage(), 'cannot log in')) {
+            // ROS6 responds with !trap to the plaintext login attempt.
+            // Any !trap here is a signal to try the two-step MD5 path.
+            // Re-throw non-API errors (socket failures etc.).
+            if (!str_contains($e->getMessage(), '!trap')) {
                 throw $e;
             }
         }
