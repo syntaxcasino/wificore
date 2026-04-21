@@ -448,14 +448,26 @@ class HybridApiConfigurator
         $hotspotDropInterface = $bridge ?: $hotspotInterface;
         $pppoeDropInterface = $bridge ?: $pppoeInterface;
 
+        // INPUT chain — ACCEPTs must precede DROP for same traffic class.
+        // 1. Accept established/related (return traffic, fast path)
+        $this->api->addFirewallFilterRule([
+            'chain' => 'input',
+            'connection-state' => 'established,related',
+            'action' => 'accept',
+            'comment' => 'hyb-mgmt-' . $this->serviceId . '-est',
+        ]);
+
+        // 2. Accept mgmt ports from allowed management subnet
         $this->api->addFirewallFilterRule([
             'chain' => 'input',
             'protocol' => 'tcp',
             'dst-port' => $mgmtPorts,
-            'action' => 'drop',
-            'comment' => 'hyb-mgmt-' . $this->serviceId . '-drop',
+            'src-address' => $mgmtSubnet,
+            'action' => 'accept',
+            'comment' => 'hyb-mgmt-' . $this->serviceId . '-allow',
         ]);
 
+        // 3. Accept SNMP from RADIUS server
         if ($radiusServer) {
             $this->api->addFirewallFilterRule([
                 'chain' => 'input',
@@ -467,37 +479,31 @@ class HybridApiConfigurator
             ]);
         }
 
+        // 4. Drop mgmt ports from all other sources (after ACCEPTs above)
         $this->api->addFirewallFilterRule([
             'chain' => 'input',
             'protocol' => 'tcp',
             'dst-port' => $mgmtPorts,
-            'src-address' => $mgmtSubnet,
-            'action' => 'accept',
-            'comment' => 'hyb-mgmt-' . $this->serviceId . '-allow',
+            'action' => 'drop',
+            'comment' => 'hyb-mgmt-' . $this->serviceId . '-drop',
         ]);
 
-        $this->api->addFirewallFilterRule([
-            'chain' => 'input',
-            'connection-state' => 'established,related',
-            'action' => 'accept',
-            'comment' => 'hyb-mgmt-' . $this->serviceId . '-est',
-        ]);
-
-        if ($pppoeDropInterface) {
-            $this->api->addFirewallFilterRule([
-                'chain' => 'forward',
-                'in-interface' => $pppoeDropInterface,
-                'action' => 'drop',
-                'comment' => 'hyb-fw-' . $this->serviceId . '-pp-DROP-UNAUTH',
-            ]);
-        }
-
+        // FORWARD chain — hotspot side: EST/RELATED → INVALID-DROP → AUTH-ACCEPT → WAN-RETURN → DROP-UNAUTH
         if ($hotspotDropInterface) {
             $this->api->addFirewallFilterRule([
                 'chain' => 'forward',
                 'in-interface' => $hotspotDropInterface,
+                'connection-state' => 'established,related',
+                'action' => 'accept',
+                'comment' => 'hyb-fw-' . $this->serviceId . '-hs-EST',
+            ]);
+
+            $this->api->addFirewallFilterRule([
+                'chain' => 'forward',
+                'in-interface' => $hotspotDropInterface,
+                'connection-state' => 'invalid',
                 'action' => 'drop',
-                'comment' => 'hyb-fw-' . $this->serviceId . '-hs-DROP-UNAUTH',
+                'comment' => 'hyb-fw-' . $this->serviceId . '-hs-INV',
             ]);
 
             $this->api->addFirewallFilterRule([
@@ -507,14 +513,6 @@ class HybridApiConfigurator
                 'out-interface-list' => $wanList,
                 'action' => 'accept',
                 'comment' => 'hyb-fw-' . $this->serviceId . '-hs-AUTH-INET',
-            ]);
-
-            $this->api->addFirewallFilterRule([
-                'chain' => 'forward',
-                'in-interface' => $hotspotDropInterface,
-                'connection-state' => 'established,related',
-                'action' => 'accept',
-                'comment' => 'hyb-fw-' . $this->serviceId . '-hs-EST',
             ]);
 
             $this->api->addFirewallFilterRule([
@@ -529,20 +527,12 @@ class HybridApiConfigurator
             $this->api->addFirewallFilterRule([
                 'chain' => 'forward',
                 'in-interface' => $hotspotDropInterface,
-                'connection-state' => 'invalid',
                 'action' => 'drop',
-                'comment' => 'hyb-fw-' . $this->serviceId . '-hs-INV',
+                'comment' => 'hyb-fw-' . $this->serviceId . '-hs-DROP-UNAUTH',
             ]);
         }
 
-        $this->api->addFirewallFilterRule([
-            'chain' => 'forward',
-            'in-interface-list' => $palList,
-            'out-interface-list' => $wanList,
-            'action' => 'accept',
-            'comment' => 'hyb-fw-' . $this->serviceId . '-pp-AUTH-INET',
-        ]);
-
+        // FORWARD chain — PPPoE side: EST/RELATED → INVALID-DROP → INET-ACCEPT → WAN-RETURN → DROP-UNAUTH
         $this->api->addFirewallFilterRule([
             'chain' => 'forward',
             'in-interface-list' => $palList,
@@ -561,12 +551,29 @@ class HybridApiConfigurator
 
         $this->api->addFirewallFilterRule([
             'chain' => 'forward',
+            'in-interface-list' => $palList,
+            'out-interface-list' => $wanList,
+            'action' => 'accept',
+            'comment' => 'hyb-fw-' . $this->serviceId . '-pp-AUTH-INET',
+        ]);
+
+        $this->api->addFirewallFilterRule([
+            'chain' => 'forward',
             'in-interface-list' => $wanList,
             'out-interface-list' => $palList,
             'connection-state' => 'established,related',
             'action' => 'accept',
             'comment' => 'hyb-fw-' . $this->serviceId . '-pp-WAN',
         ]);
+
+        if ($pppoeDropInterface) {
+            $this->api->addFirewallFilterRule([
+                'chain' => 'forward',
+                'in-interface' => $pppoeDropInterface,
+                'action' => 'drop',
+                'comment' => 'hyb-fw-' . $this->serviceId . '-pp-DROP-UNAUTH',
+            ]);
+        }
 
         $this->api->addFirewallFilterRule([
             'chain' => 'input',

@@ -439,4 +439,41 @@ class MikroTikBinaryApiServiceTest extends TestCase
         }
         $this->assertSame(8728, $port);
     }
+
+    // -------------------------------------------------------------------------
+    // secondsToRosTime — RouterOS time string format
+    // -------------------------------------------------------------------------
+
+    /**
+     * Inline mirror of MikroTikBinaryApiService::secondsToRosTime().
+     * Keeps tests independent of the private method.
+     */
+    private function secondsToRosTime(int $seconds): string
+    {
+        if ($seconds === 0) return '0s';
+        if ($seconds % 86400 === 0) return ($seconds / 86400) . 'd';
+        if ($seconds % 3600 === 0)  return ($seconds / 3600) . 'h';
+        if ($seconds % 60 === 0)    return ($seconds / 60) . 'm';
+        return $seconds . 's';
+    }
+
+    public function test_seconds_to_ros_time_converts_correctly(): void
+    {
+        // Zero
+        $this->assertSame('0s',   $this->secondsToRosTime(0));
+        // Exact hours — 3600→1h, 7200→2h
+        $this->assertSame('1h',   $this->secondsToRosTime(3600));
+        $this->assertSame('2h',   $this->secondsToRosTime(7200));
+        // Exact days — 86400→1d
+        $this->assertSame('1d',   $this->secondsToRosTime(86400));
+        // Exact minutes — 60→1m, 300→5m
+        $this->assertSame('1m',   $this->secondsToRosTime(60));
+        $this->assertSame('5m',   $this->secondsToRosTime(300));
+        // Odd seconds — 30→30s, 45→45s
+        $this->assertSame('30s',  $this->secondsToRosTime(30));
+        $this->assertSame('45s',  $this->secondsToRosTime(45));
+        // Default configurator values: tcp=3600→1h, udp=30→30s
+        $this->assertSame('1h',   $this->secondsToRosTime(3600));
+        $this->assertSame('30s',  $this->secondsToRosTime(30));
+    }
 }

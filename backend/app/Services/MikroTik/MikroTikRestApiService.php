@@ -368,9 +368,18 @@ class MikroTikRestApiService implements MikroTikApiInterface
     public function setConnectionTracking(int $tcpEstablishedTimeout = 3600, int $udpTimeout = 30): array
     {
         return $this->post('/ip/firewall/connection/tracking/set', [
-            'tcp-established-timeout' => $tcpEstablishedTimeout,
-            'udp-timeout' => $udpTimeout,
+            'tcp-established-timeout' => $this->secondsToRosTime($tcpEstablishedTimeout),
+            'udp-timeout'             => $this->secondsToRosTime($udpTimeout),
         ]);
+    }
+
+    private function secondsToRosTime(int $seconds): string
+    {
+        if ($seconds === 0) return '0s';
+        if ($seconds % 86400 === 0) return ($seconds / 86400) . 'd';
+        if ($seconds % 3600 === 0)  return ($seconds / 3600) . 'h';
+        if ($seconds % 60 === 0)    return ($seconds / 60) . 'm';
+        return $seconds . 's';
     }
 
     /**
