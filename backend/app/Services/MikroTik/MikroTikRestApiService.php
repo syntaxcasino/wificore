@@ -58,6 +58,16 @@ class MikroTikRestApiService implements MikroTikApiInterface
     }
 
     /**
+     * No-op: REST API is stateless HTTP, no persistent connection to manage.
+     */
+    public function connect(): void {}
+
+    /**
+     * No-op: REST API is stateless HTTP, no persistent connection to manage.
+     */
+    public function disconnect(): void {}
+
+    /**
      * Test API connectivity
      */
     public function testConnection(): bool
