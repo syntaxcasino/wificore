@@ -147,7 +147,13 @@ class MikroTikBinaryApiService implements MikroTikApiInterface
     {
         $sentence = [$command];
         foreach ($params as $param) {
-            $sentence[] = '=' . ltrim($param, '=');
+            // Query words start with '?' — send verbatim (e.g. '?name=foo', '?~comment=pat').
+            // All other words are attribute words and must be prefixed with '='.
+            if (str_starts_with($param, '?')) {
+                $sentence[] = $param;
+            } else {
+                $sentence[] = '=' . ltrim($param, '=');
+            }
         }
 
         $this->writeSentence($sentence);
@@ -282,7 +288,7 @@ class MikroTikBinaryApiService implements MikroTikApiInterface
         try {
             // Escape special RouterOS regex chars in the pattern
             $escaped = preg_replace('/([.\[\]\\\^$*+?{}|()])/u', '\\\\$1', $commentPattern);
-            $items = $this->command($path . '/print', ['~comment=' . $escaped]);
+            $items = $this->command($path . '/print', ['?~comment=' . $escaped]);
             foreach ($items as $item) {
                 if (isset($item['.id'])) {
                     try {

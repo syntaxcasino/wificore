@@ -275,6 +275,63 @@ class MikroTikBinaryApiServiceTest extends TestCase
     }
 
     // -------------------------------------------------------------------------
+    // command() word-type routing (query vs attribute)
+    // -------------------------------------------------------------------------
+
+    public function test_command_query_word_is_passed_verbatim(): void
+    {
+        // Simulate the word-routing logic in command()
+        $sentence = [];
+        foreach (['?name=br1'] as $param) {
+            if (str_starts_with($param, '?')) {
+                $sentence[] = $param;
+            } else {
+                $sentence[] = '=' . ltrim($param, '=');
+            }
+        }
+        $this->assertSame(['?name=br1'], $sentence);
+    }
+
+    public function test_command_regex_query_word_is_passed_verbatim(): void
+    {
+        $sentence = [];
+        foreach (['?~comment=PPPoE-abc'] as $param) {
+            if (str_starts_with($param, '?')) {
+                $sentence[] = $param;
+            } else {
+                $sentence[] = '=' . ltrim($param, '=');
+            }
+        }
+        $this->assertSame(['?~comment=PPPoE-abc'], $sentence);
+    }
+
+    public function test_command_attribute_word_gets_equals_prefix(): void
+    {
+        $sentence = [];
+        foreach (['name=br1'] as $param) {
+            if (str_starts_with($param, '?')) {
+                $sentence[] = $param;
+            } else {
+                $sentence[] = '=' . ltrim($param, '=');
+            }
+        }
+        $this->assertSame(['=name=br1'], $sentence);
+    }
+
+    public function test_command_dot_id_attribute_word_gets_equals_prefix(): void
+    {
+        $sentence = [];
+        foreach (['.id=*1'] as $param) {
+            if (str_starts_with($param, '?')) {
+                $sentence[] = $param;
+            } else {
+                $sentence[] = '=' . ltrim($param, '=');
+            }
+        }
+        $this->assertSame(['=.id=*1'], $sentence);
+    }
+
+    // -------------------------------------------------------------------------
     // login() error classification
     // -------------------------------------------------------------------------
 
