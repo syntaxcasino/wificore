@@ -222,8 +222,9 @@ export function useRouterProvisioning(props, emit) {
 
       _serviceDeployChannel.listen('.provisioning.progress', (data) => {
         const stage = data.stage || ''
-        provisioningProgress.value = Math.min(99, 85 + (data.progress * 0.15))
-        addLog('info', data.message)
+        const prog = typeof data.progress === 'number' && !isNaN(data.progress) ? data.progress : 0
+        provisioningProgress.value = Math.min(99, 85 + prog * 0.15)
+        if (data.message) addLog('info', data.message)
 
         if (stage.endsWith('_completed')) {
           deployedCount++
@@ -695,14 +696,20 @@ export function useRouterProvisioning(props, emit) {
     const routersChannelName = `tenant.${user.tenant_id}.routers`
     addLog('info', `Subscribing to provisioning events on private channels: ${vpnChannelName}, ${routersChannelName}`)
 
+    // Start catch-up regardless of Echo status — if Echo is unavailable the
+    // catch-up HTTP path is the only way to advance the UI.
+    _startVpnCatchup(vpnChannelName, routersChannelName)
+
+    if (!window.Echo) {
+      addLog('warning', 'WebSocket unavailable — using HTTP catch-up only')
+      return
+    }
+
     try {
       // Subscribe to PRIVATE VPN channel for connectivity events (requires auth)
       const vpnChannel = window.Echo.private(vpnChannelName)
       // Subscribe to PRIVATE routers channel for interface discovery events (requires auth)
       const routersChannel = window.Echo.private(routersChannelName)
-
-      // Start catch-up immediately after subscribing — handles race condition
-      _startVpnCatchup(vpnChannelName, routersChannelName)
 
       // Listen for connectivity checking events (progress updates)
       vpnChannel.listen('.vpn.connectivity.checking', (data) => {
@@ -805,7 +812,6 @@ export function useRouterProvisioning(props, emit) {
     currentStage.value = 1
     provisioningProgress.value = 0
     provisioningStatus.value = 'Initializing'
-    provisioningRouter.value = null
     initialConfig.value = ''
     waitingForJobCompletion.value = false
     provisioningLogs.value = []
@@ -831,30 +837,32 @@ export function useRouterProvisioning(props, emit) {
       ipPool: '192.168.2.100-192.168.2.200',
     })
 
+    // Capture router id BEFORE nulling provisioningRouter below
+    const _resetRouterId = provisioningRouter.value?.id
+
     // Leave any open WS channels and cancel timers
     _stopVpnFallback()
     if (_provisioningChannel) {
-      const ch = provisioningRouter.value?.id ? `router-provisioning.${provisioningRouter.value.id}` : null
-      if (ch) window.Echo?.leave(`private-${ch}`)
+      if (_resetRouterId) window.Echo?.leave(`private-router-provisioning.${_resetRouterId}`)
       _provisioningChannel = null
     }
     if (_serviceDeployChannel) {
-      const ch = provisioningRouter.value?.id ? `router-provisioning.${provisioningRouter.value.id}` : null
-      if (ch) window.Echo?.leave(`private-${ch}`)
+      if (_resetRouterId) window.Echo?.leave(`private-router-provisioning.${_resetRouterId}`)
       _serviceDeployChannel = null
     }
+
+    provisioningRouter.value = null
   }
 
   onUnmounted(() => {
+    const _unmountRouterId = provisioningRouter.value?.id
     _stopVpnFallback()
     if (_provisioningChannel) {
-      const ch = provisioningRouter.value?.id ? `router-provisioning.${provisioningRouter.value.id}` : null
-      if (ch) window.Echo?.leave(`private-${ch}`)
+      if (_unmountRouterId) window.Echo?.leave(`private-router-provisioning.${_unmountRouterId}`)
       _provisioningChannel = null
     }
     if (_serviceDeployChannel) {
-      const ch = provisioningRouter.value?.id ? `router-provisioning.${provisioningRouter.value.id}` : null
-      if (ch) window.Echo?.leave(`private-${ch}`)
+      if (_unmountRouterId) window.Echo?.leave(`private-router-provisioning.${_unmountRouterId}`)
       _serviceDeployChannel = null
     }
   })
