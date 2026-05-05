@@ -204,19 +204,65 @@ export function useUsers() {
 
   const totalUsers = computed(() => Array.isArray(users.value) ? users.value.length : 0)
 
+  // WebSocket event handlers for real-time updates
+  const handleUserCreated = (event) => {
+    const userData = event.detail?.user || event.detail
+    if (!userData?.id) return
+
+    // Check if user already exists (avoid duplicates from optimistic updates)
+    const exists = users.value.some(u => u.id === userData.id)
+    if (!exists) {
+      users.value.unshift(userData)
+      console.log('[Users] Added via event:', userData.username || userData.name)
+    }
+  }
+
+  const handleUserUpdated = (event) => {
+    const userData = event.detail?.user || event.detail
+    if (!userData?.id) return
+
+    const index = users.value.findIndex(u => u.id === userData.id)
+    if (index !== -1) {
+      users.value[index] = { ...users.value[index], ...userData }
+      console.log('[Users] Updated via event:', userData.username || userData.name)
+    }
+  }
+
+  const handleUserDeleted = (event) => {
+    const userId = event.detail?.userId || event.detail?.user?.id || event.detail?.id
+    if (!userId) return
+
+    users.value = users.value.filter(u => u.id !== userId)
+    console.log('[Users] Deleted via event:', userId)
+  }
+
+  // Setup WebSocket event listeners
+  const setupWebSocketListeners = () => {
+    window.addEventListener('user-created', handleUserCreated)
+    window.addEventListener('user-updated', handleUserUpdated)
+    window.addEventListener('user-deleted', handleUserDeleted)
+  }
+
+  // Cleanup WebSocket listeners
+  const cleanupWebSocketListeners = () => {
+    window.removeEventListener('user-created', handleUserCreated)
+    window.removeEventListener('user-updated', handleUserUpdated)
+    window.removeEventListener('user-deleted', handleUserDeleted)
+  }
+
   return {
     // State
     users,
     loading,
     error,
     selectedUser,
-    
+
     // Computed
     activeUsers,
     inactiveUsers,
     blockedUsers,
     totalUsers,
-    
+
     // Methods
     fetchUsers,
     fetchUser,
@@ -225,6 +271,10 @@ export function useUsers() {
     deleteUser,
     toggleUserStatus,
     fetchOnlineUsers,
-    fetchBlockedUsers
+    fetchBlockedUsers,
+
+    // WebSocket
+    setupWebSocketListeners,
+    cleanupWebSocketListeners
   }
 }

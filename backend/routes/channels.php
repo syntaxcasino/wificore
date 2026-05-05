@@ -248,6 +248,14 @@ Broadcast::channel('tenant.{tenantId}.positions', function ($user, $tenantId) {
 });
 
 // =============================================================================
+// VOUCHER CHANNELS
+// =============================================================================
+
+Broadcast::channel('tenant.{tenantId}.vouchers', function ($user, $tenantId) {
+    return $user->isAdmin() && (string) $user->tenant_id === (string) $tenantId;
+});
+
+// =============================================================================
 // FINANCE MODULE CHANNELS
 // =============================================================================
 

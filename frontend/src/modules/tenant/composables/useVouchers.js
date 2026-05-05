@@ -208,6 +208,69 @@ export function useVouchers() {
     return (pkg.price || 0) * qty
   }
 
+  // WebSocket event handlers for real-time updates
+  const handleVoucherCreated = (event) => {
+    const voucherData = event.detail?.voucher || event.detail?.data?.voucher || event.detail
+    if (!voucherData?.id) return
+
+    // Check if voucher already exists (avoid duplicates from optimistic updates)
+    const exists = vouchers.value.some(v => v.id === voucherData.id)
+    if (!exists) {
+      vouchers.value.unshift(voucherData)
+      stats.value.unused = (stats.value.unused || 0) + 1
+      stats.value.total = (stats.value.total || 0) + 1
+      console.log('[Vouchers] Added via event:', voucherData.code)
+    }
+  }
+
+  const handleVoucherUpdated = (event) => {
+    const voucherData = event.detail?.voucher || event.detail?.data?.voucher || event.detail
+    if (!voucherData?.id) return
+
+    const index = vouchers.value.findIndex(v => v.id === voucherData.id)
+    if (index !== -1) {
+      const oldStatus = vouchers.value[index].status
+      vouchers.value[index] = { ...vouchers.value[index], ...voucherData }
+
+      // Update stats if status changed
+      if (oldStatus !== voucherData.status) {
+        if (stats.value[oldStatus] > 0) stats.value[oldStatus]--
+        if (stats.value[voucherData.status] !== undefined) {
+          stats.value[voucherData.status] = (stats.value[voucherData.status] || 0) + 1
+        }
+      }
+      console.log('[Vouchers] Updated via event:', voucherData.code)
+    }
+  }
+
+  const handleVoucherDeleted = (event) => {
+    const voucherId = event.detail?.voucherId || event.detail?.voucher?.id || event.detail?.id
+    if (!voucherId) return
+
+    const voucher = vouchers.value.find(v => v.id === voucherId)
+    if (voucher && stats.value[voucher.status] > 0) {
+      stats.value[voucher.status]--
+      stats.value.total = Math.max(0, (stats.value.total || 0) - 1)
+    }
+
+    vouchers.value = vouchers.value.filter(v => v.id !== voucherId)
+    console.log('[Vouchers] Deleted via event:', voucherId)
+  }
+
+  // Setup WebSocket event listeners
+  const setupWebSocketListeners = () => {
+    window.addEventListener('voucher-created', handleVoucherCreated)
+    window.addEventListener('voucher-updated', handleVoucherUpdated)
+    window.addEventListener('voucher-deleted', handleVoucherDeleted)
+  }
+
+  // Cleanup WebSocket listeners
+  const cleanupWebSocketListeners = () => {
+    window.removeEventListener('voucher-created', handleVoucherCreated)
+    window.removeEventListener('voucher-updated', handleVoucherUpdated)
+    window.removeEventListener('voucher-deleted', handleVoucherDeleted)
+  }
+
   return {
     // State
     vouchers,
@@ -218,10 +281,10 @@ export function useVouchers() {
     generateError,
     pagination,
     stats,
-    
+
     // Computed
     statsForView,
-    
+
     // Actions
     fetchPackages,
     fetchStats,
@@ -231,11 +294,15 @@ export function useVouchers() {
     generateVouchers,
     revokeVoucher,
     filterVouchers,
-    
+
     // Helpers
     statusClass,
     formatDate,
     getPackageById,
-    calculateTotalValue
+    calculateTotalValue,
+
+    // WebSocket
+    setupWebSocketListeners,
+    cleanupWebSocketListeners
   }
 }

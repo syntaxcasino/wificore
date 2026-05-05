@@ -5,6 +5,9 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Voucher;
 use App\Models\Package;
+use App\Events\VoucherCreated;
+use App\Events\VoucherUpdated;
+use App\Events\VoucherDeleted;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
@@ -88,6 +91,10 @@ class VoucherController extends Controller
             ]);
 
             $vouchers[] = $voucher;
+
+            // Broadcast event for each voucher created
+            $tenantId = $request->user()->tenant_id;
+            broadcast(new VoucherCreated($voucher, $tenantId))->toOthers();
         }
 
         // Load relationships for the response
@@ -121,6 +128,10 @@ class VoucherController extends Controller
 
         $voucher->update(['status' => 'revoked']);
 
+        // Broadcast event
+        $tenantId = auth()->user()?->tenant_id;
+        broadcast(new VoucherUpdated($voucher, $tenantId))->toOthers();
+
         return response()->json([
             'success' => true,
             'message' => 'Voucher revoked successfully.',
@@ -140,7 +151,14 @@ class VoucherController extends Controller
             ], 422);
         }
 
+        $voucherId = $voucher->id;
+        $voucherCode = $voucher->code;
+        $tenantId = auth()->user()?->tenant_id;
+
         $voucher->delete();
+
+        // Broadcast event
+        broadcast(new VoucherDeleted($voucherId, $tenantId, $voucherCode))->toOthers();
 
         return response()->json([
             'success' => true,
