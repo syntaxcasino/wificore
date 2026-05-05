@@ -328,26 +328,51 @@ const updateFromEvent = (event) => {
 }
 
 // ─── Echo subscriptions ────────────────────────────────────────────────────
+let _reprovisionTimeout = null
+
+const _clearReprovisionTimeout = () => {
+  if (_reprovisionTimeout) { clearTimeout(_reprovisionTimeout); _reprovisionTimeout = null }
+}
+
 const subscribeToEvents = (routerId) => {
   if (!routerId || !window.Echo) return
 
   const channelName = `router-provisioning.${routerId}`
+
+  // Hard timeout: 5 minutes — router probing can take up to ~2 min; provisioning another ~2 min
+  _clearReprovisionTimeout()
+  _reprovisionTimeout = setTimeout(() => {
+    if (!isDone.value && !isFailed.value) {
+      window.Echo?.leave(channelName)
+      currentStatus.value = 'error'
+      errorMessage.value  = 'Reprovisioning timed out — check router status manually'
+      addLog('error', errorMessage.value)
+    }
+    _clearReprovisionTimeout()
+  }, 300_000)
+
   window.Echo.private(channelName)
     .listen('.provisioning.progress', (event) => {
       updateFromEvent(event)
       const stage = event.stage || ''
       if (stage === 'completed' || stage.endsWith('_completed')) {
+        _clearReprovisionTimeout()
+        window.Echo?.leave(channelName)
         progress.value      = 100
         currentStatus.value = 'provisioned'
         stageIdx.value      = 3
         addLog('success', event.message || 'Router reprovisioned successfully')
       } else if (stage === 'failed' || stage.endsWith('_failed')) {
+        _clearReprovisionTimeout()
+        window.Echo?.leave(channelName)
         currentStatus.value = 'error'
         errorMessage.value  = event.message || 'Provisioning failed'
         addLog('error', errorMessage.value)
       }
     })
     .listen('.router.connected', () => {
+      _clearReprovisionTimeout()
+      window.Echo?.leave(channelName)
       progress.value      = 100
       currentStatus.value = 'provisioned'
       stageIdx.value      = 3
@@ -356,6 +381,7 @@ const subscribeToEvents = (routerId) => {
 }
 
 const unsubscribeFromEvents = (routerId) => {
+  _clearReprovisionTimeout()
   if (routerId && window.Echo) {
     window.Echo.leave(`router-provisioning.${routerId}`)
   }
