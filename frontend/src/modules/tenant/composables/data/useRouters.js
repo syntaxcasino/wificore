@@ -927,5 +927,8 @@ export function useRouters() {
     copyToClipboard,
     updateInterfaceAssignments,
     updateFormData,
+    // Real-time updates
+    setupRealtimeUpdates,
+    cleanupRealtimeUpdates,
   }
 }

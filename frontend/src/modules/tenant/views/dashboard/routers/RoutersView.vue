@@ -298,6 +298,7 @@ const {
   openCreateOverlay, openEditOverlay, openDetails, closeDetails, refreshDetails,
   closeFormOverlay, closeUpdateOverlay, nextStep, previousStep, copyToClipboard,
   updateInterfaceAssignments, updateFormData,
+  setupRealtimeUpdates, cleanupRealtimeUpdates,
 } = useRouters()
 
 const {
@@ -509,7 +510,7 @@ const handleDelete = async (router) => {
   try {
     await deleteRouter(router.id)
     showSuccess('Router deleted successfully')
-    await fetchRouters()
+    // Real-time update via WebSocket - no fetchRouters() needed
   } catch (err) {
     const errorMessage = err.response?.data?.error || err.message || 'Failed to delete router'
     showError(`Delete failed: ${errorMessage}`)
@@ -524,7 +525,7 @@ const handleFormSubmit = async () => {
       await addRouter(formData.value)
     }
     closeFormOverlay()
-    await fetchRouters()
+    // Real-time update via WebSocket - no fetchRouters() needed
   } catch (err) {
     console.error('Form submit error:', err)
   }
@@ -538,10 +539,12 @@ const loginToRouter = (router) => {
 
 onMounted(() => {
   fetchRouters()
+  setupRealtimeUpdates()
   document.addEventListener('click', handleClickOutside)
 })
 
 onUnmounted(() => {
+  cleanupRealtimeUpdates()
   document.removeEventListener('click', handleClickOutside)
 })
 

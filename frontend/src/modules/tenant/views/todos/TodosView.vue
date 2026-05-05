@@ -442,7 +442,7 @@ const handleSubmit = async (formDataValue) => {
       await createTodo(formDataValue)
     }
     closeForm()
-    await fetchTodos()
+    // Real-time update via WebSocket - no fetchTodos() needed
   } catch (err) {
     formError.value = err.message || 'Failed to save todo'
   } finally {
@@ -488,8 +488,7 @@ const handleStart = async (todo) => {
     if (showDetailsOverlay.value && selectedTodo.value?.id === todo.id) {
       selectedTodo.value = { ...selectedTodo.value, status: 'in_progress' }
     }
-    // Refresh the todo list to reflect the status change
-    await fetchTodos()
+    // Real-time update via WebSocket - no fetchTodos() needed
   } catch (err) {
     console.error('Failed to start todo:', err)
   }
@@ -503,8 +502,7 @@ const handleComplete = async (todo) => {
     if (showDetailsOverlay.value && selectedTodo.value?.id === todo.id) {
       selectedTodo.value = { ...selectedTodo.value, status: 'completed' }
     }
-    // Refresh the todo list to reflect the status change
-    await fetchTodos()
+    // Real-time update via WebSocket - no fetchTodos() needed
   } catch (err) { 
     console.error('Failed to complete todo:', err) 
   }
@@ -537,7 +535,7 @@ const handleReopen = async (todo) => {
     if (showDetailsOverlay.value && selectedTodo.value?.id === todo.id) {
       selectedTodo.value = { ...selectedTodo.value, status: 'pending' }
     }
-    await fetchTodos()
+    // Real-time update via WebSocket - no fetchTodos() needed
   } catch (err) {
     console.error('Failed to reopen todo:', err)
   }
@@ -586,7 +584,7 @@ const handleTransfer = async (userId) => {
   transferLoading.value = true
   try {
     await assignTodo(selectedTodo.value.id, userId)
-    await fetchTodos()
+    // Real-time update via WebSocket - no fetchTodos() needed
     closeTransferModal()
   } catch (err) {
     console.error('Failed to transfer todo:', err)
