@@ -7,25 +7,39 @@ window.Pusher = Pusher
 
 /**
  * WebSocket Service
- * Manages real-time connections and event listeners
+ * Manages real-time connections and event listeners with auto-reconnection
  */
 class WebSocketService {
   constructor() {
     this.echo = null
     this.channels = new Map()
     this.notificationStore = null
+    
+    // Reconnection state
+    this.reconnectTimer = null
+    this.reconnectAttempts = 0
+    this.maxReconnectAttempts = 10
+    this.baseReconnectDelay = 2000 // 2 seconds
+    this.maxReconnectDelay = 30000 // 30 seconds
+    this.intentionalDisconnect = false
+    this.subscribedChannels = new Map() // Store channel subscriptions for reconnection
+    this.connectionState = 'disconnected' // 'connected', 'connecting', 'disconnected'
   }
 
   /**
-   * Initialize WebSocket connection
+   * Initialize WebSocket connection with auto-reconnection
    */
   initialize(config = {}) {
-    if (this.echo) {
-      console.warn('WebSocket already initialized')
+    if (this.echo && this.connectionState === 'connected') {
+      console.warn('WebSocket already initialized and connected')
       return this.echo
     }
+    
+    // Clear any pending reconnection
+    this.clearReconnectTimer()
 
     this.notificationStore = useNotificationStore()
+    this.intentionalDisconnect = false
 
     // Detect if we're on HTTPS (ngrok, production) or HTTP (localhost)
     const isSecure = window.location.protocol === 'https:'
@@ -54,21 +68,170 @@ class WebSocketService {
     }
 
     this.echo = new Echo({ ...defaultConfig, ...config })
+    
+    // Set up connection event handlers for reconnection
+    this.setupConnectionHandlers()
 
     console.log('✅ WebSocket initialized', {
       protocol: isSecure ? 'wss://' : 'ws://',
       host: defaultConfig.wsHost,
       port: defaultConfig.wsPort,
       path: defaultConfig.wsPath,
+      attempt: this.reconnectAttempts + 1,
     })
 
     return this.echo
+  }
+  
+  /**
+   * Set up connection event handlers for monitoring and auto-reconnection
+   */
+  setupConnectionHandlers() {
+    if (!this.echo?.connector?.pusher?.connection) return
+    
+    const connection = this.echo.connector.pusher.connection
+    
+    connection.bind('connecting', () => {
+      console.log('🔌 WebSocket connecting...')
+      this.connectionState = 'connecting'
+    })
+    
+    connection.bind('connected', () => {
+      console.log('✅ WebSocket connected')
+      this.connectionState = 'connected'
+      this.reconnectAttempts = 0 // Reset counter on successful connection
+      this.clearReconnectTimer()
+      
+      // Re-subscribe to all channels that were previously subscribed
+      this.resubscribeAllChannels()
+    })
+    
+    connection.bind('disconnected', () => {
+      console.log('⚠️ WebSocket disconnected')
+      this.connectionState = 'disconnected'
+      this.channels.clear() // Clear active channels
+      
+      // Trigger reconnection if not intentionally disconnected
+      if (!this.intentionalDisconnect) {
+        this.scheduleReconnect()
+      }
+    })
+    
+    connection.bind('error', (error) => {
+      console.error('💥 WebSocket connection error:', error)
+      this.connectionState = 'disconnected'
+      
+      // Trigger reconnection on error if not intentional
+      if (!this.intentionalDisconnect) {
+        this.scheduleReconnect()
+      }
+    })
+  }
+  
+  /**
+   * Schedule reconnection with exponential backoff
+   */
+  scheduleReconnect() {
+    if (this.reconnectTimer) return // Already scheduled
+    
+    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+      console.error('❌ Max reconnection attempts reached. Giving up.')
+      this.notificationStore?.error(
+        'Connection Lost',
+        'Unable to reconnect to real-time updates. Please refresh the page.',
+        10000
+      )
+      return
+    }
+    
+    const delay = Math.min(
+      this.baseReconnectDelay * Math.pow(2, this.reconnectAttempts),
+      this.maxReconnectDelay
+    )
+    
+    this.reconnectAttempts++
+    
+    console.log(`🔄 Scheduling reconnection in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`)
+    
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null
+      console.log(`🔄 Attempting to reconnect... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`)
+      this.reconnect()
+    }, delay)
+  }
+  
+  /**
+   * Clear any pending reconnection timer
+   */
+  clearReconnectTimer() {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer)
+      this.reconnectTimer = null
+    }
+  }
+  
+  /**
+   * Reconnect WebSocket
+   */
+  reconnect() {
+    // Clean up existing connection
+    if (this.echo) {
+      try {
+        this.echo.disconnect()
+      } catch (e) {
+        // Ignore disconnect errors
+      }
+      this.echo = null
+    }
+    
+    // Re-initialize
+    this.initialize()
+  }
+
+  /**
+   * Store channel subscription configuration for reconnection
+   */
+  storeChannelSubscription(channelName, subscriptionType, params = {}) {
+    this.subscribedChannels.set(channelName, { type: subscriptionType, params })
+  }
+  
+  /**
+   * Re-subscribe to all stored channels after reconnection
+   */
+  resubscribeAllChannels() {
+    if (this.subscribedChannels.size === 0) return
+    
+    console.log(`🔄 Re-subscribing to ${this.subscribedChannels.size} channels after reconnection`)
+    
+    // Convert entries to array to avoid issues during iteration
+    const channels = Array.from(this.subscribedChannels.entries())
+    
+    channels.forEach(([channelName, { type, params }]) => {
+      console.log(`🔄 Re-subscribing to ${channelName}`)
+      
+      switch (type) {
+        case 'tenant':
+          this.subscribeTenantChannel(params.tenantId, true)
+          break
+        case 'user':
+          this.subscribeUserChannel(params.userId, true)
+          break
+        case 'systemAdmin':
+          this.subscribeSystemAdminChannel(true)
+          break
+        case 'module':
+          this.subscribeModuleChannels(params.tenantId)
+          break
+        default:
+          console.warn(`Unknown channel type: ${type}`)
+      }
+    })
   }
 
   /**
    * Subscribe to tenant channel
    */
-  subscribeTenantChannel(tenantId) {
+  subscribeTenantChannel(tenantId, isReconnect = false) {
     if (!this.echo) {
       console.error('WebSocket not initialized')
       return null
@@ -81,7 +244,12 @@ class WebSocketService {
       return this.channels.get(channelName)
     }
 
-    console.log(`📡 Subscribing to tenant channel: ${channelName}`)
+    if (!isReconnect) {
+      console.log(`📡 Subscribing to tenant channel: ${channelName}`)
+    }
+    
+    // Store subscription for reconnection
+    this.storeChannelSubscription(channelName, 'tenant', { tenantId })
 
     const channel = this.echo.private(channelName)
 
@@ -402,7 +570,7 @@ class WebSocketService {
     }
 
     // ── Routers ───────────────────────────────────────────────────────────────
-    const routersChannel = `tenant.${tenantId}.routers`
+    const routersChannel = `tenant.${tenantId}.router-updates`
     if (!this.channels.has(routersChannel)) {
       const ch = this.echo.private(routersChannel)
         .listen('.RouterCreated', (event) => {
@@ -440,7 +608,7 @@ class WebSocketService {
   /**
    * Subscribe to user private channel
    */
-  subscribeUserChannel(userId) {
+  subscribeUserChannel(userId, isReconnect = false) {
     if (!this.echo) {
       console.error('WebSocket not initialized')
       return null
@@ -453,7 +621,12 @@ class WebSocketService {
       return this.channels.get(channelName)
     }
 
-    console.log(`📡 Subscribing to user private channel: ${channelName}`)
+    if (!isReconnect) {
+      console.log(`📡 Subscribing to user private channel: ${channelName}`)
+    }
+    
+    // Store subscription for reconnection
+    this.storeChannelSubscription(channelName, 'user', { userId })
 
     const channel = this.echo.private(channelName)
 
@@ -509,7 +682,7 @@ class WebSocketService {
   /**
    * Subscribe to system admin channel
    */
-  subscribeSystemAdminChannel() {
+  subscribeSystemAdminChannel(isReconnect = false) {
     if (!this.echo) {
       console.error('WebSocket not initialized')
       return null
@@ -522,7 +695,12 @@ class WebSocketService {
       return this.channels.get(channelName)
     }
 
-    console.log(`📡 Subscribing to system admin channel: ${channelName}`)
+    if (!isReconnect) {
+      console.log(`📡 Subscribing to system admin channel: ${channelName}`)
+    }
+    
+    // Store subscription for reconnection
+    this.storeChannelSubscription(channelName, 'systemAdmin', {})
 
     const channel = this.echo.private(channelName)
 
@@ -583,12 +761,47 @@ class WebSocketService {
    * Disconnect WebSocket
    */
   disconnect() {
+    this.intentionalDisconnect = true
+    this.clearReconnectTimer()
+    
     if (this.echo) {
       console.log('🔌 Disconnecting WebSocket')
       this.unsubscribeAll()
       this.echo.disconnect()
       this.echo = null
     }
+    
+    this.connectionState = 'disconnected'
+    this.subscribedChannels.clear() // Clear stored subscriptions on intentional disconnect
+  }
+  
+  /**
+   * Get current connection state
+   */
+  getConnectionState() {
+    return this.connectionState
+  }
+  
+  /**
+   * Check if currently connected
+   */
+  isConnected() {
+    return this.connectionState === 'connected'
+  }
+  
+  /**
+   * Get reconnect attempt count
+   */
+  getReconnectAttempts() {
+    return this.reconnectAttempts
+  }
+  
+  /**
+   * Reset reconnection state (useful for manual reconnection)
+   */
+  resetReconnectState() {
+    this.reconnectAttempts = 0
+    this.clearReconnectTimer()
   }
 
   /**

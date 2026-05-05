@@ -239,7 +239,7 @@ class WireGuardService extends TenantAwareService
                     'latest_handshake' => $handshakeAt,
                     'bytes_received' => (int)($parts[5] ?? 0),
                     'bytes_sent' => (int)($parts[6] ?? 0),
-                    'connected' => $handshakeAgeSeconds !== null && $handshakeAgeSeconds < 180,
+                    'connected' => $handshakeAgeSeconds !== null && $handshakeAgeSeconds < (int) config('vpn.monitoring.inactive_threshold', 190),
                 ];
             }
         }

@@ -86,7 +86,11 @@ return [
 
     'monitoring' => [
         'check_interval' => 60, // Check connection status every 60 seconds
-        'inactive_threshold' => 120, // Mark as inactive after 2 minutes without handshake
+        // WireGuard renegotiates session keys every 180 seconds (REKEY_AFTER_TIME).
+        // The threshold MUST exceed 180s or online routers will flicker offline every rekey cycle.
+        // 190s = 180s rekey + 10s jitter/processing buffer.
+        'inactive_threshold' => 190, // Mark as inactive after 190 seconds without handshake
+        'offline_grace_period' => 30, // Allow 30s grace before marking offline to reduce flicker
         'latency_threshold_ms' => 120, // Online if VPN latency is within 120ms
     ],
 

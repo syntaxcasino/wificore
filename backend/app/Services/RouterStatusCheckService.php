@@ -296,7 +296,7 @@ class RouterStatusCheckService
      */
     public function handshakeOnlyCheck(Router $router): array
     {
-        $inactiveThreshold = (int) config('vpn.monitoring.inactive_threshold', 180);
+        $inactiveThreshold = (int) config('vpn.monitoring.inactive_threshold', 190);
         $gracePeriod = (int) config('vpn.monitoring.offline_grace_period', 60);
 
         // Get latest handshake from WireGuard peers table
