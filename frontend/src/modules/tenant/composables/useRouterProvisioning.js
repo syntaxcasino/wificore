@@ -182,6 +182,12 @@ export function useRouterProvisioning(props, emit) {
 
   const previousStage = () => {
     if (currentStage.value > 1) {
+      // Leaving stage 2 (VPN wait) — clean up VPN channel subscriptions and catch-up timers
+      if (currentStage.value === 2) {
+        _stopVpnFallback()
+        if (_vpnChannelName) { window.Echo?.leave(_vpnChannelName); _vpnChannelName = null }
+        if (_routersChannelName) { window.Echo?.leave(_routersChannelName); _routersChannelName = null }
+      }
       currentStage.value--
       provisioningProgress.value = (currentStage.value - 1) * 25
     }
@@ -721,6 +727,12 @@ export function useRouterProvisioning(props, emit) {
     // Use Echo's .private() method - it automatically adds 'private-' prefix
     const vpnChannelName = `tenant.${user.tenant_id}.vpn`
     const routersChannelName = `tenant.${user.tenant_id}.routers`
+
+    // Leave any existing subscriptions before re-subscribing to prevent listener accumulation
+    // (can happen if user navigates back to stage 1 and clicks Continue again)
+    if (_vpnChannelName) { window.Echo?.leave(_vpnChannelName); _vpnChannelName = null }
+    if (_routersChannelName) { window.Echo?.leave(_routersChannelName); _routersChannelName = null }
+
     _vpnChannelName = vpnChannelName
     _routersChannelName = routersChannelName
     addLog('info', `Subscribing to provisioning events on private channels: ${vpnChannelName}, ${routersChannelName}`)
