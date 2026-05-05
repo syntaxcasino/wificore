@@ -303,24 +303,27 @@ const getLogLevelClass = (level) => {
 }
 
 // Map incoming WebSocket event to local state
+// RouterProvisioningProgress broadcastWith sends: stage, progress (0-100), message
 const updateFromEvent = (event) => {
-  if (event.status) {
-    currentStatus.value = event.status
+  const stage = event.stage || ''
 
-    const stageMap = { pending: 0, probing: 1, configuring: 2, online: 3, provisioned: 3 }
-    const idx = stageMap[event.status]
-    if (idx !== undefined) stageIdx.value = idx
+  // Map backend stage names → UI stage index
+  const stageMap = {
+    verifying: 1, connected: 1,
+    deploying: 2, deployed: 2, verifying_deployment: 2,
+    completed: 3,
+  }
+  const idx = stageMap[stage]
+  if (idx !== undefined) stageIdx.value = idx
 
-    const progressMap = { pending: 10, probing: 35, configuring: 65, online: 100, provisioned: 100 }
-    const pct = progressMap[event.status]
-    if (pct !== undefined) progress.value = pct
+  // Update progress bar from numeric value
+  if (typeof event.progress === 'number' && !isNaN(event.progress)) {
+    progress.value = Math.min(100, Math.round(event.progress))
   }
 
-  if (event.progress !== undefined) progress.value = event.progress
-
   if (event.message) {
-    const level = (event.status === 'error' || event.status === 'failed') ? 'error' : 'info'
-    addLog(level, event.message)
+    const isErr = stage === 'failed' || stage.endsWith('_failed')
+    addLog(isErr ? 'error' : 'info', event.message)
   }
 }
 
@@ -330,19 +333,25 @@ const subscribeToEvents = (routerId) => {
 
   const channelName = `router-provisioning.${routerId}`
   window.Echo.private(channelName)
-    .listen('.RouterProvisioningProgress', (event) => {
+    .listen('.provisioning.progress', (event) => {
       updateFromEvent(event)
+      const stage = event.stage || ''
+      if (stage === 'completed' || stage.endsWith('_completed')) {
+        progress.value      = 100
+        currentStatus.value = 'provisioned'
+        stageIdx.value      = 3
+        addLog('success', event.message || 'Router reprovisioned successfully')
+      } else if (stage === 'failed' || stage.endsWith('_failed')) {
+        currentStatus.value = 'error'
+        errorMessage.value  = event.message || 'Provisioning failed'
+        addLog('error', errorMessage.value)
+      }
     })
-    .listen('.RouterProvisioned', () => {
+    .listen('.router.connected', () => {
       progress.value      = 100
       currentStatus.value = 'provisioned'
       stageIdx.value      = 3
-      addLog('success', 'Router reprovisioned successfully')
-    })
-    .listen('.RouterProvisioningFailed', (event) => {
-      currentStatus.value = 'error'
-      errorMessage.value  = event.message || 'Provisioning failed'
-      addLog('error', errorMessage.value)
+      addLog('success', 'Router reconnected and online')
     })
 }
 
