@@ -261,7 +261,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { Ticket, Eye, Ban } from 'lucide-vue-next'
 import DataViewContainer from '@/modules/common/components/base/DataViewContainer.vue'
 import DataSkeleton from '@/modules/common/components/base/DataSkeleton.vue'
@@ -295,7 +295,9 @@ const {
   statusClass,
   formatDate,
   getPackageById,
-  calculateTotalValue
+  calculateTotalValue,
+  setupWebSocketListeners,
+  cleanupWebSocketListeners
 } = useVouchers()
 
 // State
@@ -428,6 +430,11 @@ onMounted(() => {
   fetchPackages()
   fetchVouchers()
   fetchStats()
+  setupWebSocketListeners()
+})
+
+onUnmounted(() => {
+  cleanupWebSocketListeners()
 })
 </script>
 

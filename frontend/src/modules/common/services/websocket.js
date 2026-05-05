@@ -390,7 +390,7 @@ class WebSocketService {
         console.log('🏢 DepartmentUpdated event:', event)
         window.dispatchEvent(new CustomEvent('department-updated', { detail: event }))
       })
-      .listen('.department.deleted', (event) => {
+      .listen('.departmentdeleted', (event) => {
         console.log('🏢 DepartmentDeleted event:', event)
         window.dispatchEvent(new CustomEvent('department-deleted', { detail: event }))
       })
@@ -484,7 +484,7 @@ class WebSocketService {
         .listen('.department.updated', (event) => {
           window.dispatchEvent(new CustomEvent('department-updated', { detail: event }))
         })
-        .listen('.department.deleted', (event) => {
+        .listen('.departmentdeleted', (event) => {
           window.dispatchEvent(new CustomEvent('department-deleted', { detail: event }))
         })
       this.channels.set(deptChannel, ch)
@@ -596,19 +596,12 @@ class WebSocketService {
       this.channels.set(pkgChannel, ch)
     }
 
-    // ── Routers ───────────────────────────────────────────────────────────────
+    // ── Router status updates (RouterStatusUpdated → tenant.{id}.router-updates)
+    // RouterCreated/RouterUpdated broadcast on tenant.{id}.routers (provisioning channel)
+    // RouterDeleted event does not exist in the backend
     const routersChannel = `tenant.${tenantId}.router-updates`
     if (!this.channels.has(routersChannel)) {
       const ch = this.echo.private(routersChannel)
-        .listen('.RouterCreated', (event) => {
-          window.dispatchEvent(new CustomEvent('router-created', { detail: event }))
-        })
-        .listen('.RouterUpdated', (event) => {
-          window.dispatchEvent(new CustomEvent('router-updated', { detail: event }))
-        })
-        .listen('.RouterDeleted', (event) => {
-          window.dispatchEvent(new CustomEvent('router-deleted', { detail: event }))
-        })
         .listen('.RouterStatusUpdated', (event) => {
           window.dispatchEvent(new CustomEvent('router-status-updated', { detail: event }))
         })
@@ -629,6 +622,38 @@ class WebSocketService {
           window.dispatchEvent(new CustomEvent('access-point-deleted', { detail: event }))
         })
       this.channels.set(apChannel, ch)
+    }
+
+    // ── Users ─────────────────────────────────────────────────────────────────
+    const usersChannel = `tenant.${tenantId}.users`
+    if (!this.channels.has(usersChannel)) {
+      const ch = this.echo.private(usersChannel)
+        .listen('.UserCreated', (event) => {
+          window.dispatchEvent(new CustomEvent('user-created', { detail: event }))
+        })
+        .listen('.UserUpdated', (event) => {
+          window.dispatchEvent(new CustomEvent('user-updated', { detail: event }))
+        })
+        .listen('.UserDeleted', (event) => {
+          window.dispatchEvent(new CustomEvent('user-deleted', { detail: event }))
+        })
+      this.channels.set(usersChannel, ch)
+    }
+
+    // ── Vouchers ────────────────────────────────────────────────────────────────
+    const vouchersChannel = `tenant.${tenantId}.vouchers`
+    if (!this.channels.has(vouchersChannel)) {
+      const ch = this.echo.private(vouchersChannel)
+        .listen('.VoucherCreated', (event) => {
+          window.dispatchEvent(new CustomEvent('voucher-created', { detail: event }))
+        })
+        .listen('.VoucherUpdated', (event) => {
+          window.dispatchEvent(new CustomEvent('voucher-updated', { detail: event }))
+        })
+        .listen('.VoucherDeleted', (event) => {
+          window.dispatchEvent(new CustomEvent('voucher-deleted', { detail: event }))
+        })
+      this.channels.set(vouchersChannel, ch)
     }
   }
 

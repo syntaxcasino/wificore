@@ -54,6 +54,7 @@ class TenantSseController extends Controller
         'departments',
         'employees',
         'positions',
+        'vouchers',
     ];
 
     public function stream(Request $request): StreamedResponse

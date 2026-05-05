@@ -238,7 +238,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { Plus, X, RefreshCw } from 'lucide-vue-next'
 import { useConfirmStore } from '@/stores/confirm'
 import { useToast } from '@/modules/common/composables/useToast.js'
@@ -258,7 +258,7 @@ const confirmStore = useConfirmStore()
 const { error: showError } = useToast()
 
 // Data management
-const { users, loading, error, activeUsers, inactiveUsers, totalUsers, fetchUsers, deleteUser, toggleUserStatus, createUser, updateUser } = useUsers()
+const { users, loading, error, activeUsers, inactiveUsers, totalUsers, fetchUsers, deleteUser, toggleUserStatus, createUser, updateUser, setupWebSocketListeners, cleanupWebSocketListeners } = useUsers()
 
 // Filtering
 const { filters, searchQuery, filteredData, hasActiveFilters, clearFilters } = useFilters(users, { status: '', role: '' })
@@ -333,7 +333,7 @@ const handleCreate = async () => {
   try {
     await createUser(createForm.value)
     closeCreateForm()
-    await fetchUsers()
+    // Real-time update via WebSocket - no fetchUsers() needed
   } catch (err) {
     formError.value = err.message || 'Failed to create user'
   } finally {
@@ -348,7 +348,7 @@ const handleUpdate = async () => {
   try {
     await updateUser(selectedUser.value.id, editForm.value)
     closeEditForm()
-    await fetchUsers()
+    // Real-time update via WebSocket - no fetchUsers() needed
   } catch (err) {
     formError.value = err.message || 'Failed to update user'
   } finally {
@@ -368,7 +368,7 @@ const handleToggleStatus = async (user) => {
   if (!confirmed) return
   try {
     await toggleUserStatus(user.id, action === 'deactivate')
-    await fetchUsers()
+    // Real-time update via WebSocket - no fetchUsers() needed
   } catch (err) {
     console.error(`Failed to ${action} user:`, err)
     showError(`Failed to ${action} user`)
@@ -393,7 +393,14 @@ const handleDelete = async (user) => {
 }
 
 // Lifecycle
-onMounted(() => fetchUsers())
+onMounted(() => {
+  fetchUsers()
+  setupWebSocketListeners()
+})
+
+onUnmounted(() => {
+  cleanupWebSocketListeners()
+})
 </script>
 
 <style scoped>
