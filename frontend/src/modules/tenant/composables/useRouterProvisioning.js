@@ -43,6 +43,9 @@ export function useRouterProvisioning(props, emit) {
   // Active WS channel refs — cleaned up on unmount / reset
   let _provisioningChannel = null
   let _serviceDeployChannel = null
+  // Catch-up fallback timer for VPN stage (cleared when WS event arrives)
+  let _vpnCatchupTimer = null
+  let _vpnFallbackInterval = null
 
   // Computed for connection status styling
   const connectionStatusClass = computed(() => {
@@ -448,34 +451,53 @@ export function useRouterProvisioning(props, emit) {
           addLog('warning', 'Deployment status check timed out')
         }, 120_000)
 
+        let _deployResolved = false
+        const _resolveDeployment = (success, message) => {
+          if (_deployResolved) return
+          _deployResolved = true
+          clearTimeout(timeout)
+          window.Echo?.leave(`private-${channelName}`)
+          _provisioningChannel = null
+          waitingForJobCompletion.value = false
+          formSubmitting.value = false
+          if (success) {
+            provisioningProgress.value = 100
+            provisioningStatus.value = 'Deployment completed successfully'
+            addLog('success', message || 'Router provisioned successfully!')
+            if (provisioningRouter.value) provisioningRouter.value.status = 'online'
+            emit('refresh-routers')
+          } else {
+            deploymentFailed.value = true
+            provisioningStatus.value = 'Deployment failed'
+            addLog('error', message || 'Deployment failed')
+          }
+        }
+
         _provisioningChannel.listen('.provisioning.progress', (data) => {
           provisioningProgress.value = Math.min(99, data.progress ?? 95)
           provisioningStatus.value = data.message || provisioningStatus.value
-          addLog('info', data.message)
+          if (data.message) addLog('info', data.message)
 
           const stage = data.stage || ''
           if (stage.endsWith('_completed') || stage === 'completed') {
-            clearTimeout(timeout)
-            window.Echo?.leave(`private-${channelName}`)
-            _provisioningChannel = null
-            provisioningProgress.value = 100
-            provisioningStatus.value = 'Deployment completed successfully'
-            addLog('success', 'Router provisioned successfully!')
-            waitingForJobCompletion.value = false
-            formSubmitting.value = false
-            if (provisioningRouter.value) provisioningRouter.value.status = 'online'
-            emit('refresh-routers')
+            _resolveDeployment(true, data.message)
           } else if (stage.endsWith('_failed') || stage === 'failed') {
-            clearTimeout(timeout)
-            window.Echo?.leave(`private-${channelName}`)
-            _provisioningChannel = null
-            deploymentFailed.value = true
-            provisioningStatus.value = 'Deployment failed'
-            addLog('error', data.message || 'Deployment failed')
-            waitingForJobCompletion.value = false
-            formSubmitting.value = false
+            _resolveDeployment(false, data.message)
           }
         })
+
+        // Catch-up: check once after 5s in case WS event was missed (race / fast job)
+        setTimeout(async () => {
+          if (_deployResolved) return
+          try {
+            const res = await axios.get(`/routers/${routerId}/provisioning-status`)
+            if (res.data.status === 'completed' || res.data.router_status === 'online') {
+              _resolveDeployment(true, 'Deployment completed (catch-up)')
+            } else if (res.data.status === 'failed') {
+              _resolveDeployment(false, res.data.error || 'Deployment failed (catch-up)')
+            }
+          } catch (_) { /* non-fatal */ }
+        }, 5_000)
       }
     } catch (error) {
       console.error('Error deploying config:', error)
@@ -577,6 +599,89 @@ export function useRouterProvisioning(props, emit) {
     deployConfiguration()
   }
 
+  /**
+   * One-shot HTTP catch-up after WS subscription — handles the race condition
+   * where VpnConnectivityVerified fired before the frontend subscribed.
+   * If router is already online, advance the UI immediately.
+   * If still pending, start a sparse fallback poll (max 6 × 10s = 60s).
+   */
+  const _startVpnCatchup = (vpnChannelName, routersChannelName) => {
+    // Immediate check after 3s
+    _vpnCatchupTimer = setTimeout(async () => {
+      if (!provisioningRouter.value?.id || currentStage.value !== 2) return
+      try {
+        const res = await axios.get(`/routers/${provisioningRouter.value.id}/provisioning-status`)
+        if (res.data.status === 'completed' || res.data.router_status === 'online') {
+          _stopVpnFallback()
+          // Router is already online — fetch interfaces directly
+          addLog('info', '✅ Router already online (catch-up detected)')
+          const ifRes = await axios.get(`/routers/${provisioningRouter.value.id}/interfaces`)
+          _handleInterfacesDiscovered(ifRes.data.interfaces || [], {}, vpnChannelName, routersChannelName)
+          return
+        }
+      } catch (_) { /* non-fatal */ }
+
+      // Not done yet — start sparse fallback poll (WS is primary, this is backup)
+      let attempts = 0
+      _vpnFallbackInterval = setInterval(async () => {
+        attempts++
+        if (!provisioningRouter.value?.id || currentStage.value !== 2) {
+          _stopVpnFallback()
+          return
+        }
+        try {
+          const res = await axios.get(`/routers/${provisioningRouter.value.id}/provisioning-status`)
+          if (res.data.status === 'completed' || res.data.router_status === 'online') {
+            _stopVpnFallback()
+            addLog('info', '✅ Router online (fallback detected)')
+            const ifRes = await axios.get(`/routers/${provisioningRouter.value.id}/interfaces`)
+            _handleInterfacesDiscovered(ifRes.data.interfaces || [], {}, vpnChannelName, routersChannelName)
+          }
+        } catch (_) { /* non-fatal */ }
+        if (attempts >= 6) _stopVpnFallback() // Max 6 × 10s = 60s
+      }, 10_000)
+    }, 3_000)
+  }
+
+  const _stopVpnFallback = () => {
+    if (_vpnCatchupTimer) { clearTimeout(_vpnCatchupTimer); _vpnCatchupTimer = null }
+    if (_vpnFallbackInterval) { clearInterval(_vpnFallbackInterval); _vpnFallbackInterval = null }
+  }
+
+  /**
+   * Shared handler — called by WS events OR catch-up HTTP for interface-discovered.
+   */
+  const _handleInterfacesDiscovered = (interfaces, routerInfo, vpnChanName, routersChanName) => {
+    _stopVpnFallback()
+    const allInterfaces = interfaces
+    availableInterfaces.value = allInterfaces.filter(iface => {
+      const name = (iface.name || '').toLowerCase()
+      return name !== 'lo' && !name.startsWith('wg-') && !name.startsWith('wg')
+    })
+    if (routerInfo?.model) {
+      addLog('success', `✅ Discovered ${allInterfaces.length} interfaces`)
+      addLog('info', `Router: ${routerInfo.model} (${routerInfo.version})`)
+      if (provisioningRouter.value) {
+        provisioningRouter.value.status = 'online'
+        provisioningRouter.value.model = routerInfo.model
+        provisioningRouter.value.os_version = routerInfo.version
+      }
+    } else {
+      addLog('success', `✅ Discovered ${allInterfaces.length} interfaces`)
+      if (provisioningRouter.value) provisioningRouter.value.status = 'online'
+    }
+    serviceMappings.value = Object.fromEntries(
+      (availableInterfaces.value || []).map((iface) => [iface.name, 'none']),
+    )
+    currentStage.value = 3
+    provisioningProgress.value = 75
+    provisioningStatus.value = 'Router connected - Map services to interfaces'
+    if (vpnChanName) window.Echo?.leave(`private-${vpnChanName}`)
+    if (routersChanName) window.Echo?.leave(`private-${routersChanName}`)
+    addLog('success', '🎉 Router provisioning complete!')
+    addLog('info', 'Map services to interfaces, then confirm to deploy')
+  }
+
   // Subscribe to VPN connectivity events via WebSocket
   const subscribeToVpnEvents = () => {
     const user = JSON.parse(localStorage.getItem('user'))
@@ -596,15 +701,16 @@ export function useRouterProvisioning(props, emit) {
       // Subscribe to PRIVATE routers channel for interface discovery events (requires auth)
       const routersChannel = window.Echo.private(routersChannelName)
 
+      // Start catch-up immediately after subscribing — handles race condition
+      _startVpnCatchup(vpnChannelName, routersChannelName)
+
       // Listen for connectivity checking events (progress updates)
       vpnChannel.listen('.vpn.connectivity.checking', (data) => {
         console.log('VPN connectivity checking:', data)
         
         if (data.router_id === provisioningRouter.value?.id) {
-          if (stage2FallbackInterval.value) {
-            clearInterval(stage2FallbackInterval.value)
-            stage2FallbackInterval.value = null
-          }
+          // WS is alive — stop catch-up timer (not needed)
+          _stopVpnFallback()
 
           vpnConnectivityAttempts.value = data.attempt
           const progress = data.progress || 0
@@ -625,10 +731,7 @@ export function useRouterProvisioning(props, emit) {
         console.log('VPN connectivity verified:', data)
         
         if (data.router_id === provisioningRouter.value?.id) {
-          if (stage2FallbackInterval.value) {
-            clearInterval(stage2FallbackInterval.value)
-            stage2FallbackInterval.value = null
-          }
+          _stopVpnFallback()
 
           vpnConnectivityStatus.value = 'verified'
           vpnConnected.value = true
@@ -651,43 +754,12 @@ export function useRouterProvisioning(props, emit) {
         console.log('Router interfaces discovered:', data)
         
         if (data.router_id === provisioningRouter.value?.id) {
-          if (stage2FallbackInterval.value) {
-            clearInterval(stage2FallbackInterval.value)
-            stage2FallbackInterval.value = null
-          }
-
-          // Filter out loopback and WireGuard interfaces
-          const allInterfaces = data.interfaces || []
-          availableInterfaces.value = allInterfaces.filter(iface => {
-            const name = (iface.name || '').toLowerCase()
-            return name !== 'lo' && !name.startsWith('wg-') && !name.startsWith('wg')
-          })
-          
-          addLog('success', `✅ Discovered ${allInterfaces.length} interfaces (${availableInterfaces.value.length} available for services)`)
-          addLog('info', `Router: ${data.router_info.model} (${data.router_info.version})`)
-          
-          // Update router info
-          if (provisioningRouter.value) {
-            provisioningRouter.value.status = 'online'
-            provisioningRouter.value.model = data.router_info.model
-            provisioningRouter.value.os_version = data.router_info.version
-          }
-          
-          serviceMappings.value = Object.fromEntries(
-            (availableInterfaces.value || []).map((iface) => [iface.name, 'none']),
+          _handleInterfacesDiscovered(
+            data.interfaces || [],
+            data.router_info || {},
+            vpnChannelName,
+            routersChannelName,
           )
-
-          // Move to service mapping stage
-          currentStage.value = 3
-          provisioningProgress.value = 75
-          provisioningStatus.value = 'Router connected - Map services to interfaces'
-          
-          // Unsubscribe from both channels
-          window.Echo.leave(`private-${vpnChannelName}`)
-          window.Echo.leave(`private-${routersChannelName}`)
-          
-          addLog('success', '🎉 Router provisioning complete!')
-          addLog('info', 'Map services to interfaces, then confirm to deploy')
         }
       })
 
@@ -696,10 +768,7 @@ export function useRouterProvisioning(props, emit) {
         console.log('VPN connectivity failed:', data)
         
         if (data.router_id === provisioningRouter.value?.id) {
-          if (stage2FallbackInterval.value) {
-            clearInterval(stage2FallbackInterval.value)
-            stage2FallbackInterval.value = null
-          }
+          _stopVpnFallback()
 
           vpnConnectivityStatus.value = 'failed'
           vpnConnected.value = false
@@ -762,7 +831,8 @@ export function useRouterProvisioning(props, emit) {
       ipPool: '192.168.2.100-192.168.2.200',
     })
 
-    // Leave any open WS channels
+    // Leave any open WS channels and cancel timers
+    _stopVpnFallback()
     if (_provisioningChannel) {
       const ch = provisioningRouter.value?.id ? `router-provisioning.${provisioningRouter.value.id}` : null
       if (ch) window.Echo?.leave(`private-${ch}`)
@@ -776,6 +846,7 @@ export function useRouterProvisioning(props, emit) {
   }
 
   onUnmounted(() => {
+    _stopVpnFallback()
     if (_provisioningChannel) {
       const ch = provisioningRouter.value?.id ? `router-provisioning.${provisioningRouter.value.id}` : null
       if (ch) window.Echo?.leave(`private-${ch}`)
