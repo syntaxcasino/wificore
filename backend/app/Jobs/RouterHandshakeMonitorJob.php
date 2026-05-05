@@ -122,7 +122,7 @@ class RouterHandshakeMonitorJob implements ShouldQueue
      */
     private function checkRouterHandshake(Router $router, array &$updatedStatuses, array $context): void
     {
-        $inactiveThreshold = (int) config('vpn.monitoring.inactive_threshold', 180);
+        $inactiveThreshold = (int) config('vpn.monitoring.inactive_threshold', 190);
         
         // Get latest handshake from WireGuard peers
         $peer = WireguardPeer::where('router_id', $router->id)
@@ -163,29 +163,34 @@ class RouterHandshakeMonitorJob implements ShouldQueue
             $newVpnStatus = $isActive ? 'active' : 'inactive';
         }
 
-        // METRICS-BASED OVERRIDE: If router has recent metrics in VictoriaMetrics, preserve online status
-        // even if VPN handshake is stale. Metrics prove the router is responding via SNMP/Telegraf.
+        // Check for recent metrics - metrics can only CONFIRM online status, not override VPN failures
+        // VPN handshake is the source of truth for router connectivity
         $hasRecentMetrics = $this->checkRecentMetricsInVM($router->id, $this->tenantId);
         
         Log::withContext($context)->debug('Router metrics check', [
             'router_id' => $router->id,
             'router_name' => $router->name,
             'has_recent_metrics' => $hasRecentMetrics,
-            'new_status_before_override' => $newStatus,
+            'new_status' => $newStatus,
+            'vpn_status' => $newVpnStatus,
         ]);
         
-        if ($newStatus === 'offline' && $hasRecentMetrics) {
-            // Router has recent metrics but stale handshake - trust metrics
-            Log::withContext($context)->info('Router has recent VM metrics, preserving online status despite stale handshake', [
-                'router_id' => $router->id,
-                'router_name' => $router->name,
-                'handshake_age' => $handshakeAge,
-                'current_db_status' => $router->status,
-            ]);
-            
-            // Preserve online status but update VPN status to reflect reality
-            $newStatus = 'online';
-            // Keep newVpnStatus as determined by handshake (likely 'inactive')
+        // Metrics can bring a router ONLINE if handshake is recent (within grace period)
+        // But metrics CANNOT keep a router online if VPN handshake is stale
+        // VPN tunnel is the primary connectivity mechanism
+        if ($newStatus === 'offline' && !$latestHandshake && $hasRecentMetrics && $router->status === 'online') {
+            // No handshake record but metrics exist - router might be using fallback connectivity
+            // Allow 2-minute grace period for handshake sync issues
+            $lastSeenGrace = $router->last_seen && $router->last_seen->gt(now()->subMinutes(2));
+            if ($lastSeenGrace) {
+                Log::withContext($context)->info('Router has metrics but no handshake record - grace period active', [
+                    'router_id' => $router->id,
+                    'router_name' => $router->name,
+                    'last_seen' => $router->last_seen->toIso8601String(),
+                ]);
+                $newStatus = 'online';
+                $newVpnStatus = 'unknown'; // Unknown until handshake confirms
+            }
         }
 
         // Check if status changed

@@ -89,16 +89,36 @@ export function useRouters() {
 
   const handleRouterStatusUpdated = (event) => {
     const data = event.detail
-    if (!data?.id) return
-    const index = routers.value.findIndex(r => String(r.id) === String(data.id))
-    if (index !== -1) {
-      routers.value[index] = {
-        ...routers.value[index],
-        status: data.status,
-        is_online: data.is_online,
-        last_seen: data.last_seen,
+    // Backend sends {routers: [...]} or single router in {router: ...} or flat structure
+    const updates = data?.routers || (data?.router ? [data.router] : [data].filter(Boolean))
+    if (!updates || updates.length === 0) return
+    
+    updates.forEach((update) => {
+      if (!update?.id) return
+      const index = routers.value.findIndex(r => String(r.id) === String(update.id))
+      if (index !== -1) {
+        routers.value[index] = {
+          ...routers.value[index],
+          status: update.status ?? routers.value[index].status,
+          vpn_status: update.vpn_status ?? routers.value[index].vpn_status,
+          vpn_last_handshake: update.vpn_last_handshake ?? routers.value[index].vpn_last_handshake,
+          is_online: update.is_online ?? (update.status === 'online'),
+          last_seen: update.last_seen ?? routers.value[index].last_seen,
+        }
       }
-    }
+      
+      // Also update current router if details modal is open
+      if (currentRouter.value && String(currentRouter.value.id) === String(update.id)) {
+        currentRouter.value = {
+          ...currentRouter.value,
+          status: update.status ?? currentRouter.value.status,
+          vpn_status: update.vpn_status ?? currentRouter.value.vpn_status,
+          vpn_last_handshake: update.vpn_last_handshake ?? currentRouter.value.vpn_last_handshake,
+          is_online: update.is_online ?? (update.status === 'online'),
+          last_seen: update.last_seen ?? currentRouter.value.last_seen,
+        }
+      }
+    })
   }
 
   const setupRealtimeUpdates = () => {
@@ -124,68 +144,46 @@ export function useRouters() {
         return
       }
       
+      // Note: RouterStatusUpdated is handled via CustomEvent from websocket.js
+      // Only subscribe to RouterLiveDataUpdated here (no CustomEvent equivalent)
       subscribeToPrivateChannel(routerUpdatesChannel, {
-      RouterLiveDataUpdated: (event) => {
-        // Update router metrics
-        const routerIndex = routers.value.findIndex(r => String(r.id) === String(event.router_id))
-        if (routerIndex !== -1) {
-          const router = routers.value[routerIndex]
-          const newData = event.liveData || event.data
-          
-          routers.value[routerIndex] = {
-            ...router,
-            live_data: {
-              ...(router.live_data || {}),
-              ...newData
-            },
-            resources: {
-              ...(router.resources || {}),
-              ...newData
-            }
-          }
-        }
-        
-        // Also update current router detail if open
-        if (currentRouter.value && String(currentRouter.value.id) === String(event.router_id)) {
-          const newData = event.liveData || event.data
-          currentRouter.value = {
-            ...currentRouter.value,
-            live_data: {
-              ...(currentRouter.value.live_data || {}),
-              ...newData
-            },
-            resources: {
-              ...(currentRouter.value.resources || {}),
-              ...newData
-            }
-          }
-        }
-      },
-      RouterStatusUpdated: (event) => {
-        // Update router status
-        // Event might contain a list of routers or a single one
-        const updates = Array.isArray(event.routers) ? event.routers : [event.router || event]
-        
-        updates.forEach(update => {
-          const routerIndex = routers.value.findIndex(r => String(r.id) === String(update.id))
+        RouterLiveDataUpdated: (event) => {
+          // Update router metrics
+          const routerIndex = routers.value.findIndex(r => String(r.id) === String(event.router_id))
           if (routerIndex !== -1) {
+            const router = routers.value[routerIndex]
+            const newData = event.liveData || event.data
+            
             routers.value[routerIndex] = {
-              ...routers.value[routerIndex],
-              ...update,
-              status: update.status || routers.value[routerIndex].status,
-              last_seen: update.last_seen || routers.value[routerIndex].last_seen
+              ...router,
+              live_data: {
+                ...(router.live_data || {}),
+                ...newData
+              },
+              resources: {
+                ...(router.resources || {}),
+                ...newData
+              }
             }
           }
           
-          if (currentRouter.value && String(currentRouter.value.id) === String(update.id)) {
+          // Also update current router detail if open
+          if (currentRouter.value && String(currentRouter.value.id) === String(event.router_id)) {
+            const newData = event.liveData || event.data
             currentRouter.value = {
               ...currentRouter.value,
-              ...update
+              live_data: {
+                ...(currentRouter.value.live_data || {}),
+                ...newData
+              },
+              resources: {
+                ...(currentRouter.value.resources || {}),
+                ...newData
+              }
             }
           }
-        })
-      }
-    })
+        }
+      })
   } catch (err) {
     console.warn('setupRealtimeUpdates error:', err.message)
   }
@@ -257,7 +255,16 @@ export function useRouters() {
     try {
       const response = await axios.get('/routers')
       
-      const fetchedRouters = Array.isArray(response.data) ? response.data : (response.data.data || [])
+      // RouterController returns either a plain array, a paginated response {data:{data:[],total,...}},
+      // or a flat {data:[]} shape. Unwrap to always get a plain array.
+      const rawData = response.data
+      const fetchedRouters = Array.isArray(rawData)
+        ? rawData
+        : Array.isArray(rawData?.data)
+          ? rawData.data
+          : Array.isArray(rawData?.data?.data)
+            ? rawData.data.data
+            : []
       
       // Filter out null/undefined entries that may occur after delete operations
       const validRouters = fetchedRouters.filter(r => r != null && typeof r === 'object')

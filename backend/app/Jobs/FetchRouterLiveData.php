@@ -86,7 +86,7 @@ class FetchRouterLiveData implements ShouldQueue
                 $successfulRouters = [];
                 $failedRouters = [];
 
-                $inactiveThreshold = (int) config('vpn.monitoring.inactive_threshold', 180);
+                $inactiveThreshold = (int) config('vpn.monitoring.inactive_threshold', 190);
 
                 $provisioningStatuses = ['pending', 'deploying', 'provisioning', 'verifying'];
 
@@ -110,15 +110,15 @@ class FetchRouterLiveData implements ShouldQueue
 
                     $inProvisioning = in_array($router->status, $provisioningStatuses);
 
-                    // Determine status based on presence of metrics
-                    // If we got metrics (e.g. uptime), router is online via SNMP/Telegraf.
-                    // VPN status is separate - metrics prove the router is actually responding.
+                    // Determine status based on both metrics AND VPN handshake
+                    // VPN handshake is the source of truth for router connectivity
                     $hasMetrics = !empty($liveData) && isset($liveData['uptime']);
+                    $isVpnActive = $router->vpn_status === 'active' && $router->vpn_last_handshake;
                     
-                    // If metrics are flowing, router is online regardless of VPN handshake status
-                    // VPN is just one connectivity method; SNMP/Telegraf metrics are equally valid
-                    if ($hasMetrics) {
-                        Log::debug('Fetched live data for router from VM', [
+                    // Only mark router online if BOTH metrics exist AND VPN is active
+                    // Metrics alone are not sufficient - VPN tunnel is the primary connectivity
+                    if ($hasMetrics && $isVpnActive) {
+                        Log::debug('Fetched live data for router from VM - VPN active', [
                             'router_id' => $router->id,
                             'live_data' => $liveData,
                             'vpn_status' => $router->vpn_status,
@@ -134,14 +134,31 @@ class FetchRouterLiveData implements ShouldQueue
                             now()->addSeconds(30)
                         );
 
-                        // Update router status to ONLINE - metrics prove connectivity
+                        // Update router status to ONLINE - both metrics AND VPN confirm connectivity
                         $this->updateRouterStatus($router, $liveData, 'online');
                         $successfulRouters[] = $router->id;
                         
-                        // Also update last_seen if VPN is also active
-                        if ($router->vpn_status === 'active' && $router->vpn_last_handshake) {
-                            $router->update(['last_seen' => now()]);
-                        }
+                        // Update last_seen since VPN is active
+                        $router->update(['last_seen' => now()]);
+                    } elseif ($hasMetrics && !$isVpnActive) {
+                        // Metrics exist but VPN is inactive - possible edge case (cached data or direct IP access)
+                        // Do NOT mark router online - let CheckRoutersJob handle based on VPN handshake
+                        Log::warning('Router has metrics but VPN is inactive - not marking online', [
+                            'router_id' => $router->id,
+                            'vpn_status' => $router->vpn_status,
+                            'vpn_last_handshake' => $router->vpn_last_handshake,
+                            'current_status' => $router->status,
+                        ]);
+                        
+                        // Still cache the metrics data for display purposes
+                        Cache::put(
+                            "router_live_data_{$router->id}", 
+                            $liveData, 
+                            now()->addSeconds(30)
+                        );
+                        
+                        // Update last_checked only
+                        $router->update(['last_checked' => now()]);
                     } else {
                         if ($inProvisioning) {
                             Log::info('Router in provisioning has no metrics yet - leaving status untouched', [

@@ -305,8 +305,13 @@ class WireguardPeerHealthService
     }
 
     /**
-     * Clear last_handshake for peers present in dump but with stale handshakes.
-     * WireGuard keeps peers in dump even when offline, but with old timestamps.
+     * Mark offline routers whose peers are still in the WireGuard dump but have stale handshakes.
+     * WireGuard keeps peers in the dump table indefinitely with old timestamps.
+     *
+     * IMPORTANT: We do NOT null out last_handshake here. The timestamp is the last known contact
+     * time and is valuable for display and auditing. Nulling it destroys information and causes
+     * handshakeOnlyCheck() to immediately flip the router offline on the next monitoring cycle
+     * regardless of the threshold. Status + vpn_status are updated to reflect the stale state.
      */
     private function clearStalePeerHandshakes(string $tenantId, array $seenPublicKeys, array &$updatedRouters): void
     {
@@ -315,7 +320,7 @@ class WireguardPeerHealthService
             return;
         }
 
-        $threshold = (int) config('vpn.monitoring.inactive_threshold', 180);
+        $threshold = (int) config('vpn.monitoring.inactive_threshold', 190);
         // Use UTC for database comparison to avoid timezone issues
         $staleThreshold = now()->utc()->subSeconds($threshold);
         
@@ -347,13 +352,15 @@ class WireguardPeerHealthService
             $router = $peer->router;
             // Use absolute difference to handle clock skew (router clock ahead/behind server)
             $staleAge = abs(now()->diffInSeconds($peer->last_handshake, false));
+            $lastHandshake = $peer->last_handshake; // Preserve - do NOT null it out
 
-            $peer->update(['last_handshake' => null]);
+            // Do NOT update peer->last_handshake here. The WireGuard dump reported it;
+            // preserving the timestamp allows the next dump cycle to correctly detect
+            // when a fresh handshake occurs (timestamp changes).
 
             if ($router) {
                 $router->update([
                     'vpn_status' => 'inactive',
-                    'vpn_last_handshake' => null,
                     'status' => 'offline',
                     'last_checked' => now(),
                 ]);
@@ -369,15 +376,15 @@ class WireguardPeerHealthService
                     'os_version' => $router->os_version,
                     'last_seen' => $router->last_seen,
                     'vpn_status' => 'inactive',
-                    'vpn_last_handshake' => null,
-                ], $this->buildHandshakeTimezonePayload(null));
+                    'vpn_last_handshake' => $lastHandshake,
+                ], $this->buildHandshakeTimezonePayload($lastHandshake));
 
-                Log::info('Cleared stale handshake for offline peer', [
+                Log::info('Stale handshake - marked router offline (handshake timestamp preserved)', [
                     'tenant_id' => $tenantId,
                     'router_id' => $router->id,
                     'peer_public_key' => substr($peer->public_key, 0, 20) . '...',
                     'handshake_age_seconds' => $staleAge,
-                    'handshake_time' => $peer->last_handshake?->toIso8601String(),
+                    'handshake_time' => $lastHandshake->toIso8601String(),
                     'threshold' => $threshold,
                     'stale_threshold' => $staleThreshold->toIso8601String(),
                 ]);
@@ -528,7 +535,7 @@ class WireguardPeerHealthService
             return $currentStatus === 'pending' ? 'pending' : 'disconnected';
         }
 
-        $threshold = (int) config('vpn.monitoring.inactive_threshold', 180);
+        $threshold = (int) config('vpn.monitoring.inactive_threshold', 190);
         // Use absolute difference to handle clock skew (router clock ahead/behind server)
         $age = abs(now()->diffInSeconds($handshakeAt, false));
 
@@ -541,7 +548,7 @@ class WireguardPeerHealthService
             return 'inactive';
         }
 
-        $threshold = (int) config('vpn.monitoring.inactive_threshold', 180);
+        $threshold = (int) config('vpn.monitoring.inactive_threshold', 190);
         // Use absolute difference to handle clock skew (router clock ahead/behind server)
         return abs(now()->diffInSeconds($handshakeAt, false)) <= $threshold ? 'active' : 'inactive';
     }
