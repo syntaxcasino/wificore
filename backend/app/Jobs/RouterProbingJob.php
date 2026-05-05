@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Models\Router;
 use App\Events\RouterConnected;
+use App\Events\ProvisioningFailed;
 use App\Services\MikrotikProvisioningService;
 use App\Traits\TenantAwareJob;
 use Illuminate\Bus\Queueable;
@@ -128,6 +129,14 @@ class RouterProbingJob implements ShouldQueue
                     'total_time_minutes' => ($this->maxAttempts * $this->checkInterval) / 60,
                     'tenant_id' => $this->tenantId,
                 ]);
+
+                // Broadcast failure so frontend WS listeners can react immediately
+                broadcast(new ProvisioningFailed(
+                    $router->id,
+                    'probing_failed',
+                    'Router did not connect after ' . $this->maxAttempts . ' attempts. Check the router and try again.',
+                    ['tenant_id' => $this->tenantId]
+                ));
             }
         });
     }
