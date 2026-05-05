@@ -350,9 +350,9 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
-import { useBroadcasting } from '@/modules/common/composables/websocket/useBroadcasting'
+import { useSSE } from '@/modules/common/composables/websocket/useSSE'
 import axios from 'axios'
 import { Building2, CheckCircle, Users, Wifi, RefreshCw, Eye, TrendingUp } from 'lucide-vue-next'
 import SlideOverlay from '@/modules/common/components/base/SlideOverlay.vue'
@@ -366,8 +366,6 @@ const api = axios
 
 const authStore = useAuthStore()
 const user = computed(() => authStore.user)
-const { subscribeToPrivateChannel, unsubscribeFromChannel } = useBroadcasting()
-let wsChannels = []
 
 const loading = ref(true)
 const refreshing = ref(false)
@@ -628,24 +626,17 @@ const fetchStats = async (isInitial = false) => {
 onMounted(() => {
   fetchStats(true)
   fetchActivities()
-
-  // Real-time updates: refresh stats when tenants are created, activated, or suspended
-  subscribeToPrivateChannel('system.admin', {
-    TenantCreated: () => fetchStats(),
-    UserCreated: () => fetchStats(),
-    UserDeleted: () => fetchStats(),
-  })
-  wsChannels.push('system.admin')
-
-  subscribeToPrivateChannel('system.tenants', {
-    TenantCreated: () => fetchStats(),
-    '.TenantCreated': () => fetchStats(),
-  })
-  wsChannels.push('system.tenants')
 })
 
-onUnmounted(() => {
-  wsChannels.forEach(ch => unsubscribeFromChannel(ch))
-  wsChannels = []
+// SSE: real-time updates from system.admin + system.tenants channels
+// useSSE auto-closes on onUnmounted
+const { subscribeMany } = useSSE('/api/system/sse', {
+  channels: 'system.admin,system.tenants',
+})
+
+subscribeMany({
+  TenantCreated: () => fetchStats(),
+  UserCreated:   () => fetchStats(),
+  UserDeleted:   () => fetchStats(),
 })
 </script>

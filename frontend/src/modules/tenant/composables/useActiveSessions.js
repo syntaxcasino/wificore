@@ -120,7 +120,8 @@ export function useActiveSessions() {
   }
 
   const formatBytes = (bytes) => {
-    if (!bytes || bytes === 0) return '0 B'
+    if (bytes === null || bytes === undefined) return '-'
+    if (bytes === 0) return '0 B'
     const k = 1024
     const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
     let i = 0
@@ -133,7 +134,8 @@ export function useActiveSessions() {
   }
 
   const formatBytesCompact = (bytes) => {
-    if (!bytes || bytes === 0) return '0'
+    if (bytes === null || bytes === undefined) return '-'
+    if (bytes === 0) return '0'
     if (bytes >= 1073741824) return `${(bytes / 1073741824).toFixed(1)}G`
     if (bytes >= 1048576) return `${(bytes / 1048576).toFixed(1)}M`
     if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)}K`

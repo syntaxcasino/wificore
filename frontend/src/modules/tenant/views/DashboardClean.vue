@@ -169,8 +169,8 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted } from 'vue'
-import { useBroadcasting } from '@/modules/common/composables/websocket/useBroadcasting'
+import { computed, onMounted } from 'vue'
+import { useSSE } from '@/modules/common/composables/websocket/useSSE'
 import { useAuth } from '@/modules/common/composables/auth/useAuth'
 import { useDashboard } from '@/modules/tenant/composables/data/useDashboard'
 import PaymentWidget from '@/modules/tenant/components/dashboard/PaymentWidgetClean.vue'
@@ -179,8 +179,6 @@ import BusinessAnalyticsWidget from '@/modules/tenant/components/dashboard/Busin
 import { Users, Wifi, Package, BarChart3, Radio, CreditCard, Settings, Activity } from 'lucide-vue-next'
 
 const { user } = useAuth()
-const { isConnected, subscribeToPrivateChannel, unsubscribeFromChannel } = useBroadcasting()
-let wsChannels = []
 
 const {
   stats,
@@ -210,47 +208,26 @@ const quickActions = computed(() => [
 
 onMounted(() => {
   fetchDashboardStats()
-
-  const tenantId = user.value?.tenant_id
-  if (!tenantId) {
-    console.warn('No tenant_id available - cannot subscribe to tenant channels')
-    return
-  }
-
-  wsChannels.push(`tenant.${tenantId}.dashboard-stats`)
-  subscribeToPrivateChannel(`tenant.${tenantId}.dashboard-stats`, {
-    'DashboardStatsUpdated': (event) => { if (event.stats) updateStatsFromEvent(event.stats) },
-    '.DashboardStatsUpdated': (event) => { if (event.stats) updateStatsFromEvent(event.stats) },
-    'PackageCreated': () => fetchDashboardStats(),
-    'PackageDeleted': () => fetchDashboardStats(),
-    'PppoeUserCreated': () => fetchDashboardStats(),
-    'PppoeUserDeleted': () => fetchDashboardStats(),
-    'PppoeSessionStarted': () => fetchDashboardStats(),
-    'PppoeSessionEnded': () => fetchDashboardStats(),
-    'HotspotUserCreated': () => fetchDashboardStats(),
-    'RouterCreated': () => fetchDashboardStats(),
-    'PaymentCompleted': () => fetchDashboardStats(),
-    'UserCreated': () => fetchDashboardStats(),
-    '.PackageCreated': () => fetchDashboardStats(),
-    '.PppoeUserCreated': () => fetchDashboardStats(),
-    '.PppoeSessionStarted': () => fetchDashboardStats(),
-    '.PppoeSessionEnded': () => fetchDashboardStats(),
-    '.HotspotUserCreated': () => fetchDashboardStats(),
-    '.RouterCreated': () => fetchDashboardStats(),
-    '.PaymentCompleted': () => fetchDashboardStats(),
-    '.UserCreated': () => fetchDashboardStats(),
-  })
-
-  wsChannels.push(`tenant.${tenantId}.router-updates`)
-  subscribeToPrivateChannel(`tenant.${tenantId}.router-updates`, {
-    'RouterStatusUpdated': (event) => { if (event.stats) updateStatsFromEvent(event.stats) },
-    '.RouterStatusUpdated': (event) => { if (event.stats) updateStatsFromEvent(event.stats) },
-    '.RouterCreated': () => fetchDashboardStats(),
-  })
 })
 
-onUnmounted(() => {
-  wsChannels.forEach(ch => unsubscribeFromChannel(ch))
-  wsChannels = []
+// SSE: single connection for dashboard-stats + router-updates channels
+// useSSE auto-closes on onUnmounted
+const { isConnected, subscribeMany } = useSSE('/api/sse/tenant', {
+  channels: 'dashboard-stats,router-updates',
+})
+
+subscribeMany({
+  'stats.updated':      (data) => { if (data?.stats) updateStatsFromEvent(data.stats) },
+  'DashboardStatsUpdated': (data) => { if (data?.stats) updateStatsFromEvent(data.stats) },
+  'RouterStatusUpdated': () => fetchDashboardStats(),
+  'PackageCreated':     () => fetchDashboardStats(),
+  'PackageDeleted':     () => fetchDashboardStats(),
+  'PppoeUserCreated':   () => fetchDashboardStats(),
+  'PppoeUserDeleted':   () => fetchDashboardStats(),
+  'PppoeSessionStarted': () => fetchDashboardStats(),
+  'PppoeSessionEnded':  () => fetchDashboardStats(),
+  'HotspotUserCreated': () => fetchDashboardStats(),
+  'PaymentCompleted':   () => fetchDashboardStats(),
+  'UserCreated':        () => fetchDashboardStats(),
 })
 </script>

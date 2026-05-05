@@ -255,14 +255,13 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { usePackages } from '@/modules/tenant/composables/data/usePackages'
 import { useFilters } from '@/modules/common/composables/utils/useFilters'
 import { usePagination } from '@/modules/common/composables/utils/usePagination'
 import { useConfirmStore } from '@/stores/confirm'
 import { useToast } from '@/modules/common/composables/useToast.js'
-import { useBroadcasting } from '@/modules/common/composables/websocket/useBroadcasting'
-import { useAuthStore } from '@/stores/auth'
+import { useSSE } from '@/modules/common/composables/websocket/useSSE'
 import DataViewContainer from '@/modules/common/components/base/DataViewContainer.vue'
 
 import DataSkeleton from '@/modules/common/components/base/DataSkeleton.vue'
@@ -303,9 +302,6 @@ const {
 } = usePackages()
 
 const confirmStore = useConfirmStore()
-const authStore = useAuthStore()
-const { subscribeToPrivateChannel, unsubscribeFromChannel } = useBroadcasting()
-let packagesChannel = null
 
 // Filtering and Pagination
 const { filters, searchQuery, filteredData, hasActiveFilters } = useFilters(packages, { type: '', status: '' })
@@ -527,32 +523,21 @@ watch([filteredData, itemsPerPage], () => {
 onMounted(() => {
   fetchPackages()
   document.addEventListener('click', handleClickOutside)
-
-  const tenantId = authStore.tenantId
-  if (tenantId) {
-    packagesChannel = `tenant.${tenantId}.packages`
-    subscribeToPrivateChannel(packagesChannel, {
-      // Event-driven updates: modify local state directly instead of full refresh
-      PackageCreated: (event) => handlePackageCreatedEvent(event),
-      PackageUpdated: (event) => handlePackageUpdatedEvent(event),
-      PackageDeleted: (event) => handlePackageDeletedEvent(event),
-      PackageStatusChanged: (event) => handlePackageUpdatedEvent(event),
-      '.PackageCreated': (event) => handlePackageCreatedEvent(event),
-      '.PackageUpdated': (event) => handlePackageUpdatedEvent(event),
-      '.PackageDeleted': (event) => handlePackageDeletedEvent(event),
-      '.PackageStatusChanged': (event) => handlePackageUpdatedEvent(event),
-    })
-  }
 })
 
 onBeforeUnmount(() => {
   document.removeEventListener('click', handleClickOutside)
 })
 
-onUnmounted(() => {
-  if (packagesChannel) {
-    unsubscribeFromChannel(packagesChannel)
-    packagesChannel = null
-  }
+// SSE: event-driven package updates — useSSE auto-closes on onUnmounted
+const { subscribeMany } = useSSE('/api/sse/tenant', {
+  channels: 'packages',
+})
+
+subscribeMany({
+  PackageCreated:      (data) => handlePackageCreatedEvent(data),
+  PackageUpdated:      (data) => handlePackageUpdatedEvent(data),
+  PackageDeleted:      (data) => handlePackageDeletedEvent(data),
+  PackageStatusChanged: (data) => handlePackageUpdatedEvent(data),
 })
 </script>

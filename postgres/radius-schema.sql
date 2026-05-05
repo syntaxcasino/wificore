@@ -80,7 +80,7 @@ CREATE TABLE IF NOT EXISTS radacct (
     groupname varchar(64) NOT NULL DEFAULT '',
     realm varchar(64) DEFAULT '',
     nasipaddress inet NOT NULL,
-    nasportid varchar(15) DEFAULT NULL,
+    nasportid varchar(64) DEFAULT NULL,
     nasporttype varchar(32) DEFAULT NULL,
     acctstarttime timestamp with time zone NULL DEFAULT NULL,
     acctupdatetime timestamp with time zone NULL DEFAULT NULL,

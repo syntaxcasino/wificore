@@ -151,7 +151,7 @@ export function useAccessPoints() {
       // Handle both wrapped {access_point: ...} and direct response
       const newAp = response.data?.access_point || response.data
       
-      // Add to local state (will be updated by event)
+      // Optimistically add to local state immediately for better UX
       if (newAp) {
         accessPoints.value.unshift(newAp)
         updateStats()
@@ -180,7 +180,7 @@ export function useAccessPoints() {
       // Handle both wrapped {access_point: ...} and direct response
       const updatedAp = response.data?.access_point || response.data
       
-      // Update local state (will be updated by event)
+      // Optimistically update local state immediately for better UX
       if (updatedAp) {
         const index = accessPoints.value.findIndex(ap => ap.id === apId)
         if (index !== -1) {
@@ -209,7 +209,7 @@ export function useAccessPoints() {
     try {
       await axios.delete(`/access-points/${apId}`)
       
-      // Remove from local state (will be updated by event)
+      // Optimistically remove from local state immediately for better UX
       accessPoints.value = accessPoints.value.filter(ap => ap.id !== apId)
       updateStats()
       

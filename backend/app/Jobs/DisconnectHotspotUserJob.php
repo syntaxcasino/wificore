@@ -244,9 +244,10 @@ class DisconnectHotspotUserJob implements ShouldQueue
     private function resolveRouterForSession(RadiusSession $session, ?string $nasIp): ?Router
     {
         if (!empty($nasIp)) {
-            $router = Router::where('ip_address', $nasIp)
-                ->orWhere('vpn_ip', $nasIp)
-                ->first();
+            $router = Router::where(function ($query) use ($nasIp) {
+                $query->where('ip_address', $nasIp)
+                    ->orWhere('vpn_ip', $nasIp);
+            })->first();
 
             if ($router) {
                 return $router;

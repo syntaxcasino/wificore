@@ -2,6 +2,9 @@
 
 namespace App\Services;
 
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
+
 class RouterMetricsService
 {
     public function getLatestRouterMetrics(VictoriaMetricsClient $vm, string $tenantId, array $routerIds): array
@@ -181,6 +184,20 @@ class RouterMetricsService
             $pppoeSessions = $live[$rid]['pppoe_sessions'] ?? null;
             if (is_int($pppoeSessions) && !array_key_exists('active_connections', $live[$rid])) {
                 $live[$rid]['active_connections'] = $pppoeSessions;
+            }
+        }
+
+        // Fall back to the Redis cache written by FetchRouterLiveData for any
+        // router that VictoriaMetrics returned no data for (e.g. Telegraf not yet
+        // polling, or SNMP not reachable). Cache TTL is 30 s so data is fresh.
+        foreach ($routerIds as $routerId) {
+            $rid = (string) $routerId;
+            if (empty($live[$rid])) {
+                $cached = Cache::get("router_live_data_{$rid}");
+                if (is_array($cached) && !empty($cached) && !isset($cached['error'])) {
+                    $live[$rid] = $cached;
+                    Log::debug('RouterMetricsService: using Redis cache fallback', ['router_id' => $rid]);
+                }
             }
         }
 

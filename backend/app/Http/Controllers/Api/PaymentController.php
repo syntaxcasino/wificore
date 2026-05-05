@@ -104,6 +104,35 @@ class PaymentController extends Controller
                 }
             }
 
+            // IDEMPOTENCY CHECK: Prevent duplicate payments from double-clicks
+            // Check for recent pending payments from same phone for same package
+            $recentPendingPayment = Payment::where('phone_number', $validated['phone_number'])
+                ->where('package_id', $validated['package_id'])
+                ->where('status', 'pending')
+                ->where('created_at', '>', now()->subMinutes(2))
+                ->first();
+
+            if ($recentPendingPayment) {
+                Log::info('Duplicate payment attempt blocked - recent pending payment exists', [
+                    'phone_number' => $validated['phone_number'],
+                    'package_id' => $validated['package_id'],
+                    'existing_payment_id' => $recentPendingPayment->id,
+                    'existing_transaction_id' => $recentPendingPayment->transaction_id,
+                ]);
+
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Payment already initiated - please complete the payment on your phone',
+                    'transaction_id' => $recentPendingPayment->transaction_id,
+                    'payment_id' => $recentPendingPayment->id,
+                    'data' => [
+                        'CheckoutRequestID' => $recentPendingPayment->transaction_id,
+                        'payment_id' => $recentPendingPayment->id,
+                    ],
+                    'ResultCode' => 0
+                ]);
+            }
+
             // 3. Set tenant payment context for correct Paybill credentials
             $this->mpesaService->setTenantPaymentContext($tenantId);
 
@@ -246,23 +275,23 @@ class PaymentController extends Controller
                 if ($status === 'completed') {
                     // Broadcast payment completed event
                     broadcast(new PaymentCompleted($payment))->toOthers();
-                    
+
                     // EVENT-BASED: Dispatch hotspot user creation job (async)
+                    // This handles all hotspot provisioning: HotspotUser, RADIUS entries, credentials
                     CreateHotspotUserJob::dispatch($payment->id, $payment->package_id, $tenant->id)
                         ->onQueue('hotspot-provisioning');
-                    
-                    // EVENT-BASED: Handle subscription reconnection
+
+                    // EVENT-BASED: Handle subscription reconnection (for PPPoE/generic subscriptions only)
                     $subscription = $payment->subscription;
-                    
+
                     if ($subscription && $subscription->isDisconnected()) {
                         ReconnectSubscriptionJob::dispatch($payment->id, $subscription->id, $tenant->id)
                             ->onQueue('subscription-reconnection');
                     }
-                    
-                    // Dispatch payment processing job for voucher creation (legacy)
-                    ProcessPaymentJob::dispatch($payment->id, $tenant->id)
-                        ->onQueue('payments')
-                        ->delay(now()->addSeconds(2));
+
+                    // Note: ProcessPaymentJob is NOT dispatched here because CreateHotspotUserJob
+                    // already handles complete hotspot provisioning. ProcessPaymentJob is for
+                    // generic subscription provisioning (non-hotspot payments).
                 }
 
                 $this->logToSystemAndFile("Payment $status", [

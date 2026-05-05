@@ -136,7 +136,7 @@ export function useTodos() {
       // Handle both wrapped {todo: ...} and direct response
       const newTodo = response.data?.todo || response.data
       
-      // Add to local state (will be updated by event)
+      // Optimistically add to local state immediately for better UX
       if (newTodo) {
         todos.value.unshift(newTodo)
         updateStats()
@@ -165,7 +165,7 @@ export function useTodos() {
       // Handle both wrapped {todo: ...} and direct response
       const updatedTodo = response.data?.todo || response.data
       
-      // Update local state (will be updated by event)
+      // Optimistically update local state immediately for better UX
       if (updatedTodo) {
         const index = todos.value.findIndex(t => t.id === todoId)
         if (index !== -1) {
@@ -194,7 +194,7 @@ export function useTodos() {
     try {
       await axios.delete(`/todos/${todoId}`)
       
-      // Remove from local state (will be updated by event)
+      // Optimistically remove from local state immediately for better UX
       todos.value = todos.value.filter(t => t.id !== todoId)
       updateStats()
       

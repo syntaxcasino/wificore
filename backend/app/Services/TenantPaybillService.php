@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Helpers\PackageExpiryHelper;
 use App\Models\Tenant;
 use App\Models\TenantPaybillSetting;
 use App\Models\SystemPaymentSetting;
@@ -14,6 +15,7 @@ use App\Events\PppoeUserPaymentStatusChanged;
 use App\Events\PppoeGracePeriodStarted;
 use App\Jobs\DisconnectPppoeUserJob;
 use App\Jobs\ReconnectPppoeUserJob;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -244,10 +246,11 @@ class TenantPaybillService extends TenantAwareService
             return $this->validationResponse('C2B00012', 'Invalid account number');
         }
 
-        // Find PPPoE user by account number or username
-        $user = PppoeUser::where('account_number', $accountNumber)
-            ->orWhere('username', $accountNumber)
-            ->first();
+        // Find PPPoE user by account number or username (scoped within tenant)
+        $user = PppoeUser::where(function ($query) use ($accountNumber) {
+            $query->where('account_number', $accountNumber)
+                ->orWhere('username', $accountNumber);
+        })->first();
 
         if (!$user) {
             Log::warning('TenantPaybillService: User not found for validation', [
@@ -323,9 +326,10 @@ class TenantPaybillService extends TenantAwareService
                 'raw_payload' => $data,
             ]);
 
-            $user = PppoeUser::where('account_number', $accountNumber)
-                ->orWhere('username', $accountNumber)
-                ->first();
+            $user = PppoeUser::where(function ($query) use ($accountNumber) {
+                $query->where('account_number', $accountNumber)
+                    ->orWhere('username', $accountNumber);
+            })->first();
 
             if ($user) {
                 $transaction->markAsMatched($user->id, 'account_number');
@@ -362,24 +366,30 @@ class TenantPaybillService extends TenantAwareService
      */
     protected function createPaymentAndActivateUser(PppoeUser $user, MpesaTransaction $transaction, array $data): PppoePayment
     {
+        $periodStart = Carbon::parse($transaction->transaction_time ?? now());
+        $package     = $user->package ?? $user->load('package')->package;
+        $periodEnd   = $package
+            ? PackageExpiryHelper::calculateExpiresAt($package, $periodStart)
+            : $periodStart->copy()->addDays(30);
+
         $payment = PppoePayment::create([
-            'pppoe_user_id' => $user->id,
+            'pppoe_user_id'  => $user->id,
             'account_number' => $user->account_number,
-            'amount' => $transaction->amount,
+            'amount'         => $transaction->amount,
             'payment_method' => 'paybill',
             'payment_reference' => $transaction->msisdn,
             'transaction_id' => $transaction->transaction_id,
-            'status' => 'completed',
-            'payment_date' => $transaction->transaction_time,
-            'verified_at' => now(),
-            'period_start' => now(),
-            'period_end' => now()->addDays(30),
+            'status'         => 'completed',
+            'payment_date'   => $transaction->transaction_time,
+            'verified_at'    => now(),
+            'period_start'   => $periodStart,
+            'period_end'     => $periodEnd,
             'metadata' => [
-                'mpesa_transaction_id' => $transaction->id,
-                'phone_number' => $transaction->msisdn,
-                'shortcode' => $transaction->business_shortcode,
-                'is_landlord_paybill' => $this->usingLandlordPaybill,
-                'confirmation_payload' => $data,
+                'mpesa_transaction_id'  => $transaction->id,
+                'phone_number'          => $transaction->msisdn,
+                'shortcode'             => $transaction->business_shortcode,
+                'is_landlord_paybill'   => $this->usingLandlordPaybill,
+                'confirmation_payload'  => $data,
             ],
         ]);
 
@@ -397,9 +407,10 @@ class TenantPaybillService extends TenantAwareService
      */
     protected function tryMatchTransaction(MpesaTransaction $transaction): bool
     {
-        $user = PppoeUser::where('account_number', $transaction->bill_ref_number)
-            ->orWhere('username', $transaction->bill_ref_number)
-            ->first();
+        $user = PppoeUser::where(function ($query) use ($transaction) {
+            $query->where('account_number', $transaction->bill_ref_number)
+                ->orWhere('username', $transaction->bill_ref_number);
+        })->first();
 
         if ($user) {
             try {

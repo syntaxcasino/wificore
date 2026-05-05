@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Helpers\PackageExpiryHelper;
 use App\Models\HotspotUser;
 use App\Models\Package;
 use App\Events\HotspotAccessGranted;
@@ -12,6 +13,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -32,6 +34,7 @@ class GrantHotspotAccessJob implements ShouldQueue
     public string $hotspotUserId;
     public ?string $packageId;
     public string $reason;
+    public ?string $paymentDate;
     public $tries = 3;
     public $timeout = 30;
 
@@ -39,11 +42,13 @@ class GrantHotspotAccessJob implements ShouldQueue
         string $hotspotUserId,
         string $tenantId,
         ?string $packageId = null,
-        string $reason = 'payment'
+        string $reason = 'payment',
+        ?string $paymentDate = null
     ) {
         $this->hotspotUserId = $hotspotUserId;
-        $this->packageId = $packageId;
-        $this->reason = $reason;
+        $this->packageId     = $packageId;
+        $this->reason        = $reason;
+        $this->paymentDate   = $paymentDate;
         $this->setTenantContext($tenantId);
         $this->onQueue('hotspot-access');
     }
@@ -79,17 +84,18 @@ class GrantHotspotAccessJob implements ShouldQueue
                     $this->updateRadiusAttributes($user->username, $package);
                 }
                 
-                // Calculate expiration
-                $expiresAt = $this->calculateExpiration($package);
-                
+                // Calculate expiration anchored to payment date (not now())
+                $baseTime  = $this->paymentDate ? Carbon::parse($this->paymentDate) : now();
+                $expiresAt = $package ? PackageExpiryHelper::calculateExpiresAt($package, $baseTime) : null;
+
                 // Update user status
                 $user->update([
-                    'has_active_subscription' => true,
-                    'status' => 'active',
-                    'subscription_starts_at' => now(),
-                    'subscription_expires_at' => $expiresAt,
-                    'package_id' => $package?->id ?? $user->package_id,
-                    'package_name' => $package?->name ?? $user->package_name,
+                    'has_active_subscription'  => true,
+                    'status'                   => 'active',
+                    'subscription_starts_at'   => $baseTime,
+                    'subscription_expires_at'  => $expiresAt,
+                    'package_id'               => $package?->id   ?? $user->package_id,
+                    'package_name'             => $package?->name ?? $user->package_name,
                 ]);
                 
                 DB::commit();
@@ -142,14 +148,15 @@ class GrantHotspotAccessJob implements ShouldQueue
         
         $attributes = [];
         
-        // Session timeout (duration in seconds)
-        $durationSeconds = $this->parseDurationToSeconds($package->duration);
+        // Session timeout derived from package validity (in seconds)
+        $durationDays    = PackageExpiryHelper::durationInDays($package);
+        $durationSeconds = $durationDays * 86400;
         if ($durationSeconds > 0) {
             $attributes[] = [
-                'username' => $username,
+                'username'  => $username,
                 'attribute' => 'Session-Timeout',
-                'op' => ':=',
-                'value' => (string) $durationSeconds,
+                'op'        => ':=',
+                'value'     => (string) $durationSeconds,
             ];
         }
         
@@ -191,43 +198,6 @@ class GrantHotspotAccessJob implements ShouldQueue
         if (!empty($attributes)) {
             DB::table('radreply')->insert($attributes);
         }
-    }
-
-    private function calculateExpiration(?Package $package): ?\Carbon\Carbon
-    {
-        if (!$package || !$package->duration) {
-            return null;
-        }
-        
-        $seconds = $this->parseDurationToSeconds($package->duration);
-        return $seconds > 0 ? now()->addSeconds($seconds) : null;
-    }
-
-    private function parseDurationToSeconds($duration): int
-    {
-        if (is_numeric($duration)) {
-            return (int) $duration * 3600; // Assume hours
-        }
-        
-        $duration = strtolower(trim($duration));
-        
-        if (preg_match('/^(\d+)\s*h(our)?s?$/i', $duration, $matches)) {
-            return (int) $matches[1] * 3600;
-        }
-        if (preg_match('/^(\d+)\s*d(ay)?s?$/i', $duration, $matches)) {
-            return (int) $matches[1] * 86400;
-        }
-        if (preg_match('/^(\d+)\s*m(in(ute)?)?s?$/i', $duration, $matches)) {
-            return (int) $matches[1] * 60;
-        }
-        if (preg_match('/^(\d+)\s*w(eek)?s?$/i', $duration, $matches)) {
-            return (int) $matches[1] * 604800;
-        }
-        if (preg_match('/^(\d+)\s*mo(nth)?s?$/i', $duration, $matches)) {
-            return (int) $matches[1] * 2592000; // 30 days
-        }
-        
-        return 0;
     }
 
     private function parseDataLimit($dataLimit): int

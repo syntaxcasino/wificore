@@ -83,7 +83,7 @@ return new class extends Migration
                 $table->string('username', 64)->nullable();
                 $table->string('realm', 64)->nullable();
                 $table->ipAddress('nasipaddress');
-                $table->string('nasportid', 15)->nullable();
+                $table->string('nasportid', 64)->nullable();
                 $table->timestampTz('acctstarttime')->nullable();
                 $table->timestampTz('acctupdatetime')->nullable();
                 $table->timestampTz('acctstoptime')->nullable();

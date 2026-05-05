@@ -444,7 +444,10 @@
                       <span class="ml-1">{{ mappingStatus }}</span>
                     </div>
 
-                    <div v-if="mappingErrors && mappingErrors.length" class="mt-3 bg-red-50 border border-red-200 rounded-lg p-3">
+                    <div
+                      v-if="mappingErrors && mappingErrors.length && provisioningProgress < 100"
+                      class="mt-3 bg-red-50 border border-red-200 rounded-lg p-3"
+                    >
                       <div class="text-xs font-semibold text-red-800 mb-1">Deployment Errors</div>
                       <div v-for="(err, idx) in mappingErrors" :key="idx" class="text-xs text-red-700">{{ err }}</div>
                     </div>

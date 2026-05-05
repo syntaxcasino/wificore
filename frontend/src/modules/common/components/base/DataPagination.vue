@@ -75,12 +75,12 @@ const props = defineProps({
 const emit = defineEmits(['update:currentPage', 'update:itemsPerPage', 'pageChange'])
 
 const start = computed(() => {
-  if (props.totalItems === 0) return 0
+  if (props.totalItems === 0 || props.currentPage < 1) return 0
   return (props.currentPage - 1) * props.itemsPerPage + 1
 })
 
 const end = computed(() => {
-  if (props.totalItems === 0) return 0
+  if (props.totalItems === 0 || props.currentPage < 1) return 0
   return Math.min(start.value + props.itemsPerPage - 1, props.totalItems)
 })
 

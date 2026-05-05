@@ -31,8 +31,10 @@ use App\Listeners\TrackCompletedJobs;
 use App\Listeners\UpdateRouterStatus;
 use App\Listeners\LogPppoeBillingLifecycle;
 use App\Listeners\LogPppoeBillingOutcome;
+use App\Listeners\PublishEventToSse;
 use Illuminate\Foundation\Support\Providers\EventServiceProvider as ServiceProvider;
 use Illuminate\Queue\Events\JobProcessed;
+use Illuminate\Support\Facades\Event;
 
 class EventServiceProvider extends ServiceProvider
 {
@@ -150,7 +152,10 @@ class EventServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        // Wildcard listener: publish every ShouldBroadcast event to Redis SSE channels.
+        // This means ALL current and future broadcast events are automatically available
+        // via SSE without modifying each event class individually.
+        Event::listen('*', PublishEventToSse::class . '@handle');
     }
 
     /**

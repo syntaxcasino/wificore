@@ -15,7 +15,9 @@ export function useHotspotSessions() {
   const refreshing = ref(false)
   const error = ref(null)
   const sessionChannel = ref(null)
-  const pollingInterval = ref(null)
+  // Debounce guard for rapid WebSocket events
+  let refreshDebounceTimer = null
+  const REFRESH_DEBOUNCE_MS = 2000
 
   // Stats
   const totalSessions = computed(() => sessions.value.length)
@@ -67,7 +69,8 @@ export function useHotspotSessions() {
       })
       if (response.data?.success) {
         toast.success(`Successfully disconnected ${session.username}`)
-        await refreshSessions()
+        // Optimistically remove from local state immediately for better UX
+        sessions.value = sessions.value.filter(s => s.id !== session.id)
         return true
       } else {
         toast.error(response.data?.message || 'Failed to disconnect session')
@@ -108,27 +111,12 @@ export function useHotspotSessions() {
     return result
   }
 
-  // Polling — 10 s interval (same cadence as PPPoE)
-  const startPolling = () => {
-    stopPolling()
-    pollingInterval.value = setInterval(() => {
-      axios.get('hotspot/sessions/live')
-        .then(response => {
-          const payload = response.data?.data ?? response.data
-          sessions.value = Array.isArray(payload) ? payload : (payload?.data ?? [])
-        })
-        .catch(err => console.error('Silent hotspot session refresh failed:', err))
-    }, 10000)
+  // WebSocket — event-driven only, no polling
+  const debouncedRefresh = () => {
+    if (refreshDebounceTimer) clearTimeout(refreshDebounceTimer)
+    refreshDebounceTimer = setTimeout(() => refreshSessions(), REFRESH_DEBOUNCE_MS)
   }
 
-  const stopPolling = () => {
-    if (pollingInterval.value) {
-      clearInterval(pollingInterval.value)
-      pollingInterval.value = null
-    }
-  }
-
-  // WebSocket — mirrors usePppoeSessions channel naming pattern
   const setupWebSocketListeners = () => {
     const tenantId = authStore.tenantId
     if (!tenantId) {
@@ -139,7 +127,7 @@ export function useHotspotSessions() {
     try {
       sessionChannel.value = `tenant.${tenantId}.hotspot-sessions`
       subscribeToPrivateChannel(sessionChannel.value, {
-        HotspotSessionStarted: () => refreshSessions(),
+        HotspotSessionStarted: debouncedRefresh,
         HotspotSessionEnded: (event) => {
           if (event?.session) {
             sessions.value = sessions.value.filter(s =>
@@ -147,7 +135,7 @@ export function useHotspotSessions() {
             )
           }
         },
-        HotspotSessionUpdated: () => refreshSessions(),
+        HotspotSessionUpdated: debouncedRefresh,
       })
     } catch (err) {
       console.error('WebSocket setup error (hotspot sessions):', err)
@@ -156,7 +144,10 @@ export function useHotspotSessions() {
 
   const cleanupWebSocketListeners = () => {
     try {
-      stopPolling()
+      if (refreshDebounceTimer) {
+        clearTimeout(refreshDebounceTimer)
+        refreshDebounceTimer = null
+      }
       if (sessionChannel.value) {
         unsubscribe(sessionChannel.value)
         sessionChannel.value = null
@@ -168,7 +159,8 @@ export function useHotspotSessions() {
 
   // Helpers
   const formatBytes = (bytes) => {
-    if (!bytes) return '0 B'
+    if (bytes === null || bytes === undefined) return '-'
+    if (bytes === 0) return '0 B'
     const k = 1024
     const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
     const i = Math.floor(Math.log(bytes) / Math.log(k))
@@ -210,8 +202,6 @@ export function useHotspotSessions() {
     refreshSessions,
     disconnectSession,
     filterSessions,
-    startPolling,
-    stopPolling,
     setupWebSocketListeners,
     cleanupWebSocketListeners,
 

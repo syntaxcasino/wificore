@@ -7,8 +7,8 @@
     :gradient="true"
     :badge="stageBadge"
     width="50%"
-    :close-on-backdrop="!inProgress"
-    :close-on-escape="!inProgress"
+    :close-on-backdrop="false"
+    :close-on-escape="false"
     no-padding
     @update:modelValue="val => { if (!val) handleClose() }"
     @close="handleClose"

@@ -53,11 +53,14 @@ BEGIN
     RAISE NOTICE 'get_user_schema called for: %, normalized: %', p_username, v_username;
 
     -- Check if user is a system admin (in public schema) - case insensitive
-    SELECT 'public' INTO v_schema
-    FROM public.users
-    WHERE LOWER(BTRIM(REGEXP_REPLACE(COALESCE(username, ''), '[[:cntrl:]]', '', 'g'))) = v_username
-    AND role = 'system_admin'
-    LIMIT 1;
+    -- Guard: public.users may not exist yet before Laravel migrations run
+    IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'users') THEN
+        SELECT 'public' INTO v_schema
+        FROM public.users
+        WHERE LOWER(BTRIM(REGEXP_REPLACE(COALESCE(username, ''), '[[:cntrl:]]', '', 'g'))) = v_username
+        AND role = 'system_admin'
+        LIMIT 1;
+    END IF;
 
     RAISE NOTICE 'System admin check result: %', COALESCE(v_schema, 'NULL');
 

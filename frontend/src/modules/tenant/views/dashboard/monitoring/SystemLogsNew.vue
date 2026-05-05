@@ -193,7 +193,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { 
   FileText, RefreshCw, Download, Trash2, X,
   Info, AlertTriangle, XCircle, Calendar
@@ -410,14 +410,7 @@ const clearLogs = async () => {
   if (confirmed) logs.value = []
 }
 
-let refreshInterval
-
 onMounted(() => {
   fetchLogs()
-  refreshInterval = setInterval(refreshLogs, 30000)
-})
-
-onUnmounted(() => {
-  if (refreshInterval) clearInterval(refreshInterval)
 })
 </script>

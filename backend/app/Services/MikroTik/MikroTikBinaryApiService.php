@@ -175,6 +175,21 @@ class MikroTikBinaryApiService implements MikroTikApiInterface
 
     public function createBridge(string $name, ?string $comment = null): array
     {
+        // Check if bridge already exists
+        $existing = $this->command('/interface/bridge/print', ['?name=' . $name]);
+        
+        if (!empty($existing)) {
+            // Bridge exists - update comment if provided
+            if ($comment && isset($existing[0]['.id'])) {
+                return $this->commandOne('/interface/bridge/set', [
+                    '.id' => $existing[0]['.id'],
+                    'comment=' . $comment,
+                ]);
+            }
+            return $existing[0] ?? [];
+        }
+        
+        // Bridge doesn't exist - create it
         $params = ['name=' . $name];
         if ($comment) {
             $params[] = 'comment=' . $comment;
@@ -184,6 +199,31 @@ class MikroTikBinaryApiService implements MikroTikApiInterface
 
     public function addBridgePort(string $bridge, string $interface, ?string $comment = null): array
     {
+        // Check if interface already has a bridge port entry
+        $existing = $this->command('/interface/bridge/port/print', ['?interface=' . $interface]);
+        
+        if (!empty($existing)) {
+            // Interface already has a bridge port
+            $existingPort = $existing[0];
+            
+            // If already in the correct bridge, just update comment
+            if (isset($existingPort['bridge']) && $existingPort['bridge'] === $bridge) {
+                if ($comment && isset($existingPort['.id'])) {
+                    return $this->commandOne('/interface/bridge/port/set', [
+                        '.id' => $existingPort['.id'],
+                        'comment=' . $comment,
+                    ]);
+                }
+                return $existingPort;
+            }
+            
+            // Interface is in a different bridge - remove it first
+            if (isset($existingPort['.id'])) {
+                $this->commandOne('/interface/bridge/port/remove', ['.id=' . $existingPort['.id']]);
+            }
+        }
+        
+        // Add the port to the bridge
         $params = ['bridge=' . $bridge, 'interface=' . $interface];
         if ($comment) {
             $params[] = 'comment=' . $comment;

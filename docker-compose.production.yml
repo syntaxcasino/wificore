@@ -86,8 +86,8 @@ services:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 10s
+      retries: 5
+      start_period: 30s
     volumes:
       - wireguard-config:/etc/wireguard:rw
     logging:
@@ -195,7 +195,7 @@ services:
       wificore-soketi:
         condition: service_started
       wificore-wireguard:
-        condition: service_healthy
+        condition: service_started
     networks:
       wificore-network:
         ipv4_address: 172.70.0.5
@@ -351,8 +351,8 @@ services:
       test: ["CMD", "pg_isready", "-U", "${DB_USERNAME:-admin}", "-d", "${DB_DATABASE:-wms_770_ts}"]
       interval: 10s
       timeout: 5s
-      retries: 3
-      start_period: 20s
+      retries: 10
+      start_period: 60s
     logging:
       driver: "json-file"
       options:
@@ -634,8 +634,8 @@ services:
       test: ["CMD", "pg_isready", "-U", "${DB_USERNAME:-admin}", "-d", "${DB_DATABASE:-wms_770_ts}"]
       interval: 10s
       timeout: 5s
-      retries: 3
-      start_period: 20s
+      retries: 10
+      start_period: 30s
     logging:
       driver: "json-file"
       options:

@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Helpers\PackageExpiryHelper;
 use App\Http\Controllers\Controller;
 use App\Models\PppoePayment;
 use App\Models\PppoeUser;
 use App\Services\PppoeBillingLifecycleService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
@@ -51,23 +53,30 @@ class PppoePaymentController extends Controller
         }
 
         try {
-            $pppoeUser = PppoeUser::findOrFail($request->pppoe_user_id);
+            $pppoeUser = PppoeUser::with('package')->findOrFail($request->pppoe_user_id);
+
+            // Determine period boundaries
+            $periodStart = Carbon::parse($request->payment_date);
+            $package     = $pppoeUser->package;
+            $periodEnd   = $package
+                ? PackageExpiryHelper::calculateExpiresAt($package, $periodStart)
+                : $periodStart->copy()->addDays(30);
 
             DB::beginTransaction();
 
             // Create payment record
             $payment = PppoePayment::create([
-                'pppoe_user_id' => $pppoeUser->id,
-                'account_number' => $pppoeUser->account_number,
-                'amount' => $request->amount,
-                'payment_method' => $request->payment_method,
-                'payment_reference' => $request->payment_reference,
-                'transaction_id' => $request->transaction_id,
-                'status' => 'pending',
-                'payment_date' => $request->payment_date,
-                'period_start' => now(),
-                'period_end' => now()->addDays(30),
-                'notes' => $request->notes,
+                'pppoe_user_id'      => $pppoeUser->id,
+                'account_number'     => $pppoeUser->account_number,
+                'amount'             => $request->amount,
+                'payment_method'     => $request->payment_method,
+                'payment_reference'  => $request->payment_reference,
+                'transaction_id'     => $request->transaction_id,
+                'status'             => 'pending',
+                'payment_date'       => $request->payment_date,
+                'period_start'       => $periodStart,
+                'period_end'         => $periodEnd,
+                'notes'              => $request->notes,
             ]);
 
             // Auto-verify MPesa, Paybill, and Bank payments

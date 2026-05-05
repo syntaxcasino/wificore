@@ -1,8 +1,8 @@
 <template>
-  <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-gray-100 dark:border-slate-700 p-6">
-    <div class="flex items-center justify-between mb-6">
-      <h2 class="text-xl font-bold text-gray-900 dark:text-slate-100 flex items-center gap-2">
-        <svg class="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+  <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-gray-100 dark:border-slate-700 p-4 sm:p-6">
+    <div class="flex items-center justify-between mb-4 sm:mb-6">
+      <h2 class="text-base sm:text-xl font-bold text-gray-900 dark:text-slate-100 flex items-center gap-2">
+        <svg class="w-5 h-5 sm:w-6 sm:h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
         </svg>
         Performance Metrics
@@ -22,14 +22,14 @@
     <!-- Metrics Grid -->
     <div v-else class="space-y-4">
       <!-- TPS (Transactions Per Second) -->
-      <div class="p-4 bg-gradient-to-r from-blue-50 to-blue-100 rounded-xl border border-blue-200">
+      <div class="p-3 sm:p-4 bg-gradient-to-r from-blue-50 to-blue-100 rounded-xl border border-blue-200">
         <div class="flex items-center justify-between mb-2">
-          <div>
-            <p class="text-xs font-medium text-blue-700 mb-1">Transactions Per Second (TPS)</p>
-            <p class="text-3xl font-bold text-blue-900">{{ metrics.tps?.current || 0 }}</p>
+          <div class="min-w-0">
+            <p class="text-xs font-medium text-blue-700 mb-1 truncate">Transactions Per Second (TPS)</p>
+            <p class="text-2xl sm:text-3xl font-bold text-blue-900">{{ metrics.tps?.current || 0 }}</p>
           </div>
-          <div class="w-12 h-12 bg-blue-500 rounded-xl flex items-center justify-center shadow-lg">
-            <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div class="w-10 h-10 sm:w-12 sm:h-12 bg-blue-500 rounded-xl flex items-center justify-center shadow-lg flex-shrink-0">
+            <svg class="w-5 h-5 sm:w-6 sm:h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
             </svg>
           </div>
@@ -51,14 +51,14 @@
       </div>
 
       <!-- OPS (Operations Per Second) - Redis -->
-      <div class="p-4 bg-gradient-to-r from-purple-50 to-purple-100 rounded-xl border border-purple-200">
+      <div class="p-3 sm:p-4 bg-gradient-to-r from-purple-50 to-purple-100 rounded-xl border border-purple-200">
         <div class="flex items-center justify-between mb-2">
-          <div>
-            <p class="text-xs font-medium text-purple-700 mb-1">Cache Operations Per Second (OPS)</p>
-            <p class="text-3xl font-bold text-purple-900">{{ metrics.ops?.current || 0 }}</p>
+          <div class="min-w-0">
+            <p class="text-xs font-medium text-purple-700 mb-1 truncate">Cache Operations Per Second (OPS)</p>
+            <p class="text-2xl sm:text-3xl font-bold text-purple-900">{{ metrics.ops?.current || 0 }}</p>
           </div>
-          <div class="w-12 h-12 bg-purple-500 rounded-xl flex items-center justify-center shadow-lg">
-            <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div class="w-10 h-10 sm:w-12 sm:h-12 bg-purple-500 rounded-xl flex items-center justify-center shadow-lg flex-shrink-0">
+            <svg class="w-5 h-5 sm:w-6 sm:h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
             </svg>
           </div>
@@ -69,18 +69,18 @@
       </div>
 
       <!-- Database Performance -->
-      <div class="p-4 bg-gradient-to-r from-green-50 to-emerald-100 rounded-xl border border-green-200">
+      <div class="p-3 sm:p-4 bg-gradient-to-r from-green-50 to-emerald-100 rounded-xl border border-green-200">
         <div class="flex items-center justify-between mb-3">
           <h3 class="text-sm font-semibold text-green-700">Database Performance</h3>
         </div>
         <div class="grid grid-cols-2 gap-3">
           <div class="p-3 bg-white dark:bg-slate-700/50 rounded-lg">
             <p class="text-xs text-green-600 mb-1">Active Connections</p>
-            <p class="text-2xl font-bold text-green-900">{{ metrics.database?.active_connections || 0 }}</p>
+            <p class="text-xl sm:text-2xl font-bold text-green-900">{{ metrics.database?.active_connections || 0 }}</p>
           </div>
           <div class="p-3 bg-white dark:bg-slate-700/50 rounded-lg">
             <p class="text-xs text-green-600 mb-1">Slow Queries</p>
-            <p class="text-2xl font-bold text-green-900">{{ metrics.database?.slow_queries || 0 }}</p>
+            <p class="text-xl sm:text-2xl font-bold text-green-900">{{ metrics.database?.slow_queries || 0 }}</p>
           </div>
         </div>
         <div class="mt-3 text-xs text-green-600">
@@ -89,14 +89,14 @@
       </div>
 
       <!-- Response Time -->
-      <div class="p-4 bg-gradient-to-r from-orange-50 to-orange-100 rounded-xl border border-orange-200">
+      <div class="p-3 sm:p-4 bg-gradient-to-r from-orange-50 to-orange-100 rounded-xl border border-orange-200">
         <div class="flex items-center justify-between mb-2">
-          <div>
-            <p class="text-xs font-medium text-orange-700 mb-1">Average Response Time</p>
-            <p class="text-3xl font-bold text-orange-900">{{ metrics.responseTime?.average || 0 }}ms</p>
+          <div class="min-w-0">
+            <p class="text-xs font-medium text-orange-700 mb-1 truncate">Average Response Time</p>
+            <p class="text-2xl sm:text-3xl font-bold text-orange-900">{{ metrics.responseTime?.average || 0 }}ms</p>
           </div>
-          <div class="w-12 h-12 bg-orange-500 rounded-xl flex items-center justify-center shadow-lg">
-            <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div class="w-10 h-10 sm:w-12 sm:h-12 bg-orange-500 rounded-xl flex items-center justify-center shadow-lg flex-shrink-0">
+            <svg class="w-5 h-5 sm:w-6 sm:h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
           </div>
@@ -114,7 +114,7 @@
       </div>
 
       <!-- System Load -->
-      <div class="p-4 bg-gradient-to-r from-pink-50 to-pink-100 rounded-xl border border-pink-200">
+      <div class="p-3 sm:p-4 bg-gradient-to-r from-pink-50 to-pink-100 rounded-xl border border-pink-200">
         <div class="flex items-center justify-between mb-3">
           <h3 class="text-sm font-semibold text-pink-700">System Load</h3>
         </div>
@@ -155,7 +155,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import axios from 'axios'
 
 const api = axios
@@ -169,8 +169,6 @@ const metrics = ref({
   system: { cpu: 0, memory: 0 },
   timestamp: new Date().toISOString()
 })
-
-let refreshInterval = null
 
 const fetchMetrics = async (showLoading = false) => {
   try {
@@ -211,13 +209,5 @@ const formatTimestamp = (timestamp) => {
 
 onMounted(() => {
   fetchMetrics(true) // Show loading on initial load
-  // Refresh every 10 seconds in background (reduced from 5s to prevent jank)
-  refreshInterval = setInterval(() => fetchMetrics(false), 10000)
-})
-
-onUnmounted(() => {
-  if (refreshInterval) {
-    clearInterval(refreshInterval)
-  }
 })
 </script>

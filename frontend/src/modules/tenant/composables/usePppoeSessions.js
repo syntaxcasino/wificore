@@ -15,7 +15,9 @@ export function usePppoeSessions() {
   const refreshing = ref(false)
   const error = ref(null)
   const sessionChannel = ref(null)
-  const pollingInterval = ref(null)
+  // Debounce guard for rapid WebSocket events
+  let refreshDebounceTimer = null
+  const REFRESH_DEBOUNCE_MS = 2000
 
   // Stats
   const totalSessions = computed(() => sessions.value.length)
@@ -79,7 +81,8 @@ export function usePppoeSessions() {
       const response = await axios.post('pppoe/sessions/disconnect', { username: session.username })
       if (response.data?.success) {
         toast.success(`Successfully disconnected ${session.username}`)
-        await refreshSessions()
+        // Optimistically remove from local state immediately for better UX
+        sessions.value = sessions.value.filter(s => s.username !== session.username)
         return true
       } else {
         toast.error(response.data?.message || 'Failed to disconnect session')
@@ -87,7 +90,6 @@ export function usePppoeSessions() {
       }
     } catch (err) {
       console.error('Error disconnecting session:', err)
-      // Guard against undefined or non-axios errors
       const errorMsg = err?.response?.data?.message || err?.message || 'Failed to disconnect session'
       toast.error(errorMsg)
       return false
@@ -126,38 +128,23 @@ export function usePppoeSessions() {
     return result
   }
 
-  // Polling
-  const startPolling = () => {
-    stopPolling()
-    pollingInterval.value = setInterval(() => {
-      axios.get('pppoe/sessions')
-        .then(response => {
-          const payload = response.data?.data ?? response.data
-          sessions.value = Array.isArray(payload) ? payload : (payload?.data ?? [])
-        })
-        .catch(err => console.error('Silent session refresh failed:', err))
-    }, 10000)
+  // WebSocket — event-driven only, no polling
+  const debouncedRefresh = () => {
+    if (refreshDebounceTimer) clearTimeout(refreshDebounceTimer)
+    refreshDebounceTimer = setTimeout(() => refreshSessions(), REFRESH_DEBOUNCE_MS)
   }
 
-  const stopPolling = () => {
-    if (pollingInterval.value) {
-      clearInterval(pollingInterval.value)
-      pollingInterval.value = null
-    }
-  }
-
-  // WebSocket
   const setupWebSocketListeners = () => {
     const tenantId = authStore.tenantId
     if (!tenantId) {
       console.warn('WebSocket: No tenant ID available')
       return
     }
-    
+
     try {
       sessionChannel.value = `tenant.${tenantId}.pppoe-sessions`
       subscribeToPrivateChannel(sessionChannel.value, {
-        PppoeSessionStarted: () => refreshSessions(),
+        PppoeSessionStarted: debouncedRefresh,
         PppoeSessionEnded: (event) => {
           if (event?.session) {
             sessions.value = sessions.value.filter(s =>
@@ -165,7 +152,7 @@ export function usePppoeSessions() {
             )
           }
         },
-        PppoeSessionUpdated: () => refreshSessions()
+        PppoeSessionUpdated: debouncedRefresh
       })
     } catch (err) {
       console.error('WebSocket setup error:', err)
@@ -174,7 +161,10 @@ export function usePppoeSessions() {
 
   const cleanupWebSocketListeners = () => {
     try {
-      stopPolling()
+      if (refreshDebounceTimer) {
+        clearTimeout(refreshDebounceTimer)
+        refreshDebounceTimer = null
+      }
       if (sessionChannel.value && unsubscribeFromChannel) {
         unsubscribeFromChannel(sessionChannel.value)
         sessionChannel.value = null
@@ -186,7 +176,9 @@ export function usePppoeSessions() {
 
   // Helpers
   const formatBytes = (bytes) => {
-    if (!bytes) return '0 B'
+    // Distinguish between null/undefined (metrics unavailable) vs actual 0 bytes
+    if (bytes === null || bytes === undefined) return '-'
+    if (bytes === 0) return '0 B'
     const k = 1024
     const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
     const i = Math.floor(Math.log(bytes) / Math.log(k))
@@ -229,8 +221,6 @@ export function usePppoeSessions() {
     refreshSessions,
     disconnectSession,
     filterSessions,
-    startPolling,
-    stopPolling,
     setupWebSocketListeners,
     cleanupWebSocketListeners,
     

@@ -164,6 +164,9 @@ app.use(router)
 const authStore = useAuthStore()
 authStore.initializeAuth()
 
+// Setup visibility listener for WebSocket auto-reconnection
+authStore.setupVisibilityListener()
+
 // Mount the app after router is ready
 router
   .isReady()

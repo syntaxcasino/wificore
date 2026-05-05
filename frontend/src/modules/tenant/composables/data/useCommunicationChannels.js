@@ -45,8 +45,14 @@ export function useCommunicationChannels() {
     error.value = null
     try {
       const response = await axios.post('/communication-channels', channelData)
-      // List refresh handled by WebSocket CommunicationChannelCreated event
-      return response.data?.data
+      const newChannel = response.data?.data
+
+      // Optimistically add to the local list immediately for better UX
+      if (newChannel) {
+        channels.value.unshift(newChannel)
+      }
+
+      return newChannel
     } catch (err) {
       error.value = err.response?.data?.message || 'Failed to create channel'
       throw err
@@ -60,8 +66,17 @@ export function useCommunicationChannels() {
     error.value = null
     try {
       const response = await axios.put(`/communication-channels/${channelId}`, channelData)
-      // List refresh handled by WebSocket CommunicationChannelUpdated event
-      return response.data?.data
+      const updatedChannel = response.data?.data
+
+      // Optimistically update the local list immediately for better UX
+      if (updatedChannel) {
+        const index = channels.value.findIndex(c => c.id === channelId)
+        if (index !== -1) {
+          channels.value.splice(index, 1, { ...channels.value[index], ...updatedChannel })
+        }
+      }
+
+      return updatedChannel
     } catch (err) {
       error.value = err.response?.data?.message || 'Failed to update channel'
       throw err
@@ -75,7 +90,8 @@ export function useCommunicationChannels() {
     error.value = null
     try {
       await axios.delete(`/communication-channels/${channelId}`)
-      // List refresh handled by WebSocket CommunicationChannelDeleted event
+      // Optimistically remove from the local list immediately for better UX
+      channels.value = channels.value.filter(c => c.id !== channelId)
     } catch (err) {
       error.value = err.response?.data?.message || 'Failed to delete channel'
       throw err

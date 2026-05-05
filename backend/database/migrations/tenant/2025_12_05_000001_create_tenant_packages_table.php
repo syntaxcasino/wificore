@@ -108,7 +108,14 @@ return new class extends Migration
 
         \Log::info("Migrating packages for tenant {$tenantId} ({$tenantSchema})");
 
-        // Get packages belonging to this tenant
+        // Check if public.packages has tenant_id column (legacy migration path)
+        $hasTenantId = Schema::connection('pgsql')->hasColumn("public.packages", 'tenant_id');
+        if (!$hasTenantId) {
+            \Log::info("Skipping packages migration: public.packages doesn't have tenant_id column (expected in current architecture)");
+            return;
+        }
+
+        // Get packages belonging to this tenant (legacy path)
         $packages = DB::table('public.packages')->where('tenant_id', $tenantId)->get();
 
         foreach ($packages as $package) {

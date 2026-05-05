@@ -2,11 +2,13 @@
 
 namespace App\Services;
 
+use App\Helpers\PackageExpiryHelper;
 use App\Models\Tenant;
 use App\Models\PppoeUser;
 use App\Models\PppoePayment;
 use App\Models\TenantPaybillSetting;
 use App\Jobs\ReconnectPppoeUserJob;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -269,23 +271,30 @@ class MpesaC2BService
         try {
             DB::beginTransaction();
 
+            // Compute period boundaries from package validity
+            $periodStart = Carbon::parse($this->parseTransactionTime($transactionTime));
+            $package     = $user->package ?? $user->load('package')->package;
+            $periodEnd   = $package
+                ? PackageExpiryHelper::calculateExpiresAt($package, $periodStart)
+                : $periodStart->copy()->addDays(30);
+
             // Create payment record
             $payment = PppoePayment::create([
-                'pppoe_user_id' => $user->id,
-                'account_number' => $accountNumber,
-                'amount' => $amount,
-                'payment_method' => 'paybill',
+                'pppoe_user_id'    => $user->id,
+                'account_number'   => $accountNumber,
+                'amount'           => $amount,
+                'payment_method'   => 'paybill',
                 'payment_reference' => $phoneNumber,
-                'transaction_id' => $transactionId,
-                'status' => 'completed',
-                'payment_date' => $this->parseTransactionTime($transactionTime),
-                'verified_at' => now(),
-                'period_start' => now(),
-                'period_end' => now()->addDays(30),
+                'transaction_id'   => $transactionId,
+                'status'           => 'completed',
+                'payment_date'     => $periodStart,
+                'verified_at'      => now(),
+                'period_start'     => $periodStart,
+                'period_end'       => $periodEnd,
                 'metadata' => [
-                    'mpesa_data' => $data,
+                    'mpesa_data'  => $data,
                     'phone_number' => $phoneNumber,
-                    'shortcode' => $data['BusinessShortCode'] ?? null,
+                    'shortcode'   => $data['BusinessShortCode'] ?? null,
                 ],
             ]);
 

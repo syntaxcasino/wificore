@@ -218,11 +218,20 @@ class VpnService extends TenantAwareService
         // Extract server network from server IP (e.g., 10.8.0.1 -> 10.8.0.0/24)
         $serverIp = explode('.', explode('/', $config->server_ip ?? '10.8.0.1')[0]);
         $serverNetwork = "{$serverIp[0]}.{$serverIp[1]}.{$serverIp[2]}.0/24";
+
+        // Extract client tunnel network from client IP (e.g., 10.100.1.1 -> 10.100.1.0/24)
+        $clientIp = explode('.', explode('/', $config->client_ip ?? '10.100.1.1')[0]);
+        $clientNetwork = "{$clientIp[0]}.{$clientIp[1]}.{$clientIp[2]}.0/24";
+
+        // Scope allowed-address to management networks only (not 0.0.0.0/0).
+        // This ensures only VPN management traffic routes through the tunnel;
+        // subscriber internet traffic uses the WAN interface directly.
+        $allowedAddresses = "{$serverNetwork},{$clientNetwork}";
         
         return <<<SCRIPT
 /interface wireguard add name={$interfaceName} listen-port={$listenPort} private-key="{$config->client_private_key}"
 /ip address add address={$config->client_ip}/32 interface={$interfaceName}
-/interface wireguard peers add interface={$interfaceName} public-key="{$config->server_public_key}" preshared-key="{$config->preshared_key}" endpoint-address={$this->getEndpointHost($config->server_endpoint)} endpoint-port={$this->getEndpointPort($config->server_endpoint)} allowed-address=0.0.0.0/0 persistent-keepalive=00:00:25
+/interface wireguard peers add interface={$interfaceName} public-key="{$config->server_public_key}" preshared-key="{$config->preshared_key}" endpoint-address={$this->getEndpointHost($config->server_endpoint)} endpoint-port={$this->getEndpointPort($config->server_endpoint)} allowed-address={$allowedAddresses} persistent-keepalive=00:00:25
 /ip route add dst-address={$serverNetwork} gateway={$interfaceName} comment="Route to VPN server network"
 /ip firewall filter add chain=input action=accept protocol=udp dst-port={$listenPort} comment="Allow WireGuard VPN"
 SCRIPT;

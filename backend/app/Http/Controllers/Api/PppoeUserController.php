@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Events\PppoeUserCreated;
 use App\Events\PppoeUserDeleted;
 use App\Events\PppoeUserUpdated;
+use App\Helpers\PackageExpiryHelper;
 use App\Http\Controllers\Controller;
 use App\Models\Package;
 use App\Models\PppoeUser;
@@ -125,7 +126,7 @@ class PppoeUserController extends Controller
 
             // Add computed fields for each user
             $users->getCollection()->transform(function ($user) {
-                $user->days_to_expiry = $user->expires_at ? now()->diffInDays($user->expires_at, false) : null;
+                $user->days_to_expiry = $user->expires_at ? (int) now()->diffInDays($user->expires_at, false) : null;
                 $user->is_expired = $user->expires_at && $user->expires_at->isPast();
                 return $user;
             });
@@ -172,7 +173,7 @@ class PppoeUserController extends Controller
         }
 
         // Add computed fields
-        $pppoeUser->days_to_expiry = $pppoeUser->expires_at ? now()->diffInDays($pppoeUser->expires_at, false) : null;
+        $pppoeUser->days_to_expiry = $pppoeUser->expires_at ? (int) now()->diffInDays($pppoeUser->expires_at, false) : null;
         $pppoeUser->is_expired = $pppoeUser->expires_at && $pppoeUser->expires_at->isPast();
 
         return response()->json([
@@ -407,10 +408,9 @@ class PppoeUserController extends Controller
             ], 404);
         }
 
-        // Calculate expiry: package duration + optional grace period
-        $gracePeriodDays = (int) ($request->grace_period_days ?? 0);
-        $baseExpiresAt = $this->calculateExpiresAtFromPackage($package, now());
-        $expiresAt = $gracePeriodDays > 0 ? $baseExpiresAt->copy()->addDays($gracePeriodDays) : $baseExpiresAt;
+        // expires_at is NOT set at creation — it is set when the first payment is recorded.
+        // This ensures expiry is always anchored to the actual payment date + package duration.
+        $expiresAt = null;
         $rateLimit = BandwidthHelper::formatMikrotikRateLimit((string) $package->download_speed, (string) $package->upload_speed);
 
         try {
@@ -437,8 +437,8 @@ class PppoeUserController extends Controller
                     ?? \App\Models\Tenant::generateAccountPrefix($tenant->slug ?? $tenant->name);
                 $accountNumber = PppoeUser::generateAccountNumber($tenantPrefix, 'P');
 
-                // Calculate payment due date (30 days from package duration)
-                $nextPaymentDue = $expiresAt ? clone $expiresAt : now()->addDays(30);
+                // next_payment_due = package duration from now (a billing prompt — not the actual expiry)
+                $nextPaymentDue = PackageExpiryHelper::calculateExpiresAt($package, now());
 
                 // STEP 3: Create PPPoE user in tenant schema
                 // Default to ACTIVE so user can connect, but payment_status is UNPAID until paid
@@ -566,8 +566,9 @@ class PppoeUserController extends Controller
             ], 422);
         }
 
-        $previousRateLimit = $pppoeUser->rate_limit;
-        $previousPackageId = $pppoeUser->package_id;
+        $previousRateLimit  = $pppoeUser->rate_limit;
+        $previousPackageId  = $pppoeUser->package_id;
+        $previousPackage    = $pppoeUser->package ?? Package::find($previousPackageId);
 
         $package = null;
         if ($request->has('package_id')) {
@@ -595,12 +596,34 @@ class PppoeUserController extends Controller
         }
 
         if ($package) {
-            $expiresAt = $this->calculateExpiresAtFromPackage($package, now());
             $rateLimit = BandwidthHelper::formatMikrotikRateLimit((string) $package->download_speed, (string) $package->upload_speed);
-
             $pppoeUser->package_id = $package->id;
-            $pppoeUser->expires_at = $expiresAt;
             $pppoeUser->rate_limit = $rateLimit;
+
+            // Pro-rated expiry recalculation when package changes mid-subscription.
+            // If the user has an active future expiry, convert unused credit to days on new package.
+            // If no active subscription (expires_at is null or past), leave expires_at unchanged —
+            // it will be set correctly when the next payment is recorded.
+            $currentExpiry = $pppoeUser->expires_at;
+            if ($currentExpiry && $currentExpiry->isFuture() && $previousPackage && (string) $previousPackage->id !== (string) $package->id) {
+                $daysRemaining    = (int) now()->diffInDays($currentExpiry, false);
+                $oldDurationDays  = PackageExpiryHelper::durationInDays($previousPackage);
+                $newDurationDays  = PackageExpiryHelper::durationInDays($package);
+                $oldPrice         = (float) ($previousPackage->price ?? 0);
+                $newPrice         = (float) ($package->price ?? 0);
+
+                if ($oldDurationDays > 0 && $newPrice > 0) {
+                    $oldDailyRate  = $oldPrice / $oldDurationDays;
+                    $unusedCredit  = max(0, $daysRemaining * $oldDailyRate);
+                    $newDailyRate  = $newPrice / $newDurationDays;
+                    $extraDays     = (int) floor($unusedCredit / $newDailyRate);
+                    $pppoeUser->expires_at = now()->addDays(max(0, $extraDays));
+                } else {
+                    // Prices unknown — fall back to full new package duration from now
+                    $pppoeUser->expires_at = PackageExpiryHelper::calculateExpiresAt($package, now());
+                }
+            }
+            // If same package (other fields changed only) or no active sub, don't touch expires_at
         }
 
         if ($request->has('simultaneous_use')) {
@@ -1273,32 +1296,4 @@ class PppoeUserController extends Controller
         }
     }
 
-    private function calculateExpiresAtFromPackage(Package $package, Carbon $baseTime): Carbon
-    {
-        $validity = trim((string) ($package->validity ?: $package->duration));
-        if ($validity === '') {
-            return $baseTime->copy()->addHour();
-        }
-
-        if (!preg_match('/^\s*(\d+)\s*(minute|minutes|hour|hours|day|days|week|weeks|month|months|year|years)\s*$/i', $validity, $matches)) {
-            return $baseTime->copy()->addHour();
-        }
-
-        $value = (int) $matches[1];
-        $unit = strtolower($matches[2]);
-
-        if ($value <= 0) {
-            return $baseTime->copy()->addHour();
-        }
-
-        return match ($unit) {
-            'minute', 'minutes' => $baseTime->copy()->addMinutes($value),
-            'hour', 'hours' => $baseTime->copy()->addHours($value),
-            'day', 'days' => $baseTime->copy()->addDays($value),
-            'week', 'weeks' => $baseTime->copy()->addWeeks($value),
-            'month', 'months' => $baseTime->copy()->addMonths($value),
-            'year', 'years' => $baseTime->copy()->addYears($value),
-            default => $baseTime->copy()->addHour(),
-        };
-    }
 }

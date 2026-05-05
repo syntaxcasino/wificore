@@ -79,6 +79,46 @@ class AuditLogService
     }
 
     /**
+     * Log router-specific device events (provisioning, status changes, config, errors)
+     */
+    public static function logRouterEvent(
+        string $action,
+        string $routerId,
+        string $level = 'info',
+        array $details = [],
+        ?string $description = null,
+        ?string $tenantId = null
+    ): void {
+        try {
+            $user = Auth::user();
+            $resolvedTenantId = $tenantId ?? $user?->tenant_id ?? null;
+            $userId = $user?->id ?? null;
+
+            SystemLog::withoutGlobalScopes()->create([
+                'tenant_id' => $resolvedTenantId,
+                'user_id' => $userId,
+                'category' => 'router_event',
+                'action' => $action,
+                'entity_type' => 'router',
+                'entity_id' => $routerId,
+                'level' => $level,
+                'description' => $description,
+                'details' => array_merge($details, [
+                    'timestamp' => now()->toIso8601String(),
+                ]),
+                'ip_address' => Request::ip(),
+                'user_agent' => Request::userAgent(),
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Router event log failed', [
+                'action' => $action,
+                'router_id' => $routerId,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
      * Core logging method
      */
     private static function log(string $category, string $action, ?string $userId = null, array $details = []): void

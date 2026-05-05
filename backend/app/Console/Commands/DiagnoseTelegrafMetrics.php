@@ -94,11 +94,16 @@ class DiagnoseTelegrafMetrics extends Command
             }
 
             try {
-                $tenantContext = app(TenantContext::class);
-                $tenantContext->setTenant($tenant);
-                DB::statement("SET search_path TO {$tenant->schema_name}, public");
+                // Use the write connection explicitly so SET search_path and SELECT
+                // both execute on the same connection (avoids read-replica routing).
+                $schema = $tenant->schema_name;
+                DB::connection('pgsql')->statement("SET search_path TO {$schema}, public");
 
-                $routers = Router::all(['id', 'name', 'vpn_ip', 'ip_address', 'snmp_enabled', 'snmp_version']);
+                $routers = DB::connection('pgsql')
+                    ->table('routers')
+                    ->select(['id', 'name', 'vpn_ip', 'ip_address', 'snmp_enabled', 'snmp_version'])
+                    ->get();
+
                 $totalRouters += $routers->count();
 
                 foreach ($routers as $router) {
@@ -112,7 +117,7 @@ class DiagnoseTelegrafMetrics extends Command
             } catch (\Throwable $e) {
                 $this->error("    ❌ Error checking tenant {$tenant->name}: " . $e->getMessage());
             } finally {
-                DB::statement('SET search_path TO public');
+                DB::connection('pgsql')->statement('SET search_path TO public');
             }
         }
 
@@ -196,11 +201,14 @@ class DiagnoseTelegrafMetrics extends Command
                 if (!$t->schema_name) continue;
 
                 try {
-                    $tenantContext = app(TenantContext::class);
-                    $tenantContext->setTenant($t);
-                    DB::statement("SET search_path TO {$t->schema_name}, public");
+                    $schema = $t->schema_name;
+                    DB::connection('pgsql')->statement("SET search_path TO {$schema}, public");
 
-                    $r = Router::find($routerId);
+                    $r = DB::connection('pgsql')
+                        ->table('routers')
+                        ->where('id', $routerId)
+                        ->first();
+
                     if ($r) {
                         $router = $r;
                         $tenant = $t;
@@ -209,7 +217,7 @@ class DiagnoseTelegrafMetrics extends Command
                 } catch (\Throwable $e) {
                     continue;
                 } finally {
-                    DB::statement('SET search_path TO public');
+                    DB::connection('pgsql')->statement('SET search_path TO public');
                 }
             }
 
@@ -218,14 +226,45 @@ class DiagnoseTelegrafMetrics extends Command
                 return;
             }
 
+            $vpnIp   = trim(explode('/', (string) ($router->vpn_ip ?: ''), 2)[0]);
+            $pubIp   = trim(explode('/', (string) ($router->ip_address ?: ''), 2)[0]);
+            $pollIp  = $vpnIp ?: $pubIp;
+
             $this->line("  ✅ Router found: {$router->name} (Tenant: {$tenant->name})");
-            $this->line("  📍 VPN IP: " . ($router->vpn_ip ?: 'NOT SET'));
-            $this->line("  📍 Public IP: " . ($router->ip_address ?: 'NOT SET'));
+            $this->line("  📍 VPN IP: " . ($vpnIp ?: 'NOT SET'));
+            $this->line("  📍 Public IP: " . ($pubIp ?: 'NOT SET'));
             $this->line("  🔧 SNMP Enabled: " . ($router->snmp_enabled ? 'YES' : 'NO'));
             $this->line("  🔧 SNMP Version: " . ($router->snmp_version ?: 'NOT SET'));
             $this->line("  🔧 SNMP User: " . ($router->snmp_v3_user ?: 'NOT SET'));
             $this->line("  🔧 Auth Protocol: " . ($router->snmp_v3_auth_protocol ?: 'NOT SET'));
             $this->line("  🔧 Priv Protocol: " . ($router->snmp_v3_priv_protocol ?: 'NOT SET'));
+
+            // Check if this router's IP appears in the Telegraf config
+            $shardIndex = (int) config('telegraf.shard_index', 0);
+            $configPath = storage_path("app/telegraf/shards/{$shardIndex}.conf");
+            if ($pollIp && file_exists($configPath)) {
+                $inConfig = str_contains(file_get_contents($configPath), $pollIp);
+                $this->line("  📡 In Telegraf config: " . ($inConfig ? '✅ YES' : '❌ NO — regenerate with telegraf:generate-config'));
+            }
+
+            // Query VictoriaMetrics for this specific router
+            $vmUrl = rtrim((string) config('victoriametrics.write_url', 'http://wificore-victoriametrics:8428'), '/');
+            try {
+                $resp = Http::timeout(5)->get("{$vmUrl}/api/v1/query", [
+                    'query' => "router_health_cpu_load{router_id=\"" . addslashes($routerId) . "\"}",
+                ]);
+                $count = count($resp->json('data.result') ?? []);
+                $this->line("  📊 VM cpu_load series for this router: " . ($count > 0 ? "✅ {$count}" : '❌ 0 — SNMP data not reaching VictoriaMetrics'));
+            } catch (\Throwable $e) {
+                $this->warn("  ⚠️  Could not query VictoriaMetrics: " . $e->getMessage());
+            }
+
+            if ($pollIp) {
+                $community = (string) config('telegraf.snmp_community', 'traidnet-monitor');
+                $this->newLine();
+                $this->line("  💡 To test SNMP reachability from the Telegraf container:");
+                $this->line("     docker exec wificore-telegraf sh -c 'apk add -q net-snmp-tools 2>/dev/null; snmpget -v2c -c {$community} {$pollIp} 1.3.6.1.4.1.14988.1.1.3.10.0'");
+            }
 
         } catch (\Exception $e) {
             $this->error("  ❌ Error: " . $e->getMessage());

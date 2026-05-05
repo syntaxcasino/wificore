@@ -200,19 +200,39 @@ return new class extends Migration
         if ($hasTenantId) {
             $query->where('tenant_id', $tenantId);
         } elseif ($tableName === 'wireguard_peers' && Schema::connection('pgsql')->hasColumn("public.{$tableName}", 'router_id')) {
-            // Join with routers to get tenant_id
-            $query->whereIn('router_id', function($q) use ($tenantId) {
-                $q->select('id')
-                  ->from('public.routers')
-                  ->where('tenant_id', $tenantId);
-            });
+            // Check if public.routers has tenant_id column (legacy migration path)
+            $routersHasTenantId = Schema::connection('pgsql')->hasColumn("public.routers", 'tenant_id');
+            if ($routersHasTenantId) {
+                // Legacy: public.routers has tenant_id, filter by it
+                $query->whereIn('router_id', function($q) use ($tenantId) {
+                    $q->select('id')
+                      ->from('public.routers')
+                      ->where('tenant_id', $tenantId);
+                });
+            } else {
+                // Current architecture: routers are in tenant schema, filter by existence in tenant's routers table
+                $query->whereIn('router_id', function($q) use ($tenantSchema) {
+                    $q->select('id')
+                      ->from("{$tenantSchema}.routers");
+                });
+            }
         } elseif ($tableName === 'router_services' && Schema::connection('pgsql')->hasColumn("public.{$tableName}", 'router_id')) {
-             // Join with routers to get tenant_id (if router_services doesn't have tenant_id, though it usually does)
-             $query->whereIn('router_id', function($q) use ($tenantId) {
-                $q->select('id')
-                  ->from('public.routers')
-                  ->where('tenant_id', $tenantId);
-            });
+             // Check if public.routers has tenant_id column (legacy migration path)
+             $routersHasTenantId = Schema::connection('pgsql')->hasColumn("public.routers", 'tenant_id');
+             if ($routersHasTenantId) {
+                 // Legacy: public.routers has tenant_id, filter by it
+                 $query->whereIn('router_id', function($q) use ($tenantId) {
+                    $q->select('id')
+                      ->from('public.routers')
+                      ->where('tenant_id', $tenantId);
+                });
+             } else {
+                 // Current architecture: routers are in tenant schema, filter by existence in tenant's routers table
+                 $query->whereIn('router_id', function($q) use ($tenantSchema) {
+                    $q->select('id')
+                      ->from("{$tenantSchema}.routers");
+                });
+             }
         } else {
              \Log::warning("Skipping migration for {$tableName}: No tenant_id column and no known relationship to filter by tenant.");
              return;

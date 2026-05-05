@@ -39,6 +39,8 @@ use App\Http\Controllers\Api\ConnectionStatsController;
 use App\Http\Controllers\Api\PppoeMetricsController;
 use App\Http\Controllers\Api\RouterAnalyticsController;
 use App\Http\Controllers\Api\UnifiedStreamController;
+use App\Http\Controllers\Api\TenantSseController;
+use App\Http\Controllers\Api\SystemAdminSseController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\Api\TodoController;
 // HR Module Controllers
@@ -281,7 +283,16 @@ Route::middleware(['auth:sanctum', 'user.active', 'tenant.context'])->group(func
 // =============================================================================
 
 Route::middleware(['auth:sanctum', 'system.admin'])->prefix('system')->name('api.system.')->group(function () {
-    
+
+    // -------------------------------------------------------------------------
+    // EVENT-DRIVEN SSE — system-admin (Redis pub/sub, zero DB polling)
+    // ?channels=system.admin,system.tenants,system.metrics,...
+    // -------------------------------------------------------------------------
+    Route::get('/sse', [SystemAdminSseController::class, 'stream'])
+        ->withoutMiddleware(['auth:sanctum', 'system.admin'])
+        ->middleware(['sse.auth', 'auth:sanctum', 'system.admin'])
+        ->name('sse');
+
     // -------------------------------------------------------------------------
     // Environment Health Monitoring (System Admin Only)
     // -------------------------------------------------------------------------
@@ -654,6 +665,7 @@ Route::middleware(['auth:sanctum', 'role:admin', 'user.active', 'tenant.context'
         Route::post('/users/{id}/deactivate', [PppoeUserController::class, 'deactivate']);
 
         Route::get('/sessions', [PppoeSessionController::class, 'index']);
+        Route::get('/sessions/inactive', [PppoeSessionController::class, 'inactive']);
         Route::get('/sessions/live', [PppoeSessionController::class, 'live']);
         Route::post('/sessions/disconnect', [PppoeSessionController::class, 'disconnect']);
         Route::post('/sessions/disconnect-all', [PppoeSessionController::class, 'disconnectAll']);
@@ -700,6 +712,7 @@ Route::middleware(['auth:sanctum', 'role:admin', 'user.active', 'tenant.context'
         // Router Status & Details
         Route::get('/{router}/status', [RouterController::class, 'status'])->name('status');
         Route::get('/{router}/details', [RouterController::class, 'getRouterDetails'])->name('details');
+        Route::get('/{router}/events', [RouterController::class, 'getRouterEvents'])->name('events');
         Route::get('/{router}/metrics/live', [RouterMetricsController::class, 'live'])->name('metrics.live');
         Route::get('/{router}/metrics/traffic', [RouterMetricsController::class, 'trafficRange'])->name('metrics.traffic.range');
         Route::get('/{router}/metrics/resources', [RouterMetricsController::class, 'resourcesRange'])->name('metrics.resources.range');
@@ -850,6 +863,14 @@ Route::middleware(['auth:sanctum', 'role:admin', 'user.active', 'tenant.context'
         ->name('api.stream.unified');
     Route::get('/stream/available', [UnifiedStreamController::class, 'getAvailableStreams'])
         ->name('api.stream.available');
+
+    // =========================================================================
+    // EVENT-DRIVEN SSE — tenant users (Redis pub/sub, zero DB polling)
+    // ?channels=router-updates,dashboard-stats,packages,...
+    // =========================================================================
+    Route::get('/sse/tenant', [TenantSseController::class, 'stream'])
+        ->middleware(['sse.auth', 'auth:sanctum', 'user.active', 'tenant.context'])
+        ->name('api.sse.tenant');
 
     // =========================================================================
     // NEW: STANDALONE ACCESS POINT ROUTES
@@ -1078,11 +1099,21 @@ Route::middleware(['auth:sanctum', 'role:admin', 'user.active', 'tenant.context'
         // List hotspot users with pagination
         Route::get('/users', [\App\Http\Controllers\Api\HotspotController::class, 'listUsers'])
             ->name('users.index');
-        
+
+        // Create hotspot user (admin-initiated)
+        Route::post('/users', [\App\Http\Controllers\Api\HotspotController::class, 'store'])
+            ->name('users.store');
+
         // Get specific hotspot user
         Route::get('/users/{user}', [\App\Http\Controllers\Api\HotspotController::class, 'showUser'])
             ->name('users.show');
-        
+
+        // Update hotspot user
+        Route::put('/users/{user}', [\App\Http\Controllers\Api\HotspotController::class, 'update'])
+            ->name('users.update');
+        Route::patch('/users/{user}', [\App\Http\Controllers\Api\HotspotController::class, 'update'])
+            ->name('users.update.patch');
+
         // Disconnect hotspot user (queued job)
         Route::post('/users/{user}/disconnect', [\App\Http\Controllers\Api\HotspotController::class, 'disconnectUser'])
             ->name('users.disconnect');
@@ -1209,7 +1240,11 @@ Route::middleware(['auth:sanctum', 'role:admin,tenant', 'user.active', 'tenant.c
     // Dashboard & Statistics
     Route::get('/dashboard', [TenantDashboardController::class, 'index'])
         ->name('api.tenant.dashboard');
-    
+    Route::get('/dashboard/stats', [DashboardController::class, 'getStats'])
+        ->name('api.tenant.dashboard.stats');
+    Route::post('/dashboard/refresh', [DashboardController::class, 'refreshStats'])
+        ->name('api.tenant.dashboard.refresh');
+
     // Users
     Route::get('/users', [TenantDashboardController::class, 'getUsers'])
         ->name('api.tenant.users');

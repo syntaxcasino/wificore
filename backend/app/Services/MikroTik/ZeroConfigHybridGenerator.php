@@ -140,7 +140,7 @@ class ZeroConfigHybridGenerator
         $script = array_merge($script, $this->generateRadiusSetup($params));
         $script = array_merge($script, $this->generateManagementInputRules($params));
         $script = array_merge($script, $this->bootstrapSnmpSyslog($mgmt, $syslogHost, !$isLowEnd));
-        $script = array_merge($script, $this->bootstrapSubscriberQueues("hyb-{$id}", 'ether1', $isLowEnd));
+        $script = array_merge($script, $this->bootstrapSubscriberQueues("hyb-{$id}", '', $isLowEnd));
         if (!$isLowEnd) {
             $script = array_merge($script, $this->bootstrapTrafficFlow("hyb-{$id}", $syslogHost));
         }
@@ -332,7 +332,7 @@ class ZeroConfigHybridGenerator
         $script = array_merge($script, $this->generateRadiusSetup($params));
         $script = array_merge($script, $this->generateManagementInputRules($params));
         $script = array_merge($script, $this->bootstrapSnmpSyslog($mgmt, $syslogHost, !$isLowEnd));
-        $script = array_merge($script, $this->bootstrapSubscriberQueues("hyb-{$id}", 'ether1', $isLowEnd));
+        $script = array_merge($script, $this->bootstrapSubscriberQueues("hyb-{$id}", '', $isLowEnd));
         if (!$isLowEnd) {
             $script = array_merge($script, $this->bootstrapTrafficFlow("hyb-{$id}", $syslogHost));
         }
@@ -445,10 +445,12 @@ class ZeroConfigHybridGenerator
 
         $s[] = "# PPPoE Config ({$label})";
         $s[] = ":do { /interface list add name=\"{$pal}\" } on-error={}";
+        $s[] = ":do { /ip address remove [/ip address find interface=\"{$iface}\"]; } on-error={}";
+        $s[] = ":do { /ip address add address=\"{$gateway}/24\" interface=\"{$iface}\" comment=\"hyb-pp-gw-{$id}\"; } on-error={ :error \"hyb-{$id}: FATAL - PPPoE gateway IP failed\" }";
         $s[] = ":do { /ip pool remove [/ip pool find name=\"{$poolName}\"]; } on-error={}";
         $s[] = ":do { /ip pool add name=\"{$poolName}\" ranges=\"{$pool->range_start}-{$pool->range_end}\" comment=\"hyb-pp-{$id}\"; } on-error={ /log error \"hyb-$id: FATAL - PPPoE pool add failed\" }";
         $s[] = ":do { /ppp profile remove [/ppp profile find name=\"{$profile}\"]; } on-error={}";
-        $s[] = ":do { /ppp profile add name=\"{$profile}\" local-address=\"\" remote-address=none comment=\"hyb-pp-{$id}\"; } on-error={ /log error \"hyb-$id: FATAL - PPP profile add failed\" }";
+        $s[] = ":do { /ppp profile add name=\"{$profile}\" local-address=\"{$gateway}\" remote-address=none comment=\"hyb-pp-{$id}\"; } on-error={ /log error \"hyb-$id: FATAL - PPP profile add failed\" }";
         $s[] = ":do { /ppp profile set [/ppp profile find name=\"{$profile}\"] use-radius=yes rate-limit=\"\" only-one=yes change-tcp-mss=yes; } on-error={ /log error \"hyb-$id: FATAL - profile RADIUS flags failed\" }";
         $s[] = ":do { /ppp profile set [/ppp profile find name=\"{$profile}\"] interface-list=\"{$pal}\"; } on-error={ /log warning \"hyb-$id: Failed to set profile interface-list (non-fatal)\" }";
         $s = array_merge($s, $this->bootstrapPppAaaHardening("hyb-{$id}", $profile));

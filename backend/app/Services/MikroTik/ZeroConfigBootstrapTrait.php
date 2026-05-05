@@ -596,28 +596,29 @@ trait ZeroConfigBootstrapTrait
      * on a shared uplink. RADIUS Mikrotik-Rate-Limit enforces individual caps;
      * PCQ provides fairness within that cap across concurrent flows.
      *
-     * High-end: full queue tree on the WAN interface.
-     * Low-end:  PCQ types only — RADIUS-assigned simple queues use them automatically.
+     * Rate limiting strategy: RADIUS Mikrotik-Rate-Limit attribute (Option A).
+     * Queue tree is NOT used — per-subscriber rate limits come entirely from RADIUS.
+     * PCQ types are registered so that RADIUS-assigned simple queues can reference
+     * them automatically for fair queuing across concurrent flows.
      *
      * @param string $prefix    Comment prefix
-     * @param string $wanIface  WAN interface name (e.g. "ether1")
-     * @param bool   $isLowEnd  Skip queue tree on memory-constrained devices
+     * @param string $wanIface  WAN interface name (unused, kept for signature compatibility)
+     * @param bool   $isLowEnd  On low-end devices, skip even PCQ type registration
      */
     protected function bootstrapSubscriberQueues(string $prefix, string $wanIface, bool $isLowEnd = false): array
     {
         $rules = [
-            "# Subscriber Queue Fairness (PCQ)",
+            "# Subscriber Queue Fairness (PCQ types — rate limits via RADIUS Mikrotik-Rate-Limit)",
+            // Clean up any stale queue tree from previous deployments
+            ":do { /queue tree remove [/queue tree find comment~\"{$prefix}-QTREE\"] } on-error={}",
             ":do { /queue type remove [/queue type find name=\"pcq-download-{$prefix}\"] } on-error={}",
             ":do { /queue type remove [/queue type find name=\"pcq-upload-{$prefix}\"] } on-error={}",
-            ":do { /queue type add name=\"pcq-download-{$prefix}\" kind=\"pcq\" pcq-classifier=\"dst-address\" pcq-burst-rate=\"0\" } on-error={ /log warning \"{$prefix}: PCQ download type add failed\" }",
-            ":do { /queue type add name=\"pcq-upload-{$prefix}\" kind=\"pcq\" pcq-classifier=\"src-address\" pcq-burst-rate=\"0\" } on-error={ /log warning \"{$prefix}: PCQ upload type add failed\" }",
         ];
 
         if (!$isLowEnd) {
-            // Queue tree on WAN: PCQ parent queues ensure fair share across all subscribers
-            $rules[] = ":do { /queue tree remove [/queue tree find comment~\"{$prefix}-QTREE\"] } on-error={}";
-            $rules[] = ":do { /queue tree add name=\"{$prefix}-dl\" parent=\"{$wanIface}\" queue=\"pcq-download-{$prefix}\" comment=\"{$prefix}-QTREE-DL\" } on-error={ /log warning \"{$prefix}: Queue tree DL add failed\" }";
-            $rules[] = ":do { /queue tree add name=\"{$prefix}-ul\" parent=\"global\" queue=\"pcq-upload-{$prefix}\" comment=\"{$prefix}-QTREE-UL\" } on-error={ /log warning \"{$prefix}: Queue tree UL add failed\" }";
+            // Register PCQ types so RADIUS simple queues can reference them
+            $rules[] = ":do { /queue type add name=\"pcq-download-{$prefix}\" kind=\"pcq\" pcq-classifier=\"dst-address\" pcq-burst-rate=\"0\" } on-error={ /log warning \"{$prefix}: PCQ download type add failed\" }";
+            $rules[] = ":do { /queue type add name=\"pcq-upload-{$prefix}\" kind=\"pcq\" pcq-classifier=\"src-address\" pcq-burst-rate=\"0\" } on-error={ /log warning \"{$prefix}: PCQ upload type add failed\" }";
         }
 
         $rules[] = "";

@@ -1,8 +1,8 @@
 <template>
-  <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-gray-100 dark:border-slate-700 p-6">
-    <div class="flex items-center justify-between mb-6">
-      <h2 class="text-xl font-bold text-gray-900 dark:text-slate-100 flex items-center gap-2">
-        <svg class="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+  <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-gray-100 dark:border-slate-700 p-4 sm:p-6">
+    <div class="flex items-center justify-between mb-4 sm:mb-6">
+      <h2 class="text-base sm:text-xl font-bold text-gray-900 dark:text-slate-100 flex items-center gap-2">
+        <svg class="w-5 h-5 sm:w-6 sm:h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
         </svg>
         Queue Statistics
@@ -22,14 +22,14 @@
     <!-- Queue Stats Grid -->
     <div v-else class="space-y-4">
       <!-- Pending Jobs -->
-      <div class="p-4 bg-gradient-to-r from-blue-50 to-blue-100 rounded-xl border border-blue-200">
+      <div class="p-3 sm:p-4 bg-gradient-to-r from-blue-50 to-blue-100 rounded-xl border border-blue-200">
         <div class="flex items-center justify-between">
-          <div>
-            <p class="text-sm font-medium text-blue-700 mb-1">Pending Jobs</p>
-            <p class="text-3xl font-bold text-blue-900">{{ queueStats.pending || 0 }}</p>
+          <div class="min-w-0">
+            <p class="text-sm font-medium text-blue-700 mb-1 truncate">Pending Jobs</p>
+            <p class="text-2xl sm:text-3xl font-bold text-blue-900">{{ queueStats.pending || 0 }}</p>
           </div>
-          <div class="w-14 h-14 bg-blue-500 rounded-xl flex items-center justify-center shadow-lg">
-            <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div class="w-10 h-10 sm:w-14 sm:h-14 bg-blue-500 rounded-xl flex items-center justify-center shadow-lg flex-shrink-0">
+            <svg class="w-6 h-6 sm:w-8 sm:h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
           </div>
@@ -43,14 +43,14 @@
       </div>
 
       <!-- Processing Jobs -->
-      <div class="p-4 bg-gradient-to-r from-green-50 to-emerald-100 rounded-xl border border-green-200">
+      <div class="p-3 sm:p-4 bg-gradient-to-r from-green-50 to-emerald-100 rounded-xl border border-green-200">
         <div class="flex items-center justify-between">
-          <div>
-            <p class="text-sm font-medium text-green-700 mb-1">Processing</p>
-            <p class="text-3xl font-bold text-green-900">{{ queueStats.processing || 0 }}</p>
+          <div class="min-w-0">
+            <p class="text-sm font-medium text-green-700 mb-1 truncate">Processing</p>
+            <p class="text-2xl sm:text-3xl font-bold text-green-900">{{ queueStats.processing || 0 }}</p>
           </div>
-          <div class="w-14 h-14 bg-green-500 rounded-xl flex items-center justify-center shadow-lg">
-            <svg class="w-8 h-8 text-white animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div class="w-10 h-10 sm:w-14 sm:h-14 bg-green-500 rounded-xl flex items-center justify-center shadow-lg flex-shrink-0">
+            <svg class="w-6 h-6 sm:w-8 sm:h-8 text-white animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
           </div>
@@ -64,14 +64,14 @@
       </div>
 
       <!-- Failed Jobs -->
-      <div class="p-4 bg-gradient-to-r from-red-50 to-red-100 rounded-xl border border-red-200">
+      <div class="p-3 sm:p-4 bg-gradient-to-r from-red-50 to-red-100 rounded-xl border border-red-200">
         <div class="flex items-center justify-between">
-          <div>
-            <p class="text-sm font-medium text-red-700 mb-1">Failed Jobs</p>
-            <p class="text-3xl font-bold text-red-900">{{ queueStats.failed || 0 }}</p>
+          <div class="min-w-0">
+            <p class="text-sm font-medium text-red-700 mb-1 truncate">Failed Jobs</p>
+            <p class="text-2xl sm:text-3xl font-bold text-red-900">{{ queueStats.failed || 0 }}</p>
           </div>
-          <div class="w-14 h-14 bg-red-500 rounded-xl flex items-center justify-center shadow-lg">
-            <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div class="w-10 h-10 sm:w-14 sm:h-14 bg-red-500 rounded-xl flex items-center justify-center shadow-lg flex-shrink-0">
+            <svg class="w-6 h-6 sm:w-8 sm:h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
           </div>
@@ -94,14 +94,14 @@
       </div>
 
       <!-- Completed Jobs (Last Hour) -->
-      <div class="p-4 bg-gradient-to-r from-purple-50 to-purple-100 rounded-xl border border-purple-200">
+      <div class="p-3 sm:p-4 bg-gradient-to-r from-purple-50 to-purple-100 rounded-xl border border-purple-200">
         <div class="flex items-center justify-between">
-          <div>
-            <p class="text-sm font-medium text-purple-700 mb-1">Completed (Last Hour)</p>
-            <p class="text-3xl font-bold text-purple-900">{{ queueStats.completed || 0 }}</p>
+          <div class="min-w-0">
+            <p class="text-sm font-medium text-purple-700 mb-1 truncate">Completed (Last Hour)</p>
+            <p class="text-2xl sm:text-3xl font-bold text-purple-900">{{ queueStats.completed || 0 }}</p>
           </div>
-          <div class="w-14 h-14 bg-purple-500 rounded-xl flex items-center justify-center shadow-lg">
-            <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div class="w-10 h-10 sm:w-14 sm:h-14 bg-purple-500 rounded-xl flex items-center justify-center shadow-lg flex-shrink-0">
+            <svg class="w-6 h-6 sm:w-8 sm:h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
           </div>
@@ -146,8 +146,8 @@
           </div>
           
           <div class="mt-3 pt-2 border-t border-gray-700 text-gray-400 text-xs">
-            <p>✓ Auto-refreshes every 10 seconds</p>
-            <p class="mt-1">✓ Data updated every minute</p>
+            <p>✓ Manual refresh available</p>
+            <p class="mt-1">✓ Data updated on request</p>
           </div>
         </div>
         
@@ -187,7 +187,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import axios from 'axios'
 
 const api = axios
@@ -219,8 +219,6 @@ const hasWorkersByQueue = computed(() => {
 const workerQueueCount = computed(() => {
   return Object.keys(workersByQueueObject.value).length
 })
-
-let refreshInterval = null
 
 const fetchQueueStats = async (showLoading = false) => {
   try {
@@ -279,13 +277,5 @@ const formatQueueName = (queue) => {
 
 onMounted(() => {
   fetchQueueStats(true) // Show loading on initial load
-  // Refresh every 10 seconds in background (no loading spinner)
-  refreshInterval = setInterval(() => fetchQueueStats(false), 10000)
-})
-
-onUnmounted(() => {
-  if (refreshInterval) {
-    clearInterval(refreshInterval)
-  }
 })
 </script>

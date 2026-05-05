@@ -108,6 +108,10 @@
                 <div class="space-y-1">
                   <div class="text-xs"><span class="text-green-600 font-medium">↓ {{ formatBytes(session.download_rate || session.download_speed) }}/s</span></div>
                   <div class="text-xs"><span class="text-blue-600 font-medium">↑ {{ formatBytes(session.upload_rate || session.upload_speed) }}/s</span></div>
+                  <div v-if="session.acct_staleness_seconds > 600" class="text-xs text-amber-600 font-medium flex items-center gap-1">
+                    <span class="inline-block w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                    Acct stale {{ Math.floor(session.acct_staleness_seconds / 60) }}m ago
+                  </div>
                 </div>
               </td>
               <td class="px-6 py-4 w-[18%]">
@@ -182,8 +186,6 @@ const {
   refreshSessions,
   disconnectSession,
   filterSessions,
-  startPolling,
-  stopPolling,
   setupWebSocketListeners,
   cleanupWebSocketListeners,
   formatBytes,
@@ -248,10 +250,9 @@ const handleDisconnect = async (session) => {
   }
 }
 
-// Lifecycle
+// Lifecycle — WebSocket event-driven only, no polling
 onMounted(async () => {
   await fetchSessions()
-  startPolling()
   setupWebSocketListeners()
 })
 
