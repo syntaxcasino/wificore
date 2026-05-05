@@ -139,23 +139,122 @@ Pusher.logToConsole = IS_DEV;
 // Create Echo instance
 const echoInstance = new Echo(createEchoConfig());
 
-// Debug connection
-if (IS_DEV) {
-  echoInstance.connector.pusher.connection.bind('connecting', () => {
-    console.log('🔌 Connecting to Soketi via Nginx proxy (ws://localhost/app)...');
-  });
+// Reconnection state
+let reconnectTimer = null;
+let reconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 10;
+const BASE_RECONNECT_DELAY = 2000;
+const MAX_RECONNECT_DELAY = 30000;
+let intentionalDisconnect = false;
+
+/**
+ * Schedule reconnection with exponential backoff
+ */
+const scheduleReconnect = () => {
+  if (reconnectTimer) return; // Already scheduled
   
-  echoInstance.connector.pusher.connection.bind('connected', () => {
+  if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+    console.error('❌ Max reconnection attempts reached for Echo instance');
+    return;
+  }
+  
+  const delay = Math.min(
+    BASE_RECONNECT_DELAY * Math.pow(2, reconnectAttempts),
+    MAX_RECONNECT_DELAY
+  );
+  
+  reconnectAttempts++;
+  
+  console.log(`🔄 Echo: Scheduling reconnection in ${delay}ms (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
+  
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    console.log(`🔄 Echo: Attempting to reconnect...`);
+    
+    // Disconnect without marking as intentional so further failures can retry
+    try {
+      originalDisconnect();
+    } catch (e) {
+      // Ignore disconnect errors
+    }
+    
+    // Reset flag before reconnecting so error/disconnected events can trigger further retries
+    intentionalDisconnect = false;
+    echoInstance.connect();
+  }, delay);
+};
+
+/**
+ * Clear reconnection timer
+ */
+const clearReconnectTimer = () => {
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+};
+
+// Clean disconnect method for logout - declared before event handlers so it's available in callbacks
+const originalDisconnect = echoInstance.disconnect.bind(echoInstance);
+echoInstance.disconnect = () => {
+  intentionalDisconnect = true;
+  clearReconnectTimer();
+  originalDisconnect();
+};
+
+// Connection event handlers
+echoInstance.connector.pusher.connection.bind('connecting', () => {
+  if (IS_DEV) {
+    console.log('🔌 Connecting to Soketi via Nginx proxy...');
+  }
+});
+
+echoInstance.connector.pusher.connection.bind('connected', () => {
+  if (IS_DEV) {
     console.log('✅ Connected to Soketi successfully!');
     console.log('📡 Socket ID:', echoInstance.socketId());
-  });
-  
-  echoInstance.connector.pusher.connection.bind('error', (error) => {
+  }
+  // Reset reconnection state on successful connection
+  reconnectAttempts = 0;
+  clearReconnectTimer();
+});
+
+echoInstance.connector.pusher.connection.bind('error', (error) => {
+  if (IS_DEV) {
     console.error('💥 Connection error:', error);
-  });
-  
-  echoInstance.connector.pusher.connection.bind('disconnected', () => {
+  }
+  if (!intentionalDisconnect) {
+    scheduleReconnect();
+  }
+});
+
+echoInstance.connector.pusher.connection.bind('disconnected', () => {
+  if (IS_DEV) {
     console.warn('⚠️ Disconnected from Soketi');
+  }
+  if (!intentionalDisconnect) {
+    scheduleReconnect();
+  }
+});
+
+// Handle page visibility change - reconnect when tab becomes active
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      const state = echoInstance.connector.pusher.connection.state;
+      if (state !== 'connected') {
+        console.log('📱 Page visible, Echo not connected - reconnecting...');
+        reconnectAttempts = 0; // Reset counter for manual reconnect
+        clearReconnectTimer();
+        intentionalDisconnect = false; // Ensure reconnect loop is active
+        try {
+          originalDisconnect();
+        } catch (e) {
+          // Ignore
+        }
+        echoInstance.connect();
+      }
+    }
   });
 }
 

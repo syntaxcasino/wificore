@@ -149,6 +149,7 @@ export function useBroadcasting() {
     subscribeToPrivateChannel,
     subscribeToPresenceChannel,
     unsubscribe,
+    unsubscribeFromChannel: unsubscribe, // alias used by several composables
     unsubscribeAll,
     checkConnection,
   }
