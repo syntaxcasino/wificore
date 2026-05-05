@@ -704,8 +704,8 @@ export function useRouterProvisioning(props, emit) {
     currentStage.value = 3
     provisioningProgress.value = 75
     provisioningStatus.value = 'Router connected - Map services to interfaces'
-    if (vpnChanName) window.Echo?.leave(vpnChanName)
-    if (routersChanName) window.Echo?.leave(routersChanName)
+    if (vpnChanName) { window.Echo?.leave(vpnChanName); _vpnChannelName = null }
+    if (routersChanName) { window.Echo?.leave(routersChanName); _routersChannelName = null }
     addLog('success', '🎉 Router provisioning complete!')
     addLog('info', 'Map services to interfaces, then confirm to deploy')
   }
@@ -822,8 +822,8 @@ export function useRouterProvisioning(props, emit) {
           connectionStatus.value = 'Failed'
           
           // Unsubscribe from both channels
-          window.Echo.leave(vpnChannelName)
-          window.Echo.leave(routersChannelName)
+          window.Echo.leave(vpnChannelName); _vpnChannelName = null
+          window.Echo.leave(routersChannelName); _routersChannelName = null
         }
       })
 
