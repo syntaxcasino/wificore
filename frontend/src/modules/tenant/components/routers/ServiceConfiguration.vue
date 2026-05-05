@@ -307,6 +307,10 @@ async function deploySelectedService(iface) {
 function waitForDeploymentViaWs(iface, serviceId) {
   return new Promise((resolve) => {
     const channelName = `router-provisioning.${props.router.id}`
+    // Leave any existing subscription before re-subscribing to avoid listener accumulation
+    if (window.Echo?.connector?.channels?.[`private-${channelName}`]) {
+      window.Echo.leave(channelName)
+    }
     const ch = window.Echo?.private(channelName)
 
     if (!ch) {
