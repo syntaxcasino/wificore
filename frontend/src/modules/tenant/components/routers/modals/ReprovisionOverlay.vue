@@ -378,6 +378,13 @@ const subscribeToEvents = (routerId) => {
       stageIdx.value      = 3
       addLog('success', 'Router reconnected and online')
     })
+    .listen('.provisioning.failed', (event) => {
+      _clearReprovisionTimeout()
+      window.Echo?.leave(channelName)
+      currentStatus.value = 'error'
+      errorMessage.value  = event.message || 'Provisioning failed'
+      addLog('error', errorMessage.value)
+    })
 }
 
 const unsubscribeFromEvents = (routerId) => {

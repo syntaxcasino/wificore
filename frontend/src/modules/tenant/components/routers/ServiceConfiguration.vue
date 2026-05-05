@@ -340,6 +340,14 @@ function waitForDeploymentViaWs(iface, serviceId) {
         resolve()
       }
     })
+
+    ch.listen('.provisioning.failed', async (data) => {
+      clearTimeout(timeout)
+      window.Echo?.leave(channelName)
+      toast.error(data.message || 'Provisioning failed')
+      await loadServices()
+      resolve()
+    })
   })
 }
 

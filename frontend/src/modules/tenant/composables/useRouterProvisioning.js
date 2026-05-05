@@ -241,6 +241,13 @@ export function useRouterProvisioning(props, emit) {
           reject(new Error(data.message || 'Service deployment failed'))
         }
       })
+
+      _serviceDeployChannel.listen('.provisioning.failed', (data) => {
+        clearTimeout(timeout)
+        window.Echo?.leave(channelName)
+        _serviceDeployChannel = null
+        reject(new Error(data.message || 'Provisioning failed'))
+      })
     })
   }
 
@@ -485,6 +492,10 @@ export function useRouterProvisioning(props, emit) {
           } else if (stage.endsWith('_failed') || stage === 'failed') {
             _resolveDeployment(false, data.message)
           }
+        })
+
+        _provisioningChannel.listen('.provisioning.failed', (data) => {
+          _resolveDeployment(false, data.message || 'Provisioning failed')
         })
 
         // Catch-up: check once after 5s in case WS event was missed (race / fast job)

@@ -624,6 +624,17 @@ export function useRouters() {
                 window.Echo.leave(channelName)
               }
             })
+            .listen('.provisioning.failed', () => {
+              const routerIdx = routers.value.findIndex(r => String(r.id) === String(id))
+              if (routerIdx !== -1) {
+                routers.value[routerIdx] = { ...routers.value[routerIdx], status: 'failed' }
+              }
+              if (currentRouter.value && String(currentRouter.value.id) === String(id)) {
+                currentRouter.value = { ...currentRouter.value, status: 'failed' }
+              }
+              fetchRouters()
+              window.Echo.leave(channelName)
+            })
         }
       }
 
