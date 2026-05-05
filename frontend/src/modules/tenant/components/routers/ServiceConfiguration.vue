@@ -318,7 +318,7 @@ function waitForDeploymentViaWs(iface, serviceId) {
     }
 
     const timeout = setTimeout(async () => {
-      window.Echo?.leave(`private-${channelName}`)
+      window.Echo?.leave(channelName)
       toast.warning('Deployment is still in progress. Check status later.')
       await loadServices()
       resolve()
@@ -328,13 +328,13 @@ function waitForDeploymentViaWs(iface, serviceId) {
       const stage = data.stage || ''
       if (stage === `service_deploy_completed` || stage.endsWith('_completed')) {
         clearTimeout(timeout)
-        window.Echo?.leave(`private-${channelName}`)
+        window.Echo?.leave(channelName)
         toast.success('Service deployed successfully')
         await loadServices()
         resolve()
       } else if (stage === `service_deploy_failed` || stage.endsWith('_failed')) {
         clearTimeout(timeout)
-        window.Echo?.leave(`private-${channelName}`)
+        window.Echo?.leave(channelName)
         toast.error(data.message || 'Service deployment failed')
         await loadServices()
         resolve()
