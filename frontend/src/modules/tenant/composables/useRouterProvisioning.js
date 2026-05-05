@@ -607,39 +607,44 @@ export function useRouterProvisioning(props, emit) {
    * If still pending, start a sparse fallback poll (max 6 × 10s = 60s).
    */
   const _startVpnCatchup = (vpnChannelName, routersChannelName) => {
-    // Immediate check after 3s
-    _vpnCatchupTimer = setTimeout(async () => {
-      if (!provisioningRouter.value?.id || currentStage.value !== 2) return
+    let _catchupResolved = false
+
+    const _tryResolveViaHttp = async () => {
+      if (_catchupResolved || currentStage.value !== 2 || !provisioningRouter.value?.id) return
       try {
         const res = await axios.get(`/routers/${provisioningRouter.value.id}/provisioning-status`)
-        if (res.data.status === 'completed' || res.data.router_status === 'online') {
-          _stopVpnFallback()
-          // Router is already online — fetch interfaces directly
-          addLog('info', '✅ Router already online (catch-up detected)')
-          const ifRes = await axios.get(`/routers/${provisioningRouter.value.id}/interfaces`)
-          _handleInterfacesDiscovered(ifRes.data.interfaces || [], {}, vpnChannelName, routersChannelName)
+        const isOnline = res.data.status === 'completed' || res.data.router_status === 'online' || res.data.router_status === 'active'
+        if (!isOnline) return
+
+        _catchupResolved = true
+        _stopVpnFallback()
+        addLog('info', '✅ Router already online (catch-up detected) — fetching interfaces...')
+
+        // Live SSH fetch — only safe here because router_status confirmed online
+        const ifRes = await axios.get(`/routers/${provisioningRouter.value.id}/interfaces`)
+        const ifaces = ifRes.data.interfaces || []
+        if (!ifaces.length) {
+          // SSH succeeded but returned nothing — don't silently advance; let WS or user retry
+          addLog('warning', 'Interface fetch returned no interfaces — waiting for WS event')
+          _catchupResolved = false
           return
         }
-      } catch (_) { /* non-fatal */ }
+        _handleInterfacesDiscovered(ifaces, {}, vpnChannelName, routersChannelName)
+      } catch (_) { /* non-fatal — WS will deliver the event */ }
+    }
 
-      // Not done yet — start sparse fallback poll (WS is primary, this is backup)
+    // First check after 3s
+    _vpnCatchupTimer = setTimeout(async () => {
+      await _tryResolveViaHttp()
+      if (_catchupResolved) return
+
+      // Sparse fallback poll — WS is primary, this is last resort (max 6 × 10s = 60s)
       let attempts = 0
       _vpnFallbackInterval = setInterval(async () => {
         attempts++
-        if (!provisioningRouter.value?.id || currentStage.value !== 2) {
-          _stopVpnFallback()
-          return
-        }
-        try {
-          const res = await axios.get(`/routers/${provisioningRouter.value.id}/provisioning-status`)
-          if (res.data.status === 'completed' || res.data.router_status === 'online') {
-            _stopVpnFallback()
-            addLog('info', '✅ Router online (fallback detected)')
-            const ifRes = await axios.get(`/routers/${provisioningRouter.value.id}/interfaces`)
-            _handleInterfacesDiscovered(ifRes.data.interfaces || [], {}, vpnChannelName, routersChannelName)
-          }
-        } catch (_) { /* non-fatal */ }
-        if (attempts >= 6) _stopVpnFallback() // Max 6 × 10s = 60s
+        if (currentStage.value !== 2 || _catchupResolved) { _stopVpnFallback(); return }
+        await _tryResolveViaHttp()
+        if (attempts >= 6) _stopVpnFallback()
       }, 10_000)
     }, 3_000)
   }
