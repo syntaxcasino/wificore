@@ -192,6 +192,8 @@ export function useRouters() {
   const cleanupRealtimeUpdates = () => {
     window.removeEventListener('router-created', handleRouterCreated)
     window.removeEventListener('router-deleted', handleRouterDeleted)
+    window.removeEventListener('router-updated', handleRouterUpdated)
+    window.removeEventListener('router-status-updated', handleRouterStatusUpdated)
     if (routerUpdatesChannel) {
       unsubscribe(routerUpdatesChannel)
       routerUpdatesChannel = null

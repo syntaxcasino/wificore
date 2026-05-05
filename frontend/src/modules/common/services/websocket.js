@@ -46,6 +46,7 @@ class WebSocketService {
     const wsHost = import.meta.env.VITE_PUSHER_HOST || window.location.hostname
     const wsPort = isSecure ? (import.meta.env.VITE_PUSHER_WSS_PORT || 443) : (import.meta.env.VITE_PUSHER_PORT || window.location.port || 8070)
     
+    const authEndpoint = import.meta.env.VITE_PUSHER_AUTH_ENDPOINT || '/api/broadcasting/auth'
     const defaultConfig = {
       broadcaster: 'pusher',
       key: import.meta.env.VITE_PUSHER_APP_KEY || 'app-key',
@@ -53,18 +54,36 @@ class WebSocketService {
       wsPort: wsPort,
       wssPort: wsPort,
       wsPath: import.meta.env.VITE_PUSHER_PATH || '',
-      forceTLS: isSecure, // Use wss:// if on HTTPS, ws:// if on HTTP
+      forceTLS: isSecure,
       encrypted: isSecure,
       disableStats: true,
       enabledTransports: ['ws', 'wss'],
       cluster: import.meta.env.VITE_PUSHER_APP_CLUSTER || 'mt1',
-      authEndpoint: import.meta.env.VITE_PUSHER_AUTH_ENDPOINT || '/api/broadcasting/auth',
-      auth: {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem('authToken')}`,
-          Accept: 'application/json',
+      authEndpoint,
+      // Dynamic authorizer: reads token from localStorage at auth time so reconnects
+      // after a token refresh always use the current token (not the stale one from init).
+      authorizer: (channel) => ({
+        authorize: (socketId, callback) => {
+          const token = localStorage.getItem('authToken')
+          fetch(authEndpoint, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'Authorization': token ? `Bearer ${token}` : '',
+              'X-Requested-With': 'XMLHttpRequest',
+            },
+            body: JSON.stringify({ socket_id: socketId, channel_name: channel.name }),
+            credentials: 'same-origin',
+          })
+            .then(res => {
+              if (!res.ok) throw new Error(`Auth failed: ${res.status}`)
+              return res.json()
+            })
+            .then(data => callback(false, data))
+            .catch(err => callback(true, err))
         },
-      },
+      }),
     }
 
     this.echo = new Echo({ ...defaultConfig, ...config })
@@ -184,8 +203,14 @@ class WebSocketService {
       this.echo = null
     }
     
-    // Re-initialize
+    // Re-initialize with a fresh token (token may have been refreshed since last connect)
     this.initialize()
+    
+    // Re-subscribe to module channels for the stored tenant subscription
+    const tenantEntry = Array.from(this.subscribedChannels.entries()).find(([, v]) => v.type === 'tenant')
+    if (tenantEntry) {
+      this.subscribeModuleChannels(tenantEntry[1].params.tenantId)
+    }
   }
 
   /**
@@ -444,6 +469,8 @@ class WebSocketService {
    * NOT on the flat tenant.{id} channel, so we must subscribe individually.
    */
   subscribeModuleChannels(tenantId) {
+    // Store so resubscribeAllChannels can replay this after reconnection
+    this.storeChannelSubscription(`__module__${tenantId}`, 'module', { tenantId })
     if (!this.echo || !tenantId) return
 
     // ── HR: Departments ──────────────────────────────────────────────────────
@@ -809,13 +836,6 @@ class WebSocketService {
    */
   getEcho() {
     return this.echo
-  }
-
-  /**
-   * Check if connected
-   */
-  isConnected() {
-    return this.echo !== null
   }
 }
 
