@@ -56,98 +56,98 @@
       <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3" id="kpi-cards">
 
         <!-- Total Tenants -->
-        <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 hover:shadow-md dark:hover:shadow-slate-900/50 hover:-translate-y-0.5 transition-all cursor-pointer group" @click="openStatDetail('tenants')">
-          <div class="flex items-center justify-between mb-3">
-            <div class="w-8 h-8 bg-blue-100 dark:bg-blue-900/40 rounded-lg flex items-center justify-center group-hover:bg-blue-200 dark:group-hover:bg-blue-900/60 transition-colors">
-              <Building2 class="w-4 h-4 text-blue-600 dark:text-blue-400" />
+        <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-3 sm:p-4 hover:shadow-md dark:hover:shadow-slate-900/50 hover:-translate-y-0.5 transition-all cursor-pointer group min-w-0" @click="openStatDetail('tenants')">
+          <div class="flex items-center justify-between mb-2 sm:mb-3">
+            <div class="w-7 h-7 sm:w-8 sm:h-8 bg-blue-100 dark:bg-blue-900/40 rounded-lg flex items-center justify-center group-hover:bg-blue-200 dark:group-hover:bg-blue-900/60 transition-colors flex-shrink-0">
+              <Building2 class="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-600 dark:text-blue-400" />
             </div>
-            <span class="text-[10px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded-full">ALL</span>
+            <span class="text-[10px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded-full flex-shrink-0 ml-1">ALL</span>
           </div>
-          <div class="text-2xl font-bold text-slate-900 dark:text-slate-100">{{ stats.totalTenants || 0 }}</div>
-          <div class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Total Tenants</div>
-          <div class="text-[10px] text-slate-400 dark:text-slate-500 mt-1">
+          <div class="text-base sm:text-xl lg:text-2xl font-bold text-slate-900 dark:text-slate-100 truncate">{{ stats.totalTenants || 0 }}</div>
+          <div class="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">Total Tenants</div>
+          <div class="text-[10px] text-slate-400 dark:text-slate-500 mt-1 truncate">
             {{ stats.tenants?.suspended ?? 0 }} suspended · {{ stats.tenants?.on_trial ?? 0 }} trial
           </div>
         </div>
 
         <!-- Active Tenants -->
-        <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 hover:shadow-md dark:hover:shadow-slate-900/50 hover:-translate-y-0.5 transition-all cursor-pointer group" @click="openStatDetail('active')">
-          <div class="flex items-center justify-between mb-3">
-            <div class="w-8 h-8 bg-emerald-100 dark:bg-emerald-900/40 rounded-lg flex items-center justify-center group-hover:bg-emerald-200 dark:group-hover:bg-emerald-900/60 transition-colors">
-              <CheckCircle class="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+        <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-3 sm:p-4 hover:shadow-md dark:hover:shadow-slate-900/50 hover:-translate-y-0.5 transition-all cursor-pointer group min-w-0" @click="openStatDetail('active')">
+          <div class="flex items-center justify-between mb-2 sm:mb-3">
+            <div class="w-7 h-7 sm:w-8 sm:h-8 bg-emerald-100 dark:bg-emerald-900/40 rounded-lg flex items-center justify-center group-hover:bg-emerald-200 dark:group-hover:bg-emerald-900/60 transition-colors flex-shrink-0">
+              <CheckCircle class="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-600 dark:text-emerald-400" />
             </div>
-            <span class="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-full">
+            <span class="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-full flex-shrink-0 ml-1">
               {{ stats.totalTenants ? Math.round((stats.activeTenants / stats.totalTenants) * 100) : 0 }}%
             </span>
           </div>
-          <div class="text-2xl font-bold text-slate-900 dark:text-slate-100">{{ stats.activeTenants || 0 }}</div>
-          <div class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Active Tenants</div>
-          <div class="text-[10px] text-slate-400 dark:text-slate-500 mt-1">
+          <div class="text-base sm:text-xl lg:text-2xl font-bold text-slate-900 dark:text-slate-100 truncate">{{ stats.activeTenants || 0 }}</div>
+          <div class="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">Active Tenants</div>
+          <div class="text-[10px] text-slate-400 dark:text-slate-500 mt-1 truncate">
             {{ (stats.totalTenants || 0) - (stats.activeTenants || 0) }} inactive
           </div>
         </div>
 
         <!-- Platform Users -->
-        <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 hover:shadow-md dark:hover:shadow-slate-900/50 hover:-translate-y-0.5 transition-all cursor-pointer group" @click="openStatDetail('users')">
-          <div class="flex items-center justify-between mb-3">
-            <div class="w-8 h-8 bg-violet-100 dark:bg-violet-900/40 rounded-lg flex items-center justify-center group-hover:bg-violet-200 dark:group-hover:bg-violet-900/60 transition-colors">
-              <Users class="w-4 h-4 text-violet-600 dark:text-violet-400" />
+        <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-3 sm:p-4 hover:shadow-md dark:hover:shadow-slate-900/50 hover:-translate-y-0.5 transition-all cursor-pointer group min-w-0" @click="openStatDetail('users')">
+          <div class="flex items-center justify-between mb-2 sm:mb-3">
+            <div class="w-7 h-7 sm:w-8 sm:h-8 bg-violet-100 dark:bg-violet-900/40 rounded-lg flex items-center justify-center group-hover:bg-violet-200 dark:group-hover:bg-violet-900/60 transition-colors flex-shrink-0">
+              <Users class="w-3.5 h-3.5 sm:w-4 sm:h-4 text-violet-600 dark:text-violet-400" />
             </div>
-            <span class="text-[10px] font-bold text-violet-600 bg-violet-50 px-1.5 py-0.5 rounded-full">ALL</span>
+            <span class="text-[10px] font-bold text-violet-600 bg-violet-50 px-1.5 py-0.5 rounded-full flex-shrink-0 ml-1">ALL</span>
           </div>
-          <div class="text-2xl font-bold text-slate-900 dark:text-slate-100">{{ stats.totalUsers || 0 }}</div>
-          <div class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Platform Users</div>
-          <div class="text-[10px] text-slate-400 dark:text-slate-500 mt-1">
+          <div class="text-base sm:text-xl lg:text-2xl font-bold text-slate-900 dark:text-slate-100 truncate">{{ stats.totalUsers || 0 }}</div>
+          <div class="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">Platform Users</div>
+          <div class="text-[10px] text-slate-400 dark:text-slate-500 mt-1 truncate">
             {{ stats.users?.admin_users ?? 0 }} admin · {{ (stats.users?.hotspot_users ?? 0) + (stats.users?.pppoe_users ?? 0) }} service
           </div>
         </div>
 
         <!-- Network Routers -->
-        <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 hover:shadow-md dark:hover:shadow-slate-900/50 hover:-translate-y-0.5 transition-all cursor-pointer group" @click="openStatDetail('routers')">
-          <div class="flex items-center justify-between mb-3">
-            <div class="w-8 h-8 bg-indigo-100 dark:bg-indigo-900/40 rounded-lg flex items-center justify-center group-hover:bg-indigo-200 dark:group-hover:bg-indigo-900/60 transition-colors">
-              <Wifi class="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+        <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-3 sm:p-4 hover:shadow-md dark:hover:shadow-slate-900/50 hover:-translate-y-0.5 transition-all cursor-pointer group min-w-0" @click="openStatDetail('routers')">
+          <div class="flex items-center justify-between mb-2 sm:mb-3">
+            <div class="w-7 h-7 sm:w-8 sm:h-8 bg-indigo-100 dark:bg-indigo-900/40 rounded-lg flex items-center justify-center group-hover:bg-indigo-200 dark:group-hover:bg-indigo-900/60 transition-colors flex-shrink-0">
+              <Wifi class="w-3.5 h-3.5 sm:w-4 sm:h-4 text-indigo-600 dark:text-indigo-400" />
             </div>
-            <span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+            <span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 ml-1"
               :class="routerOnlinePct >= 90 ? 'text-emerald-700 bg-emerald-50' : routerOnlinePct >= 60 ? 'text-amber-700 bg-amber-50' : 'text-red-700 bg-red-50'">
               {{ routerOnlinePct }}% up
             </span>
           </div>
-          <div class="text-2xl font-bold text-slate-900 dark:text-slate-100">{{ stats.routers?.online ?? 0 }}<span class="text-sm font-normal text-slate-400">/{{ stats.totalRouters || 0 }}</span></div>
-          <div class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Routers Online</div>
-          <div class="text-[10px] text-slate-400 dark:text-slate-500 mt-1">{{ stats.routers?.offline ?? 0 }} offline</div>
+          <div class="text-base sm:text-xl lg:text-2xl font-bold text-slate-900 dark:text-slate-100 truncate">{{ stats.routers?.online ?? 0 }}<span class="text-xs sm:text-sm font-normal text-slate-400">/{{ stats.totalRouters || 0 }}</span></div>
+          <div class="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">Routers Online</div>
+          <div class="text-[10px] text-slate-400 dark:text-slate-500 mt-1 truncate">{{ stats.routers?.offline ?? 0 }} offline</div>
         </div>
 
         <!-- Total Revenue -->
-        <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 hover:shadow-md dark:hover:shadow-slate-900/50 hover:-translate-y-0.5 transition-all cursor-pointer group" @click="openStatDetail('revenue')">
-          <div class="flex items-center justify-between mb-3">
-            <div class="w-8 h-8 bg-green-100 dark:bg-green-900/40 rounded-lg flex items-center justify-center group-hover:bg-green-200 dark:group-hover:bg-green-900/60 transition-colors">
-              <svg class="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-3 sm:p-4 hover:shadow-md dark:hover:shadow-slate-900/50 hover:-translate-y-0.5 transition-all cursor-pointer group min-w-0" @click="openStatDetail('revenue')">
+          <div class="flex items-center justify-between mb-2 sm:mb-3">
+            <div class="w-7 h-7 sm:w-8 sm:h-8 bg-green-100 dark:bg-green-900/40 rounded-lg flex items-center justify-center group-hover:bg-green-200 dark:group-hover:bg-green-900/60 transition-colors flex-shrink-0">
+              <svg class="w-3.5 h-3.5 sm:w-4 sm:h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
             </div>
-            <span class="text-[10px] font-bold text-green-700 bg-green-50 px-1.5 py-0.5 rounded-full">ALL TIME</span>
+            <span class="text-[10px] font-bold text-green-700 bg-green-50 px-1.5 py-0.5 rounded-full flex-shrink-0 ml-1">ALL TIME</span>
           </div>
-          <div class="text-2xl font-bold text-slate-900 dark:text-slate-100">{{ formatCurrency(stats.totalRevenue) }}</div>
-          <div class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Total Revenue</div>
-          <div class="text-[10px] text-slate-400 dark:text-slate-500 mt-1">Platform-wide</div>
+          <div class="text-base sm:text-xl lg:text-2xl font-bold text-slate-900 dark:text-slate-100 truncate">{{ formatCurrency(stats.totalRevenue) }}</div>
+          <div class="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">Total Revenue</div>
+          <div class="text-[10px] text-slate-400 dark:text-slate-500 mt-1 truncate">Platform-wide</div>
         </div>
 
         <!-- Monthly Revenue -->
-        <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 hover:shadow-md dark:hover:shadow-slate-900/50 hover:-translate-y-0.5 transition-all cursor-pointer group" @click="openStatDetail('revenue')">
-          <div class="flex items-center justify-between mb-3">
-            <div class="w-8 h-8 bg-teal-100 dark:bg-teal-900/40 rounded-lg flex items-center justify-center group-hover:bg-teal-200 dark:group-hover:bg-teal-900/60 transition-colors">
-              <svg class="w-4 h-4 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+        <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-3 sm:p-4 hover:shadow-md dark:hover:shadow-slate-900/50 hover:-translate-y-0.5 transition-all cursor-pointer group min-w-0" @click="openStatDetail('revenue')">
+          <div class="flex items-center justify-between mb-2 sm:mb-3">
+            <div class="w-7 h-7 sm:w-8 sm:h-8 bg-teal-100 dark:bg-teal-900/40 rounded-lg flex items-center justify-center group-hover:bg-teal-200 dark:group-hover:bg-teal-900/60 transition-colors flex-shrink-0">
+              <svg class="w-3.5 h-3.5 sm:w-4 sm:h-4 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
             </div>
-            <span class="text-[10px] font-bold text-teal-700 bg-teal-50 px-1.5 py-0.5 rounded-full">MTD</span>
+            <span class="text-[10px] font-bold text-teal-700 bg-teal-50 px-1.5 py-0.5 rounded-full flex-shrink-0 ml-1">MTD</span>
           </div>
-          <div class="text-2xl font-bold text-slate-900 dark:text-slate-100">{{ formatCurrency(stats.monthlyRevenue) }}</div>
-          <div class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Monthly Revenue</div>
-          <div class="text-[10px] text-slate-400 dark:text-slate-500 mt-1">Current month</div>
+          <div class="text-base sm:text-xl lg:text-2xl font-bold text-slate-900 dark:text-slate-100 truncate">{{ formatCurrency(stats.monthlyRevenue) }}</div>
+          <div class="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">Monthly Revenue</div>
+          <div class="text-[10px] text-slate-400 dark:text-slate-500 mt-1 truncate">Current month</div>
         </div>
 
       </div>
 
       <!-- ── ROW 2: SUBSCRIPTION HEALTH STRIP ──────────────────────── -->
-      <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 px-5 py-4">
+      <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-3 sm:px-5 sm:py-4">
         <div class="flex flex-col sm:flex-row sm:items-center gap-4">
           <div class="flex-1">
             <div class="flex items-center justify-between mb-2">
@@ -160,7 +160,7 @@
               <div class="h-full bg-red-400 transition-all" :style="{ width: subPct('expired') + '%' }" :title="`Expired: ${stats.subscriptions?.expired ?? 0}`" />
             </div>
           </div>
-          <div class="flex items-center gap-4 text-xs flex-shrink-0">
+          <div class="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs flex-shrink-0">
             <div class="flex items-center gap-1.5">
               <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 flex-shrink-0"></span>
               <span class="text-slate-600 dark:text-slate-400">Active <strong class="text-slate-800 dark:text-slate-200">{{ stats.subscriptions?.active ?? 0 }}</strong></span>
@@ -188,25 +188,25 @@
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
         <!-- User Breakdown -->
-        <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-5">
+        <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 sm:p-5">
           <h3 class="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-4">User Breakdown</h3>
           <div class="space-y-3">
-            <div v-for="seg in userSegments" :key="seg.label" class="flex items-center gap-3">
-              <div class="w-28 text-xs text-slate-500 dark:text-slate-400 flex-shrink-0">{{ seg.label }}</div>
-              <div class="flex-1 bg-slate-100 dark:bg-slate-700 rounded-full h-2 overflow-hidden">
+            <div v-for="seg in userSegments" :key="seg.label" class="flex items-center gap-2 sm:gap-3">
+              <div class="w-20 sm:w-28 text-xs text-slate-500 dark:text-slate-400 flex-shrink-0 truncate">{{ seg.label }}</div>
+              <div class="flex-1 bg-slate-100 dark:bg-slate-700 rounded-full h-2 overflow-hidden min-w-0">
                 <div class="h-full rounded-full transition-all" :class="seg.color" :style="{ width: seg.pct + '%' }" />
               </div>
-              <div class="w-12 text-xs font-semibold text-slate-700 dark:text-slate-300 text-right flex-shrink-0">{{ seg.value }}</div>
+              <div class="w-10 sm:w-12 text-xs font-semibold text-slate-700 dark:text-slate-300 text-right flex-shrink-0">{{ seg.value }}</div>
             </div>
           </div>
         </div>
 
         <!-- Router Health -->
-        <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-5">
+        <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 sm:p-5">
           <h3 class="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-4">Router Health</h3>
-          <div class="flex items-center justify-center gap-8">
-            <div class="relative w-28 h-28">
-              <svg viewBox="0 0 36 36" class="w-28 h-28 -rotate-90">
+          <div class="flex items-center justify-center gap-4 sm:gap-8">
+            <div class="relative w-20 h-20 sm:w-28 sm:h-28 flex-shrink-0">
+              <svg viewBox="0 0 36 36" class="w-20 h-20 sm:w-28 sm:h-28 -rotate-90">
                 <circle cx="18" cy="18" r="15.9" fill="none" class="stroke-slate-100" stroke-width="3" />
                 <circle cx="18" cy="18" r="15.9" fill="none"
                   :class="routerOnlinePct >= 90 ? 'stroke-emerald-500' : routerOnlinePct >= 60 ? 'stroke-amber-400' : 'stroke-red-500'"
@@ -215,11 +215,11 @@
                   stroke-dashoffset="0" />
               </svg>
               <div class="absolute inset-0 flex flex-col items-center justify-center">
-                <span class="text-xl font-bold text-slate-900 dark:text-slate-100">{{ routerOnlinePct }}%</span>
+                <span class="text-sm sm:text-xl font-bold text-slate-900 dark:text-slate-100">{{ routerOnlinePct }}%</span>
                 <span class="text-[10px] text-slate-400 dark:text-slate-500">online</span>
               </div>
             </div>
-            <div class="space-y-2 text-sm">
+            <div class="space-y-1.5 sm:space-y-2 text-xs sm:text-sm">
               <div class="flex items-center gap-2">
                 <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 flex-shrink-0"></span>
                 <span class="text-slate-600 dark:text-slate-400">Online</span>
@@ -352,6 +352,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import { useBroadcasting } from '@/modules/common/composables/websocket/useBroadcasting'
 import axios from 'axios'
 import { Building2, CheckCircle, Users, Wifi, RefreshCw, Eye, TrendingUp } from 'lucide-vue-next'
 import SlideOverlay from '@/modules/common/components/base/SlideOverlay.vue'
@@ -365,6 +366,8 @@ const api = axios
 
 const authStore = useAuthStore()
 const user = computed(() => authStore.user)
+const { subscribeToPrivateChannel, unsubscribeFromChannel } = useBroadcasting()
+let wsChannels = []
 
 const loading = ref(true)
 const refreshing = ref(false)
@@ -622,18 +625,27 @@ const fetchStats = async (isInitial = false) => {
   }
 }
 
-let refreshInterval = null
-
 onMounted(() => {
   fetchStats(true)
   fetchActivities()
-  // Refresh stats every 30 seconds (without showing loading spinner)
-  refreshInterval = setInterval(() => fetchStats(false), 30000)
+
+  // Real-time updates: refresh stats when tenants are created, activated, or suspended
+  subscribeToPrivateChannel('system.admin', {
+    TenantCreated: () => fetchStats(),
+    UserCreated: () => fetchStats(),
+    UserDeleted: () => fetchStats(),
+  })
+  wsChannels.push('system.admin')
+
+  subscribeToPrivateChannel('system.tenants', {
+    TenantCreated: () => fetchStats(),
+    '.TenantCreated': () => fetchStats(),
+  })
+  wsChannels.push('system.tenants')
 })
 
 onUnmounted(() => {
-  if (refreshInterval) {
-    clearInterval(refreshInterval)
-  }
+  wsChannels.forEach(ch => unsubscribeFromChannel(ch))
+  wsChannels = []
 })
 </script>
