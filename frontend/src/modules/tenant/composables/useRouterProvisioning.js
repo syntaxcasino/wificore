@@ -212,7 +212,7 @@ export function useRouterProvisioning(props, emit) {
       // 2 minute hard timeout in case a WS message is missed
       const timeout = setTimeout(() => {
         _serviceDeployChannel = null
-        window.Echo?.leave(`private-${channelName}`)
+        window.Echo?.leave(channelName)
         deploymentTimedOut.value = true
         mappingDeploying.value = false
         mappingStatus.value = 'Deployment status check timed out'
@@ -230,13 +230,13 @@ export function useRouterProvisioning(props, emit) {
           deployedCount++
           if (deployedCount >= serviceCount) {
             clearTimeout(timeout)
-            window.Echo?.leave(`private-${channelName}`)
+            window.Echo?.leave(channelName)
             _serviceDeployChannel = null
             resolve()
           }
         } else if (stage.endsWith('_failed')) {
           clearTimeout(timeout)
-          window.Echo?.leave(`private-${channelName}`)
+          window.Echo?.leave(channelName)
           _serviceDeployChannel = null
           reject(new Error(data.message || 'Service deployment failed'))
         }
@@ -443,7 +443,7 @@ export function useRouterProvisioning(props, emit) {
 
         // Hard timeout: 2 minutes
         const timeout = setTimeout(() => {
-          window.Echo?.leave(`private-${channelName}`)
+          window.Echo?.leave(channelName)
           _provisioningChannel = null
           deploymentTimedOut.value = true
           waitingForJobCompletion.value = false
@@ -457,7 +457,7 @@ export function useRouterProvisioning(props, emit) {
           if (_deployResolved) return
           _deployResolved = true
           clearTimeout(timeout)
-          window.Echo?.leave(`private-${channelName}`)
+          window.Echo?.leave(channelName)
           _provisioningChannel = null
           waitingForJobCompletion.value = false
           formSubmitting.value = false
@@ -682,8 +682,8 @@ export function useRouterProvisioning(props, emit) {
     currentStage.value = 3
     provisioningProgress.value = 75
     provisioningStatus.value = 'Router connected - Map services to interfaces'
-    if (vpnChanName) window.Echo?.leave(`private-${vpnChanName}`)
-    if (routersChanName) window.Echo?.leave(`private-${routersChanName}`)
+    if (vpnChanName) window.Echo?.leave(vpnChanName)
+    if (routersChanName) window.Echo?.leave(routersChanName)
     addLog('success', '🎉 Router provisioning complete!')
     addLog('info', 'Map services to interfaces, then confirm to deploy')
   }
@@ -798,8 +798,8 @@ export function useRouterProvisioning(props, emit) {
           connectionStatus.value = 'Failed'
           
           // Unsubscribe from both channels
-          window.Echo.leave(`private-${vpnChannelName}`)
-          window.Echo.leave(`private-${routersChannelName}`)
+          window.Echo.leave(vpnChannelName)
+          window.Echo.leave(routersChannelName)
         }
       })
 
@@ -848,11 +848,11 @@ export function useRouterProvisioning(props, emit) {
     // Leave any open WS channels and cancel timers
     _stopVpnFallback()
     if (_provisioningChannel) {
-      if (_resetRouterId) window.Echo?.leave(`private-router-provisioning.${_resetRouterId}`)
+      if (_resetRouterId) window.Echo?.leave(`router-provisioning.${_resetRouterId}`)
       _provisioningChannel = null
     }
     if (_serviceDeployChannel) {
-      if (_resetRouterId) window.Echo?.leave(`private-router-provisioning.${_resetRouterId}`)
+      if (_resetRouterId) window.Echo?.leave(`router-provisioning.${_resetRouterId}`)
       _serviceDeployChannel = null
     }
 
@@ -863,11 +863,11 @@ export function useRouterProvisioning(props, emit) {
     const _unmountRouterId = provisioningRouter.value?.id
     _stopVpnFallback()
     if (_provisioningChannel) {
-      if (_unmountRouterId) window.Echo?.leave(`private-router-provisioning.${_unmountRouterId}`)
+      if (_unmountRouterId) window.Echo?.leave(`router-provisioning.${_unmountRouterId}`)
       _provisioningChannel = null
     }
     if (_serviceDeployChannel) {
-      if (_unmountRouterId) window.Echo?.leave(`private-router-provisioning.${_unmountRouterId}`)
+      if (_unmountRouterId) window.Echo?.leave(`router-provisioning.${_unmountRouterId}`)
       _serviceDeployChannel = null
     }
   })
