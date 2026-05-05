@@ -505,7 +505,7 @@ export function useRouterProvisioning(props, emit) {
             const res = await axios.get(`/routers/${routerId}/provisioning-status`)
             if (res.data.status === 'completed' || res.data.router_status === 'online') {
               _resolveDeployment(true, 'Deployment completed (catch-up)')
-            } else if (res.data.status === 'failed') {
+            } else if (res.data.status === 'failed' || res.data.router_status === 'connection_failed') {
               _resolveDeployment(false, res.data.error || 'Deployment failed (catch-up)')
             }
           } catch (_) { /* non-fatal */ }
@@ -624,6 +624,14 @@ export function useRouterProvisioning(props, emit) {
       if (_catchupResolved || currentStage.value !== 2 || !provisioningRouter.value?.id) return
       try {
         const res = await axios.get(`/routers/${provisioningRouter.value.id}/provisioning-status`)
+        const isFailed = res.data.status === 'failed' || res.data.router_status === 'failed' || res.data.router_status === 'connection_failed'
+        if (isFailed) {
+          _catchupResolved = true
+          _stopVpnFallback()
+          deploymentFailed.value = true
+          addLog('error', '❌ Router provisioning failed (catch-up detected)')
+          return
+        }
         const isOnline = res.data.status === 'completed' || res.data.router_status === 'online' || res.data.router_status === 'active'
         if (!isOnline) return
 
