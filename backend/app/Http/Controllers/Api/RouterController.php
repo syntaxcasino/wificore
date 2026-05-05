@@ -1095,7 +1095,7 @@ class RouterController extends Controller
             $provisioningStatus = match($status) {
                 'active', 'online' => 'completed',
                 'deploying', 'provisioning' => 'deploying',
-                'failed' => 'failed',
+                'failed', 'connection_failed' => 'failed',
                 default => 'pending',
             };
 
