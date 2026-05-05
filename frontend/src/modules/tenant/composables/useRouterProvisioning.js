@@ -43,6 +43,9 @@ export function useRouterProvisioning(props, emit) {
   // Active WS channel refs — cleaned up on unmount / reset
   let _provisioningChannel = null
   let _serviceDeployChannel = null
+  // VPN/routers channels opened by subscribeToVpnEvents() — also cleaned up
+  let _vpnChannelName = null
+  let _routersChannelName = null
   // Catch-up fallback timer for VPN stage (cleared when WS event arrives)
   let _vpnCatchupTimer = null
   let _vpnFallbackInterval = null
@@ -718,6 +721,8 @@ export function useRouterProvisioning(props, emit) {
     // Use Echo's .private() method - it automatically adds 'private-' prefix
     const vpnChannelName = `tenant.${user.tenant_id}.vpn`
     const routersChannelName = `tenant.${user.tenant_id}.routers`
+    _vpnChannelName = vpnChannelName
+    _routersChannelName = routersChannelName
     addLog('info', `Subscribing to provisioning events on private channels: ${vpnChannelName}, ${routersChannelName}`)
 
     // Start catch-up regardless of Echo status — if Echo is unavailable the
@@ -874,6 +879,14 @@ export function useRouterProvisioning(props, emit) {
       if (_resetRouterId) window.Echo?.leave(`router-provisioning.${_resetRouterId}`)
       _serviceDeployChannel = null
     }
+    if (_vpnChannelName) {
+      window.Echo?.leave(_vpnChannelName)
+      _vpnChannelName = null
+    }
+    if (_routersChannelName) {
+      window.Echo?.leave(_routersChannelName)
+      _routersChannelName = null
+    }
 
     provisioningRouter.value = null
   }
@@ -888,6 +901,14 @@ export function useRouterProvisioning(props, emit) {
     if (_serviceDeployChannel) {
       if (_unmountRouterId) window.Echo?.leave(`router-provisioning.${_unmountRouterId}`)
       _serviceDeployChannel = null
+    }
+    if (_vpnChannelName) {
+      window.Echo?.leave(_vpnChannelName)
+      _vpnChannelName = null
+    }
+    if (_routersChannelName) {
+      window.Echo?.leave(_routersChannelName)
+      _routersChannelName = null
     }
   })
 
