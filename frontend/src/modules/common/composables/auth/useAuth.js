@@ -47,13 +47,6 @@ export function useAuth() {
         token.value = sanctumToken
         isAuthenticated.value = true
 
-        // Token will be automatically added by axios interceptor for protected routes
-        
-        // Reconnect Echo with the new token
-        if (window.Echo) {
-          window.Echo.connector.options.auth.headers['Authorization'] = `Bearer ${sanctumToken}`
-        }
-
         return { success: true, user: userData }
       } else {
         throw new Error(response.data.message || 'Authentication failed')
@@ -98,22 +91,15 @@ export function useAuth() {
         // If token is provided (email already verified or auto-login)
         if (response.data.token) {
           const sanctumToken = response.data.token
-          const user = response.data.user
+          const registeredUser = response.data.user
 
           // Store token and user data
           localStorage.setItem('authToken', sanctumToken)
-          localStorage.setItem('user', JSON.stringify(user))
+          localStorage.setItem('user', JSON.stringify(registeredUser))
 
-          user.value = user
+          user.value = registeredUser
           token.value = sanctumToken
           isAuthenticated.value = true
-
-          // Reconnect Echo with the new token
-          if (window.Echo) {
-            window.Echo.connector.options.auth.headers['Authorization'] = `Bearer ${sanctumToken}`
-          }
-
-          return { success: true, user }
         }
         
         return { success: true, message: response.data.message }

@@ -206,5 +206,47 @@ export const useAuthStore = defineStore('auth', {
         console.error('❌ Failed to disconnect WebSocket:', error)
       }
     },
+    
+    /**
+     * Handle page visibility changes - reconnect WebSocket when tab becomes active
+     */
+    handleVisibilityChange() {
+      if (document.visibilityState === 'visible' && this.isAuthenticated) {
+        const wsState = websocketService.getConnectionState()
+        
+        // Only reinit websocketService if its own echo instance is gone/disconnected.
+        // The echo.js WS (window.Echo) has its own self-healing reconnect loop and
+        // visibilitychange handler — do not interfere with it from here.
+        if (wsState !== 'connected') {
+          console.log('📱 Page visible, websocketService not connected - reinitializing...')
+          websocketService.resetReconnectState()
+          this.initializeWebSocket()
+        }
+      }
+    },
+    
+    /**
+     * Setup visibility change listener for WebSocket reconnection
+     */
+    setupVisibilityListener() {
+      if (typeof document !== 'undefined') {
+        document.addEventListener('visibilitychange', () => this.handleVisibilityChange())
+        console.log('✅ Page visibility listener registered for WebSocket reconnection')
+      }
+    },
+    
+    /**
+     * Check and restore WebSocket connection if needed
+     */
+    restoreWebSocketIfNeeded() {
+      if (!this.isAuthenticated) return
+      
+      const wsState = websocketService.getConnectionState()
+      if (wsState !== 'connected') {
+        console.log('🔄 Restoring WebSocket connection...')
+        websocketService.resetReconnectState()
+        this.initializeWebSocket()
+      }
+    },
   },
 })

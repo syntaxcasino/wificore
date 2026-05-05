@@ -255,7 +255,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, onUnmounted, watch } from 'vue'
 import { usePackages } from '@/modules/tenant/composables/data/usePackages'
 import { useFilters } from '@/modules/common/composables/utils/useFilters'
 import { usePagination } from '@/modules/common/composables/utils/usePagination'
@@ -304,7 +304,8 @@ const {
 
 const confirmStore = useConfirmStore()
 const authStore = useAuthStore()
-const { subscribeToPrivateChannel } = useBroadcasting()
+const { subscribeToPrivateChannel, unsubscribeFromChannel } = useBroadcasting()
+let packagesChannel = null
 
 // Filtering and Pagination
 const { filters, searchQuery, filteredData, hasActiveFilters } = useFilters(packages, { type: '', status: '' })
@@ -482,9 +483,44 @@ const goToPreviousPage = () => { currentPage.value = Math.max(1, currentPage.val
 const goToNextPage = () => { currentPage.value = Math.min(totalPages.value, currentPage.value + 1) }
 const goToLastPage = () => { currentPage.value = totalPages.value }
 
+// Event-driven state handlers (no page refresh)
+const handlePackageCreatedEvent = (event) => {
+  const pkg = event?.package || event?.data?.package || event?.data
+  if (!pkg?.id) return
+  
+  // Check if already exists (avoid duplicates from optimistic updates)
+  const exists = packages.value.some(p => p.id === pkg.id)
+  if (!exists) {
+    packages.value.unshift(pkg)
+    console.log('[Packages] Added via event:', pkg.name)
+  }
+}
+
+const handlePackageUpdatedEvent = (event) => {
+  const pkg = event?.package || event?.data?.package || event?.data
+  if (!pkg?.id) return
+  
+  const index = packages.value.findIndex(p => p.id === pkg.id)
+  if (index !== -1) {
+    packages.value.splice(index, 1, { ...packages.value[index], ...pkg })
+    console.log('[Packages] Updated via event:', pkg.name)
+  }
+}
+
+const handlePackageDeletedEvent = (event) => {
+  const id = event?.packageId || event?.package?.id || event?.id
+  if (!id) return
+  
+  packages.value = packages.value.filter(p => p.id !== id)
+  console.log('[Packages] Deleted via event:', id)
+}
+
 watch([filteredData, itemsPerPage], () => {
   if (currentPage.value > totalPages.value) {
-    currentPage.value = totalPages.value
+    currentPage.value = Math.max(1, totalPages.value)
+  }
+  if (currentPage.value < 1) {
+    currentPage.value = 1
   }
 })
 
@@ -494,20 +530,29 @@ onMounted(() => {
 
   const tenantId = authStore.tenantId
   if (tenantId) {
-    subscribeToPrivateChannel(`tenant.${tenantId}.packages`, {
-      PackageCreated: () => fetchPackages(),
-      PackageUpdated: () => fetchPackages(),
-      PackageDeleted: () => fetchPackages(),
-      PackageStatusChanged: () => fetchPackages(),
-      '.PackageCreated': () => fetchPackages(),
-      '.PackageUpdated': () => fetchPackages(),
-      '.PackageDeleted': () => fetchPackages(),
-      '.PackageStatusChanged': () => fetchPackages(),
+    packagesChannel = `tenant.${tenantId}.packages`
+    subscribeToPrivateChannel(packagesChannel, {
+      // Event-driven updates: modify local state directly instead of full refresh
+      PackageCreated: (event) => handlePackageCreatedEvent(event),
+      PackageUpdated: (event) => handlePackageUpdatedEvent(event),
+      PackageDeleted: (event) => handlePackageDeletedEvent(event),
+      PackageStatusChanged: (event) => handlePackageUpdatedEvent(event),
+      '.PackageCreated': (event) => handlePackageCreatedEvent(event),
+      '.PackageUpdated': (event) => handlePackageUpdatedEvent(event),
+      '.PackageDeleted': (event) => handlePackageDeletedEvent(event),
+      '.PackageStatusChanged': (event) => handlePackageUpdatedEvent(event),
     })
   }
 })
 
 onBeforeUnmount(() => {
   document.removeEventListener('click', handleClickOutside)
+})
+
+onUnmounted(() => {
+  if (packagesChannel) {
+    unsubscribeFromChannel(packagesChannel)
+    packagesChannel = null
+  }
 })
 </script>

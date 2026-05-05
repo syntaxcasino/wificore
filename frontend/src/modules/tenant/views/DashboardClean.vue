@@ -169,7 +169,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, onUnmounted } from 'vue'
 import { useBroadcasting } from '@/modules/common/composables/websocket/useBroadcasting'
 import { useAuth } from '@/modules/common/composables/auth/useAuth'
 import { useDashboard } from '@/modules/tenant/composables/data/useDashboard'
@@ -179,7 +179,8 @@ import BusinessAnalyticsWidget from '@/modules/tenant/components/dashboard/Busin
 import { Users, Wifi, Package, BarChart3, Radio, CreditCard, Settings, Activity } from 'lucide-vue-next'
 
 const { user } = useAuth()
-const { isConnected, subscribeToPrivateChannel } = useBroadcasting()
+const { isConnected, subscribeToPrivateChannel, unsubscribeFromChannel } = useBroadcasting()
+let wsChannels = []
 
 const {
   stats,
@@ -216,6 +217,7 @@ onMounted(() => {
     return
   }
 
+  wsChannels.push(`tenant.${tenantId}.dashboard-stats`)
   subscribeToPrivateChannel(`tenant.${tenantId}.dashboard-stats`, {
     'DashboardStatsUpdated': (event) => { if (event.stats) updateStatsFromEvent(event.stats) },
     '.DashboardStatsUpdated': (event) => { if (event.stats) updateStatsFromEvent(event.stats) },
@@ -239,10 +241,16 @@ onMounted(() => {
     '.UserCreated': () => fetchDashboardStats(),
   })
 
+  wsChannels.push(`tenant.${tenantId}.router-updates`)
   subscribeToPrivateChannel(`tenant.${tenantId}.router-updates`, {
     'RouterStatusUpdated': (event) => { if (event.stats) updateStatsFromEvent(event.stats) },
     '.RouterStatusUpdated': (event) => { if (event.stats) updateStatsFromEvent(event.stats) },
     '.RouterCreated': () => fetchDashboardStats(),
   })
+})
+
+onUnmounted(() => {
+  wsChannels.forEach(ch => unsubscribeFromChannel(ch))
+  wsChannels = []
 })
 </script>
