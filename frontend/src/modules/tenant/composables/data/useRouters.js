@@ -589,30 +589,40 @@ export function useRouters() {
       }
 
       // Subscribe to provisioning progress channel for this router
+      // broadcastAs() = 'provisioning.progress' (RouterProvisioningProgress event)
       if (window.Echo) {
         const channelName = `router-provisioning.${id}`
+        // connector.channels uses the prefixed wire name internally
         const existing = window.Echo.connector?.channels?.[`private-${channelName}`]
         if (!existing) {
           window.Echo.private(channelName)
-            .listen('.RouterProvisioningProgress', (event) => {
-              const routerIdx = routers.value.findIndex(r => String(r.id) === String(id))
-              if (routerIdx !== -1 && event.status) {
-                routers.value[routerIdx] = { ...routers.value[routerIdx], status: event.status }
+            .listen('.provisioning.progress', (event) => {
+              const stage = event.stage || ''
+              // Map stage → router list status for live UI feedback
+              const stageStatusMap = {
+                verifying: 'provisioning', connected: 'provisioning',
+                deploying: 'deploying',    deployed: 'deploying',
+                verifying_deployment: 'deploying',
+                completed: 'online',
+                failed: 'failed',
               }
-              if (currentRouter.value && String(currentRouter.value.id) === String(id) && event.status) {
-                currentRouter.value = { ...currentRouter.value, status: event.status }
+              const newStatus = stageStatusMap[stage]
+              if (newStatus) {
+                const routerIdx = routers.value.findIndex(r => String(r.id) === String(id))
+                if (routerIdx !== -1) {
+                  routers.value[routerIdx] = { ...routers.value[routerIdx], status: newStatus }
+                }
+                if (currentRouter.value && String(currentRouter.value.id) === String(id)) {
+                  currentRouter.value = { ...currentRouter.value, status: newStatus }
+                }
               }
-            })
-            .listen('.RouterProvisioned', (event) => {
-              fetchRouters()
-              window.Echo.leave(channelName)
-            })
-            .listen('.RouterProvisioningFailed', (event) => {
-              const routerIdx = routers.value.findIndex(r => String(r.id) === String(id))
-              if (routerIdx !== -1) {
-                routers.value[routerIdx] = { ...routers.value[routerIdx], status: 'error' }
+              if (stage === 'completed' || stage.endsWith('_completed')) {
+                fetchRouters()
+                window.Echo.leave(channelName)
+              } else if (stage === 'failed' || stage.endsWith('_failed')) {
+                fetchRouters()
+                window.Echo.leave(channelName)
               }
-              window.Echo.leave(channelName)
             })
         }
       }
