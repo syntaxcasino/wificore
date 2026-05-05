@@ -151,17 +151,11 @@ export function usePppoeUsers() {
     }
 
     if (!window.Echo) {
-      // Echo initialises asynchronously — retry up to 5× with 500 ms delay
-      let attempts = 0
-      const retry = setInterval(() => {
-        attempts++
-        if (window.Echo) {
-          clearInterval(retry)
-          subscribeToWebSocket()
-        } else if (attempts >= 5) {
-          clearInterval(retry)
-        }
-      }, 500)
+      // Echo initialises asynchronously — retry up to 3× with doubling delay
+      const attempt = arguments[0] ?? 0
+      if (attempt < 3) {
+        setTimeout(() => subscribeToWebSocket(attempt + 1), 500 * (attempt + 1))
+      }
       return
     }
     

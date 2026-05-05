@@ -167,11 +167,12 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import axios from 'axios'
 import { RefreshCw, RotateCcw, Eye } from 'lucide-vue-next'
 import SlideOverlay from '@/modules/common/components/base/SlideOverlay.vue'
 import { useToast } from '@/modules/common/composables/useToast.js'
+import { useSSE } from '@/modules/common/composables/websocket/useSSE'
 
 const { error: showError } = useToast()
 
@@ -242,10 +243,21 @@ const retryFailed = async () => {
   }
 }
 
-let interval = null
 onMounted(() => {
   fetchAll()
-  interval = setInterval(() => fetchAll(), 30000)
 })
-onUnmounted(() => { if (interval) clearInterval(interval) })
+
+// SSE: receive SystemMetricsUpdated event pushed by CollectSystemMetricsJob every minute
+// useSSE auto-closes on onUnmounted
+const { subscribeMany } = useSSE('/api/system/sse', {
+  channels: 'system.admin',
+})
+
+subscribeMany({
+  SystemMetricsUpdated: (data) => {
+    if (data.queue)       queueStats.value = { ...queueStats.value, ...data.queue }
+    if (data.performance) metrics.value   = { ...(metrics.value || {}), ...data.performance }
+    loading.value = false
+  },
+})
 </script>

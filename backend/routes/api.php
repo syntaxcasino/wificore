@@ -210,9 +210,14 @@ Route::middleware('throttle:3,1')->post('/email/resend', [LoginController::class
 Route::middleware('throttle:10,1')->post('/payments/initiate', [PaymentController::class, 'initiateSTK'])
     ->name('api.payments.initiate');
 
-// Payment Status Check - For auto-login
+// Payment Status Check - For auto-login (JSON fallback)
 Route::middleware('throttle:30,1')->get('/payments/{payment}/status', [PaymentController::class, 'checkStatus'])
     ->name('api.payments.status');
+
+// Payment Status SSE Stream - Event-driven, replaces client polling
+// Public endpoint — throttled to 5 open streams per IP per minute
+Route::middleware('throttle:5,1')->get('/payments/{paymentId}/stream', [PaymentController::class, 'streamStatus'])
+    ->name('api.payments.stream');
 
 // M-Pesa Callback - Webhook endpoint (rate limited to prevent abuse)
 Route::middleware('throttle:100,1')->post('/mpesa/callback', [PaymentController::class, 'callback'])

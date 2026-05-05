@@ -1,10 +1,7 @@
-import { ref, reactive, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, computed, watch, onUnmounted } from 'vue'
 import axios from '@/modules/common/services/api/axios'
-import { usePusher } from '@/modules/common/composables/usePusher'
 
 export function useRouterProvisioning(props, emit) {
-  // Get Pusher instance for WebSocket events
-  const { pusher, isConnected } = usePusher()
   // Reactive data
   const routerName = ref('')
   const formSubmitted = ref(false)
@@ -40,11 +37,12 @@ export function useRouterProvisioning(props, emit) {
   const mappingStatus = ref('')
   const mappingErrors = ref([])
   const mappingDeployedServices = ref([])
-  const mappingPollInterval = ref(null)
   const connectionStatus = ref('Waiting')
   const deploymentFailed = ref(false)
   const deploymentTimedOut = ref(false)
-  const stage2FallbackInterval = ref(null)
+  // Active WS channel refs — cleaned up on unmount / reset
+  let _provisioningChannel = null
+  let _serviceDeployChannel = null
 
   // Computed for connection status styling
   const connectionStatusClass = computed(() => {
@@ -151,43 +149,6 @@ export function useRouterProvisioning(props, emit) {
     }
   }
 
-  const pollVpnConfiguration = () => {
-    const maxAttempts = 30 // 30 attempts = 1 minute
-    let attempts = 0
-    
-    const pollInterval = setInterval(async () => {
-      attempts++
-      
-      try {
-        // Get VPN configs for this router
-        const response = await axios.get('/vpn')
-        const configs = response.data.data || []
-        const routerVpnConfig = configs.find(c => c.router_id === provisioningRouter.value.id)
-        
-        if (routerVpnConfig) {
-          clearInterval(pollInterval)
-          vpnConfig.value = routerVpnConfig
-          
-          // Fetch the full VPN config with scripts
-          const detailResponse = await axios.get(`/vpn/${routerVpnConfig.id}`)
-          if (detailResponse.data?.success) {
-            vpnScript.value = detailResponse.data.data.mikrotik_script
-            addLog('success', 'VPN configuration ready!')
-            provisioningRouter.value.vpn_ip = detailResponse.data.data.client_ip
-            provisioningRouter.value.vpn_status = detailResponse.data.data.status
-          }
-        } else if (attempts >= maxAttempts) {
-          clearInterval(pollInterval)
-          addLog('warning', 'VPN configuration timeout - check manually')
-        }
-      } catch (error) {
-        if (attempts >= maxAttempts) {
-          clearInterval(pollInterval)
-          addLog('error', 'Failed to fetch VPN configuration')
-        }
-      }
-    }, 2000) // Check every 2 seconds
-  }
 
   const continueToMonitoring = async () => {
     // VPN configuration is automatically included in the .rsc file
@@ -208,187 +169,10 @@ export function useRouterProvisioning(props, emit) {
     provisioningStatus.value = 'Apply script on router - Waiting for VPN connection'
     vpnConnectivityStatus.value = 'checking'
     
-    // Subscribe to VPN connectivity events
+    // Subscribe to VPN connectivity events — backend broadcasts all state transitions
     subscribeToVpnEvents()
-
-    if (stage2FallbackInterval.value) {
-      clearInterval(stage2FallbackInterval.value)
-      stage2FallbackInterval.value = null
-    }
-
-    stage2FallbackInterval.value = setInterval(async () => {
-      try {
-        if (currentStage.value !== 2 || !provisioningRouter.value?.id) {
-          clearInterval(stage2FallbackInterval.value)
-          stage2FallbackInterval.value = null
-          return
-        }
-
-        console.log('[Stage 2 Fallback] Checking router status...')
-        const response = await axios.get(`/routers/${provisioningRouter.value.id}/provisioning-status`)
-        console.log('[Stage 2 Fallback] Provisioning status:', response.data)
-
-        if (response.data.status === 'completed' || response.data.router_status === 'online') {
-          console.log('[Stage 2 Fallback] Router online via provisioning-status, advancing...')
-          clearInterval(stage2FallbackInterval.value)
-          stage2FallbackInterval.value = null
-          await probeRouterConnectivity()
-          return
-        }
-
-        const statusResponse = await axios.get(`/routers/${provisioningRouter.value.id}/status`)
-        console.log('[Stage 2 Fallback] Router status:', statusResponse.data)
-
-        if (statusResponse.data.status === 'connected' || statusResponse.data.status === 'online') {
-          console.log('[Stage 2 Fallback] Router online via status endpoint, advancing...')
-          clearInterval(stage2FallbackInterval.value)
-          stage2FallbackInterval.value = null
-          await probeRouterConnectivity()
-        }
-      } catch (error) {
-        console.error('[Stage 2 Fallback] Error checking status:', error)
-      }
-    }, 3000)
-    
-    // Note: No polling needed! Backend job will broadcast events via WebSocket
-    // Continue button will be enabled when vpn.connectivity.verified event is received
   }
 
-  const probeVpnConnectivity = async () => {
-    try {
-      connectionStatus.value = 'Connecting'
-      addLog('info', 'Waiting for VPN tunnel to establish...')
-      
-      // Poll the VPN status
-      const maxAttempts = 60 // 60 attempts = 2 minutes
-      let attempts = 0
-      
-      const pollInterval = setInterval(async () => {
-        attempts++
-        
-        try {
-          // Check VPN configuration status
-          const response = await axios.get(`/vpn/${vpnConfig.value.id}`)
-          
-          addLog('info', `VPN probe attempt ${attempts}/${maxAttempts}`)
-          
-          // Check if VPN is connected
-          if (response.data.data.is_connected || response.data.data.status === 'active') {
-            clearInterval(pollInterval)
-            connectionStatus.value = 'Connected'
-            vpnConnected.value = true
-            
-            addLog('success', `VPN connected! Router reachable at ${vpnConfig.value.client_ip}`)
-            
-            // Now verify router connectivity via VPN
-            provisioningStatus.value = 'VPN connected - Verifying router access...'
-            await probeRouterConnectivity()
-            
-          } else if (attempts >= maxAttempts) {
-            clearInterval(pollInterval)
-            connectionStatus.value = 'Failed'
-            addLog('error', 'VPN connection timeout - Please verify VPN script was applied')
-            provisioningStatus.value = 'VPN connection timeout - Check VPN configuration'
-          } else {
-            provisioningStatus.value = `Waiting for VPN connection... (${attempts}/${maxAttempts})`
-          }
-        } catch (error) {
-          if (attempts >= maxAttempts) {
-            clearInterval(pollInterval)
-            connectionStatus.value = 'Failed'
-            addLog('error', 'Failed to verify VPN connectivity')
-            provisioningStatus.value = 'VPN verification failed - Please check configuration'
-          }
-        }
-      }, 2000) // Check every 2 seconds
-      
-    } catch (error) {
-      console.error('Error probing VPN:', error)
-      connectionStatus.value = 'Failed'
-      addLog('error', 'Error during VPN connectivity probe')
-      provisioningStatus.value = 'Error verifying VPN connectivity'
-    }
-  }
-
-  const probeRouterConnectivity = async () => {
-    try {
-      connectionStatus.value = 'Connecting'
-      addLog('info', 'Starting connectivity probe...')
-      console.log('[probeRouterConnectivity] Starting probe for router:', provisioningRouter.value?.id)
-      
-      // Poll the router status endpoint
-      const maxAttempts = 30 // 30 attempts = 1 minute
-      let attempts = 0
-      
-      const pollInterval = setInterval(async () => {
-        attempts++
-        
-        try {
-          const response = await axios.get(`/routers/${provisioningRouter.value.id}/status`)
-          console.log(`[probeRouterConnectivity] Attempt ${attempts}/${maxAttempts}, status:`, response.data.status)
-          
-          addLog('info', `Probe attempt ${attempts}/${maxAttempts}`)
-          
-          // Check if router is connected (accepts 'connected' or 'online')
-          if (response.data.status === 'connected' || response.data.status === 'online') {
-            console.log('[probeRouterConnectivity] Router is online! Fetching interfaces...')
-            clearInterval(pollInterval)
-            connectionStatus.value = 'Connected'
-            
-            // Update router status in local state
-            if (provisioningRouter.value) {
-              provisioningRouter.value.status = response.data.status
-            }
-            
-            // Fetch available interfaces
-            const interfacesResponse = await axios.get(`/routers/${provisioningRouter.value.id}/interfaces`)
-            console.log('[probeRouterConnectivity] Interfaces fetched:', interfacesResponse.data.interfaces?.length)
-            
-            if (interfacesResponse.data.interfaces) {
-              // Filter out loopback and WireGuard interfaces
-              const allInterfaces = interfacesResponse.data.interfaces
-              availableInterfaces.value = allInterfaces.filter(iface => {
-                const name = (iface.name || '').toLowerCase()
-                return name !== 'lo' && !name.startsWith('wg-') && !name.startsWith('wg')
-              })
-              serviceMappings.value = Object.fromEntries(
-                (availableInterfaces.value || []).map((iface) => [iface.name, 'none']),
-              )
-              addLog('success', `Connected! Found ${interfacesResponse.data.interfaces.length} interfaces`)
-              console.log('[probeRouterConnectivity] Moving to stage 3')
-              
-              // Move to stage 3 with interfaces
-              currentStage.value = 3
-              provisioningProgress.value = 75
-              provisioningStatus.value = 'Router connected - Map services to interfaces'
-            }
-          } else if (attempts >= maxAttempts) {
-            clearInterval(pollInterval)
-            connectionStatus.value = 'Failed'
-            addLog('error', 'Connection timeout - Router not responding')
-            provisioningStatus.value = 'Connection timeout - Please verify the script was applied'
-            console.log('[probeRouterConnectivity] Timeout reached')
-          } else {
-            provisioningStatus.value = `Waiting for router... (${attempts}/${maxAttempts})`
-          }
-        } catch (error) {
-          console.error('[probeRouterConnectivity] Error on attempt', attempts, ':', error)
-          if (attempts >= maxAttempts) {
-            clearInterval(pollInterval)
-            connectionStatus.value = 'Failed'
-            addLog('error', 'Failed to connect to router')
-            provisioningStatus.value = 'Connection failed - Please check router configuration'
-          }
-        }
-      }, 2000) // Check every 2 seconds
-      
-    } catch (error) {
-      console.error('[probeRouterConnectivity] Error probing router:', error)
-      connectionStatus.value = 'Failed'
-      addLog('error', 'Error during connectivity probe')
-      provisioningStatus.value = 'Error verifying connectivity'
-    }
-  }
 
   const previousStage = () => {
     if (currentStage.value > 1) {
@@ -404,98 +188,55 @@ export function useRouterProvisioning(props, emit) {
     }
   }
 
-  const pollServiceDeployments = async (routerId, serviceIds) => {
-    const maxAttempts = 40
-    let attempts = 0
-
-    if (mappingPollInterval.value) {
-      clearInterval(mappingPollInterval.value)
-      mappingPollInterval.value = null
-    }
-
-    mappingPollInterval.value = setInterval(async () => {
-      attempts++
-      try {
-        const response = await axios.get(`/routers/${routerId}/services`)
-        const services = response.data.services || response.data.data || []
-        const target = services.filter((s) => serviceIds.includes(s.id))
-
-        const allTerminal =
-          target.length === serviceIds.length &&
-          target.every((s) => ['deployed', 'failed'].includes(s.deployment_status))
-
-        if (allTerminal || attempts >= maxAttempts) {
-          clearInterval(mappingPollInterval.value)
-          mappingPollInterval.value = null
-          mappingDeploying.value = false
-
-          const failed = target.filter((s) => s.deployment_status === 'failed')
-          if (failed.length) {
-            mappingStatus.value = 'Deployment finished with errors'
-            addLog('error', `Some services failed to deploy (${failed.length})`)
-          } else {
-            mappingStatus.value = 'Deployment completed successfully'
-            addLog('success', 'All mapped services deployed successfully')
-            provisioningProgress.value = 100
-          }
-        }
-      } catch (e) {
-        if (attempts >= maxAttempts) {
-          clearInterval(mappingPollInterval.value)
-          mappingPollInterval.value = null
-          mappingDeploying.value = false
-          mappingStatus.value = 'Deployment status check timed out'
-          addLog('warning', 'Deployment status check timed out')
-        }
-      }
-    }, 3000)
-  }
-
-  const waitForServiceDeployment = (routerId, serviceId, serviceLabel) => {
-    const maxAttempts = 40
-    let attempts = 0
-
+  /**
+   * Subscribe to provisioning.progress events on a per-router private WS channel.
+   * Resolves/rejects a Promise when the terminal stage is reached.
+   * The backend (DeployRouterServiceJob) broadcasts RouterProvisioningProgress
+   * with stage 'service_deploy_completed' or 'service_deploy_failed'.
+   */
+  const waitForServiceDeploymentViaWs = (routerId, serviceCount) => {
     return new Promise((resolve, reject) => {
-      const interval = setInterval(async () => {
-        attempts++
+      const channelName = `router-provisioning.${routerId}`
+      let deployedCount = 0
 
-        try {
-          const response = await axios.get(`/routers/${routerId}/services`)
-          const services = response.data.services || response.data.data || []
-          const service = services.find((entry) => entry.id === serviceId)
+      _serviceDeployChannel = window.Echo?.private(channelName)
+      if (!_serviceDeployChannel) {
+        // Echo not available — fall back to success immediately (job runs server-side)
+        resolve()
+        return
+      }
 
-          if (!service) {
-            if (attempts >= maxAttempts) {
-              clearInterval(interval)
-              reject(new Error(`${serviceLabel} deployment status could not be found`))
-            }
-            return
-          }
+      // 2 minute hard timeout in case a WS message is missed
+      const timeout = setTimeout(() => {
+        _serviceDeployChannel = null
+        window.Echo?.leave(`private-${channelName}`)
+        deploymentTimedOut.value = true
+        mappingDeploying.value = false
+        mappingStatus.value = 'Deployment status check timed out'
+        addLog('warning', 'Deployment status check timed out — check routers page')
+        resolve()
+      }, 120_000)
 
-          if (service.deployment_status === 'deployed') {
-            clearInterval(interval)
-            addLog('success', `${serviceLabel} deployed successfully`)
-            resolve(service)
-            return
-          }
+      _serviceDeployChannel.listen('.provisioning.progress', (data) => {
+        const stage = data.stage || ''
+        provisioningProgress.value = Math.min(99, 85 + (data.progress * 0.15))
+        addLog('info', data.message)
 
-          if (service.deployment_status === 'failed') {
-            clearInterval(interval)
-            reject(new Error(service.last_error || `${serviceLabel} deployment failed`))
-            return
+        if (stage.endsWith('_completed')) {
+          deployedCount++
+          if (deployedCount >= serviceCount) {
+            clearTimeout(timeout)
+            window.Echo?.leave(`private-${channelName}`)
+            _serviceDeployChannel = null
+            resolve()
           }
-
-          if (attempts >= maxAttempts) {
-            clearInterval(interval)
-            reject(new Error(`${serviceLabel} deployment timed out`))
-          }
-        } catch (error) {
-          if (attempts >= maxAttempts) {
-            clearInterval(interval)
-            reject(error)
-          }
+        } else if (stage.endsWith('_failed')) {
+          clearTimeout(timeout)
+          window.Echo?.leave(`private-${channelName}`)
+          _serviceDeployChannel = null
+          reject(new Error(data.message || 'Service deployment failed'))
         }
-      }, 3000)
+      })
     })
   }
 
@@ -559,19 +300,14 @@ export function useRouterProvisioning(props, emit) {
 
       mappingDeployedServices.value = configured
 
-      provisioningProgress.value = 92
+      provisioningProgress.value = 85
       provisioningStatus.value = 'Deploying services...'
-      mappingStatus.value = 'Deploying services...'
-      addLog('info', `Deploying ${configured.length} configured service instance(s) across ${selected.length} interface(s)...`)
+      mappingStatus.value = `Deploying ${configured.length} service(s)...`
+      addLog('info', `Deploying ${configured.length} configured service instance(s)...`)
 
-      const deployedServices = []
-      for (let index = 0; index < configured.length; index++) {
-        const service = configured[index]
+      // Dispatch all deploy requests, then wait for WS events to confirm completion
+      for (const service of configured) {
         const serviceLabel = `${service.service_type || 'service'} on ${service.interface_name || service.interface || 'unknown interface'}`
-
-        provisioningStatus.value = `Deploying service ${index + 1} of ${configured.length}...`
-        mappingStatus.value = `Deploying ${serviceLabel} (${index + 1}/${configured.length})...`
-        let skipDeploy = false
         try {
           const deployResp = await axios.post(`/routers/${routerId}/services/${service.id}/deploy`)
           if (!deployResp.data?.success) {
@@ -580,28 +316,22 @@ export function useRouterProvisioning(props, emit) {
             if (!alreadyDeployed) {
               throw new Error(deployMsg || `Failed to deploy service ${service.id}`)
             }
-            addLog('info', `${serviceLabel} is already deployed — skipping deploy step`)
-            skipDeploy = true
+            addLog('info', `${serviceLabel} is already deployed — skipping`)
+          } else {
+            addLog('info', `Queued ${serviceLabel}`)
           }
         } catch (deployErr) {
-          const status = deployErr.response?.status
+          const httpStatus = deployErr.response?.status
           const deployMsg = deployErr.response?.data?.message || deployErr.message || ''
-          const alreadyDeployed = status === 409 || /already.deployed|already.exists|already.configured/i.test(deployMsg)
-          if (!alreadyDeployed) {
-            throw deployErr
-          }
-          addLog('info', `${serviceLabel} is already deployed — skipping deploy step`)
-          skipDeploy = true
+          const alreadyDeployed = httpStatus === 409 || /already.deployed|already.exists|already.configured/i.test(deployMsg)
+          if (!alreadyDeployed) throw deployErr
+          addLog('info', `${serviceLabel} is already deployed — skipping`)
         }
-
-        if (!skipDeploy) {
-          addLog('info', `Queued ${serviceLabel}`)
-        }
-        const deployedService = await waitForServiceDeployment(routerId, service.id, serviceLabel)
-        deployedServices.push(deployedService)
       }
 
-      mappingDeployedServices.value = deployedServices
+      // Wait for WS provisioning.progress events to confirm all services complete
+      await waitForServiceDeploymentViaWs(routerId, configured.length)
+
       mappingDeploying.value = false
       provisioningProgress.value = 100
       provisioningStatus.value = 'Deployment completed successfully'
@@ -691,10 +421,61 @@ export function useRouterProvisioning(props, emit) {
         addLog('success', 'Deployment job dispatched')
         provisioningStatus.value = 'Deployment in progress...'
         currentStage.value = 5
-        provisioningProgress.value = 95  // Not 100% until confirmed complete
-        
-        // Poll router provisioning status instead of job status
-        pollProvisioningStatus()
+        provisioningProgress.value = 95
+
+        // Listen for RouterProvisioningProgress WS events on the per-router channel
+        const routerId = provisioningRouter.value.id
+        const channelName = `router-provisioning.${routerId}`
+        _provisioningChannel = window.Echo?.private(channelName)
+
+        if (!_provisioningChannel) {
+          // Echo unavailable — deployment is running server-side; just mark done
+          addLog('warning', 'Real-time updates unavailable — check routers page for status')
+          provisioningProgress.value = 100
+          waitingForJobCompletion.value = false
+          formSubmitting.value = false
+          return
+        }
+
+        // Hard timeout: 2 minutes
+        const timeout = setTimeout(() => {
+          window.Echo?.leave(`private-${channelName}`)
+          _provisioningChannel = null
+          deploymentTimedOut.value = true
+          waitingForJobCompletion.value = false
+          formSubmitting.value = false
+          provisioningStatus.value = 'Deployment timeout - check router manually'
+          addLog('warning', 'Deployment status check timed out')
+        }, 120_000)
+
+        _provisioningChannel.listen('.provisioning.progress', (data) => {
+          provisioningProgress.value = Math.min(99, data.progress ?? 95)
+          provisioningStatus.value = data.message || provisioningStatus.value
+          addLog('info', data.message)
+
+          const stage = data.stage || ''
+          if (stage.endsWith('_completed') || stage === 'completed') {
+            clearTimeout(timeout)
+            window.Echo?.leave(`private-${channelName}`)
+            _provisioningChannel = null
+            provisioningProgress.value = 100
+            provisioningStatus.value = 'Deployment completed successfully'
+            addLog('success', 'Router provisioned successfully!')
+            waitingForJobCompletion.value = false
+            formSubmitting.value = false
+            if (provisioningRouter.value) provisioningRouter.value.status = 'online'
+            emit('refresh-routers')
+          } else if (stage.endsWith('_failed') || stage === 'failed') {
+            clearTimeout(timeout)
+            window.Echo?.leave(`private-${channelName}`)
+            _provisioningChannel = null
+            deploymentFailed.value = true
+            provisioningStatus.value = 'Deployment failed'
+            addLog('error', data.message || 'Deployment failed')
+            waitingForJobCompletion.value = false
+            formSubmitting.value = false
+          }
+        })
       }
     } catch (error) {
       console.error('Error deploying config:', error)
@@ -704,91 +485,6 @@ export function useRouterProvisioning(props, emit) {
       waitingForJobCompletion.value = false
       formSubmitting.value = false
     }
-  }
-
-  const pollProvisioningStatus = () => {
-    const maxAttempts = 30 // 30 attempts = 1 minute
-    let attempts = 0
-    
-    const pollInterval = setInterval(async () => {
-      attempts++
-      
-      try {
-        const response = await axios.get(`/routers/${provisioningRouter.value.id}/provisioning-status`)
-        
-        addLog('info', `Checking deployment status... (${attempts}/${maxAttempts})`)
-        
-        if (response.data.status === 'completed') {
-          clearInterval(pollInterval)
-          provisioningProgress.value = 100  // Set to 100% only when complete
-          provisioningStatus.value = 'Deployment completed successfully'
-          addLog('success', 'Router provisioned successfully!')
-          waitingForJobCompletion.value = false
-          formSubmitting.value = false
-          
-          // Update router status
-          if (provisioningRouter.value) {
-            provisioningRouter.value.status = 'online'
-          }
-          
-          // Refresh router list
-          emit('refresh-routers')
-        } else if (response.data.status === 'failed') {
-          clearInterval(pollInterval)
-          deploymentFailed.value = true
-          provisioningStatus.value = 'Deployment failed'
-          addLog('error', response.data.error || 'Deployment failed')
-          waitingForJobCompletion.value = false
-          formSubmitting.value = false
-        } else if (attempts >= maxAttempts) {
-          clearInterval(pollInterval)
-          deploymentTimedOut.value = true
-          provisioningStatus.value = 'Deployment timeout - check router manually'
-          addLog('warning', 'Deployment status check timed out')
-          waitingForJobCompletion.value = false
-          formSubmitting.value = false
-        }
-      } catch (error) {
-        console.error('Error checking deployment status:', error)
-        if (attempts >= maxAttempts) {
-          clearInterval(pollInterval)
-          addLog('error', 'Failed to check deployment status')
-          waitingForJobCompletion.value = false
-          formSubmitting.value = false
-        }
-      }
-    }, 2000) // Check every 2 seconds
-  }
-
-  const pollJobStatus = async (jobId) => {
-    const pollInterval = setInterval(async () => {
-      try {
-        const response = await axios.get(`/jobs/${jobId}/status`)
-        const status = response.data.status
-
-        provisioningStatus.value = response.data.message || status
-
-        if (status === 'completed') {
-          clearInterval(pollInterval)
-          provisioningProgress.value = 100
-          provisioningStatus.value = 'Deployment completed successfully'
-          waitingForJobCompletion.value = false
-          formSubmitting.value = false
-          emit('refresh-routers')
-        } else if (status === 'failed') {
-          clearInterval(pollInterval)
-          provisioningStatus.value = 'Deployment failed'
-          waitingForJobCompletion.value = false
-          formSubmitting.value = false
-        }
-      } catch (error) {
-        clearInterval(pollInterval)
-        console.error('Error polling job status:', error)
-        provisioningStatus.value = 'Error checking deployment status'
-        waitingForJobCompletion.value = false
-        formSubmitting.value = false
-      }
-    }, 2000)
   }
 
   const addLog = (level, message) => {
@@ -876,17 +572,9 @@ export function useRouterProvisioning(props, emit) {
 
   const retryDeployment = () => {
     addLog('info', 'Retrying deployment...')
-    const wasTimedOut = deploymentTimedOut.value
     deploymentFailed.value = false
     deploymentTimedOut.value = false
-    
-    if (wasTimedOut) {
-      // If timed out, just retry the status check
-      pollProvisioningStatus()
-    } else {
-      // If failed, retry the entire deployment
-      deployConfiguration()
-    }
+    deployConfiguration()
   }
 
   // Subscribe to VPN connectivity events via WebSocket
@@ -1074,21 +762,29 @@ export function useRouterProvisioning(props, emit) {
       ipPool: '192.168.2.100-192.168.2.200',
     })
 
-    if (stage2FallbackInterval.value) {
-      clearInterval(stage2FallbackInterval.value)
-      stage2FallbackInterval.value = null
+    // Leave any open WS channels
+    if (_provisioningChannel) {
+      const ch = provisioningRouter.value?.id ? `router-provisioning.${provisioningRouter.value.id}` : null
+      if (ch) window.Echo?.leave(`private-${ch}`)
+      _provisioningChannel = null
+    }
+    if (_serviceDeployChannel) {
+      const ch = provisioningRouter.value?.id ? `router-provisioning.${provisioningRouter.value.id}` : null
+      if (ch) window.Echo?.leave(`private-${ch}`)
+      _serviceDeployChannel = null
     }
   }
 
   onUnmounted(() => {
-    if (stage2FallbackInterval.value) {
-      clearInterval(stage2FallbackInterval.value)
-      stage2FallbackInterval.value = null
+    if (_provisioningChannel) {
+      const ch = provisioningRouter.value?.id ? `router-provisioning.${provisioningRouter.value.id}` : null
+      if (ch) window.Echo?.leave(`private-${ch}`)
+      _provisioningChannel = null
     }
-
-    if (mappingPollInterval.value) {
-      clearInterval(mappingPollInterval.value)
-      mappingPollInterval.value = null
+    if (_serviceDeployChannel) {
+      const ch = provisioningRouter.value?.id ? `router-provisioning.${provisioningRouter.value.id}` : null
+      if (ch) window.Echo?.leave(`private-${ch}`)
+      _serviceDeployChannel = null
     }
   })
 
