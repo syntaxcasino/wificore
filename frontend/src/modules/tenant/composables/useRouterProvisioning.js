@@ -535,7 +535,14 @@ export function useRouterProvisioning(props, emit) {
         })
 
         if (!resp.data?.success) {
-          throw new Error(resp.data?.message || `Failed to configure ${type} on ${iface}`)
+          const msg = resp.data?.message || ''
+          const alreadyDeployed = /already.deployed|already.exists|already.configured/i.test(msg)
+          if (alreadyDeployed && resp.data?.service) {
+            configured.push(resp.data.service)
+            addLog('info', `${type} on ${iface} is already deployed — skipping`)
+            continue
+          }
+          throw new Error(msg || `Failed to configure ${type} on ${iface}`)
         }
 
         const validation = resp.data.validation
@@ -564,12 +571,32 @@ export function useRouterProvisioning(props, emit) {
 
         provisioningStatus.value = `Deploying service ${index + 1} of ${configured.length}...`
         mappingStatus.value = `Deploying ${serviceLabel} (${index + 1}/${configured.length})...`
-        const deployResp = await axios.post(`/routers/${routerId}/services/${service.id}/deploy`)
-        if (!deployResp.data?.success) {
-          throw new Error(deployResp.data?.message || `Failed to deploy service ${service.id}`)
+        let skipDeploy = false
+        try {
+          const deployResp = await axios.post(`/routers/${routerId}/services/${service.id}/deploy`)
+          if (!deployResp.data?.success) {
+            const deployMsg = deployResp.data?.message || ''
+            const alreadyDeployed = /already.deployed|already.exists|already.configured/i.test(deployMsg)
+            if (!alreadyDeployed) {
+              throw new Error(deployMsg || `Failed to deploy service ${service.id}`)
+            }
+            addLog('info', `${serviceLabel} is already deployed — skipping deploy step`)
+            skipDeploy = true
+          }
+        } catch (deployErr) {
+          const status = deployErr.response?.status
+          const deployMsg = deployErr.response?.data?.message || deployErr.message || ''
+          const alreadyDeployed = status === 409 || /already.deployed|already.exists|already.configured/i.test(deployMsg)
+          if (!alreadyDeployed) {
+            throw deployErr
+          }
+          addLog('info', `${serviceLabel} is already deployed — skipping deploy step`)
+          skipDeploy = true
         }
 
-        addLog('info', `Queued ${serviceLabel}`)
+        if (!skipDeploy) {
+          addLog('info', `Queued ${serviceLabel}`)
+        }
         const deployedService = await waitForServiceDeployment(routerId, service.id, serviceLabel)
         deployedServices.push(deployedService)
       }

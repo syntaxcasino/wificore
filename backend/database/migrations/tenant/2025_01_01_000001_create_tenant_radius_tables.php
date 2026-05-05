@@ -15,7 +15,19 @@ return new class extends Migration
      */
     public function up(): void
     {
+        // Schema::hasTable() in Laravel's PostgreSQL driver always checks the 'public'
+        // schema regardless of search_path. We use a raw SQL check instead so the guard
+        // works correctly inside a SET LOCAL search_path tenant transaction.
+        $tableExists = fn(string $table): bool => (bool) DB::selectOne(
+            "SELECT 1 FROM information_schema.tables
+             WHERE table_schema = current_schema()
+               AND table_name = ?
+               AND table_type = 'BASE TABLE'",
+            [$table]
+        );
+
         // NAS (Network Access Server) Table
+        if (!$tableExists('nas'))
         Schema::create('nas', function (Blueprint $table) {
             $table->increments('id');
             $table->string('nasname', 128)->unique();
@@ -31,6 +43,7 @@ return new class extends Migration
         });
 
         // RADIUS Check Table (Authentication)
+        if (!$tableExists('radcheck'))
         Schema::create('radcheck', function (Blueprint $table) {
             $table->bigIncrements('id');
             $table->string('username', 64)->default('');
@@ -43,6 +56,7 @@ return new class extends Migration
         });
 
         // RADIUS Reply Table (Authorization)
+        if (!$tableExists('radreply'))
         Schema::create('radreply', function (Blueprint $table) {
             $table->bigIncrements('id');
             $table->string('username', 64)->default('');
@@ -55,6 +69,7 @@ return new class extends Migration
         });
 
         // RADIUS User Group Table
+        if (!$tableExists('radusergroup'))
         Schema::create('radusergroup', function (Blueprint $table) {
             $table->increments('id');
             $table->string('username', 64)->default('');
@@ -66,6 +81,7 @@ return new class extends Migration
         });
 
         // RADIUS Group Check Table
+        if (!$tableExists('radgroupcheck'))
         Schema::create('radgroupcheck', function (Blueprint $table) {
             $table->increments('id');
             $table->string('groupname', 64)->default('');
@@ -78,6 +94,7 @@ return new class extends Migration
         });
 
         // RADIUS Group Reply Table
+        if (!$tableExists('radgroupreply'))
         Schema::create('radgroupreply', function (Blueprint $table) {
             $table->increments('id');
             $table->string('groupname', 64)->default('');
@@ -90,6 +107,7 @@ return new class extends Migration
         });
 
         // RADIUS Accounting Table
+        if (!$tableExists('radacct'))
         Schema::create('radacct', function (Blueprint $table) {
             $table->bigIncrements('id');
             $table->string('acctsessionid', 64)->default('');
@@ -98,7 +116,7 @@ return new class extends Migration
             $table->string('groupname', 64)->default('');
             $table->string('realm', 64)->nullable();
             $table->ipAddress('nasipaddress');
-            $table->string('nasportid', 15)->nullable();
+            $table->string('nasportid', 64)->nullable();
             $table->string('nasporttype', 32)->nullable();
             $table->timestampTz('acctstarttime')->nullable();
             $table->timestampTz('acctupdatetime')->nullable();
@@ -116,6 +134,8 @@ return new class extends Migration
             $table->string('servicetype', 32)->nullable();
             $table->string('framedprotocol', 32)->nullable();
             $table->ipAddress('framedipaddress')->nullable();
+            $table->bigInteger('acctstartdelay')->default(0);
+            $table->bigInteger('acctstopdelay')->default(0);
             
             // Indexes for performance
             $table->index('username');
@@ -127,6 +147,7 @@ return new class extends Migration
         });
 
         // RADIUS Post-Auth Table (Logging)
+        if (!$tableExists('radpostauth'))
         Schema::create('radpostauth', function (Blueprint $table) {
             $table->bigIncrements('id');
             $table->string('username', 64)->default('');
@@ -139,6 +160,7 @@ return new class extends Migration
         });
         
         // Create default RADIUS groups for hotspot users
+        if (!DB::table('radgroupcheck')->where('groupname', 'hotspot_users')->exists())
         DB::table('radgroupcheck')->insert([
             [
                 'groupname' => 'hotspot_users',
@@ -149,6 +171,7 @@ return new class extends Migration
             ],
         ]);
         
+        if (!DB::table('radgroupreply')->where('groupname', 'hotspot_users')->exists())
         DB::table('radgroupreply')->insert([
             [
                 'groupname' => 'hotspot_users',

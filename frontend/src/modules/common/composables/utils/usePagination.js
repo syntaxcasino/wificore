@@ -82,6 +82,9 @@ export function usePagination(data, initialItemsPerPage = 10) {
     if (currentPage.value > totalPages.value) {
       currentPage.value = Math.max(1, totalPages.value)
     }
+    if (currentPage.value < 1) {
+      currentPage.value = 1
+    }
   })
 
   /**

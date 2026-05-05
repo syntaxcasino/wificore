@@ -341,16 +341,19 @@ class GenerateTelegrafConfig extends Command
                             'device_type' => $deviceType,
                         ]);
 
-                        // Interface table
+                        // Interface counters table — belongs to the interface_counters block above.
+                        // Stored as interface_counters_ifHCInOctets / interface_counters_ifHCOutOctets.
+                        // Tag "ifName" (IF-MIB 1.3.6.1.2.1.31.1.1.1.1) is used by all PromQL queries
+                        // in PppoeSessionController and PppoeMetricsController to match PPPoE sessions.
                         $lines[] = '[[inputs.snmp.table]]';
-                        $lines[] = 'name = "interface"';
+                        $lines[] = 'name = "interface_counters"';
                         $lines[] = 'inherit_tags = ["tenant_id", "router_id", "device_type"]';
                         $lines[] = '';
 
-                        // ifDescr — interface name/description
+                        // ifName (IF-MIB) — RouterOS exposes PPPoE interfaces as "<pppoe-username>"
                         $lines[] = '[[inputs.snmp.table.field]]';
-                        $lines[] = 'name = "ifDescr"';
-                        $lines[] = 'oid = "1.3.6.1.2.1.2.2.1.2"';
+                        $lines[] = 'name = "ifName"';
+                        $lines[] = 'oid = "1.3.6.1.2.1.31.1.1.1.1"';
                         $lines[] = 'is_tag = true';
                         $lines[] = '';
 
@@ -372,13 +375,13 @@ class GenerateTelegrafConfig extends Command
                         $lines[] = 'oid = "1.3.6.1.2.1.31.1.1.1.10"';
                         $lines[] = '';
 
-                        // ifInOctets — 32-bit inbound byte counter
+                        // ifInOctets — 32-bit inbound byte counter (fallback for older firmware)
                         $lines[] = '[[inputs.snmp.table.field]]';
                         $lines[] = 'name = "ifInOctets"';
                         $lines[] = 'oid = "1.3.6.1.2.1.2.2.1.10"';
                         $lines[] = '';
 
-                        // ifOutOctets — 32-bit outbound byte counter
+                        // ifOutOctets — 32-bit outbound byte counter (fallback for older firmware)
                         $lines[] = '[[inputs.snmp.table.field]]';
                         $lines[] = 'name = "ifOutOctets"';
                         $lines[] = 'oid = "1.3.6.1.2.1.2.2.1.16"';

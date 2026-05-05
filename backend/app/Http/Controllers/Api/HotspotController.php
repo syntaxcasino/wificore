@@ -2,20 +2,25 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Helpers\PackageExpiryHelper;
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Validator;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\DB;
 use App\Models\HotspotUser;
 use App\Models\HotspotSession;
-use App\Models\RadiusSession;
 use App\Models\Package;
+use App\Models\RadiusSession;
 use App\Jobs\DisconnectHotspotUserJob;
 use App\Jobs\GrantHotspotAccessJob;
 use App\Events\HotspotAccessRevoked;
+use App\Events\HotspotUserCreated;
 use App\Services\Hotspot\HotspotRadiusService;
+use App\Services\MikroTik\BandwidthHelper;
 use Carbon\Carbon;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
 
 class HotspotController extends Controller
 {
@@ -305,6 +310,15 @@ class HotspotController extends Controller
 
             $users = $query->latest()->paginate($request->per_page ?? 15);
 
+            // Add computed fields
+            $users->getCollection()->transform(function ($user) {
+                $user->days_to_expiry = $user->subscription_expires_at
+                    ? (int) now()->diffInDays($user->subscription_expires_at, false)
+                    : null;
+                $user->is_expired = $user->subscription_expires_at && $user->subscription_expires_at->isPast();
+                return $user;
+            });
+
             return response()->json([
                 'success' => true,
                 'data' => $users->items(),
@@ -339,6 +353,11 @@ class HotspotController extends Controller
                 ->where('username', $user->username)
                 ->selectRaw('SUM(acctinputoctets) as upload, SUM(acctoutputoctets) as download')
                 ->first();
+
+            $user->days_to_expiry = $user->subscription_expires_at
+                ? (int) now()->diffInDays($user->subscription_expires_at, false)
+                : null;
+            $user->is_expired = $user->subscription_expires_at && $user->subscription_expires_at->isPast();
 
             return response()->json([
                 'success' => true,
@@ -690,6 +709,247 @@ class HotspotController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to fetch live sessions: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Create a new hotspot user (admin-initiated, not via payment flow)
+     */
+    public function store(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'username'        => 'required|string|max:64|regex:/^[a-z0-9_.\-]+$/i',
+            'package_id'      => 'required|uuid',
+            'phone_number'    => 'nullable|string|max:30',
+            'mac_address'     => 'nullable|string|max:30',
+            'simultaneous_use' => 'nullable|integer|min:1|max:50',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors'  => $validator->errors(),
+            ], 422);
+        }
+
+        if (HotspotUser::where('username', $request->username)->exists()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Username already exists',
+            ], 422);
+        }
+
+        $package = Package::where('id', $request->package_id)
+            ->where('type', 'hotspot')
+            ->first();
+
+        if (!$package) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid package: must be type hotspot',
+            ], 422);
+        }
+
+        try {
+            $plainPassword   = Str::random(10);
+            $simultaneousUse = (int) ($request->simultaneous_use ?? 1);
+            $rateLimit       = BandwidthHelper::formatMikrotikRateLimit(
+                (string) ($package->download_speed ?? $package->speed ?? '10M'),
+                (string) ($package->upload_speed  ?? $package->speed ?? '10M')
+            );
+
+            DB::beginTransaction();
+
+            $user = HotspotUser::create([
+                'username'              => $request->username,
+                'password'              => bcrypt($plainPassword),
+                'phone_number'          => $request->phone_number,
+                'mac_address'           => $request->mac_address,
+                'has_active_subscription' => false,
+                'package_id'            => $package->id,
+                'package_name'          => $package->name,
+                // subscription_expires_at is NOT set at creation — set when first payment is recorded
+                'is_active'             => true,
+                'status'                => 'inactive',
+            ]);
+
+            // RADIUS credentials
+            $ntHash = strtoupper(hash('md4', mb_convert_encoding($plainPassword, 'UTF-16LE', 'UTF-8')));
+
+            DB::table('radcheck')->insert([
+                ['username' => $user->username, 'attribute' => 'Cleartext-Password', 'op' => ':=', 'value' => $plainPassword],
+                ['username' => $user->username, 'attribute' => 'NT-Password',        'op' => ':=', 'value' => $ntHash],
+                ['username' => $user->username, 'attribute' => 'Auth-Type',          'op' => ':=', 'value' => 'Reject'],
+                ['username' => $user->username, 'attribute' => 'Simultaneous-Use',   'op' => ':=', 'value' => (string) $simultaneousUse],
+            ]);
+
+            if ($rateLimit) {
+                DB::table('radreply')->insert([
+                    ['username' => $user->username, 'attribute' => 'Mikrotik-Rate-Limit', 'op' => ':=', 'value' => $rateLimit],
+                ]);
+            }
+
+            DB::commit();
+
+            $user->load('package');
+            $user->days_to_expiry = null;
+            $user->is_expired     = false;
+
+            $tenantId = $request->user()->tenant_id;
+            broadcast(new HotspotUserCreated($user, null, ['username' => $user->username, 'generated_password' => $plainPassword], $tenantId))->toOthers();
+
+            Log::info('Hotspot user created by admin', [
+                'user_id'   => $user->id,
+                'username'  => $user->username,
+                'tenant_id' => $tenantId,
+            ]);
+
+            return response()->json([
+                'success'            => true,
+                'message'            => 'Hotspot user created',
+                'data'               => $user,
+                'generated_password' => $plainPassword,
+            ], 201);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Failed to create hotspot user', [
+                'error'    => $e->getMessage(),
+                'username' => $request->username,
+            ]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to create hotspot user: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Update a hotspot user (admin)
+     */
+    public function update(Request $request, string $userId)
+    {
+        $user = HotspotUser::findOrFail($userId);
+
+        $validator = Validator::make($request->all(), [
+            'package_id'       => 'sometimes|required|uuid',
+            'phone_number'     => 'sometimes|nullable|string|max:30',
+            'mac_address'      => 'sometimes|nullable|string|max:30',
+            'simultaneous_use' => 'sometimes|integer|min:1|max:50',
+            'is_active'        => 'sometimes|boolean',
+            'status'           => 'sometimes|string|in:active,inactive,expired,revoked,suspended',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors'  => $validator->errors(),
+            ], 422);
+        }
+
+        try {
+            $previousPackage = $user->package ?? Package::find($user->package_id);
+            $newPackage      = null;
+
+            if ($request->has('package_id')) {
+                $newPackage = Package::where('id', $request->package_id)
+                    ->where('type', 'hotspot')
+                    ->first();
+
+                if (!$newPackage) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Invalid package: must be type hotspot',
+                    ], 422);
+                }
+
+                $rateLimit = BandwidthHelper::formatMikrotikRateLimit(
+                    (string) ($newPackage->download_speed ?? $newPackage->speed ?? '10M'),
+                    (string) ($newPackage->upload_speed  ?? $newPackage->speed ?? '10M')
+                );
+                $user->package_id   = $newPackage->id;
+                $user->package_name = $newPackage->name;
+
+                // Pro-rated expiry: if active subscription, convert remaining days using price ratio
+                $currentExpiry = $user->subscription_expires_at;
+                if ($currentExpiry && $currentExpiry->isFuture() && $previousPackage && (string) $previousPackage->id !== (string) $newPackage->id) {
+                    $daysRemaining   = (int) now()->diffInDays($currentExpiry, false);
+                    $oldDurationDays = PackageExpiryHelper::durationInDays($previousPackage);
+                    $newDurationDays = PackageExpiryHelper::durationInDays($newPackage);
+                    $oldPrice        = (float) ($previousPackage->price ?? 0);
+                    $newPrice        = (float) ($newPackage->price ?? 0);
+
+                    if ($oldDurationDays > 0 && $newPrice > 0) {
+                        $oldDailyRate  = $oldPrice / $oldDurationDays;
+                        $unusedCredit  = max(0, $daysRemaining * $oldDailyRate);
+                        $newDailyRate  = $newPrice / $newDurationDays;
+                        $extraDays     = (int) floor($unusedCredit / $newDailyRate);
+                        $user->subscription_expires_at = now()->addDays(max(0, $extraDays));
+                    } else {
+                        $user->subscription_expires_at = PackageExpiryHelper::calculateExpiresAt($newPackage, now());
+                    }
+                }
+                // No active sub — leave subscription_expires_at untouched (will be set on next payment)
+
+                // Update RADIUS rate limit
+                DB::table('radreply')->updateOrInsert(
+                    ['username' => $user->username, 'attribute' => 'Mikrotik-Rate-Limit'],
+                    ['op' => ':=', 'value' => $rateLimit]
+                );
+            }
+
+            if ($request->has('phone_number'))     $user->phone_number     = $request->phone_number;
+            if ($request->has('mac_address'))      $user->mac_address      = $request->mac_address;
+            if ($request->has('simultaneous_use')) {
+                $user->simultaneous_use = (int) $request->simultaneous_use;
+                DB::table('radcheck')->updateOrInsert(
+                    ['username' => $user->username, 'attribute' => 'Simultaneous-Use'],
+                    ['op' => ':=', 'value' => (string) $user->simultaneous_use]
+                );
+            }
+            if ($request->has('is_active')) $user->is_active = (bool) $request->is_active;
+            if ($request->has('status'))    $user->status    = $request->status;
+
+            // Sync RADIUS block/unblock
+            $shouldBlock = !$user->is_active
+                || in_array($user->status, ['inactive', 'expired', 'revoked', 'suspended'], true);
+
+            if ($shouldBlock) {
+                DB::table('radcheck')->updateOrInsert(
+                    ['username' => $user->username, 'attribute' => 'Auth-Type'],
+                    ['op' => ':=', 'value' => 'Reject']
+                );
+            } else {
+                DB::table('radcheck')
+                    ->where('username', $user->username)
+                    ->where('attribute', 'Auth-Type')
+                    ->where('value', 'Reject')
+                    ->delete();
+            }
+
+            $user->save();
+            $user->load('package');
+            $user->days_to_expiry = $user->subscription_expires_at
+                ? (int) now()->diffInDays($user->subscription_expires_at, false)
+                : null;
+            $user->is_expired = $user->subscription_expires_at && $user->subscription_expires_at->isPast();
+
+            Log::info('Hotspot user updated', ['user_id' => $user->id, 'username' => $user->username]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Hotspot user updated',
+                'data'    => $user,
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to update hotspot user', ['user_id' => $userId, 'error' => $e->getMessage()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to update hotspot user: ' . $e->getMessage(),
             ], 500);
         }
     }

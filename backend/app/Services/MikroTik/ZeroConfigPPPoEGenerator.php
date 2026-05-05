@@ -281,6 +281,13 @@ class ZeroConfigPPPoEGenerator
 
         $s[] = ":do { /ip dhcp-server remove [/ip dhcp-server find interface=\"$bridge\"]; } on-error={}";
 
+        // Assign dedicated gateway IP to the bridge — PPP local-address uses this,
+        // preventing the router from consuming an address from the subscriber pool.
+        $s[] = ":do { /ip address remove [/ip address find interface=\"$bridge\"]; } on-error={}";
+        $s[] = ":do { /ip address add address=\"{$gw}/24\" interface=\"$bridge\" comment=\"PPPoE-$id-GW\" } on-error={ /log error \"PPPoE-$id: FATAL - gateway IP assign failed\" }";
+        // Set profile local-address to dedicated gateway IP (not the pool name)
+        $s[] = ":do { /ppp profile set [/ppp profile find name=\"$prof\"] local-address=\"{$gw}\" } on-error={ /log warning \"PPPoE-$id: Failed to set profile local-address (non-fatal)\" }";
+
         $s[] = "";
         $s[] = "# ============================";
         $s[] = "# 5. PPPoE Server";

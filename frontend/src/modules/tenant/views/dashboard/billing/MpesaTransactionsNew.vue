@@ -253,9 +253,8 @@ const {
   loading, refreshing, error, transactions, stats,
   formatMoney, formatPhone, formatDateTime,
   getIconBg, getIconColor, getStatusBanner, getStatusMessage,
-  fetchTransactions, checkStatus, retryTransaction, exportTransactions,
-  startAutoRefresh, stopAutoRefresh
-} = useMpesaTransactions(30000)
+  fetchTransactions, checkStatus, retryTransaction, exportTransactions
+} = useMpesaTransactions()
 
 const searchQuery = ref('')
 const currentPage = ref(1)
@@ -314,7 +313,7 @@ const clearFilters = () => { filters.value = { status: '', period: '' }; searchQ
 const viewTransaction = (transaction) => { selectedTransaction.value = transaction; showDetailsModal.value = true }
 const handleExport = () => exportTransactions(filteredData.value)
 
-onMounted(() => { fetchTransactions(); startAutoRefresh() })
+onMounted(() => { fetchTransactions() })
 </script>
 
 <style scoped>

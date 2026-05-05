@@ -1,8 +1,8 @@
 <template>
-  <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-gray-100 dark:border-slate-700 p-6">
-    <div class="flex items-center justify-between mb-6">
-      <h2 class="text-xl font-bold text-gray-900 dark:text-slate-100 flex items-center gap-2">
-        <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+  <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-gray-100 dark:border-slate-700 p-4 sm:p-6">
+    <div class="flex items-center justify-between mb-4 sm:mb-6">
+      <h2 class="text-base sm:text-xl font-bold text-gray-900 dark:text-slate-100 flex items-center gap-2">
+        <svg class="w-5 h-5 sm:w-6 sm:h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
         </svg>
         System Health
@@ -20,7 +20,7 @@
     <!-- Health Metrics -->
     <div v-else class="space-y-4">
       <!-- Database Health -->
-      <div class="p-4 bg-gray-50 dark:bg-slate-700/50 rounded-xl">
+      <div class="p-3 sm:p-4 bg-gray-50 dark:bg-slate-700/50 rounded-xl">
         <div class="flex items-center justify-between mb-3">
           <div class="flex items-center gap-2">
             <div class="w-3 h-3 rounded-full" :class="healthData.database?.status === 'healthy' ? 'bg-green-500' : 'bg-red-500'"></div>
@@ -52,7 +52,7 @@
       </div>
 
       <!-- Redis Cache -->
-      <div class="p-4 bg-gray-50 dark:bg-slate-700/50 rounded-xl">
+      <div class="p-3 sm:p-4 bg-gray-50 dark:bg-slate-700/50 rounded-xl">
         <div class="flex items-center justify-between mb-3">
           <div class="flex items-center gap-2">
             <div class="w-3 h-3 rounded-full" :class="healthData.redis?.status === 'healthy' ? 'bg-green-500' : 'bg-yellow-500'"></div>
@@ -83,7 +83,7 @@
       </div>
 
       <!-- Queue Workers -->
-      <div class="p-4 bg-gray-50 dark:bg-slate-700/50 rounded-xl">
+      <div class="p-3 sm:p-4 bg-gray-50 dark:bg-slate-700/50 rounded-xl">
         <div class="flex items-center justify-between mb-3">
           <div class="flex items-center gap-2">
             <div class="w-3 h-3 rounded-full" :class="getQueueHealthColor()"></div>
@@ -115,7 +115,7 @@
       </div>
 
       <!-- Disk Space -->
-      <div class="p-4 bg-gray-50 dark:bg-slate-700/50 rounded-xl">
+      <div class="p-3 sm:p-4 bg-gray-50 dark:bg-slate-700/50 rounded-xl">
         <div class="flex items-center justify-between mb-3">
           <div class="flex items-center gap-2">
             <div class="w-3 h-3 rounded-full" :class="getDiskHealthColor(healthData.disk?.usedPercentage)"></div>
@@ -147,15 +147,15 @@
       </div>
 
       <!-- System Uptime -->
-      <div class="mt-4 p-4 bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl border border-green-200">
-        <div class="flex items-center justify-between">
-          <div>
-            <p class="text-sm font-medium text-green-700 mb-1">System Uptime</p>
-            <p class="text-2xl font-bold text-green-900">{{ healthData.uptime?.percentage || '0.0' }}%</p>
+      <div class="mt-4 p-3 sm:p-4 bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl border border-green-200">
+        <div class="flex items-center justify-between gap-2">
+          <div class="min-w-0">
+            <p class="text-sm font-medium text-green-700 mb-1 truncate">System Uptime</p>
+            <p class="text-xl sm:text-2xl font-bold text-green-900">{{ healthData.uptime?.percentage || '0.0' }}%</p>
           </div>
-          <div class="text-right">
-            <p class="text-xs text-green-600">{{ healthData.uptime?.duration || 'Loading...' }}</p>
-            <p class="text-xs text-green-600 mt-1">Last restart: {{ healthData.uptime?.lastRestart || 'Loading...' }}</p>
+          <div class="text-right flex-shrink-0">
+            <p class="text-xs text-green-600 truncate">{{ healthData.uptime?.duration || 'Loading...' }}</p>
+            <p class="text-xs text-green-600 mt-1 truncate">Last restart: {{ healthData.uptime?.lastRestart || 'Loading...' }}</p>
           </div>
         </div>
       </div>
@@ -164,7 +164,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import axios from 'axios'
 
 const api = axios
@@ -177,8 +177,6 @@ const healthData = ref({
   disk: { total: 0, available: 0, usedPercentage: 0 },
   uptime: { percentage: 0, duration: 'Loading...', lastRestart: 'Loading...' }
 })
-
-let refreshInterval = null
 
 const overallHealthStatus = computed(() => {
   const statuses = [
@@ -265,13 +263,5 @@ const fetchHealthData = async (showLoading = false) => {
 
 onMounted(() => {
   fetchHealthData(true) // Show loading on initial load
-  // Refresh every 15 seconds in background
-  refreshInterval = setInterval(() => fetchHealthData(false), 15000)
-})
-
-onUnmounted(() => {
-  if (refreshInterval) {
-    clearInterval(refreshInterval)
-  }
 })
 </script>

@@ -189,10 +189,34 @@ class PurchaseController extends Controller
             'amount' => 'required|numeric|min:1',
             'phone_number' => 'required|string|regex:/^\+254[0-9]{9}$/',
         ]);
-    
+
         try {
             $user = $request->user();
-            
+
+            // IDEMPOTENCY CHECK: Prevent duplicate top-up attempts from double-clicks
+            $recentPendingTopup = Payment::where('user_id', $user->id)
+                ->where('phone_number', $request->phone_number)
+                ->where('status', 'pending')
+                ->where('payment_method', 'mpesa')
+                ->whereNull('package_id') // Top-ups don't have package_id
+                ->where('created_at', '>', now()->subMinutes(2))
+                ->first();
+
+            if ($recentPendingTopup) {
+                Log::info('Duplicate top-up attempt blocked - recent pending payment exists', [
+                    'user_id' => $user->id,
+                    'phone_number' => $request->phone_number,
+                    'existing_payment_id' => $recentPendingTopup->id,
+                ]);
+
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Top-up already initiated - please complete the payment on your phone',
+                    'checkout_request_id' => $recentPendingTopup->transaction_id,
+                    'payment_id' => $recentPendingTopup->id,
+                ]);
+            }
+
             // Initiate M-Pesa STK Push
             $mpesaService = app(MpesaService::class);
             $stkResponse = $mpesaService->initiateSTKPush(

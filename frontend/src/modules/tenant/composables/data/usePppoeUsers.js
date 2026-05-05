@@ -33,7 +33,11 @@ export function usePppoeUsers() {
     try {
       const response = await axios.post('/pppoe/users', userData)
       const createdUser = response.data?.data
-      // List refresh is handled by WebSocket PppoeUserCreated event
+
+      // Optimistically add to the local list immediately for better UX
+      if (createdUser) {
+        users.value.unshift(createdUser)
+      }
 
       return {
         user: createdUser,
@@ -55,7 +59,14 @@ export function usePppoeUsers() {
     try {
       const response = await axios.put(`/pppoe/users/${userId}`, userData)
       const updatedUser = response.data?.data
-      // List refresh is handled by WebSocket PppoeUserUpdated event
+
+      // Optimistically update the local list immediately for better UX
+      if (updatedUser) {
+        const index = users.value.findIndex(u => u.id === userId)
+        if (index !== -1) {
+          users.value.splice(index, 1, { ...users.value[index], ...updatedUser })
+        }
+      }
 
       return updatedUser
     } catch (err) {
@@ -135,8 +146,22 @@ export function usePppoeUsers() {
       }
     }
     
-    if (typeof window === 'undefined' || !tenantId || !window.Echo) {
-      console.warn('WebSocket not available or no tenant context')
+    if (typeof window === 'undefined' || !tenantId) {
+      return
+    }
+
+    if (!window.Echo) {
+      // Echo initialises asynchronously — retry up to 5× with 500 ms delay
+      let attempts = 0
+      const retry = setInterval(() => {
+        attempts++
+        if (window.Echo) {
+          clearInterval(retry)
+          subscribeToWebSocket()
+        } else if (attempts >= 5) {
+          clearInterval(retry)
+        }
+      }, 500)
       return
     }
     

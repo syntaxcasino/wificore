@@ -219,9 +219,8 @@ const {
   loading, error, users, selectedUser, showDetailsOverlay,
   totalOnline, hotspotCount, pppoeCount,
   getUserInitials, formatBytes, formatDuration, formatTime, formatDateTime,
-  fetchUsers, viewUserDetails, closeDetailsOverlay, disconnectUser, exportData,
-  startAutoRefresh, stopAutoRefresh
-} = useOnlineUsers(15000)
+  fetchUsers, viewUserDetails, closeDetailsOverlay, disconnectUser, exportData
+} = useOnlineUsers()
 
 const searchQuery = ref('')
 const currentPage = ref(1)
@@ -260,5 +259,5 @@ const hasActiveFilters = computed(() => filters.value.type || filters.value.pack
 const clearFilters = () => { filters.value = { type: '', package: '' }; searchQuery.value = '' }
 const handleExport = () => exportData(filteredData.value)
 
-onMounted(() => { fetchUsers(); startAutoRefresh() })
+onMounted(() => { fetchUsers() })
 </script>

@@ -2,3 +2,4 @@
 export { useBroadcasting } from './useBroadcasting'
 export { usePaymentWebSocket } from './usePaymentWebSocket'
 export { useRouterProvisioning } from './useRouterProvisioning'
+export { useSSE } from './useSSE'

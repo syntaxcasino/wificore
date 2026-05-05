@@ -111,6 +111,9 @@ class PppoeSessionController extends Controller
                 }
             }
 
+            // Deduplicate: keep only the most-recent session per username (rows ordered DESC already)
+            $rows = $rows->groupBy('username')->map(fn($group) => $group->first())->values();
+
             $usernames = $rows->pluck('username')->filter()->unique()->values()->all();
 
             // Fetch live metrics from VictoriaMetrics for these users
@@ -134,8 +137,10 @@ class PppoeSessionController extends Controller
                 // Use live metrics if available, otherwise fallback to accounting
                 $input = $metrics['input_octets'] ?? (int) ($row->acctinputoctets ?? 0);
                 $output = $metrics['output_octets'] ?? (int) ($row->acctoutputoctets ?? 0);
-                $downloadRate = $metrics['download_rate'] ?? 0;
-                $uploadRate = $metrics['upload_rate'] ?? 0;
+                // Return null for rates when metrics unavailable (frontend shows "N/A" instead of "0 B/s")
+                $hasMetrics = isset($metrics['download_rate']) || isset($metrics['upload_rate']);
+                $downloadRate = $hasMetrics ? ($metrics['download_rate'] ?? null) : null;
+                $uploadRate = $hasMetrics ? ($metrics['upload_rate'] ?? null) : null;
 
                 $profileId = $pkg?->id ? (string) $pkg->id : null;
                 $profileName = $pkg?->name ? (string) $pkg->name : 'N/A';
@@ -269,6 +274,180 @@ class PppoeSessionController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to load PPPoE sessions: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function inactive(Request $request)
+    {
+        $tenantId = $request->user()->tenant_id;
+        $perPage  = min((int) $request->query('per_page', 200), 1000);
+        $page     = max(1, (int) $request->query('page', 1));
+        $search   = trim((string) $request->query('search', ''));
+
+        try {
+            $rows    = collect();
+            $total   = 0;
+            $source  = 'none';
+
+            $tenantSchemaExists = Schema::hasTable('radacct');
+
+            if ($tenantSchemaExists) {
+                $q = DB::table('radacct')
+                    ->select([
+                        'acctsessionid',
+                        'acctuniqueid',
+                        'username',
+                        'acctstarttime',
+                        'acctstoptime',
+                        'acctsessiontime',
+                        'acctinputoctets',
+                        'acctoutputoctets',
+                        'framedipaddress',
+                        'callingstationid',
+                        'nasipaddress',
+                        'acctterminatecause',
+                    ])
+                    ->whereNotNull('acctstoptime');
+
+                if ($search !== '') {
+                    $q->where(function ($sub) use ($search) {
+                        $sub->where('username', 'ilike', "%{$search}%")
+                            ->orWhere('framedipaddress', 'ilike', "%{$search}%")
+                            ->orWhere('callingstationid', 'ilike', "%{$search}%");
+                    });
+                }
+
+                $total = $q->count();
+                $rows  = $q->orderByDesc('acctstoptime')
+                    ->offset(($page - 1) * $perPage)
+                    ->limit($perPage)
+                    ->get();
+
+                if ($rows->isNotEmpty()) {
+                    $source = 'tenant_radacct';
+                }
+            }
+
+            if ($rows->isEmpty()) {
+                $publicRadacctExists = (bool) (DB::selectOne("SELECT to_regclass('public.radacct') AS t")->t ?? null);
+
+                if ($publicRadacctExists) {
+                    $tenantUsernames = PppoeUser::query()
+                        ->select('username')
+                        ->pluck('username')
+                        ->filter()
+                        ->unique()
+                        ->values()
+                        ->all();
+
+                    if (!empty($tenantUsernames)) {
+                        $q = DB::table('public.radacct')
+                            ->select([
+                                'acctsessionid',
+                                'acctuniqueid',
+                                'username',
+                                'acctstarttime',
+                                'acctstoptime',
+                                'acctsessiontime',
+                                'acctinputoctets',
+                                'acctoutputoctets',
+                                'framedipaddress',
+                                'callingstationid',
+                                'nasipaddress',
+                                'acctterminatecause',
+                            ])
+                            ->whereNotNull('acctstoptime')
+                            ->whereIn('username', $tenantUsernames);
+
+                        if ($search !== '') {
+                            $q->where(function ($sub) use ($search) {
+                                $sub->where('username', 'ilike', "%{$search}%")
+                                    ->orWhere('framedipaddress', 'ilike', "%{$search}%")
+                                    ->orWhere('callingstationid', 'ilike', "%{$search}%");
+                            });
+                        }
+
+                        $total = $q->count();
+                        $rows  = $q->orderByDesc('acctstoptime')
+                            ->offset(($page - 1) * $perPage)
+                            ->limit($perPage)
+                            ->get();
+
+                        if ($rows->isNotEmpty()) {
+                            $source = 'public_radacct';
+                        }
+                    }
+                }
+            }
+
+            $usernames = $rows->pluck('username')->filter()->unique()->values()->all();
+
+            $pppoeUsersByUsername = PppoeUser::query()
+                ->whereIn('username', $usernames)
+                ->with(['package:id,name', 'router:id,name'])
+                ->get()
+                ->keyBy('username');
+
+            $data = $rows->map(function ($row) use ($pppoeUsersByUsername) {
+                $username   = (string) ($row->username ?? '');
+                $pppoeUser  = $pppoeUsersByUsername->get($username);
+                $pkg        = $pppoeUser?->package;
+                $routerName = $pppoeUser?->router?->name ? (string) $pppoeUser->router->name : null;
+                $routerId   = $pppoeUser?->router?->id ? (string) $pppoeUser->router->id : null;
+
+                $duration = (int) ($row->acctsessiontime ?? 0);
+
+                return [
+                    'id'                  => (string) ($row->acctuniqueid ?? $row->acctsessionid ?? $username),
+                    'acct_session_id'     => $row->acctsessionid ?? null,
+                    'acct_unique_id'      => $row->acctuniqueid ?? null,
+                    'username'            => $username,
+                    'type'                => 'pppoe',
+                    'router_id'           => $routerId,
+                    'router_name'         => $routerName,
+                    'user'                => [
+                        'phone' => $pppoeUser?->customer_phone ?? null,
+                    ],
+                    'framed_ip'           => $row->framedipaddress ?? null,
+                    'ip_address'          => $row->framedipaddress ?? null,
+                    'calling_station_id'  => $row->callingstationid ?? null,
+                    'mac_address'         => $row->callingstationid ?? null,
+                    'nas_ip_address'      => $row->nasipaddress ?? null,
+                    'profile'             => [
+                        'id'   => $pkg?->id ? (string) $pkg->id : null,
+                        'name' => $pkg?->name ?? 'N/A',
+                    ],
+                    'start_time'          => $row->acctstarttime ?? null,
+                    'connected_at'        => $row->acctstarttime ?? null,
+                    'stop_time'           => $row->acctstoptime ?? null,
+                    'disconnected_at'     => $row->acctstoptime ?? null,
+                    'duration'            => $duration,
+                    'uptime'              => $duration,
+                    'input_octets'        => (int) ($row->acctinputoctets ?? 0),
+                    'output_octets'       => (int) ($row->acctoutputoctets ?? 0),
+                    'terminate_cause'     => $row->acctterminatecause ?? null,
+                ];
+            })->values();
+
+            return response()->json([
+                'success'    => true,
+                'data'       => $data,
+                'total'      => $total,
+                'page'       => $page,
+                'per_page'   => $perPage,
+                'last_page'  => (int) ceil($total / max(1, $perPage)),
+                'source'     => $source,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to fetch inactive PPPoE sessions', [
+                'tenant_id' => $tenantId,
+                'error'     => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to load inactive sessions: ' . $e->getMessage(),
             ], 500);
         }
     }

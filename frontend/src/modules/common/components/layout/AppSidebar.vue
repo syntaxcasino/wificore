@@ -48,40 +48,18 @@
 
         <!-- Hotspot (tenant-only) -->
         <div v-if="!isSystemAdmin">
-          <button
-            @click="toggleMenu('hotspot')"
+          <router-link
+            to="/dashboard/hotspot/users"
             class="w-full flex items-center justify-between py-2 px-3 rounded-md hover:bg-gray-800/60 transition-all duration-150"
-            :class="(route.path.includes('/hotspot') && !route.path.includes('/hotspot/vouchers')) ? 'bg-gray-800/80 text-white font-medium' : 'text-gray-400'"
+            :class="route.path.includes('/hotspot') ? 'bg-gray-800/80 text-white font-medium' : 'text-gray-400'"
+            @click="isMobile && $emit('close-sidebar')"
           >
             <span class="flex items-center gap-2.5">
               <Radio class="w-4 h-4 flex-shrink-0" :class="route.path.includes('/hotspot') ? 'text-green-400' : ''" />
               <span class="text-sm">Hotspot</span>
             </span>
-            <div class="flex items-center gap-2">
-              <span v-if="hotspotUsersCount > 0" class="px-1.5 py-0.5 text-[9px] font-bold rounded-full bg-blue-500 text-white min-w-[16px] text-center">{{ hotspotUsersCount }}</span>
-              <ChevronDown class="w-3 h-3 transition-transform" :class="activeMenu === 'hotspot' ? 'rotate-180' : ''" />
-            </div>
-          </button>
-          <div v-show="activeMenu === 'hotspot'" class="ml-6 mt-1 space-y-0.5">
-            <router-link
-              to="/dashboard/hotspot/users"
-              class="flex items-center justify-between py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
-              :class="route.path === '/dashboard/hotspot/users' ? 'text-white font-medium' : 'text-gray-500'"
-              @click="isMobile && $emit('close-sidebar')"
-            >
-              <span>All Users</span>
-              <span v-if="hotspotUsersCount > 0" class="px-1.5 py-0.5 text-[9px] font-bold rounded-full bg-blue-500 text-white min-w-[16px] text-center">{{ hotspotUsersCount }}</span>
-            </router-link>
-            <router-link
-              to="/dashboard/hotspot/sessions"
-              class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
-              :class="route.path === '/dashboard/hotspot/sessions' ? 'text-white font-medium' : 'text-gray-500'"
-              @click="isMobile && $emit('close-sidebar')"
-            >
-              <span>Active Sessions</span>
-              <span v-if="hotspotSessionsCount > 0" class="px-1.5 py-0.5 text-[9px] font-bold rounded-full bg-green-500 text-white min-w-[16px] text-center">{{ hotspotSessionsCount }}</span>
-            </router-link>
-          </div>
+            <span v-if="hotspotUsersCount > 0" class="px-1.5 py-0.5 text-[9px] font-bold rounded-full bg-blue-500 text-white min-w-[16px] text-center">{{ hotspotUsersCount }}</span>
+          </router-link>
         </div>
 
         <!-- Divider -->
@@ -89,40 +67,18 @@
 
         <!-- PPPoE (tenant-only) -->
         <div v-if="!isSystemAdmin">
-          <button
-            @click="toggleMenu('pppoe')"
+          <router-link
+            to="/dashboard/pppoe/users"
             class="w-full flex items-center justify-between py-2 px-3 rounded-md hover:bg-gray-800/60 transition-all duration-150"
             :class="route.path.includes('/pppoe') ? 'bg-gray-800/80 text-white font-medium' : 'text-gray-400'"
+            @click="isMobile && $emit('close-sidebar')"
           >
             <span class="flex items-center gap-2.5">
               <Cable class="w-4 h-4 flex-shrink-0" :class="route.path.includes('/pppoe') ? 'text-green-400' : ''" />
               <span class="text-sm">PPP</span>
-            </span>    
-            <div class="flex items-center gap-2">
-              <span v-if="pppoeUsersCount > 0" class="px-1.5 py-0.5 text-[9px] font-bold rounded-full bg-purple-500 text-white min-w-[16px] text-center">{{ pppoeUsersCount }}</span>
-              <ChevronDown class="w-3 h-3 transition-transform" :class="activeMenu === 'pppoe' ? 'rotate-180' : ''" />
-            </div>
-          </button>
-          <div v-show="activeMenu === 'pppoe'" class="ml-6 mt-1 space-y-0.5">
-            <router-link
-              to="/dashboard/pppoe/users"
-              class="flex items-center justify-between py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
-              :class="route.path === '/dashboard/pppoe/users' ? 'text-white font-medium' : 'text-gray-500'"
-              @click="isMobile && $emit('close-sidebar')"
-            >
-              <span>PPPoE Users</span>
-              <span v-if="pppoeUsersCount > 0" class="px-1.5 py-0.5 text-[9px] font-bold rounded-full bg-purple-500 text-white min-w-[16px] text-center">{{ pppoeUsersCount }}</span>
-            </router-link>
-            <router-link
-              to="/dashboard/pppoe/sessions"
-              class="flex items-center justify-between py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
-              :class="route.path === '/dashboard/pppoe/sessions' ? 'text-white font-medium' : 'text-gray-500'"
-              @click="isMobile && $emit('close-sidebar')"
-            >
-              <span>Active Sessions</span>
-              <span v-if="pppoeSessionsCount > 0" class="px-1.5 py-0.5 text-[9px] font-bold rounded-full bg-green-500 text-white min-w-[16px] text-center">{{ pppoeSessionsCount }}</span>
-            </router-link>
-          </div>
+            </span>
+            <span v-if="pppoeUsersCount > 0" class="px-1.5 py-0.5 text-[9px] font-bold rounded-full bg-purple-500 text-white min-w-[16px] text-center">{{ pppoeUsersCount }}</span>
+          </router-link>
         </div>
 
         <!-- Divider -->
@@ -576,7 +532,6 @@ const activeMenuStorageKey = 'wificore.sidebar.activeMenu'
 // Badge counts
 const todosCount = ref(0)
 const hotspotUsersCount = ref(0)
-const hotspotSessionsCount = ref(0)
 const pppoeUsersCount = ref(0)
 const pppoeSessionsCount = ref(0)
 
@@ -616,7 +571,6 @@ const fetchBadgeCounts = async () => {
   try {
     todosCount.value = authStore.user?.pending_todos || 0
     hotspotUsersCount.value = authStore.stats?.hotspot_users || 0
-    hotspotSessionsCount.value = authStore.stats?.hotspot_sessions || 0
     pppoeUsersCount.value = authStore.stats?.pppoe_users || 0
     pppoeSessionsCount.value = authStore.stats?.pppoe_sessions || 0
   } catch (error) {

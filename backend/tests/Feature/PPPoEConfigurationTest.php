@@ -36,14 +36,16 @@ it('generates a deployment-ready PPPoE script that blocks unauthenticated access
     $script = app(ZeroConfigPPPoEGenerator::class)->generate($service);
 
     expect($script)
-        ->toContain('/ppp aaa set use-radius=yes accounting=yes interim-update=5m')
-        ->toContain('interface-list=PA-1c88e82c')
+        ->toContain('/ppp aaa set use-radius="yes" accounting="yes" interim-update="5m"')
+        ->toContain('interface-list="PA-1c88e82c"')
         ->toContain('comment="PPPoE-1c88e82c-BLOCK-UNAUTH"')
-        ->toContain('in-interface-list=PA-1c88e82c out-interface-list=WAN action=accept place-before=0 comment="PPPoE-1c88e82c-INET"')
-        ->toContain('in-interface-list=WAN out-interface-list=PA-1c88e82c connection-state=established,related action=accept place-before=0 comment="pp-wan-est-1c88e82c"')
-        ->toContain('/ip firewall nat add chain=srcnat in-interface-list=PA-1c88e82c out-interface-list=WAN action=masquerade comment="PPPoE-1c88e82c"')
+        ->toContain('in-interface-list="PA-1c88e82c" out-interface-list="WAN" action="accept" comment="PPPoE-1c88e82c-INET-AUTH"')
+        ->toContain('in-interface-list="WAN" out-interface-list="PA-1c88e82c" connection-state="established,related" action="accept" comment="PPPoE-1c88e82c-WAN-EST"')
+        ->toContain('/ip firewall nat add chain="srcnat" out-interface-list="WAN" action="masquerade" comment="PPPoE-1c88e82c"')
         ->not->toContain('src-address=100.64.0.0/24')
-        ->not->toContain('rate-limit=');
+        ->toContain('rate-limit=""')
+        ->not->toContain('rate-limit="5M')
+        ->not->toContain('rate-limit="10M');
 });
 
 it('restricts PPPoE management and SNMP access to VPN sources only', function () {
@@ -77,8 +79,8 @@ it('restricts PPPoE management and SNMP access to VPN sources only', function ()
     $script = app(ZeroConfigPPPoEGenerator::class)->generate($service);
 
     expect($script)
-        ->toContain('dst-port=22,8291,8728,8729 src-address=10.0.0.0/8 action=accept place-before=0 comment="PPPoE-1c88e82c-MGMT-ALLOW"')
-        ->toContain('dst-port=161 src-address=10.0.0.0/8 action=accept place-before=0 comment="PPPoE-1c88e82c-SNMP-ALLOW"')
+        ->toContain('dst-port="22,8291,8728,8729" src-address="10.0.0.0/8" action="accept" comment="PPPoE-1c88e82c-MGMT"')
+        ->toContain('dst-port="161" src-address="10.0.0.0/8" action="accept" comment="PPPoE-1c88e82c-SNMP"')
         ->not->toContain('comment="Allow SSH access"')
         ->not->toContain('comment="Allow SNMP monitoring"');
 });

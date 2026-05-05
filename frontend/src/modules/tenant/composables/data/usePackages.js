@@ -68,13 +68,19 @@ export function usePackages() {
     try {
       const response = await axios.post('/packages', formData.value)
       const msg = response.data?.message || 'Package created successfully'
+      const newPackage = response.data?.data
       formMessage.value = { text: msg, type: 'success' }
       formSubmitted.value = true
+
+      // Optimistically add to the local list immediately for better UX
+      if (newPackage) {
+        packages.value.unshift(newPackage)
+      }
+
       setTimeout(() => {
         showFormOverlay.value = false
         formSubmitted.value = false
         resetFormData()
-        // List refresh is handled by WebSocket PackageCreated event
       }, 1500)
     } catch (err) {
       formMessage.value = {
@@ -100,9 +106,17 @@ export function usePackages() {
     try {
       const response = await axios.put(`/packages/${selectedPackage.value.id}`, formData.value)
       const msg = response.data?.message || 'Package updated successfully'
+      const updatedPkg = response.data?.data
       formMessage.value = { text: msg, type: 'success' }
       showUpdateOverlay.value = false
-      // List refresh is handled by WebSocket PackageUpdated event
+
+      // Optimistically update the local list immediately for better UX
+      if (updatedPkg) {
+        const index = packages.value.findIndex(p => p.id === updatedPkg.id)
+        if (index !== -1) {
+          packages.value.splice(index, 1, { ...packages.value[index], ...updatedPkg })
+        }
+      }
     } catch (err) {
       formMessage.value = {
         text: err.response?.data?.error || err.response?.data?.message || 'Failed to update package',
@@ -117,7 +131,8 @@ export function usePackages() {
   const deletePackage = async (id) => {
     try {
       await axios.delete(`/packages/${id}`)
-      // List refresh is handled by WebSocket PackageDeleted event
+      // Optimistically remove from the local list immediately for better UX
+      packages.value = packages.value.filter(p => p.id !== id)
     } catch (err) {
       console.error('deletePackage error:', err.message, err.response?.data)
       throw err
@@ -138,13 +153,21 @@ export function usePackages() {
     try {
       const newStatus = pkg.status === 'active' ? 'inactive' : 'active'
       const newIsActive = !pkg.is_active
-      
-      await axios.put(`/packages/${pkg.id}`, {
+
+      const response = await axios.put(`/packages/${pkg.id}`, {
         ...pkg,
         status: newStatus,
         is_active: newIsActive
       })
-      // UI update is handled by WebSocket PackageUpdated event
+
+      // Optimistically update the local list immediately for better UX
+      const updatedPkg = response.data?.data
+      if (updatedPkg) {
+        const index = packages.value.findIndex(p => p.id === updatedPkg.id)
+        if (index !== -1) {
+          packages.value.splice(index, 1, { ...packages.value[index], ...updatedPkg })
+        }
+      }
     } catch (err) {
       console.error('toggleStatus error:', err.message, err.response?.data)
       throw err

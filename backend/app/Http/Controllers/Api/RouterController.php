@@ -14,6 +14,8 @@ use App\Services\RouterMetricsService;
 use App\Services\TenantContext;
 use App\Services\TenantMigrationManager;
 use App\Services\VictoriaMetricsClient;
+use App\Models\SystemLog;
+use App\Services\AuditLogService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -291,6 +293,15 @@ class RouterController extends Controller
             'port' => $router->port,
         ]);
 
+        AuditLogService::logRouterEvent(
+            'router_created',
+            (string) $router->id,
+            'info',
+            ['name' => $router->name, 'ip_address' => $router->ip_address, 'vpn_ip' => $vpnConfig->client_ip],
+            "Router '{$router->name}' created with VPN configuration",
+            (string) $router->tenant_id
+        );
+
         // Generate sanitized script for UI display (hides secrets)
         $sanitizedScript = $this->generateSanitizedScript($router, $connectivityScript);
 
@@ -502,6 +513,15 @@ class RouterController extends Controller
                 event(new \App\Events\RouterUpdated($router->toArray(), (string) $tenantId));
             }
 
+            AuditLogService::logRouterEvent(
+                'router_updated',
+                (string) $router->id,
+                'info',
+                ['name' => $router->name, 'ip_address' => $router->ip_address],
+                "Router '{$router->name}' settings updated",
+                (string) $router->tenant_id
+            );
+
             Log::info('Router updated successfully:', [
                 'router_id' => $router->id,
                 'name' => $router->name,
@@ -521,8 +541,18 @@ class RouterController extends Controller
     public function destroy(Router $router)
     {
         try {
+            $routerId = (string) $router->id;
+            $routerName = $router->name;
+            AuditLogService::logRouterEvent(
+                'router_deleted',
+                $routerId,
+                'warning',
+                ['name' => $routerName],
+                "Router '{$routerName}' deleted",
+                (string) $router->tenant_id
+            );
             $router->delete();
-            Log::info('Router deleted successfully:', ['router_id' => $router->id]);
+            Log::info('Router deleted successfully:', ['router_id' => $routerId]);
             return response()->json(['message' => 'Router deleted successfully']);
         } catch (\Exception $e) {
             Log::error('Failed to delete router: ' . $e->getMessage(), [
@@ -933,6 +963,15 @@ class RouterController extends Controller
                     ]
                 );
 
+                AuditLogService::logRouterEvent(
+                    'service_config_generated',
+                    (string) $router->id,
+                    'info',
+                    ['service_type' => $validated['service_type'] ?? 'unknown'],
+                    "Service configuration generated for router '{$router->name}'",
+                    (string) $router->tenant_id
+                );
+
                 Log::info('Service configuration saved', [
                     'router_id' => $router->id,
                     'script_length' => strlen($result['service_script']),
@@ -999,6 +1038,15 @@ class RouterController extends Controller
             // Dispatch the provisioning job
             $tenantId = auth()->user()->tenant_id;
             \App\Jobs\RouterProvisioningJob::dispatch($router->id, $tenantId, $provisioningData);
+
+            AuditLogService::logRouterEvent(
+                'provisioning_started',
+                (string) $router->id,
+                'info',
+                ['service_type' => $validated['service_type'] ?? 'unknown', 'tenant_id' => $tenantId],
+                "Provisioning started for router '{$router->name}'",
+                (string) $router->tenant_id
+            );
 
             Log::info('Provisioning job dispatched', [
                 'router_id' => $router->id,
@@ -1905,5 +1953,62 @@ EOT;
         }
 
         return $ipList;
+    }
+
+    /**
+     * Get device events for a specific router
+     */
+    public function getRouterEvents(Router $router, Request $request)
+    {
+        try {
+            $perPage = min((int) $request->input('per_page', 25), 100);
+            $level = $request->input('level');
+            $days = (int) $request->input('days', 30);
+
+            $baseQuery = SystemLog::withoutGlobalScopes()
+                ->where('entity_type', 'router')
+                ->where('entity_id', (string) $router->id)
+                ->where('tenant_id', (string) $router->tenant_id)
+                ->where('created_at', '>=', now()->subDays($days));
+
+            $query = (clone $baseQuery)->with('user:id,name,email');
+
+            if ($level && in_array($level, ['info', 'warning', 'error', 'critical'])) {
+                $query->where('level', $level);
+            }
+
+            $events = $query->orderByDesc('created_at')->paginate($perPage);
+
+            $counts = (clone $baseQuery)
+                ->selectRaw("level, COUNT(*) as count")
+                ->groupBy('level')
+                ->pluck('count', 'level');
+
+            $last24hCount = SystemLog::withoutGlobalScopes()
+                ->where('entity_type', 'router')
+                ->where('entity_id', (string) $router->id)
+                ->where('tenant_id', (string) $router->tenant_id)
+                ->where('created_at', '>=', now()->subDay())
+                ->count();
+
+            return response()->json([
+                'success' => true,
+                'events' => $events,
+                'summary' => [
+                    'total' => $counts->sum(),
+                    'critical' => $counts->get('critical', 0),
+                    'error' => $counts->get('error', 0),
+                    'warning' => $counts->get('warning', 0),
+                    'info' => $counts->get('info', 0),
+                    'last_24h' => $last24hCount,
+                ],
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to fetch router events', [
+                'router_id' => $router->id,
+                'error' => $e->getMessage(),
+            ]);
+            return response()->json(['success' => false, 'error' => 'Failed to fetch events'], 500);
+        }
     }
 }

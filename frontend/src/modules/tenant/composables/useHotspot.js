@@ -131,6 +131,16 @@ export function useHotspot() {
         package_id: packageId,
       })
       
+      const updatedUser = response.data?.data
+      
+      // Optimistically update the local list immediately for better UX
+      if (updatedUser) {
+        const index = users.value.findIndex(u => u.id === userId)
+        if (index !== -1) {
+          users.value.splice(index, 1, { ...users.value[index], ...updatedUser })
+        }
+      }
+      
       return response.data
     } catch (err) {
       error.value = err.response?.data?.message || 'Failed to grant access'
@@ -147,6 +157,16 @@ export function useHotspot() {
         reason,
       })
       
+      const updatedUser = response.data?.data
+      
+      // Optimistically update the local list immediately for better UX
+      if (updatedUser) {
+        const index = users.value.findIndex(u => u.id === userId)
+        if (index !== -1) {
+          users.value.splice(index, 1, { ...users.value[index], ...updatedUser })
+        }
+      }
+      
       return response.data
     } catch (err) {
       error.value = err.response?.data?.message || 'Failed to revoke access'
@@ -160,9 +180,45 @@ export function useHotspot() {
   async function getUserDetails(userId) {
     try {
       const response = await axios.get(`/hotspot/users/${userId}`)
-      return response.data.data || response.data
+      return response.data.data?.user || response.data.data || response.data
     } catch (err) {
       error.value = err.response?.data?.message || 'Failed to fetch user details'
+      throw err
+    }
+  }
+
+  /**
+   * Create a new hotspot user (admin-initiated)
+   */
+  async function createUser(payload) {
+    try {
+      const response = await axios.post('/hotspot/users', payload)
+      const newUser = response.data?.data
+      if (newUser) {
+        users.value.unshift(newUser)
+        pagination.value.total += 1
+      }
+      return response.data
+    } catch (err) {
+      error.value = err.response?.data?.message || 'Failed to create hotspot user'
+      throw err
+    }
+  }
+
+  /**
+   * Update an existing hotspot user
+   */
+  async function updateUser(userId, payload) {
+    try {
+      const response = await axios.put(`/hotspot/users/${userId}`, payload)
+      const updated = response.data?.data
+      if (updated) {
+        const idx = users.value.findIndex(u => u.id === userId)
+        if (idx !== -1) users.value.splice(idx, 1, { ...users.value[idx], ...updated })
+      }
+      return response.data
+    } catch (err) {
+      error.value = err.response?.data?.message || 'Failed to update hotspot user'
       throw err
     }
   }
@@ -410,6 +466,8 @@ export function useHotspot() {
     grantAccess,
     revokeAccess,
     getUserDetails,
+    createUser,
+    updateUser,
     setPage,
     setPerPage,
     subscribeToWebSocket,

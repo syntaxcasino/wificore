@@ -18,9 +18,10 @@ class PppoeBillingLifecycleService
 
         $user->activateAfterPayment();
         $user->last_payment_date = $payment->payment_date ?? now();
-        $user->next_payment_due = $payment->period_end ?? now()->addDays(30);
-        $user->amount_paid = $payment->amount;
-        $user->payment_method = $payment->payment_method;
+        $user->next_payment_due  = $payment->period_end  ?? now()->addDays(30);
+        $user->expires_at        = $payment->period_end  ?? now()->addDays(30);
+        $user->amount_paid       = $payment->amount;
+        $user->payment_method    = $payment->payment_method;
         $user->payment_reference = $payment->payment_reference;
         $user->save();
 

@@ -1,9 +1,9 @@
-import { ref, computed, onUnmounted } from 'vue'
+import { ref, computed } from 'vue'
 import axios from 'axios'
 import { useToast } from '@/modules/common/composables/useToast.js'
 import { useConfirmStore } from '@/stores/confirm'
 
-export function useMpesaTransactions(autoRefreshMs = 30000) {
+export function useMpesaTransactions() {
   const { error: showError } = useToast()
   const confirmStore = useConfirmStore()
 
@@ -132,21 +132,10 @@ export function useMpesaTransactions(autoRefreshMs = 30000) {
     URL.revokeObjectURL(url)
   }
 
-  let refreshInterval
-  const startAutoRefresh = () => {
-    refreshInterval = setInterval(fetchTransactions, autoRefreshMs)
-  }
-  const stopAutoRefresh = () => {
-    if (refreshInterval) clearInterval(refreshInterval)
-  }
-
-  onUnmounted(stopAutoRefresh)
-
   return {
     loading, refreshing, error, transactions, stats,
     formatMoney, formatPhone, formatDateTime,
     getIconBg, getIconColor, getStatusBanner, getStatusMessage,
-    fetchTransactions, checkStatus, retryTransaction, exportTransactions,
-    startAutoRefresh, stopAutoRefresh
+    fetchTransactions, checkStatus, retryTransaction, exportTransactions
   }
 }

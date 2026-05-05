@@ -89,12 +89,27 @@ class MikroTikRestApiService implements MikroTikApiInterface
      */
     public function createBridge(string $name, ?string $comment = null): array
     {
+        // Check if bridge already exists
+        $response = $this->get('/interface/bridge/print', ['name' => $name]);
+        $bridges = $response->json();
+        
+        if (!empty($bridges)) {
+            // Bridge exists - update comment if provided
+            if ($comment && isset($bridges[0]['.id'])) {
+                return $this->post('/interface/bridge/set', [
+                    '.id' => $bridges[0]['.id'],
+                    'comment' => $comment,
+                ])->json();
+            }
+            return $bridges[0] ?? [];
+        }
+        
+        // Bridge doesn't exist - create it
         $data = ['name' => $name];
         if ($comment) {
             $data['comment'] = $comment;
         }
-
-        return $this->post('/interface/bridge/add', $data);
+        return $this->post('/interface/bridge/add', $data)->json();
     }
 
     /**
@@ -126,6 +141,32 @@ class MikroTikRestApiService implements MikroTikApiInterface
      */
     public function addBridgePort(string $bridge, string $interface, ?string $comment = null): array
     {
+        // Check if interface already has a bridge port entry
+        $response = $this->get('/interface/bridge/port/print', ['interface' => $interface]);
+        $ports = $response->json();
+        
+        if (!empty($ports)) {
+            // Interface already has a bridge port
+            $existingPort = $ports[0];
+            
+            // If already in the correct bridge, just update comment
+            if (isset($existingPort['bridge']) && $existingPort['bridge'] === $bridge) {
+                if ($comment && isset($existingPort['.id'])) {
+                    return $this->post('/interface/bridge/port/set', [
+                        '.id' => $existingPort['.id'],
+                        'comment' => $comment,
+                    ])->json();
+                }
+                return $existingPort;
+            }
+            
+            // Interface is in a different bridge - remove it first
+            if (isset($existingPort['.id'])) {
+                $this->post('/interface/bridge/port/remove', ['numbers' => $existingPort['.id']]);
+            }
+        }
+        
+        // Add the port to the bridge
         $data = [
             'bridge' => $bridge,
             'interface' => $interface,
@@ -133,8 +174,7 @@ class MikroTikRestApiService implements MikroTikApiInterface
         if ($comment) {
             $data['comment'] = $comment;
         }
-
-        return $this->post('/interface/bridge/port/add', $data);
+        return $this->post('/interface/bridge/port/add', $data)->json();
     }
 
     /**

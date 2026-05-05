@@ -267,47 +267,57 @@ class CheckRoutersJob implements ShouldQueue
             $previousVpnHandshake = $router->vpn_last_handshake;
 
             // Check if we have recent metrics data (from FetchRouterLiveData job)
-            // If metrics are being collected, the router is definitely online
+            // Metrics indicate API connectivity, but VPN handshake is the source of truth for status
             $lastChecked = $router->last_checked;
             $hasRecentMetrics = $lastChecked && $lastChecked->gt(now()->subMinutes(2));
             
-            if ($hasRecentMetrics && $previousStatus === 'online') {
-                // Metrics are flowing and router was recently online - trust metrics
-                // Skip the strict VPN handshake check to avoid false negatives
-                Log::withContext($context)->debug('Router has recent metrics, preserving online status', [
+            // Always perform VPN handshake check - this is the source of truth
+            $result = $statusCheckService->checkStatusOperational($router);
+            $isVpnActive = $result['online'] && $result['vpn_status'] === 'active';
+            
+            if ($hasRecentMetrics && $previousStatus === 'online' && $isVpnActive) {
+                // Both metrics AND VPN handshake confirm router is online
+                Log::withContext($context)->debug('Router has recent metrics and active VPN', [
                     'router_id' => $router->id,
                     'last_checked' => $lastChecked->toIso8601String(),
-                    'vpn_status' => $router->vpn_status,
+                    'vpn_status' => $result['vpn_status'],
+                    'handshake_age_seconds' => $result['handshake_age_seconds'] ?? null,
                 ]);
                 
-                // Still update VPN-specific fields from handshake check
-                // but don't override the online status if metrics prove connectivity
-                $result = $statusCheckService->checkStatusOperational($router);
-                
-                // Update VPN status fields without overriding online status from metrics
+                // Update VPN-specific fields
                 $router->update([
                     'last_checked' => now(),
                     'vpn_status' => $result['vpn_status'],
                     'vpn_last_handshake' => $result['handshake_at'] ?? null,
                 ]);
+
+                return; // Keep online status - both metrics and VPN confirm
+            }
+            
+            // If VPN is inactive but we have recent metrics, this indicates the WireGuard
+            // tunnel is down but API might still be reachable (rare edge case)
+            // Mark as offline since VPN is the primary connectivity mechanism
+            if (!$isVpnActive && $previousStatus === 'online') {
+                Log::withContext($context)->warning('Router VPN inactive despite metrics - marking offline', [
+                    'router_id' => $router->id,
+                    'vpn_status' => $result['vpn_status'],
+                    'has_recent_metrics' => $hasRecentMetrics,
+                    'handshake_age_seconds' => $result['handshake_age_seconds'] ?? null,
+                    'reason' => $result['reason'] ?? 'Unknown',
+                ]);
                 
-                // Only mark offline if BOTH metrics stopped AND VPN is inactive
-                if (!$result['online'] && $router->vpn_status === 'inactive') {
-                    // Check if metrics have been missing for a while (> 5 minutes)
-                    $metricsStale = !$lastChecked || $lastChecked->lt(now()->subMinutes(5));
-                    if ($metricsStale) {
-                        $status = 'offline';
-                        $this->markRouterOffline($router, $updatedStatuses, $context, $result['vpn_status'], $result['handshake_at'] ?? null);
-                        return;
-                    }
-                }
-                
-                return; // Keep current online status, metrics are flowing
+                $this->markRouterOffline(
+                    $router, 
+                    $updatedStatuses, 
+                    $context, 
+                    $result['vpn_status'], 
+                    $result['handshake_at'] ?? null
+                );
+                return;
             }
 
-            // No recent metrics - fall back to strict VPN handshake check
-            $result = $statusCheckService->checkStatusOperational($router);
-
+            // No recent metrics or not previously online - use VPN handshake as source of truth
+            // $result was already obtained at the start of this method
             $status = $result['online'] ? 'online' : 'offline';
             $vpnStatus = $result['vpn_status'];
             $latestHandshake = $result['handshake_at'] ?? null;

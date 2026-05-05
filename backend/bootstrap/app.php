@@ -22,6 +22,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'throttle.custom' => \App\Http\Middleware\ThrottleRequests::class,
             'ddos.protection' => \App\Http\Middleware\DDoSProtection::class,
             'subdomain.binding' => \App\Http\Middleware\EnforceSubdomainTenantBinding::class,
+            'sse.auth' => \App\Http\Middleware\AuthenticateSseToken::class,
         ]);
         
         // Apply DDoS protection and subdomain binding globally to API routes

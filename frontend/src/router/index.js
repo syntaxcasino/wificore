@@ -24,9 +24,6 @@ const LoginPageCustomization = () => import('@/modules/tenant/views/dashboard/ho
 
 // PPPoE
 const PPPoELayout = () => import('@/modules/tenant/views/dashboard/pppoe/PPPoELayout.vue')
-const RadiusProfiles = () => import('@/modules/tenant/views/dashboard/pppoe/RadiusProfiles.vue')
-const QueuesBandwidthControl = () => import('@/modules/tenant/views/dashboard/pppoe/QueuesBandwidthControl.vue')
-const AutoDisconnectRules = () => import('@/modules/tenant/views/dashboard/pppoe/AutoDisconnectRules.vue')
 
 // Billing
 const BillingLayout = () => import('@/modules/tenant/views/dashboard/billing/BillingLayout.vue')
@@ -218,6 +215,7 @@ const routes = [
         path: 'hotspot',
         component: HotspotLayout,
         children: [
+          { path: '', redirect: '/dashboard/hotspot/users' },
           { path: 'users', name: 'hotspot.users', component: () => import('@/modules/tenant/views/dashboard/hotspot/HotspotUsers.vue') },
           { path: 'sessions', name: 'hotspot.sessions', component: () => import('@/modules/tenant/views/dashboard/hotspot/ActiveSessionsNew.vue') },
           {
@@ -235,15 +233,6 @@ const routes = [
         component: PPPoELayout,
         children: [
           { path: 'users', name: 'pppoe.users', component: () => import('@/modules/tenant/views/dashboard/pppoe/PPPoEUsers.vue') },
-          { path: 'sessions', name: 'pppoe.sessions', component: () => import('@/modules/tenant/views/dashboard/pppoe/PPPoESessionsNew.vue') },
-          { path: 'add-user', name: 'pppoe.add-user', component: () => import('@/modules/tenant/views/dashboard/pppoe/PPPoEUsers.vue') },
-          { path: 'radius-profiles', name: 'pppoe.radius-profiles', component: RadiusProfiles },
-          { path: 'queues', name: 'pppoe.queues', component: QueuesBandwidthControl },
-          {
-            path: 'auto-disconnect',
-            name: 'pppoe.auto-disconnect',
-            component: AutoDisconnectRules,
-          },
         ],
       },
 

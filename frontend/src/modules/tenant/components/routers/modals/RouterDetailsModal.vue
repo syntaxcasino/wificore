@@ -4,7 +4,9 @@
     title="Router Details"
     :subtitle="routerDetails.name || 'Complete device information'"
     icon="Wifi"
-    width="50%"
+    width="70%"
+    gradient
+    no-padding
     @update:model-value="val => { if (!val) $emit('close-details') }"
     @close="$emit('close-details')"
   >
@@ -16,7 +18,7 @@
             class="w-12 h-12 border-[3px] border-t-blue-500 border-r-transparent border-b-blue-500 border-l-blue-500 rounded-full animate-spin absolute top-0"
           ></div>
         </div>
-        <p class="text-gray-500 font-medium">Loading router details...</p>
+        <p class="text-slate-500 font-medium">Loading router details...</p>
       </div>
 
       <!-- Error State -->
@@ -37,7 +39,7 @@
             />
           </svg>
         </div>
-        <p class="text-center text-gray-700 font-medium max-w-md">{{ error }}</p>
+        <p class="text-center text-slate-700 font-medium max-w-md">{{ error }}</p>
         <button
           type="button"
           @click="$emit('refresh-details')"
@@ -64,23 +66,65 @@
       </div>
 
       <!-- Main Content -->
-      <div v-else class="p-4 overflow-y-auto flex-1 bg-gray-50">
-        <!-- Status Indicator -->
-        <div class="flex items-center justify-between mb-6 p-4 bg-white rounded-xl shadow-sm">
-          <div class="flex items-center">
-            <div :class="statusClass" class="w-3 h-3 rounded-full mr-3"></div>
-            <span class="text-sm font-medium capitalize">{{
-              routerDetails.status || 'unknown'
-            }}</span>
+      <div v-else class="flex flex-col h-full overflow-hidden bg-slate-50">
+        <!-- Header strip -->
+        <div class="flex-shrink-0 bg-gradient-to-r from-purple-700 to-indigo-700 px-6 py-4">
+          <div class="flex items-center gap-4">
+            <div class="w-14 h-14 rounded-2xl bg-white/20 backdrop-blur flex items-center justify-center text-white text-xl font-bold shadow-lg flex-shrink-0">
+              {{ (routerDetails.name || 'R').charAt(0).toUpperCase() }}
+            </div>
+            <div class="flex-1 min-w-0">
+              <div class="text-lg font-bold text-white truncate">{{ routerDetails.name || 'Router' }}</div>
+              <div class="text-sm text-purple-200 font-mono mt-0.5">{{ routerDetails.ip_address || '—' }}</div>
+              <div class="flex items-center gap-2 mt-1.5">
+                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide"
+                  :class="routerDetails.status === 'online' ? 'bg-emerald-500/20 text-emerald-300' : routerDetails.status === 'rebooting' ? 'bg-amber-500/20 text-amber-300' : 'bg-rose-500/20 text-rose-300'">
+                  <span class="w-1.5 h-1.5 rounded-full mr-1" :class="statusClass"></span>
+                  {{ statusText }}
+                </span>
+                <span v-if="routerDetails.model" class="text-xs text-purple-200 bg-white/10 px-2 py-0.5 rounded-full">{{ routerDetails.model }}</span>
+              </div>
+            </div>
+            <!-- Quick stats -->
+            <div class="hidden md:flex items-center gap-4 flex-shrink-0">
+              <div class="text-center">
+                <div class="text-lg font-bold text-white">{{ routerDetails.uptime || '—' }}</div>
+                <div class="text-[10px] text-purple-300 uppercase tracking-wide">Uptime</div>
+              </div>
+              <div class="text-center">
+                <div class="text-lg font-bold text-white">{{ (routerDetails.resources?.cpu_load || routerDetails.live_data?.cpu_load || 0) }}%</div>
+                <div class="text-[10px] text-purple-300 uppercase tracking-wide">CPU</div>
+              </div>
+            </div>
           </div>
-          <span class="text-xs px-2 py-1 rounded-full" :class="statusBadgeClass">{{
-            statusText
-          }}</span>
+
+          <!-- Tabs -->
+          <div class="flex gap-1 mt-4 bg-white/10 rounded-xl p-1">
+            <button
+              v-for="tab in tabs"
+              :key="tab.id"
+              @click="activeTab = tab.id"
+              class="flex-1 flex items-center justify-center gap-1.5 py-1.5 text-xs font-semibold rounded-lg transition-all relative"
+              :class="activeTab === tab.id ? 'bg-white text-purple-700 shadow-sm' : 'text-purple-200 hover:text-white hover:bg-white/10'"
+            >
+              <svg v-if="tab.id === 'system'" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+              <svg v-else-if="tab.id === 'events'" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+              <svg v-else-if="tab.id === 'reports'" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+              <svg v-else-if="tab.id === 'users'" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
+              <svg v-else-if="tab.id === 'payments'" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+              <svg v-else-if="tab.id === 'backups'" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" /></svg>
+              <svg v-else-if="tab.id === 'config'" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+              {{ tab.label }}
+            </button>
+          </div>
         </div>
 
+        <!-- Tab Content -->
+        <div class="flex-1 overflow-y-auto min-h-0 p-6">
+
         <!-- VPN Status Card -->
-        <div class="mb-6 bg-white p-5 rounded-xl shadow-sm">
-          <h4 class="text-sm font-semibold text-gray-700 mb-4 flex items-center">
+        <div v-show="activeTab === 'system'" class="mb-6 bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+          <h4 class="text-sm font-semibold text-slate-700 mb-4 flex items-center">
             <svg
               xmlns="http://www.w3.org/2000/svg"
               class="h-4 w-4 mr-2 text-emerald-500"
@@ -99,7 +143,7 @@
           </h4>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label class="block text-xs font-medium text-gray-500 mb-1">Connection</label>
+              <label class="block text-xs font-medium text-slate-500 mb-1">Connection</label>
               <span
                 class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold uppercase tracking-wide"
                 :class="vpnStatusBadgeClass"
@@ -108,20 +152,44 @@
               </span>
             </div>
             <div>
-              <label class="block text-xs font-medium text-gray-500 mb-1">Last Handshake</label>
+              <label class="block text-xs font-medium text-slate-500 mb-1">Last Handshake</label>
               <div class="flex flex-col gap-1">
-                <p class="text-gray-900 text-sm">EAT: {{ handshakeEatTime }}</p>
-                <p class="text-gray-500 text-xs">UTC: {{ handshakeUtcTime }}</p>
+                <p class="text-slate-900 text-sm">EAT: {{ handshakeEatTime }}</p>
+                <p class="text-slate-500 text-xs">UTC: {{ handshakeUtcTime }}</p>
               </div>
             </div>
+          </div>
+        </div>
+
+        <!-- System Information KPIs -->
+        <div v-show="activeTab === 'system'" class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+            <div class="text-xs text-slate-500 mb-1">CPU Load</div>
+            <div class="text-2xl font-bold text-slate-800">{{ (routerDetails.resources?.cpu_load ?? routerDetails.live_data?.cpu_load) !== undefined && (routerDetails.resources?.cpu_load ?? routerDetails.live_data?.cpu_load) !== null ? (routerDetails.resources?.cpu_load ?? routerDetails.live_data?.cpu_load) + '%' : '—' }}</div>
+            <div class="text-xs text-slate-400 mt-1">Current usage</div>
+          </div>
+          <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+            <div class="text-xs text-slate-500 mb-1">Memory Usage</div>
+            <div class="text-2xl font-bold text-slate-800">{{ getMemoryPercent(routerDetails.resources || routerDetails.live_data) !== null ? getMemoryPercent(routerDetails.resources || routerDetails.live_data) + '%' : '—' }}</div>
+            <div class="text-xs text-slate-400 mt-1">{{ formatBytes((routerDetails.resources || routerDetails.live_data)?.total_memory) }} total</div>
+          </div>
+          <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+            <div class="text-xs text-slate-500 mb-1">Uptime</div>
+            <div class="text-2xl font-bold text-slate-800">{{ (routerDetails.resources || routerDetails.live_data)?.uptime || routerDetails.uptime || '—' }}</div>
+            <div class="text-xs text-slate-400 mt-1">Since last reboot</div>
+          </div>
+          <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+            <div class="text-xs text-slate-500 mb-1">Active Interfaces</div>
+            <div class="text-2xl font-bold text-slate-800">{{ (routerDetails.interfaces || routerDetails.live_data?.interfaces || []).filter(i => i.running === 'true').length || ((routerDetails.resources || routerDetails.live_data)?.interface_count ?? '—') }}</div>
+            <div class="text-xs text-slate-400 mt-1">of {{ (routerDetails.interfaces || routerDetails.live_data?.interfaces || []).length || ((routerDetails.resources || routerDetails.live_data)?.interface_count ?? 0) }} total</div>
           </div>
         </div>
 
         <!-- Router Details -->
         <div class="space-y-4">
           <!-- Basic Info Card -->
-          <div class="bg-white p-5 rounded-xl shadow-sm">
-            <h4 class="text-sm font-semibold text-gray-700 mb-4 flex items-center">
+          <div v-show="activeTab === 'system'" class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+            <h4 class="text-sm font-semibold text-slate-700 mb-4 flex items-center">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 class="h-4 w-4 mr-2 text-blue-500"
@@ -140,35 +208,35 @@
             </h4>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label class="block text-xs font-medium text-gray-500 mb-1">Router Name</label>
-                <p class="text-gray-900 font-medium">{{ routerDetails.name || 'N/A' }}</p>
+                <label class="block text-xs font-medium text-slate-500 mb-1">Router Name</label>
+                <p class="text-slate-900 font-medium">{{ routerDetails.name || 'N/A' }}</p>
               </div>
               <div>
-                <label class="block text-xs font-medium text-gray-500 mb-1">Location</label>
-                <p class="text-gray-900">{{ routerDetails.location || 'Not specified' }}</p>
+                <label class="block text-xs font-medium text-slate-500 mb-1">Location</label>
+                <p class="text-slate-900">{{ routerDetails.location || 'Not specified' }}</p>
               </div>
               <div>
-                <label class="block text-xs font-medium text-gray-500 mb-1">IP Address</label>
-                <p class="text-gray-900 font-mono">{{ routerDetails.ip_address || 'N/A' }}</p>
+                <label class="block text-xs font-medium text-slate-500 mb-1">IP Address</label>
+                <p class="text-slate-900 font-mono">{{ routerDetails.ip_address || 'N/A' }}</p>
               </div>
               <div>
-                <label class="block text-xs font-medium text-gray-500 mb-1">Port</label>
-                <p class="text-gray-900">{{ routerDetails.port || 'N/A' }}</p>
+                <label class="block text-xs font-medium text-slate-500 mb-1">Port</label>
+                <p class="text-slate-900">{{ routerDetails.port || 'N/A' }}</p>
               </div>
               <div>
-                <label class="block text-xs font-medium text-gray-500 mb-1">Router ID</label>
-                <p class="text-gray-900">{{ routerDetails.id || 'N/A' }}</p>
+                <label class="block text-xs font-medium text-slate-500 mb-1">Router ID</label>
+                <p class="text-slate-900">{{ routerDetails.id || 'N/A' }}</p>
               </div>
               <div>
-                <label class="block text-xs font-medium text-gray-500 mb-1">Board Name</label>
-                <p class="text-gray-900">{{ routerDetails.resources?.board_name || routerDetails.live_data?.board_name || 'N/A' }}</p>
+                <label class="block text-xs font-medium text-slate-500 mb-1">Board Name</label>
+                <p class="text-slate-900">{{ routerDetails.resources?.board_name || routerDetails.live_data?.board_name || 'N/A' }}</p>
               </div>
             </div>
           </div>
 
           <!-- Credentials Card -->
-          <div class="bg-white p-5 rounded-xl shadow-sm">
-            <h4 class="text-sm font-semibold text-gray-700 mb-4 flex items-center">
+          <div v-show="activeTab === 'system'" class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+            <h4 class="text-sm font-semibold text-slate-700 mb-4 flex items-center">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 class="h-4 w-4 mr-2 text-blue-500"
@@ -187,19 +255,19 @@
             </h4>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label class="block text-xs font-medium text-gray-500 mb-1">Username</label>
-                <p class="text-gray-900">{{ routerDetails.username || 'N/A' }}</p>
+                <label class="block text-xs font-medium text-slate-500 mb-1">Username</label>
+                <p class="text-slate-900">{{ routerDetails.username || 'N/A' }}</p>
               </div>
               <div>
-                <label class="block text-xs font-medium text-gray-500 mb-1">Password</label>
-                <p class="text-gray-900">••••••••</p>
+                <label class="block text-xs font-medium text-slate-500 mb-1">Password</label>
+                <p class="text-slate-900">••••••••</p>
               </div>
             </div>
           </div>
 
           <!-- Hardware Info Card -->
-          <div class="bg-white p-5 rounded-xl shadow-sm">
-            <h4 class="text-sm font-semibold text-gray-700 mb-4 flex items-center">
+          <div v-show="activeTab === 'system'" class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+            <h4 class="text-sm font-semibold text-slate-700 mb-4 flex items-center">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 class="h-4 w-4 mr-2 text-blue-500"
@@ -218,29 +286,29 @@
             </h4>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label class="block text-xs font-medium text-gray-500 mb-1">Model</label>
-                <p class="text-gray-900">{{ routerDetails.model || 'N/A' }}</p>
+                <label class="block text-xs font-medium text-slate-500 mb-1">Model</label>
+                <p class="text-slate-900">{{ routerDetails.model || 'N/A' }}</p>
               </div>
               <div>
-                <label class="block text-xs font-medium text-gray-500 mb-1">OS Version</label>
-                <p class="text-gray-900">{{ routerDetails.os_version || 'N/A' }}</p>
+                <label class="block text-xs font-medium text-slate-500 mb-1">OS Version</label>
+                <p class="text-slate-900">{{ routerDetails.os_version || 'N/A' }}</p>
               </div>
               <div>
-                <label class="block text-xs font-medium text-gray-500 mb-1">Serial Number</label>
-                <p class="text-gray-900 font-mono text-sm">
+                <label class="block text-xs font-medium text-slate-500 mb-1">Serial Number</label>
+                <p class="text-slate-900 font-mono text-sm">
                   {{ routerDetails.serial_number || 'N/A' }}
                 </p>
               </div>
               <div>
-                <label class="block text-xs font-medium text-gray-500 mb-1">Firmware</label>
-                <p class="text-gray-900">{{ routerDetails.firmware || 'N/A' }}</p>
+                <label class="block text-xs font-medium text-slate-500 mb-1">Firmware</label>
+                <p class="text-slate-900">{{ routerDetails.firmware || 'N/A' }}</p>
               </div>
             </div>
           </div>
 
           <!-- Timestamps Card -->
-          <div class="bg-white p-5 rounded-xl shadow-sm">
-            <h4 class="text-sm font-semibold text-gray-700 mb-4 flex items-center">
+          <div v-show="activeTab === 'system'" class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+            <h4 class="text-sm font-semibold text-slate-700 mb-4 flex items-center">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 class="h-4 w-4 mr-2 text-blue-500"
@@ -259,23 +327,23 @@
             </h4>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label class="block text-xs font-medium text-gray-500 mb-1">Created</label>
-                <p class="text-gray-900 text-sm">{{ formatDate(routerDetails.created_at) }}</p>
+                <label class="block text-xs font-medium text-slate-500 mb-1">Created</label>
+                <p class="text-slate-900 text-sm">{{ formatDate(routerDetails.created_at) }}</p>
               </div>
               <div>
-                <label class="block text-xs font-medium text-gray-500 mb-1">Last Seen</label>
-                <p class="text-gray-900 text-sm">{{ formatDate(routerDetails.last_seen) }}</p>
+                <label class="block text-xs font-medium text-slate-500 mb-1">Last Seen</label>
+                <p class="text-slate-900 text-sm">{{ formatDate(routerDetails.last_seen) }}</p>
               </div>
               <div>
-                <label class="block text-xs font-medium text-gray-500 mb-1">Last Updated</label>
-                <p class="text-gray-900 text-sm">{{ formatDate(routerDetails.updated_at) }}</p>
+                <label class="block text-xs font-medium text-slate-500 mb-1">Last Updated</label>
+                <p class="text-slate-900 text-sm">{{ formatDate(routerDetails.updated_at) }}</p>
               </div>
             </div>
           </div>
 
           <!-- Live Data Section -->
-          <div v-if="routerDetails.resources || routerDetails.live_data" class="bg-white p-5 rounded-xl shadow-sm">
-            <h4 class="text-sm font-semibold text-gray-700 mb-4 flex items-center">
+          <div v-if="routerDetails.resources || routerDetails.live_data" v-show="activeTab === 'system'" class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+            <h4 class="text-sm font-semibold text-slate-700 mb-4 flex items-center">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 class="h-4 w-4 mr-2 text-blue-500"
@@ -351,12 +419,37 @@
             </div>
           </div>
 
+        <!-- Configurations Tab KPIs -->
+        <div v-show="activeTab === 'config'" class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+            <div class="text-xs text-slate-500 mb-1">Services</div>
+            <div class="text-2xl font-bold text-slate-800">{{ groupedServices?.length || 0 }}</div>
+            <div class="text-xs text-slate-400 mt-1">{{ groupedServices?.filter(s => s.status === 'active').length || 0 }} active</div>
+          </div>
+          <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+            <div class="text-xs text-slate-500 mb-1">Access Points</div>
+            <div class="text-2xl font-bold text-slate-800">{{ routerDetails.access_points?.length || 0 }}</div>
+            <div class="text-xs text-slate-400 mt-1">{{ routerDetails.access_points?.filter(a => a.status === 'online').length || 0 }} online</div>
+          </div>
+          <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+            <div class="text-xs text-slate-500 mb-1">Interfaces</div>
+            <div class="text-2xl font-bold text-slate-800">{{ (routerDetails.interfaces || routerDetails.live_data?.interfaces || []).length || ((routerDetails.resources || routerDetails.live_data)?.interface_count ?? '—') }}</div>
+            <div class="text-xs text-slate-400 mt-1">{{ (routerDetails.interfaces || routerDetails.live_data?.interfaces || []).filter(i => i.running === 'true').length }} running</div>
+          </div>
+          <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+            <div class="text-xs text-slate-500 mb-1">DHCP Leases</div>
+            <div class="text-2xl font-bold text-slate-800">{{ (routerDetails.resources || routerDetails.live_data)?.dhcp_leases ?? '—' }}</div>
+            <div class="text-xs text-slate-400 mt-1">Active leases</div>
+          </div>
+        </div>
+
           <!-- Interfaces Section -->
           <div
             v-if="(routerDetails.interfaces || routerDetails.live_data?.interfaces) && (routerDetails.interfaces || routerDetails.live_data?.interfaces).length"
-            class="bg-white p-5 rounded-xl shadow-sm"
+            v-show="activeTab === 'config'"
+            class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm"
           >
-            <h4 class="text-sm font-semibold text-gray-700 mb-4 flex items-center">
+            <h4 class="text-sm font-semibold text-slate-700 mb-4 flex items-center">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 class="h-4 w-4 mr-2 text-blue-500"
@@ -377,10 +470,10 @@
               <div
                 v-for="(iface, index) in (routerDetails.interfaces || routerDetails.live_data?.interfaces || [])"
                 :key="index"
-                class="p-3 bg-gray-50 rounded-lg border border-gray-200"
+                class="p-3 bg-slate-50 rounded-lg border border-slate-200"
               >
                 <div class="flex justify-between items-center">
-                  <span class="font-medium text-gray-800">{{ iface.name }}</span>
+                  <span class="font-medium text-slate-800">{{ iface.name }}</span>
                   <span
                     :class="
                       iface.running === 'true'
@@ -394,11 +487,11 @@
                 </div>
                 <div class="grid grid-cols-2 gap-2 mt-2 text-xs">
                   <div>
-                    <span class="text-gray-500">Type:</span>
+                    <span class="text-slate-500">Type:</span>
                     <span class="ml-1 font-medium">{{ iface.type }}</span>
                   </div>
                   <div>
-                    <span class="text-gray-500">MTU:</span>
+                    <span class="text-slate-500">MTU:</span>
                     <span class="ml-1 font-medium">{{ iface.mtu }}</span>
                   </div>
                 </div>
@@ -409,9 +502,10 @@
           <!-- Configured Services Section -->
           <div
             v-if="groupedServices && groupedServices.length"
-            class="bg-white p-5 rounded-xl shadow-sm"
+            v-show="activeTab === 'config'"
+            class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm"
           >
-            <h4 class="text-sm font-semibold text-gray-700 mb-4 flex items-center">
+            <h4 class="text-sm font-semibold text-slate-700 mb-4 flex items-center">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 class="h-4 w-4 mr-2 text-blue-500"
@@ -432,14 +526,14 @@
               <div
                 v-for="service in groupedServices"
                 :key="service.id"
-                class="p-3 bg-gray-50 rounded-lg border border-gray-200 flex flex-col gap-1.5"
+                class="p-3 bg-slate-50 rounded-lg border border-slate-200 flex flex-col gap-1.5"
               >
                 <div class="flex items-center justify-between">
                   <div class="flex flex-col">
-                    <span class="text-sm font-semibold text-gray-800">
+                    <span class="text-sm font-semibold text-slate-800">
                       {{ service.service_name || (service.service_type || '').toUpperCase() || 'Service' }}
                     </span>
-                    <span class="text-xs text-gray-500">
+                    <span class="text-xs text-slate-500">
                       {{ service.service_type || 'unknown' }}
                     </span>
                   </div>
@@ -449,45 +543,45 @@
                       'bg-green-100 text-green-800': service.status === 'active',
                       'bg-yellow-100 text-yellow-800': service.status === 'pending' || service.status === 'starting',
                       'bg-red-100 text-red-800': service.status === 'error',
-                      'bg-gray-100 text-gray-700': !service.status || service.status === 'inactive',
+                      'bg-slate-100 text-slate-700': !service.status || service.status === 'inactive',
                     }"
                   >
                     {{ service.status || 'inactive' }}
                   </span>
                 </div>
-                <div class="grid grid-cols-2 md:grid-cols-3 gap-2 text-[11px] text-gray-600 mt-1">
+                <div class="grid grid-cols-2 md:grid-cols-3 gap-2 text-[11px] text-slate-600 mt-1">
                   <div>
-                    <span class="font-medium text-gray-500">Interfaces:</span>
+                    <span class="font-medium text-slate-500">Interfaces:</span>
                     <span class="ml-1">
                       {{ ((service.interfaces && service.interfaces.length ? service.interfaces : (service.interface_name ? [service.interface_name] : [])) || []).join(', ') || 'N/A' }}
                     </span>
                   </div>
                   <div>
-                    <span class="font-medium text-gray-500">VLAN:</span>
+                    <span class="font-medium text-slate-500">VLAN:</span>
                     <span class="ml-1">
                       {{ service.vlan_id || (service.vlan_required ? 'Required' : 'N/A') }}
                     </span>
                   </div>
                   <div>
-                    <span class="font-medium text-gray-500">Active Users:</span>
+                    <span class="font-medium text-slate-500">Active Users:</span>
                     <span class="ml-1">
                       {{ service.active_users ?? 0 }}
                     </span>
                   </div>
                   <div>
-                    <span class="font-medium text-gray-500">Total Sessions:</span>
+                    <span class="font-medium text-slate-500">Total Sessions:</span>
                     <span class="ml-1">
                       {{ service.total_sessions ?? 0 }}
                     </span>
                   </div>
                   <div>
-                    <span class="font-medium text-gray-500">Deployment:</span>
+                    <span class="font-medium text-slate-500">Deployment:</span>
                     <span class="ml-1">
                       {{ service.deployment_status || 'unknown' }}
                     </span>
                   </div>
                   <div v-if="service.last_checked_at">
-                    <span class="font-medium text-gray-500">Last Check:</span>
+                    <span class="font-medium text-slate-500">Last Check:</span>
                     <span class="ml-1">
                       {{ formatDate(service.last_checked_at) }}
                     </span>
@@ -500,9 +594,10 @@
           <!-- Connected Access Points Section -->
           <div
             v-if="routerDetails.access_points && routerDetails.access_points.length"
-            class="bg-white p-5 rounded-xl shadow-sm"
+            v-show="activeTab === 'config'"
+            class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm"
           >
-            <h4 class="text-sm font-semibold text-gray-700 mb-4 flex items-center">
+            <h4 class="text-sm font-semibold text-slate-700 mb-4 flex items-center">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 class="h-4 w-4 mr-2 text-blue-500"
@@ -523,20 +618,20 @@
               <div
                 v-for="ap in routerDetails.access_points"
                 :key="ap.id"
-                class="p-3 bg-gray-50 rounded-lg border border-gray-200 flex items-center justify-between gap-3"
+                class="p-3 bg-slate-50 rounded-lg border border-slate-200 flex items-center justify-between gap-3"
               >
                 <div class="flex items-center gap-3 min-w-0">
                   <div class="w-7 h-7 bg-blue-100 rounded-md flex items-center justify-center text-blue-600 text-xs font-semibold">
                     {{ (ap.name || 'AP').charAt(0).toUpperCase() }}
                   </div>
                   <div class="min-w-0">
-                    <div class="text-sm font-medium text-gray-900 truncate">
+                    <div class="text-sm font-medium text-slate-900 truncate">
                       {{ ap.name || 'Access Point' }}
                     </div>
-                    <div class="text-[11px] text-gray-500 truncate">
+                    <div class="text-[11px] text-slate-500 truncate">
                       {{ ap.ip_address || 'No IP' }}
                     </div>
-                    <div class="text-[11px] text-gray-400 truncate">
+                    <div class="text-[11px] text-slate-400 truncate">
                       {{ ap.location || 'No location' }}
                     </div>
                   </div>
@@ -548,16 +643,16 @@
                       'bg-green-100 text-green-800': ap.status === 'online',
                       'bg-red-100 text-red-800': ap.status === 'offline',
                       'bg-yellow-100 text-yellow-800': ap.status === 'unknown',
-                      'bg-gray-100 text-gray-700': !ap.status,
+                      'bg-slate-100 text-slate-700': !ap.status,
                     }"
                   >
                     {{ ap.status || 'unknown' }}
                   </span>
-                  <span class="text-gray-500">
+                  <span class="text-slate-500">
                     {{ ap.vendor || 'Vendor' }}
                     <span v-if="ap.model">· {{ ap.model }}</span>
                   </span>
-                  <span v-if="ap.serial_number" class="text-gray-400 font-mono">
+                  <span v-if="ap.serial_number" class="text-slate-400 font-mono">
                     {{ ap.serial_number }}
                   </span>
                 </div>
@@ -566,8 +661,8 @@
           </div>
 
           <!-- Configuration Token -->
-          <div v-if="routerDetails.config_token" class="bg-white p-5 rounded-xl shadow-sm">
-            <h4 class="text-sm font-semibold text-gray-700 mb-4 flex items-center">
+          <div v-if="routerDetails.config_token" v-show="activeTab === 'config'" class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+            <h4 class="text-sm font-semibold text-slate-700 mb-4 flex items-center">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 class="h-4 w-4 mr-2 text-blue-500"
@@ -586,13 +681,13 @@
             </h4>
             <div class="relative">
               <pre
-                class="text-xs font-mono text-gray-800 bg-gray-50 p-3 rounded-lg overflow-x-auto border border-gray-200"
+                class="text-xs font-mono text-slate-800 bg-slate-50 p-3 rounded-lg overflow-x-auto border border-slate-200"
                 >{{ routerDetails.config_token }}</pre
               >
               <button
                 type="button"
                 @click="copyToClipboard(routerDetails.config_token)"
-                class="absolute top-2 right-2 p-1.5 bg-white rounded-lg shadow-sm text-gray-500 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                class="absolute top-2 right-2 p-1.5 bg-white rounded-lg shadow-sm text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-colors"
                 title="Copy to clipboard"
               >
                 <svg
@@ -611,14 +706,38 @@
                 </svg>
               </button>
             </div>
-            <p class="text-xs text-gray-500 mt-2">
+            <p class="text-xs text-slate-500 mt-2">
               Use this token to apply configurations on the router
             </p>
           </div>
 
-          <div class="bg-white p-5 rounded-xl shadow-sm">
+        <!-- Reports Tab KPIs -->
+        <div v-show="activeTab === 'reports'" class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          <div class="bg-gradient-to-br from-green-50 to-emerald-50 p-4 rounded-xl border border-green-200 shadow-sm">
+            <div class="text-xs text-green-600 mb-1">Current Download</div>
+            <div class="text-2xl font-bold text-green-900">{{ formatBytes(trafficStats.download) }}/s</div>
+            <div class="text-xs text-green-500 mt-1">Live throughput</div>
+          </div>
+          <div class="bg-gradient-to-br from-purple-50 to-indigo-50 p-4 rounded-xl border border-purple-200 shadow-sm">
+            <div class="text-xs text-purple-600 mb-1">Current Upload</div>
+            <div class="text-2xl font-bold text-purple-900">{{ formatBytes(trafficStats.upload) }}/s</div>
+            <div class="text-xs text-purple-500 mt-1">Live throughput</div>
+          </div>
+          <div class="bg-gradient-to-br from-blue-50 to-indigo-50 p-4 rounded-xl border border-blue-200 shadow-sm">
+            <div class="text-xs text-blue-600 mb-1">Avg CPU</div>
+            <div class="text-2xl font-bold text-blue-900">{{ formatPercent(resourceStats.cpu.avg) }}</div>
+            <div class="text-xs text-blue-500 mt-1">{{ formatPercent(resourceStats.cpu.current) }} current</div>
+          </div>
+          <div class="bg-gradient-to-br from-amber-50 to-orange-50 p-4 rounded-xl border border-amber-200 shadow-sm">
+            <div class="text-xs text-amber-600 mb-1">Avg Memory</div>
+            <div class="text-2xl font-bold text-amber-900">{{ formatPercent(resourceStats.memory.avg) }}</div>
+            <div class="text-xs text-amber-500 mt-1">{{ formatPercent(resourceStats.memory.current) }} current</div>
+          </div>
+        </div>
+
+          <div v-show="activeTab === 'reports'" class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm mt-4">
             <div class="flex items-center justify-between mb-4">
-              <h4 class="text-sm font-semibold text-gray-700 flex items-center">
+              <h4 class="text-sm font-semibold text-slate-700 flex items-center">
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
                   class="h-4 w-4 mr-2 text-blue-500"
@@ -639,27 +758,27 @@
                  <!-- Time Range Selector -->
                  <select
                     v-model="trafficTimeRange"
-                    class="text-xs border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-1 px-2 bg-white"
+                    class="text-xs border-slate-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-1 px-2 bg-white"
                     @change="loadTraffic()"
                   >
                     <option v-for="r in timeRanges" :key="r.value" :value="r.value">
                       {{ r.label }}
                     </option>
                   </select>
-                 <div v-if="hoveredData && !['pie', 'donut', 'histogram'].includes(selectedChartType)" class="hidden md:flex items-center gap-3 text-xs bg-gray-50 px-2 py-1 rounded border border-gray-100">
-                    <span class="font-mono text-gray-500">{{ formatTime(hoveredData.ts) }}</span>
+                 <div v-if="hoveredData && !['pie', 'donut', 'histogram'].includes(selectedChartType)" class="hidden md:flex items-center gap-3 text-xs bg-slate-50 px-2 py-1 rounded border border-slate-100">
+                    <span class="font-mono text-slate-500">{{ formatTime(hoveredData.ts) }}</span>
                     <span class="flex items-center gap-1">
                       <span class="w-1.5 h-1.5 rounded-full bg-green-500"></span>
-                      <span class="font-medium text-gray-700">DL: {{ formatBytes(hoveredData.download) }}/s</span>
+                      <span class="font-medium text-slate-700">DL: {{ formatBytes(hoveredData.download) }}/s</span>
                     </span>
                     <span class="flex items-center gap-1">
                       <span class="w-1.5 h-1.5 rounded-full bg-purple-500"></span>
-                      <span class="font-medium text-gray-700">UL: {{ formatBytes(hoveredData.upload) }}/s</span>
+                      <span class="font-medium text-slate-700">UL: {{ formatBytes(hoveredData.upload) }}/s</span>
                     </span>
                  </div>
                  <select
                     v-model="selectedChartType"
-                    class="text-xs border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-1 px-2 bg-white"
+                    class="text-xs border-slate-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-1 px-2 bg-white"
                   >
                     <option v-for="t in chartTypes" :key="t.value" :value="t.value">
                       {{ t.label }}
@@ -668,7 +787,7 @@
                  <!-- Fullscreen Button -->
                  <button
                     @click="toggleTrafficFullscreen"
-                    class="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
+                    class="p-1.5 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-md transition-colors"
                     title="Toggle fullscreen"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -699,15 +818,15 @@
                 </div>
               </div>
 
-              <div v-if="trafficLoading" class="text-xs text-gray-500">Loading traffic…</div>
+              <div v-if="trafficLoading" class="text-xs text-slate-500">Loading traffic…</div>
               <div v-else 
-                   class="bg-white rounded-lg border border-gray-100 p-4 transition-all duration-300 flex flex-col" 
+                   class="bg-white rounded-lg border border-slate-100 p-4 transition-all duration-300 flex flex-col" 
                    :class="{ 'fixed inset-0 z-[9999] h-screen w-screen bg-white p-6': trafficFullscreen, 'relative': !trafficFullscreen }"
                    :style="trafficFullscreen ? {} : { height: '300px' }">
                 <!-- Fullscreen header -->
                 <div v-if="trafficFullscreen" class="flex items-center justify-between mb-4 flex-shrink-0">
-                  <h3 class="text-lg font-semibold text-gray-800">Traffic - Fullscreen</h3>
-                  <button @click="toggleTrafficFullscreen" class="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md">
+                  <h3 class="text-lg font-semibold text-slate-800">Traffic - Fullscreen</h3>
+                  <button @click="toggleTrafficFullscreen" class="p-2 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-md">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
                     </svg>
@@ -734,16 +853,16 @@
                 <div v-if="trafficFullscreen" class="flex items-center justify-center gap-8 mb-4 flex-shrink-0">
                   <div class="flex items-center gap-2">
                     <div class="w-4 h-4 bg-green-500 rounded-full"></div>
-                    <span class="text-sm text-gray-700 font-medium">Download</span>
+                    <span class="text-sm text-slate-700 font-medium">Download</span>
                   </div>
                   <div class="flex items-center gap-2">
                     <div class="w-4 h-4 bg-purple-500 rounded-full"></div>
-                    <span class="text-sm text-gray-700 font-medium">Upload</span>
+                    <span class="text-sm text-slate-700 font-medium">Upload</span>
                   </div>
                 </div>
                 <div class="flex flex-1 min-h-0">
                   <!-- Y-Axis -->
-                  <div v-if="yAxisTicks.length" class="relative h-full w-14 mr-2 border-r border-gray-100">
+                  <div v-if="yAxisTicks.length" class="relative h-full w-14 mr-2 border-r border-slate-100">
                     <div v-for="tick in yAxisTicks" :key="tick.value" 
                          class="absolute right-1 text-[10px] text-black font-medium transform translate-y-1/2"
                          :style="{ bottom: tick.percent + '%' }">
@@ -761,18 +880,18 @@
                     >
                        <!-- Grid Lines -->
                        <div v-for="tick in yAxisTicks" :key="tick.value" 
-                            class="absolute w-full border-t border-gray-100"
+                            class="absolute w-full border-t border-slate-100"
                             :style="{ bottom: tick.percent + '%' }">
                        </div>
 
                        <!-- No Data Message -->
                        <div v-if="!chartRenderData && !trafficLoading" class="absolute inset-0 flex items-center justify-center">
                           <div class="text-center">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 text-gray-300 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 text-slate-300 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                             </svg>
-                            <p class="text-gray-500 text-sm">No historical data available</p>
-                            <p class="text-gray-400 text-xs mt-1">Traffic metrics may not be collected</p>
+                            <p class="text-slate-500 text-sm">No historical data available</p>
+                            <p class="text-slate-400 text-xs mt-1">Traffic metrics may not be collected</p>
                           </div>
                        </div>
 
@@ -829,7 +948,7 @@
 
                        <!-- Hover Line -->
                        <div v-if="hoveredIndex >= 0 && !['pie', 'donut', 'histogram'].includes(selectedChartType)" 
-                            class="absolute top-0 bottom-0 border-l border-gray-400 border-dashed pointer-events-none z-10"
+                            class="absolute top-0 bottom-0 border-l border-slate-400 border-dashed pointer-events-none z-10"
                             :style="{ left: hoverX + '%' }">
                           <!-- Dot indicators -->
                           <div class="absolute w-2 h-2 bg-green-500 rounded-full -ml-1 border border-white"
@@ -838,23 +957,23 @@
                                :style="{ bottom: (hoveredData.upload / trafficMax * 100) + '%' }"></div>
                           
                           <!-- Floating Tooltip -->
-                          <div class="absolute top-0 left-2 bg-white/90 backdrop-blur-sm shadow-lg border border-gray-200 rounded p-2 text-xs whitespace-nowrap z-20 pointer-events-none"
+                          <div class="absolute top-0 left-2 bg-white/90 backdrop-blur-sm shadow-lg border border-slate-200 rounded p-2 text-xs whitespace-nowrap z-20 pointer-events-none"
                                :class="{ '-translate-x-full -left-2': hoverX > 80 }">
-                             <div class="font-mono text-gray-500 mb-1">{{ formatTime(hoveredData.ts) }}</div>
+                             <div class="font-mono text-slate-500 mb-1">{{ formatTime(hoveredData.ts) }}</div>
                              <div class="flex items-center gap-2 mb-0.5">
                                <span class="w-1.5 h-1.5 rounded-full bg-green-500"></span>
-                               <span class="font-medium text-gray-700">DL: {{ formatBytes(hoveredData.download) }}/s</span>
+                               <span class="font-medium text-slate-700">DL: {{ formatBytes(hoveredData.download) }}/s</span>
                              </div>
                              <div class="flex items-center gap-2">
                                <span class="w-1.5 h-1.5 rounded-full bg-purple-500"></span>
-                               <span class="font-medium text-gray-700">UL: {{ formatBytes(hoveredData.upload) }}/s</span>
+                               <span class="font-medium text-slate-700">UL: {{ formatBytes(hoveredData.upload) }}/s</span>
                              </div>
                           </div>
                        </div>
                     </div>
                     
                     <!-- X-Axis - Always visible with proper spacing -->
-                    <div v-if="xAxisTicks.length" class="h-8 relative mt-2 flex-shrink-0 border-t border-gray-200 pt-1">
+                    <div v-if="xAxisTicks.length" class="h-8 relative mt-2 flex-shrink-0 border-t border-slate-200 pt-1">
                        <div v-for="tick in xAxisTicks" :key="tick.x" 
                             class="absolute text-[11px] text-black font-medium transform -translate-x-1/2 whitespace-nowrap"
                             :style="{ left: tick.x + '%' }">
@@ -868,20 +987,20 @@
               <div v-if="!trafficFullscreen" class="flex items-center justify-center gap-6 mt-3">
                 <div class="flex items-center gap-2">
                   <div class="w-3 h-3 bg-green-500 rounded-full"></div>
-                  <span class="text-xs text-gray-600">Download</span>
+                  <span class="text-xs text-slate-600">Download</span>
                 </div>
                 <div class="flex items-center gap-2">
                   <div class="w-3 h-3 bg-purple-500 rounded-full"></div>
-                  <span class="text-xs text-gray-600">Upload</span>
+                  <span class="text-xs text-slate-600">Upload</span>
                 </div>
               </div>
             </div>
           </div>
 
           <!-- Resource Utilization Section -->
-          <div class="bg-white p-5 rounded-xl shadow-sm mt-4">
+          <div v-show="activeTab === 'reports'" class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm mt-4">
             <div class="flex items-center justify-between mb-4">
-              <h4 class="text-sm font-semibold text-gray-700 flex items-center">
+              <h4 class="text-sm font-semibold text-slate-700 flex items-center">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
                 </svg>
@@ -891,7 +1010,7 @@
                  <!-- Time Range Selector -->
                  <select
                     v-model="resourceTimeRange"
-                    class="text-xs border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-1 px-2 bg-white"
+                    class="text-xs border-slate-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-1 px-2 bg-white"
                     @change="loadResources()"
                   >
                     <option v-for="r in timeRanges" :key="r.value" :value="r.value">
@@ -901,7 +1020,7 @@
                  <!-- Chart Type Selector -->
                  <select
                     v-model="selectedResourceChart"
-                    class="text-xs border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-1 px-2 bg-white"
+                    class="text-xs border-slate-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 py-1 px-2 bg-white"
                   >
                     <option value="line">Line</option>
                     <option value="area">Area</option>
@@ -909,7 +1028,7 @@
                  <!-- Fullscreen Button -->
                  <button
                     @click="toggleResourceFullscreen"
-                    class="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
+                    class="p-1.5 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-md transition-colors"
                     title="Toggle fullscreen"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -977,15 +1096,15 @@
                 </div>
               </div>
 
-              <div v-if="resourceLoading" class="text-xs text-gray-500">Loading resources…</div>
+              <div v-if="resourceLoading" class="text-xs text-slate-500">Loading resources…</div>
               <div v-else 
-                   class="bg-white rounded-lg border border-gray-100 p-4 transition-all duration-300 flex flex-col" 
+                   class="bg-white rounded-lg border border-slate-100 p-4 transition-all duration-300 flex flex-col" 
                    :class="{ 'fixed inset-0 z-[9999] h-screen w-screen bg-white p-6': resourceFullscreen, 'relative': !resourceFullscreen }"
                    :style="resourceFullscreen ? {} : { height: '250px' }">
                 <!-- Fullscreen header -->
                 <div v-if="resourceFullscreen" class="flex items-center justify-between mb-4 flex-shrink-0">
-                  <h3 class="text-lg font-semibold text-gray-800">Resource Utilization - Fullscreen</h3>
-                  <button @click="toggleResourceFullscreen" class="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md">
+                  <h3 class="text-lg font-semibold text-slate-800">Resource Utilization - Fullscreen</h3>
+                  <button @click="toggleResourceFullscreen" class="p-2 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-md">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
                     </svg>
@@ -1030,20 +1149,20 @@
                 <div v-if="resourceFullscreen" class="flex items-center justify-center gap-8 mb-4 flex-shrink-0">
                   <div class="flex items-center gap-2">
                     <div class="w-4 h-4 bg-blue-500 rounded-full"></div>
-                    <span class="text-sm text-gray-700 font-medium">CPU</span>
+                    <span class="text-sm text-slate-700 font-medium">CPU</span>
                   </div>
                   <div class="flex items-center gap-2">
                     <div class="w-4 h-4 bg-purple-500 rounded-full"></div>
-                    <span class="text-sm text-gray-700 font-medium">Memory</span>
+                    <span class="text-sm text-slate-700 font-medium">Memory</span>
                   </div>
                   <div class="flex items-center gap-2">
                     <div class="w-4 h-4 bg-amber-500 rounded-full"></div>
-                    <span class="text-sm text-gray-700 font-medium">Disk</span>
+                    <span class="text-sm text-slate-700 font-medium">Disk</span>
                   </div>
                 </div>
                 <div class="flex flex-1 min-h-0">
                   <!-- Y-Axis -->
-                  <div class="relative h-full w-12 mr-2 border-r border-gray-200">
+                  <div class="relative h-full w-12 mr-2 border-r border-slate-200">
                     <div v-for="tick in resourceYAxisTicks" :key="tick.value" 
                          class="absolute right-1 text-[10px] text-black font-medium transform translate-y-1/2"
                          :style="{ bottom: tick.percent + '%' }">
@@ -1061,18 +1180,18 @@
                     >
                        <!-- Grid Lines -->
                        <div v-for="tick in resourceYAxisTicks" :key="tick.value" 
-                            class="absolute w-full border-t border-gray-100"
+                            class="absolute w-full border-t border-slate-100"
                             :style="{ bottom: tick.percent + '%' }">
                        </div>
 
                        <!-- No Data Message -->
                        <div v-if="!resourceChartRenderData && !resourceLoading" class="absolute inset-0 flex items-center justify-center">
                           <div class="text-center">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 text-gray-300 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 text-slate-300 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                             </svg>
-                            <p class="text-gray-500 text-sm">No historical data available</p>
-                            <p class="text-gray-400 text-xs mt-1">Metrics collection may not be configured</p>
+                            <p class="text-slate-500 text-sm">No historical data available</p>
+                            <p class="text-slate-400 text-xs mt-1">Metrics collection may not be configured</p>
                           </div>
                        </div>
 
@@ -1108,7 +1227,7 @@
 
                        <!-- Hover Line -->
                        <div v-if="resourceHoveredIndex >= 0" 
-                            class="absolute top-0 bottom-0 border-l border-gray-400 border-dashed pointer-events-none z-10"
+                            class="absolute top-0 bottom-0 border-l border-slate-400 border-dashed pointer-events-none z-10"
                             :style="{ left: resourceHoverX + '%' }">
                           <!-- Dot indicators -->
                           <div class="absolute w-2 h-2 bg-blue-500 rounded-full -ml-1 border border-white"
@@ -1119,27 +1238,27 @@
                                :style="{ bottom: (resourceHoveredData.disk / 100 * 100) + '%' }"></div>
                           
                           <!-- Floating Tooltip -->
-                          <div class="absolute top-0 left-2 bg-white/90 backdrop-blur-sm shadow-lg border border-gray-200 rounded p-2 text-xs whitespace-nowrap z-20 pointer-events-none"
+                          <div class="absolute top-0 left-2 bg-white/90 backdrop-blur-sm shadow-lg border border-slate-200 rounded p-2 text-xs whitespace-nowrap z-20 pointer-events-none"
                                :class="{ '-translate-x-full -left-2': resourceHoverX > 80 }">
-                             <div class="font-mono text-gray-500 mb-1">{{ formatTime(resourceHoveredData.ts) }}</div>
+                             <div class="font-mono text-slate-500 mb-1">{{ formatTime(resourceHoveredData.ts) }}</div>
                              <div class="flex items-center gap-2 mb-0.5">
                                <span class="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
-                               <span class="font-medium text-gray-700">CPU: {{ formatPercent(resourceHoveredData.cpu) }}</span>
+                               <span class="font-medium text-slate-700">CPU: {{ formatPercent(resourceHoveredData.cpu) }}</span>
                              </div>
                              <div class="flex items-center gap-2 mb-0.5">
                                <span class="w-1.5 h-1.5 rounded-full bg-purple-500"></span>
-                               <span class="font-medium text-gray-700">Mem: {{ formatPercent(resourceHoveredData.memory) }}</span>
+                               <span class="font-medium text-slate-700">Mem: {{ formatPercent(resourceHoveredData.memory) }}</span>
                              </div>
                              <div class="flex items-center gap-2">
                                <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-                               <span class="font-medium text-gray-700">Disk: {{ formatPercent(resourceHoveredData.disk) }}</span>
+                               <span class="font-medium text-slate-700">Disk: {{ formatPercent(resourceHoveredData.disk) }}</span>
                              </div>
                           </div>
                        </div>
                     </div>
                     
                     <!-- X-Axis - Always visible with proper spacing -->
-                    <div v-if="resourceXAxisTicks.length" class="h-8 relative mt-2 flex-shrink-0 border-t border-gray-200 pt-1">
+                    <div v-if="resourceXAxisTicks.length" class="h-8 relative mt-2 flex-shrink-0 border-t border-slate-200 pt-1">
                        <div v-for="tick in resourceXAxisTicks" :key="tick.x" 
                             class="absolute text-[11px] text-black font-medium transform -translate-x-1/2 whitespace-nowrap"
                             :style="{ left: tick.x + '%' }">
@@ -1153,19 +1272,225 @@
               <div v-if="!resourceFullscreen" class="flex items-center justify-center gap-6 mt-3">
                 <div class="flex items-center gap-2">
                   <div class="w-3 h-3 bg-blue-500 rounded-full"></div>
-                  <span class="text-xs text-gray-600">CPU</span>
+                  <span class="text-xs text-slate-600">CPU</span>
                 </div>
                 <div class="flex items-center gap-2">
                   <div class="w-3 h-3 bg-purple-500 rounded-full"></div>
-                  <span class="text-xs text-gray-600">Memory</span>
+                  <span class="text-xs text-slate-600">Memory</span>
                 </div>
                 <div class="flex items-center gap-2">
                   <div class="w-3 h-3 bg-amber-500 rounded-full"></div>
-                  <span class="text-xs text-gray-600">Disk</span>
+                  <span class="text-xs text-slate-600">Disk</span>
                 </div>
               </div>
             </div>
           </div>
+        </div>
+
+        <!-- Device Events Tab -->
+        <div v-show="activeTab === 'events'" class="space-y-4">
+          <!-- Events KPIs -->
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+              <div class="text-xs text-slate-500 mb-1">Total Events</div>
+              <div class="text-2xl font-bold text-slate-800">{{ eventsLoading ? '…' : (eventsSummary.total ?? '—') }}</div>
+              <div class="text-xs text-slate-400 mt-1">Last 30 days</div>
+            </div>
+            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+              <div class="text-xs text-slate-500 mb-1">Errors</div>
+              <div class="text-2xl font-bold text-red-600">{{ eventsLoading ? '…' : ((eventsSummary.critical ?? 0) + (eventsSummary.error ?? 0)) }}</div>
+              <div class="text-xs text-slate-400 mt-1">Critical + error</div>
+            </div>
+            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+              <div class="text-xs text-slate-500 mb-1">Warnings</div>
+              <div class="text-2xl font-bold text-amber-600">{{ eventsLoading ? '…' : (eventsSummary.warning ?? '—') }}</div>
+              <div class="text-xs text-slate-400 mt-1">Last 30 days</div>
+            </div>
+            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+              <div class="text-xs text-slate-500 mb-1">Last 24h</div>
+              <div class="text-2xl font-bold text-blue-600">{{ eventsLoading ? '…' : (eventsSummary.last_24h ?? '—') }}</div>
+              <div class="text-xs text-slate-400 mt-1">Recent activity</div>
+            </div>
+          </div>
+
+          <!-- Filter bar -->
+          <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-3 flex flex-wrap items-center gap-2">
+            <span class="text-xs font-semibold text-slate-600">Filter:</span>
+            <button
+              v-for="lv in ['all', 'critical', 'error', 'warning', 'info']"
+              :key="lv"
+              @click="eventsLevelFilter = lv; fetchRouterEvents()"
+              class="px-2.5 py-1 rounded-full text-xs font-semibold transition-all"
+              :class="eventsLevelFilter === lv
+                ? (lv === 'critical' ? 'bg-red-600 text-white' : lv === 'error' ? 'bg-rose-500 text-white' : lv === 'warning' ? 'bg-amber-500 text-white' : lv === 'info' ? 'bg-blue-500 text-white' : 'bg-slate-700 text-white')
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
+            >{{ lv.charAt(0).toUpperCase() + lv.slice(1) }}</button>
+            <button @click="fetchRouterEvents()" class="ml-auto flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" :class="{'animate-spin': eventsLoading}" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+              Refresh
+            </button>
+          </div>
+
+          <!-- Events list -->
+          <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <!-- Loading -->
+            <div v-if="eventsLoading && !eventsData.length" class="flex flex-col items-center justify-center py-12 gap-3">
+              <svg class="animate-spin h-8 w-8 text-purple-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+              <p class="text-xs text-slate-500">Loading events…</p>
+            </div>
+            <!-- Error -->
+            <div v-else-if="eventsError" class="flex flex-col items-center justify-center py-12 gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+              <p class="text-xs text-red-600">{{ eventsError }}</p>
+              <button @click="fetchRouterEvents()" class="text-xs text-blue-600 hover:underline">Retry</button>
+            </div>
+            <!-- Empty -->
+            <div v-else-if="!eventsData.length" class="flex flex-col items-center justify-center py-12 gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
+              <p class="text-xs text-slate-500">No events found for this router</p>
+            </div>
+            <!-- Event rows -->
+            <template v-else>
+              <div
+                v-for="event in eventsData"
+                :key="event.id"
+                class="flex items-start gap-3 px-4 py-3 border-b border-slate-100 last:border-0 hover:bg-slate-50 transition-colors"
+              >
+                <!-- Level badge -->
+                <span
+                  class="mt-0.5 flex-shrink-0 w-2 h-2 rounded-full mt-1.5"
+                  :class="{
+                    'bg-red-600': event.level === 'critical',
+                    'bg-rose-500': event.level === 'error',
+                    'bg-amber-500': event.level === 'warning',
+                    'bg-blue-500': event.level === 'info',
+                  }"
+                ></span>
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-2 flex-wrap">
+                    <span
+                      class="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded"
+                      :class="{
+                        'bg-red-100 text-red-700': event.level === 'critical',
+                        'bg-rose-100 text-rose-700': event.level === 'error',
+                        'bg-amber-100 text-amber-700': event.level === 'warning',
+                        'bg-blue-100 text-blue-700': event.level === 'info',
+                      }"
+                    >{{ event.level }}</span>
+                    <span class="text-xs font-semibold text-slate-700">{{ formatEventAction(event.action) }}</span>
+                  </div>
+                  <p v-if="event.description" class="text-xs text-slate-600 mt-0.5">{{ event.description }}</p>
+                  <div class="flex items-center gap-3 mt-1">
+                    <span class="text-[10px] text-slate-400">{{ formatEventTime(event.created_at) }}</span>
+                    <span v-if="event.user" class="text-[10px] text-slate-400">by {{ event.user.name || event.user.email }}</span>
+                    <span v-if="event.ip_address" class="text-[10px] text-slate-400 font-mono">{{ event.ip_address }}</span>
+                  </div>
+                </div>
+              </div>
+              <!-- Pagination -->
+              <div v-if="eventsMeta && eventsMeta.last_page > 1" class="flex items-center justify-between px-4 py-3 bg-slate-50 border-t border-slate-100">
+                <span class="text-xs text-slate-500">Page {{ eventsMeta.current_page }} of {{ eventsMeta.last_page }}</span>
+                <div class="flex gap-2">
+                  <button :disabled="eventsMeta.current_page === 1" @click="fetchRouterEvents(eventsMeta.current_page - 1)" class="px-2.5 py-1 text-xs font-medium bg-white border border-slate-200 rounded hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed">Prev</button>
+                  <button :disabled="eventsMeta.current_page === eventsMeta.last_page" @click="fetchRouterEvents(eventsMeta.current_page + 1)" class="px-2.5 py-1 text-xs font-medium bg-white border border-slate-200 rounded hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed">Next</button>
+                </div>
+              </div>
+            </template>
+          </div>
+        </div>
+
+        <!-- Internet Users Tab -->
+        <div v-show="activeTab === 'users'" class="space-y-4">
+          <!-- Users KPIs -->
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+              <div class="text-xs text-slate-500 mb-1">Total Users</div>
+              <div class="text-2xl font-bold text-slate-800">—</div>
+            </div>
+            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+              <div class="text-xs text-slate-500 mb-1">Online Now</div>
+              <div class="text-2xl font-bold text-emerald-600">—</div>
+            </div>
+            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+              <div class="text-xs text-slate-500 mb-1">Active Sessions</div>
+              <div class="text-2xl font-bold text-blue-600">—</div>
+            </div>
+            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+              <div class="text-xs text-slate-500 mb-1">Bandwidth Usage</div>
+              <div class="text-2xl font-bold text-purple-600">—</div>
+            </div>
+          </div>
+          <!-- Users List Placeholder -->
+          <div class="bg-white p-8 rounded-xl border border-slate-200 shadow-sm text-center">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 text-slate-300 mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+            </svg>
+            <h4 class="text-sm font-semibold text-slate-700 mb-1">Internet Users</h4>
+            <p class="text-xs text-slate-500 max-w-md mx-auto">Connected users with their session status will be displayed here. This feature is coming soon.</p>
+          </div>
+        </div>
+
+        <!-- Payments Tab -->
+        <div v-show="activeTab === 'payments'" class="space-y-4">
+          <!-- Payments KPIs -->
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+              <div class="text-xs text-slate-500 mb-1">Total Revenue</div>
+              <div class="text-2xl font-bold text-slate-800">—</div>
+            </div>
+            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+              <div class="text-xs text-slate-500 mb-1">Active Subscriptions</div>
+              <div class="text-2xl font-bold text-emerald-600">—</div>
+            </div>
+            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+              <div class="text-xs text-slate-500 mb-1">Pending Payments</div>
+              <div class="text-2xl font-bold text-amber-600">—</div>
+            </div>
+            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+              <div class="text-xs text-slate-500 mb-1">This Month</div>
+              <div class="text-2xl font-bold text-blue-600">—</div>
+            </div>
+          </div>
+          <!-- Payments List Placeholder -->
+          <div class="bg-white p-8 rounded-xl border border-slate-200 shadow-sm text-center">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 text-slate-300 mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+            </svg>
+            <h4 class="text-sm font-semibold text-slate-700 mb-1">Payments</h4>
+            <p class="text-xs text-slate-500 max-w-md mx-auto">User payments and subscription status will be displayed here. This feature is coming soon.</p>
+          </div>
+        </div>
+
+        <!-- Backups Tab -->
+        <div v-show="activeTab === 'backups'" class="space-y-4">
+          <!-- Backups KPIs -->
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+              <div class="text-xs text-slate-500 mb-1">Total Backups</div>
+              <div class="text-2xl font-bold text-slate-800">—</div>
+            </div>
+            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+              <div class="text-xs text-slate-500 mb-1">Last Backup</div>
+              <div class="text-2xl font-bold text-emerald-600">—</div>
+            </div>
+            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+              <div class="text-xs text-slate-500 mb-1">Auto Backups</div>
+              <div class="text-2xl font-bold text-blue-600">—</div>
+            </div>
+            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+              <div class="text-xs text-slate-500 mb-1">Storage Used</div>
+              <div class="text-2xl font-bold text-purple-600">—</div>
+            </div>
+          </div>
+          <!-- Backups List Placeholder -->
+          <div class="bg-white p-8 rounded-xl border border-slate-200 shadow-sm text-center">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 text-slate-300 mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
+            </svg>
+            <h4 class="text-sm font-semibold text-slate-700 mb-1">Backups</h4>
+            <p class="text-xs text-slate-500 max-w-md mx-auto">Configuration backups and restore history will be displayed here. This feature is coming soon.</p>
+          </div>
+        </div>
         </div>
       </div>
 
@@ -1197,7 +1522,7 @@
         <button
           type="button"
           @click="$emit('close-details')"
-          class="flex-1 px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
+          class="flex-1 px-3 py-1.5 text-xs font-medium text-slate-700 bg-slate-100 rounded-md hover:bg-slate-200 transition-colors"
         >
           Close
         </button>
@@ -1212,7 +1537,7 @@ import SlideOverlay from '@/modules/common/components/base/SlideOverlay.vue'
 import { useRouterUtils } from '@/modules/common/composables/utils/useRouterUtils'
 import { useAuthStore } from '@/stores/auth'
 
-const { formatHandshakeDateTime } = useRouterUtils()
+const { formatHandshakeDateTime, getMemoryUsage, getDiskUsage, parseMemoryValue } = useRouterUtils()
 
 export default {
   components: { SlideOverlay },
@@ -1238,7 +1563,7 @@ export default {
         'bg-green-500': status === 'online' || status === 'active',
         'bg-red-500': status === 'offline' || status === 'disconnected',
         'bg-yellow-500': status === 'pending' || status === 'warning',
-        'bg-gray-500': !status || status === 'unknown',
+        'bg-slate-500': !status || status === 'unknown',
       }
     },
     statusBadgeClass() {
@@ -1247,7 +1572,7 @@ export default {
         'bg-green-100 text-green-800': status === 'online' || status === 'active',
         'bg-red-100 text-red-800': status === 'offline' || status === 'disconnected',
         'bg-yellow-100 text-yellow-800': status === 'pending' || status === 'warning',
-        'bg-gray-100 text-gray-800': !status || status === 'unknown',
+        'bg-slate-100 text-slate-800': !status || status === 'unknown',
       }
     },
     statusText() {
@@ -1780,6 +2105,22 @@ export default {
   },
   data() {
     return {
+      activeTab: 'system',
+      eventsLoading: false,
+      eventsError: '',
+      eventsData: [],
+      eventsSummary: {},
+      eventsMeta: null,
+      eventsLevelFilter: 'all',
+      tabs: [
+        { id: 'system', label: 'System Information' },
+        { id: 'events', label: 'Device Events' },
+        { id: 'reports', label: 'Reports' },
+        { id: 'users', label: 'Internet Users' },
+        { id: 'payments', label: 'Payments' },
+        { id: 'backups', label: 'Backups' },
+        { id: 'config', label: 'Configurations' },
+      ],
       trafficLoading: false,
       trafficError: '',
       trafficData: [],
@@ -1847,14 +2188,29 @@ export default {
         this.loadTraffic()
         this.loadResources()
         this.subscribeToMetrics()
+        if (this.activeTab === 'events') {
+          this.fetchRouterEvents()
+        }
       } else {
         this.unsubscribeFromMetrics()
+        this.eventsData = []
+        this.eventsSummary = {}
+        this.eventsMeta = null
+        this.eventsError = ''
+        this.eventsLevelFilter = 'all'
       }
     },
     selectedRouter() {
       if (this.showDetailsOverlay) {
         this.loadTraffic()
         this.loadResources()
+      }
+      this.eventsData = []
+      this.eventsSummary = {}
+      this.eventsMeta = null
+      this.eventsError = ''
+      if (this.showDetailsOverlay && this.activeTab === 'events') {
+        this.$nextTick(() => this.fetchRouterEvents())
       }
     },
     trafficTimeRange() {
@@ -1867,8 +2223,59 @@ export default {
         this.loadResources()
       }
     },
+    activeTab(val) {
+      if (val === 'events' && !this.eventsData.length && !this.eventsLoading) {
+        this.fetchRouterEvents()
+      }
+    },
   },
   methods: {
+    async fetchRouterEvents(page = 1) {
+      const routerId = this.routerDetails?.id
+      if (!routerId) {
+        console.warn('[Events] No routerId, skipping fetch')
+        return
+      }
+      this.eventsLoading = true
+      this.eventsError = ''
+      try {
+        const params = { page, per_page: 20 }
+        if (this.eventsLevelFilter !== 'all') params.level = this.eventsLevelFilter
+        console.log('[Events] Fetching', `/routers/${routerId}/events`, params)
+        const res = await axios.get(`/routers/${routerId}/events`, { params })
+        console.log('[Events] Response', res.data)
+        if (res.data?.success) {
+          this.eventsData = res.data.events?.data || []
+          this.eventsMeta = res.data.events ? {
+            current_page: res.data.events.current_page,
+            last_page: res.data.events.last_page,
+            total: res.data.events.total,
+          } : null
+          this.eventsSummary = res.data.summary || {}
+        } else {
+          this.eventsError = res.data?.error || 'Failed to load events'
+        }
+      } catch (e) {
+        console.error('[Events] Error', e.response?.data || e.message)
+        this.eventsError = e.response?.data?.error || e.message || 'Failed to load events'
+      } finally {
+        this.eventsLoading = false
+      }
+    },
+    formatEventAction(action) {
+      return (action || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+    },
+    formatEventTime(ts) {
+      if (!ts) return ''
+      try {
+        const d = new Date(ts)
+        const diff = Math.floor((Date.now() - d.getTime()) / 1000)
+        if (diff < 60) return `${diff}s ago`
+        if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
+        if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
+        return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      } catch { return ts }
+    },
     formatTime(ts) {
       if (!ts) return ''
       try {
@@ -2085,6 +2492,14 @@ export default {
         unitIndex++
       }
       return `${value.toFixed(1)} ${units[unitIndex]}`
+    },
+    getMemoryPercent(live) {
+      const total = live?.total_memory ?? live?.['total-memory']
+      const free = live?.free_memory ?? live?.['free-memory']
+      const t = parseMemoryValue(total)
+      const f = parseMemoryValue(free)
+      if (t === null || f === null || t === 0) return null
+      return Math.max(0, Math.min(100, Math.round(((t - f) / t) * 100)))
     },
     getDiskUsed(live) {
       const total = live?.total_hdd_space

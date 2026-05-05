@@ -1,9 +1,9 @@
-import { ref, computed, onUnmounted } from 'vue'
+import { ref, computed } from 'vue'
 import axios from 'axios'
 import { useToast } from '@/modules/common/composables/useToast.js'
 import { useConfirmStore } from '@/stores/confirm'
 
-export function useOnlineUsers(autoRefreshMs = 15000) {
+export function useOnlineUsers() {
   const { error: showError } = useToast()
   const confirmStore = useConfirmStore()
 
@@ -21,7 +21,8 @@ export function useOnlineUsers(autoRefreshMs = 15000) {
     user.name ? user.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) : '?'
 
   const formatBytes = (bytes) => {
-    if (!bytes) return '0 B'
+    if (bytes === null || bytes === undefined) return '-'
+    if (bytes === 0) return '0 B'
     const k = 1024
     const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
     const i = Math.floor(Math.log(bytes) / Math.log(k))
@@ -125,17 +126,10 @@ export function useOnlineUsers(autoRefreshMs = 15000) {
     URL.revokeObjectURL(url)
   }
 
-  let refreshInterval
-  const startAutoRefresh = () => { refreshInterval = setInterval(fetchUsers, autoRefreshMs) }
-  const stopAutoRefresh = () => { if (refreshInterval) clearInterval(refreshInterval) }
-
-  onUnmounted(stopAutoRefresh)
-
   return {
     loading, error, users, selectedUser, showDetailsOverlay,
     totalOnline, hotspotCount, pppoeCount,
     getUserInitials, formatBytes, formatDuration, formatTime, formatDateTime,
-    fetchUsers, viewUserDetails, closeDetailsOverlay, disconnectUser, exportData,
-    startAutoRefresh, stopAutoRefresh
+    fetchUsers, viewUserDetails, closeDetailsOverlay, disconnectUser, exportData
   }
 }

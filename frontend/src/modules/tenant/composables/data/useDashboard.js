@@ -90,7 +90,7 @@ export function useDashboard() {
    */
   const fetchDashboardStats = async () => {
     try {
-      const response = await axios.get('/dashboard/stats')
+      const response = await axios.get('/tenant/dashboard/stats')
 
       if (response.data?.success) {
         const data = response.data?.data || {}
@@ -179,7 +179,7 @@ export function useDashboard() {
    */
   const refreshStats = async () => {
     try {
-      await axios.post('/dashboard/refresh')
+      await axios.post('/tenant/dashboard/refresh')
       // Fetch updated stats after a short delay
       setTimeout(fetchDashboardStats, 1000)
     } catch (error) {

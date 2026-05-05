@@ -215,11 +215,28 @@ class HybridApiConfigurator
         }
 
         if (!empty($this->config['wan_dhcp_client']) && $wanInterface) {
-            $this->removeByField('/ip/dhcp-client', 'interface', $wanInterface);
-            $this->api->executeCommand('/ip/dhcp-client/add', [
-                'interface' => $wanInterface,
-                'disabled' => 'no',
+            // Check if DHCP client already exists for this interface
+            $existingClients = $this->api->executeCommand('/ip/dhcp-client/print', [
+                '?interface' => $wanInterface,
             ]);
+            
+            if (!empty($existingClients)) {
+                // Enable existing DHCP client if disabled
+                foreach ($existingClients as $client) {
+                    if (isset($client['.id']) && ($client['disabled'] ?? 'false') === 'true') {
+                        $this->api->executeCommand('/ip/dhcp-client/set', [
+                            '.id' => $client['.id'],
+                            'disabled' => 'no',
+                        ]);
+                    }
+                }
+            } else {
+                // No DHCP client exists - add new one
+                $this->api->executeCommand('/ip/dhcp-client/add', [
+                    'interface' => $wanInterface,
+                    'disabled' => 'no',
+                ]);
+            }
         }
 
         $this->results['wan_interface'] = 'success';

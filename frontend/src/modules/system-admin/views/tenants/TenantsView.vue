@@ -187,18 +187,16 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import axios from 'axios'
 import { Plus, Search, Ban, CheckCircle } from 'lucide-vue-next'
 import SlideOverlay from '@/modules/common/components/base/SlideOverlay.vue'
 import { useConfirmStore } from '@/stores/confirm'
 import { useToast } from '@/modules/common/composables/useToast.js'
-import { useBroadcasting } from '@/modules/common/composables/websocket/useBroadcasting'
+import { useSSE } from '@/modules/common/composables/websocket/useSSE'
 
 const confirmStore = useConfirmStore()
 const { error: showError } = useToast()
-const { subscribeToPrivateChannel, unsubscribeFromChannel } = useBroadcasting()
-let wsChannels = []
 
 const tenants = ref([])
 const loading = ref(true)
@@ -299,22 +297,15 @@ const activateTenant = async (tenant) => {
 
 onMounted(() => {
   fetchTenants()
-
-  subscribeToPrivateChannel('system.admin', {
-    TenantCreated: () => fetchTenants(),
-    '.TenantCreated': () => fetchTenants(),
-  })
-  wsChannels.push('system.admin')
-
-  subscribeToPrivateChannel('system.tenants', {
-    TenantCreated: () => fetchTenants(),
-    '.TenantCreated': () => fetchTenants(),
-  })
-  wsChannels.push('system.tenants')
 })
 
-onUnmounted(() => {
-  wsChannels.forEach(ch => unsubscribeFromChannel(ch))
-  wsChannels = []
+// SSE: auto-refresh tenant list on new tenant events
+// useSSE auto-closes on onUnmounted
+const { subscribeMany } = useSSE('/api/system/sse', {
+  channels: 'system.admin,system.tenants',
+})
+
+subscribeMany({
+  TenantCreated: () => fetchTenants(),
 })
 </script>
