@@ -199,8 +199,7 @@ const handlePayment = async () => {
   })
 
   if (result.success && result.data?.payment_id) {
-    // Start polling for payment status
-    pollPaymentStatus(result.data.payment_id)
+    streamPaymentStatus(result.data.payment_id)
     
     emit('payment-success', {
       transactionId: result.data.CheckoutRequestID,
@@ -211,68 +210,55 @@ const handlePayment = async () => {
 }
 
 /**
- * Poll payment status for auto-login
+ * Event-driven payment status — subscribes to SSE stream, closes on first result.
+ * Replaces the old recursive setTimeout polling loop.
  */
-const pollPaymentStatus = async (paymentId) => {
+const streamPaymentStatus = (paymentId) => {
   pollingPayment.value = true
-  const maxAttempts = 60 // Poll for 60 seconds
-  let attempts = 0
-  
-  const poll = async () => {
-    try {
-      const response = await axios.get(`/payments/${paymentId}/status`)
-      
-      if (response.data.payment.status === 'completed') {
-        pollingPayment.value = false
-        
-        // Check if auto-login is available
-        if (response.data.auto_login && response.data.credentials) {
-          await autoLogin(response.data.credentials)
-        } else {
-          paymentStatus.value = {
-            type: 'success',
-            message: 'Payment successful! Check your SMS for login credentials.',
-          }
-        }
-        return
-      } else if (response.data.payment.status === 'failed') {
-        pollingPayment.value = false
-        paymentStatus.value = {
-          type: 'error',
-          message: 'Payment failed. Please try again.',
-        }
-        return
-      }
-      
-      // Continue polling
-      attempts++
-      if (attempts < maxAttempts) {
-        setTimeout(poll, 1000) // Poll every second
+
+  const es = new EventSource(`/api/payments/${paymentId}/stream`)
+
+  es.addEventListener('payment.result', async (e) => {
+    es.close()
+    pollingPayment.value = false
+    const data = JSON.parse(e.data)
+
+    if (data.status === 'completed') {
+      if (data.auto_login && data.credentials) {
+        await autoLogin(data.credentials)
       } else {
-        pollingPayment.value = false
         paymentStatus.value = {
-          type: 'info',
-          message: 'Payment verification timeout. Please check your SMS for credentials.',
+          type: 'success',
+          message: 'Payment successful! Check your SMS for login credentials.',
         }
       }
-      
-    } catch (error) {
-      console.error('Payment status check error:', error)
-      attempts++
-      if (attempts < maxAttempts) {
-        setTimeout(poll, 2000) // Retry after 2 seconds on error
-      } else {
-        pollingPayment.value = false
-        paymentStatus.value = {
-          type: 'error',
-          message: 'Error checking payment status. Please check your SMS.',
-        }
+    } else {
+      paymentStatus.value = {
+        type: 'error',
+        message: 'Payment failed. Please try again.',
       }
     }
+  })
+
+  es.addEventListener('timeout', () => {
+    es.close()
+    pollingPayment.value = false
+    paymentStatus.value = {
+      type: 'info',
+      message: 'Payment verification timeout. Please check your SMS for credentials.',
+    }
+  })
+
+  es.addEventListener('done', () => es.close())
+
+  es.onerror = () => {
+    es.close()
+    pollingPayment.value = false
+    paymentStatus.value = {
+      type: 'error',
+      message: 'Error checking payment status. Please check your SMS.',
+    }
   }
-  
-  // Start polling after a short delay
-  setTimeout(poll, 2000)
 }
 
 /**

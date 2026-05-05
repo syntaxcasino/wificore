@@ -115,10 +115,11 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import axios from 'axios'
 import { RefreshCw, Eye } from 'lucide-vue-next'
 import SlideOverlay from '@/modules/common/components/base/SlideOverlay.vue'
+import { useSSE } from '@/modules/common/composables/websocket/useSSE'
 
 const health = ref(null)
 const database = ref({})
@@ -201,10 +202,22 @@ const fetchAll = async () => {
   }
 }
 
-let interval = null
 onMounted(() => {
   fetchAll()
-  interval = setInterval(() => fetchAll(), 30000)
 })
-onUnmounted(() => { if (interval) clearInterval(interval) })
+
+// SSE: receive SystemMetricsUpdated event pushed by CollectSystemMetricsJob every minute
+// useSSE auto-closes on onUnmounted
+const { subscribeMany } = useSSE('/api/system/sse', {
+  channels: 'system.admin',
+})
+
+subscribeMany({
+  SystemMetricsUpdated: (data) => {
+    if (data.health)      health.value      = { ...(health.value || {}),      ...data.health }
+    if (data.performance) performance.value = { ...(performance.value || {}), ...data.performance }
+    lastUpdated.value = new Date().toISOString()
+    loading.value = false
+  },
+})
 </script>

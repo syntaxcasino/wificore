@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Redis;
 use App\Models\QueueMetric;
 use App\Models\SystemHealthMetric;
 use App\Models\PerformanceMetric;
+use App\Events\SystemMetricsUpdated;
 
 class CollectSystemMetricsJob implements ShouldQueue
 {
@@ -39,11 +40,14 @@ class CollectSystemMetricsJob implements ShouldQueue
             // Performance metrics already includes recorded_at from collectPerformanceMetrics()
             PerformanceMetric::create($performanceMetrics);
             
-            // Cache for real-time display (TTL: 30 seconds max)
-            Cache::put('metrics:queue:latest', $queueMetrics, now()->addSeconds(30));
-            Cache::put('metrics:health:latest', $healthMetrics, now()->addSeconds(30));
-            Cache::put('metrics:performance:latest', $performanceMetrics, now()->addSeconds(30));
-            
+            // Cache for API reads (TTL matches collection interval)
+            Cache::put('metrics:queue:latest', $queueMetrics, now()->addSeconds(90));
+            Cache::put('metrics:health:latest', $healthMetrics, now()->addSeconds(90));
+            Cache::put('metrics:performance:latest', $performanceMetrics, now()->addSeconds(90));
+
+            // Push to all connected system-admin SSE clients immediately
+            broadcast(new SystemMetricsUpdated($queueMetrics, $healthMetrics, $performanceMetrics));
+
             \Log::info('System metrics collected and persisted', [
                 'queue_workers' => $queueMetrics['active_workers'] ?? 0,
                 'db_connections' => $healthMetrics['db_connections'] ?? 0

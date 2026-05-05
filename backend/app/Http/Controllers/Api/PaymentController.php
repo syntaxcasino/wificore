@@ -26,7 +26,9 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Str;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class PaymentController extends Controller
 {
@@ -401,6 +403,95 @@ class PaymentController extends Controller
             }
         });
         return $data;
+    }
+
+    /**
+     * SSE stream for a specific payment's completion status.
+     * Used by the hotspot captive portal (unauthenticated guest).
+     *
+     * Subscribes to the Redis payments channel for the payment's tenant and
+     * emits a single "payment.result" SSE event when PaymentCompleted arrives,
+     * then closes the stream. Max timeout: 90 seconds.
+     */
+    public function streamStatus(Request $request, string $paymentId): StreamedResponse
+    {
+        $payment = Payment::find($paymentId);
+
+        if (!$payment) {
+            abort(404, 'Payment not found');
+        }
+
+        // If already terminal, stream result immediately without waiting
+        $alreadyDone = in_array($payment->status, ['completed', 'failed']);
+
+        return new StreamedResponse(function () use ($payment, $paymentId, $alreadyDone) {
+            // Disable output buffering
+            while (ob_get_level()) ob_end_flush();
+
+            header('Content-Type: text/event-stream');
+            header('Cache-Control: no-cache');
+            header('X-Accel-Buffering: no');
+
+            $sendEvent = function (string $event, array $data) {
+                echo "event: {$event}\n";
+                echo 'data: ' . json_encode($data) . "\n\n";
+                flush();
+            };
+
+            // Send initial heartbeat so the browser knows the connection is open
+            $sendEvent('connected', ['payment_id' => $payment->id, 'status' => $payment->status]);
+
+            if ($alreadyDone) {
+                $credentials = Cache::get("payment_credentials_{$payment->id}");
+                $sendEvent('payment.result', [
+                    'payment_id' => $payment->id,
+                    'status'     => $payment->status,
+                    'credentials' => $credentials,
+                    'auto_login'  => $credentials !== null,
+                ]);
+                $sendEvent('done', []);
+                return;
+            }
+
+            // Determine the Redis SSE channel for this payment's tenant
+            // PublishEventToSse publishes PaymentCompleted to sse:tenant.{tenantId}.payments
+            $tenantId = $payment->tenant_id;
+            $sseChannel = "sse:tenant.{$tenantId}.payments";
+
+            $deadline = time() + 90;
+
+            Redis::subscribe([$sseChannel], function ($message) use ($payment, $sendEvent, $deadline) {
+                if (time() >= $deadline) {
+                    $sendEvent('timeout', ['payment_id' => $payment->id]);
+                    return false; // Signal to exit subscribe loop
+                }
+
+                $decoded = json_decode($message, true);
+                if (!$decoded) return;
+
+                // Only care about PaymentCompleted for this specific payment
+                if (($decoded['event'] ?? '') !== 'PaymentCompleted') return;
+                $data = $decoded['data'] ?? [];
+                if (($data['payment']['id'] ?? null) != $payment->id) return;
+
+                // Fetch credentials (set by CreateHotspotUserJob)
+                $credentials = Cache::get("payment_credentials_{$payment->id}");
+
+                $sendEvent('payment.result', [
+                    'payment_id'  => $payment->id,
+                    'status'      => $data['payment']['status'] ?? 'completed',
+                    'credentials' => $credentials,
+                    'auto_login'  => $credentials !== null,
+                ]);
+                $sendEvent('done', []);
+
+                return false; // Exit subscribe loop
+            });
+        }, 200, [
+            'Content-Type'     => 'text/event-stream',
+            'Cache-Control'    => 'no-cache',
+            'X-Accel-Buffering' => 'no',
+        ]);
     }
 
     /**
