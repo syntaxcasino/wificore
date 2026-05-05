@@ -192,7 +192,7 @@ class VpnService extends TenantAwareService
                 \App\Jobs\VerifyVpnConnectivityJob::dispatch(
                     $tenant->id,
                     $vpnConfig->id,
-                    120,
+                    600,
                     5
                 )->onQueue('router-checks');
 

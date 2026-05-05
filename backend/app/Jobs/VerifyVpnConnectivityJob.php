@@ -25,7 +25,7 @@ class VerifyVpnConnectivityJob implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, TenantAwareJob;
 
     public int $tries = 1;
-    public int $timeout = 300; // 5 minutes max
+    public int $timeout = 660; // must exceed maxWaitSeconds (600) + overhead
 
     public int $vpnConfigId;
     public int $maxWaitSeconds;
