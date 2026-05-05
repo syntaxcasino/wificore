@@ -17,7 +17,7 @@ class VpnConnectivityVerified implements ShouldBroadcastNow
         public int $vpnConfigId,
         public string $clientIp,
         public float $latencyMs,
-        public int $packetLoss,
+        public ?int $packetLoss,
         public int $attempts
     ) {}
 
@@ -42,7 +42,7 @@ class VpnConnectivityVerified implements ShouldBroadcastNow
             'client_ip' => $this->clientIp,
             'connectivity' => [
                 'reachable' => true,
-                'packet_loss' => $this->packetLoss,
+                'packet_loss' => $this->packetLoss ?? 0,
                 'latency_ms' => $this->latencyMs,
                 'status' => 'connected',
             ],
