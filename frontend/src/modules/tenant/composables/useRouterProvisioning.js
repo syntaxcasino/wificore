@@ -326,6 +326,7 @@ export function useRouterProvisioning(props, emit) {
       addLog('info', `Deploying ${configured.length} configured service instance(s)...`)
 
       // Dispatch all deploy requests, then wait for WS events to confirm completion
+      let actuallyDispatched = 0
       for (const service of configured) {
         const serviceLabel = `${service.service_type || 'service'} on ${service.interface_name || service.interface || 'unknown interface'}`
         try {
@@ -338,6 +339,7 @@ export function useRouterProvisioning(props, emit) {
             }
             addLog('info', `${serviceLabel} is already deployed — skipping`)
           } else {
+            actuallyDispatched++
             addLog('info', `Queued ${serviceLabel}`)
           }
         } catch (deployErr) {
@@ -349,8 +351,13 @@ export function useRouterProvisioning(props, emit) {
         }
       }
 
-      // Wait for WS provisioning.progress events to confirm all services complete
-      await waitForServiceDeploymentViaWs(routerId, configured.length)
+      // If every service was already deployed, nothing to wait for — resolve immediately
+      if (actuallyDispatched === 0) {
+        addLog('info', 'All services already deployed')
+      } else {
+        // Wait for WS provisioning.progress events to confirm all dispatched services complete
+        await waitForServiceDeploymentViaWs(routerId, actuallyDispatched)
+      }
 
       mappingDeploying.value = false
       provisioningProgress.value = 100
