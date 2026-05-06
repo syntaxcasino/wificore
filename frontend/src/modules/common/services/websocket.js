@@ -116,13 +116,22 @@ class WebSocketService {
     })
     
     connection.bind('connected', () => {
-      console.log('✅ WebSocket connected')
+      const wasReconnect = this.reconnectAttempts > 0
+      console.log('✅ WebSocket connected', wasReconnect ? '(reconnected)' : '(initial)')
       this.connectionState = 'connected'
       this.reconnectAttempts = 0 // Reset counter on successful connection
       this.clearReconnectTimer()
-      
+
       // Re-subscribe to all channels that were previously subscribed
       this.resubscribeAllChannels()
+
+      // Emit global reconnect event so composables can catch up on missed data
+      if (wasReconnect) {
+        console.log('📢 Emitting websocket-reconnected event for catch-up fetches')
+        window.dispatchEvent(new CustomEvent('websocket-reconnected', {
+          detail: { timestamp: new Date().toISOString() }
+        }))
+      }
     })
     
     connection.bind('disconnected', () => {

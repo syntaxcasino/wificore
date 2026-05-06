@@ -30,6 +30,8 @@ class UserCreated implements ShouldBroadcast
             'email' => $user->email,
             'role' => $user->role,
             'tenant_id' => $user->tenant_id,
+            'created_at' => $user->created_at?->toIso8601String(),
+            'updated_at' => $user->updated_at?->toIso8601String(),
         ];
         $this->tenantId = $user->tenant_id;
     }
