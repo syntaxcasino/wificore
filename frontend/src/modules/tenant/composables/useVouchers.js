@@ -1,9 +1,11 @@
 import { ref, computed } from 'vue'
 import axios from '@/modules/common/services/api/axios'
 import { useToast } from '@/modules/common/composables/useToast'
+import { useEventDeduplicationStore } from '@/stores/eventDeduplication'
 
 export function useVouchers() {
   const toast = useToast()
+  const dedupStore = useEventDeduplicationStore()
 
   // State
   const vouchers = ref([])
@@ -31,6 +33,9 @@ export function useVouchers() {
     expired: 0,
     revoked: 0
   })
+
+  // Track pending optimistic updates for rollback
+  const pendingUpdates = ref(new Map())
 
   // Computed stats for DataViewContainer
   const statsForView = computed(() => [
@@ -146,15 +151,48 @@ export function useVouchers() {
   }
 
   const revokeVoucher = async (voucher) => {
+    const index = vouchers.value.findIndex(v => v.id === voucher.id)
+    if (index === -1) {
+      toast.error('Voucher not found')
+      return false
+    }
+
+    // Save current state for potential rollback
+    const previousState = { ...vouchers.value[index] }
+    const previousStats = { ...stats.value }
+
+    // Apply optimistic update
+    vouchers.value[index] = { ...vouchers.value[index], status: 'revoked', _optimistic: true }
+    if (stats.value[previousState.status] > 0) {
+      stats.value[previousState.status]--
+    }
+    stats.value.revoked = (stats.value.revoked || 0) + 1
+    pendingUpdates.value.set(voucher.id, { state: previousState, stats: previousStats })
+
     try {
       await axios.post(`/vouchers/${voucher.id}/revoke`)
       toast.success(`Voucher ${voucher.code} revoked`)
+
+      // Remove from pending updates
+      pendingUpdates.value.delete(voucher.id)
+
+      // Fetch fresh data to ensure consistency
       await fetchVouchers({ page: pagination.value.currentPage })
       await fetchStats()
       return true
     } catch (err) {
+      // Rollback on error
+      const currentIndex = vouchers.value.findIndex(v => v.id === voucher.id)
+      if (currentIndex !== -1) {
+        vouchers.value[currentIndex] = previousState
+      }
+      // Restore stats
+      stats.value = previousStats
+      pendingUpdates.value.delete(voucher.id)
+
       const message = err.response?.data?.message || 'Failed to revoke voucher'
       toast.error(message)
+      console.error('Error revoking voucher (rolled back):', err)
       return false
     }
   }
@@ -209,43 +247,108 @@ export function useVouchers() {
   }
 
   // WebSocket event handlers for real-time updates
+  // Track last sync timestamp for catch-up on reconnect
+  const lastSyncTimestamp = ref(null)
+
+  // Helper: Check if new data is fresher than existing
+  const isDataFresher = (newData, existingData) => {
+    const newTime = newData.updated_at || newData.created_at || newData.timestamp
+    const existingTime = existingData?.updated_at || existingData?.created_at
+
+    if (!newTime && !existingTime) return true // No timestamps, accept new data
+    if (!existingTime) return true // No existing timestamp, accept new data
+    if (!newTime) return false // No new timestamp, keep existing
+
+    return new Date(newTime).getTime() >= new Date(existingTime).getTime()
+  }
+
   const handleVoucherCreated = (event) => {
     const voucherData = event.detail?.voucher || event.detail?.data?.voucher || event.detail
+    const timestamp = event.detail?.timestamp || voucherData?.updated_at || voucherData?.created_at
     if (!voucherData?.id) return
 
+    // Deduplication: Skip if already processed this event
+    if (!dedupStore.tryProcess('voucher-created', voucherData.id, timestamp)) {
+      return
+    }
+
     // Check if voucher already exists (avoid duplicates from optimistic updates)
-    const exists = vouchers.value.some(v => v.id === voucherData.id)
-    if (!exists) {
+    const existingIndex = vouchers.value.findIndex(v => v.id === voucherData.id)
+    if (existingIndex === -1) {
       vouchers.value.unshift(voucherData)
       stats.value.unused = (stats.value.unused || 0) + 1
       stats.value.total = (stats.value.total || 0) + 1
       console.log('[Vouchers] Added via event:', voucherData.code)
+    } else {
+      // Voucher exists, check if event data is fresher
+      if (isDataFresher(voucherData, vouchers.value[existingIndex])) {
+        const oldStatus = vouchers.value[existingIndex].status
+        vouchers.value[existingIndex] = { ...vouchers.value[existingIndex], ...voucherData }
+
+        // Update stats if status changed
+        if (oldStatus !== voucherData.status) {
+          if (stats.value[oldStatus] > 0) stats.value[oldStatus]--
+          if (stats.value[voucherData.status] !== undefined) {
+            stats.value[voucherData.status] = (stats.value[voucherData.status] || 0) + 1
+          }
+        }
+        console.log('[Vouchers] Updated via create event (fresher data):', voucherData.code)
+      } else {
+        console.log('[Vouchers] Ignored stale create event for:', voucherData.code)
+      }
     }
+
+    lastSyncTimestamp.value = new Date().toISOString()
   }
 
   const handleVoucherUpdated = (event) => {
     const voucherData = event.detail?.voucher || event.detail?.data?.voucher || event.detail
+    const timestamp = event.detail?.timestamp || voucherData?.updated_at
     if (!voucherData?.id) return
+
+    // Deduplication: Skip if already processed this event
+    if (!dedupStore.tryProcess('voucher-updated', voucherData.id, timestamp)) {
+      return
+    }
 
     const index = vouchers.value.findIndex(v => v.id === voucherData.id)
     if (index !== -1) {
-      const oldStatus = vouchers.value[index].status
-      vouchers.value[index] = { ...vouchers.value[index], ...voucherData }
+      // Prevent stale data overwrites - compare timestamps
+      if (isDataFresher(voucherData, vouchers.value[index])) {
+        const oldStatus = vouchers.value[index].status
+        vouchers.value[index] = { ...vouchers.value[index], ...voucherData }
 
-      // Update stats if status changed
-      if (oldStatus !== voucherData.status) {
-        if (stats.value[oldStatus] > 0) stats.value[oldStatus]--
-        if (stats.value[voucherData.status] !== undefined) {
-          stats.value[voucherData.status] = (stats.value[voucherData.status] || 0) + 1
+        // Update stats if status changed
+        if (oldStatus !== voucherData.status) {
+          if (stats.value[oldStatus] > 0) stats.value[oldStatus]--
+          if (stats.value[voucherData.status] !== undefined) {
+            stats.value[voucherData.status] = (stats.value[voucherData.status] || 0) + 1
+          }
         }
+        console.log('[Vouchers] Updated via event:', voucherData.code)
+      } else {
+        console.log('[Vouchers] Ignored stale update event for:', voucherData.code)
       }
-      console.log('[Vouchers] Updated via event:', voucherData.code)
+    } else {
+      // Voucher not in list, add them (might have been created while offline)
+      vouchers.value.unshift(voucherData)
+      stats.value.unused = (stats.value.unused || 0) + 1
+      stats.value.total = (stats.value.total || 0) + 1
+      console.log('[Vouchers] Added via update event (was missing):', voucherData.code)
     }
+
+    lastSyncTimestamp.value = new Date().toISOString()
   }
 
   const handleVoucherDeleted = (event) => {
     const voucherId = event.detail?.voucherId || event.detail?.voucher?.id || event.detail?.id
+    const timestamp = event.detail?.timestamp
     if (!voucherId) return
+
+    // Deduplication: Skip if already processed this event
+    if (!dedupStore.tryProcess('voucher-deleted', voucherId, timestamp)) {
+      return
+    }
 
     const voucher = vouchers.value.find(v => v.id === voucherId)
     if (voucher && stats.value[voucher.status] > 0) {
@@ -255,6 +358,48 @@ export function useVouchers() {
 
     vouchers.value = vouchers.value.filter(v => v.id !== voucherId)
     console.log('[Vouchers] Deleted via event:', voucherId)
+    lastSyncTimestamp.value = new Date().toISOString()
+  }
+
+  // Catch-up fetch for reconnects - fetch data changed since last sync
+  const catchUpFetch = async () => {
+    if (!lastSyncTimestamp.value) {
+      // No last sync, do full fetch
+      return fetchVouchers()
+    }
+
+    try {
+      console.log('[Vouchers] Running catch-up fetch since:', lastSyncTimestamp.value)
+      const response = await axios.get('/vouchers', {
+        params: { since: lastSyncTimestamp.value }
+      })
+      const data = response.data.data || response.data
+
+      if (Array.isArray(data)) {
+        // Merge catch-up data with existing
+        data.forEach(voucher => {
+          const index = vouchers.value.findIndex(v => v.id === voucher.id)
+          if (index === -1) {
+            vouchers.value.push(voucher)
+          } else if (isDataFresher(voucher, vouchers.value[index])) {
+            vouchers.value[index] = { ...vouchers.value[index], ...voucher }
+          }
+        })
+      }
+
+      lastSyncTimestamp.value = new Date().toISOString()
+      await fetchStats() // Refresh stats after catch-up
+    } catch (err) {
+      console.error('[Vouchers] Catch-up fetch failed:', err)
+      // Fall back to full fetch
+      return fetchVouchers()
+    }
+  }
+
+  // Handle WebSocket reconnect - catch up on missed data
+  const handleWebSocketReconnect = () => {
+    console.log('[Vouchers] WebSocket reconnected, running catch-up fetch')
+    catchUpFetch()
   }
 
   // Setup WebSocket event listeners
@@ -262,6 +407,7 @@ export function useVouchers() {
     window.addEventListener('voucher-created', handleVoucherCreated)
     window.addEventListener('voucher-updated', handleVoucherUpdated)
     window.addEventListener('voucher-deleted', handleVoucherDeleted)
+    window.addEventListener('websocket-reconnected', handleWebSocketReconnect)
   }
 
   // Cleanup WebSocket listeners
@@ -269,6 +415,7 @@ export function useVouchers() {
     window.removeEventListener('voucher-created', handleVoucherCreated)
     window.removeEventListener('voucher-updated', handleVoucherUpdated)
     window.removeEventListener('voucher-deleted', handleVoucherDeleted)
+    window.removeEventListener('websocket-reconnected', handleWebSocketReconnect)
   }
 
   return {
@@ -281,6 +428,8 @@ export function useVouchers() {
     generateError,
     pagination,
     stats,
+    lastSyncTimestamp,
+    pendingUpdates,
 
     // Computed
     statsForView,
@@ -303,6 +452,8 @@ export function useVouchers() {
 
     // WebSocket
     setupWebSocketListeners,
-    cleanupWebSocketListeners
+    cleanupWebSocketListeners,
+    catchUpFetch,
+    isDataFresher
   }
 }

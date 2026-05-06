@@ -31,6 +31,7 @@ class UserUpdated implements ShouldBroadcast
             'role' => $user->role,
             'is_active' => $user->is_active,
             'tenant_id' => $user->tenant_id,
+            'updated_at' => $user->updated_at?->toIso8601String(),
         ];
         $this->tenantId = $user->tenant_id;
     }

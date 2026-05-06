@@ -52,8 +52,8 @@ class RouterProbingJob implements ShouldQueue
                 return;
             }
 
-            // Skip if router is already connected or active
-            if (in_array($router->status, ['connected', 'active', 'provisioning', 'online'])) {
+            // Skip if router is already connected or active (terminal-success statuses only)
+            if (in_array($router->status, ['connected', 'active', 'online'])) {
                 Log::info('Router already connected, stopping probing', [
                     'router_id' => $router->id,
                     'status' => $router->status,
