@@ -339,6 +339,12 @@ const subscribeToEvents = (routerId) => {
 
   const channelName = `router-provisioning.${routerId}`
 
+  // Leave any existing subscription before re-subscribing to prevent listener accumulation
+  // (can happen if the overlay is closed and re-opened for the same router)
+  if (window.Echo?.connector?.channels?.[`private-${channelName}`]) {
+    window.Echo.leave(channelName)
+  }
+
   // Hard timeout: 5 minutes — router probing can take up to ~2 min; provisioning another ~2 min
   _clearReprovisionTimeout()
   _reprovisionTimeout = setTimeout(() => {
