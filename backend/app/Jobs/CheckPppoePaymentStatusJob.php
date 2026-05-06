@@ -46,26 +46,39 @@ class CheckPppoePaymentStatusJob implements ShouldQueue
             try {
                 $gracePeriodDays = 3; // 3 days grace period
                 
-                // 1. Check users with payment overdue (not in grace period yet)
-                $overdueUsers = PppoeUser::where('payment_status', 'unpaid')
-                    ->where('next_payment_due', '<', now())
-                    ->where('in_grace_period', false)
+                // 1. Immediately block all unpaid users who are not already suspended
+                $unpaidUsers = PppoeUser::where('payment_status', 'unpaid')
                     ->whereNull('suspended_at')
+                    ->where('is_active', true)
                     ->get();
 
-                foreach ($overdueUsers as $user) {
-                    // Put user in grace period
-                    $user->in_grace_period = true;
-                    $user->grace_period_ends = now()->addDays($gracePeriodDays);
-                    $user->save();
+                foreach ($unpaidUsers as $user) {
+                    // Check if user should be in grace period or immediately suspended
+                    if ($user->next_payment_due && $user->next_payment_due->greaterThan(now())) {
+                        // Payment due in future, put in grace period
+                        $user->in_grace_period = true;
+                        $user->grace_period_ends = $user->next_payment_due;
+                        $user->save();
 
-                    Log::info('PPPoE user entered grace period', [
-                        'tenant_id' => $this->tenantId,
-                        'user_id' => $user->id,
-                        'username' => $user->username,
-                        'account_number' => $user->account_number,
-                        'grace_period_ends' => $user->grace_period_ends,
-                    ]);
+                        Log::info('PPPoE unpaid user put in grace period', [
+                            'tenant_id' => $this->tenantId,
+                            'user_id' => $user->id,
+                            'username' => $user->username,
+                            'next_payment_due' => $user->next_payment_due,
+                        ]);
+                    } else {
+                        // Payment overdue or no due date, suspend immediately
+                        $user->suspendForNonPayment();
+                        $this->blockUserInRadius($user);
+                        $this->disconnectPppoeSessions($user);
+
+                        Log::warning('PPPoE user suspended for non-payment', [
+                            'tenant_id' => $this->tenantId,
+                            'user_id' => $user->id,
+                            'username' => $user->username,
+                            'next_payment_due' => $user->next_payment_due,
+                        ]);
+                    }
                 }
 
                 // 2. Check users whose grace period has expired
@@ -84,12 +97,12 @@ class CheckPppoePaymentStatusJob implements ShouldQueue
                     // Disconnect active PPPoE session immediately (best-effort)
                     $this->disconnectPppoeSessions($user);
 
-                    Log::warning('PPPoE user suspended for non-payment', [
+                    Log::warning('PPPoE user suspended - grace period expired', [
                         'tenant_id' => $this->tenantId,
                         'user_id' => $user->id,
                         'username' => $user->username,
                         'account_number' => $user->account_number,
-                        'amount_due' => $user->amount_due,
+                        'grace_period_ends' => $user->grace_period_ends,
                     ]);
                 }
 
@@ -122,8 +135,8 @@ class CheckPppoePaymentStatusJob implements ShouldQueue
 
                 Log::info('PPPoE payment status check completed', [
                     'tenant_id' => $this->tenantId,
-                    'overdue_users' => $overdueUsers->count(),
-                    'suspended_users' => $expiredGraceUsers->count(),
+                    'unpaid_users_processed' => $unpaidUsers->count(),
+                    'grace_period_expired' => $expiredGraceUsers->count(),
                     'expired_subscriptions' => $expiredSubscriptions->count(),
                 ]);
 

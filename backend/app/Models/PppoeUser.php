@@ -75,6 +75,7 @@ class PppoeUser extends Model
 
         static::saved(function ($pppoeUser) {
             static::ensureRadiusSchemaMapping($pppoeUser);
+            static::syncRadiusForPaymentStatus($pppoeUser);
         });
     }
 
@@ -113,6 +114,51 @@ class PppoeUser extends Model
         } catch (\Exception $e) {
             Log::error('Failed to ensure RADIUS schema mapping', [
                 'username' => $pppoeUser->username,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Sync RADIUS entries based on payment status.
+     * This ensures unpaid users are immediately blocked in RADIUS.
+     */
+    public static function syncRadiusForPaymentStatus(self $pppoeUser): void
+    {
+        try {
+            // Only sync if payment status changed
+            if (!$pppoeUser->wasChanged('payment_status')) {
+                return;
+            }
+
+            if ($pppoeUser->payment_status === 'unpaid' && !$pppoeUser->isSuspended()) {
+                // Add Auth-Type Reject to block unpaid user
+                DB::table('radcheck')->updateOrInsert(
+                    ['username' => $pppoeUser->username, 'attribute' => 'Auth-Type'],
+                    ['op' => ':=', 'value' => 'Reject']
+                );
+
+                Log::info('RADIUS: Blocked unpaid user', [
+                    'username' => $pppoeUser->username,
+                    'payment_status' => $pppoeUser->payment_status,
+                ]);
+            } elseif ($pppoeUser->payment_status === 'paid') {
+                // Remove Auth-Type Reject to allow paid user
+                DB::table('radcheck')
+                    ->where('username', $pppoeUser->username)
+                    ->where('attribute', 'Auth-Type')
+                    ->where('value', 'Reject')
+                    ->delete();
+
+                Log::info('RADIUS: Unblocked paid user', [
+                    'username' => $pppoeUser->username,
+                    'payment_status' => $pppoeUser->payment_status,
+                ]);
+            }
+        } catch (\Exception $e) {
+            Log::error('Failed to sync RADIUS for payment status', [
+                'username' => $pppoeUser->username,
+                'payment_status' => $pppoeUser->payment_status,
                 'error' => $e->getMessage(),
             ]);
         }
