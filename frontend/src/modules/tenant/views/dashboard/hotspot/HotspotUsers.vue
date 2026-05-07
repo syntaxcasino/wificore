@@ -296,12 +296,12 @@
         </div>
 
         <!-- Tabs -->
-        <div class="flex gap-1 mt-4 bg-white/10 rounded-xl p-1">
+        <div class="flex gap-1 mt-4 bg-white/10 rounded-xl p-1 overflow-x-auto scrollbar-hide">
           <button
             v-for="tab in panelTabs"
             :key="tab.id"
             @click="activeTab = tab.id"
-            class="flex-1 flex items-center justify-center gap-1.5 py-1.5 text-xs font-semibold rounded-lg transition-all relative"
+            class="flex-shrink-0 flex items-center justify-center gap-1.5 py-1.5 px-2 text-xs font-semibold rounded-lg transition-all relative whitespace-nowrap"
             :class="activeTab === tab.id ? 'bg-white text-cyan-700 shadow-sm' : 'text-cyan-200 hover:text-white hover:bg-white/10'"
           >
             <component :is="tab.icon" class="w-3.5 h-3.5" />

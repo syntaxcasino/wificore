@@ -188,7 +188,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import {
   RefreshCw, Download, Activity, Users, Database, DollarSign,
   Gauge, Server

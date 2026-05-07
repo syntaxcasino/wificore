@@ -530,7 +530,7 @@ onBeforeUnmount(() => {
 })
 
 // SSE: event-driven package updates — useSSE auto-closes on onUnmounted
-const { subscribeMany } = useSSE('/api/sse/tenant', {
+const { subscribeMany } = useSSE('/sse/tenant', {
   channels: 'packages',
 })
 

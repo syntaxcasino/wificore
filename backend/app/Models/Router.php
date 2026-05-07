@@ -31,6 +31,9 @@ class Router extends Model
                         $router->id, $tenantId,
                         $router->ip_address, $router->vpn_ip, $router->config_token
                     );
+                    // Invalidate cache to prevent stale data
+                    \App\Services\StaleSafeCacheService::invalidateLists('routers', $tenantId);
+                    \App\Services\StaleSafeCacheService::invalidateDashboard($tenantId);
                 }
             } catch (\Exception $e) {
                 \Illuminate\Support\Facades\Log::warning('Failed to register router in tenant map: ' . $e->getMessage());
@@ -39,6 +42,13 @@ class Router extends Model
 
         static::updated(function (Router $router) {
             try {
+                // Invalidate cache to prevent stale data
+                $tenantId = $router->getTenantIdAttribute();
+                if ($tenantId) {
+                    \App\Services\StaleSafeCacheService::invalidateLists('routers', $tenantId);
+                    \App\Services\StaleSafeCacheService::invalidateDashboard($tenantId);
+                }
+
                 if ($router->isDirty(['ip_address', 'vpn_ip', 'config_token'])) {
                     $map = RouterTenantMap::find($router->id);
                     if ($map) {
@@ -80,6 +90,13 @@ class Router extends Model
         static::deleted(function (Router $router) {
             try {
                 RouterTenantMap::unregisterRouter($router->id);
+                
+                // Invalidate cache to prevent stale data
+                $tenantId = $router->getTenantIdAttribute();
+                if ($tenantId) {
+                    \App\Services\StaleSafeCacheService::invalidateLists('routers', $tenantId);
+                    \App\Services\StaleSafeCacheService::invalidateDashboard($tenantId);
+                }
             } catch (\Exception $e) {
                 \Illuminate\Support\Facades\Log::warning('Failed to unregister router from tenant map: ' . $e->getMessage());
             }

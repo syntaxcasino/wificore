@@ -82,13 +82,13 @@
     <!-- Content -->
     <div class="flex flex-col h-full pt-2 pb-2 min-h-0">
       <!-- Update Types Tabs -->
-      <div class="flex items-center gap-2 mb-4 border-b border-slate-200 dark:border-slate-700">
+      <div class="flex items-center gap-2 mb-4 border-b border-slate-200 dark:border-slate-700 overflow-x-auto scrollbar-hide">
         <button
           v-for="tab in tabs"
           :key="tab.id"
           @click="activeTab = tab.id"
           :class="activeTab === tab.id ? 'border-blue-500 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'"
-          class="px-4 py-2 text-sm font-medium border-b-2 transition-colors"
+          class="px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap flex-shrink-0"
         >
           {{ tab.label }}
         </button>

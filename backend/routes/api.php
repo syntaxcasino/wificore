@@ -41,8 +41,11 @@ use App\Http\Controllers\Api\RouterAnalyticsController;
 use App\Http\Controllers\Api\UnifiedStreamController;
 use App\Http\Controllers\Api\TenantSseController;
 use App\Http\Controllers\Api\SystemAdminSseController;
+use App\Http\Controllers\Api\MonitoringController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\Api\TodoController;
+// NEW: PPPoE Portal Controller
+use App\Http\Controllers\Api\PppoePortalController;
 // HR Module Controllers
 use App\Http\Controllers\Api\DepartmentController;
 use App\Http\Controllers\Api\PositionController;
@@ -1269,4 +1272,24 @@ Route::middleware(['auth:sanctum', 'role:admin,tenant', 'user.active', 'tenant.c
     // Active Sessions
     Route::get('/sessions', [TenantDashboardController::class, 'getSessions'])
         ->name('api.tenant.sessions');
+});
+
+// =============================================================================
+// MONITORING ROUTES - Traffic, Performance, and System Health Metrics
+// =============================================================================
+Route::middleware(['auth:sanctum', 'role:admin,tenant', 'user.active', 'tenant.context'])->prefix('monitoring')->group(function () {
+    Route::get('/traffic/overview', [MonitoringController::class, 'trafficOverview'])
+        ->name('api.monitoring.traffic.overview');
+    Route::get('/network/performance', [MonitoringController::class, 'networkPerformance'])
+        ->name('api.monitoring.network.performance');
+    Route::get('/system/health', [MonitoringController::class, 'systemHealth'])
+        ->name('api.monitoring.system.health');
+    Route::get('/revenue/metrics', [MonitoringController::class, 'revenueMetrics'])
+        ->name('api.monitoring.revenue.metrics');
+    Route::get('/capacity/status', [MonitoringController::class, 'capacityStatus'])
+        ->name('api.monitoring.capacity.status');
+    Route::get('/users/behavior', [MonitoringController::class, 'userBehavior'])
+        ->name('api.monitoring.users.behavior');
+    Route::get('/alerts/active', [MonitoringController::class, 'activeAlerts'])
+        ->name('api.monitoring.alerts.active');
 });
