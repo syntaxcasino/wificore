@@ -293,13 +293,8 @@ Route::middleware(['auth:sanctum', 'user.active', 'tenant.context'])->group(func
 Route::middleware(['auth:sanctum', 'system.admin'])->prefix('system')->name('api.system.')->group(function () {
 
     // -------------------------------------------------------------------------
-    // EVENT-DRIVEN SSE — system-admin (Redis pub/sub, zero DB polling)
-    // ?channels=system.admin,system.tenants,system.metrics,...
+    // EVENT-DRIVEN SSE — system-admin (moved outside this group, see below)
     // -------------------------------------------------------------------------
-    Route::get('/sse', [SystemAdminSseController::class, 'stream'])
-        ->withoutMiddleware(['auth:sanctum', 'system.admin'])
-        ->middleware(['sse.auth', 'auth:sanctum', 'system.admin'])
-        ->name('sse');
 
     // -------------------------------------------------------------------------
     // Environment Health Monitoring (System Admin Only)
@@ -444,6 +439,14 @@ Route::middleware(['auth:sanctum', 'system.admin'])->prefix('system')->name('api
     Route::delete('/script-preview/{routerId}', [\App\Http\Controllers\Api\ScriptPreviewController::class, 'destroy'])
         ->name('script-preview.destroy');
 });
+
+// =============================================================================
+// EVENT-DRIVEN SSE — system-admin (Redis pub/sub, zero DB polling)
+// OUTSIDE the system admin group so sse.auth runs BEFORE auth:sanctum.
+// =============================================================================
+Route::get('/system/sse', [SystemAdminSseController::class, 'stream'])
+    ->middleware(['sse.auth', 'auth:sanctum', 'system.admin'])
+    ->name('api.system.sse');
 
 // =============================================================================
 // ADMIN-ONLY ROUTES - Requires role:admin (Tenant Administrators)
