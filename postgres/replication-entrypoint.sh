@@ -65,14 +65,57 @@ fi
 /usr/local/bin/docker-entrypoint.sh "$@" &
 pg_pid=$!
 
-until pg_isready -U "${POSTGRES_USER:-postgres}" -d postgres >/dev/null 2>&1; do
-  sleep 1
-done
+# ---------------------------------------------------------------------------
+# Wait for the docker-entrypoint.sh init cycle to FULLY complete.
+#
+# During first boot the official entrypoint:
+#   1. Starts a temporary postgres to run /docker-entrypoint-initdb.d/*.sql
+#   2. Shuts it down
+#   3. Starts postgres for real
+#
+# pg_isready returns true during step 1, so we must wait until step 3.
+# We detect completion by waiting for the postmaster.pid to appear, disappear
+# (shutdown after init), and reappear (final start).  On subsequent boots
+# (data dir already initialised) we just wait for pg_isready once.
+# ---------------------------------------------------------------------------
+pidfile="${PGDATA}/postmaster.pid"
+
+if [ ! -s "${PGDATA}/PG_VERSION" ] || [ -f "${PGDATA}/.docker-entrypoint-initdb-in-progress" ]; then
+  # First boot — wait for init-phase postgres to appear, then disappear, then restart
+  echo "Waiting for docker-entrypoint init phase to complete..."
+
+  # Phase 1: wait for init-phase postgres to start
+  for i in $(seq 1 120); do
+    [ -f "${pidfile}" ] && break
+    sleep 1
+  done
+
+  # Phase 2: wait for init-phase postgres to shut down (entrypoint restarts it)
+  for i in $(seq 1 120); do
+    [ ! -f "${pidfile}" ] && break
+    sleep 1
+  done
+
+  # Phase 3: wait for final postgres to be ready
+  for i in $(seq 1 60); do
+    if pg_isready -U "${POSTGRES_USER:-postgres}" -d postgres >/dev/null 2>&1; then
+      break
+    fi
+    sleep 1
+  done
+else
+  # Subsequent boot — just wait for pg_isready
+  until pg_isready -U "${POSTGRES_USER:-postgres}" -d postgres >/dev/null 2>&1; do
+    sleep 1
+  done
+fi
+
+echo "PostgreSQL is running in normal mode — configuring replication..."
 
 app_db="${POSTGRES_DB:-postgres}"
 if [ -n "${app_db}" ] && [ "${app_db}" != "postgres" ]; then
   export PGPASSWORD="${POSTGRES_PASSWORD:-}"
-  # Wait up to 30s for the official entrypoint to finish init (it creates the DB too)
+  # Wait up to 30s for the DB to exist (entrypoint creates it)
   for i in $(seq 1 15); do
     if psql --username "${POSTGRES_USER:-postgres}" --dbname postgres -tAc "SELECT 1 FROM pg_database WHERE datname='${app_db}';" 2>/dev/null | grep -q 1; then
       break
