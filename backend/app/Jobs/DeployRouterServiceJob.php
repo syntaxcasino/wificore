@@ -44,7 +44,7 @@ class DeployRouterServiceJob implements ShouldQueue
      * Determine the time at which the job should timeout.
      * Using time-based retry so release() for lock contention doesn't burn attempts.
      */
-    public function retryUntil(): \DateTime
+    public function retryUntil(): \DateTimeInterface
     {
         return now()->addMinutes(15);
     }
