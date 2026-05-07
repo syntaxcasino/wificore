@@ -538,4 +538,20 @@ router.beforeEach((to, from, next) => {
   }
 })
 
+// Handle chunk-load failures after deployment (stale hashed filenames).
+// A single automatic reload fetches the new index.html with correct chunk URLs.
+router.onError((error, to) => {
+  if (
+    error.message?.includes('Failed to fetch dynamically imported module') ||
+    error.message?.includes('Importing a module script failed')
+  ) {
+    // Prevent infinite reload loop: only reload once per path
+    const key = 'chunk_reload:' + (to?.fullPath || window.location.pathname)
+    if (!sessionStorage.getItem(key)) {
+      sessionStorage.setItem(key, '1')
+      window.location.assign(to?.fullPath || window.location.pathname)
+    }
+  }
+})
+
 export default router
