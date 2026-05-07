@@ -44,5 +44,5 @@ ENTRYPOINT ["/usr/local/bin/replication-entrypoint.sh"]
 EXPOSE 5432
 
 # Health check
-HEALTHCHECK --interval=10s --timeout=5s --retries=3 --start-period=20s \
+HEALTHCHECK --interval=10s --timeout=5s --retries=5 --start-period=60s \
     CMD pg_isready -U ${POSTGRES_USER:-admin} -d ${POSTGRES_DB:-wms_770_ts} || exit 1
