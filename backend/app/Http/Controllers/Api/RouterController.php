@@ -1290,7 +1290,6 @@ class RouterController extends Controller
         $migrationManager = app(TenantMigrationManager::class);
 
         try {
-            // PATH 1: Fast lookup by config_token via RouterTenantMap
             $mappedTenantId = RouterTenantMap::findTenantByConfigToken($configToken);
             if ($mappedTenantId) {
                 $mappedTenant = Tenant::find($mappedTenantId);
@@ -1309,34 +1308,6 @@ class RouterController extends Controller
                 }
             }
 
-            // PATH 2: The URL value might be a router_id instead of config_token
-            // (e.g. frontend generated URL with router ID, or user copied wrong value)
-            if (!$router) {
-                $mappedByRouterId = RouterTenantMap::find($configToken);
-                if ($mappedByRouterId) {
-                    $tenantById = Tenant::find($mappedByRouterId->tenant_id);
-                    if ($tenantById && $tenantById->schema_created && $tenantById->schema_name) {
-                        if ($migrationManager->hasPendingMigrations($tenantById)) {
-                            $migrationManager->runMigrationsForTenant($tenantById);
-                        }
-                        $router = DB::transaction(function () use ($tenantContext, $tenantById, $configToken) {
-                            DB::connection()->recordsHaveBeenModified();
-                            $tenantContext->setTenant($tenantById);
-                            return Router::find($configToken);
-                        });
-                        if ($router) {
-                            $foundTenant = $tenantById;
-                            Log::warning('Router fetch-config called with router_id instead of config_token', [
-                                'router_id' => $configToken,
-                                'tenant_id' => $tenantById->id,
-                                'actual_config_token' => $router->config_token,
-                            ]);
-                        }
-                    }
-                }
-            }
-
-            // PATH 3: Slow fallback — scan all tenant schemas by config_token
             if (!$router) {
                 // CRITICAL: Router table is in tenant schema, but we don't know which tenant yet
                 // Fallback: search across all tenant schemas using write connection only
@@ -1354,9 +1325,7 @@ class RouterController extends Controller
                         $found = DB::transaction(function () use ($tenantContext, $tenant, $configToken) {
                             DB::connection()->recordsHaveBeenModified();
                             $tenantContext->setTenant($tenant);
-                            // Try both config_token and id
-                            return Router::where('config_token', $configToken)->first()
-                                ?: Router::find($configToken);
+                            return Router::where('config_token', $configToken)->first();
                         });
 
                         if ($found) {
@@ -1368,7 +1337,6 @@ class RouterController extends Controller
                                 'schema_name'  => $tenant->schema_name,
                                 'router_id'    => $router->id,
                                 'config_token' => $configToken,
-                                'matched_by'   => $router->config_token === $configToken ? 'config_token' : 'router_id',
                             ]);
                             break;
                         }
@@ -1384,8 +1352,8 @@ class RouterController extends Controller
                 }
 
                 if (isset($tenants) && (!$router || !$foundTenant)) {
-                    Log::warning('Router not found with config token or router ID', [
-                        'url_value'        => $configToken,
+                    Log::warning('Router not found with config token', [
+                        'config_token'     => $configToken,
                         'tenants_searched' => $tenants->count(),
                     ]);
                 }

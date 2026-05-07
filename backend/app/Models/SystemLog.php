@@ -5,11 +5,12 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use App\Traits\BelongsToTenant;
+use App\Traits\HasUuid;
 
 class SystemLog extends Model
 {
     /** @use HasFactory<\Database\Factories\SystemLogFactory> */
-    use HasFactory, BelongsToTenant;
+    use HasFactory, BelongsToTenant, HasUuid;
 
     protected $table = 'system_logs';
 
