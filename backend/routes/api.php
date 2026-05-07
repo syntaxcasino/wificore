@@ -873,13 +873,8 @@ Route::middleware(['auth:sanctum', 'role:admin', 'user.active', 'tenant.context'
         ->name('api.stream.available');
 
     // =========================================================================
-    // EVENT-DRIVEN SSE — tenant users (Redis pub/sub, zero DB polling)
-    // ?channels=router-updates,dashboard-stats,packages,...
+    // EVENT-DRIVEN SSE — tenant users (moved outside this group, see below)
     // =========================================================================
-    Route::get('/sse/tenant', [TenantSseController::class, 'stream'])
-        ->withoutMiddleware(['auth:sanctum', 'role:admin', 'user.active', 'tenant.context'])
-        ->middleware(['sse.auth', 'auth:sanctum', 'user.active', 'tenant.context'])
-        ->name('api.sse.tenant');
 
     // =========================================================================
     // NEW: STANDALONE ACCESS POINT ROUTES
@@ -1186,6 +1181,16 @@ Route::middleware(['auth:sanctum', 'role:hotspot_user', 'user.active', 'tenant.c
 Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
     return $request->user();
 });
+
+// =============================================================================
+// EVENT-DRIVEN SSE — tenant users (Redis pub/sub, zero DB polling)
+// OUTSIDE any route group so sse.auth runs BEFORE auth:sanctum.
+// EventSource cannot set custom headers, so the token is passed as ?token=
+// and sse.auth promotes it to an Authorization: Bearer header.
+// =============================================================================
+Route::get('/sse/tenant', [TenantSseController::class, 'stream'])
+    ->middleware(['sse.auth', 'auth:sanctum', 'user.active', 'tenant.context'])
+    ->name('api.sse.tenant');
 
 // =============================================================================
 // ROUTER VPN MANAGEMENT ROUTES
