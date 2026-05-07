@@ -877,6 +877,7 @@ Route::middleware(['auth:sanctum', 'role:admin', 'user.active', 'tenant.context'
     // ?channels=router-updates,dashboard-stats,packages,...
     // =========================================================================
     Route::get('/sse/tenant', [TenantSseController::class, 'stream'])
+        ->withoutMiddleware(['auth:sanctum', 'role:admin', 'user.active', 'tenant.context'])
         ->middleware(['sse.auth', 'auth:sanctum', 'user.active', 'tenant.context'])
         ->name('api.sse.tenant');
 
