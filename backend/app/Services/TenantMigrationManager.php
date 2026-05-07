@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Tenant;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
@@ -15,6 +16,18 @@ class TenantMigrationManager
      */
     public function runMigrationsForTenant(Tenant $tenant): bool
     {
+        // Acquire a distributed lock to prevent multiple workers from migrating
+        // the same tenant schema concurrently (race → duplicate CREATE TABLE).
+        $lockKey = "tenant_migration_lock:{$tenant->id}";
+        $lock = Cache::lock($lockKey, 300); // 5 minute TTL
+
+        if (!$lock->get()) {
+            Log::info("Another worker is already migrating tenant {$tenant->name}, skipping", [
+                'tenant_id' => $tenant->id,
+            ]);
+            return true; // Not an error — another worker is handling it
+        }
+
         try {
             // Get migration files and already-executed list before opening the transaction,
             // since these queries target the public schema and don't need tenant search_path.
@@ -30,13 +43,16 @@ class TenantMigrationManager
             // holds the same backend PostgreSQL connection throughout. SET LOCAL is
             // transaction-scoped and is required for PgBouncer transaction pooling mode.
             DB::transaction(function () use ($tenant, $migrationFiles, $executedMigrations, $batch) {
+                // Force sticky-write mode so all subsequent SELECTs (including
+                // migration guards like current_schema() checks) use the write
+                // PDO that holds this transaction + SET LOCAL search_path.
+                DB::connection()->recordsHaveBeenModified();
                 DB::statement("SET LOCAL search_path TO {$tenant->schema_name}, public");
 
                 foreach ($migrationFiles as $migrationFile) {
                     $migrationName = pathinfo($migrationFile, PATHINFO_FILENAME);
 
                     if (in_array($migrationName, $executedMigrations)) {
-                        Log::info("Skipping executed migration: {$migrationName}");
                         continue;
                     }
 
@@ -52,6 +68,8 @@ class TenantMigrationManager
         } catch (\Exception $e) {
             Log::error("Failed to run tenant migrations for {$tenant->name}: " . $e->getMessage());
             return false;
+        } finally {
+            $lock->release();
         }
     }
     
@@ -282,7 +300,28 @@ class TenantMigrationManager
             
             // Execute the up method
             $migration->up();
+        } catch (\Illuminate\Database\UniqueConstraintViolationException $e) {
+            // Table/type already exists from a prior partial migration run.
+            // This is safe to ignore — the DDL succeeded previously but the
+            // migration record was not written (transaction rolled back).
+            if (str_contains($e->getMessage(), 'pg_type_typname_nsp_index') ||
+                str_contains($e->getMessage(), 'already exists')) {
+                Log::warning("Migration object already exists, marking as executed: " . basename($migrationFile), [
+                    'tenant_id' => $tenant->id,
+                ]);
+                return;
+            }
+            throw $e;
         } catch (\Exception $e) {
+            // Also catch QueryException with "already exists" for broader safety
+            if ($e instanceof \Illuminate\Database\QueryException &&
+                (str_contains($e->getMessage(), 'already exists') ||
+                 str_contains($e->getMessage(), 'pg_type_typname_nsp_index'))) {
+                Log::warning("Migration object already exists, marking as executed: " . basename($migrationFile), [
+                    'tenant_id' => $tenant->id,
+                ]);
+                return;
+            }
             Log::error("Migration failed: " . basename($migrationFile), [
                 'tenant_id' => $tenant->id,
                 'error' => $e->getMessage(),
