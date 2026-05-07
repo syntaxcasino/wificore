@@ -4,6 +4,7 @@ namespace App\Http\Middleware;
 
 use Closure;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -35,6 +36,13 @@ class AuthenticateSseToken
         // Only set from query param if no Authorization header already present
         if ($token && !$existingBearer) {
             $request->headers->set('Authorization', 'Bearer ' . $token);
+
+            // Flush the auth guard cache. Global middleware (e.g. EnforceSubdomainTenantBinding)
+            // may have already called Auth::check() before this middleware ran, causing
+            // Sanctum's RequestGuard to cache "no user". Forgetting guards forces
+            // auth:sanctum downstream to re-resolve from the newly-set Authorization header.
+            Auth::forgetGuards();
+
             Log::debug('SseAuthMiddleware: Set Authorization header from query param', [
                 'token_prefix' => substr($token, 0, 20) . '...',
             ]);
