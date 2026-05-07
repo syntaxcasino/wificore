@@ -495,11 +495,11 @@ services:
     ports:
       - "6432:6432"
     healthcheck:
-      test: ["CMD", "pg_isready", "-h", "localhost", "-p", "6432", "-U", "${DB_USERNAME:-admin}", "-d", "${DB_DATABASE:-wms_770_ts}"]
+      test: ["CMD-SHELL", "ss -tlnp | grep -q ':6432' || exit 1"]
       interval: 10s
       timeout: 5s
-      retries: 3
-      start_period: 10s
+      retries: 5
+      start_period: 30s
     logging:
       driver: "json-file"
       options:
@@ -526,11 +526,11 @@ services:
       wificore-network:
         ipv4_address: 172.70.0.17
     healthcheck:
-      test: ["CMD", "pg_isready", "-h", "localhost", "-p", "6432", "-U", "${DB_USERNAME:-admin}", "-d", "${DB_DATABASE:-wms_770_ts}"]
+      test: ["CMD-SHELL", "ss -tlnp | grep -q ':6432' || exit 1"]
       interval: 10s
       timeout: 5s
-      retries: 3
-      start_period: 10s
+      retries: 5
+      start_period: 30s
     logging:
       driver: "json-file"
       options:

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Controller;
 use App\Models\Router;
 use App\Models\Tenant;
 use App\Services\TenantContext;
@@ -94,10 +95,11 @@ class TenantSseController extends Controller
 
         return response()->stream(
             function () use ($tenant, $tenantId, $redisChannels, $requested) {
-                // Set tenant schema context for any initial-state DB queries
-                $ctx = app(TenantContext::class);
-                $ctx->setTenant($tenant);
-                DB::statement('SET search_path TO ?, public', [$tenant->schema_name]);
+                try {
+                    // Set tenant schema context for any initial-state DB queries
+                    $ctx = app(TenantContext::class);
+                    $ctx->setTenant($tenant);
+                    DB::statement('SET search_path TO ?, public', [$tenant->schema_name]);
 
                 $eventId   = 0;
                 $startTime = time();
@@ -109,44 +111,80 @@ class TenantSseController extends Controller
                 $this->sendHeartbeat($eventId++);
 
                 // Create a dedicated Redis connection for blocking SUBSCRIBE
-                $redis = Redis::connection('default')->client();
+                try {
+                    $redis = Redis::connection('default')->client();
+                } catch (\Exception $e) {
+                    Log::error('Tenant SSE: Redis connection failed', ['error' => $e->getMessage()]);
+                    $this->sseWrite('error', $eventId++, ['message' => 'Redis connection failed']);
+                    return;
+                }
 
                 // Subscribe to all requested channels
-                $redis->subscribe($redisChannels, function ($message, $channel) use (
-                    &$eventId, $startTime, $redis, $tenantId
-                ) {
-                    // Hard timeout — force client reconnect
-                    if (time() - $startTime > self::MAX_DURATION) {
-                        $this->sseWrite('timeout', $eventId++, ['message' => 'Stream timeout — reconnecting']);
-                        $redis->close();
-                        return;
-                    }
+                // Note: PhpRedis callback signature is ($redis, $channel, $message)
+                Log::info('Tenant SSE: Starting Redis subscribe', [
+                    'tenant_id' => $tenantId,
+                    'channels' => $redisChannels,
+                ]);
 
-                    if (connection_aborted()) {
-                        $redis->close();
-                        return;
-                    }
-
-                    $payload = json_decode($message, true);
-                    if (!$payload) {
-                        return;
-                    }
-
-                    // Security: verify tenantId in payload matches the authenticated tenant
-                    if (isset($payload['data']['tenant_id']) && (string) $payload['data']['tenant_id'] !== (string) $tenantId) {
-                        Log::warning('SSE: tenant mismatch in Redis message', [
-                            'expected' => $tenantId,
-                            'got'      => $payload['data']['tenant_id'],
+                try {
+                    $redis->subscribe($redisChannels, function ($redisClient, $channel, $message) use (
+                        &$eventId, $startTime, $redis, $tenantId
+                    ) {
+                        Log::debug('Tenant SSE: Received message from Redis', [
+                            'channel' => $channel,
+                            'message_preview' => substr($message, 0, 200),
                         ]);
-                        return;
-                    }
 
-                    $this->sseWrite($payload['event'] ?? 'update', $eventId++, [
-                        'channel' => $payload['channel'] ?? '',
-                        'data'    => $payload['data'] ?? [],
-                        'ts'      => $payload['ts']   ?? now()->toIso8601String(),
+                        // Hard timeout — force client reconnect
+                        if (time() - $startTime > self::MAX_DURATION) {
+                            Log::info('Tenant SSE: Max duration reached, closing stream', ['tenant_id' => $tenantId]);
+                            $this->sseWrite('timeout', $eventId++, ['message' => 'Stream timeout — reconnecting']);
+                            $redis->close();
+                            return;
+                        }
+
+                        if (connection_aborted()) {
+                            Log::info('Tenant SSE: Connection aborted', ['tenant_id' => $tenantId]);
+                            $redis->close();
+                            return;
+                        }
+
+                        $payload = json_decode($message, true);
+                        if (!$payload) {
+                            Log::warning('Tenant SSE: Failed to decode message', ['message' => $message]);
+                            return;
+                        }
+
+                        Log::debug('Tenant SSE: Decoded payload', [
+                            'event' => $payload['event'] ?? 'unknown',
+                            'has_tenant_id' => isset($payload['data']['tenant_id']),
+                        ]);
+
+                        // Security: verify tenantId in payload matches the authenticated tenant
+                        if (isset($payload['data']['tenant_id']) && (string) $payload['data']['tenant_id'] !== (string) $tenantId) {
+                            Log::warning('SSE: tenant mismatch in Redis message', [
+                                'expected' => $tenantId,
+                                'got'      => $payload['data']['tenant_id'],
+                            ]);
+                            return;
+                        }
+
+                        $this->sseWrite($payload['event'] ?? 'update', $eventId++, [
+                            'channel' => $payload['channel'] ?? '',
+                            'data'    => $payload['data'] ?? [],
+                            'ts'      => $payload['ts']   ?? now()->toIso8601String(),
+                        ]);
+                    });
+                } catch (\Exception $e) {
+                    Log::error('Tenant SSE: Redis subscribe error', [
+                        'error' => $e->getMessage(),
+                        'trace' => $e->getTraceAsString(),
+                        'tenant_id' => $tenantId,
                     ]);
-                });
+                    $this->sseWrite('error', $eventId++, ['message' => 'Stream error: ' . $e->getMessage()]);
+                }
+
+                Log::info('Tenant SSE: Redis subscribe ended', ['tenant_id' => $tenantId]);
 
                 DB::statement('SET search_path TO public');
 
@@ -154,6 +192,17 @@ class TenantSseController extends Controller
                     'tenant_id' => $tenantId,
                     'duration'  => time() - $startTime,
                 ]);
+                } catch (\Exception $e) {
+                    Log::error('Tenant SSE: Stream error', [
+                        'tenant_id' => $tenantId,
+                        'error' => $e->getMessage(),
+                        'trace' => $e->getTraceAsString(),
+                    ]);
+                    echo "event: error\n";
+                    echo 'data: ' . json_encode(['error' => 'Internal stream error: ' . $e->getMessage()]) . "\n\n";
+                    ob_flush();
+                    flush();
+                }
             },
             200,
             $this->sseHeaders()
@@ -178,17 +227,25 @@ class TenantSseController extends Controller
         }
     }
 
-    private function initialRouterStatus(string $tenantId): array
+    private function initialRouterStatus(string $tenantId): ?array
     {
-        $routers = Router::where('tenant_id', $tenantId)
-            ->select(['id', 'name', 'status', 'vpn_status', 'last_seen', 'ip_address'])
-            ->get();
+        try {
+            $routers = Router::where('tenant_id', $tenantId)
+                ->select(['id', 'name', 'status', 'vpn_status', 'last_seen', 'ip_address'])
+                ->get();
 
-        return [
-            'routers' => $routers->toArray(),
-            'online'  => $routers->where('status', 'online')->count(),
-            'offline' => $routers->where('status', 'offline')->count(),
-        ];
+            return [
+                'routers' => $routers->toArray(),
+                'online'  => $routers->where('status', 'online')->count(),
+                'offline' => $routers->where('status', 'offline')->count(),
+            ];
+        } catch (\Exception $e) {
+            Log::error('Tenant SSE: Failed to fetch initial router status', [
+                'tenant_id' => $tenantId,
+                'error' => $e->getMessage(),
+            ]);
+            return null;
+        }
     }
 
     // -------------------------------------------------------------------------

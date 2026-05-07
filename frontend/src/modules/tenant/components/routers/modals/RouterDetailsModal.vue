@@ -99,12 +99,12 @@
           </div>
 
           <!-- Tabs -->
-          <div class="flex gap-1 mt-4 bg-white/10 rounded-xl p-1">
+          <div class="flex gap-1 mt-4 bg-white/10 rounded-xl p-1 overflow-x-auto scrollbar-hide">
             <button
               v-for="tab in tabs"
               :key="tab.id"
               @click="activeTab = tab.id"
-              class="flex-1 flex items-center justify-center gap-1.5 py-1.5 text-xs font-semibold rounded-lg transition-all relative"
+              class="flex-shrink-0 flex items-center justify-center gap-1.5 py-1.5 px-2 text-xs font-semibold rounded-lg transition-all relative whitespace-nowrap"
               :class="activeTab === tab.id ? 'bg-white text-purple-700 shadow-sm' : 'text-purple-200 hover:text-white hover:bg-white/10'"
             >
               <svg v-if="tab.id === 'system'" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>

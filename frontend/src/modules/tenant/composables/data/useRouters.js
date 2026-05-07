@@ -128,7 +128,7 @@ export function useRouters() {
 
       // Unsubscribe existing if any
       if (routerUpdatesChannel) {
-        unsubscribeFromChannel(routerUpdatesChannel)
+        unsubscribe(routerUpdatesChannel)
       }
 
       // Listen for create/delete/update events dispatched by websocket.js subscribeModuleChannels

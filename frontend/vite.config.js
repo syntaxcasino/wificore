@@ -3,7 +3,6 @@ import { fileURLToPath, URL } from 'node:url'
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import vueJsx from '@vitejs/plugin-vue-jsx'
-import vueDevTools from 'vite-plugin-vue-devtools'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
@@ -12,7 +11,8 @@ export default defineConfig({
   plugins: [
     vue(),
     vueJsx(),
-    vueDevTools(),
+    // Note: vueDevTools removed from production - only enable during development
+    // import vueDevTools from 'vite-plugin-vue-devtools' and add to plugins[] for dev
     tailwindcss(),
     VitePWA({
       registerType: 'prompt',
@@ -53,45 +53,175 @@ export default defineConfig({
         skipWaiting: false,
         clientsClaim: true,
         cleanupOutdatedCaches: true,
-        globPatterns: ['**/*.{css,html,ico,png,svg,woff,woff2}'],
+        globPatterns: [
+          '**/*.{css,html,ico,png,svg,woff,woff2,webmanifest}',
+          '**/assets/*.{js,css}'
+        ],
         navigateFallback: 'index.html',
-        navigateFallbackDenylist: [/^\/api\//],
+        navigateFallbackDenylist: [/^\/api\//, /^\/broadcasting\//],
+        
+        // Precaching configuration for critical assets
+        modifyURLPrefix: {
+          '': ''
+        },
+        
+        // Runtime caching strategies
         runtimeCaching: [
           {
+            // JS assets - Stale While Revalidate for fast loads with updates
             urlPattern: /\/assets\/.*\.js$/,
             handler: 'StaleWhileRevalidate',
             options: {
               cacheName: 'js-assets',
               expiration: {
-                maxEntries: 50,
-                maxAgeSeconds: 24 * 60 * 60
+                maxEntries: 100,
+                maxAgeSeconds: 30 * 24 * 60 * 60 // 30 days
+              },
+              cacheableResponse: {
+                statuses: [0, 200]
               }
             }
+          },
+          {
+            // CSS assets - Cache first for performance
+            urlPattern: /\/assets\/styles\/.*\.css$/,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'css-assets',
+              expiration: {
+                maxEntries: 50,
+                maxAgeSeconds: 30 * 24 * 60 * 60 // 30 days
+              },
+              cacheableResponse: {
+                statuses: [0, 200]
+              }
+            }
+          },
+          {
+            // Images - Cache first with limit
+            urlPattern: /\.(?:png|jpg|jpeg|svg|gif|webp)$/,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'images',
+              expiration: {
+                maxEntries: 200,
+                maxAgeSeconds: 60 * 24 * 60 * 60 // 60 days
+              },
+              cacheableResponse: {
+                statuses: [0, 200]
+              }
+            }
+          },
+          {
+            // Fonts - Cache first, long TTL
+            urlPattern: /\.(?:woff2?|ttf|otf|eot)$/,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'fonts',
+              expiration: {
+                maxEntries: 30,
+                maxAgeSeconds: 365 * 24 * 60 * 60 // 1 year
+              },
+              cacheableResponse: {
+                statuses: [0, 200]
+              }
+            }
+          },
+          {
+            // API calls - Network first for freshness
+            urlPattern: /\/api\//,
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'api-cache',
+              expiration: {
+                maxEntries: 100,
+                maxAgeSeconds: 5 * 60 // 5 minutes
+              },
+              cacheableResponse: {
+                statuses: [0, 200]
+              },
+              networkTimeoutSeconds: 10
+            }
           }
-        ]
+        ],
+        
+        // Disable precache manifest generation warnings
+        disableDevLogs: true
       },
       devOptions: {
         enabled: false
       }
     })
   ],
-    build: {
+  build: {
     outDir: 'dist',
-    external: [], // <-- this is default, but you can explicitly set it
+    // Enable minification optimizations
+    minify: 'terser',
+    terserOptions: {
+      compress: {
+        drop_console: true, // Remove console.* calls in production
+        drop_debugger: true, // Remove debugger statements
+        pure_funcs: ['console.log', 'console.info', 'console.debug', 'console.warn'],
+      },
+      mangle: {
+        safari10: true, // Fix for Safari 10/11
+      },
+    },
+    // Increase chunk size warning limit (vendor bundle is large but necessary)
+    chunkSizeWarningLimit: 1000,
     rollupOptions: {
       output: {
+        // Improved manual chunking for better caching
         manualChunks(id) {
           if (!id.includes('node_modules')) return
 
-          if (id.includes('/vue/') || id.includes('\u0000vue')) return 'vendor-vue'
-          if (id.includes('/pinia/')) return 'vendor-pinia'
-          if (id.includes('/axios/')) return 'vendor-axios'
-          if (id.includes('/laravel-echo/') || id.includes('/pusher-js/')) return 'vendor-realtime'
+          // Core Vue ecosystem (rarely changes)
+          if (id.includes('/vue/') || id.includes('\u0000vue') || id.includes('/vue-router/')) {
+            return 'vendor-core'
+          }
 
+          // State management (pinia)
+          if (id.includes('/pinia/')) return 'vendor-state'
+
+          // HTTP & networking (axios, echo, pusher)
+          if (id.includes('/axios/') || id.includes('/laravel-echo/') || id.includes('/pusher-js/')) {
+            return 'vendor-network'
+          }
+
+          // UI utilities (date-fns, lodash, etc.)
+          if (id.includes('/date-fns/') || id.includes('/lodash/') || id.includes('/moment/')) {
+            return 'vendor-utils'
+          }
+
+          // Charts & visualization
+          if (id.includes('/chart.') || id.includes('/d3/') || id.includes('/recharts/')) {
+            return 'vendor-charts'
+          }
+
+          // Everything else
           return 'vendor'
+        },
+        // Asset file naming for better caching
+        entryFileNames: 'assets/[name]-[hash].js',
+        chunkFileNames: 'assets/[name]-[hash].js',
+        assetFileNames: (assetInfo) => {
+          const info = assetInfo.name.split('.')
+          const ext = info[info.length - 1]
+          if (/\.(css)$/i.test(assetInfo.name)) {
+            return 'assets/styles/[name]-[hash][extname]'
+          }
+          if (/\.(png|jpe?g|gif|svg|webp|ico)$/i.test(assetInfo.name)) {
+            return 'assets/images/[name]-[hash][extname]'
+          }
+          if (/\.(woff2?|ttf|otf|eot)$/i.test(assetInfo.name)) {
+            return 'assets/fonts/[name]-[hash][extname]'
+          }
+          return 'assets/[name]-[hash][extname]'
         },
       },
     },
+    // Enable source maps only for development
+    sourcemap: false,
   },
    base: '/', // important for Nginx SPA routing
     server: {

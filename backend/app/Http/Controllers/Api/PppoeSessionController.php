@@ -114,6 +114,49 @@ class PppoeSessionController extends Controller
             // Deduplicate: keep only the most-recent session per username (rows ordered DESC already)
             $rows = $rows->groupBy('username')->map(fn($group) => $group->first())->values();
 
+            // Filter out sessions from offline routers to prevent stale data display
+            $onlineRouterIds = Router::query()
+                ->whereIn('id', $rows->pluck('nasipaddress')->map(function ($nasIp) use ($tenantId) {
+                    // Resolve NAS IP to router ID via RouterTenantMap
+                    $map = RouterTenantMap::query()
+                        ->where('tenant_id', $tenantId)
+                        ->where(function ($q) use ($nasIp) {
+                            $q->where('ip_address', $nasIp)
+                              ->orWhere('vpn_ip', $nasIp);
+                        })
+                        ->first();
+                    return $map?->router_id;
+                })->filter()->unique()->values())
+                ->where('status', 'online')
+                ->pluck('id')
+                ->all();
+
+            $rows = $rows->filter(function ($row) use ($onlineRouterIds, $tenantId) {
+                $nasIp = $row->nasipaddress ?? null;
+                if (!$nasIp) return false;
+
+                // Resolve NAS IP to router
+                $map = RouterTenantMap::query()
+                    ->where('tenant_id', $tenantId)
+                    ->where(function ($q) use ($nasIp) {
+                        $q->where('ip_address', $nasIp)
+                          ->orWhere('vpn_ip', $nasIp);
+                    })
+                    ->first();
+
+                if (!$map) return false;
+
+                // Only include if router is online
+                return in_array($map->router_id, $onlineRouterIds);
+            })->values();
+
+            Log::info('PPPoE sessions after router status filter', [
+                'tenant_id' => $tenantId,
+                'before_filter' => $rows->count(),
+                'after_filter' => $rows->count(),
+                'online_routers' => count($onlineRouterIds),
+            ]);
+
             $usernames = $rows->pluck('username')->filter()->unique()->values()->all();
 
             // Fetch live metrics from VictoriaMetrics for these users

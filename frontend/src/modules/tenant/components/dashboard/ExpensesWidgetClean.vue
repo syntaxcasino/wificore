@@ -3,7 +3,7 @@
     <h3 class="text-lg font-bold text-slate-900 dark:text-slate-100 mb-1">SMS Expenses</h3>
     <p class="text-sm text-slate-500 dark:text-slate-400 mb-5">Track SMS credits and usage</p>
     
-    <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
+    <div class="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
       <!-- SMS Balance Card -->
       <div class="flex items-start gap-3 sm:gap-4 p-3 sm:p-4 bg-white dark:bg-slate-700/50 border-2 border-slate-200 dark:border-slate-600 rounded-xl hover:border-slate-400 dark:hover:border-slate-500 hover:shadow-md transition-all min-w-0">
         <div class="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center flex-shrink-0 bg-red-100 dark:bg-red-900/40">

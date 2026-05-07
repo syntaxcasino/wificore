@@ -86,6 +86,11 @@ const BackupRestore = () => import('@/modules/tenant/views/dashboard/admin/Backu
 const CacheManagement = () => import('@/modules/tenant/views/dashboard/admin/CacheManagement.vue')
 const SystemUpdates = () => import('@/modules/tenant/views/dashboard/admin/SystemUpdates.vue')
 
+// PPPoE Customer Portal
+const PppoePortalLogin = () => import('@/modules/pppoe-portal/views/PppoePortalLogin.vue')
+const PppoePortalDashboard = () => import('@/modules/pppoe-portal/views/PppoePortalDashboard.vue')
+const PppoePortalHistory = () => import('@/modules/pppoe-portal/views/PppoePortalHistory.vue')
+
 // Dev/Test
 const WebSocketTest = () => import('@/modules/common/views/test/WebSocketTestView.vue')
 const ComponentShowcase = () => import('@/modules/common/views/test/ComponentShowcase.vue')
@@ -433,6 +438,36 @@ const routes = [
       },
     ],
   },
+
+  // PPPoE Customer Portal Routes (Standalone - No tenant/auth required)
+  {
+    path: '/portal',
+    redirect: '/portal/login',
+  },
+  {
+    path: '/portal/login',
+    name: 'pppoe-portal.login',
+    component: PppoePortalLogin,
+    meta: { public: true }
+  },
+  {
+    path: '/portal/dashboard',
+    name: 'pppoe-portal.dashboard',
+    component: PppoePortalDashboard,
+    meta: { requiresPppoeAuth: true }
+  },
+  {
+    path: '/portal/payment',
+    name: 'pppoe-portal.payment',
+    component: () => import('@/modules/pppoe-portal/views/PppoePortalPayment.vue'),
+    meta: { requiresPppoeAuth: true, public: true } // Public access for captive redirect
+  },
+  {
+    path: '/portal/history',
+    name: 'pppoe-portal.history',
+    component: PppoePortalHistory,
+    meta: { requiresPppoeAuth: true }
+  },
 ]
 
 const router = createRouter({
@@ -466,6 +501,25 @@ router.beforeEach((to, from, next) => {
   const dashboardRoute = localStorage.getItem('dashboardRoute') || '/dashboard'
   const requiresAuth = to.matched.some(record => record.meta.requiresAuth)
   const requiresRole = to.meta.requiresRole
+  const requiresPppoeAuth = to.matched.some(record => record.meta.requiresPppoeAuth)
+
+  // Handle PPPoE Portal routes
+  if (requiresPppoeAuth) {
+    const pppoeToken = localStorage.getItem('pppoe_portal_token')
+    if (!pppoeToken) {
+      return next({ name: 'pppoe-portal.login', query: { redirect: to.fullPath } })
+    }
+    return next()
+  }
+
+  // Handle PPPoE public routes (login)
+  if (to.meta.public && to.path.startsWith('/portal')) {
+    const pppoeToken = localStorage.getItem('pppoe_portal_token')
+    if (pppoeToken && to.name === 'pppoe-portal.login') {
+      return next({ name: 'pppoe-portal.dashboard' })
+    }
+    return next()
+  }
 
   if (requiresAuth && !token) {
     // Redirect to login if trying to access protected route without token

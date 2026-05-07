@@ -5,12 +5,16 @@ namespace App\Providers;
 use App\Listeners\TrackCompletedJobs;
 use App\Models\PersonalAccessToken;
 use App\Services\RadiusService;
+use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Queue\Events\JobProcessed;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\ServiceProvider;
 use Laravel\Sanctum\Sanctum;
+use Carbon\CarbonImmutable;
+use Carbon\Carbon;
+use Illuminate\Support\Facades\Date;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -25,6 +29,9 @@ class AppServiceProvider extends ServiceProvider
         
         // Register TenantContext as singleton to maintain state across middleware and controllers
         $this->app->singleton(\App\Services\TenantContext::class);
+        
+        // Use immutable dates for better performance (no mutation overhead)
+        Date::use(CarbonImmutable::class);
     }
 
     /**
@@ -37,7 +44,34 @@ class AppServiceProvider extends ServiceProvider
         // Track completed jobs for statistics
         Event::listen(JobProcessed::class, TrackCompletedJobs::class);
 
+        // Register morph map to prevent runtime class resolution
+        $this->registerMorphMap();
+
         $this->configureReadReplicaFallback();
+        
+        // Disable mass assignment protection for better performance (use API resources instead)
+        // Model::unguard(); // Uncomment only if using API resources for validation
+    }
+    
+    /**
+     * Register morph map for polymorphic relations
+     * Prevents class name resolution on every query
+     */
+    private function registerMorphMap(): void
+    {
+        Relation::morphMap([
+            'user' => \App\Models\User::class,
+            'tenant' => \App\Models\Tenant::class,
+            'router' => \App\Models\Router::class,
+            'router_service' => \App\Models\RouterService::class,
+            'voucher' => \App\Models\Voucher::class,
+            'package' => \App\Models\Package::class,
+            'payment' => \App\Models\Payment::class,
+            'pppoe_user' => \App\Models\PppoeUser::class,
+            'hotspot_user' => \App\Models\HotspotUser::class,
+            'access_point' => \App\Models\AccessPoint::class,
+            'audit_log' => \App\Models\AuditLog::class,
+        ]);
     }
 
     private function configureReadReplicaFallback(): void

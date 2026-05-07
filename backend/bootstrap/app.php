@@ -24,13 +24,31 @@ return Application::configure(basePath: dirname(__DIR__))
             'subdomain.binding' => \App\Http\Middleware\EnforceSubdomainTenantBinding::class,
             'sse.auth' => \App\Http\Middleware\AuthenticateSseToken::class,
         ]);
-        
+
         // Apply DDoS protection and subdomain binding globally to API routes
         $middleware->api(prepend: [
             \App\Http\Middleware\DDoSProtection::class,
             \App\Http\Middleware\EnforceSubdomainTenantBinding::class,
+            \App\Http\Middleware\AddCacheHeaders::class,
         ]);
+
+        // Prevent authentication redirects for API/SSE routes
+        $middleware->redirectGuestsTo(function (\Illuminate\Http\Request $request) {
+            if ($request->is('api/*') || $request->is('*/sse/*') || $request->expectsJson()) {
+                return null; // Return null to trigger AuthenticationException
+            }
+            return null;
+        });
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        //
+        // Handle authentication failures for API routes - return JSON instead of redirecting
+        $exceptions->render(function (\Illuminate\Auth\AuthenticationException $e, \Illuminate\Http\Request $request) {
+            if ($request->is('api/*') || $request->is('*/sse/*') || $request->expectsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Unauthenticated',
+                    'message' => $e->getMessage(),
+                ], 401);
+            }
+        });
     })->create();

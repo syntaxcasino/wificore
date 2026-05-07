@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use App\Traits\HasUuid;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 
 class PppoeUser extends Model
@@ -17,6 +18,7 @@ class PppoeUser extends Model
         'username',
         'password',
         'account_number',
+        'portal_password',
         'customer_name',
         'customer_email',
         'customer_phone',
@@ -28,6 +30,7 @@ class PppoeUser extends Model
         'is_active',
         'status',
         'payment_status',
+        'balance',
         'last_payment_date',
         'next_payment_due',
         'amount_due',
@@ -46,12 +49,14 @@ class PppoeUser extends Model
 
     protected $hidden = [
         'password',
+        'portal_password',
     ];
 
     protected $casts = [
         'expires_at' => 'datetime',
         'is_active' => 'boolean',
         'simultaneous_use' => 'integer',
+        'balance' => 'decimal:2',
         'last_payment_date' => 'datetime',
         'next_payment_due' => 'datetime',
         'amount_due' => 'decimal:2',
@@ -60,7 +65,6 @@ class PppoeUser extends Model
         'grace_period_ends' => 'datetime',
         'suspended_at' => 'datetime',
         'last_reminder_sent_at' => 'datetime',
-        'reminder_count' => 'integer',
         'last_invoice_sent_at' => 'datetime',
         'last_receipt_sent_at' => 'datetime',
     ];

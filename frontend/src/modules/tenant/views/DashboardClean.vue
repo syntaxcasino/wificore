@@ -140,7 +140,7 @@
       <!-- ── ROW 3: WIDGETS ── -->
       <PaymentWidget :paymentData="paymentData" />
 
-      <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <ExpensesWidget :expensesData="expensesData" />
         <BusinessAnalyticsWidget :analyticsData="analyticsData" />
       </div>
@@ -212,7 +212,7 @@ onMounted(() => {
 
 // SSE: single connection for dashboard-stats + router-updates channels
 // useSSE auto-closes on onUnmounted
-const { isConnected, subscribeMany } = useSSE('/api/sse/tenant', {
+const { isConnected, subscribeMany } = useSSE('/sse/tenant', {
   channels: 'dashboard-stats,router-updates',
 })
 

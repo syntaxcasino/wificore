@@ -37,7 +37,20 @@ class SsePublisher
                 'ts'      => now()->toIso8601String(),
             ]);
 
-            Redis::publish("sse:{$channel}", $message);
+            $redisChannel = "sse:{$channel}";
+
+            Log::debug('SsePublisher: Publishing event', [
+                'redis_channel' => $redisChannel,
+                'event' => $event,
+                'channel' => $channel,
+            ]);
+
+            $result = Redis::publish($redisChannel, $message);
+
+            Log::debug('SsePublisher: Published successfully', [
+                'redis_channel' => $redisChannel,
+                'subscribers' => $result,
+            ]);
 
         } catch (\Throwable $e) {
             // SSE publish is best-effort — never block the main request
