@@ -189,21 +189,27 @@ class VpnService extends TenantAwareService
                     'vpn_status' => 'active',
                 ]);
 
-                \App\Jobs\VerifyVpnConnectivityJob::dispatch(
-                    $tenant->id,
-                    $vpnConfig->id,
-                    600,
-                    5
-                )->onQueue('router-checks');
-
-                Log::info('VPN connectivity verification job dispatched', [
-                    'tenant_id' => $tenant->id,
-                    'vpn_config_id' => $vpnConfig->id,
-                    'router_id' => $router->id,
-                ]);
-
                 return $vpnConfig;
             });
+
+            // Dispatch AFTER the transaction commits so the VPN config row is
+            // visible to the queue worker. Dispatching inside the transaction
+            // caused a race: the job dequeued and ran VpnConfiguration::find()
+            // before the creating transaction committed → "not found".
+            \App\Jobs\VerifyVpnConnectivityJob::dispatch(
+                $tenant->id,
+                $vpnConfig->id,
+                600,
+                5
+            )->onQueue('router-checks');
+
+            Log::info('VPN connectivity verification job dispatched', [
+                'tenant_id' => $tenant->id,
+                'vpn_config_id' => $vpnConfig->id,
+                'router_id' => $router->id,
+            ]);
+
+            return $vpnConfig;
         });
     }
 
