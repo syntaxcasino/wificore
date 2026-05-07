@@ -125,29 +125,26 @@ class PppoeUser extends Model
 
     /**
      * Sync RADIUS entries based on payment status.
-     * This ensures unpaid users are immediately blocked in RADIUS.
+     * - When payment_status transitions to 'paid': remove Auth-Type Reject (unblock)
+     * - When payment_status transitions to 'unpaid' AND user is suspended: add Auth-Type Reject (block)
+     * - On creation (wasRecentlyCreated): do NOT block — new users get a grace period
+     *   handled by CheckPppoePaymentStatusJob.
      */
     public static function syncRadiusForPaymentStatus(self $pppoeUser): void
     {
         try {
-            // Only sync if payment status changed
+            // Only sync if payment status actually changed
             if (!$pppoeUser->wasChanged('payment_status')) {
                 return;
             }
 
-            if ($pppoeUser->payment_status === 'unpaid' && !$pppoeUser->isSuspended()) {
-                // Add Auth-Type Reject to block unpaid user
-                DB::table('radcheck')->updateOrInsert(
-                    ['username' => $pppoeUser->username, 'attribute' => 'Auth-Type'],
-                    ['op' => ':=', 'value' => 'Reject']
-                );
+            // Never auto-block on initial creation — new users get a grace period
+            if ($pppoeUser->wasRecentlyCreated) {
+                return;
+            }
 
-                Log::info('RADIUS: Blocked unpaid user', [
-                    'username' => $pppoeUser->username,
-                    'payment_status' => $pppoeUser->payment_status,
-                ]);
-            } elseif ($pppoeUser->payment_status === 'paid') {
-                // Remove Auth-Type Reject to allow paid user
+            if ($pppoeUser->payment_status === 'paid') {
+                // Remove Auth-Type Reject to allow paid user to connect
                 DB::table('radcheck')
                     ->where('username', $pppoeUser->username)
                     ->where('attribute', 'Auth-Type')
@@ -155,6 +152,17 @@ class PppoeUser extends Model
                     ->delete();
 
                 Log::info('RADIUS: Unblocked paid user', [
+                    'username' => $pppoeUser->username,
+                    'payment_status' => $pppoeUser->payment_status,
+                ]);
+            } elseif ($pppoeUser->payment_status === 'unpaid' && $pppoeUser->isSuspended()) {
+                // Only block if user is already suspended (grace period expired)
+                DB::table('radcheck')->updateOrInsert(
+                    ['username' => $pppoeUser->username, 'attribute' => 'Auth-Type'],
+                    ['op' => ':=', 'value' => 'Reject']
+                );
+
+                Log::info('RADIUS: Blocked suspended unpaid user', [
                     'username' => $pppoeUser->username,
                     'payment_status' => $pppoeUser->payment_status,
                 ]);
