@@ -1130,7 +1130,7 @@ class PppoeUserController extends Controller
         DB::table('radcheck')->where('username', $username)->delete();
         DB::table('radreply')->where('username', $username)->delete();
 
-        DB::table('radcheck')->insert([
+        $radcheckRows = [
             [
                 'username' => $username,
                 'attribute' => 'Cleartext-Password',
@@ -1145,17 +1145,22 @@ class PppoeUserController extends Controller
             ],
             [
                 'username' => $username,
-                'attribute' => 'Expiration',
-                'op' => ':=',
-                'value' => $expiresAt ? $expiresAt->format('F d Y H:i:s') : '',
-            ],
-            [
-                'username' => $username,
                 'attribute' => 'Simultaneous-Use',
                 'op' => ':=',
                 'value' => (string) $simultaneousUse,
             ],
-        ]);
+        ];
+
+        if ($expiresAt) {
+            $radcheckRows[] = [
+                'username' => $username,
+                'attribute' => 'Expiration',
+                'op' => ':=',
+                'value' => $expiresAt->format('F d Y H:i:s'),
+            ];
+        }
+
+        DB::table('radcheck')->insert($radcheckRows);
 
         $replyRows = [];
 
@@ -1281,6 +1286,17 @@ class PppoeUserController extends Controller
                 ['username' => $username, 'attribute' => 'Session-Timeout'],
                 ['op' => ':=', 'value' => (string) $sessionTimeout]
             );
+        } else {
+            // Remove stale Expiration entries — empty values cause FreeRADIUS to reject with epoch date
+            DB::table('radcheck')
+                ->where('username', $username)
+                ->where('attribute', 'Expiration')
+                ->delete();
+
+            DB::table('radreply')
+                ->where('username', $username)
+                ->where('attribute', 'Session-Timeout')
+                ->delete();
         }
 
         DB::table('radcheck')->updateOrInsert(
