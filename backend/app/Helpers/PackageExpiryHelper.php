@@ -3,6 +3,7 @@
 namespace App\Helpers;
 
 use App\Models\Package;
+use Carbon\CarbonInterface;
 use Illuminate\Support\Carbon;
 
 class PackageExpiryHelper
@@ -13,33 +14,34 @@ class PackageExpiryHelper
      * Validity format examples: "30 days", "1 month", "7 days", "1 year"
      * Falls back to +1 hour if validity is missing or unrecognised.
      */
-    public static function calculateExpiresAt(Package $package, Carbon $baseTime): Carbon
+    public static function calculateExpiresAt(Package $package, CarbonInterface $baseTime): Carbon
     {
+        $base = Carbon::instance($baseTime);
         $validity = trim((string) ($package->validity ?: $package->duration));
 
         if ($validity === '') {
-            return $baseTime->copy()->addHour();
+            return $base->copy()->addHour();
         }
 
         if (!preg_match('/^\s*(\d+)\s*(minute|minutes|hour|hours|day|days|week|weeks|month|months|year|years)\s*$/i', $validity, $matches)) {
-            return $baseTime->copy()->addHour();
+            return $base->copy()->addHour();
         }
 
         $value = (int) $matches[1];
         $unit  = strtolower($matches[2]);
 
         if ($value <= 0) {
-            return $baseTime->copy()->addHour();
+            return $base->copy()->addHour();
         }
 
         return match ($unit) {
-            'minute', 'minutes' => $baseTime->copy()->addMinutes($value),
-            'hour',   'hours'   => $baseTime->copy()->addHours($value),
-            'day',    'days'    => $baseTime->copy()->addDays($value),
-            'week',   'weeks'   => $baseTime->copy()->addWeeks($value),
-            'month',  'months'  => $baseTime->copy()->addMonths($value),
-            'year',   'years'   => $baseTime->copy()->addYears($value),
-            default             => $baseTime->copy()->addHour(),
+            'minute', 'minutes' => $base->copy()->addMinutes($value),
+            'hour',   'hours'   => $base->copy()->addHours($value),
+            'day',    'days'    => $base->copy()->addDays($value),
+            'week',   'weeks'   => $base->copy()->addWeeks($value),
+            'month',  'months'  => $base->copy()->addMonths($value),
+            'year',   'years'   => $base->copy()->addYears($value),
+            default             => $base->copy()->addHour(),
         };
     }
 
