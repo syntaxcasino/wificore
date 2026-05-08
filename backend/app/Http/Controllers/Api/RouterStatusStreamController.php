@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Http\Controllers\Controller;
 use App\Models\Router;
 use App\Models\Tenant;
 use App\Services\TenantContext;
@@ -15,7 +14,7 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
-class RouterStatusStreamController extends Controller
+class RouterStatusStreamController extends \App\Http\Controllers\Controller
 {
     private const STREAM_TIMEOUT = 300; // 5 minutes max connection
     private const HEARTBEAT_INTERVAL = 30; // Send heartbeat every 30s

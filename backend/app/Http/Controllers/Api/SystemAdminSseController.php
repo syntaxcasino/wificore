@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -20,7 +19,7 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  *
  * Security: Only users with role=system_admin and tenant_id=NULL may connect.
  */
-class SystemAdminSseController extends Controller
+class SystemAdminSseController extends \App\Http\Controllers\Controller
 {
     private const MAX_DURATION  = 300;
     private const VALID_CHANNELS = ['system.admin', 'system.tenants', 'system.metrics', 'system.queue-stats'];

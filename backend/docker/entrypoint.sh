@@ -5,6 +5,23 @@ echo "🚀 Starting WiFi Hotspot Backend..."
 echo ""
 
 # =============================================================================
+# 0. RUNTIME GUARDS — Fail fast on missing PHP extensions
+# =============================================================================
+require_php_ext() {
+  local ext="$1"
+  if ! php -m | grep -qi "^${ext}$"; then
+    echo "❌ FATAL: Required PHP extension '${ext}' is not loaded."
+    echo "   Rebuild/redeploy backend image with '${ext}' enabled."
+    exit 1
+  fi
+}
+
+require_php_ext "PDO"
+require_php_ext "pdo_pgsql"
+require_php_ext "pgsql"
+require_php_ext "redis"
+
+# =============================================================================
 # 1. DIRECTORY SETUP — Create all required directories
 # =============================================================================
 mkdir -p /var/www/html/storage/framework/{cache,sessions,views} \
