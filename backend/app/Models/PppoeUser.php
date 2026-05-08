@@ -267,6 +267,34 @@ class PppoeUser extends Model
         return (string) ($this->customer_name ?: $this->username);
     }
 
+    /**
+     * Create a portal authentication token
+     * Token format: base64(user_id|timestamp|signature)
+     * Signature is HMAC-SHA256 using the portal_password
+     */
+    public function createPortalToken(): string
+    {
+        $timestamp = time();
+        $payload = $this->id . '|' . $timestamp;
+        $signature = hash_hmac('sha256', $payload, $this->portal_password ?? '');
+        return base64_encode($payload . '|' . $signature);
+    }
+
+    /**
+     * Revoke all portal tokens by rotating the portal password
+     * This invalidates all existing tokens since they depend on the password
+     */
+    public function revokePortalTokens(): void
+    {
+        if (!$this->portal_password) {
+            return;
+        }
+        // Rotate the password to invalidate all existing tokens
+        // Store a placeholder that will prevent token validation
+        $this->portal_password = bcrypt(Str::random(32));
+        $this->save();
+    }
+
     public function getBillingEmail(): ?string
     {
         return $this->customer_email ?: null;
