@@ -149,6 +149,9 @@ services:
       - TZ=${TZ:-Africa/Nairobi}
       - APP_ENV=production
       - APP_DEBUG=false
+      - OCTANE_SERVER=roadrunner
+      - OCTANE_WORKERS=${OCTANE_WORKERS:-4}
+      - OCTANE_MAX_REQUESTS=${OCTANE_MAX_REQUESTS:-1000}
       - SESSION_SAME_SITE=${SESSION_SAME_SITE:-lax}
       - SESSION_SECURE_COOKIE=${SESSION_SECURE_COOKIE:-true}
       - RADIUS_SERVER_HOST=wificore-freeradius
@@ -200,7 +203,7 @@ services:
       wificore-network:
         ipv4_address: 172.70.0.5
     healthcheck:
-      test: ["CMD-SHELL", "php-fpm -t || exit 1"]
+      test: ["CMD-SHELL", "supervisorctl -c /etc/supervisor/supervisord.conf status octane | grep -q RUNNING && php -r '$$s=@fsockopen(\"127.0.0.1\", 9000, $$errno, $$errstr, 2); exit($$s ? 0 : 1);'"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -495,7 +498,7 @@ services:
     ports:
       - "6432:6432"
     healthcheck:
-      test: ["CMD-SHELL", "ss -tlnp | grep -q ':6432' || exit 1"]
+      test: ["CMD", "pg_isready", "-h", "localhost", "-p", "6432", "-U", "admin", "-d", "wms_770_ts"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -526,7 +529,7 @@ services:
       wificore-network:
         ipv4_address: 172.70.0.17
     healthcheck:
-      test: ["CMD-SHELL", "ss -tlnp | grep -q ':6432' || exit 1"]
+      test: ["CMD", "pg_isready", "-h", "localhost", "-p", "6432", "-U", "admin", "-d", "wms_770_ts"]
       interval: 10s
       timeout: 5s
       retries: 5

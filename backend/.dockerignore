@@ -17,6 +17,8 @@ Thumbs.db
 /.zed
 
 # Ignore development and build artifacts
+vendor
+vendor/
 node_modules
 node_modules/
 public/build
@@ -76,4 +78,3 @@ cert/
 
 # Ignore scripts directory
 scripts/
-

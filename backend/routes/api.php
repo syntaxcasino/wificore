@@ -471,10 +471,11 @@ Route::middleware(['auth:sanctum', 'system.admin'])->prefix('system')->name('api
 
 // =============================================================================
 // EVENT-DRIVEN SSE — system-admin (Redis pub/sub, zero DB polling)
-// OUTSIDE the system admin group so sse.auth runs BEFORE auth:sanctum.
+// OUTSIDE the system admin group because EventSource cannot send Authorization
+// headers; sse.auth authenticates the query token directly.
 // =============================================================================
 Route::get('/system/sse', [SystemAdminSseController::class, 'stream'])
-    ->middleware(['sse.auth', 'auth:sanctum', 'system.admin'])
+    ->middleware(['sse.auth', 'system.admin'])
     ->name('api.system.sse');
 
 // =============================================================================
@@ -1218,12 +1219,11 @@ Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
 
 // =============================================================================
 // EVENT-DRIVEN SSE — tenant users (Redis pub/sub, zero DB polling)
-// OUTSIDE any route group so sse.auth runs BEFORE auth:sanctum.
 // EventSource cannot set custom headers, so the token is passed as ?token=
-// and sse.auth promotes it to an Authorization: Bearer header.
+// and sse.auth authenticates it directly.
 // =============================================================================
 Route::get('/sse/tenant', [TenantSseController::class, 'stream'])
-    ->middleware(['sse.auth', 'auth:sanctum', 'user.active', 'tenant.context'])
+    ->middleware(['sse.auth', 'user.active', 'tenant.context'])
     ->name('api.sse.tenant');
 
 // =============================================================================
