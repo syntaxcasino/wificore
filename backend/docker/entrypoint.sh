@@ -18,8 +18,11 @@ require_php_ext() {
 
 require_php_ext "PDO"
 require_php_ext "pdo_pgsql"
-require_php_ext "pgsql"
 require_php_ext "redis"
+
+if ! php -m | grep -qi "^pgsql$"; then
+  echo "⚠️  Optional PHP extension 'pgsql' is not loaded (continuing with pdo_pgsql)."
+fi
 
 # =============================================================================
 # 1. DIRECTORY SETUP — Create all required directories
