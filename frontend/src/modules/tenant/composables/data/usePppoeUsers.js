@@ -42,6 +42,7 @@ export function usePppoeUsers() {
       return {
         user: createdUser,
         generatedPassword: response.data?.generated_password || null,
+        generatedPortalPassword: response.data?.generated_portal_password || null,
         response,
       }
     } catch (err) {
@@ -101,15 +102,45 @@ export function usePppoeUsers() {
     }
   }
 
+  const viewPortalPassword = async (userId) => {
+    try {
+      const response = await axios.get(`/pppoe/users/${userId}/portal-password`)
+      if (response.data?.success === false) {
+        error.value = response.data?.message || 'Portal password not available'
+        throw new Error(error.value)
+      }
+      return response.data?.data
+    } catch (err) {
+      error.value = err.response?.data?.message || 'Failed to view portal password'
+      throw err
+    }
+  }
+
   const resetPassword = async (userId) => {
     try {
       const response = await axios.post(`/pppoe/users/${userId}/reset-password`)
       return {
-        user: response.data?.data,
-        generatedPassword: response.data?.generated_password || null,
+        success: response.data?.success,
+        data: response.data?.data,
+        generatedPassword: response.data?.generated_password,
+        portalPassword: response.data?.portal_password,
       }
     } catch (err) {
       error.value = err.response?.data?.message || 'Failed to reset password'
+      throw err
+    }
+  }
+
+  const resetPortalPassword = async (userId) => {
+    try {
+      const response = await axios.post(`/pppoe/users/${userId}/reset-portal-password`)
+      return {
+        success: response.data?.success,
+        data: response.data?.data,
+        portalPassword: response.data?.portal_password,
+      }
+    } catch (err) {
+      error.value = err.response?.data?.message || 'Failed to reset portal password'
       throw err
     }
   }
@@ -259,7 +290,9 @@ export function usePppoeUsers() {
     createUser,
     updateUser,
     viewPassword,
+    viewPortalPassword,
     resetPassword,
+    resetPortalPassword,
     toggleUserStatus,
     subscribeToWebSocket,
     unsubscribeFromWebSocket,

@@ -2,7 +2,7 @@ import { ref, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || '';
+const API_BASE_URL = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || '/api';
 
 // Reactive state
 const token = ref(localStorage.getItem('pppoe_portal_token') || null);
@@ -17,7 +17,7 @@ export function usePppoePortal() {
 
   // Axios instance with auth header
   const api = axios.create({
-    baseURL: `${API_BASE_URL}/api/pppoe-portal`,
+    baseURL: `${API_BASE_URL}/pppoe-portal`,
     headers: {
       'Content-Type': 'application/json',
     },

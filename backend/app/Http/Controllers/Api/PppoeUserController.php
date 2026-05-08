@@ -234,6 +234,46 @@ class PppoeUserController extends Controller
             'data' => [
                 'username' => $pppoeUser->username,
                 'password' => $password,
+                'has_portal_password' => !empty($pppoeUser->portal_password),
+            ],
+        ]);
+    }
+
+    public function viewPortalPassword(Request $request, string $id)
+    {
+        $tenant = $this->getAuthenticatedTenant($request);
+        if (!$tenant) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Tenant context not available.',
+            ], 500);
+        }
+
+        $pppoeUser = PppoeUser::find($id);
+        if (!$pppoeUser) {
+            return response()->json([
+                'success' => false,
+                'message' => 'PPPoE user not found',
+            ], 404);
+        }
+
+        // Portal password is stored hashed - cannot be retrieved
+        // It is only visible immediately after creation or reset
+        Log::info('PPPoE portal password info viewed', [
+            'pppoe_user_id' => $id,
+            'username' => $pppoeUser->username,
+            'viewed_by' => $request->user()->id,
+            'has_portal_password' => !empty($pppoeUser->portal_password),
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'username' => $pppoeUser->username,
+                'account_number' => $pppoeUser->account_number,
+                'has_portal_password' => !empty($pppoeUser->portal_password),
+                'portal_login_url' => '/portal/login',
+                'message' => 'Portal password is only visible immediately after creation or reset. Please reset the portal password to view it.',
             ],
         ]);
     }
@@ -299,6 +339,62 @@ class PppoeUserController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to reset PPPoE user password: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function resetPortalPassword(Request $request, string $id)
+    {
+        $tenant = $this->getAuthenticatedTenant($request);
+        if (!$tenant) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Tenant context not available.',
+            ], 500);
+        }
+
+        $pppoeUser = PppoeUser::find($id);
+        if (!$pppoeUser) {
+            return response()->json([
+                'success' => false,
+                'message' => 'PPPoE user not found',
+            ], 404);
+        }
+
+        // Generate a new random portal password
+        $newPortalPassword = Str::random(8);
+
+        try {
+            // Update portal password in TENANT schema
+            $this->tenantContext->runInTenantContext($tenant, function () use ($pppoeUser, $newPortalPassword) {
+                // Store hashed portal password
+                $pppoeUser->portal_password = bcrypt($newPortalPassword);
+                $pppoeUser->save();
+            });
+
+            event(new PppoeUserUpdated($pppoeUser, (string) $tenant->id));
+
+            Log::info('PPPoE portal password reset', [
+                'pppoe_user_id' => $pppoeUser->id,
+                'username' => $pppoeUser->username,
+                'reset_by' => $request->user()->id,
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Portal password reset successfully',
+                'data' => $pppoeUser,
+                'portal_password' => $newPortalPassword,
+            ], 200);
+        } catch (\Exception $e) {
+            Log::error('Failed to reset portal password', [
+                'error' => $e->getMessage(),
+                'pppoe_user_id' => $pppoeUser->id,
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to reset portal password: ' . $e->getMessage(),
             ], 500);
         }
     }
@@ -384,6 +480,7 @@ class PppoeUserController extends Controller
 
         $username = (string) $request->username;
         $plainPassword = Str::random(12);
+        $portalPassword = Str::random(8); // Auto-generated portal password for customer self-service
         $simultaneousUse = (int) ($request->simultaneous_use ?? 1);
         $customerName = $request->filled('customer_name') ? (string) $request->customer_name : $username;
         $customerEmail = $request->filled('customer_email') ? (string) $request->customer_email : null;
@@ -432,7 +529,7 @@ class PppoeUserController extends Controller
             ]);
 
             // STEP 2: Create user and RADIUS entries in TENANT schema using TenantContext
-            $pppoeUser = $this->tenantContext->runInTenantContext($tenant, function () use ($username, $plainPassword, $package, $router, $expiresAt, $rateLimit, $simultaneousUse, $customerName, $customerEmail, $customerPhone, $tenant) {
+            $pppoeUser = $this->tenantContext->runInTenantContext($tenant, function () use ($username, $plainPassword, $portalPassword, $package, $router, $expiresAt, $rateLimit, $simultaneousUse, $customerName, $customerEmail, $customerPhone, $tenant) {
                 $tenantPrefix = $tenant->account_prefix
                     ?? \App\Models\Tenant::generateAccountPrefix($tenant->slug ?? $tenant->name);
                 $accountNumber = PppoeUser::generateAccountNumber($tenantPrefix, 'P');
@@ -445,6 +542,7 @@ class PppoeUserController extends Controller
                 $pppoeUser = PppoeUser::create([
                     'username' => $username,
                     'password' => bcrypt($plainPassword),
+                    'portal_password' => bcrypt($portalPassword),
                     'account_number' => $accountNumber,
                     'customer_name' => $customerName,
                     'customer_email' => $customerEmail,
@@ -492,6 +590,7 @@ class PppoeUserController extends Controller
                 'message' => 'PPPoE user created',
                 'data' => $pppoeUser,
                 'generated_password' => $plainPassword,
+                'generated_portal_password' => $portalPassword,
             ], 201);
         } catch (QueryException $e) {
             Log::error('Database error while creating PPPoE user', [
