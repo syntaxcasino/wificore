@@ -112,11 +112,30 @@
             <div class="flex-1 text-sm text-slate-900 font-mono bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
               {{ generatedPassword }}
             </div>
-            <BaseButton variant="secondary" size="sm" @click="copyPassword">
+            <BaseButton variant="secondary" size="sm" @click="copyPassword('pppoe')">
               Copy
             </BaseButton>
           </div>
-          <div class="mt-2 text-xs text-slate-500 dark:text-slate-400">This password is shown only once. Store it securely.</div>
+          <div class="mt-2 text-xs text-slate-500 dark:text-slate-400">PPPoE client password for router connection.</div>
+        </div>
+
+        <div class="border-t border-slate-200 pt-4">
+          <div class="text-sm font-medium text-slate-700 dark:text-slate-300">Portal Password</div>
+          <div class="mt-1 flex items-center gap-2">
+            <div class="flex-1 text-sm text-slate-900 font-mono bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+              {{ generatedPortalPassword }}
+            </div>
+            <BaseButton variant="secondary" size="sm" @click="copyPassword('portal')">
+              Copy
+            </BaseButton>
+          </div>
+          <div class="mt-2 text-xs text-slate-500 dark:text-slate-400">Customer portal password for online payments & account management.</div>
+        </div>
+
+        <div class="bg-amber-50 border border-amber-200 rounded-lg p-3">
+          <p class="text-xs text-amber-700">
+            <strong>Note:</strong> Both passwords are shown only once. Store them securely and share with the customer.
+          </p>
         </div>
       </div>
 
@@ -183,6 +202,7 @@ const fieldErrors = reactive({
 
 const showPasswordModal = ref(false)
 const generatedPassword = ref('')
+const generatedPortalPassword = ref('')
 const createdUser = ref(null)
 
 const resetErrors = () => {
@@ -207,9 +227,10 @@ const handleSubmit = async () => {
       grace_period_days: Number(form.grace_period_days || 0),
     }
 
-    const { user, generatedPassword: password } = await createUser(payload)
+    const { user, generatedPassword: password, generatedPortalPassword: portalPassword } = await createUser(payload)
     createdUser.value = user
     generatedPassword.value = password || ''
+    generatedPortalPassword.value = portalPassword || ''
     showPasswordModal.value = true
   } catch (err) {
     const status = err.response?.status
@@ -231,10 +252,11 @@ const handleSubmit = async () => {
   }
 }
 
-const copyPassword = async () => {
-  if (!generatedPassword.value) return
+const copyPassword = async (type) => {
+  const passwordToCopy = type === 'portal' ? generatedPortalPassword.value : generatedPassword.value
+  if (!passwordToCopy) return
   try {
-    await navigator.clipboard.writeText(generatedPassword.value)
+    await navigator.clipboard.writeText(passwordToCopy)
   } catch (e) {
     formError.value = 'Failed to copy password'
   }
@@ -243,6 +265,7 @@ const copyPassword = async () => {
 const finish = () => {
   showPasswordModal.value = false
   generatedPassword.value = ''
+  generatedPortalPassword.value = ''
   createdUser.value = null
   window.location.href = '/dashboard/pppoe/users'
 }

@@ -96,8 +96,8 @@ export function useRouterStatusStream() {
       eventSource.close()
     }
 
-    const baseUrl = import.meta.env.VITE_API_URL || ''
-    const url = `${baseUrl}/api/routers/stream/status`
+    const baseUrl = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || '/api'
+    const url = `${baseUrl}/routers/stream/status`
     
     try {
       eventSource = new EventSource(url, {

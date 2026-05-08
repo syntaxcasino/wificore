@@ -255,6 +255,35 @@ Route::prefix('portal')->group(function () {
         ->name('api.portal.payment.status');
 });
 
+// =============================================================================
+// PPPOE CUSTOMER PORTAL ROUTES - Portal token auth (tenant-agnostic)
+// =============================================================================
+Route::prefix('pppoe-portal')->group(function () {
+    // Public: login (no auth)
+    Route::post('/login', [PppoePortalController::class, 'login'])
+        ->middleware('throttle:10,1')
+        ->name('api.pppoe-portal.login');
+
+    // Authenticated: requires PppoePortalAuth middleware
+    Route::middleware([\App\Http\Middleware\PppoePortalAuth::class])->group(function () {
+        Route::get('/dashboard', [PppoePortalController::class, 'dashboard'])
+            ->name('api.pppoe-portal.dashboard');
+        Route::get('/sessions/history', [PppoePortalController::class, 'sessionHistory'])
+            ->name('api.pppoe-portal.sessions.history');
+        Route::post('/payment/mpesa', [PppoePortalController::class, 'initiateMpesaPayment'])
+            ->middleware('throttle:10,1')
+            ->name('api.pppoe-portal.payment.mpesa');
+        Route::post('/payment/voucher', [PppoePortalController::class, 'redeemVoucher'])
+            ->middleware('throttle:10,1')
+            ->name('api.pppoe-portal.payment.voucher');
+        Route::get('/payment/status', [PppoePortalController::class, 'checkPaymentStatus'])
+            ->middleware('throttle:30,1')
+            ->name('api.pppoe-portal.payment.status');
+        Route::post('/logout', [PppoePortalController::class, 'logout'])
+            ->name('api.pppoe-portal.logout');
+    });
+});
+
 // Health Check - Public (for monitoring/uptime)
 Route::get('/health/ping', [HealthController::class, 'ping'])
     ->name('api.health.ping');
@@ -669,7 +698,9 @@ Route::middleware(['auth:sanctum', 'role:admin', 'user.active', 'tenant.context'
         Route::put('/users/{id}', [PppoeUserController::class, 'update']);
         // PPPoE users should not be deleted, only edited (soft delete via status change)
         Route::post('/users/{id}/reset-password', [PppoeUserController::class, 'resetPassword']);
+        Route::post('/users/{id}/reset-portal-password', [PppoeUserController::class, 'resetPortalPassword']);
         Route::get('/users/{id}/password', [PppoeUserController::class, 'viewPassword']);
+        Route::get('/users/{id}/portal-password', [PppoeUserController::class, 'viewPortalPassword']);
         Route::post('/users/{id}/block', [PppoeUserController::class, 'block']);
         Route::post('/users/{id}/unblock', [PppoeUserController::class, 'unblock']);
         Route::post('/users/{id}/activate', [PppoeUserController::class, 'activate']);

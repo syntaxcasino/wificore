@@ -231,6 +231,10 @@
         class="flex items-center w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-purple-50 hover:text-purple-700 transition-colors gap-3">
         <RotateCcw class="w-4 h-4 flex-shrink-0" /> Reset Password
       </button>
+      <button @click="handleResetPortalPasswordForMenu(users.find(u => u.id === activeMenu))"
+        class="flex items-center w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-purple-50 hover:text-purple-700 transition-colors gap-3">
+        <RotateCcw class="w-4 h-4 flex-shrink-0" /> Reset Portal Password
+      </button>
     </div>
   </Teleport>
 
@@ -332,7 +336,7 @@
             </h3>
             <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm space-y-3">
               <div>
-                <div class="text-xs text-slate-500 mb-1.5">Password</div>
+                <div class="text-xs text-slate-500 mb-1.5">PPPoE Password</div>
                 <div class="flex items-center gap-2">
                   <div class="flex-1 font-mono text-sm bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-slate-800">
                     {{ showPasswordValue ? userPassword : '••••••••••••' }}
@@ -349,6 +353,27 @@
                     <RotateCcw class="w-3.5 h-3.5" /> Reset
                   </button>
                 </div>
+              </div>
+
+              <div>
+                <div class="text-xs text-slate-500 mb-1.5">Portal Password</div>
+                <div class="flex items-center gap-2">
+                  <div class="flex-1 font-mono text-sm bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-slate-800">
+                    {{ showPortalPasswordValue ? userPortalPassword : '••••••••••••' }}
+                  </div>
+                  <button v-if="!showPortalPasswordValue" @click="handleViewPortalPassword" :disabled="loadingPortalPassword"
+                    class="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-600 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-50 transition-colors">
+                    <Eye class="w-3.5 h-3.5" />{{ loadingPortalPassword ? '...' : 'View' }}
+                  </button>
+                  <button v-else @click="hidePortalPassword" class="p-2 text-slate-400 hover:text-slate-700 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">
+                    <EyeOff class="w-3.5 h-3.5" />
+                  </button>
+                  <button @click="handleResetPortalPassword"
+                    class="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition-colors">
+                    <RotateCcw class="w-3.5 h-3.5" /> Reset
+                  </button>
+                </div>
+                <div class="mt-1.5 text-[10px] text-slate-400">Used for customer self-service portal login</div>
               </div>
             </div>
           </section>
@@ -882,7 +907,7 @@ const confirmStore = useConfirmStore()
 const {
   users, loading, error,
   activeUsers, inactiveUsers, blockedUsers, expiredUsers,
-  fetchUsers, createUser, updateUser, viewPassword, resetPassword,
+  fetchUsers, createUser, updateUser, viewPassword, viewPortalPassword, resetPassword, resetPortalPassword,
   toggleUserStatus, subscribeToWebSocket, unsubscribeFromWebSocket,
 } = usePppoeUsers()
 
@@ -934,6 +959,8 @@ const openUserPanel = async (user) => {
   editExpanded.value = false
   showPasswordValue.value = false
   userPassword.value = ''
+  showPortalPasswordValue.value = false
+  userPortalPassword.value = ''
   editForm.router_id = user.router_id || user.router?.id || ''
   editForm.package_id = user.package_id || user.package?.id || ''
   editForm.simultaneous_use = Number(user.simultaneous_use ?? 1)
@@ -1175,6 +1202,44 @@ const handleResetPassword = async () => {
     const { generatedPassword: pw } = await resetPassword(panelUser.value.id)
     userPassword.value = pw || ''
     showPasswordValue.value = true
+  } catch { /**/ }
+}
+
+// ── Portal Password ───────────────────────────────────────────────────────
+const showPortalPasswordValue = ref(false)
+const userPortalPassword      = ref('')
+const loadingPortalPassword   = ref(false)
+
+const handleViewPortalPassword = async () => {
+  if (!panelUser.value) return
+  // Portal password is stored hashed and cannot be retrieved.
+  // Prompt user to reset to generate a new viewable password.
+  const ok = await confirmStore.open({
+    title: 'View Portal Password',
+    message: 'Portal passwords are stored securely and cannot be viewed. Would you like to generate a new portal password?',
+    confirmText: 'Generate New',
+    cancelText: 'Cancel',
+    variant: 'warning',
+  })
+  if (!ok) return
+  loadingPortalPassword.value = true
+  try {
+    const { portalPassword: newPw } = await resetPortalPassword(panelUser.value.id)
+    userPortalPassword.value = newPw || ''
+    showPortalPasswordValue.value = true
+  } catch { /**/ } finally { loadingPortalPassword.value = false }
+}
+
+const hidePortalPassword = () => { showPortalPasswordValue.value = false; userPortalPassword.value = '' }
+
+const handleResetPortalPassword = async () => {
+  if (!panelUser.value) return
+  const ok = await confirmStore.open({ title: 'Reset Portal Password', message: `Reset portal password for ${panelUser.value.username}? A new password will be generated.`, confirmText: 'Reset', cancelText: 'Cancel', variant: 'warning' })
+  if (!ok) return
+  try {
+    const { portalPassword: newPw } = await resetPortalPassword(panelUser.value.id)
+    userPortalPassword.value = newPw || ''
+    showPortalPasswordValue.value = true
   } catch { /**/ }
 }
 
@@ -1449,6 +1514,27 @@ const handleResetPasswordForMenu = async (user) => {
     setTimeout(() => {
       userPassword.value = newPwd || ''
       showPasswordValue.value = true
+    }, 100)
+  } catch {}
+}
+
+const handleResetPortalPasswordForMenu = async (user) => {
+  closeMenu()
+  if (!user) return
+  const confirmed = await confirmStore.open({
+    title: 'Reset Portal Password',
+    message: `Reset the portal password for ${user.username}? A new password will be generated for the customer portal.`,
+    confirmText: 'Reset',
+    cancelText: 'Cancel',
+    variant: 'warning',
+  })
+  if (!confirmed) return
+  try {
+    const { portalPassword: newPortalPwd } = await resetPortalPassword(user.id)
+    openUserPanel(user)
+    setTimeout(() => {
+      userPortalPassword.value = newPortalPwd || ''
+      showPortalPasswordValue.value = true
     }, 100)
   } catch {}
 }
