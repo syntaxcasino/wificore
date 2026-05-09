@@ -215,11 +215,9 @@ class WebSocketService {
     // Re-initialize with a fresh token (token may have been refreshed since last connect)
     this.initialize()
     
-    // Re-subscribe to module channels for the stored tenant subscription
-    const tenantEntry = Array.from(this.subscribedChannels.entries()).find(([, v]) => v.type === 'tenant')
-    if (tenantEntry) {
-      this.subscribeModuleChannels(tenantEntry[1].params.tenantId)
-    }
+    // Explicit subscriptions are replayed by resubscribeAllChannels() once
+    // Pusher reports "connected". Do not implicitly add module channels here:
+    // some pages own SSE streams for those same event domains.
   }
 
   /**
