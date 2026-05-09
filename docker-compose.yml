@@ -205,7 +205,7 @@ services:
       wificore-network:
         ipv4_address: 172.70.0.5
     healthcheck:
-      test: ["CMD-SHELL", "php-fpm -t || exit 1"]
+      test: ["CMD-SHELL", "/usr/local/sbin/php-fpm -t || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
