@@ -81,9 +81,8 @@ class DatabaseServiceProvider extends ServiceProvider
      */
     protected function optimizeQueries(): void
     {
-        // Do not enable Laravel's in-memory query log in production/Octane.
-        // It grows for the lifetime of a RoadRunner worker and can cause
-        // gradual slowdowns, worker restarts, and intermittent 500 responses.
+        // Do not retain every query in memory in production.
+        // This can cause gradual slowdowns and intermittent 500 responses.
         if ((bool) env('DB_QUERY_LOG', false) && !app()->environment('production')) {
             DB::enableQueryLog();
         }
