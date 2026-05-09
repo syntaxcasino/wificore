@@ -27,8 +27,9 @@ class AppServiceProvider extends ServiceProvider
             return new RadiusService();
         });
         
-        // Register TenantContext as singleton to maintain state across middleware and controllers
-        $this->app->singleton(\App\Services\TenantContext::class);
+        // TenantContext carries request-scoped mutable state (tenant/search_path).
+        // Under Octane, singleton would leak state across requests.
+        $this->app->scoped(\App\Services\TenantContext::class);
         
         // Use immutable dates for better performance (no mutation overhead)
         Date::use(CarbonImmutable::class);
