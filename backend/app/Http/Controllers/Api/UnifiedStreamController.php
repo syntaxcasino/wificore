@@ -16,10 +16,10 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Unified SSE Stream Controller
- * 
+ *
  * Consolidates all Server-Sent Events streams into a single endpoint
  * with tenant isolation and usage-based tagging.
- * 
+ *
  * SECURITY: All streams are strictly tenant-isolated. Users can only
  * access data for their assigned tenant. No tenant ID can be passed
  * via request parameters - only from authenticated user context.
@@ -58,16 +58,16 @@ class UnifiedStreamController extends Controller
 
     /**
      * Unified SSE Stream Endpoint
-     * 
+     *
      * Query Parameters:
      * - stream: Comma-separated list of stream types (e.g., "router-status,live-connections")
      * - format: Response format - 'sse' (default) or 'json' for single fetch
-     * 
+     *
      * Security:
      * - Tenant ID is ALWAYS derived from authenticated user only
      * - No tenant parameter accepted via request
      * - All database queries are scoped to user's tenant
-     * 
+     *
      * @param Request $request
      * @return StreamedResponse|\Illuminate\Http\JsonResponse
      */
@@ -103,12 +103,12 @@ class UnifiedStreamController extends Controller
 
         // Parse requested stream types
         $streamTypes = $this->parseStreamTypes($request->input('stream', 'router-status'));
-        
+
         // Validate stream types
         $invalidStreams = array_diff($streamTypes, array_keys(self::VALID_STREAMS));
         if (!empty($invalidStreams)) {
             return $this->errorResponse(
-                'Invalid stream types: ' . implode(', ', $invalidStreams) . 
+                'Invalid stream types: ' . implode(', ', $invalidStreams) .
                 '. Valid types: ' . implode(', ', array_keys(self::VALID_STREAMS)),
                 400
             );
@@ -125,77 +125,79 @@ class UnifiedStreamController extends Controller
         ]);
 
         return response()->stream(function () use ($tenant, $tenantId, $streamTypes, $lastEventId, $startTime, $vm) {
-            // Set tenant context - scoped strictly to this tenant
-            $tenantContext = app(TenantContext::class);
-            $tenantContext->setTenant($tenant);
-            DB::statement('SET search_path TO ?, public', [$tenant->schema_name]);
+            try {
+                // Set tenant context - scoped strictly to this tenant
+                $tenantContext = app(TenantContext::class);
+                $tenantContext->setTenant($tenant);
+                DB::statement('SET search_path TO ' . $this->quoteSchemaName($tenant->schema_name) . ', public');
 
-            $eventId = (int) $lastEventId;
-            $lastUpdate = [];
+                $eventId = (int) $lastEventId;
+                $lastUpdate = [];
 
-            // Send initial state for all requested streams
-            foreach ($streamTypes as $streamType) {
-                $data = $this->fetchStreamData($streamType, $tenant, $tenantId, $vm);
-                $this->sendEvent($streamType, 'initial', $eventId++, $data);
-                $lastUpdate[$streamType] = time();
-            }
-
-            // Send heartbeat
-            $this->sendEvent('system', 'heartbeat', $eventId++, ['timestamp' => now()->toIso8601String()]);
-
-            // Stream loop
-            while (true) {
-                // Check max connection duration
-                if (time() - $startTime > self::STREAM_TIMEOUT) {
-                    $this->sendEvent('system', 'complete', $eventId++, [
-                        'message' => 'Stream timeout reached',
-                        'duration' => self::STREAM_TIMEOUT,
-                    ]);
-                    break;
-                }
-
-                // Check connection aborted
-                if (connection_aborted()) {
-                    Log::debug('SSE connection aborted by client', [
-                        'tenant_id' => $tenantId,
-                        'streams' => $streamTypes,
-                    ]);
-                    break;
-                }
-
-                // Update streams based on their intervals
+                // Send initial state for all requested streams
                 foreach ($streamTypes as $streamType) {
-                    $interval = self::VALID_STREAMS[$streamType]['update_interval'] ?? self::UPDATE_INTERVAL;
-                    
-                    if (time() - ($lastUpdate[$streamType] ?? 0) >= $interval) {
-                        $data = $this->fetchStreamData($streamType, $tenant, $tenantId, $vm);
-                        
-                        // Only send if data changed (optimization)
-                        $this->sendEvent($streamType, 'update', $eventId++, $data);
-                        $lastUpdate[$streamType] = time();
+                    $data = $this->fetchStreamData($streamType, $tenant, $tenantId, $vm);
+                    $this->sendEvent($streamType, 'initial', $eventId++, $data);
+                    $lastUpdate[$streamType] = time();
+                }
+
+                // Send heartbeat
+                $this->sendEvent('system', 'heartbeat', $eventId++, ['timestamp' => now()->toIso8601String()]);
+
+                // Stream loop
+                while (true) {
+                    // Check max connection duration
+                    if (time() - $startTime > self::STREAM_TIMEOUT) {
+                        $this->sendEvent('system', 'complete', $eventId++, [
+                            'message' => 'Stream timeout reached',
+                            'duration' => self::STREAM_TIMEOUT,
+                        ]);
+                        break;
                     }
-                }
 
-                // Send heartbeat every 30 seconds
-                if (time() - $startTime % self::HEARTBEAT_INTERVAL === 0) {
-                    $this->sendEvent('system', 'heartbeat', $eventId++, [
-                        'timestamp' => now()->toIso8601String(),
-                        'active_streams' => $streamTypes,
-                    ]);
-                }
+                    // Check connection aborted
+                    if (connection_aborted()) {
+                        Log::debug('SSE connection aborted by client', [
+                            'tenant_id' => $tenantId,
+                            'streams' => $streamTypes,
+                        ]);
+                        break;
+                    }
 
-                // Sleep to prevent CPU spinning
-                sleep(1);
+                    // Update streams based on their intervals
+                    foreach ($streamTypes as $streamType) {
+                        $interval = self::VALID_STREAMS[$streamType]['update_interval'] ?? self::UPDATE_INTERVAL;
+
+                        if (time() - ($lastUpdate[$streamType] ?? 0) >= $interval) {
+                            $data = $this->fetchStreamData($streamType, $tenant, $tenantId, $vm);
+
+                            // Only send if data changed (optimization)
+                            $this->sendEvent($streamType, 'update', $eventId++, $data);
+                            $lastUpdate[$streamType] = time();
+                        }
+                    }
+
+                    // Send heartbeat every 30 seconds
+                    if (((time() - $startTime) % self::HEARTBEAT_INTERVAL) === 0) {
+                        $this->sendEvent('system', 'heartbeat', $eventId++, [
+                            'timestamp' => now()->toIso8601String(),
+                            'active_streams' => $streamTypes,
+                        ]);
+                    }
+
+                    // Sleep to prevent CPU spinning
+                    sleep(1);
+                }
+            } finally {
+                // Cleanup
+                DB::statement('SET search_path TO public');
+
+                Log::info('Unified SSE stream ended', [
+                    'tenant_id' => $tenantId,
+                    'streams' => $streamTypes,
+                    'duration' => time() - $startTime,
+                ]);
             }
-
-            // Cleanup
-            DB::statement('SET search_path TO public');
-            
-            Log::info('Unified SSE stream ended', [
-                'tenant_id' => $tenantId,
-                'streams' => $streamTypes,
-                'duration' => time() - $startTime,
-            ]);
         }, 200, [
             'Content-Type' => 'text/event-stream',
             'Cache-Control' => 'no-cache, no-store, must-revalidate, private',
@@ -227,7 +229,7 @@ class UnifiedStreamController extends Controller
 
     /**
      * Fetch data for a specific stream type
-     * 
+     *
      * SECURITY: All queries are scoped to the authenticated user's tenant
      */
     private function fetchStreamData(string $streamType, Tenant $tenant, string $tenantId, VictoriaMetricsClient $vm): array
@@ -236,16 +238,16 @@ class UnifiedStreamController extends Controller
             switch ($streamType) {
                 case 'router-status':
                     return $this->fetchRouterStatus($tenant, $tenantId);
-                    
+
                 case 'live-connections':
                     return $this->fetchLiveConnections($tenantId, $vm);
-                    
+
                 case 'router-metrics':
                     return $this->fetchRouterMetrics($tenantId, $vm);
-                    
+
                 case 'system-health':
                     return $this->fetchSystemHealth($tenantId);
-                    
+
                 default:
                     return ['error' => 'Unknown stream type'];
             }
@@ -255,14 +257,14 @@ class UnifiedStreamController extends Controller
                 'tenant_id' => $tenantId,
                 'error' => $e->getMessage(),
             ]);
-            
+
             return ['error' => 'Failed to fetch data', 'stream_type' => $streamType];
         }
     }
 
     /**
      * Fetch router status data
-     * 
+     *
      * SECURITY: Strictly filtered by tenant_id
      */
     private function fetchRouterStatus(Tenant $tenant, string $tenantId): array
@@ -283,7 +285,7 @@ class UnifiedStreamController extends Controller
 
     /**
      * Fetch live connections data (PPPoE + Hotspot)
-     * 
+     *
      * SECURITY: Uses tenant schema for RADIUS data
      */
     private function fetchLiveConnections(string $tenantId, VictoriaMetricsClient $vm): array
@@ -328,7 +330,7 @@ class UnifiedStreamController extends Controller
 
         // Calculate stats
         $totalConnections = $pppoeSessions->count() + $hotspotSessions->count();
-        
+
         return [
             'pppoe_sessions' => $pppoeSessions,
             'hotspot_sessions' => $hotspotSessions,
@@ -341,20 +343,20 @@ class UnifiedStreamController extends Controller
 
     /**
      * Fetch router metrics from VictoriaMetrics
-     * 
+     *
      * SECURITY: Queries filtered by tenant_id label
      */
     private function fetchRouterMetrics(string $tenantId, VictoriaMetricsClient $vm): array
     {
         try {
             $tenantIdEscaped = $this->escapeLabelValue($tenantId);
-            
+
             // Query for all routers in this tenant
             $selector = sprintf('tenant_id="%s"', $tenantIdEscaped);
-            
+
             $trafficQuery = sprintf('rate(interface_counters_ifHCInOctets{%s}[5m])', $selector);
             $trafficData = $vm->queryInstant($trafficQuery);
-            
+
             return [
                 'traffic' => $trafficData['data']['result'] ?? [],
                 'timestamp' => now()->toIso8601String(),
@@ -364,14 +366,14 @@ class UnifiedStreamController extends Controller
                 'tenant_id' => $tenantId,
                 'error' => $e->getMessage(),
             ]);
-            
+
             return ['error' => 'Metrics unavailable', 'timestamp' => now()->toIso8601String()];
         }
     }
 
     /**
      * Fetch system health metrics
-     * 
+     *
      * SECURITY: Tenant-scoped metrics only
      */
     private function fetchSystemHealth(string $tenantId): array
@@ -395,7 +397,7 @@ class UnifiedStreamController extends Controller
 
     /**
      * Authorize tenant access
-     * 
+     *
      * SECURITY: User must belong to the tenant they request data for
      */
     private function authorizeTenantAccess($user, Tenant $tenant): bool
@@ -448,5 +450,14 @@ class UnifiedStreamController extends Controller
     private function escapeLabelValue(string $value): string
     {
         return str_replace(["\\", '"'], ["\\\\", '\\"'], $value);
+    }
+
+    private function quoteSchemaName(string $schemaName): string
+    {
+        if (!preg_match('/^[a-z0-9_]{1,63}$/', $schemaName)) {
+            throw new \InvalidArgumentException('Invalid tenant schema name');
+        }
+
+        return '"' . str_replace('"', '""', $schemaName) . '"';
     }
 }

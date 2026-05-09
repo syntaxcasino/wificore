@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -32,7 +33,7 @@ class SystemAdminSseController extends \App\Http\Controllers\Controller
             return $this->errorStream('Authentication required', 401);
         }
 
-        if ($user->role !== 'system_admin' || $user->tenant_id !== null) {
+        if ($user->role !== User::ROLE_SYSTEM_ADMIN || $user->tenant_id !== null) {
             return $this->errorStream('System administrator access required', 403);
         }
 

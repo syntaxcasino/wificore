@@ -27,28 +27,28 @@ class RouterStatusStreamController extends \App\Http\Controllers\Controller
     public function stream(Request $request): StreamedResponse
     {
         $user = Auth::user();
-        
+
         // Authentication required
         if (!$user) {
             return $this->errorResponse('Authentication required', 401);
         }
-        
+
         // Get tenant from authenticated user - NEVER from request params
         $tenantId = $user->tenant_id;
-        
+
         if (!$tenantId) {
             return $this->errorResponse('No tenant assigned to user', 403);
         }
-        
+
         // Verify tenant exists and is active
         $tenant = Tenant::where('id', $tenantId)
             ->where('is_active', true)
             ->first();
-        
+
         if (!$tenant) {
             return $this->errorResponse('Tenant not found or inactive', 403);
         }
-        
+
         // Authorization check - ensure user belongs to this tenant
         if (!$this->authorizeTenantAccess($user, $tenant)) {
             return $this->errorResponse('Access denied to this tenant', 403);
@@ -59,50 +59,52 @@ class RouterStatusStreamController extends \App\Http\Controllers\Controller
         $lastHeartbeat = time();
 
         return response()->stream(function () use ($tenant, $tenantId, $lastEventId, $startTime, $lastHeartbeat) {
-            // Set tenant context - scoped strictly to this tenant
-            $tenantContext = app(TenantContext::class);
-            $tenantContext->setTenant($tenant);
-            DB::statement('SET search_path TO ?, public', [$tenant->schema_name]);
+            try {
+                // Set tenant context - scoped strictly to this tenant
+                $tenantContext = app(TenantContext::class);
+                $tenantContext->setTenant($tenant);
+                DB::statement('SET search_path TO ' . $this->quoteSchemaName($tenant->schema_name) . ', public');
 
-            $eventId = (int) $lastEventId;
-            $lastKnownStatuses = [];
-            
-            // Initial full state push - strictly filtered by tenant
-            $this->sendFullState($eventId++, $tenant, $tenantId);
+                $eventId = (int) $lastEventId;
+                $lastKnownStatuses = [];
 
-            // Stream loop
-            while (true) {
-                // Check max connection duration
-                if (time() - $startTime > self::STREAM_TIMEOUT) {
-                    $this->sendEvent('complete', $eventId++, ['message' => 'Stream timeout']);
-                    break;
-                }
+                // Initial full state push - strictly filtered by tenant
+                $this->sendFullState($eventId++, $tenant, $tenantId);
 
-                // Send heartbeat to keep connection alive
-                if (time() - $lastHeartbeat > self::HEARTBEAT_INTERVAL) {
-                    $this->sendEvent('heartbeat', $eventId++, ['time' => now()->toIso8601String()]);
-                    $lastHeartbeat = time();
-                }
-
-                // Check for status changes - tenant-scoped only
-                $changes = $this->getStatusChanges($tenant, $tenantId, $lastKnownStatuses);
-                
-                if (!empty($changes)) {
-                    foreach ($changes as $change) {
-                        $this->sendEvent('router.status.updated', $eventId++, $change);
+                // Stream loop
+                while (true) {
+                    // Check max connection duration
+                    if (time() - $startTime > self::STREAM_TIMEOUT) {
+                        $this->sendEvent('complete', $eventId++, ['message' => 'Stream timeout']);
+                        break;
                     }
-                    
-                    // Update last known statuses
-                    foreach ($changes as $change) {
-                        $lastKnownStatuses[$change['id']] = $change['status'];
-                    }
-                }
 
-                // Small sleep to prevent CPU spinning (check every 1 second)
-                sleep(1);
+                    // Send heartbeat to keep connection alive
+                    if (time() - $lastHeartbeat > self::HEARTBEAT_INTERVAL) {
+                        $this->sendEvent('heartbeat', $eventId++, ['time' => now()->toIso8601String()]);
+                        $lastHeartbeat = time();
+                    }
+
+                    // Check for status changes - tenant-scoped only
+                    $changes = $this->getStatusChanges($tenant, $tenantId, $lastKnownStatuses);
+
+                    if (!empty($changes)) {
+                        foreach ($changes as $change) {
+                            $this->sendEvent('router.status.updated', $eventId++, $change);
+                        }
+
+                        // Update last known statuses
+                        foreach ($changes as $change) {
+                            $lastKnownStatuses[$change['id']] = $change['status'];
+                        }
+                    }
+
+                    // Small sleep to prevent CPU spinning (check every 1 second)
+                    sleep(1);
+                }
+            } finally {
+                DB::statement('SET search_path TO public');
             }
-
-            DB::statement('SET search_path TO public');
         }, 200, [
             'Content-Type' => 'text/event-stream',
             'Cache-Control' => 'no-cache, no-store, must-revalidate, private',
@@ -127,12 +129,12 @@ class RouterStatusStreamController extends \App\Http\Controllers\Controller
             ]);
             return false;
         }
-        
+
         // User must be active
         if (!$user->is_active) {
             return false;
         }
-        
+
         return true;
     }
 
@@ -164,6 +166,15 @@ class RouterStatusStreamController extends \App\Http\Controllers\Controller
         flush();
     }
 
+    private function quoteSchemaName(string $schemaName): string
+    {
+        if (!preg_match('/^[a-z0-9_]{1,63}$/', $schemaName)) {
+            throw new \InvalidArgumentException('Invalid tenant schema name');
+        }
+
+        return '"' . str_replace('"', '""', $schemaName) . '"';
+    }
+
     /**
      * Send full current state - STRICTLY filtered by tenant
      */
@@ -191,7 +202,7 @@ class RouterStatusStreamController extends \App\Http\Controllers\Controller
         ];
 
         $this->sendEvent('initial', $eventId++, $payload);
-        
+
         Log::debug('SSE initial state sent', [
             'tenant_id' => $tenantId,
             'router_count' => count($payload['routers']),
@@ -206,11 +217,11 @@ class RouterStatusStreamController extends \App\Http\Controllers\Controller
         // Use tenant-scoped cache key
         $cacheKey = "router:status:changes:{$tenantId}";
         $changes = Cache::get($cacheKey, []);
-        
+
         if (!empty($changes)) {
             // Clear the cache after reading
             Cache::forget($cacheKey);
-            
+
             // Verify all changes belong to this tenant
             return array_filter($changes, fn($change) => $this->verifyRouterOwnership($change['id'], $tenant, $tenantId));
         }

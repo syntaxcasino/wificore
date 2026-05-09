@@ -34,7 +34,7 @@ class SetTenantContext
             
             // System admins use public schema (no tenant context)
             if (in_array($user->role, config('multitenancy.system_admin_roles', ['system_admin']))) {
-                $this->tenantContext->clearTenant();
+                $this->safeClearTenantContext($request, 'system_admin');
                 return $next($request);
             }
             
@@ -64,6 +64,14 @@ class SetTenantContext
                     // Store tenant in request for easy access
                     $request->merge(['tenant' => $tenant]);
                     $request->attributes->set('tenant', $tenant);
+
+                    // Never hold a DB transaction for long-lived stream/SSE requests.
+                    // Keeping a transaction open on Octane workers can exhaust pooled
+                    // connections and cause intermittent 500s across unrelated endpoints.
+                    if ($this->isStreamingRequest($request)) {
+                        $this->tenantContext->setTenant($tenant);
+                        return $next($request);
+                    }
 
                     // Wrap the entire request in a DB::transaction() so PgBouncer
                     // holds a single backend PostgreSQL connection for all statements.
@@ -96,7 +104,7 @@ class SetTenantContext
             }
         } else {
             // No user: use public schema
-            $this->tenantContext->clearTenant();
+            $this->safeClearTenantContext($request, 'guest');
         }
         
         return $next($request);
@@ -112,6 +120,26 @@ class SetTenantContext
     public function terminate(Request $request, Response $response): void
     {
         // Clear tenant context after request completes
-        $this->tenantContext->clearTenant();
+        $this->safeClearTenantContext($request, 'terminate');
+    }
+
+    private function isStreamingRequest(Request $request): bool
+    {
+        return $request->is('api/sse/*')
+            || str_contains((string) $request->headers->get('accept'), 'text/event-stream');
+    }
+
+    private function safeClearTenantContext(Request $request, string $stage): void
+    {
+        try {
+            $this->tenantContext->clearTenant();
+        } catch (\Throwable $e) {
+            Log::warning('Failed to clear tenant context', [
+                'stage' => $stage,
+                'path' => $request->path(),
+                'method' => $request->method(),
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 }
