@@ -181,7 +181,7 @@ class UnifiedAuthController extends Controller
 
         // System admins can login from any subdomain (including tenant subdomains)
         // This allows sysadmin to manage the platform from any entry point
-        if ($user->role === 'system_admin') {
+        if ($user->role === User::ROLE_SYSTEM_ADMIN) {
             \Log::info('System admin login allowed from any subdomain', [
                 'user_id' => $user->id,
                 'username' => $user->username,

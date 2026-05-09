@@ -82,7 +82,7 @@ Broadcast::channel('tenant.{tenantId}.online', function ($user, $tenantId) {
 // System admin online presence channel
 Broadcast::channel('system.online', function ($user) {
     // SECURITY: Only system admins can see who's online at system level
-    if ($user->role === 'system_admin' && $user->tenant_id === null) {
+    if ($user->role === User::ROLE_SYSTEM_ADMIN && $user->tenant_id === null) {
         return [
             'id' => $user->id,
             'name' => $user->name,
@@ -204,31 +204,31 @@ Broadcast::channel('user.{userId}', function ($user, $userId) {
 // System admin channel - only system admins
 Broadcast::channel('system.admin', function ($user) {
     // SECURITY: Only system admins (tenant_id = NULL) can access
-    return $user->role === 'system_admin' && $user->tenant_id === null;
+    return $user->role === User::ROLE_SYSTEM_ADMIN && $user->tenant_id === null;
 });
 
 // System admin dashboard stats channel
 Broadcast::channel('system.dashboard-stats', function ($user) {
     // SECURITY: Only system admins can access system-level stats
-    return $user->role === 'system_admin' && $user->tenant_id === null;
+    return $user->role === User::ROLE_SYSTEM_ADMIN && $user->tenant_id === null;
 });
 
 // System admin tenants channel (tenant management)
 Broadcast::channel('system.tenants', function ($user) {
     // SECURITY: Only system admins can access tenant management events
-    return $user->role === 'system_admin' && $user->tenant_id === null;
+    return $user->role === User::ROLE_SYSTEM_ADMIN && $user->tenant_id === null;
 });
 
 // System admin metrics channel (system-wide metrics)
 Broadcast::channel('system.metrics', function ($user) {
     // SECURITY: Only system admins can access system metrics
-    return $user->role === 'system_admin' && $user->tenant_id === null;
+    return $user->role === User::ROLE_SYSTEM_ADMIN && $user->tenant_id === null;
 });
 
 // System admin queue stats channel
 Broadcast::channel('system.queue-stats', function ($user) {
     // SECURITY: Only system admins can access queue statistics
-    return $user->role === 'system_admin' && $user->tenant_id === null;
+    return $user->role === User::ROLE_SYSTEM_ADMIN && $user->tenant_id === null;
 });
 
 // =============================================================================

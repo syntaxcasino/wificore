@@ -40,7 +40,7 @@ class TodoActivity extends Model
      */
     public function user()
     {
-        return $this->belongsTo(User::class);
+        return $this->belongsTo(PublicUser::class, 'user_id');
     }
 
     /**

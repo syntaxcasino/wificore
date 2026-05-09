@@ -8,6 +8,15 @@ use App\Jobs\UpdateDashboardStatsJob;
 
 class DashboardController extends Controller
 {
+    private function dispatchDashboardRefresh(string $tenantId): void
+    {
+        // Throttle dispatches per tenant to prevent queue storms.
+        $lockKey = "dashboard:manual-dispatch-lock:{$tenantId}";
+        if (Cache::add($lockKey, 1, 30)) {
+            UpdateDashboardStatsJob::dispatch($tenantId)->onQueue('dashboard');
+        }
+    }
+
     /**
      * Get dashboard statistics
      */
@@ -19,7 +28,7 @@ class DashboardController extends Controller
         $cacheKey = "dashboard_stats_{$tenantId}";
         $stats = Cache::remember($cacheKey, 5, function () use ($tenantId, $cacheKey) {
             // Dispatch job to update stats in background for this tenant
-            UpdateDashboardStatsJob::dispatch($tenantId)->onQueue('dashboard');
+            $this->dispatchDashboardRefresh($tenantId);
             
             // Return current cached value or defaults
             return Cache::get($cacheKey, [
@@ -35,7 +44,7 @@ class DashboardController extends Controller
         // Also dispatch job to update stats in background if cache is old
         if (!$stats || !isset($stats['total_routers'])) {
             // Dispatch job to queue for processing for this tenant
-            UpdateDashboardStatsJob::dispatch($tenantId)->onQueue('dashboard');
+            $this->dispatchDashboardRefresh($tenantId);
 
             // Return default stats while job is processing
             $stats = [
@@ -69,7 +78,7 @@ class DashboardController extends Controller
         $tenantId = $request->user()->tenant_id;
         
         // Dispatch job to queue with high priority for this tenant
-        UpdateDashboardStatsJob::dispatch($tenantId)->onQueue('dashboard');
+        $this->dispatchDashboardRefresh($tenantId);
 
         return response()->json([
             'success' => true,

@@ -9,6 +9,7 @@ use App\Events\TodoCreated;
 use App\Events\TodoUpdated;
 use App\Events\TodoDeleted;
 use App\Events\TodoActivityCreated;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Log;
@@ -20,53 +21,59 @@ class TodoController extends Controller
      */
     public function index(Request $request)
     {
-        $user = auth()->user();
-        
-        // ONLY tenant_admin can see ALL todos
-        // Other roles only see their own assigned tasks
-        $isTenantAdmin = ($user->role === 'tenant_admin');
+        try {
+            $user = auth()->user();
+            $isTenantAdmin = $this->isTenantAdmin($user);
 
-        $query = Todo::with(['creator', 'user']);
+            $query = Todo::with(['creator', 'user']);
 
-        // ONLY tenant_admin sees ALL todos in their tenant
-        if ($isTenantAdmin) {
-            Log::info("Tenant admin viewing all todos", [
-                'user_id' => $user->id,
-                'role' => $user->role
-            ]);
-            // No filter - tenant admin sees everything
-        } 
-        // Everyone else only sees their own assigned tasks
-        else {
-            $query->where('user_id', auth()->id());
-            Log::info("User viewing own assigned todos", [
-                'user_id' => $user->id,
-                'role' => $user->role
-            ]);
-        }
+        // Only tenant admins see all todos in their tenant
+            if ($isTenantAdmin) {
+                Log::info("Tenant admin viewing all todos", [
+                    'user_id' => $user->id,
+                    'role' => $user->role
+                ]);
+            } else {
+                $query->where('user_id', auth()->id());
+                Log::info("User viewing own assigned todos", [
+                    'user_id' => $user->id,
+                    'role' => $user->role
+                ]);
+            }
 
         // Filter by status
-        if ($request->has('status')) {
-            $query->where('status', $request->status);
-        }
+            if ($request->has('status')) {
+                $query->where('status', $request->status);
+            }
 
         // Filter by priority
-        if ($request->has('priority')) {
-            $query->where('priority', $request->priority);
-        }
+            if ($request->has('priority')) {
+                $query->where('priority', $request->priority);
+            }
 
         // Filter by assignee (for tenant admin viewing all)
-        if ($request->has('assignee_id') && $isTenantAdmin) {
-            if ($request->assignee_id === 'unassigned') {
-                $query->whereNull('user_id');
-            } else {
-                $query->where('user_id', $request->assignee_id);
+            if ($request->has('assignee_id') && $isTenantAdmin) {
+                if ($request->assignee_id === 'unassigned') {
+                    $query->whereNull('user_id');
+                } else {
+                    $query->where('user_id', $request->assignee_id);
+                }
             }
+
+            $todos = $query->latest()->get();
+
+            return response()->json($todos);
+        } catch (\Throwable $e) {
+            Log::error('Failed to fetch todos', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'user_id' => auth()->id(),
+            ]);
+
+            return response()->json([
+                'message' => 'Failed to fetch todos',
+            ], 500);
         }
-
-        $todos = $query->latest()->get();
-
-        return response()->json($todos);
     }
 
     /**
@@ -132,7 +139,7 @@ class TodoController extends Controller
         $todo = Todo::with(['creator', 'user'])->findOrFail($id);
 
         $user = auth()->user();
-        $isAdmin = $user->role === 'tenant_admin';
+        $isAdmin = $this->isTenantAdmin($user);
 
         // Check if user has access (assigned user, creator, or admin)
         if ($todo->user_id !== auth()->id() && 
@@ -159,7 +166,7 @@ class TodoController extends Controller
         }
 
         $user = auth()->user();
-        $isAdmin = $user->role === 'tenant_admin';
+        $isAdmin = $this->isTenantAdmin($user);
 
         // Check if user has access
         if ($todo->user_id !== auth()->id() && 
@@ -240,7 +247,7 @@ class TodoController extends Controller
         }
 
         $user = auth()->user();
-        $isAdmin = $user->role === 'tenant_admin';
+        $isAdmin = $this->isTenantAdmin($user);
 
         // Check if user has access
         if ($todo->user_id !== auth()->id() && 
@@ -252,7 +259,7 @@ class TodoController extends Controller
         // Store data for event before deletion
         $todoId = $todo->id;
         $userId = $todo->user_id;
-        $tenantId = $todo->user->tenant_id;
+        $tenantId = auth()->user()?->tenant_id;
 
         $todo->delete();
 
@@ -271,7 +278,7 @@ class TodoController extends Controller
     {
         $user = auth()->user();
         $userId = auth()->id();
-        $isTenantAdmin = $user->role === 'tenant_admin';
+        $isTenantAdmin = $this->isTenantAdmin($user);
 
         // Tenant admin can view tenant-wide statistics
         if ($request->boolean('tenant_wide') && $isTenantAdmin) {
@@ -357,7 +364,7 @@ class TodoController extends Controller
 
         // Only admins can assign tasks
         $user = auth()->user();
-        if ($user->role !== 'tenant_admin') {
+        if (!$this->isTenantAdmin($user)) {
             return response()->json(['message' => 'Unauthorized. Only admins can assign tasks.'], 403);
         }
 
@@ -404,7 +411,7 @@ class TodoController extends Controller
         $todo = Todo::findOrFail($id);
 
         $user = auth()->user();
-        $isAdmin = $user->role === 'tenant_admin';
+        $isAdmin = $this->isTenantAdmin($user);
 
         // Check if user has access
         if ($todo->user_id !== auth()->id() && 
@@ -416,5 +423,14 @@ class TodoController extends Controller
         $activities = $todo->activities()->with('user:id,name,email')->get();
 
         return response()->json($activities);
+    }
+
+    private function isTenantAdmin($user): bool
+    {
+        if (!$user) {
+            return false;
+        }
+
+        return $user->role === User::ROLE_ADMIN;
     }
 }

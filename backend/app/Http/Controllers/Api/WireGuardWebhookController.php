@@ -17,35 +17,11 @@ use Illuminate\Support\Facades\Redis;
 class WireGuardWebhookController extends Controller
 {
     /**
-     * Verify API key from request
-     */
-    private function verifyApiKey(Request $request): bool
-    {
-        $authHeader = $request->header('Authorization');
-        if (!$authHeader || !str_starts_with($authHeader, 'Bearer ')) {
-            return false;
-        }
-        
-        $token = substr($authHeader, 7);
-        $expectedKey = config('services.wireguard.webhook_key', config('services.wireguard.api_key'));
-
-        if (!$expectedKey) {
-            return false;
-        }
-
-        return hash_equals((string) $expectedKey, (string) $token);
-    }
-
-    /**
      * Handle peer handshake event from WireGuard
      * Called when a peer completes a handshake
      */
     public function peerHandshake(Request $request): \Illuminate\Http\JsonResponse
     {
-        if (!$this->verifyApiKey($request)) {
-            return response()->json(['error' => 'Unauthorized'], 401);
-        }
-        
         $validated = $request->validate([
             'public_key' => 'required|string',
             'endpoint' => 'nullable|string',
@@ -84,10 +60,6 @@ class WireGuardWebhookController extends Controller
      */
     public function peerExpired(Request $request): \Illuminate\Http\JsonResponse
     {
-        if (!$this->verifyApiKey($request)) {
-            return response()->json(['error' => 'Unauthorized'], 401);
-        }
-        
         $validated = $request->validate([
             'public_key' => 'required|string',
             'reason' => 'nullable|string',
@@ -117,10 +89,6 @@ class WireGuardWebhookController extends Controller
      */
     public function batchUpdate(Request $request): \Illuminate\Http\JsonResponse
     {
-        if (!$this->verifyApiKey($request)) {
-            return response()->json(['error' => 'Unauthorized'], 401);
-        }
-        
         $validated = $request->validate([
             'peers' => 'required|array',
             'peers.*.public_key' => 'required|string',

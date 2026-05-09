@@ -22,6 +22,7 @@ use App\Jobs\ReconnectSubscriptionJob;
 use App\Services\SubscriptionManager;
 use App\Events\PaymentCompleted;
 use App\Events\HotspotUserCreated;
+use App\Services\TenantContext;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -85,34 +86,42 @@ class PaymentController extends Controller
                 throw new \Exception('Service temporarily unavailable. Please contact your provider.');
             }
 
-            // Switch to tenant schema (include public for shared tables like mpesa_transaction_maps)
-            DB::statement("SET search_path TO {$tenant->schema_name}, public");
+            $tenantScoped = $this->runInTenantContext($tenant, function () use ($validated, $request) {
+                // 3. Fetch Package from tenant schema (now in tenant context)
+                $package = Package::findOrFail($validated['package_id']);
+                $amount = $package->price;
 
-            // 3. Fetch Package from tenant schema (now in tenant context)
-            $package = Package::findOrFail($validated['package_id']);
-            $amount = $package->price;
-
-            // Auto-detect router_id if not provided
-            $routerId = $validated['router_id'] ?? null;
-            if (!$routerId) {
-                $routerId = $this->detectRouterFromRequest($request);
-            }
-
-            // Validate router exists in tenant schema (manual check after schema switch)
-            if ($routerId) {
-                $routerExists = \App\Models\Router::find($routerId);
-                if (!$routerExists) {
-                    $routerId = null; // Silently clear invalid router
+                // Auto-detect router_id if not provided
+                $routerId = $validated['router_id'] ?? null;
+                if (!$routerId) {
+                    $routerId = $this->detectRouterFromRequest($request);
                 }
-            }
 
-            // IDEMPOTENCY CHECK: Prevent duplicate payments from double-clicks
-            // Check for recent pending payments from same phone for same package
-            $recentPendingPayment = Payment::where('phone_number', $validated['phone_number'])
-                ->where('package_id', $validated['package_id'])
-                ->where('status', 'pending')
-                ->where('created_at', '>', now()->subMinutes(2))
-                ->first();
+                // Validate router exists in tenant schema
+                if ($routerId) {
+                    $routerExists = \App\Models\Router::find($routerId);
+                    if (!$routerExists) {
+                        $routerId = null; // Silently clear invalid router
+                    }
+                }
+
+                // IDEMPOTENCY CHECK: Prevent duplicate payments from double-clicks
+                $recentPendingPayment = Payment::where('phone_number', $validated['phone_number'])
+                    ->where('package_id', $validated['package_id'])
+                    ->where('status', 'pending')
+                    ->where('created_at', '>', now()->subMinutes(2))
+                    ->first();
+
+                return [
+                    'amount' => $amount,
+                    'router_id' => $routerId,
+                    'recent_pending_payment' => $recentPendingPayment,
+                ];
+            });
+
+            $amount = $tenantScoped['amount'];
+            $routerId = $tenantScoped['router_id'];
+            $recentPendingPayment = $tenantScoped['recent_pending_payment'];
 
             if ($recentPendingPayment) {
                 Log::info('Duplicate payment attempt blocked - recent pending payment exists', [
@@ -154,15 +163,17 @@ class PaymentController extends Controller
             }
 
             // 4. Create Payment in Tenant Schema
-            $payment = Payment::create([
-                'phone_number' => $validated['phone_number'],
-                'amount' => $amount,
-                'package_id' => $validated['package_id'],
-                'router_id' => $routerId,
-                'status' => 'pending',
-                'mac_address' => $validated['mac_address'],
-                'transaction_id' => $checkoutRequestId,
-            ]);
+            $payment = $this->runInTenantContext($tenant, function () use ($validated, $amount, $routerId, $checkoutRequestId) {
+                return Payment::create([
+                    'phone_number' => $validated['phone_number'],
+                    'amount' => $amount,
+                    'package_id' => $validated['package_id'],
+                    'router_id' => $routerId,
+                    'status' => 'pending',
+                    'mac_address' => $validated['mac_address'],
+                    'transaction_id' => $checkoutRequestId,
+                ]);
+            });
 
             // 5. Create Mapping in Public Schema
             // MpesaTransactionMap is in public schema. Since 'public' is in search_path, it should be fine.
@@ -244,8 +255,6 @@ class PaymentController extends Controller
                 return response()->json(['success' => false, 'message' => 'Tenant not found or inactive']);
             }
 
-            DB::statement("SET search_path TO {$tenant->schema_name}, public");
-
             $this->logToSystemAndFile('M-Pesa Callback Received', ['raw_callback_data' => $callbackData, 'tenant' => $tenant->slug], 'info');
 
             $processed = $this->mpesaService->processCallback($callbackData);
@@ -253,7 +262,9 @@ class PaymentController extends Controller
             $resultCode = (int) ($callbackData['Body']['stkCallback']['ResultCode'] ?? -1);
             $status = $resultCode === 0 ? 'completed' : 'failed';
 
-            $payment = Payment::with('package')->where('transaction_id', $checkoutRequestId)->first();
+            $payment = $this->runInTenantContext($tenant, function () use ($checkoutRequestId) {
+                return Payment::with('package')->where('transaction_id', $checkoutRequestId)->first();
+            });
 
             if ($payment) {
                 // IDEMPOTENCY GUARD: Skip if already processed
@@ -266,13 +277,30 @@ class PaymentController extends Controller
                     return response()->json(['success' => true, 'message' => 'Already processed']);
                 }
 
-                $payment->update([
-                    'status' => $status,
-                    'callback_response' => $callbackData,
-                    'amount' => $processed['data']['amount'] ?? $payment->amount,
-                    'phone_number' => $processed['data']['phone_number'] ?? $payment->phone_number,
-                    'mpesa_receipt' => $processed['data']['mpesa_receipt'] ?? null,
-                ]);
+                $paymentContext = $this->runInTenantContext($tenant, function () use ($checkoutRequestId, $status, $callbackData, $processed) {
+                    $tenantPayment = Payment::with('package', 'subscription')
+                        ->where('transaction_id', $checkoutRequestId)
+                        ->first();
+
+                    if (!$tenantPayment) {
+                        return null;
+                    }
+
+                    $tenantPayment->update([
+                        'status' => $status,
+                        'callback_response' => $callbackData,
+                        'amount' => $processed['data']['amount'] ?? $tenantPayment->amount,
+                        'phone_number' => $processed['data']['phone_number'] ?? $tenantPayment->phone_number,
+                        'mpesa_receipt' => $processed['data']['mpesa_receipt'] ?? null,
+                    ]);
+
+                    return [
+                        'payment_id' => $tenantPayment->id,
+                        'package_id' => $tenantPayment->package_id,
+                        'subscription_id' => $tenantPayment->subscription?->id,
+                        'subscription_disconnected' => $tenantPayment->subscription?->isDisconnected() ?? false,
+                    ];
+                });
 
                 if ($status === 'completed') {
                     // Broadcast payment completed event
@@ -280,14 +308,12 @@ class PaymentController extends Controller
 
                     // EVENT-BASED: Dispatch hotspot user creation job (async)
                     // This handles all hotspot provisioning: HotspotUser, RADIUS entries, credentials
-                    CreateHotspotUserJob::dispatch($payment->id, $payment->package_id, $tenant->id)
+                    CreateHotspotUserJob::dispatch($paymentContext['payment_id'], $paymentContext['package_id'], $tenant->id)
                         ->onQueue('hotspot-provisioning');
 
                     // EVENT-BASED: Handle subscription reconnection (for PPPoE/generic subscriptions only)
-                    $subscription = $payment->subscription;
-
-                    if ($subscription && $subscription->isDisconnected()) {
-                        ReconnectSubscriptionJob::dispatch($payment->id, $subscription->id, $tenant->id)
+                    if (($paymentContext['subscription_disconnected'] ?? false) && !empty($paymentContext['subscription_id'])) {
+                        ReconnectSubscriptionJob::dispatch($paymentContext['payment_id'], $paymentContext['subscription_id'], $tenant->id)
                             ->onQueue('subscription-reconnection');
                     }
 
@@ -562,5 +588,15 @@ class PaymentController extends Controller
         }
 
         return null;
+    }
+
+    private function runInTenantContext(\App\Models\Tenant $tenant, callable $callback)
+    {
+        $context = app(TenantContext::class);
+
+        return DB::transaction(function () use ($context, $tenant, $callback) {
+            DB::connection()->recordsHaveBeenModified();
+            return $context->runInTenantContext($tenant, $callback);
+        });
     }
 }

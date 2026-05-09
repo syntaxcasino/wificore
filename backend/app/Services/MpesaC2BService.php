@@ -41,10 +41,7 @@ class MpesaC2BService
      */
     protected function getTenantMpesaConfig(Tenant $tenant): array
     {
-        // Switch to tenant schema to read tenant_paybill_settings
-        $this->setTenantSchema();
-
-        $settings = TenantPaybillSetting::first();
+        $settings = $this->runInTenantContext($tenant, fn () => TenantPaybillSetting::first());
 
         if ($settings && $settings->hasOwnPaybill()) {
             return [
@@ -190,10 +187,11 @@ class MpesaC2BService
         }
 
         // Find PPPoE user by account number
-        $this->setTenantSchema();
-        $user = PppoeUser::where('account_number', $accountNumber)
-            ->orWhere('username', $accountNumber)
-            ->first();
+        $user = $this->runInTenantContext($this->tenant, function () use ($accountNumber) {
+            return PppoeUser::where('account_number', $accountNumber)
+                ->orWhere('username', $accountNumber)
+                ->first();
+        });
 
         if (!$user) {
             Log::warning('M-Pesa C2B: User not found for validation', [
@@ -242,10 +240,10 @@ class MpesaC2BService
             return $this->confirmationResponse('1', 'Invalid data');
         }
 
-        $this->setTenantSchema();
-
         // Check for duplicate transaction
-        $existingPayment = PppoePayment::where('transaction_id', $transactionId)->first();
+        $existingPayment = $this->runInTenantContext($this->tenant, function () use ($transactionId) {
+            return PppoePayment::where('transaction_id', $transactionId)->first();
+        });
         if ($existingPayment) {
             Log::warning('M-Pesa C2B: Duplicate transaction', [
                 'tenant_id' => $this->tenant->id,
@@ -255,9 +253,11 @@ class MpesaC2BService
         }
 
         // Find user
-        $user = PppoeUser::where('account_number', $accountNumber)
-            ->orWhere('username', $accountNumber)
-            ->first();
+        $user = $this->runInTenantContext($this->tenant, function () use ($accountNumber) {
+            return PppoeUser::where('account_number', $accountNumber)
+                ->orWhere('username', $accountNumber)
+                ->first();
+        });
 
         if (!$user) {
             Log::error('M-Pesa C2B: User not found for confirmation', [
@@ -269,39 +269,39 @@ class MpesaC2BService
         }
 
         try {
-            DB::beginTransaction();
+            $payment = $this->runInTenantContext($this->tenant, function () use ($user, $accountNumber, $amount, $phoneNumber, $transactionId, $transactionTime, $data) {
+                // Compute period boundaries from package validity
+                $periodStart = Carbon::parse($this->parseTransactionTime($transactionTime));
+                $package     = $user->package ?? $user->load('package')->package;
+                $periodEnd   = $package
+                    ? PackageExpiryHelper::calculateExpiresAt($package, $periodStart)
+                    : $periodStart->copy()->addDays(30);
 
-            // Compute period boundaries from package validity
-            $periodStart = Carbon::parse($this->parseTransactionTime($transactionTime));
-            $package     = $user->package ?? $user->load('package')->package;
-            $periodEnd   = $package
-                ? PackageExpiryHelper::calculateExpiresAt($package, $periodStart)
-                : $periodStart->copy()->addDays(30);
+                // Create payment record
+                $payment = PppoePayment::create([
+                    'pppoe_user_id'    => $user->id,
+                    'account_number'   => $accountNumber,
+                    'amount'           => $amount,
+                    'payment_method'   => 'paybill',
+                    'payment_reference' => $phoneNumber,
+                    'transaction_id'   => $transactionId,
+                    'status'           => 'completed',
+                    'payment_date'     => $periodStart,
+                    'verified_at'      => now(),
+                    'period_start'     => $periodStart,
+                    'period_end'       => $periodEnd,
+                    'metadata' => [
+                        'mpesa_data'  => $data,
+                        'phone_number' => $phoneNumber,
+                        'shortcode'   => $data['BusinessShortCode'] ?? null,
+                    ],
+                ]);
 
-            // Create payment record
-            $payment = PppoePayment::create([
-                'pppoe_user_id'    => $user->id,
-                'account_number'   => $accountNumber,
-                'amount'           => $amount,
-                'payment_method'   => 'paybill',
-                'payment_reference' => $phoneNumber,
-                'transaction_id'   => $transactionId,
-                'status'           => 'completed',
-                'payment_date'     => $periodStart,
-                'verified_at'      => now(),
-                'period_start'     => $periodStart,
-                'period_end'       => $periodEnd,
-                'metadata' => [
-                    'mpesa_data'  => $data,
-                    'phone_number' => $phoneNumber,
-                    'shortcode'   => $data['BusinessShortCode'] ?? null,
-                ],
-            ]);
+                // Activate user if suspended/pending
+                $this->activateUserAfterPayment($user, $payment);
 
-            // Activate user if suspended/pending
-            $this->activateUserAfterPayment($user, $payment);
-
-            DB::commit();
+                return $payment;
+            });
 
             Log::info('M-Pesa C2B: Payment processed successfully', [
                 'tenant_id' => $this->tenant->id,
@@ -313,7 +313,6 @@ class MpesaC2BService
             return $this->confirmationResponse('0', 'Success');
 
         } catch (\Exception $e) {
-            DB::rollBack();
             Log::error('M-Pesa C2B: Payment processing failed', [
                 'tenant_id' => $this->tenant->id,
                 'error' => $e->getMessage(),
@@ -343,16 +342,6 @@ class MpesaC2BService
     }
 
     /**
-     * Set tenant database schema (include public for shared tables)
-     */
-    protected function setTenantSchema(): void
-    {
-        if ($this->tenant && $this->tenant->schema_name) {
-            DB::statement("SET search_path TO {$this->tenant->schema_name}, public");
-        }
-    }
-
-    /**
      * Find tenant by shortcode using tenant_paybill_settings table
      */
     public static function findTenantByShortcode(string $shortcode): ?Tenant
@@ -361,12 +350,15 @@ class MpesaC2BService
             ->where('schema_created', true)
             ->get();
 
+        $service = app(self::class);
+
         foreach ($tenants as $tenant) {
             try {
-                DB::statement("SET search_path TO {$tenant->schema_name}, public");
-                $settings = TenantPaybillSetting::where('business_shortcode', $shortcode)
-                    ->where('is_active', true)
-                    ->first();
+                $settings = $service->runInTenantContext($tenant, function () use ($shortcode) {
+                    return TenantPaybillSetting::where('business_shortcode', $shortcode)
+                        ->where('is_active', true)
+                        ->first();
+                });
                 if ($settings) {
                     return $tenant;
                 }
@@ -375,11 +367,19 @@ class MpesaC2BService
                     'tenant_id' => $tenant->id,
                     'error' => $e->getMessage(),
                 ]);
-            } finally {
-                DB::statement("SET search_path TO public");
             }
         }
 
         return null;
+    }
+
+    protected function runInTenantContext(Tenant $tenant, callable $callback)
+    {
+        $context = app(TenantContext::class);
+
+        return DB::transaction(function () use ($context, $tenant, $callback) {
+            DB::connection()->recordsHaveBeenModified();
+            return $context->runInTenantContext($tenant, $callback);
+        });
     }
 }

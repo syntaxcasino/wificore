@@ -111,42 +111,37 @@ class SaasBillingService
      */
     public function getTenantUsage(Tenant $tenant, Carbon $periodStart, Carbon $periodEnd): array
     {
-        // Switch to tenant schema to query their data
-        $originalSearchPath = DB::selectOne("SHOW search_path")->search_path ?? 'public';
-        
         try {
-            if ($tenant->schema_name && $tenant->schema_created) {
-                DB::statement("SET search_path TO {$tenant->schema_name}, public");
-            }
+            return $this->runInTenantContext($tenant, function () use ($periodStart, $periodEnd) {
+                // Count active PPPoE users
+                $pppoeUsers = DB::table('pppoe_users')
+                    ->where('is_active', true)
+                    ->count();
 
-            // Count active PPPoE users
-            $pppoeUsers = DB::table('pppoe_users')
-                ->where('is_active', true)
-                ->count();
+                // Count active hotspot users
+                $hotspotUsers = DB::table('hotspot_users')
+                    ->where('is_active', true)
+                    ->count();
 
-            // Count active hotspot users
-            $hotspotUsers = DB::table('hotspot_users')
-                ->where('is_active', true)
-                ->count();
+                // Calculate hotspot revenue for the period
+                $hotspotRevenue = DB::table('payments')
+                    ->whereBetween('created_at', [$periodStart, $periodEnd])
+                    ->where('status', 'completed')
+                    ->where('payment_type', 'hotspot')
+                    ->sum('amount') ?? 0;
 
-            // Calculate hotspot revenue for the period
-            $hotspotRevenue = DB::table('payments')
-                ->whereBetween('created_at', [$periodStart, $periodEnd])
-                ->where('status', 'completed')
-                ->where('payment_type', 'hotspot')
-                ->sum('amount') ?? 0;
+                // Count active routers
+                $routers = DB::table('routers')
+                    ->where('is_active', true)
+                    ->count();
 
-            // Count active routers
-            $routers = DB::table('routers')
-                ->where('is_active', true)
-                ->count();
-
-            return [
-                'pppoe_users' => $pppoeUsers,
-                'hotspot_users' => $hotspotUsers,
-                'hotspot_revenue' => (float) $hotspotRevenue,
-                'routers' => $routers,
-            ];
+                return [
+                    'pppoe_users' => $pppoeUsers,
+                    'hotspot_users' => $hotspotUsers,
+                    'hotspot_revenue' => (float) $hotspotRevenue,
+                    'routers' => $routers,
+                ];
+            });
         } catch (\Exception $e) {
             Log::error('Failed to get tenant usage', [
                 'tenant_id' => $tenant->id,
@@ -159,10 +154,17 @@ class SaasBillingService
                 'hotspot_revenue' => 0.0,
                 'routers' => 0,
             ];
-        } finally {
-            // Restore original search path
-            DB::statement("SET search_path TO {$originalSearchPath}");
         }
+    }
+
+    private function runInTenantContext(Tenant $tenant, callable $callback)
+    {
+        $context = app(TenantContext::class);
+
+        return DB::transaction(function () use ($context, $tenant, $callback) {
+            DB::connection()->recordsHaveBeenModified();
+            return $context->runInTenantContext($tenant, $callback);
+        });
     }
 
     /**

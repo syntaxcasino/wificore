@@ -50,7 +50,7 @@ class Todo extends Model
      */
     public function user()
     {
-        return $this->belongsTo(User::class, 'user_id');
+        return $this->belongsTo(PublicUser::class, 'user_id');
     }
 
     /**
@@ -58,7 +58,7 @@ class Todo extends Model
      */
     public function creator()
     {
-        return $this->belongsTo(User::class, 'created_by');
+        return $this->belongsTo(PublicUser::class, 'created_by');
     }
 
     /**
