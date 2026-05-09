@@ -47,8 +47,9 @@ chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache
 # Core Laravel log
 su -s /bin/sh www-data -c "touch /var/www/html/storage/logs/laravel.log"
 
-# Octane/RoadRunner logs
-su -s /bin/sh www-data -c "touch /var/www/html/storage/logs/octane.log"
+# PHP-FPM logs (referenced in php-fpm-custom.conf)
+su -s /bin/sh www-data -c "touch /var/www/html/storage/logs/php-fpm-error.log"
+su -s /bin/sh www-data -c "touch /var/www/html/storage/logs/php-fpm-slow.log"
 
 # Scheduler log (referenced in laravel-scheduler.conf)
 su -s /bin/sh www-data -c "touch /var/www/html/storage/logs/scheduler.log"

@@ -53,16 +53,9 @@ RUN rm -f bootstrap/cache/*.php \
 # -------------------------------------------------------------------
 # Stage 2: Production runtime (Alpine for minimal size)
 # -------------------------------------------------------------------
-FROM php:8.4.14-cli-alpine AS production
+FROM php:8.4.14-fpm-alpine AS production
 
 WORKDIR /var/www/html
-
-# RoadRunner is the Octane HTTP server used at runtime.
-COPY --from=ghcr.io/roadrunner-server/roadrunner:latest /usr/bin/rr /usr/local/bin/rr
-
-ENV OCTANE_SERVER=roadrunner \
-    OCTANE_WORKERS=4 \
-    OCTANE_MAX_REQUESTS=1000
 
 # Install runtime dependencies
 RUN apk add --no-cache --virtual .build-deps \
@@ -86,20 +79,18 @@ RUN apk add --no-cache --virtual .build-deps \
       wireguard-tools \
       iptables \
       iproute2 \
- && docker-php-ext-install -j$(nproc) pdo_pgsql sockets zip opcache ftp snmp intl pcntl \
+ && docker-php-ext-install -j$(nproc) pdo_pgsql sockets zip opcache ftp snmp intl \
  && pecl install redis \
  && docker-php-ext-enable redis \
  && apk del .build-deps \
  && rm -rf /tmp/* /var/cache/apk/*
 
-# Copy custom OPcache configuration
+# Copy custom PHP-FPM and OPcache configuration
+COPY --chown=root:root ./docker/php-fpm-custom.conf /usr/local/etc/php-fpm.d/zzz-custom.conf
 COPY --chown=root:root ./docker/php-opcache.ini /usr/local/etc/php/conf.d/opcache.ini
 
 # Copy vendor and application from builder
 COPY --from=builder /var/www/html /var/www/html
-
-RUN chmod +x /usr/local/bin/rr \
- && ln -sf /usr/local/bin/rr /var/www/html/rr
 
 # Verify critical files exist
 RUN test -f app/Providers/RouteServiceProvider.php || (echo "ERROR: RouteServiceProvider.php not found!" && exit 1) \
@@ -127,7 +118,7 @@ RUN mkdir -p \
 # Copy Supervisor configs
 COPY --chown=root:root ./supervisor/supervisord.conf /etc/supervisor/supervisord.conf
 COPY --chown=root:root ./supervisor/laravel-queue.conf /etc/supervisor/conf.d/laravel-queue.conf
-COPY --chown=root:root ./supervisor/octane.conf /etc/supervisor/conf.d/octane.conf
+COPY --chown=root:root ./supervisor/php-fpm.conf /etc/supervisor/conf.d/php-fpm.conf
 COPY --chown=root:root ./supervisor/laravel-scheduler.conf /etc/supervisor/conf.d/laravel-scheduler.conf
 
 # Configure sudo for www-data to run supervisorctl
@@ -138,7 +129,7 @@ RUN chmod 0440 /etc/sudoers.d/supervisorctl
 COPY --chmod=755 ./docker/entrypoint.sh /entrypoint.sh
 COPY --chmod=755 ./docker/telegraf-config-entrypoint.sh /telegraf-config-entrypoint.sh
 
-# Expose Octane/RoadRunner HTTP port
+# Expose PHP-FPM port
 EXPOSE 9000
 
 # Run Supervisor via entrypoint

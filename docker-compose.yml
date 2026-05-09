@@ -166,9 +166,6 @@ services:
       - AUTO_SEED=true
       - FRESH_INSTALL=false
       - APP_ENV=development
-      - OCTANE_SERVER=roadrunner
-      - OCTANE_WORKERS=${OCTANE_WORKERS:-4}
-      - OCTANE_MAX_REQUESTS=${OCTANE_MAX_REQUESTS:-1000}
       # Multitenancy Configuration
       - MULTITENANCY_MODE=schema
       - AUTO_CREATE_TENANT_SCHEMA=true
@@ -208,7 +205,7 @@ services:
       wificore-network:
         ipv4_address: 172.70.0.5
     healthcheck:
-      test: ["CMD-SHELL", "supervisorctl -c /etc/supervisor/supervisord.conf status octane | grep -q RUNNING && php -r '$$s=@fsockopen(\"127.0.0.1\", 9000, $$errno, $$errstr, 2); exit($$s ? 0 : 1);'"]
+      test: ["CMD-SHELL", "php-fpm -t || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
