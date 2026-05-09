@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\User;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -41,7 +42,7 @@ class EnforceSubdomainTenantBinding
         }
 
         // System admins can access any subdomain
-        if ($user->role === 'system_admin') {
+        if ($user->role === User::ROLE_SYSTEM_ADMIN) {
             \Log::info('System admin access allowed', [
                 'user_id' => $user->id,
                 'username' => $user->username,
@@ -149,17 +150,13 @@ class EnforceSubdomainTenantBinding
             ], 403);
         }
 
-        // All checks passed - set tenant schema context for this request
-        if ($tenant->schema_name) {
-            \Illuminate\Support\Facades\DB::statement("SET search_path TO {$tenant->schema_name}, public");
-            
-            \Log::debug('Tenant schema context set for request', [
-                'user_id' => $user->id,
-                'tenant_id' => $tenant->id,
-                'schema_name' => $tenant->schema_name,
-                'subdomain' => $subdomain,
-            ]);
-        }
+        // All checks passed. Tenant schema switching is handled centrally by SetTenantContext.
+        \Log::debug('Subdomain-tenant binding validated', [
+            'user_id' => $user->id,
+            'tenant_id' => $tenant->id,
+            'schema_name' => $tenant->schema_name,
+            'subdomain' => $subdomain,
+        ]);
 
         return $next($request);
     }

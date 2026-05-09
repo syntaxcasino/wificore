@@ -95,11 +95,12 @@ class TenantSseController extends Controller
 
         return response()->stream(
             function () use ($tenant, $tenantId, $redisChannels, $requested) {
+                $ctx = app(TenantContext::class);
                 try {
-                    // Set tenant schema context for any initial-state DB queries
-                    $ctx = app(TenantContext::class);
+                    // Set tenant schema context for any initial-state DB queries.
+                    // Do not issue raw SET search_path statements here; TenantContext
+                    // handles Octane/PgBouncer-safe schema switching centrally.
                     $ctx->setTenant($tenant);
-                    DB::statement('SET search_path TO ?, public', [$tenant->schema_name]);
 
                 $eventId   = 0;
                 $startTime = time();
@@ -185,9 +186,6 @@ class TenantSseController extends Controller
                 }
 
                 Log::info('Tenant SSE: Redis subscribe ended', ['tenant_id' => $tenantId]);
-
-                DB::statement('SET search_path TO public');
-
                 Log::info('Tenant SSE stream closed', [
                     'tenant_id' => $tenantId,
                     'duration'  => time() - $startTime,
@@ -202,6 +200,15 @@ class TenantSseController extends Controller
                     echo 'data: ' . json_encode(['error' => 'Internal stream error: ' . $e->getMessage()]) . "\n\n";
                     ob_flush();
                     flush();
+                } finally {
+                    try {
+                        $ctx->clearTenant();
+                    } catch (\Throwable $e) {
+                        Log::warning('Tenant SSE: Failed to clear tenant context', [
+                            'tenant_id' => $tenantId,
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
                 }
             },
             200,
@@ -286,4 +293,5 @@ class TenantSseController extends Controller
             flush();
         }, $status, ['Content-Type' => 'text/event-stream', 'Cache-Control' => 'no-cache']);
     }
+
 }

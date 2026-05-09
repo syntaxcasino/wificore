@@ -141,12 +141,9 @@ class TenantContext
      */
     public function clearTenant(): void
     {
-        if ($this->originalSearchPath) {
-            DB::statement("SET LOCAL search_path TO {$this->originalSearchPath}");
-            $this->originalSearchPath = null;
-        } else {
-            DB::statement("SET LOCAL search_path TO {$this->systemSchema}");
-        }
+        $targetSearchPath = $this->originalSearchPath ?: $this->systemSchema;
+        $this->setSearchPathStatement($targetSearchPath);
+        $this->originalSearchPath = null;
         
         $this->tenant = null;
         
@@ -185,7 +182,7 @@ class TenantContext
         // DB::connection()->recordsHaveBeenModified() to force sticky-write mode
         // so all SELECT queries use the write PDO (the one inside the transaction).
         // The read PDO has no open transaction so SET LOCAL on it is immediately lost.
-        DB::statement("SET LOCAL search_path TO {$schemaName}, {$this->systemSchema}");
+        $this->setSearchPathStatement("{$schemaName}, {$this->systemSchema}");
         
         Log::debug('Search path set', [
             'schema_name' => $schemaName,
@@ -295,5 +292,21 @@ class TenantContext
     public function reset(): void
     {
         $this->clearTenant();
+    }
+
+    /**
+     * Apply search_path safely based on transaction state.
+     *
+     * SET LOCAL is only valid inside a transaction; outside transaction it throws
+     * on PostgreSQL and causes intermittent 500s under mixed request flows.
+     */
+    protected function setSearchPathStatement(string $searchPath): void
+    {
+        if (DB::transactionLevel() > 0) {
+            DB::statement("SET LOCAL search_path TO {$searchPath}");
+            return;
+        }
+
+        DB::statement("SET search_path TO {$searchPath}");
     }
 }
