@@ -53,15 +53,20 @@ Schedule::job(new \App\Jobs\ScheduleRouterPollingJob)
     ->name('fetch-router-live-data')
     ->withoutOverlapping();
 
-// Update dashboard statistics every 30 seconds (optimized for low-end device support)
+// Update dashboard statistics at a safer cadence.
+// Every-5-seconds dispatch per tenant causes queue/memory pressure under Octane.
 Schedule::call(function () {
     // Get all active tenants
     $tenants = \App\Models\Tenant::whereNull('deleted_at')->pluck('id');
     
     foreach ($tenants as $tenantId) {
-        UpdateDashboardStatsJob::dispatch($tenantId)->onQueue('dashboard');
+        // Avoid duplicate queued jobs for the same tenant in a short burst.
+        $lockKey = "dashboard:dispatch-lock:{$tenantId}";
+        if (\Illuminate\Support\Facades\Cache::add($lockKey, 1, 55)) {
+            UpdateDashboardStatsJob::dispatch($tenantId)->onQueue('dashboard');
+        }
     }
-})->everyFiveSeconds()->name('update-dashboard-stats')->withoutOverlapping();
+})->everyMinute()->name('update-dashboard-stats')->withoutOverlapping();
 
 // Schedule the RotateLogs job to run daily at 1:00 AM
 //Schedule::job(new RotateLogs)->dailyAt('01:00');
