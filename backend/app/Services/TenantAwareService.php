@@ -30,7 +30,7 @@ abstract class TenantAwareService
         
         // System admins should not perform tenant-specific operations
         // They should use explicit tenant ID parameters
-        if ($user->role === 'system_admin') {
+        if ($user->role === User::ROLE_SYSTEM_ADMIN) {
             throw new \Exception('System admin must specify tenant explicitly');
         }
         

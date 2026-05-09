@@ -374,6 +374,25 @@
                   </button>
                 </div>
                 <div class="mt-1.5 text-[10px] text-slate-400">Used for customer self-service portal login</div>
+                <div class="mt-2">
+                  <div class="text-[10px] text-slate-400 mb-1">Client Service Provisioning URL</div>
+                  <div class="flex items-center gap-2">
+                    <a
+                      :href="portalProvisioningUrl"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      class="flex-1 font-mono text-[11px] text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-lg px-3 py-2 break-all hover:bg-indigo-100 transition-colors"
+                    >
+                      {{ portalProvisioningUrl }}
+                    </a>
+                    <button
+                      @click="copyPortalProvisioningUrl"
+                      class="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-600 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
+                    >
+                      <Copy class="w-3.5 h-3.5" /> Copy
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           </section>
@@ -961,6 +980,8 @@ const openUserPanel = async (user) => {
   userPassword.value = ''
   showPortalPasswordValue.value = false
   userPortalPassword.value = ''
+  portalLoginPath.value = '/portal/login'
+  portalAccountNumber.value = user.account_number || ''
   editForm.router_id = user.router_id || user.router?.id || ''
   editForm.package_id = user.package_id || user.package?.id || ''
   editForm.simultaneous_use = Number(user.simultaneous_use ?? 1)
@@ -1189,7 +1210,22 @@ const handleViewPassword = async () => {
     const data = await viewPassword(panelUser.value.id)
     userPassword.value = data?.password || ''
     showPasswordValue.value = true
-  } catch { /**/ } finally { loadingPassword.value = false }
+  } catch (err) {
+    const message = err?.response?.data?.message || err?.message || ''
+    const canReset = /not available|disabled|reset/i.test(message)
+    if (!canReset) return
+    const ok = await confirmStore.open({
+      title: 'Password Not Available',
+      message: 'The current PPPoE password is not retrievable. Generate a new password now?',
+      confirmText: 'Generate New',
+      cancelText: 'Cancel',
+      variant: 'warning',
+    })
+    if (!ok) return
+    const { generatedPassword: pw } = await resetPassword(panelUser.value.id)
+    userPassword.value = pw || ''
+    showPasswordValue.value = true
+  } finally { loadingPassword.value = false }
 }
 
 const hidePassword = () => { showPasswordValue.value = false; userPassword.value = '' }
@@ -1209,9 +1245,28 @@ const handleResetPassword = async () => {
 const showPortalPasswordValue = ref(false)
 const userPortalPassword      = ref('')
 const loadingPortalPassword   = ref(false)
+const portalLoginPath         = ref('/portal/login')
+const portalAccountNumber     = ref('')
+
+const portalProvisioningUrl = computed(() => {
+  const path = portalLoginPath.value || '/portal/login'
+  const normalized = path.startsWith('/') ? path : `/${path}`
+  const accountNo = portalAccountNumber.value || panelUser.value?.account_number || ''
+  const withAccount = accountNo
+    ? `${normalized}?account_number=${encodeURIComponent(accountNo)}`
+    : normalized
+
+  if (typeof window === 'undefined') return withAccount
+  return `${window.location.origin}${withAccount}`
+})
 
 const handleViewPortalPassword = async () => {
   if (!panelUser.value) return
+  try {
+    const meta = await viewPortalPassword(panelUser.value.id)
+    portalLoginPath.value = meta?.portal_login_url || '/portal/login'
+    portalAccountNumber.value = meta?.account_number || panelUser.value?.account_number || ''
+  } catch { /**/ }
   // Portal password is stored hashed and cannot be retrieved.
   // Prompt user to reset to generate a new viewable password.
   const ok = await confirmStore.open({
@@ -1240,6 +1295,12 @@ const handleResetPortalPassword = async () => {
     const { portalPassword: newPw } = await resetPortalPassword(panelUser.value.id)
     userPortalPassword.value = newPw || ''
     showPortalPasswordValue.value = true
+  } catch { /**/ }
+}
+
+const copyPortalProvisioningUrl = async () => {
+  try {
+    await navigator.clipboard.writeText(portalProvisioningUrl.value)
   } catch { /**/ }
 }
 

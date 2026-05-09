@@ -34,8 +34,9 @@ class TenantDashboardController extends Controller
         // Cache key specific to this tenant
         $cacheKey = "tenant_{$tenantId}_dashboard_stats";
 
-        $stats = Cache::remember($cacheKey, 30, function () use ($tenantId) {
-            return [
+        try {
+            $stats = Cache::remember($cacheKey, 30, function () use ($tenantId) {
+                return [
                 'users' => [
                     // Users are in public schema with tenant_id
                     'total' => User::where('tenant_id', $tenantId)->count(),
@@ -98,8 +99,20 @@ class TenantDashboardController extends Controller
                     'user_growth' => 0,
                     'access_points' => Router::where('status', 'active')->count(),
                 ],
-            ];
-        });
+                ];
+            });
+        } catch (\Throwable $e) {
+            \Log::error('Tenant dashboard stats failed', [
+                'tenant_id' => $tenantId,
+                'user_id' => $user->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to load dashboard stats',
+            ], 500);
+        }
 
         return response()->json([
             'success' => true,

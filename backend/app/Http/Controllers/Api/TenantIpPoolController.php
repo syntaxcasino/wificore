@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\TenantIpPool;
+use App\Models\User;
 use App\Services\TenantIpamService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -33,7 +34,7 @@ class TenantIpPoolController extends Controller
         $query = TenantIpPool::query();
 
         // System admin can filter by tenant_id
-        if ($request->tenant_id && auth()->user()->role === 'system_admin') {
+        if ($request->tenant_id && auth()->user()->role === User::ROLE_SYSTEM_ADMIN) {
             $query->where('tenant_id', $request->tenant_id);
         }
 
@@ -67,7 +68,7 @@ class TenantIpPoolController extends Controller
         $user = auth()->user();
 
         // System admin can get stats for a specific tenant or all tenants
-        if ($user->role === 'system_admin') {
+        if ($user->role === User::ROLE_SYSTEM_ADMIN) {
             if ($request->tenant_id) {
                 $tenant = \App\Models\Tenant::findOrFail($request->tenant_id);
                 $stats = $this->ipamService->getPoolStats($tenant);
@@ -130,14 +131,14 @@ class TenantIpPoolController extends Controller
 
         // System admin must specify which tenant the pool belongs to
         $user = auth()->user();
-        if ($user->role === 'system_admin') {
+        if ($user->role === User::ROLE_SYSTEM_ADMIN) {
             $rules['tenant_id'] = 'required|uuid|exists:tenants,id';
         }
 
         $validated = Validator::make($request->all(), $rules)->validate();
 
         try {
-            $tenantId = ($user->role === 'system_admin')
+            $tenantId = ($user->role === User::ROLE_SYSTEM_ADMIN)
                 ? $validated['tenant_id']
                 : $user->tenant_id;
 
