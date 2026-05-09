@@ -4,6 +4,8 @@ use App\Http\Controllers\Api\RouterStatusStreamController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Broadcast;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 use App\Http\Controllers\Api\PackageController;
 use App\Http\Controllers\Api\VoucherController;
 use App\Http\Controllers\Api\PaymentController;
@@ -71,7 +73,7 @@ use App\Events\TestWebSocketEvent;
 // =============================================================================
 // BROADCASTING AUTH - Sanctum-based authentication for WebSocket channels
 // =============================================================================
-Route::middleware(['auth:sanctum', 'user.active', 'tenant.context'])->post('/broadcasting/auth', function (Request $request) {
+Route::middleware(['auth:sanctum', 'user.active'])->post('/broadcasting/auth', function (Request $request) {
     $user = Auth::user();
     $channelName = $request->input('channel_name');
     
@@ -119,8 +121,36 @@ Route::middleware(['auth:sanctum', 'user.active', 'tenant.context'])->post('/bro
         }
     }
     
-    return Broadcast::auth($request);
+    try {
+        return Broadcast::auth($request);
+    } catch (\Throwable $e) {
+        Log::error('WebSocket channel auth failed', [
+            'user_id' => $user?->id,
+            'tenant_id' => $user?->tenant_id,
+            'channel_name' => $channelName,
+            'socket_id' => $request->input('socket_id'),
+            'ip' => $request->ip(),
+            'error' => $e->getMessage(),
+        ]);
+
+        // Do not leak internals to clients; treat as auth failure.
+        return response()->json(['error' => 'Channel authorization failed'], 403);
+    }
 });
+
+// =============================================================================
+// SOKETI WEBHOOKS - Server-side channel lifecycle notifications
+// =============================================================================
+Route::post('/soketi/webhook', function (Request $request) {
+    Log::debug('Soketi webhook received', [
+        'event_count' => is_array($request->input('events')) ? count($request->input('events')) : null,
+        'event_type' => $request->input('event_type'),
+        'ip' => $request->ip(),
+        'user_agent' => $request->userAgent(),
+    ]);
+
+    return response()->noContent();
+})->name('api.soketi.webhook');
 
 // =============================================================================
 // TEST ROUTES - For WebSocket testing
@@ -292,16 +322,18 @@ Route::get('/health/ping', [HealthController::class, 'ping'])
 // SHARED AUTHENTICATED ROUTES - All authenticated users
 // =============================================================================
 
-Route::middleware(['auth:sanctum', 'user.active', 'tenant.context'])->group(function () {
-    
-    // Logout - Unified for all user types
-    Route::post('/logout', [UnifiedAuthController::class, 'logout'])
-        ->name('api.logout');
-    
+// Logout - Unified for all user types
+// Keep this outside tenant.context because logout should always work
+// even if tenant schema/search_path setup fails.
+Route::middleware(['auth:sanctum', 'user.active'])->post('/logout', [UnifiedAuthController::class, 'logout'])
+    ->name('api.logout');
+
+// Keep auth/session identity endpoints outside tenant.context for resilience.
+Route::middleware(['auth:sanctum', 'user.active'])->group(function () {
     // Get Current User - Unified endpoint
     Route::get('/me', [UnifiedAuthController::class, 'me'])
         ->name('api.me');
-    
+
     // User Profile (legacy endpoint)
     Route::get('/profile', function (Request $request) {
         return response()->json([
@@ -309,7 +341,9 @@ Route::middleware(['auth:sanctum', 'user.active', 'tenant.context'])->group(func
             'user' => $request->user()->load('activeSubscription', 'tenant'),
         ]);
     })->name('api.profile');
-    
+});
+
+Route::middleware(['auth:sanctum', 'user.active', 'tenant.context'])->group(function () {
     // Current Tenant Info
     Route::get('/tenant/current', [TenantController::class, 'current'])
         ->name('api.tenant.current');
@@ -1264,6 +1298,7 @@ Route::middleware(['auth:sanctum', 'role:admin', 'user.active', 'tenant.context'
 // WIREGUARD WEBHOOK ROUTES - Event-based router status updates
 // =============================================================================
 Route::prefix('webhooks/wireguard')->group(function () {
+    Route::middleware('wireguard.webhook')->group(function () {
     // Peer handshake event (router came online)
     Route::post('/peer/handshake', [\App\Http\Controllers\Api\WireGuardWebhookController::class, 'peerHandshake'])
         ->name('api.webhooks.wireguard.peer-handshake');
@@ -1275,7 +1310,8 @@ Route::prefix('webhooks/wireguard')->group(function () {
     // Batch update from WireGuard dump
     Route::post('/peers/batch', [\App\Http\Controllers\Api\WireGuardWebhookController::class, 'batchUpdate'])
         ->name('api.webhooks.wireguard.batch');
-    
+    });
+
     // Health check
     Route::get('/health', [\App\Http\Controllers\Api\WireGuardWebhookController::class, 'health'])
         ->name('api.webhooks.wireguard.health');
@@ -1284,7 +1320,7 @@ Route::prefix('webhooks/wireguard')->group(function () {
 // =============================================================================
 // TENANT ROUTES - Tenant-specific data (auto-filtered by TenantScope)
 // =============================================================================
-Route::middleware(['auth:sanctum', 'role:admin,tenant', 'user.active', 'tenant.context'])->prefix('tenant')->group(function () {
+Route::middleware(['auth:sanctum', 'role:admin', 'user.active', 'tenant.context'])->prefix('tenant')->group(function () {
     // Dashboard & Statistics
     Route::get('/dashboard', [TenantDashboardController::class, 'index'])
         ->name('api.tenant.dashboard');
@@ -1317,7 +1353,7 @@ Route::middleware(['auth:sanctum', 'role:admin,tenant', 'user.active', 'tenant.c
 // =============================================================================
 // MONITORING ROUTES - Traffic, Performance, and System Health Metrics
 // =============================================================================
-Route::middleware(['auth:sanctum', 'role:admin,tenant', 'user.active', 'tenant.context'])->prefix('monitoring')->group(function () {
+Route::middleware(['auth:sanctum', 'role:admin', 'user.active', 'tenant.context'])->prefix('monitoring')->group(function () {
     Route::get('/traffic/overview', [MonitoringController::class, 'trafficOverview'])
         ->name('api.monitoring.traffic.overview');
     Route::get('/network/performance', [MonitoringController::class, 'networkPerformance'])

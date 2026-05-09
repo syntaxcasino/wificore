@@ -27,8 +27,8 @@ class DatabaseServiceProvider extends ServiceProvider
             return;
         }
 
-        // Enable query logging in development
-        if (config('app.debug')) {
+        // Log slow queries without retaining every query in Octane worker memory.
+        if ((bool) env('DB_SLOW_QUERY_LOGGING', config('app.debug'))) {
             DB::listen(function (QueryExecuted $query) {
                 if ($query->time > 1000) { // Log slow queries (>1 second)
                     Log::warning('Slow query detected', [
@@ -81,8 +81,12 @@ class DatabaseServiceProvider extends ServiceProvider
      */
     protected function optimizeQueries(): void
     {
-        // Enable query result caching
-        DB::enableQueryLog();
+        // Do not enable Laravel's in-memory query log in production/Octane.
+        // It grows for the lifetime of a RoadRunner worker and can cause
+        // gradual slowdowns, worker restarts, and intermittent 500 responses.
+        if ((bool) env('DB_QUERY_LOG', false) && !app()->environment('production')) {
+            DB::enableQueryLog();
+        }
         
         // Set default fetch mode for better performance (PostgreSQL specific)
         try {

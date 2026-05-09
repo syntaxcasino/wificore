@@ -420,7 +420,7 @@ services:
       SOKETI_DEFAULT_APP_ENABLE_CLIENT_MESSAGES: true
       SOKETI_DEFAULT_APP_ENABLE_USER_AUTHENTICATION: true
       SOKETI_DEFAULT_APP_USER_AUTHENTICATION_TIMEOUT: 30000
-      SOKETI_DEFAULT_APP_WEBHOOKS: '[{"url":"http://wificore-nginx/api/broadcasting/auth","event_types":["channel_occupied","channel_vacated","member_added","member_removed"]}]'
+      SOKETI_DEFAULT_APP_WEBHOOKS: '[{"url":"http://wificore-nginx/api/soketi/webhook","event_types":["channel_occupied","channel_vacated","member_added","member_removed"]}]'
       SOKETI_DEFAULT_APP_MAX_BACKEND_EVENTS_PER_SEC: -1
       SOKETI_DEFAULT_APP_MAX_CLIENT_EVENTS_PER_SEC: -1
       SOKETI_DEFAULT_APP_MAX_READ_REQUESTS_PER_SEC: -1

@@ -4,6 +4,7 @@ use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Http\Request;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -13,6 +14,17 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up'
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // Trust reverse proxy headers (Nginx/Cloudflare) for scheme, host and client IP.
+        $middleware->trustProxies(
+            at: '*',
+            headers: Request::HEADER_X_FORWARDED_FOR
+                | Request::HEADER_X_FORWARDED_HOST
+                | Request::HEADER_X_FORWARDED_PORT
+                | Request::HEADER_X_FORWARDED_PROTO
+                | Request::HEADER_X_FORWARDED_PREFIX
+                | Request::HEADER_X_FORWARDED_AWS_ELB
+        );
+
         // Register custom middleware aliases
         $middleware->alias([
             'role' => \App\Http\Middleware\CheckRole::class,
@@ -23,6 +35,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'ddos.protection' => \App\Http\Middleware\DDoSProtection::class,
             'subdomain.binding' => \App\Http\Middleware\EnforceSubdomainTenantBinding::class,
             'sse.auth' => \App\Http\Middleware\AuthenticateSseToken::class,
+            'wireguard.webhook' => \App\Http\Middleware\VerifyWireGuardWebhookSignature::class,
         ]);
 
         // Apply DDoS protection and subdomain binding globally to API routes
@@ -41,6 +54,29 @@ return Application::configure(basePath: dirname(__DIR__))
         });
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        $exceptions->report(function (\Throwable $e) {
+            $request = request();
+
+            if (!$request instanceof \Illuminate\Http\Request) {
+                return;
+            }
+
+            if ($request->is('api/*') || $request->is('*/sse/*') || $request->expectsJson()) {
+                \Illuminate\Support\Facades\Log::error('Unhandled API exception', [
+                    'method' => $request->method(),
+                    'path' => $request->path(),
+                    'full_url' => $request->fullUrl(),
+                    'user_id' => optional($request->user())->id,
+                    'tenant_id' => optional($request->user())->tenant_id,
+                    'exception' => $e::class,
+                    'message' => $e->getMessage(),
+                    'file' => $e->getFile(),
+                    'line' => $e->getLine(),
+                    'trace' => $e->getTraceAsString(),
+                ]);
+            }
+        });
+
         // Handle authentication failures for API routes - return JSON instead of redirecting
         $exceptions->render(function (\Illuminate\Auth\AuthenticationException $e, \Illuminate\Http\Request $request) {
             if ($request->is('api/*') || $request->is('*/sse/*') || $request->expectsJson()) {

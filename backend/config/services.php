@@ -102,6 +102,7 @@ return [
     'wireguard' => [
         'controller_url' => env('WIREGUARD_CONTROLLER_URL', 'http://172.70.255.254:8080'),
         'api_key' => env('WIREGUARD_API_KEY'),
+        'webhook_hmac_secret' => env('WIREGUARD_WEBHOOK_HMAC_SECRET'),
     ],
 
     /*
