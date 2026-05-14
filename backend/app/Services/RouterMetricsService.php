@@ -4,6 +4,7 @@ namespace App\Services;
 
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class RouterMetricsService
 {
@@ -74,20 +75,52 @@ class RouterMetricsService
             $fallback = is_array($promql) ? ($promql['fallback'] ?? null) : null;
 
             $missing = array_fill_keys($routerIds, true);
-            $response = $vm->queryInstant($primary);
+
+            try {
+                $response = $vm->queryInstant($primary);
+            } catch (Throwable $e) {
+                $this->logVmIssueOnce(
+                    $tenantId,
+                    $field,
+                    'primary_unavailable',
+                    'VictoriaMetrics unavailable while fetching router live data; using cache fallback',
+                    [
+                        'router_count' => count($routerIds),
+                    ],
+                    $e
+                );
+
+                return $this->applyCacheFallback($routerIds, $live);
+            }
             
             // Log the raw response count for debugging
             $resultCount = count($response['data']['result'] ?? []);
-            \Illuminate\Support\Facades\Log::info("VM Query [$field] primary result count: $resultCount");
+            Log::debug("VM Query [$field] primary result count: $resultCount");
             
             $missing = $this->applyInstantResult($response, $live, $field, $missing);
 
             if ($fallback && count($missing) > 0) {
-                \Illuminate\Support\Facades\Log::info("VM Query [$field] using fallback for " . count($missing) . " routers");
-                $fallbackResponse = $vm->queryInstant($fallback);
+                Log::debug("VM Query [$field] using fallback for " . count($missing) . " routers");
+
+                try {
+                    $fallbackResponse = $vm->queryInstant($fallback);
+                } catch (Throwable $e) {
+                    $this->logVmIssueOnce(
+                        $tenantId,
+                        $field,
+                        'fallback_failed',
+                        'VictoriaMetrics fallback query failed while fetching router live data',
+                        [
+                            'router_count' => count($missing),
+                        ],
+                        $e
+                    );
+
+                    continue;
+                }
                 
                 $fallbackResultCount = count($fallbackResponse['data']['result'] ?? []);
-                \Illuminate\Support\Facades\Log::info("VM Query [$field] fallback result count: $fallbackResultCount");
+                Log::debug("VM Query [$field] fallback result count: $fallbackResultCount");
                 
                 $this->applyInstantResult($fallbackResponse, $live, $field, $missing);
             }
@@ -187,12 +220,17 @@ class RouterMetricsService
             }
         }
 
+        return $this->applyCacheFallback($routerIds, $live);
+    }
+
+    private function applyCacheFallback(array $routerIds, array $live): array
+    {
         // Fall back to the Redis cache written by FetchRouterLiveData for any
         // router that VictoriaMetrics returned no data for (e.g. Telegraf not yet
         // polling, or SNMP not reachable). Cache TTL is 30 s so data is fresh.
         foreach ($routerIds as $routerId) {
             $rid = (string) $routerId;
-            if (empty($live[$rid])) {
+            if (!isset($live[$rid]) || empty($live[$rid])) {
                 $cached = Cache::get("router_live_data_{$rid}");
                 if (is_array($cached) && !empty($cached) && !isset($cached['error'])) {
                     $live[$rid] = $cached;
@@ -222,6 +260,31 @@ class RouterMetricsService
         }
 
         return $minutes . 'm ' . $secs . 's';
+    }
+
+    private function logVmIssueOnce(
+        string $tenantId,
+        string $field,
+        string $issue,
+        string $message,
+        array $context = [],
+        ?Throwable $e = null
+    ): void {
+        $cacheKey = sprintf('router_metrics_vm_issue:%s:%s:%s', $tenantId, $field, $issue);
+        $context['tenant_id'] = $tenantId;
+        $context['field'] = $field;
+
+        if ($e !== null) {
+            $context['error'] = $e->getMessage();
+            $context['exception'] = get_class($e);
+        }
+
+        if (Cache::add($cacheKey, true, now()->addMinutes(5))) {
+            Log::warning($message, $context);
+            return;
+        }
+
+        Log::debug($message, $context);
     }
 
     private function extractPrometheusValue(array $series): ?int

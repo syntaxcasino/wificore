@@ -24,12 +24,21 @@ class AccessPointController extends Controller
 
     /**
      * Get all access points for the current tenant
+     * OPTIMIZED: Added pagination and selective column loading
      */
     public function list(Request $request): JsonResponse
     {
         try {
-            $query = AccessPoint::with(['router', 'activeSessions']);
-            
+            // OPTIMIZATION: Use selective columns in eager loading
+            $query = AccessPoint::with([
+                'router:id,name,ip_address,status',
+                'activeSessions' => fn($q) => $q->select('id', 'access_point_id', 'status')->where('status', 'active')->limit(5)
+            ])
+            ->select([
+                'id', 'name', 'ip_address', 'mac_address', 'serial_number', 'status',
+                'router_id', 'model', 'firmware_version', 'active_users', 'last_seen_at', 'created_at'
+            ]);
+
             // Search functionality
             if ($request->has('search')) {
                 $search = $request->search;
@@ -40,18 +49,20 @@ class AccessPointController extends Controller
                       ->orWhere('serial_number', 'like', "%{$search}%");
                 });
             }
-            
+
             // Filter by status
             if ($request->has('status')) {
                 $query->where('status', $request->status);
             }
-            
+
             // Filter by router
             if ($request->has('router_id')) {
                 $query->where('router_id', $request->router_id);
             }
-            
-            $accessPoints = $query->get();
+
+            // OPTIMIZATION: Add pagination instead of loading all records
+            $perPage = min((int) $request->input('per_page', 50), 100);
+            $accessPoints = $query->paginate($perPage);
 
             return response()->json([
                 'success' => true,
@@ -73,21 +84,27 @@ class AccessPointController extends Controller
     public function tenantStatistics(): JsonResponse
     {
         try {
-            $total = AccessPoint::count();
-            $online = AccessPoint::where('status', 'online')->count();
-            $offline = AccessPoint::where('status', 'offline')->count();
-            $unknown = AccessPoint::where('status', 'unknown')->orWhereNull('status')->count();
-            $totalUsers = AccessPoint::sum('active_users');
+            $stats = \Illuminate\Support\Facades\Cache::remember('ap_tenant_stats', 30, function () {
+                $row = AccessPoint::selectRaw("
+                    COUNT(*) as total,
+                    COUNT(*) FILTER (WHERE status = 'online') as online,
+                    COUNT(*) FILTER (WHERE status = 'offline') as offline,
+                    COUNT(*) FILTER (WHERE status = 'unknown' OR status IS NULL) as unknown,
+                    COALESCE(SUM(active_users), 0) as total_users
+                ")->first();
+
+                return [
+                    'total'       => (int)   ($row->total       ?? 0),
+                    'online'      => (int)   ($row->online      ?? 0),
+                    'offline'     => (int)   ($row->offline     ?? 0),
+                    'unknown'     => (int)   ($row->unknown     ?? 0),
+                    'total_users' => (int)   ($row->total_users ?? 0),
+                ];
+            });
 
             return response()->json([
                 'success' => true,
-                'stats' => [
-                    'total' => $total,
-                    'online' => $online,
-                    'offline' => $offline,
-                    'unknown' => $unknown,
-                    'total_users' => $totalUsers,
-                ],
+                'stats' => $stats,
             ]);
         } catch (\Exception $e) {
             return response()->json([
@@ -144,6 +161,7 @@ class AccessPointController extends Controller
 
             // Broadcast event for WebSocket
             broadcast(new AccessPointCreated($ap))->toOthers();
+            \Illuminate\Support\Facades\Cache::forget('ap_tenant_stats');
 
             return response()->json([
                 'success' => true,
@@ -208,6 +226,7 @@ class AccessPointController extends Controller
 
             // Broadcast event for WebSocket
             broadcast(new AccessPointUpdated($ap))->toOthers();
+            \Illuminate\Support\Facades\Cache::forget('ap_tenant_stats');
 
             return response()->json([
                 'success' => true,
@@ -237,6 +256,7 @@ class AccessPointController extends Controller
             if ($success) {
                 // Broadcast event for WebSocket
                 broadcast(new AccessPointDeleted($id, $tenantId))->toOthers();
+                \Illuminate\Support\Facades\Cache::forget('ap_tenant_stats');
             }
 
             return response()->json([

@@ -32,10 +32,7 @@ class UnifiedAuthController extends Controller
      */
     public function login(Request $request)
     {
-        \Log::info('=== LOGIN ATTEMPT ===', [
-            'username' => $request->username,
-            'ip' => $request->ip(),
-        ]);
+        \Log::debug('Login attempt', ['username' => $request->username]);
         
         // Rate limiting
         $key = 'login:' . $request->ip();
@@ -78,11 +75,7 @@ class UnifiedAuthController extends Controller
                     ->orWhere('custom_domain', $host)
                     ->first();
                     
-                \Log::info('Tenant identified from subdomain', [
-                    'subdomain' => $subdomain,
-                    'tenant_id' => $tenant?->id,
-                    'tenant_schema' => $tenant?->schema_name
-                ]);
+                \Log::debug('Tenant identified from subdomain', ['subdomain' => $subdomain, 'tenant_id' => $tenant?->id]);
             }
         }
         
@@ -179,15 +172,6 @@ class UnifiedAuthController extends Controller
             }
         }
 
-        // System admins can login from any subdomain (including tenant subdomains)
-        // This allows sysadmin to manage the platform from any entry point
-        if ($user->role === User::ROLE_SYSTEM_ADMIN) {
-            \Log::info('System admin login allowed from any subdomain', [
-                'user_id' => $user->id,
-                'username' => $user->username,
-                'host' => $request->getHost(),
-            ]);
-        }
 
         // SCHEMA-BASED MULTI-TENANCY: Validate schema mapping for tenant users
         // Skip for system admins (landlords) - they operate in public schema
@@ -226,52 +210,25 @@ class UnifiedAuthController extends Controller
                 ], 403);
             }
             
-            \Log::info('Schema mapping validated', [
-                'username' => $user->username,
-                'schema' => $schemaMapping->schema_name,
-                'tenant_id' => $user->tenant_id
-            ]);
-        } elseif ($user->role === User::ROLE_SYSTEM_ADMIN) {
-            \Log::info('System admin login - skipping schema mapping check', [
-                'username' => $user->username,
-                'user_id' => $user->id
-            ]);
         }
         
-        // AAA: Authenticate ALL users via FreeRADIUS
-        // PostgreSQL functions automatically determine correct tenant schema
-        \Log::info('Authenticating user via RADIUS (AAA)', [
-            'username' => $user->username,
-            'role' => $user->role,
-            'tenant_id' => $user->tenant_id
-        ]);
-        
-        try {
-            // RADIUS service uses PostgreSQL functions for automatic schema lookup
-            // No need to pass schema - high performance without connection state changes
-            $authenticated = $this->radiusService->authenticate(
-                $user->username, 
-                $request->password
-            );
-            
-            if ($authenticated) {
-                \Log::info('RADIUS authentication successful (AAA)', [
+        // AAA: system_admin uses bcrypt (local, <1ms, no network dependency).
+        // Tenant admins and PPPoE/hotspot users authenticate via FreeRADIUS (centralized AAA).
+        if ($user->role === User::ROLE_SYSTEM_ADMIN) {
+            $authenticated = Hash::check($request->password, $user->password);
+        } else {
+            try {
+                $authenticated = $this->radiusService->authenticate(
+                    $user->username,
+                    $request->password
+                );
+            } catch (\Exception $e) {
+                \Log::error('RADIUS authentication error', [
                     'username' => $user->username,
-                    'role' => $user->role
+                    'error' => $e->getMessage(),
                 ]);
-            } else {
-                \Log::warning('RADIUS authentication failed (AAA)', [
-                    'username' => $user->username,
-                    'role' => $user->role
-                ]);
+                $authenticated = false;
             }
-        } catch (\Exception $e) {
-            \Log::error('RADIUS authentication error (AAA)', [
-                'username' => $user->username,
-                'role' => $user->role,
-                'error' => $e->getMessage()
-            ]);
-            $authenticated = false;
         }
         
         // Check if authentication was successful
@@ -429,12 +386,40 @@ class UnifiedAuthController extends Controller
 
         $user = $request->user();
 
-        // Verify current password
-        if (!Hash::check($request->current_password, $user->password)) {
+        // CENTRALIZED AUTHENTICATION: Verify current password via RADIUS
+        try {
+            \Log::info('Password change: Verifying current password via RADIUS', [
+                'username' => $user->username,
+            ]);
+
+            // Use RADIUS service to verify current password
+            $authenticated = $this->radiusService->authenticate(
+                $user->username,
+                $request->current_password
+            );
+
+            if (!$authenticated) {
+                \Log::warning('Password change: RADIUS verification failed', [
+                    'username' => $user->username,
+                ]);
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Current password is incorrect',
+                ], 401);
+            }
+
+            \Log::info('Password change: RADIUS verification successful', [
+                'username' => $user->username,
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Password change: RADIUS verification error', [
+                'username' => $user->username,
+                'error' => $e->getMessage(),
+            ]);
             return response()->json([
                 'success' => false,
-                'message' => 'Current password is incorrect',
-            ], 401);
+                'message' => 'Authentication service unavailable',
+            ], 503);
         }
 
         // EVENT-BASED: Dispatch password update job (async)

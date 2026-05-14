@@ -69,7 +69,11 @@ class UpdatePppoeUsersRateLimit implements ShouldQueue
             ]);
 
             // 1. Get all users with this package
-            $users = PppoeUser::where('package_id', $packageId)->get();
+            // OPTIMIZED: Select only needed columns
+            $users = PppoeUser::query()
+                ->select(['id', 'username', 'package_id', 'rate_limit'])
+                ->where('package_id', $packageId)
+                ->get();
 
             foreach ($users as $user) {
                 // Skip if user has a custom override (logic to be determined, assuming standard case for now)

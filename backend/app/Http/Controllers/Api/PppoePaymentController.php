@@ -19,7 +19,10 @@ class PppoePaymentController extends Controller
     {
         $tenantId = $request->user()->tenant_id;
 
-        $payments = PppoePayment::with(['pppoeUser', 'verifiedBy'])
+        // OPTIMIZED: Select only needed columns and eager load relations
+        $payments = PppoePayment::query()
+            ->select(['id', 'pppoe_user_id', 'account_number', 'amount', 'payment_method', 'transaction_id', 'status', 'payment_date', 'verified_by', 'created_at'])
+            ->with(['pppoeUser:id,username,account_number', 'verifiedBy:id,name'])
             ->orderBy('payment_date', 'desc')
             ->paginate(20);
 
@@ -53,7 +56,11 @@ class PppoePaymentController extends Controller
         }
 
         try {
-            $pppoeUser = PppoeUser::with('package')->findOrFail($request->pppoe_user_id);
+            // OPTIMIZED: Select only needed columns and eager load relation
+            $pppoeUser = PppoeUser::query()
+                ->select(['id', 'username', 'account_number', 'package_id'])
+                ->with(['package:id,name'])
+                ->findOrFail($request->pppoe_user_id);
 
             // Determine period boundaries
             $periodStart = Carbon::parse($request->payment_date);
@@ -83,10 +90,13 @@ class PppoePaymentController extends Controller
             // Only cash payments require manual verification
             if (in_array($request->payment_method, ['mpesa', 'paybill', 'bank', 'manual'])) {
                 $payment->markAsCompleted($request->user()->id);
-                
+
                 // Update user payment status
                 $this->activateUserAfterPayment($pppoeUser, $payment, $tenantId);
-                
+
+                // CACHE BUST: Clear tenant dashboard cache so revenue shows immediately
+                TenantDashboardController::bustDashboardCache($tenantId);
+
                 Log::info('Payment auto-verified', [
                     'payment_id' => $payment->id,
                     'payment_method' => $request->payment_method,
@@ -122,7 +132,10 @@ class PppoePaymentController extends Controller
     {
         $tenantId = $request->user()->tenant_id;
 
-        $payment = PppoePayment::findOrFail($id);
+        // OPTIMIZED: Select only needed columns
+        $payment = PppoePayment::query()
+            ->select(['id', 'pppoe_user_id', 'account_number', 'amount', 'payment_method', 'transaction_id', 'status', 'payment_date', 'notes', 'verified_by', 'created_at', 'updated_at'])
+            ->findOrFail($id);
 
         if ($payment->status === 'completed') {
             return response()->json([
@@ -173,7 +186,10 @@ class PppoePaymentController extends Controller
     {
         $tenantId = $request->user()->tenant_id;
 
-        $pendingPayments = PppoePayment::with(['pppoeUser'])
+        // OPTIMIZED: Select only needed columns and eager load relation
+        $pendingPayments = PppoePayment::query()
+            ->select(['id', 'pppoe_user_id', 'account_number', 'amount', 'payment_method', 'transaction_id', 'status', 'payment_date', 'created_at'])
+            ->with(['pppoeUser:id,username,account_number'])
             ->where('status', 'pending')
             ->orderBy('payment_date', 'desc')
             ->paginate(20);
@@ -189,8 +205,11 @@ class PppoePaymentController extends Controller
     {
         $tenantId = $request->user()->tenant_id;
 
-        $payments = PppoePayment::where('pppoe_user_id', $userId)
-            ->with(['verifiedBy'])
+        // OPTIMIZED: Select only needed columns and eager load relation
+        $payments = PppoePayment::query()
+            ->select(['id', 'pppoe_user_id', 'account_number', 'amount', 'payment_method', 'transaction_id', 'status', 'payment_date', 'verified_by', 'created_at'])
+            ->where('pppoe_user_id', $userId)
+            ->with(['verifiedBy:id,name'])
             ->orderBy('payment_date', 'desc')
             ->paginate(20);
 

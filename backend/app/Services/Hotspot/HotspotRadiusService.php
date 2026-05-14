@@ -38,6 +38,8 @@ class HotspotRadiusService
         string $password,
         array $attributes = []
     ): bool {
+        $username = strtolower(trim($username));
+
         DB::beginTransaction();
         
         try {
@@ -106,6 +108,8 @@ class HotspotRadiusService
      */
     public function setReplyAttributes(string $username, array $attributes): void
     {
+        $username = strtolower(trim($username));
+
         foreach ($attributes as $attribute => $value) {
             DB::table('radreply')
                 ->updateOrInsert(
@@ -120,6 +124,8 @@ class HotspotRadiusService
      */
     public function blockUser(string $username): bool
     {
+        $username = strtolower(trim($username));
+
         try {
             // Remove existing Auth-Type
             DB::table('radcheck')
@@ -152,6 +158,8 @@ class HotspotRadiusService
      */
     public function unblockUser(string $username): bool
     {
+        $username = strtolower(trim($username));
+
         try {
             DB::table('radcheck')
                 ->where('username', $username)
@@ -176,6 +184,8 @@ class HotspotRadiusService
      */
     public function deleteUser(string $username): bool
     {
+        $username = strtolower(trim($username));
+
         DB::beginTransaction();
         
         try {
@@ -318,7 +328,7 @@ class HotspotRadiusService
     public function getActiveSessions(string $username): \Illuminate\Support\Collection
     {
         return DB::table('radacct')
-            ->where('username', $username)
+            ->where('username', strtolower(trim($username)))
             ->whereNull('acctstoptime')
             ->get();
     }
@@ -329,7 +339,7 @@ class HotspotRadiusService
     public function getUserDataUsage(string $username): array
     {
         $totals = DB::table('radacct')
-            ->where('username', $username)
+            ->where('username', strtolower(trim($username)))
             ->selectRaw('SUM(acctinputoctets) as total_input, SUM(acctoutputoctets) as total_output')
             ->first();
         
@@ -346,7 +356,7 @@ class HotspotRadiusService
     public function isUsernameAvailable(string $username): bool
     {
         return !DB::table('radcheck')
-            ->where('username', $username)
+            ->where('username', strtolower(trim($username)))
             ->exists();
     }
 

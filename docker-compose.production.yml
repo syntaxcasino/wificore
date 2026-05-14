@@ -74,7 +74,7 @@ services:
       - DOCKER_NETWORK_CIDR=${DOCKER_NETWORK_CIDR:-172.70.0.0/16}
       # Webhook configuration for event-based status updates
       - ENABLE_WEBHOOK_MONITOR=${ENABLE_WEBHOOK_MONITOR:-true}
-      - WEBHOOK_BASE_URL=${WEBHOOK_BASE_URL:-http://172.70.0.5:9000}
+      - WEBHOOK_BASE_URL=${WEBHOOK_BASE_URL:-http://127.0.0.1:8070}
       - WEBHOOK_API_KEY=${WIREGUARD_WEBHOOK_API_KEY:-${WIREGUARD_API_KEY}}
       - MONITOR_INTERVAL=${WEBHOOK_MONITOR_INTERVAL:-5}
     cap_add:
@@ -128,6 +128,9 @@ services:
 
   wificore-backend:
     image: kja2aro/wificore:wificore-backend
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
     container_name: wificore-backend
     restart: always
     env_file:
@@ -138,6 +141,8 @@ services:
       - DB_READ_HOST=${DB_READ_HOST:-wificore-pgbouncer-read}
       - DB_PORT=${DB_PORT:-6432}
       - DB_READ_PORT=${DB_READ_PORT:-6432}
+      - DB_PERSISTENT=${DB_PERSISTENT:-false}
+      - RADIUS_DB_PERSISTENT=${RADIUS_DB_PERSISTENT:-false}
       - DB_DIRECT_HOST=${DB_DIRECT_HOST:-wificore-postgres}
       - DB_DIRECT_PORT=${DB_DIRECT_PORT:-5432}
       - PROVISIONING_SERVICE_URL=http://wificore-provisioning:8080
@@ -190,8 +195,12 @@ services:
         condition: service_healthy
       wificore-pgbouncer:
         condition: service_healthy
+      wificore-pgbouncer-read:
+        condition: service_healthy
       wificore-redis:
         condition: service_healthy
+      wificore-victoriametrics:
+        condition: service_started
       wificore-soketi:
         condition: service_started
       wificore-wireguard:
@@ -213,6 +222,82 @@ services:
       options:
         max-size: "50m"
         max-file: "5"
+
+  wificore-queue-worker:
+    image: kja2aro/wificore:wificore-backend
+    container_name: wificore-queue-worker
+    restart: always
+    env_file:
+      - .env.production
+    environment:
+      # Queue worker must NOT run migrations/seeders; backend container owns that responsibility.
+      - AUTO_MIGRATE=false
+      - AUTO_SEED=false
+      - DB_CONNECTION=pgsql
+      - DB_HOST=${DB_HOST:-wificore-pgbouncer}
+      - DB_READ_HOST=${DB_READ_HOST:-wificore-pgbouncer-read}
+      - DB_PORT=${DB_PORT:-6432}
+      - DB_READ_PORT=${DB_READ_PORT:-6432}
+      - DB_DIRECT_HOST=${DB_DIRECT_HOST:-wificore-postgres}
+      - DB_DIRECT_PORT=${DB_DIRECT_PORT:-5432}
+      - DB_DATABASE=${DB_DATABASE:-wms_770_ts}
+      - DB_USERNAME=${DB_USERNAME:-admin}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - QUEUE_CONNECTION=redis
+      - BROADCAST_DRIVER=pusher
+      - PUSHER_APP_ID=${PUSHER_APP_ID:-app-id}
+      - PUSHER_APP_KEY=${PUSHER_APP_KEY:-app-key}
+      - PUSHER_APP_SECRET=${PUSHER_APP_SECRET:-app-secret}
+      - PUSHER_HOST=${PUSHER_HOST:-wificore-soketi}
+      - PUSHER_PORT=${PUSHER_PORT:-6071}
+      - PUSHER_SCHEME=${PUSHER_SCHEME:-http}
+      - TZ=${TZ:-Africa/Nairobi}
+      - APP_URL=${APP_URL}
+      - REDIS_HOST=${REDIS_HOST:-wificore-redis}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - CACHE_DRIVER=redis
+      - SESSION_DRIVER=redis
+      - RADIUS_SERVER_HOST=${RADIUS_SERVER_HOST:-wificore-freeradius}
+      - RADIUS_SERVER_IP=${RADIUS_SERVER_IP:-172.70.0.2}
+      - RADIUS_SERVER_PORT=${RADIUS_SERVER_PORT:-1812}
+      - RADIUS_SECRET=${RADIUS_SECRET}
+      - APP_ENV=production
+      - MULTITENANCY_MODE=schema
+      - MIKROTIK_SSH_PRIVATE_KEY_PATH=${MIKROTIK_SSH_PRIVATE_KEY_PATH:-/run/secrets/mikrotik_id_rsa}
+      - MIKROTIK_SSH_PRIVATE_KEY_PASSPHRASE=${MIKROTIK_SSH_PRIVATE_KEY_PASSPHRASE:-}
+    depends_on:
+      wificore-postgres:
+        condition: service_healthy
+      wificore-redis:
+        condition: service_healthy
+      wificore-backend:
+        condition: service_healthy
+    networks:
+      wificore-network:
+        # Avoid static-IP collision with wificore-genieacs-ui (172.70.0.15).
+        ipv4_address: 172.70.0.18
+    volumes:
+      - laravel-storage:/var/www/html/storage:rw
+      - laravel-logs:/var/www/html/storage/logs:rw
+    command: >
+      sh -c "
+        echo 'Waiting for backend to be ready...' &&
+        sleep 10 &&
+        echo 'Starting queue workers...' &&
+        php artisan queue:work redis --queue=default,service-control --sleep=3 --tries=2 --timeout=30 --max-jobs=1000 --max-time=3600
+      "
+    healthcheck:
+      test: ["CMD-SHELL", "ps aux | grep 'queue:work' | grep -v grep || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "3"
 
   wificore-victoriametrics:
     image: victoriametrics/victoria-metrics:latest
@@ -312,230 +397,6 @@ services:
         ipv4_address: 172.70.0.20
     volumes:
       - laravel-storage:/var/www/html/storage:ro
-
-  wificore-postgres-replica:
-    image: kja2aro/wificore:wificore-postgres
-    container_name: wificore-postgres-replica
-    restart: always
-    env_file:
-      - .env.production
-    depends_on:
-      wificore-postgres:
-        condition: service_healthy
-    environment:
-      - POSTGRES_ROLE=replica
-      - POSTGRES_DB=${DB_DATABASE:-wms_770_ts}
-      - POSTGRES_USER=${DB_USERNAME:-admin}
-      - POSTGRES_PASSWORD=${DB_PASSWORD}
-      - POSTGRES_PRIMARY_HOST=wificore-postgres
-      - POSTGRES_PRIMARY_PORT=5432
-      - POSTGRES_REPLICATION_USER=${POSTGRES_REPLICATION_USER:-replicator}
-      - POSTGRES_REPLICATION_PASSWORD=${POSTGRES_REPLICATION_PASSWORD}
-      - POSTGRES_REPLICATION_SLOT=${POSTGRES_REPLICATION_SLOT:-wificore_replica}
-      - POSTGRES_REPLICATION_APPLICATION_NAME=${POSTGRES_REPLICATION_APPLICATION_NAME:-wificore-postgres-replica}
-      - TZ=${TZ:-Africa/Nairobi}
-    command: >
-      postgres
-      -c shared_preload_libraries=pg_stat_statements
-      -c pg_stat_statements.max=10000
-      -c pg_stat_statements.track=all
-      -c hot_standby=on
-      -c max_connections=${POSTGRES_MAX_CONNECTIONS:-200}
-      -c max_locks_per_transaction=256
-    networks:
-      wificore-network:
-        ipv4_address: 172.70.0.16
-    volumes:
-      - postgres_replica_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD", "pg_isready", "-U", "${DB_USERNAME:-admin}", "-d", "${DB_DATABASE:-wms_770_ts}"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 60s
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "50m"
-        max-file: "5"
-
-  wificore-freeradius:
-    image: kja2aro/wificore:wificore-freeradius
-    container_name: wificore-freeradius
-    restart: always
-    env_file:
-      - .env.production
-    environment:
-      - TZ=${TZ:-Africa/Nairobi}
-    ports:
-      - "${RADIUS_AUTH_PORT:-1812}:1812/udp"
-      - "${RADIUS_ACCT_PORT:-1813}:1813/udp"
-    networks:
-      wificore-network:
-        ipv4_address: 172.70.0.2
-        aliases:
-          - freeradius
-    dns:
-      - 8.8.8.8
-      - 8.8.4.4
-    depends_on:
-      wificore-postgres:
-        condition: service_healthy
-      wificore-backend:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "/opt/sbin/radiusd", "-C"]  
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 30s
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "20m"
-        max-file: "3"
-    entrypoint: /bin/sh
-    command: >
-      -c "
-      sleep 5 &&
-      chmod 640 /opt/etc/raddb/clients.conf /opt/etc/raddb/mods-available/sql &&
-      ln -sf /opt/etc/raddb/mods-available/sql /opt/etc/raddb/mods-enabled/sql &&
-      exec /opt/sbin/radiusd -X
-      "
-
-  wificore-soketi:
-    image: kja2aro/wificore:wificore-soketi
-    container_name: wificore-soketi
-    restart: always
-    env_file:
-      - .env.production
-    environment:
-      SOKETI_DEBUG: ${SOKETI_DEBUG:-0}
-      SOKETI_DEFAULT_APP_ID: ${PUSHER_APP_ID}
-      SOKETI_DEFAULT_APP_KEY: ${PUSHER_APP_KEY}
-      SOKETI_DEFAULT_APP_SECRET: ${PUSHER_APP_SECRET}
-      SOKETI_DEFAULT_APP_ENABLE_CLIENT_MESSAGES: true
-      SOKETI_DEFAULT_APP_ENABLE_USER_AUTHENTICATION: true
-      SOKETI_DEFAULT_APP_USER_AUTHENTICATION_TIMEOUT: 30000
-      SOKETI_DEFAULT_APP_WEBHOOKS: '[{"url":"http://wificore-nginx/api/soketi/webhook","event_types":["channel_occupied","channel_vacated","member_added","member_removed"]}]'
-      SOKETI_DEFAULT_APP_MAX_BACKEND_EVENTS_PER_SEC: -1
-      SOKETI_DEFAULT_APP_MAX_CLIENT_EVENTS_PER_SEC: -1
-      SOKETI_DEFAULT_APP_MAX_READ_REQUESTS_PER_SEC: -1
-      SOKETI_HOST: 0.0.0.0
-      SOKETI_PORT: 6071
-      SOKETI_METRICS_SERVER_PORT: 9670
-      SOKETI_METRICS_ENABLED: ${SOKETI_METRICS_ENABLED:-true}
-    networks:
-      wificore-network:
-        ipv4_address: 172.70.0.6
-    healthcheck:
-      test: ["CMD", "sh", "-c", "wget --quiet --tries=1 --timeout=5 -O /dev/null http://localhost:9670/usage"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 30s
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-  wificore-redis:
-    container_name: wificore-redis
-    build:
-      context: ./docker/redis
-      dockerfile: Dockerfile
-    image: kja2aro/wificore:wificore-redis
-    restart: always
-    env_file:
-      - .env.production
-    environment:
-      TZ: Africa/Nairobi
-      REDIS_PASSWORD: ${REDIS_PASSWORD}
-      REDIS_MAXMEMORY: 4gb
-    networks:
-      wificore-network:
-        ipv4_address: 172.70.0.7
-    healthcheck:
-      test: ["CMD", "/usr/local/bin/redis-healthcheck.sh"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
-    volumes:
-      - redis_data:/data
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-  wificore-pgbouncer:
-    image: kja2aro/wificore:wificore-pgbouncer
-    build:
-      context: ./pgbouncer
-      dockerfile: Dockerfile
-    container_name: wificore-pgbouncer
-    restart: always
-    env_file:
-      - .env.production
-    environment:
-      - DB_HOST=wificore-postgres
-      - DB_PORT=5432
-      - DB_DATABASE=${DB_DATABASE:-wms_770_ts}
-      - DB_USERNAME=${DB_USERNAME:-admin}
-      - DB_PASSWORD=${DB_PASSWORD}
-      - TZ=${TZ:-Africa/Nairobi}
-    depends_on:
-      wificore-postgres:
-        condition: service_healthy
-    networks:
-      wificore-network:
-        ipv4_address: 172.70.0.3
-    ports:
-      - "6432:6432"
-    healthcheck:
-      test: ["CMD", "pg_isready", "-h", "localhost", "-p", "6432", "-U", "admin", "-d", "wms_770_ts"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-  wificore-pgbouncer-read:
-    image: kja2aro/wificore:wificore-pgbouncer
-    container_name: wificore-pgbouncer-read
-    restart: always
-    env_file:
-      - .env.production
-    environment:
-      - DB_HOST=wificore-postgres-replica
-      - DB_PORT=5432
-      - DB_DATABASE=${DB_DATABASE:-wms_770_ts}
-      - DB_USERNAME=${DB_USERNAME:-admin}
-      - DB_PASSWORD=${DB_PASSWORD}
-      - TZ=${TZ:-Africa/Nairobi}
-    depends_on:
-      wificore-postgres-replica:
-        condition: service_healthy
-    networks:
-      wificore-network:
-        ipv4_address: 172.70.0.17
-    healthcheck:
-      test: ["CMD", "pg_isready", "-h", "localhost", "-p", "6432", "-U", "admin", "-d", "wms_770_ts"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
 
   wificore-postgres:
     image: kja2aro/wificore:wificore-postgres
@@ -641,6 +502,229 @@ services:
       options:
         max-size: "50m"
         max-file: "5"
+
+  wificore-postgres-replica:
+    image: kja2aro/wificore:wificore-postgres
+    container_name: wificore-postgres-replica
+    restart: always
+    env_file:
+      - .env.production
+    depends_on:
+      wificore-postgres:
+        condition: service_healthy
+    environment:
+      - POSTGRES_ROLE=replica
+      - POSTGRES_DB=${DB_DATABASE:-wms_770_ts}
+      - POSTGRES_USER=${DB_USERNAME:-admin}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_PRIMARY_HOST=wificore-postgres
+      - POSTGRES_PRIMARY_PORT=5432
+      - POSTGRES_REPLICATION_USER=${POSTGRES_REPLICATION_USER:-replicator}
+      - POSTGRES_REPLICATION_PASSWORD=${POSTGRES_REPLICATION_PASSWORD}
+      - POSTGRES_REPLICATION_SLOT=${POSTGRES_REPLICATION_SLOT:-wificore_replica}
+      - POSTGRES_REPLICATION_APPLICATION_NAME=${POSTGRES_REPLICATION_APPLICATION_NAME:-wificore-postgres-replica}
+      - TZ=${TZ:-Africa/Nairobi}
+    command: >
+      postgres
+      -c shared_preload_libraries=pg_stat_statements
+      -c pg_stat_statements.max=10000
+      -c pg_stat_statements.track=all
+      -c hot_standby=on
+      -c max_connections=${POSTGRES_MAX_CONNECTIONS:-200}
+      -c max_locks_per_transaction=256
+    networks:
+      wificore-network:
+        ipv4_address: 172.70.0.16
+    volumes:
+      - postgres_replica_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "${DB_USERNAME:-admin}", "-d", "${DB_DATABASE:-wms_770_ts}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  wificore-freeradius:
+    image: kja2aro/wificore:wificore-freeradius
+    container_name: wificore-freeradius
+    restart: always
+    env_file:
+      - .env.production
+    environment:
+      - TZ=${TZ:-Africa/Nairobi}
+    ports:
+      - "${RADIUS_AUTH_PORT:-1812}:1812/udp"
+      - "${RADIUS_ACCT_PORT:-1813}:1813/udp"
+    networks:
+      wificore-network:
+        ipv4_address: 172.70.0.2
+        aliases:
+          - freeradius
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+    depends_on:
+      wificore-postgres:
+        condition: service_healthy
+      wificore-backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/opt/sbin/radiusd", "-C"]  
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "3"
+    entrypoint: /bin/sh
+    command: >
+      -c "
+      sleep 5 &&
+      chmod 640 /opt/etc/raddb/clients.conf /opt/etc/raddb/mods-available/sql &&
+      ln -sf /opt/etc/raddb/mods-available/sql /opt/etc/raddb/mods-enabled/sql &&
+      exec /opt/sbin/radiusd -f
+      "
+
+  wificore-soketi:
+    image: kja2aro/wificore:wificore-soketi
+    container_name: wificore-soketi
+    restart: always
+    env_file:
+      - .env.production
+    environment:
+      SOKETI_DEBUG: ${SOKETI_DEBUG:-0}
+      SOKETI_DEFAULT_APP_ID: ${PUSHER_APP_ID}
+      SOKETI_DEFAULT_APP_KEY: ${PUSHER_APP_KEY}
+      SOKETI_DEFAULT_APP_SECRET: ${PUSHER_APP_SECRET}
+      SOKETI_DEFAULT_APP_ENABLE_CLIENT_MESSAGES: true
+      SOKETI_DEFAULT_APP_ENABLE_USER_AUTHENTICATION: true
+      SOKETI_DEFAULT_APP_USER_AUTHENTICATION_TIMEOUT: 30000
+      SOKETI_DEFAULT_APP_WEBHOOKS: '[{"url":"http://wificore-nginx/api/soketi/webhook","event_types":["channel_occupied","channel_vacated","member_added","member_removed"]}]'
+      SOKETI_DEFAULT_APP_MAX_BACKEND_EVENTS_PER_SEC: ${SOKETI_DEFAULT_APP_MAX_BACKEND_EVENTS_PER_SEC:-1000}
+      SOKETI_DEFAULT_APP_MAX_CLIENT_EVENTS_PER_SEC: ${SOKETI_DEFAULT_APP_MAX_CLIENT_EVENTS_PER_SEC:-200}
+      SOKETI_DEFAULT_APP_MAX_READ_REQUESTS_PER_SEC: ${SOKETI_DEFAULT_APP_MAX_READ_REQUESTS_PER_SEC:-200}
+      SOKETI_HOST: 0.0.0.0
+      SOKETI_PORT: 6071
+      SOKETI_METRICS_SERVER_PORT: 9670
+      SOKETI_METRICS_ENABLED: ${SOKETI_METRICS_ENABLED:-true}
+    networks:
+      wificore-network:
+        ipv4_address: 172.70.0.6
+    healthcheck:
+      test: ["CMD", "sh", "-c", "wget --quiet --tries=1 --timeout=5 -O /dev/null http://localhost:9670/usage"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  wificore-redis:
+    container_name: wificore-redis
+    build:
+      context: ./docker/redis
+      dockerfile: Dockerfile
+    image: kja2aro/wificore:wificore-redis
+    restart: always
+    env_file:
+      - .env.production
+    environment:
+      TZ: Africa/Nairobi
+      REDIS_MAXMEMORY: 4gb
+    networks:
+      wificore-network:
+        ipv4_address: 172.70.0.7
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/redis-healthcheck.sh"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    volumes:
+      - redis_data:/data
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  wificore-pgbouncer:
+    image: kja2aro/wificore:wificore-pgbouncer
+    build:
+      context: ./pgbouncer
+      dockerfile: Dockerfile
+    container_name: wificore-pgbouncer
+    restart: always
+    env_file:
+      - .env.production
+    environment:
+      - DB_HOST=wificore-postgres
+      - DB_PORT=5432
+      - DB_DATABASE=${DB_DATABASE:-wms_770_ts}
+      - DB_USERNAME=${DB_USERNAME:-admin}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - TZ=${TZ:-Africa/Nairobi}
+    depends_on:
+      wificore-postgres:
+        condition: service_healthy
+    networks:
+      wificore-network:
+        ipv4_address: 172.70.0.3
+    ports:
+      - "6432:6432"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "localhost", "-p", "6432", "-U", "${DB_USERNAME:-admin}", "-d", "${DB_DATABASE:-wms_770_ts}"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  wificore-pgbouncer-read:
+    image: kja2aro/wificore:wificore-pgbouncer
+    container_name: wificore-pgbouncer-read
+    restart: always
+    env_file:
+      - .env.production
+    environment:
+      - DB_HOST=wificore-postgres-replica
+      - DB_PORT=5432
+      - DB_DATABASE=${DB_DATABASE:-wms_770_ts}
+      - DB_USERNAME=${DB_USERNAME:-admin}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - TZ=${TZ:-Africa/Nairobi}
+    depends_on:
+      wificore-postgres-replica:
+        condition: service_healthy
+    networks:
+      wificore-network:
+        ipv4_address: 172.70.0.17
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "localhost", "-p", "6432", "-U", "${DB_USERNAME:-admin}", "-d", "${DB_DATABASE:-wms_770_ts}"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   wificore-mongo:
     container_name: wificore-mongo

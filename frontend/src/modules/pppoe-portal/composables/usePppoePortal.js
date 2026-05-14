@@ -9,6 +9,7 @@ const token = ref(localStorage.getItem('pppoe_portal_token') || null);
 const user = ref(JSON.parse(localStorage.getItem('pppoe_portal_user') || 'null'));
 const isLoading = ref(false);
 const error = ref(null);
+const isLoggingOut = ref(false);
 
 export function usePppoePortal() {
   const router = useRouter();
@@ -35,8 +36,9 @@ export function usePppoePortal() {
   api.interceptors.response.use(
     (response) => response,
     (error) => {
-      if (error.response?.status === 401) {
-        logout();
+      const requestUrl = String(error?.config?.url || '');
+      if (error.response?.status === 401 && !requestUrl.includes('/logout') && !isLoggingOut.value) {
+        logout({ skipServerCall: true });
         router.push('/portal/login');
       }
       return Promise.reject(error);
@@ -46,6 +48,11 @@ export function usePppoePortal() {
   async function login(accountNumber, portalPassword) {
     isLoading.value = true;
     error.value = null;
+    // Clear stale local session before a fresh login attempt.
+    token.value = null;
+    user.value = null;
+    localStorage.removeItem('pppoe_portal_token');
+    localStorage.removeItem('pppoe_portal_user');
 
     try {
       const response = await api.post('/login', {
@@ -64,6 +71,10 @@ export function usePppoePortal() {
         return { success: true };
       }
     } catch (err) {
+      token.value = null;
+      user.value = null;
+      localStorage.removeItem('pppoe_portal_token');
+      localStorage.removeItem('pppoe_portal_user');
       error.value = err.response?.data?.message || 'Login failed. Please try again.';
       return { success: false, error: error.value };
     } finally {
@@ -139,9 +150,27 @@ export function usePppoePortal() {
     }
   }
 
-  async function logout() {
+  async function fetchPaymentInstructions() {
     try {
-      await api.post('/logout');
+      const response = await api.get('/payment/instructions');
+      return response.data.data;
+    } catch (err) {
+      error.value = err.response?.data?.message || 'Failed to load payment instructions';
+      throw err;
+    }
+  }
+
+  async function logout(options = {}) {
+    const { skipServerCall = false } = options;
+    if (isLoggingOut.value) {
+      return;
+    }
+    isLoggingOut.value = true;
+
+    try {
+      if (!skipServerCall && token.value) {
+        await api.post('/logout');
+      }
     } catch (err) {
       // Ignore errors on logout
     } finally {
@@ -150,6 +179,7 @@ export function usePppoePortal() {
       user.value = null;
       localStorage.removeItem('pppoe_portal_token');
       localStorage.removeItem('pppoe_portal_user');
+      isLoggingOut.value = false;
       router.push('/portal/login');
     }
   }
@@ -173,6 +203,7 @@ export function usePppoePortal() {
     fetchSessionHistory,
     initiateMpesaPayment,
     redeemVoucher,
+    fetchPaymentInstructions,
     checkPaymentStatus,
     clearError,
   };

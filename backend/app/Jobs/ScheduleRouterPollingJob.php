@@ -34,7 +34,10 @@ class ScheduleRouterPollingJob implements ShouldQueue
         // If no tenant ID is set, this is the main scheduler job.
         // We need to dispatch a job for each active tenant.
         if (!$this->tenantId) {
-            $tenants = Tenant::where('is_active', true)->get();
+            $tenants = Tenant::query()
+                ->where('is_active', true)
+                ->useWritePdo()
+                ->get();
             
             foreach ($tenants as $tenant) {
                 self::dispatch($tenant->id);

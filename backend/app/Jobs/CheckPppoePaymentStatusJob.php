@@ -33,10 +33,14 @@ class CheckPppoePaymentStatusJob implements ShouldQueue
     {
         // If no tenant ID, dispatch for all active tenants
         if (!$this->tenantId) {
-            $tenants = Tenant::where('is_active', true)->get();
+            // OPTIMIZED: Select only id column
+            $tenantIds = Tenant::query()
+                ->select(['id'])
+                ->where('is_active', true)
+                ->pluck('id');
             
-            foreach ($tenants as $tenant) {
-                self::dispatch($tenant->id);
+            foreach ($tenantIds as $tenantId) {
+                self::dispatch($tenantId);
             }
             
             return;
@@ -47,7 +51,10 @@ class CheckPppoePaymentStatusJob implements ShouldQueue
                 $gracePeriodDays = 3; // 3 days grace period
                 
                 // 1. Immediately block all unpaid users who are not already suspended
-                $unpaidUsers = PppoeUser::where('payment_status', 'unpaid')
+                // OPTIMIZED: Select only needed columns
+                $unpaidUsers = PppoeUser::query()
+                    ->select(['id', 'username', 'account_number', 'payment_status', 'next_payment_due', 'suspended_at', 'is_active', 'in_grace_period', 'grace_period_ends', 'router_id'])
+                    ->where('payment_status', 'unpaid')
                     ->whereNull('suspended_at')
                     ->where('is_active', true)
                     ->get();
@@ -82,7 +89,10 @@ class CheckPppoePaymentStatusJob implements ShouldQueue
                 }
 
                 // 2. Check users whose grace period has expired
-                $expiredGraceUsers = PppoeUser::where('in_grace_period', true)
+                // OPTIMIZED: Select only needed columns
+                $expiredGraceUsers = PppoeUser::query()
+                    ->select(['id', 'username', 'account_number', 'in_grace_period', 'grace_period_ends', 'suspended_at', 'router_id'])
+                    ->where('in_grace_period', true)
                     ->where('grace_period_ends', '<', now())
                     ->whereNull('suspended_at')
                     ->get();
@@ -107,7 +117,10 @@ class CheckPppoePaymentStatusJob implements ShouldQueue
                 }
 
                 // 3. Check users who are paid but subscription expired
-                $expiredSubscriptions = PppoeUser::where('payment_status', 'paid')
+                // OPTIMIZED: Select only needed columns
+                $expiredSubscriptions = PppoeUser::query()
+                    ->select(['id', 'username', 'account_number', 'payment_status', 'expires_at', 'is_active', 'status', 'router_id'])
+                    ->where('payment_status', 'paid')
                     ->where('expires_at', '<', now())
                     ->where('is_active', true)
                     ->get();
@@ -156,7 +169,10 @@ class CheckPppoePaymentStatusJob implements ShouldQueue
                 return;
             }
 
-            $router = Router::find($user->router_id);
+            // OPTIMIZED: Select only needed columns
+            $router = Router::query()
+                ->select(['id', 'host', 'ssh_port', 'ssh_user', 'ssh_pass', 'ssh_private_key'])
+                ->find($user->router_id);
             if (!$router) {
                 return;
             }

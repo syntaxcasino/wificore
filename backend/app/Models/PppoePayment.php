@@ -5,11 +5,30 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Facades\Cache;
 use App\Traits\HasUuid;
 
 class PppoePayment extends Model
 {
     use HasFactory, HasUuid, SoftDeletes;
+
+    /**
+     * Boot the model and add cache invalidation on status changes
+     * CRITICAL: Prevents serving stale data to PPPoE portal
+     */
+    protected static function boot(): void
+    {
+        parent::boot();
+
+        static::saved(function ($payment) {
+            // Invalidate portal cache when payment status changes
+            if ($payment->wasChanged('status')) {
+                Cache::forget('pppoe_portal_dashboard:' . $payment->pppoe_user_id);
+                Cache::forget('pppoe_portal_payments:' . $payment->pppoe_user_id);
+                Cache::forget('payment_status:' . $payment->pppoe_user_id . ':' . md5($payment->transaction_id));
+            }
+        });
+    }
 
     protected $fillable = [
         'pppoe_user_id',

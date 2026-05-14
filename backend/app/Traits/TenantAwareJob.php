@@ -42,8 +42,9 @@ trait TenantAwareJob
             return $callback();
         }
 
-        // Verify tenant exists and is active
-        $tenant = Tenant::find($this->tenantId);
+        // Tenant bootstrap must not depend on the read replica; read-pool DNS
+        // or replica lag should not block queue jobs from entering tenant context.
+        $tenant = Tenant::query()->useWritePdo()->find($this->tenantId);
         
         if (!$tenant) {
             throw new \Exception("Tenant not found: {$this->tenantId}");
@@ -96,18 +97,20 @@ trait TenantAwareJob
         // when PgBouncer transaction pooling rotates the backend connection.
         try {
             return \Illuminate\Support\Facades\DB::transaction(function () use ($tenant, $callback) {
-                // Force sticky-write mode: marks the connection as having modified records
-                // so Laravel routes all subsequent SELECT queries through the write PDO
-                // for the duration of this transaction. This is critical for PgBouncer
-                // transaction pooling: SET LOCAL search_path is transaction-scoped and
-                // only persists on the write PDO (the one inside DB::transaction()).
-                // Without sticky mode, Eloquent SELECT queries use the read PDO which
-                // has no open transaction, causing PgBouncer to reset search_path.
-                \Illuminate\Support\Facades\DB::connection()->recordsHaveBeenModified();
+                // PgBouncer is usually configured for transaction pooling. We MUST keep
+                // all queries on the same PDO inside this transaction, otherwise a SELECT
+                // can be routed to the "read" PDO and lose the SET LOCAL search_path.
+                $conn = \Illuminate\Support\Facades\DB::connection();
+                $conn->useWriteConnectionWhenReading(true);
 
-                \Illuminate\Support\Facades\DB::statement("SET LOCAL search_path TO {$tenant->schema_name}, public");
+                try {
+                    \Illuminate\Support\Facades\DB::statement("SET LOCAL search_path TO {$tenant->schema_name}, public");
 
-                return $callback();
+                    return $callback();
+                } finally {
+                    // Avoid leaking sticky-write mode across jobs.
+                    $conn->useWriteConnectionWhenReading(false);
+                }
             });
         } finally {
             // Clear auth context — Auth::logout() is not available on token-based guards

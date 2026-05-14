@@ -198,9 +198,11 @@ class CaptivePortalController extends Controller
             }
 
             // Find user
-            $user = HotspotUser::where('username', $request->username)
-                ->orWhere('voucher_code', $request->username)
-                ->first();
+            // CRITICAL FIX: Grouped where prevents matching wrong user
+            $user = HotspotUser::where(function ($query) use ($request) {
+                $query->where('username', $request->username)
+                    ->orWhere('voucher_code', $request->username);
+            })->first();
 
             if (!$user) {
                 $this->logLoginAttempt($tenant->id, $request->username, false, 'User not found', $request);

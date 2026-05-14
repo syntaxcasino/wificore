@@ -61,7 +61,7 @@ class ZeroConfigHybridGenerator
 
         if ($bridgeMode) {
             $interfaces = $this->normalizeInterfaces($service->interfaces, $service->interface_name);
-            $resolvedRs = config('radius.server_ip', config('services.radius.host', 'wificore-freeradius'));
+            $resolvedRs = config('radius.vpn_server_ip', config('services.radius.host', '10.8.0.1'));
             if (filter_var($resolvedRs, FILTER_VALIDATE_IP) === false) {
                 $resolvedRs = gethostbyname((string) $resolvedRs) ?: $resolvedRs;
             }
@@ -93,7 +93,7 @@ class ZeroConfigHybridGenerator
             throw new \Exception('Hybrid service requires both hotspot and PPPoE VLANs');
         }
 
-        $resolvedRs = config('radius.server_ip', config('services.radius.host', 'wificore-freeradius'));
+        $resolvedRs = config('radius.vpn_server_ip', config('services.radius.host', '10.8.0.1'));
         if (filter_var($resolvedRs, FILTER_VALIDATE_IP) === false) {
             $resolvedRs = gethostbyname((string) $resolvedRs) ?: $resolvedRs;
         }

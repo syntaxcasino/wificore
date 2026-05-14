@@ -25,8 +25,13 @@ class RadiusService extends TenantAwareService
             (int) config('radius.auth_port', 1812)
         );
 
-        // Set NAS identifier
-        $this->radius->setNasIpAddress('127.0.0.1');
+        // Set timeout to prevent long delays (default is 10s, we use 2s for LAN)
+        $this->radius->setTimeout((int) config('radius.timeout', 2));
+
+        // Use real container IP as NAS identifier so FreeRADIUS deduplication
+        // works correctly. 127.0.0.1 conflicts with actual source IP causing
+        // every other packet to be dropped as a duplicate.
+        $this->radius->setNasIpAddress(gethostbyname(gethostname()) ?: '127.0.0.1');
     }
 
     /**
@@ -86,7 +91,7 @@ class RadiusService extends TenantAwareService
             \Log::debug("RADIUS: Current search_path: {$searchPath}");
             
             // Check if cleartext passwords are allowed (for backward compatibility)
-            $allowCleartext = env('RADIUS_ALLOW_CLEARTEXT', true);
+            $allowCleartext = config('radius.allow_cleartext', true);
             
             // Store SHA-256 hashed password (recommended security practice)
             $sha256Hash = hash('sha256', $password);

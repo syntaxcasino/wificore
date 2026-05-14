@@ -72,11 +72,9 @@ export function usePackages() {
       formMessage.value = { text: msg, type: 'success' }
       formSubmitted.value = true
 
-      // Optimistically add to the local list immediately for better UX
-      if (newPackage) {
-        packages.value.unshift(newPackage)
-      }
-
+      // Purely event-driven - no manual list manipulation needed
+      // WebSocket events will handle the UI update automatically
+      
       setTimeout(() => {
         showFormOverlay.value = false
         formSubmitted.value = false
@@ -106,17 +104,11 @@ export function usePackages() {
     try {
       const response = await axios.put(`/packages/${selectedPackage.value.id}`, formData.value)
       const msg = response.data?.message || 'Package updated successfully'
-      const updatedPkg = response.data?.data
       formMessage.value = { text: msg, type: 'success' }
       showUpdateOverlay.value = false
 
-      // Optimistically update the local list immediately for better UX
-      if (updatedPkg) {
-        const index = packages.value.findIndex(p => p.id === updatedPkg.id)
-        if (index !== -1) {
-          packages.value.splice(index, 1, { ...packages.value[index], ...updatedPkg })
-        }
-      }
+      // Purely event-driven - WebSocket events will handle the UI update automatically
+      
     } catch (err) {
       formMessage.value = {
         text: err.response?.data?.error || err.response?.data?.message || 'Failed to update package',
@@ -131,8 +123,7 @@ export function usePackages() {
   const deletePackage = async (id) => {
     try {
       await axios.delete(`/packages/${id}`)
-      // Optimistically remove from the local list immediately for better UX
-      packages.value = packages.value.filter(p => p.id !== id)
+      // Purely event-driven - WebSocket events will handle the UI update automatically
     } catch (err) {
       console.error('deletePackage error:', err.message, err.response?.data)
       throw err
@@ -154,20 +145,13 @@ export function usePackages() {
       const newStatus = pkg.status === 'active' ? 'inactive' : 'active'
       const newIsActive = !pkg.is_active
 
-      const response = await axios.put(`/packages/${pkg.id}`, {
+      await axios.put(`/packages/${pkg.id}`, {
         ...pkg,
         status: newStatus,
         is_active: newIsActive
       })
 
-      // Optimistically update the local list immediately for better UX
-      const updatedPkg = response.data?.data
-      if (updatedPkg) {
-        const index = packages.value.findIndex(p => p.id === updatedPkg.id)
-        if (index !== -1) {
-          packages.value.splice(index, 1, { ...packages.value[index], ...updatedPkg })
-        }
-      }
+      // Purely event-driven - WebSocket events will handle the UI update automatically
     } catch (err) {
       console.error('toggleStatus error:', err.message, err.response?.data)
       throw err
@@ -237,25 +221,49 @@ export function usePackages() {
   const handlePackageCreated = (event) => {
     const pkg = event.detail?.package || event.detail
     if (!pkg?.id) return
+    
+    console.log('[Packages] Received package-created event:', pkg.name)
+    
     const exists = packages.value.some(p => p.id === pkg.id)
     if (!exists) {
       packages.value.unshift(pkg)
+      console.log('[Packages] Added via event:', pkg.name)
+    } else {
+      console.log('[Packages] Package already exists, ignoring:', pkg.name)
     }
   }
 
   const handlePackageUpdated = (event) => {
     const pkg = event.detail?.package || event.detail
     if (!pkg?.id) return
+    
+    console.log('[Packages] Received package-updated event:', pkg.name)
+    
     const index = packages.value.findIndex(p => p.id === pkg.id)
     if (index !== -1) {
       packages.value.splice(index, 1, { ...packages.value[index], ...pkg })
+      console.log('[Packages] Updated via event:', pkg.name)
+    } else {
+      console.log('[Packages] Package not found for update, adding:', pkg.name)
+      packages.value.unshift(pkg)
     }
   }
 
   const handlePackageDeleted = (event) => {
-    const id = event.detail?.package?.id || event.detail?.id
+    const id = event.detail?.package?.id || event.detail?.id || event.detail?.packageId
     if (!id) return
+    
+    const pkgName = event.detail?.package?.name || event.detail?.name || `ID ${id}`
+    console.log('[Packages] Received package-deleted event:', pkgName)
+    
+    const originalLength = packages.value.length
     packages.value = packages.value.filter(p => p.id !== id)
+    
+    if (packages.value.length < originalLength) {
+      console.log('[Packages] Deleted via event:', pkgName)
+    } else {
+      console.log('[Packages] Package not found for deletion:', pkgName)
+    }
   }
 
   const setupWebSocketListeners = () => {

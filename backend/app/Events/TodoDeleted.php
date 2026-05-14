@@ -28,11 +28,6 @@ class TodoDeleted implements ShouldBroadcast, ShouldQueue
         $this->userId = $userId;
         $this->tenantId = $tenantId;
         
-        \Log::info("📡 TodoDeleted event constructed", [
-            'todo_id' => $todoId,
-            'user_id' => $userId,
-            'tenant_id' => $tenantId
-        ]);
     }
 
     public function broadcastOn(): array

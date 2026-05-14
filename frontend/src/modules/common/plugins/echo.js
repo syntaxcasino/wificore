@@ -3,6 +3,8 @@ import Echo from 'laravel-echo';
 import Pusher from 'pusher-js';
 
 const IS_DEV = import.meta.env.DEV;
+const authCooldownUntil = new Map();
+const AUTH_COOLDOWN_MS = 5000;
 
 // Helper functions for authentication
 export const getAuthToken = () => {
@@ -67,14 +69,26 @@ const createEchoConfig = () => {
       
       return {
         authorize: (socketId, callback) => {
+          const now = Date.now();
+          const cooldownUntil = authCooldownUntil.get(channel.name) || 0;
+          if (cooldownUntil > now) {
+            callback(true, new Error('Auth cooldown active'));
+            return;
+          }
+
+          const authToken = getAuthToken();
+          if (!authToken) {
+            authCooldownUntil.set(channel.name, now + AUTH_COOLDOWN_MS);
+            callback(true, new Error('Missing auth token'));
+            return;
+          }
+
           const headers = {
             'X-Requested-With': 'XMLHttpRequest',
             'X-CSRF-TOKEN': getCSRFToken(),
             'Accept': 'application/json',
             'Content-Type': 'application/json',
           };
-          
-          const authToken = getAuthToken();
           if (authToken) {
             headers['Authorization'] = `Bearer ${authToken}`;
           }
@@ -104,6 +118,7 @@ const createEchoConfig = () => {
             callback(false, data);
           })
           .catch(error => {
+            authCooldownUntil.set(channel.name, Date.now() + AUTH_COOLDOWN_MS);
             console.error('🔴 Channel auth error:', { channel: channel.name, error: error.message });
             callback(true, error);
           });
@@ -260,4 +275,3 @@ if (typeof document !== 'undefined') {
 
 window.Echo = echoInstance;
 export default echoInstance;
-

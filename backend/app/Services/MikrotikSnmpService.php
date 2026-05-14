@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Router;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 class MikrotikSnmpService
@@ -76,14 +77,7 @@ class MikrotikSnmpService
                 'source' => 'snmp',
             ];
         } catch (\Exception $e) {
-            Log::warning('SNMP live data fetch failed', [
-                'router_id' => $router->id,
-                'ip' => $ip,
-                'snmp_enabled' => $router->snmp_enabled,
-                'snmp_version' => $router->snmp_version,
-                'snmp_port' => (int) env('MIKROTIK_SNMP_PORT', 161),
-                'error' => $e->getMessage(),
-            ]);
+            $this->logFailureOnce($router, $ip, $e);
 
             throw $e;
         }
@@ -210,5 +204,25 @@ class MikrotikSnmpService
         }
 
         return $result;
+    }
+
+    private function logFailureOnce(Router $router, string $ip, \Throwable $e): void
+    {
+        $cacheKey = sprintf('mikrotik_snmp_live_data_failed:%s:%s:%s', (string) $router->id, $ip, (string) ($router->snmp_version ?? '2c'));
+        $context = [
+            'router_id' => $router->id,
+            'ip' => $ip,
+            'snmp_enabled' => $router->snmp_enabled,
+            'snmp_version' => $router->snmp_version,
+            'snmp_port' => (int) config('mikrotik.snmp_port', 161),
+            'error' => $e->getMessage(),
+        ];
+
+        if (Cache::add($cacheKey, true, now()->addMinutes(5))) {
+            Log::warning('SNMP live data fetch failed', $context);
+            return;
+        }
+
+        Log::debug('SNMP live data fetch failed', $context);
     }
 }

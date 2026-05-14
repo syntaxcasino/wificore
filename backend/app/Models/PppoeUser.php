@@ -9,6 +9,7 @@ use App\Traits\HasUuid;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class PppoeUser extends Model
 {
@@ -72,14 +73,48 @@ class PppoeUser extends Model
     /**
      * Boot the model.
      * Automatically ensure radius_user_schema_mapping entry exists on save.
+     *
+     * OPTIMIZED: Uses request-level cache to prevent duplicate queries when
+     * controller already handled schema mapping and RADIUS sync.
+     * CRITICAL: Invalidates portal cache when user data changes to prevent stale data.
      */
     protected static function boot()
     {
         parent::boot();
 
         static::saved(function ($pppoeUser) {
+            // CRITICAL: Invalidate portal cache when critical fields change
+            // This ensures PPPoE portal never serves stale data
+            $criticalFields = ['balance', 'expires_at', 'status', 'payment_status', 'amount_due', 'amount_paid', 'password', 'portal_password', 'package_id'];
+            if ($pppoeUser->wasChanged($criticalFields)) {
+                \Cache::forget('pppoe_portal_dashboard:' . $pppoeUser->id);
+                \Cache::forget('pppoe_portal_payments:' . $pppoeUser->id);
+                \Cache::forget('pppoe_portal_radius:' . $pppoeUser->username);
+                
+                // Bust session history cache for ALL pages/cursors by incrementing version key.
+                // Individual cursor-based keys cannot be enumerated, so we use a version token
+                // that the controller includes in every session cache key.
+                \Cache::increment('pppoe_sessions_v:' . $pppoeUser->id);
+                
+                // CRITICAL: Invalidate portal login user lookup cache to prevent stale authentication
+                // The login cache uses md5 of account_number or username as key
+                if ($pppoeUser->wasChanged(['password', 'portal_password', 'status', 'is_active'])) {
+                    \Cache::forget('portal_login_user:' . md5($pppoeUser->account_number));
+                    \Cache::forget('portal_login_user:' . md5($pppoeUser->username));
+                }
+            }
+
+            // OPTIMIZATION: Skip if already processed this request (controller handled it)
+            $cacheKey = "pppoe_mapping_synced_{$pppoeUser->id}";
+            if (app()->has($cacheKey)) {
+                return;
+            }
+
             static::ensureRadiusSchemaMapping($pppoeUser);
             static::syncRadiusForPaymentStatus($pppoeUser);
+
+            // Mark as synced for this request
+            app()->instance($cacheKey, true);
         });
     }
 
@@ -100,15 +135,16 @@ class PppoeUser extends Model
             }
 
             DB::statement("
-                INSERT INTO public.radius_user_schema_mapping (username, schema_name, tenant_id, user_role, is_active, created_at, updated_at)
-                VALUES (?, ?, ?::uuid, 'pppoe', true, NOW(), NOW())
+                INSERT INTO public.radius_user_schema_mapping (username, pppoe_user_id, schema_name, tenant_id, user_role, is_active, created_at, updated_at)
+                VALUES (?, ?::uuid, ?, ?::uuid, 'pppoe', true, NOW(), NOW())
                 ON CONFLICT (username) DO UPDATE SET
+                    pppoe_user_id = EXCLUDED.pppoe_user_id,
                     schema_name = EXCLUDED.schema_name,
                     tenant_id = EXCLUDED.tenant_id,
                     user_role = EXCLUDED.user_role,
                     is_active = true,
                     updated_at = NOW()
-            ", [$pppoeUser->username, $tenant->schema_name, $tenant->id]);
+            ", [strtolower(trim($pppoeUser->username)), $pppoeUser->id, $tenant->schema_name, $tenant->id]);
 
             Log::info('RADIUS schema mapping ensured via model event', [
                 'username' => $pppoeUser->username,
@@ -268,16 +304,26 @@ class PppoeUser extends Model
     }
 
     /**
-     * Create a portal authentication token
-     * Token format: base64(user_id|timestamp|signature)
-     * Signature is HMAC-SHA256 using the portal_password
+     * Create a portal authentication token.
+     *
+     * Token v2 format: base64(user_id|tenant_id|timestamp|signature)
+     * Signature payload: user_id|tenant_id|timestamp (HMAC-SHA256)
+     * using portal_password (or legacy password fallback).
      */
-    public function createPortalToken(): string
+    public function createPortalToken(?string $tenantIdOverride = null): string
     {
         $timestamp = time();
-        $payload = $this->id . '|' . $timestamp;
-        $signature = hash_hmac('sha256', $payload, $this->portal_password ?? '');
+        $tenantId = (string) ($tenantIdOverride ?? $this->tenant_id ?? '');
+        $payload = $this->id . '|' . $tenantId . '|' . $timestamp;
+        // Backward-compatible secret for tenants that may not yet have portal_password populated.
+        $secret = $this->portal_password ?: $this->password ?: $this->account_number ?: '';
+        $signature = hash_hmac('sha256', $payload, $secret);
         return base64_encode($payload . '|' . $signature);
+    }
+
+    public function setPortalPassword(string $plainPassword): void
+    {
+        $this->portal_password = Hash::make($plainPassword);
     }
 
     /**
@@ -375,14 +421,24 @@ class PppoeUser extends Model
         $typeChar = strtoupper(substr($serviceType, 0, 1));
         $scope = $prefix . $typeChar;
 
-        // Use withTrashed() to include soft-deleted users and prevent re-use of numbers
-        $maxAccountNumber = static::withTrashed()
+        // OPTIMIZED: Use a simpler, index-friendly query
+        // The pattern 'TRDP%' can use a b-tree index on account_number
+        $maxNumber = static::withTrashed()
             ->where('account_number', 'like', $scope . '%')
-            ->selectRaw("MAX(CAST(SUBSTRING(account_number FROM '[0-9]+$') AS INTEGER)) as max_num")
-            ->value('max_num');
+            ->orderBy('account_number', 'desc')
+            ->value('account_number');
 
-        $nextNumber = ($maxAccountNumber ?? 0) + 1;
+        // Extract numeric portion from the end
+        $nextNumber = 1;
+        if ($maxNumber && preg_match('/(\d+)$/', $maxNumber, $matches)) {
+            $nextNumber = (int) $matches[1] + 1;
+        }
 
-        return $scope . str_pad($nextNumber, 5, '0', STR_PAD_LEFT);
+        // Handle overflow (99999 -> 00001, though this is extremely rare)
+        if ($nextNumber > 99999) {
+            $nextNumber = 1;
+        }
+
+        return $scope . str_pad((string) $nextNumber, 5, '0', STR_PAD_LEFT);
     }
 }

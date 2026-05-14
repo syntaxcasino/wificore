@@ -55,11 +55,6 @@ class TodoUpdated implements ShouldBroadcast, ShouldQueue
             'updated_at' => $todo->updated_at->toIso8601String(),
         ];
         
-        \Log::info("📡 TodoUpdated event constructed", [
-            'todo_id' => $todo->id,
-            'tenant_id' => $this->tenantId,
-            'changes' => array_keys($changes)
-        ]);
     }
 
     public function broadcastOn(): array

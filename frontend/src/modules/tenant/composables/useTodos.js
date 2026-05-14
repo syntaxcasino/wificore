@@ -52,11 +52,7 @@ export function useTodos() {
       const params = new URLSearchParams(filters).toString()
       const url = params ? `/todos?${params}` : '/todos'
       const response = await axios.get(url)
-      
-      // Debug logging to understand response structure
-      console.log('fetchTodos response:', response)
-      console.log('response.data:', response?.data)
-      
+
       // Handle various response structures safely
       let todoData = []
       if (response?.data) {
@@ -127,86 +123,75 @@ export function useTodos() {
   }
 
   const createTodo = async (todoData) => {
-    loading.value = true
     error.value = null
-    
+
     try {
       const response = await axios.post('/todos', todoData)
-      
+
       // Handle both wrapped {todo: ...} and direct response
       const newTodo = response.data?.todo || response.data
-      
-      // Optimistically add to local state immediately for better UX
+
+      // Add to local state — WS event will also arrive but duplicate guard handles it
       if (newTodo) {
         todos.value.unshift(newTodo)
         updateStats()
       }
-      
+
       toast.success('Todo created successfully')
       return newTodo
-      
+
     } catch (err) {
       const errorMsg = err?.response?.data?.message || err?.response?.data?.error || err?.message || String(err) || 'Failed to create todo'
       error.value = errorMsg
       toast.error(error.value)
       throw err
-    } finally {
-      loading.value = false
     }
   }
 
   const updateTodo = async (todoId, updates) => {
-    loading.value = true
     error.value = null
-    
+
     try {
       const response = await axios.put(`/todos/${todoId}`, updates)
-      
+
       // Handle both wrapped {todo: ...} and direct response
       const updatedTodo = response.data?.todo || response.data
-      
-      // Optimistically update local state immediately for better UX
+
       if (updatedTodo) {
         const index = todos.value.findIndex(t => t.id === todoId)
         if (index !== -1) {
-          todos.value[index] = updatedTodo
+          todos.value.splice(index, 1, updatedTodo)
           updateStats()
         }
       }
-      
+
       toast.success('Todo updated successfully')
       return updatedTodo
-      
+
     } catch (err) {
       const errorMsg = err?.response?.data?.message || err?.response?.data?.error || err?.message || String(err) || 'Failed to update todo'
       error.value = errorMsg
       toast.error(error.value)
       throw err
-    } finally {
-      loading.value = false
     }
   }
 
   const deleteTodo = async (todoId) => {
-    loading.value = true
     error.value = null
-    
+
     try {
       await axios.delete(`/todos/${todoId}`)
-      
-      // Optimistically remove from local state immediately for better UX
+
       todos.value = todos.value.filter(t => t.id !== todoId)
       updateStats()
-      
+
       toast.success('Todo deleted successfully')
-      
+
     } catch (err) {
       const errorMsg = err?.response?.data?.message || err?.response?.data?.error || err?.message || String(err) || 'Failed to delete todo'
       error.value = errorMsg
       toast.error(error.value)
       throw err
-    } finally {
-      loading.value = false
     }
   }
 
@@ -220,7 +205,7 @@ export function useTodos() {
       // Update local state
       const index = todos.value.findIndex(t => t.id === todoId)
       if (index !== -1 && completedTodo) {
-        todos.value[index] = completedTodo
+        todos.value.splice(index, 1, completedTodo)
         updateStats()
       }
       
@@ -247,7 +232,7 @@ export function useTodos() {
       if (index !== -1) {
         const assignedTodo = response.data?.todo || response.data
         if (assignedTodo) {
-          todos.value[index] = assignedTodo
+          todos.value.splice(index, 1, assignedTodo)
         }
       }
       
@@ -322,9 +307,10 @@ export function useTodos() {
     if (!todoData) return
     const index = todos.value.findIndex(t => t.id === todoData.id)
     if (index !== -1) {
-      todos.value[index] = todoData
+      todos.value.splice(index, 1, todoData)
       updateStats()
     }
+    return todoData
   }
 
   const handleTodoDeleted = (event) => {

@@ -66,7 +66,7 @@ class ZeroConfigPPPoEGenerator
             throw new \RuntimeException('No valid PPPoE interfaces provided. Raw value: ' . json_encode($rawInterfaces));
         }
 
-        $radiusServer = config('radius.server_ip', config('services.radius.host', 'wificore-freeradius'));
+        $radiusServer = config('radius.vpn_server_ip', config('services.radius.host', '10.8.0.1'));
         $resolvedRadiusServer = $radiusServer;
         if (filter_var((string) $resolvedRadiusServer, FILTER_VALIDATE_IP) === false) {
             $resolvedRadiusServer = gethostbyname((string) $resolvedRadiusServer);

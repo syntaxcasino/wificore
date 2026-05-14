@@ -77,7 +77,7 @@ while true; do
 
   # Database is ready, generate config
   echo "✅ Database ready, generating Telegraf config..."
-  php artisan telegraf:generate-config \
+  php -d memory_limit=512M artisan telegraf:generate-config \
     --shard-index="${TELEGRAF_SHARD_INDEX:-0}" \
     --shard-count="${TELEGRAF_SHARD_COUNT:-1}" \
     --output-dir=/var/www/html/storage/app/telegraf/shards || true

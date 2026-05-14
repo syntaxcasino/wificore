@@ -56,7 +56,7 @@
 
 <script setup>
 import { computed } from 'vue'
-import * as LucideIcons from 'lucide-vue-next'
+import { resolveLucideIcon } from '@/modules/common/utils/lucideIconMap'
 
 const props = defineProps({
   title: {
@@ -69,6 +69,6 @@ const props = defineProps({
 })
 
 const iconComponent = computed(() => {
-  return props.icon ? LucideIcons[props.icon] : null
+  return props.icon ? resolveLucideIcon(props.icon, null) : null
 })
 </script>

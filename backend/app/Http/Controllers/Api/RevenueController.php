@@ -11,9 +11,20 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Cache;
 
 class RevenueController extends Controller
 {
+    private function bustStatsCache(): void
+    {
+        $tenantId = auth()->user()->tenant_id ?? 'global';
+        $start = now()->startOfMonth()->toDateString();
+        $end   = now()->endOfMonth()->toDateString();
+        Cache::forget("revenue_stats_{$tenantId}_{$start}_{$end}");
+        // Also bust the tenant dashboard which includes revenue figures
+        Cache::forget("tenant_{$tenantId}_dashboard_stats");
+    }
+
     /**
      * Display a listing of revenues
      */
@@ -101,6 +112,7 @@ class RevenueController extends Controller
 
         // Dispatch event for real-time updates
         event(new RevenueCreated($revenue, auth()->user()->tenant_id ?? null));
+        $this->bustStatsCache();
 
         Log::info('Revenue created', [
             'revenue_id' => $revenue->id,
@@ -169,6 +181,7 @@ class RevenueController extends Controller
         // Dispatch event for real-time updates
         $changes = array_diff_assoc($validator->validated(), $originalData);
         event(new RevenueUpdated($revenue, $changes, auth()->user()->tenant_id ?? null));
+        $this->bustStatsCache();
 
         Log::info('Revenue updated', [
             'revenue_id' => $revenue->id,
@@ -203,6 +216,7 @@ class RevenueController extends Controller
 
         // Dispatch event for real-time updates
         event(new RevenueDeleted($revenue->id, $revenueData, auth()->user()->tenant_id ?? null));
+        $this->bustStatsCache();
 
         Log::info('Revenue deleted', [
             'revenue_id' => $revenue->id,
@@ -232,6 +246,7 @@ class RevenueController extends Controller
         $revenue->confirm();
 
         event(new RevenueUpdated($revenue, ['status' => 'confirmed'], auth()->user()->tenant_id ?? null));
+        $this->bustStatsCache();
 
         Log::info('Revenue confirmed', [
             'revenue_id' => $revenue->id,
@@ -277,6 +292,7 @@ class RevenueController extends Controller
         }
 
         event(new RevenueUpdated($revenue, ['status' => 'cancelled'], auth()->user()->tenant_id ?? null));
+        $this->bustStatsCache();
 
         Log::info('Revenue cancelled', [
             'revenue_id' => $revenue->id,
@@ -296,28 +312,42 @@ class RevenueController extends Controller
      */
     public function statistics(Request $request): JsonResponse
     {
-        $startDate = $request->get('start_date', now()->startOfMonth());
-        $endDate = $request->get('end_date', now()->endOfMonth());
+        $startDate = $request->get('start_date', now()->startOfMonth()->toDateString());
+        $endDate   = $request->get('end_date',   now()->endOfMonth()->toDateString());
+        $tenantId  = auth()->user()->tenant_id ?? 'global';
+        $cacheKey  = "revenue_stats_{$tenantId}_{$startDate}_{$endDate}";
 
-        $stats = [
-            'total_revenues' => Revenue::whereBetween('revenue_date', [$startDate, $endDate])->count(),
-            'total_amount' => Revenue::where('status', 'confirmed')->whereBetween('revenue_date', [$startDate, $endDate])->sum('amount'),
-            'by_status' => [
-                'pending' => Revenue::where('status', 'pending')->whereBetween('revenue_date', [$startDate, $endDate])->sum('amount'),
-                'confirmed' => Revenue::where('status', 'confirmed')->whereBetween('revenue_date', [$startDate, $endDate])->sum('amount'),
-                'cancelled' => Revenue::where('status', 'cancelled')->whereBetween('revenue_date', [$startDate, $endDate])->sum('amount'),
-            ],
-            'by_source' => Revenue::selectRaw('source, SUM(amount) as total')
-                ->where('status', 'confirmed')
-                ->whereBetween('revenue_date', [$startDate, $endDate])
-                ->groupBy('source')
-                ->get(),
-            'by_payment_method' => Revenue::selectRaw('payment_method, COUNT(*) as count, SUM(amount) as total')
-                ->where('status', 'confirmed')
-                ->whereBetween('revenue_date', [$startDate, $endDate])
-                ->groupBy('payment_method')
-                ->get(),
-        ];
+        $stats = Cache::remember($cacheKey, 30, function () use ($startDate, $endDate) {
+            // Single aggregate query replaces 3 separate count/sum queries
+            $aggregate = Revenue::whereBetween('revenue_date', [$startDate, $endDate])
+                ->selectRaw("
+                    COUNT(*) as total_revenues,
+                    COALESCE(SUM(amount) FILTER (WHERE status = 'confirmed'), 0) as total_confirmed,
+                    COALESCE(SUM(amount) FILTER (WHERE status = 'pending'), 0)   as total_pending,
+                    COALESCE(SUM(amount) FILTER (WHERE status = 'cancelled'), 0) as total_cancelled
+                ")
+                ->first();
+
+            return [
+                'total_revenues' => (int)   ($aggregate->total_revenues ?? 0),
+                'total_amount'   => (float) ($aggregate->total_confirmed ?? 0),
+                'by_status' => [
+                    'pending'   => (float) ($aggregate->total_pending   ?? 0),
+                    'confirmed' => (float) ($aggregate->total_confirmed ?? 0),
+                    'cancelled' => (float) ($aggregate->total_cancelled ?? 0),
+                ],
+                'by_source' => Revenue::selectRaw('source, SUM(amount) as total')
+                    ->where('status', 'confirmed')
+                    ->whereBetween('revenue_date', [$startDate, $endDate])
+                    ->groupBy('source')
+                    ->get(),
+                'by_payment_method' => Revenue::selectRaw('payment_method, COUNT(*) as count, SUM(amount) as total')
+                    ->where('status', 'confirmed')
+                    ->whereBetween('revenue_date', [$startDate, $endDate])
+                    ->groupBy('payment_method')
+                    ->get(),
+            ];
+        });
 
         return response()->json([
             'success' => true,

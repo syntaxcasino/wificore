@@ -23,11 +23,11 @@ class TodoActivityCreated implements ShouldBroadcast, ShouldQueue
     public $todoId;
     public $tenantId;
 
-    public function __construct(TodoActivity $activity)
+    public function __construct(TodoActivity $activity, ?string $tenantId = null)
     {
         $this->todoId = $activity->todo_id;
-        $this->tenantId = $activity->todo->user?->tenant_id ?? tenant('id');
-        
+        $this->tenantId = $tenantId;
+
         $this->activityData = [
             'id' => $activity->id,
             'todo_id' => $activity->todo_id,
@@ -43,12 +43,6 @@ class TodoActivityCreated implements ShouldBroadcast, ShouldQueue
             ] : null,
             'created_at' => $activity->created_at->toIso8601String(),
         ];
-        
-        \Log::info("📡 TodoActivityCreated event constructed", [
-            'activity_id' => $activity->id,
-            'todo_id' => $this->todoId,
-            'action' => $activity->action
-        ]);
     }
 
     public function broadcastOn(): array

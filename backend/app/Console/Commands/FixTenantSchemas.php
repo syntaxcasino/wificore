@@ -44,7 +44,7 @@ class FixTenantSchemas extends Command
                 $oldSchemaName = $tenant->schema_name;
                 if (str_contains($oldSchemaName, '-')) {
                     // Generate new secure schema name
-                    $newSchemaName = TenantMigrationManager::generateSecureSchemaName($tenant->slug);
+                    $newSchemaName = TenantMigrationManager::generateSecureSchemaName($tenant->slug, (string) $tenant->id);
                     
                     $this->warn("  ❌ Invalid schema name: {$oldSchemaName}");
                     $this->info("  ✅ New schema name: {$newSchemaName}");

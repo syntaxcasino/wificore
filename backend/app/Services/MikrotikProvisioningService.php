@@ -1507,7 +1507,7 @@ SCRIPT;
                 $errorMessage = 'SSH authentication failed. Please check the router credentials.';
             }
             
-            throw new \Exception($errorMessage, $e->getCode(), $e);
+            throw new \Exception($errorMessage, (int) $e->getCode(), $e);
         } finally {
             try {
                 $provisionLock->release();

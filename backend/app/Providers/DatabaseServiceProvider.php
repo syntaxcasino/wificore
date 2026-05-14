@@ -57,23 +57,14 @@ class DatabaseServiceProvider extends ServiceProvider
      */
     protected function configureConnectionPool(): void
     {
-        // Set PDO attributes for persistent connections
-        DB::connection()->getPdo()->setAttribute(\PDO::ATTR_PERSISTENT, true);
-        
-        // Set statement timeout to prevent long-running queries
-        DB::statement("SET statement_timeout = '30s'");
-        
-        // Set idle_in_transaction_session_timeout
-        DB::statement("SET idle_in_transaction_session_timeout = '60s'");
-        
-        // Enable connection pooling at application level
-        DB::beforeExecuting(function ($query, $bindings, $connection) {
-            // Reuse connections when possible
-            if ($connection->transactionLevel() === 0) {
-                // Not in a transaction, safe to reuse connection
-                return true;
-            }
-        });
+        // Apply session-level settings directly via PDO->exec() rather than
+        // DB::statement(). DB::statement() calls recordsHaveBeenModified() which
+        // sets the sticky-write flag on the connection — permanently routing ALL
+        // subsequent reads to the write PDO for the entire request lifetime,
+        // bypassing the read replica even for pure SELECT queries.
+        $pdo = DB::connection()->getPdo();
+        $pdo->exec("SET statement_timeout = '30s'");
+        $pdo->exec("SET idle_in_transaction_session_timeout = '60s'");
     }
 
     /**
@@ -86,19 +77,12 @@ class DatabaseServiceProvider extends ServiceProvider
         if ((bool) env('DB_QUERY_LOG', false) && !app()->environment('production')) {
             DB::enableQueryLog();
         }
-        
-        // Set default fetch mode for better performance (PostgreSQL specific)
-        try {
-            $pdo = DB::connection()->getPdo();
-            $pdo->setAttribute(\PDO::ATTR_DEFAULT_FETCH_MODE, \PDO::FETCH_OBJ);
-        } catch (\Exception $e) {
-            // Silently fail if PDO is not available
-            Log::debug('Could not set PDO fetch mode: ' . $e->getMessage());
-        }
-        
-        // Optimize for read-heavy workloads
-        DB::statement("SET synchronous_commit = '" . env('DB_SESSION_SYNCHRONOUS_COMMIT', 'on') . "'"); // For better write performance
-        DB::statement("SET effective_cache_size = '1GB'");
-        DB::statement("SET random_page_cost = 1.1"); // For SSD storage
+
+        // Apply session-level optimizer hints directly via PDO->exec() to avoid
+        // triggering recordsHaveBeenModified() which would disable read replica routing.
+        $pdo = DB::connection()->getPdo();
+        $pdo->exec("SET synchronous_commit = '" . env('DB_SESSION_SYNCHRONOUS_COMMIT', 'on') . "'");
+        $pdo->exec("SET effective_cache_size = '1GB'");
+        $pdo->exec("SET random_page_cost = 1.1");
     }
 }

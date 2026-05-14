@@ -134,14 +134,15 @@ class SystemMetricsService
     public static function getDatabaseConnections(): array
     {
         try {
-            // Get PostgreSQL connection stats
-            $result = DB::select("
-                SELECT 
-                    count(*) as active_connections,
-                    (SELECT setting::int FROM pg_settings WHERE name = 'max_connections') as max_connections
-                FROM pg_stat_activity 
-                WHERE state = 'active'
-            ");
+            $result = Cache::remember('db_connections_stat', 10, function () {
+                return DB::select("
+                    SELECT 
+                        count(*) as active_connections,
+                        (SELECT setting::int FROM pg_settings WHERE name = 'max_connections') as max_connections
+                    FROM pg_stat_activity 
+                    WHERE state = 'active'
+                ");
+            });
             
             if (!empty($result)) {
                 $active = $result[0]->active_connections ?? 1;

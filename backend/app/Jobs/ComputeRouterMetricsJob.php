@@ -151,11 +151,21 @@ class ComputeRouterMetricsJob implements ShouldQueue
                                 ]);
                             }
                         }
-                    } catch (\Exception $e) {
-                        Log::error('Failed to compute metrics for time range', [
+                    } catch (\Throwable $e) {
+                        $isVmUnavailable = str_contains($e->getMessage(), 'Could not resolve host')
+                            || str_contains($e->getMessage(), 'Connection refused')
+                            || str_contains($e->getMessage(), 'timeout')
+                            || $e instanceof \Illuminate\Http\Client\ConnectionException;
+
+                        Log::log($isVmUnavailable ? 'warning' : 'error', 'Failed to compute metrics for time range', [
                             'time_range' => $timeRange,
+                            'tenant_id' => $this->tenantId,
                             'error' => $e->getMessage()
                         ]);
+
+                        if ($isVmUnavailable) {
+                            break;
+                        }
                     }
                 }
 

@@ -77,6 +77,18 @@
                 <i class="fas fa-ticket-alt mr-2"></i>
                 Voucher
               </button>
+              <button
+                @click="activeTab = 'paybill'"
+                :class="[
+                  'py-2 px-4 font-medium border-b-2 transition-colors',
+                  activeTab === 'paybill'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                ]"
+              >
+                <i class="fas fa-building-columns mr-2"></i>
+                Paybill
+              </button>
             </nav>
           </div>
 
@@ -144,7 +156,7 @@
           </div>
 
           <!-- Voucher Form -->
-          <div v-else class="space-y-4">
+          <div v-else-if="activeTab === 'voucher'" class="space-y-4">
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-2">
                 Voucher Code
@@ -170,6 +182,36 @@
             <p class="text-sm text-gray-500 text-center">
               Enter the voucher code from your prepaid card or receipt.
             </p>
+          </div>
+
+          <!-- Paybill Instructions -->
+          <div v-else class="space-y-4">
+            <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <h4 class="font-semibold text-blue-900 mb-2">Pay via M-Pesa Paybill</h4>
+              <p class="text-sm text-blue-800">
+                Use these details in M-Pesa: `Lipa na M-Pesa` -> `Pay Bill`.
+              </p>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div class="bg-gray-50 rounded-lg p-4">
+                <p class="text-sm text-gray-500">Business Number</p>
+                <p class="font-semibold text-gray-900">{{ paybillInfo.paybill_number || 'Not configured' }}</p>
+              </div>
+              <div class="bg-gray-50 rounded-lg p-4">
+                <p class="text-sm text-gray-500">Account Number</p>
+                <p class="font-semibold text-gray-900">{{ paybillInfo.account_number || user?.account_number }}</p>
+              </div>
+            </div>
+
+            <div class="bg-gray-50 rounded-lg p-4">
+              <p class="text-sm text-gray-500">Suggested Amount</p>
+              <p class="font-semibold text-gray-900">KES {{ paybillInfo.suggested_amount || 0 }}</p>
+            </div>
+
+            <ol class="list-decimal list-inside text-sm text-gray-700 space-y-1">
+              <li v-for="(step, idx) in paybillSteps" :key="idx">{{ step }}</li>
+            </ol>
           </div>
         </div>
       </div>
@@ -213,13 +255,21 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { usePppoePortal } from '../composables/usePppoePortal.js';
 
 const router = useRouter();
 const route = useRoute();
-const { user, isLoading, logout, initiateMpesaPayment, redeemVoucher } = usePppoePortal();
+const {
+  user,
+  isLoading,
+  logout,
+  initiateMpesaPayment,
+  redeemVoucher,
+  checkPaymentStatus,
+  fetchPaymentInstructions,
+} = usePppoePortal();
 
 const activeTab = ref('mpesa');
 const showSuccess = ref(false);
@@ -232,6 +282,12 @@ const mpesaForm = ref({
 
 const voucherForm = ref({
   code: '',
+});
+const paybillInfo = ref({
+  paybill_number: null,
+  account_number: null,
+  suggested_amount: 0,
+  instructions: [],
 });
 
 const statusText = computed(() => {
@@ -247,9 +303,11 @@ async function handleMpesaPayment() {
   try {
     const phone = '254' + mpesaForm.value.phone.replace(/\D/g, '');
     const result = await initiateMpesaPayment(phone, mpesaForm.value.amount);
-    
+
     // Poll for payment status
-    pollPaymentStatus(result.data.transaction_id);
+    if (result?.data?.transaction_id) {
+      pollPaymentStatus(result.data.transaction_id);
+    }
   } catch (err) {
     console.error('Payment failed:', err);
   }
@@ -272,10 +330,12 @@ async function pollPaymentStatus(transactionId) {
   const check = async () => {
     attempts++;
     try {
-      // This would check the payment status
-      // For now, show success after a delay
-      if (attempts >= 3) {
+      const status = await checkPaymentStatus(transactionId);
+      if (status?.status === 'completed') {
         showSuccess.value = true;
+        return;
+      }
+      if (attempts >= maxAttempts) {
         return;
       }
       setTimeout(check, 10000);
@@ -291,4 +351,29 @@ function continueToDashboard() {
   showSuccess.value = false;
   router.push('/portal/dashboard');
 }
+
+const paybillSteps = computed(() => {
+  if (Array.isArray(paybillInfo.value.instructions) && paybillInfo.value.instructions.length > 0) {
+    return paybillInfo.value.instructions;
+  }
+
+  return [
+    'Open M-Pesa on your phone',
+    'Select Lipa na M-Pesa, then Pay Bill',
+    `Enter Business Number ${paybillInfo.value.paybill_number || 'from your provider'}`,
+    `Enter Account Number ${paybillInfo.value.account_number || user.value?.account_number || ''}`,
+    'Enter amount and M-Pesa PIN to confirm',
+  ];
+});
+
+onMounted(async () => {
+  try {
+    const response = await fetchPaymentInstructions();
+    if (response?.paybill) {
+      paybillInfo.value = response.paybill;
+    }
+  } catch (err) {
+    console.error('Failed to load paybill instructions:', err);
+  }
+});
 </script>

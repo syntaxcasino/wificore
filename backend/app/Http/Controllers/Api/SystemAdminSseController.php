@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -59,33 +60,62 @@ class SystemAdminSseController extends \App\Http\Controllers\Controller
                 // Initial heartbeat
                 $this->sseWrite('heartbeat', $eventId++, ['ts' => now()->toIso8601String()]);
 
-                $redis = Redis::connection('default')->client();
+                try {
+                    $redis = Redis::connection('default')->client();
+                } catch (\Throwable $e) {
+                    $this->logRedisIssueOnce(
+                        'system-admin',
+                        'connection_failed',
+                        'System-admin SSE: Redis connection failed',
+                        [
+                            'user_id' => $user->id,
+                        ],
+                        $e
+                    );
 
-                $redis->subscribe($redisChannels, function ($message, $channel) use (
-                    &$eventId, $startTime, $redis
-                ) {
-                    if (time() - $startTime > self::MAX_DURATION) {
-                        $this->sseWrite('timeout', $eventId++, ['message' => 'Stream timeout — reconnecting']);
-                        $redis->close();
-                        return;
-                    }
+                    $this->sseWrite('error', $eventId++, ['message' => 'Redis connection failed']);
+                    return;
+                }
 
-                    if (connection_aborted()) {
-                        $redis->close();
-                        return;
-                    }
+                try {
+                    $redis->subscribe($redisChannels, function ($message, $channel) use (
+                        &$eventId, $startTime, $redis
+                    ) {
+                        if (time() - $startTime > self::MAX_DURATION) {
+                            $this->sseWrite('timeout', $eventId++, ['message' => 'Stream timeout — reconnecting']);
+                            $redis->close();
+                            return;
+                        }
 
-                    $payload = json_decode($message, true);
-                    if (!$payload) {
-                        return;
-                    }
+                        if (connection_aborted()) {
+                            $redis->close();
+                            return;
+                        }
 
-                    $this->sseWrite($payload['event'] ?? 'update', $eventId++, [
-                        'channel' => $payload['channel'] ?? '',
-                        'data'    => $payload['data']    ?? [],
-                        'ts'      => $payload['ts']      ?? now()->toIso8601String(),
-                    ]);
-                });
+                        $payload = json_decode($message, true);
+                        if (!$payload) {
+                            return;
+                        }
+
+                        $this->sseWrite($payload['event'] ?? 'update', $eventId++, [
+                            'channel' => $payload['channel'] ?? '',
+                            'data'    => $payload['data']    ?? [],
+                            'ts'      => $payload['ts']      ?? now()->toIso8601String(),
+                        ]);
+                    });
+                } catch (\Throwable $e) {
+                    $this->logRedisIssueOnce(
+                        'system-admin',
+                        'subscribe_error',
+                        'System-admin SSE: Redis subscribe error',
+                        [
+                            'user_id' => $user->id,
+                        ],
+                        $e
+                    );
+                    $this->sseWrite('error', $eventId++, ['message' => 'Stream error: ' . $e->getMessage()]);
+                    return;
+                }
 
                 Log::info('System-admin SSE stream closed', [
                     'user_id'  => $user->id,
@@ -125,5 +155,22 @@ class SystemAdminSseController extends \App\Http\Controllers\Controller
             ob_flush();
             flush();
         }, $status, ['Content-Type' => 'text/event-stream', 'Cache-Control' => 'no-cache']);
+    }
+
+    private function logRedisIssueOnce(string $scope, string $issue, string $message, array $context = [], ?\Throwable $e = null): void
+    {
+        $cacheKey = sprintf('system_sse_redis_issue:%s:%s', $scope, $issue);
+
+        if ($e !== null) {
+            $context['error'] = $e->getMessage();
+            $context['exception'] = get_class($e);
+        }
+
+        if (Cache::add($cacheKey, true, now()->addMinutes(5))) {
+            Log::warning($message, $context);
+            return;
+        }
+
+        Log::debug($message, $context);
     }
 }

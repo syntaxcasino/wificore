@@ -251,6 +251,11 @@
         class="flex items-center w-full px-4 py-2.5 text-sm text-slate-500 hover:bg-slate-50 transition-colors gap-3">
         <Ban class="w-4 h-4 flex-shrink-0" /> Revoke Access
       </button>
+      <div class="border-t border-slate-100 my-1"></div>
+      <button @click="handleDeleteUser(users.find(u => u.id === activeMenu))"
+        class="flex items-center w-full px-4 py-2.5 text-sm text-rose-700 hover:bg-rose-50 transition-colors gap-3">
+        <Trash2 class="w-4 h-4 flex-shrink-0" /> Delete User
+      </button>
     </div>
   </Teleport>
 
@@ -762,7 +767,7 @@ import { computed, defineComponent, h, nextTick, onMounted, onUnmounted, reactiv
 import {
   Eye, EyeOff, AlertCircle, ShieldOff, ShieldCheck, WifiOff, Unplug,
   UserCircle2, KeyRound, CreditCard, Pencil, History, Banknote, Clock,
-  RotateCcw, Wifi, ReceiptText, TrendingUp, MoreVertical, Ban
+  RotateCcw, Wifi, ReceiptText, TrendingUp, MoreVertical, Ban, Trash2
 } from 'lucide-vue-next'
 import axios from '@/modules/common/services/api/axios'
 import { useHotspot } from '@/modules/tenant/composables/useHotspot'
@@ -786,7 +791,7 @@ const {
   fetchUsers, fetchPackages,
   disconnectUser: disconnectUserAction,
   grantAccess, revokeAccess,
-  getUserDetails, updateUser,
+  getUserDetails, updateUser, deleteUser,
   subscribeToWebSocket, unsubscribeFromWebSocket,
 } = useHotspot()
 
@@ -1075,7 +1080,7 @@ const handleUpdateUser = async () => {
     panelUser.value = { ...panelUser.value, ...(updated || {}) }
     editExpanded.value = false
     resetEditErrors()
-    await fetchUsers()
+    // No need to call fetchUsers - WebSocket event will update the list
   } catch (err) {
     const message = err.response?.data?.message || 'Failed to update user'
     if (err.response?.status === 422) {
@@ -1102,7 +1107,7 @@ const handleToggleBlock = async (user) => {
     if (panelUser.value?.id === user.id) {
       panelUser.value = { ...panelUser.value, status: action === 'block' ? 'blocked' : 'active' }
     }
-    await fetchUsers()
+    // No need to call fetchUsers - WebSocket event will update the list
   } catch { /**/ }
 }
 
@@ -1113,6 +1118,26 @@ const handleDisconnect = async (user) => {
   if (!ok) return
   try {
     await disconnectUserAction(user.id)
+  } catch { /**/ }
+}
+
+const handleDeleteUser = async (user) => {
+  closeMenu()
+  if (!user) return
+  const confirmed = await confirmStore.open({
+    title: 'Delete User',
+    message: `Permanently delete ${user.username}? This action cannot be undone.`,
+    confirmText: 'Delete',
+    cancelText: 'Cancel',
+    variant: 'danger',
+  })
+  if (!confirmed) return
+  try {
+    await deleteUser(user.id)
+    // Close panel if open for this user
+    if (showUserPanel.value && panelUser.value?.id === user.id) {
+      showUserPanel.value = false
+    }
   } catch { /**/ }
 }
 

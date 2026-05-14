@@ -101,12 +101,12 @@ fi
 
 # Run Laravel optimizations (after .env is present)
 if [ -f /var/www/html/.env ]; then
-  echo "🧹 Clearing Laravel caches..."
-  su -s /bin/bash www-data -c "php artisan config:clear" || true
-  su -s /bin/bash www-data -c "php artisan cache:clear" || true
-  su -s /bin/bash www-data -c "php artisan route:clear" || true
-  su -s /bin/bash www-data -c "php artisan view:clear" || true
-  echo "✅ Cache cleared successfully"
+  echo "⚡ Caching Laravel config, routes and events..."
+  su -s /bin/bash www-data -c "php artisan config:cache" || true
+  su -s /bin/bash www-data -c "php artisan route:cache" || true
+  su -s /bin/bash www-data -c "php artisan event:cache" || true
+  su -s /bin/bash www-data -c "php artisan view:cache" || true
+  echo "✅ Laravel caches built successfully"
   echo ""
 fi
 
@@ -313,12 +313,7 @@ if [ "${AUTO_MIGRATE}" = "true" ] || [ "${AUTO_MIGRATE}" = "1" ]; then
     echo ""
   fi
 
-  # Optimize application (always, regardless of who ran migrations)
-  echo "⚡ Optimizing application..."
-  su -s /bin/sh www-data -c "php artisan config:cache" || true
-  su -s /bin/sh www-data -c "php artisan route:cache" || true
-  su -s /bin/sh www-data -c "php artisan view:cache" || true
-  echo "✅ Optimization completed"
+  echo "✅ Migrations completed, caches already built above"
   echo ""
 
   # Create storage link

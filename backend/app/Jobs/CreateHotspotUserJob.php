@@ -85,8 +85,8 @@ class CreateHotspotUserJob implements ShouldQueue
                     return;
                 }
 
-                // Generate credentials
-                $username    = $payment->phone_number;
+                // Generate credentials — normalize to lowercase for consistent RADIUS lookup
+                $username    = strtolower(trim((string) $payment->phone_number));
                 $password    = Str::random(12);
                 $periodStart = Carbon::parse($payment->payment_date ?? $payment->created_at ?? now());
                 $periodEnd   = PackageExpiryHelper::calculateExpiresAt($package, $periodStart);

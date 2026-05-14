@@ -3,13 +3,14 @@
 namespace App\Console\Commands;
 
 use App\Models\Tenant;
-use App\Services\TenantContext;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class GenerateTelegrafConfig extends Command
 {
+    private const CONNECTION = 'pgsql_direct';
+
     protected $signature = 'telegraf:generate-config
                             {--shard-index= : Shard index to generate (defaults to TELEGRAF_SHARD_INDEX; if omitted, generates all shards)}
                             {--shard-count= : Total number of shards to generate (defaults to TELEGRAF_SHARD_COUNT or 1)}
@@ -44,7 +45,8 @@ class GenerateTelegrafConfig extends Command
             @mkdir($outputDir, 0755, true);
         }
 
-        $tenants = Tenant::where('is_active', true)
+        $tenants = Tenant::on(self::CONNECTION)
+            ->where('is_active', true)
             ->whereNotNull('schema_name')
             ->get(['id', 'schema_name', 'name', 'schema_created']);
 
@@ -126,18 +128,17 @@ class GenerateTelegrafConfig extends Command
                 }
 
                 try {
-                    /** @var TenantContext $tenantContext */
-                    $tenantContext = app(TenantContext::class);
-                    $routers = DB::transaction(function () use ($tenantContext, $tenant, $routerColumns) {
-                        DB::connection()->recordsHaveBeenModified();
-                        return $tenantContext->runInTenantContext($tenant, function () use ($routerColumns) {
-                            return DB::table('routers')
-                                ->where(function ($query) {
-                                    $query->where('snmp_enabled', true)
-                                        ->orWhereNull('snmp_enabled');
-                                })
-                                ->get($routerColumns);
-                        });
+                    $connection = DB::connection(self::CONNECTION);
+                    $routers = $connection->transaction(function () use ($tenant, $routerColumns, $connection) {
+                        $schemaName = (string) $tenant->schema_name;
+                        $connection->statement("SET LOCAL search_path TO {$schemaName}, public");
+
+                        return $connection->table('routers')
+                            ->where(function ($query) {
+                                $query->where('snmp_enabled', true)
+                                    ->orWhereNull('snmp_enabled');
+                            })
+                            ->get($routerColumns);
                     });
 
                     foreach ($routers as $router) {
@@ -421,7 +422,8 @@ class GenerateTelegrafConfig extends Command
 
     private function hasTableInSchema(string $schemaName, string $tableName): bool
     {
-        return DB::table('information_schema.tables')
+        return DB::connection(self::CONNECTION)
+            ->table('information_schema.tables')
             ->where('table_schema', $schemaName)
             ->where('table_name', $tableName)
             ->exists();
@@ -429,7 +431,8 @@ class GenerateTelegrafConfig extends Command
 
     private function hasColumnInSchema(string $schemaName, string $tableName, string $columnName): bool
     {
-        return DB::table('information_schema.columns')
+        return DB::connection(self::CONNECTION)
+            ->table('information_schema.columns')
             ->where('table_schema', $schemaName)
             ->where('table_name', $tableName)
             ->where('column_name', $columnName)

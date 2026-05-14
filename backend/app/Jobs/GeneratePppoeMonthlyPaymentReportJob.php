@@ -52,16 +52,23 @@ class GeneratePppoeMonthlyPaymentReportJob implements ShouldQueue
             $endOfMonth = now()->subMonthNoOverflow()->endOfMonth();
             $reportMonth = $startOfMonth->format('F Y');
 
-            $payments = PppoePayment::with('pppoeUser')
+            // OPTIMIZED: Use cursor() for memory efficiency and selective eager loading
+            $payments = PppoePayment::query()
+                ->with(['pppoeUser:id,username'])
                 ->completed()
+                ->select(['id', 'pppoe_user_id', 'account_number', 'amount', 'payment_method', 'transaction_id', 'payment_date', 'period_end'])
                 ->whereBetween('payment_date', [$startOfMonth, $endOfMonth])
                 ->orderBy('payment_date')
-                ->get();
+                ->cursor();
 
+            // OPTIMIZED: Calculate summary using aggregates instead of loading all
+            $paymentQuery = PppoePayment::completed()
+                ->whereBetween('payment_date', [$startOfMonth, $endOfMonth]);
+            
             $summary = [
-                'total_payments' => $payments->count(),
-                'total_amount' => (float) $payments->sum('amount'),
-                'paid_accounts' => $payments->pluck('pppoe_user_id')->filter()->unique()->count(),
+                'total_payments' => (clone $paymentQuery)->count(),
+                'total_amount' => (float) (clone $paymentQuery)->sum('amount'),
+                'paid_accounts' => (clone $paymentQuery)->distinct('pppoe_user_id')->count('pppoe_user_id'),
                 'unpaid_accounts' => PppoeUser::where('payment_status', '!=', 'paid')->count(),
             ];
 
@@ -69,6 +76,7 @@ class GeneratePppoeMonthlyPaymentReportJob implements ShouldQueue
                 'report_month,account_number,username,amount,payment_method,transaction_id,payment_date,period_end',
             ];
 
+            // OPTIMIZED: Cursor allows processing large datasets without loading all into memory
             foreach ($payments as $payment) {
                 $lines[] = implode(',', [
                     '"' . $reportMonth . '"',
@@ -85,7 +93,8 @@ class GeneratePppoeMonthlyPaymentReportJob implements ShouldQueue
             $relativePath = 'reports/pppoe/' . $this->tenantId . '/pppoe-payment-report-' . $startOfMonth->format('Y-m') . '.csv';
             Storage::disk('local')->put($relativePath, implode(PHP_EOL, $lines));
 
-            $tenant = Tenant::find($this->tenantId);
+            // OPTIMIZED: Select only email column
+            $tenant = Tenant::query()->select(['id', 'email'])->find($this->tenantId);
             if ($tenant?->email) {
                 Notification::route('mail', $tenant->email)
                     ->notify(new PppoeMonthlyPaymentReportNotification($reportMonth, $summary, storage_path('app/' . $relativePath)));

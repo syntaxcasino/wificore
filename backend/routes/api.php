@@ -5,6 +5,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use App\Http\Controllers\Api\PackageController;
 use App\Http\Controllers\Api\VoucherController;
@@ -78,13 +79,15 @@ Route::middleware(['auth:sanctum', 'user.active'])->post('/broadcasting/auth', f
     $channelName = $request->input('channel_name');
     
     // SECURITY: Log all channel authorization attempts for audit
-    Log::info('WebSocket channel auth attempt', [
-        'user_id' => $user?->id,
-        'tenant_id' => $user?->tenant_id,
-        'channel_name' => $channelName,
-        'socket_id' => $request->input('socket_id'),
-        'ip' => $request->ip(),
-    ]);
+    if (config('app.debug')) {
+        Log::debug('WebSocket channel auth attempt', [
+            'user_id' => $user?->id,
+            'tenant_id' => $user?->tenant_id,
+            'channel_name' => $channelName,
+            'socket_id' => $request->input('socket_id'),
+            'ip' => $request->ip(),
+        ]);
+    }
     
     // SECURITY: Explicit tenant verification for private/presence channels
     if ($channelName && (str_starts_with($channelName, 'private-tenant.') || str_starts_with($channelName, 'presence-tenant.'))) {
@@ -142,12 +145,13 @@ Route::middleware(['auth:sanctum', 'user.active'])->post('/broadcasting/auth', f
 // SOKETI WEBHOOKS - Server-side channel lifecycle notifications
 // =============================================================================
 Route::post('/soketi/webhook', function (Request $request) {
-    Log::debug('Soketi webhook received', [
-        'event_count' => is_array($request->input('events')) ? count($request->input('events')) : null,
-        'event_type' => $request->input('event_type'),
-        'ip' => $request->ip(),
-        'user_agent' => $request->userAgent(),
-    ]);
+    // Fast idempotency guard for duplicate webhook deliveries during reconnect bursts.
+    $fingerprint = hash('sha256', (string) $request->getContent());
+    $cacheKey = "soketi:webhook:{$fingerprint}";
+    if (Cache::has($cacheKey)) {
+        return response()->noContent();
+    }
+    Cache::put($cacheKey, 1, now()->addSeconds(10));
 
     return response()->noContent();
 })->name('api.soketi.webhook');
@@ -294,8 +298,8 @@ Route::prefix('pppoe-portal')->group(function () {
         ->middleware('throttle:10,1')
         ->name('api.pppoe-portal.login');
 
-    // Authenticated: requires PppoePortalAuth middleware
-    Route::middleware([\App\Http\Middleware\PppoePortalAuth::class])->group(function () {
+    // Authenticated: requires PppoePortalAuthOptimized middleware
+    Route::middleware([\App\Http\Middleware\PppoePortalAuthOptimized::class])->group(function () {
         Route::get('/dashboard', [PppoePortalController::class, 'dashboard'])
             ->name('api.pppoe-portal.dashboard');
         Route::get('/sessions/history', [PppoePortalController::class, 'sessionHistory'])
@@ -306,6 +310,9 @@ Route::prefix('pppoe-portal')->group(function () {
         Route::post('/payment/voucher', [PppoePortalController::class, 'redeemVoucher'])
             ->middleware('throttle:10,1')
             ->name('api.pppoe-portal.payment.voucher');
+        Route::get('/payment/instructions', [PppoePortalController::class, 'paymentInstructions'])
+            ->middleware('throttle:30,1')
+            ->name('api.pppoe-portal.payment.instructions');
         Route::get('/payment/status', [PppoePortalController::class, 'checkPaymentStatus'])
             ->middleware('throttle:30,1')
             ->name('api.pppoe-portal.payment.status');
@@ -731,7 +738,7 @@ Route::middleware(['auth:sanctum', 'role:admin', 'user.active', 'tenant.context'
         Route::get('/users/{id}', [PppoeUserController::class, 'show']);
         Route::post('/users', [PppoeUserController::class, 'store']);
         Route::put('/users/{id}', [PppoeUserController::class, 'update']);
-        // PPPoE users should not be deleted, only edited (soft delete via status change)
+        Route::delete('/users/{id}', [PppoeUserController::class, 'destroy']);
         Route::post('/users/{id}/reset-password', [PppoeUserController::class, 'resetPassword']);
         Route::post('/users/{id}/reset-portal-password', [PppoeUserController::class, 'resetPortalPassword']);
         Route::get('/users/{id}/password', [PppoeUserController::class, 'viewPassword']);
@@ -989,6 +996,24 @@ Route::middleware(['auth:sanctum', 'role:admin', 'user.active', 'tenant.context'
             
             return response()->json(['success' => true, 'users' => $users]);
         })->name('index');
+
+        // Billing/customer picker endpoint
+        Route::get('/customers', function (Request $request) {
+            $perPage = (int) ($request->integer('per_page') ?: 1000);
+            $perPage = max(1, min($perPage, 1000));
+
+            $customers = \App\Models\User::query()
+                ->select(['id', 'name', 'email', 'phone_number', 'role'])
+                ->whereIn('role', ['hotspot_user', 'pppoe_user'])
+                ->where('is_active', true)
+                ->orderBy('name')
+                ->paginate($perPage);
+
+            return response()->json([
+                'success' => true,
+                'customers' => $customers,
+            ]);
+        })->name('customers');
         
         // Get specific user
         Route::get('/{user}', function (\App\Models\User $user) {
@@ -996,7 +1021,7 @@ Route::middleware(['auth:sanctum', 'role:admin', 'user.active', 'tenant.context'
                 'success' => true,
                 'user' => $user->load(['activeSubscription', 'subscriptions', 'payments'])
             ]);
-        })->name('show');
+        })->whereUuid('user')->name('show');
         
         // Deactivate user
         Route::put('/{user}/deactivate', function (\App\Models\User $user) {
@@ -1008,7 +1033,7 @@ Route::middleware(['auth:sanctum', 'role:admin', 'user.active', 'tenant.context'
                 'success' => true,
                 'message' => 'User deactivated successfully'
             ]);
-        })->name('deactivate');
+        })->whereUuid('user')->name('deactivate');
         
         // Activate user
         Route::put('/{user}/activate', function (\App\Models\User $user) {
@@ -1019,7 +1044,7 @@ Route::middleware(['auth:sanctum', 'role:admin', 'user.active', 'tenant.context'
                 'success' => true,
                 'message' => 'User activated successfully'
             ]);
-        })->name('activate');
+        })->whereUuid('user')->name('activate');
         
         // Update user balance
         Route::post('/{user}/balance', function (Request $request, \App\Models\User $user) {
@@ -1046,7 +1071,7 @@ Route::middleware(['auth:sanctum', 'role:admin', 'user.active', 'tenant.context'
                 'message' => 'Balance updated successfully',
                 'new_balance' => $user->fresh()->account_balance
             ]);
-        })->name('balance');
+        })->whereUuid('user')->name('balance');
     });
     
     // -------------------------------------------------------------------------
@@ -1186,6 +1211,10 @@ Route::middleware(['auth:sanctum', 'role:admin', 'user.active', 'tenant.context'
             ->name('users.update');
         Route::patch('/users/{user}', [\App\Http\Controllers\Api\HotspotController::class, 'update'])
             ->name('users.update.patch');
+
+        // Delete hotspot user
+        Route::delete('/users/{user}', [\App\Http\Controllers\Api\HotspotController::class, 'destroy'])
+            ->name('users.destroy');
 
         // Disconnect hotspot user (queued job)
         Route::post('/users/{user}/disconnect', [\App\Http\Controllers\Api\HotspotController::class, 'disconnectUser'])

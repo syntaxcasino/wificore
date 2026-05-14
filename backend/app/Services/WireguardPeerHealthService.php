@@ -7,6 +7,7 @@ use App\Scopes\TenantScope;
 use App\Models\TenantVpnTunnel;
 use App\Models\VpnConfiguration;
 use App\Models\WireguardPeer;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -148,18 +149,20 @@ class WireguardPeerHealthService
                 $vpnConfigStatus = $this->resolveVpnConfigStatus($handshakeAt, $vpnConfig->status);
                 $routerVpnStatus = $this->resolveRouterVpnStatus($handshakeAt);
 
-                $wgPeer = WireguardPeer::updateOrCreate(
-                    ['public_key' => $peer['public_key']],
-                    [
-                        'router_id' => $vpnConfig->router_id,
-                        'peer_name' => $router?->name,
-                        'endpoint' => $peer['endpoint'],
-                        'allowed_ips' => $peer['allowed_ips'],
-                        'transfer_rx' => $peer['transfer_rx'],
-                        'transfer_tx' => $peer['transfer_tx'],
-                        'last_handshake' => $handshakeAt,
-                    ]
-                );
+                $wgPeer = $this->retryOnDeadlock(function () use ($peer, $vpnConfig, $router, $handshakeAt) {
+                    return WireguardPeer::updateOrCreate(
+                        ['public_key' => $peer['public_key']],
+                        [
+                            'router_id' => $vpnConfig->router_id,
+                            'peer_name' => $router?->name,
+                            'endpoint' => $peer['endpoint'],
+                            'allowed_ips' => $peer['allowed_ips'],
+                            'transfer_rx' => $peer['transfer_rx'],
+                            'transfer_tx' => $peer['transfer_tx'],
+                            'last_handshake' => $handshakeAt,
+                        ]
+                    );
+                });
 
                 Log::info('WireguardPeer updated', [
                     'peer_id' => $wgPeer->id,
@@ -168,12 +171,14 @@ class WireguardPeerHealthService
                     'was_recently_created' => $wgPeer->wasRecentlyCreated,
                 ]);
 
-                $vpnConfig->update([
-                    'last_handshake_at' => $handshakeAt,
-                    'rx_bytes' => $peer['transfer_rx'],
-                    'tx_bytes' => $peer['transfer_tx'],
-                    'status' => $vpnConfigStatus,
-                ]);
+                $this->retryOnDeadlock(function () use ($vpnConfig, $handshakeAt, $peer, $vpnConfigStatus) {
+                    $vpnConfig->update([
+                        'last_handshake_at' => $handshakeAt,
+                        'rx_bytes' => $peer['transfer_rx'],
+                        'tx_bytes' => $peer['transfer_tx'],
+                        'status' => $vpnConfigStatus,
+                    ]);
+                });
 
                 if ($router) {
                     // Mark router as online when WireGuard handshake is active
@@ -187,7 +192,9 @@ class WireguardPeerHealthService
                     if ($routerStatus === 'online') {
                         $updateData['last_seen'] = now();
                     }
-                    $router->update($updateData);
+                    $this->retryOnDeadlock(function () use ($router, $updateData) {
+                        $router->update($updateData);
+                    });
 
                     Log::info('Router status updated from WireGuard peer', [
                         'tenant_id' => $tenantId,
@@ -231,6 +238,27 @@ class WireguardPeerHealthService
         ]);
 
         return array_values($updatedRouters);
+    }
+
+    private function retryOnDeadlock(callable $callback, int $maxAttempts = 3): mixed
+    {
+        $attempt = 0;
+        beginning:
+        $attempt++;
+
+        try {
+            return $callback();
+        } catch (QueryException $e) {
+            $isDeadlock = str_contains((string) $e->getCode(), '40P01')
+                || str_contains(strtolower($e->getMessage()), 'deadlock');
+
+            if ($isDeadlock && $attempt < $maxAttempts) {
+                usleep(150000 * $attempt);
+                goto beginning;
+            }
+
+            throw $e;
+        }
     }
 
     /**

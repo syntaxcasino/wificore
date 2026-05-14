@@ -257,6 +257,8 @@ class FixSchemaMappings extends Command
      */
     private function ensureMapping(string $username, Tenant $tenant, string $userRole): string
     {
+        $username = strtolower(trim($username));
+
         try {
             // Check if schema mapping already exists
             $exists = DB::table('public.radius_user_schema_mapping')

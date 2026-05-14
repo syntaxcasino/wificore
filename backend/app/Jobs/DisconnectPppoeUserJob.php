@@ -53,7 +53,10 @@ class DisconnectPppoeUserJob implements ShouldQueue
             ]);
 
             try {
-                $user = PppoeUser::find($this->pppoeUserId);
+                // OPTIMIZED: Select only needed columns
+                $user = PppoeUser::query()
+                    ->select(['id', 'username', 'router_id'])
+                    ->find($this->pppoeUserId);
 
                 if (!$user) {
                     Log::warning('DisconnectPppoeUserJob: User not found', [
@@ -150,7 +153,10 @@ class DisconnectPppoeUserJob implements ShouldQueue
      */
     protected function disconnectFromRouter(PppoeUser $user): void
     {
-        $router = $user->router;
+        // OPTIMIZED: Select only needed columns
+        $router = Router::query()
+            ->select(['id', 'host', 'ssh_port', 'ssh_user', 'ssh_pass', 'ssh_private_key'])
+            ->find($user->router_id);
         
         if (!$router) {
             Log::warning('DisconnectPppoeUserJob: No router assigned', [

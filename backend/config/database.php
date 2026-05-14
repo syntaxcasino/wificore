@@ -2,6 +2,23 @@
 
 use Illuminate\Support\Str;
 
+$normalizeEnvNullable = static function (mixed $value): mixed {
+    if (! is_string($value)) {
+        return $value;
+    }
+
+    $trimmed = trim($value);
+
+    if ($trimmed === '' || strcasecmp($trimmed, 'null') === 0) {
+        return null;
+    }
+
+    return $value;
+};
+
+$redisUsername = $normalizeEnvNullable(env('REDIS_USERNAME'));
+$redisPassword = $normalizeEnvNullable(env('REDIS_PASSWORD'));
+
 return [
 
     /*
@@ -85,17 +102,18 @@ return [
         'pgsql' => [
             'driver' => 'pgsql',
             'url' => env('DB_URL'),
-            'host' => env('DB_HOST', '172.70.0.3'),
+            'host' => env('DB_HOST', 'wificore-pgbouncer'),
+            'sticky' => true,
             'read' => [
                 'host' => array_filter(
-                    explode(',', env('DB_READ_HOST', env('DB_HOST', '172.70.0.17'))),
+                    explode(',', env('DB_READ_HOST', env('DB_HOST', 'wificore-pgbouncer'))),
                     fn ($value) => $value !== ''
                 ),
                 'port' => env('DB_READ_PORT', env('DB_PORT', '6432')),
             ],
             'write' => [
                 'host' => array_filter(
-                    explode(',', env('DB_WRITE_HOST', env('DB_HOST', '172.70.0.3'))),
+                    explode(',', env('DB_WRITE_HOST', env('DB_HOST', 'wificore-pgbouncer'))),
                     fn ($value) => $value !== ''
                 ),
                 'port' => env('DB_WRITE_PORT', env('DB_PORT', '6432')),
@@ -112,8 +130,8 @@ return [
             
             // Connection pooling and performance optimization
             'options' => [
-                // Enable persistent connections for connection pooling
-                PDO::ATTR_PERSISTENT => env('DB_PERSISTENT', true),
+                // PgBouncer owns pooling; persistent PDO connections can keep stale sockets alive.
+                PDO::ATTR_PERSISTENT => env('DB_PERSISTENT', false),
                 
                 // Set connection timeout (P2 Security Fix)
                 PDO::ATTR_TIMEOUT => env('DB_TIMEOUT', 5),
@@ -145,6 +163,55 @@ return [
                 'idle_timeout' => env('DB_POOL_IDLE_TIMEOUT', 60),
                 'wait_timeout' => env('DB_POOL_WAIT_TIMEOUT', 30),
             ],
+        ],
+
+        'pgsql_direct' => [
+            'driver' => 'pgsql',
+            'url' => env('DB_DIRECT_URL'),
+            'host' => env('DB_DIRECT_HOST', env('DB_HOST', 'wificore-postgres')),
+            'port' => env('DB_DIRECT_PORT', '5432'),
+            'database' => env('DB_DATABASE', 'wifi_hotspot'),
+            'username' => env('DB_USERNAME', 'admin'),
+            'password' => env('DB_PASSWORD', 'secret'),
+            'charset' => env('DB_CHARSET', 'utf8'),
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'search_path' => 'public',
+            'sslmode' => 'prefer',
+            'options' => [
+                PDO::ATTR_PERSISTENT => false,
+                PDO::ATTR_TIMEOUT => env('DB_TIMEOUT', 5),
+                PDO::ATTR_EMULATE_PREPARES => false,
+                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                PDO::ATTR_AUTOCOMMIT => true,
+                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_OBJ,
+            ],
+            'statement_timeout' => env('DB_STATEMENT_TIMEOUT', 30000),
+            'lock_timeout' => env('DB_LOCK_TIMEOUT', 10000),
+        ],
+
+        'radius' => [
+            'driver' => 'pgsql',
+            'url' => env('RADIUS_DB_URL'),
+            'host' => env('RADIUS_DB_HOST', env('DB_HOST', 'wificore-pgbouncer')),
+            'port' => env('RADIUS_DB_PORT', env('DB_PORT', '6432')),
+            'database' => env('RADIUS_DB_DATABASE', env('DB_DATABASE', 'wifi_hotspot')),
+            'username' => env('RADIUS_DB_USERNAME', env('DB_USERNAME', 'admin')),
+            'password' => env('RADIUS_DB_PASSWORD', env('DB_PASSWORD', 'secret')),
+            'charset' => env('RADIUS_DB_CHARSET', 'utf8'),
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'search_path' => env('RADIUS_DB_SCHEMA', 'public'),
+            'sslmode' => env('RADIUS_DB_SSLMODE', 'prefer'),
+            'options' => [
+                PDO::ATTR_PERSISTENT => env('RADIUS_DB_PERSISTENT', false),
+                PDO::ATTR_TIMEOUT => env('RADIUS_DB_TIMEOUT', 3), // Fast timeout for portal responsiveness
+                PDO::ATTR_EMULATE_PREPARES => false,
+                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                PDO::ATTR_AUTOCOMMIT => true,
+                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_OBJ,
+            ],
+            'statement_timeout' => env('RADIUS_DB_STMT_TIMEOUT', 5000), // 5 seconds max per query
         ],
 
         'sqlsrv' => [
@@ -204,8 +271,8 @@ return [
         'default' => [
             'url' => env('REDIS_URL'),
             'host' => env('REDIS_HOST', '127.0.0.1'),
-            'username' => env('REDIS_USERNAME'),
-            'password' => env('REDIS_PASSWORD') ?: null,
+            'username' => $redisUsername,
+            'password' => $redisPassword,
             'port' => env('REDIS_PORT', '6379'),
             'database' => env('REDIS_DB', '0'),
         ],
@@ -213,8 +280,8 @@ return [
         'cache' => [
             'url' => env('REDIS_URL'),
             'host' => env('REDIS_HOST', '127.0.0.1'),
-            'username' => env('REDIS_USERNAME'),
-            'password' => env('REDIS_PASSWORD') ?: null,
+            'username' => $redisUsername,
+            'password' => $redisPassword,
             'port' => env('REDIS_PORT', '6379'),
             'database' => env('REDIS_CACHE_DB', '1'),
         ],

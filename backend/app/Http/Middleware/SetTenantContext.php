@@ -40,7 +40,10 @@ class SetTenantContext
             
             // Regular users: set tenant context
             if ($user->tenant_id) {
-                $tenant = Tenant::find($user->tenant_id);
+                $tenant = Tenant::select([
+                        'id', 'name', 'schema_name', 'schema_created',
+                        'is_active', 'suspended_at', 'suspension_reason', 'suspended_until',
+                    ])->find($user->tenant_id);
                 
                 if (!$tenant) {
                     return response()->json([

@@ -40,17 +40,18 @@ export function useInvoices() {
   const fetchInvoices = async () => {
     loading.value = true
     try {
-      const response = await axios.get('/billing/invoices')
-      const data = response.data?.invoices?.data || response.data?.invoices || response.data?.data || []
+      // Billing invoices API is not available in this deployment; map completed/pending payments.
+      const response = await axios.get('/payments', { params: { per_page: 200 } })
+      const data = response.data?.payments?.data || response.data?.payments || response.data?.data || []
       invoices.value = data.map(i => ({
         id: i.id,
-        invoice_number: i.invoice_number || `#${i.id}`,
-        customer_name: i.customer_name || i.customer?.name || 'Unknown',
-        customer_email: i.customer_email || i.customer?.email || '',
+        invoice_number: i.invoice_number || i.transaction_id || `#${i.id}`,
+        customer_name: i.customer_name || i.user?.name || i.username || 'Unknown',
+        customer_email: i.customer_email || i.user?.email || '',
         invoice_date: i.invoice_date || i.created_at,
-        due_date: i.due_date,
-        total_amount: Number(i.total_amount) || 0,
-        status: i.status || 'draft'
+        due_date: i.due_date || i.created_at,
+        total_amount: Number(i.total_amount ?? i.amount) || 0,
+        status: i.status === 'completed' ? 'paid' : (i.status === 'pending' ? 'sent' : (i.status || 'draft'))
       }))
     } catch (err) {
       console.error('fetchInvoices error:', err)
@@ -69,12 +70,7 @@ export function useInvoices() {
   }
 
   const markAsPaid = async (invoice) => {
-    try {
-      await axios.patch(`/billing/invoices/${invoice.id}`, { status: 'paid', paid_at: new Date().toISOString() })
-      await fetchInvoices()
-    } catch (err) {
-      showError(err.response?.data?.message || 'Failed to mark as paid')
-    }
+    showError('Mark-as-paid is unavailable: billing invoice API is not enabled in this deployment')
   }
 
   const resetForm = () => {
@@ -99,9 +95,7 @@ export function useInvoices() {
     }
     formSubmitting.value = true
     try {
-      await axios.post('/billing/invoices', { ...formData.value, total_amount: calculateTotal.value })
-      onSuccess?.()
-      await fetchInvoices()
+      formMessage.value = { type: 'error', text: 'Invoice creation is unavailable: billing invoice API is not enabled in this deployment' }
     } catch (err) {
       formMessage.value = { type: 'error', text: err.response?.data?.message || 'Failed to create invoice' }
     } finally {

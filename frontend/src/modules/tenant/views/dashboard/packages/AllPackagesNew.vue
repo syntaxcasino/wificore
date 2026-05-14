@@ -523,10 +523,14 @@ watch([filteredData, itemsPerPage], () => {
 onMounted(() => {
   fetchPackages()
   document.addEventListener('click', handleClickOutside)
+  
+  // Setup WebSocket listeners for real-time updates
+  setupWebSocketListeners()
 })
 
 onBeforeUnmount(() => {
   document.removeEventListener('click', handleClickOutside)
+  cleanupWebSocketListeners()
 })
 
 // SSE: event-driven package updates — useSSE auto-closes on onUnmounted
@@ -540,4 +544,29 @@ subscribeMany({
   PackageDeleted:      (data) => handlePackageDeletedEvent(data),
   PackageStatusChanged: (data) => handlePackageUpdatedEvent(data),
 })
+
+// WebSocket listeners for redundancy and real-time updates
+const handleWebSocketPackageCreated = (event) => {
+  handlePackageCreatedEvent(event.detail)
+}
+
+const handleWebSocketPackageUpdated = (event) => {
+  handlePackageUpdatedEvent(event.detail)
+}
+
+const handleWebSocketPackageDeleted = (event) => {
+  handlePackageDeletedEvent(event.detail)
+}
+
+const setupWebSocketListeners = () => {
+  window.addEventListener('package-created', handleWebSocketPackageCreated)
+  window.addEventListener('package-updated', handleWebSocketPackageUpdated)
+  window.addEventListener('package-deleted', handleWebSocketPackageDeleted)
+}
+
+const cleanupWebSocketListeners = () => {
+  window.removeEventListener('package-created', handleWebSocketPackageCreated)
+  window.removeEventListener('package-updated', handleWebSocketPackageUpdated)
+  window.removeEventListener('package-deleted', handleWebSocketPackageDeleted)
+}
 </script>

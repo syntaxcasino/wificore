@@ -277,14 +277,12 @@ const {
   error,
   users,
   fetchTodos,
-  fetchStatistics,
   createTodo,
   updateTodo,
   deleteTodo,
   markAsCompleted,
   markAsInProgress,
   assignTodo,
-  fetchTodo,
   searchTodos,
   fetchUsers,
   setupWebSocketListeners,
@@ -484,11 +482,6 @@ const handleStart = async (todo) => {
   closeMenu()
   try {
     await markAsInProgress(todo.id)
-    // If details overlay is open, refresh the selected todo
-    if (showDetailsOverlay.value && selectedTodo.value?.id === todo.id) {
-      selectedTodo.value = { ...selectedTodo.value, status: 'in_progress' }
-    }
-    // Real-time update via WebSocket - no fetchTodos() needed
   } catch (err) {
     console.error('Failed to start todo:', err)
   }
@@ -498,11 +491,6 @@ const handleComplete = async (todo) => {
   closeMenu()
   try { 
     await markAsCompleted(todo.id)
-    // If details overlay is open, refresh the selected todo
-    if (showDetailsOverlay.value && selectedTodo.value?.id === todo.id) {
-      selectedTodo.value = { ...selectedTodo.value, status: 'completed' }
-    }
-    // Real-time update via WebSocket - no fetchTodos() needed
   } catch (err) { 
     console.error('Failed to complete todo:', err) 
   }
@@ -531,11 +519,6 @@ const handleReopen = async (todo) => {
   closeMenu()
   try {
     await updateTodo(todo.id, { status: 'pending' })
-    // If details overlay is open, refresh the selected todo
-    if (showDetailsOverlay.value && selectedTodo.value?.id === todo.id) {
-      selectedTodo.value = { ...selectedTodo.value, status: 'pending' }
-    }
-    // Real-time update via WebSocket - no fetchTodos() needed
   } catch (err) {
     console.error('Failed to reopen todo:', err)
   }
@@ -545,21 +528,8 @@ const viewTodo = async (todo) => {
   closeMenu()
   selectedTodo.value = todo
   showDetailsOverlay.value = true
-  detailsLoading.value = true
+  detailsLoading.value = false
   detailsError.value = ''
-  
-  try {
-    // Fetch fresh todo details from API
-    const freshTodo = await fetchTodo(todo.id)
-    if (freshTodo) {
-      selectedTodo.value = freshTodo
-    }
-  } catch (err) {
-    detailsError.value = err.message || 'Failed to load todo details'
-    console.error('Failed to fetch todo details:', err)
-  } finally {
-    detailsLoading.value = false
-  }
 }
 
 const closeDetails = () => {
@@ -570,7 +540,7 @@ const closeDetails = () => {
 const openTransferModal = (todo) => {
   selectedTodo.value = todo
   showTransferModal.value = true
-  fetchUsers()
+  if (!users.value?.length) fetchUsers()
 }
 
 const closeTransferModal = () => {
@@ -593,17 +563,27 @@ const handleTransfer = async (userId) => {
   }
 }
 
+// Sync selectedTodo in the details overlay when a WS update arrives for it
+const syncSelectedTodoOnUpdate = (event) => {
+  const todoData = event.detail?.todo
+  if (!todoData || !showDetailsOverlay.value) return
+  if (selectedTodo.value?.id === todoData.id) {
+    selectedTodo.value = todoData
+  }
+}
+
 // Lifecycle
 onMounted(async () => {
   await fetchTodos()
-  await fetchStatistics()
   setupWebSocketListeners()
+  window.addEventListener('todo-updated', syncSelectedTodoOnUpdate)
   document.addEventListener('click', handleClickOutside)
   document.addEventListener('keydown', handleKeydown)
 })
 
 onUnmounted(() => {
   cleanupWebSocketListeners()
+  window.removeEventListener('todo-updated', syncSelectedTodoOnUpdate)
   document.removeEventListener('click', handleClickOutside)
   document.removeEventListener('keydown', handleKeydown)
 })

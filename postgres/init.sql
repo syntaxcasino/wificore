@@ -38,54 +38,32 @@ SECURITY DEFINER
 AS $$
 DECLARE
     v_schema VARCHAR;
-    v_count INTEGER;
     v_username VARCHAR;
 BEGIN
     v_username := LOWER(BTRIM(REGEXP_REPLACE(COALESCE(p_username, ''), '[[:cntrl:]]', '', 'g')));
 
-    RAISE NOTICE 'get_user_schema called for: %, normalized: %', p_username, v_username;
-
     -- Check if user is a system admin (in public schema) - case insensitive
     -- Guard: public.users may not exist yet before Laravel migrations run
-    IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'users') THEN
+    -- Use pg_class (faster than information_schema) for existence check
+    IF EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND c.relname = 'users') THEN
         SELECT 'public' INTO v_schema
         FROM public.users
-        WHERE LOWER(BTRIM(REGEXP_REPLACE(COALESCE(username, ''), '[[:cntrl:]]', '', 'g'))) = v_username
+        WHERE username = v_username
         AND role = 'system_admin'
         LIMIT 1;
     END IF;
-
-    RAISE NOTICE 'System admin check result: %', COALESCE(v_schema, 'NULL');
 
     IF v_schema IS NOT NULL THEN
         RETURN v_schema;
     END IF;
 
-    -- Count total mappings in table
-    SELECT COUNT(*) INTO v_count FROM public.radius_user_schema_mapping;
-    RAISE NOTICE 'Total mappings in radius_user_schema_mapping: %', v_count;
-
-    -- Count mappings for this user - case insensitive + trimmed
-    SELECT COUNT(*) INTO v_count
-    FROM public.radius_user_schema_mapping
-    WHERE LOWER(BTRIM(REGEXP_REPLACE(COALESCE(username, ''), '[[:cntrl:]]', '', 'g'))) = v_username;
-    RAISE NOTICE 'Mappings for user %: %', p_username, v_count;
-
-    -- Count active mappings for this user - case insensitive + trimmed
-    SELECT COUNT(*) INTO v_count
-    FROM public.radius_user_schema_mapping
-    WHERE LOWER(BTRIM(REGEXP_REPLACE(COALESCE(username, ''), '[[:cntrl:]]', '', 'g'))) = v_username
-      AND is_active = true;
-    RAISE NOTICE 'Active mappings for user %: %', p_username, v_count;
-
-    -- Get tenant schema from mapping table - case insensitive + trimmed
+    -- Get tenant schema from mapping table
+    -- v_username is already lowercased/trimmed; plain equality allows index usage
     SELECT schema_name INTO v_schema
     FROM public.radius_user_schema_mapping
-    WHERE LOWER(BTRIM(REGEXP_REPLACE(COALESCE(username, ''), '[[:cntrl:]]', '', 'g'))) = v_username
+    WHERE username = v_username
     AND is_active = true
     LIMIT 1;
-
-    RAISE NOTICE 'Final schema result: %', COALESCE(v_schema, 'NULL');
 
     -- Do not guess. Tenant users must exist in radius_user_schema_mapping.
     -- Return NULL when no mapping exists so RADIUS functions treat it as "user not found".
@@ -94,6 +72,19 @@ END;
 $$;
 
 COMMENT ON FUNCTION get_user_schema(VARCHAR) IS 'Returns the PostgreSQL schema name for a given username. Used by FreeRADIUS for dynamic schema lookup. Table created by Laravel migration.';
+
+-- Performance: Index for fast RADIUS username→schema lookups
+-- Created here as a safety net; Laravel migration should also create this.
+DO $$
+BEGIN
+    IF EXISTS (SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename = 'radius_user_schema_mapping') THEN
+        IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'radius_user_schema_mapping' AND indexname = 'idx_radius_mapping_username_active') THEN
+            CREATE INDEX idx_radius_mapping_username_active
+                ON public.radius_user_schema_mapping (username, is_active)
+                WHERE is_active = true;
+        END IF;
+    END IF;
+END $$;
 
 -- ============================================================================
 -- SECTION 3: FreeRADIUS Authorization Functions
@@ -111,25 +102,19 @@ DECLARE
     v_query TEXT;
     v_username VARCHAR;
 BEGIN
-    v_username := BTRIM(REGEXP_REPLACE(COALESCE(p_username, ''), '[[:cntrl:]]', '', 'g'));
+    -- Normalize to lowercase + trim (must match how usernames are stored and how get_user_schema normalizes)
+    v_username := LOWER(BTRIM(REGEXP_REPLACE(COALESCE(p_username, ''), '[[:cntrl:]]', '', 'g')));
 
     -- Get user's schema using the normalized username
     v_schema := public.get_user_schema(v_username);
 
-    RAISE NOTICE 'radius_authorize_check called for user: %, normalized: %, schema: %', p_username, v_username, COALESCE(v_schema, 'NULL');
-
     IF v_schema IS NULL OR v_schema = '' THEN
-        RAISE NOTICE 'No schema found for user: %', p_username;
         RETURN;
     END IF;
 
-    -- Case insensitive username match using normalized username
-    v_query := format('SELECT id::INTEGER, username::VARCHAR, attribute::VARCHAR, value::VARCHAR, op::VARCHAR FROM %I.radcheck WHERE LOWER(username) = LOWER($1) ORDER BY id', v_schema);
-    RAISE NOTICE 'Executing query: %', v_query;
+    v_query := format('SELECT id::INTEGER, username::VARCHAR, attribute::VARCHAR, value::VARCHAR, op::VARCHAR FROM %I.radcheck WHERE username = $1 ORDER BY id', v_schema);
 
     RETURN QUERY EXECUTE v_query USING v_username;
-
-    RAISE NOTICE 'Query completed for user: %', p_username;
 END;
 $$;
 
@@ -144,7 +129,7 @@ DECLARE
     v_query TEXT;
     v_username VARCHAR;
 BEGIN
-    v_username := BTRIM(REGEXP_REPLACE(COALESCE(p_username, ''), '[[:cntrl:]]', '', 'g'));
+    v_username := LOWER(BTRIM(REGEXP_REPLACE(COALESCE(p_username, ''), '[[:cntrl:]]', '', 'g')));
 
     v_schema := public.get_user_schema(v_username);
 
@@ -152,7 +137,7 @@ BEGIN
         RETURN;
     END IF;
 
-    v_query := format('SELECT id::INTEGER, username::VARCHAR, attribute::VARCHAR, value::VARCHAR, op::VARCHAR FROM %I.radreply WHERE LOWER(username) = LOWER($1) ORDER BY id', v_schema);
+    v_query := format('SELECT id::INTEGER, username::VARCHAR, attribute::VARCHAR, value::VARCHAR, op::VARCHAR FROM %I.radreply WHERE username = $1 ORDER BY id', v_schema);
     RETURN QUERY EXECUTE v_query USING v_username;
 END;
 $$;
@@ -172,7 +157,7 @@ DECLARE
     v_query TEXT;
     v_username VARCHAR;
 BEGIN
-    v_username := BTRIM(REGEXP_REPLACE(COALESCE(p_username, ''), '[[:cntrl:]]', '', 'g'));
+    v_username := LOWER(BTRIM(REGEXP_REPLACE(COALESCE(p_username, ''), '[[:cntrl:]]', '', 'g')));
     v_schema := public.get_user_schema(v_username);
 
     IF v_schema IS NULL OR v_schema = '' THEN
@@ -180,7 +165,7 @@ BEGIN
     END IF;
 
     v_query := format('INSERT INTO %I.radpostauth (username, pass, reply, authdate) VALUES ($1, $2, $3, NOW())', v_schema);
-    EXECUTE v_query USING v_username, COALESCE(p_pass, ''), COALESCE(p_reply, '');
+    EXECUTE v_query USING v_username, '**', COALESCE(p_reply, '');
 
     RETURN 1;
 END;
@@ -228,7 +213,7 @@ DECLARE
     v_schema VARCHAR;
     v_username VARCHAR;
 BEGIN
-    v_username := BTRIM(REGEXP_REPLACE(COALESCE(p_username, ''), '[[:cntrl:]]', '', 'g'));
+    v_username := LOWER(BTRIM(REGEXP_REPLACE(COALESCE(p_username, ''), '[[:cntrl:]]', '', 'g')));
     v_schema := public.get_user_schema(v_username);
 
     IF v_schema IS NULL OR v_schema = '' THEN
@@ -239,7 +224,7 @@ BEGIN
         UPDATE %I.radacct
         SET acctupdatetime = NOW(), acctsessiontime = $1, acctinputoctets = $2,
             acctoutputoctets = $3, framedipaddress = NULLIF($4, '''')::inet
-        WHERE acctuniqueid = $5 AND LOWER(username) = LOWER($6)
+        WHERE acctuniqueid = $5 AND username = $6
     ', v_schema)
     USING p_acct_session_time, p_acct_input_octets, p_acct_output_octets,
           p_framed_ip_address, p_acct_unique_session_id, v_username;
@@ -273,7 +258,7 @@ DECLARE
     v_schema VARCHAR;
     v_username VARCHAR;
 BEGIN
-    v_username := BTRIM(REGEXP_REPLACE(COALESCE(p_username, ''), '[[:cntrl:]]', '', 'g'));
+    v_username := LOWER(BTRIM(REGEXP_REPLACE(COALESCE(p_username, ''), '[[:cntrl:]]', '', 'g')));
     v_schema := public.get_user_schema(v_username);
 
     IF v_schema IS NULL OR v_schema = '' THEN
@@ -285,12 +270,12 @@ BEGIN
             acctsessionid, acctuniqueid, username, realm, nasipaddress, nasportid,
             acctstarttime, acctupdatetime, acctauthentic, connectinfo_start,
             calledstationid, callingstationid, servicetype, framedprotocol,
-            framedipaddress, acctstartdelay
+            framedipaddress
         )
         SELECT $1, $2, $3, NULLIF($4, ''''), NULLIF($5, '''')::inet, NULLIF($6, ''''),
                TO_TIMESTAMP($7), TO_TIMESTAMP($7), NULLIF($8, ''''), NULLIF($9, ''''),
                NULLIF($10, ''''), NULLIF($11, ''''), NULLIF($12, ''''), NULLIF($13, ''''),
-               NULLIF($14, '''')::inet, 0
+               NULLIF($14, '''')::inet
         WHERE NOT EXISTS (SELECT 1 FROM %I.radacct WHERE acctuniqueid = $2)
     ', v_schema, v_schema)
     USING p_acct_session_id, p_acct_unique_session_id, v_username, p_realm, p_nas_ip,
@@ -321,7 +306,7 @@ DECLARE
     v_schema VARCHAR;
     v_username VARCHAR;
 BEGIN
-    v_username := BTRIM(REGEXP_REPLACE(COALESCE(p_username, ''), '[[:cntrl:]]', '', 'g'));
+    v_username := LOWER(BTRIM(REGEXP_REPLACE(COALESCE(p_username, ''), '[[:cntrl:]]', '', 'g')));
     v_schema := public.get_user_schema(v_username);
 
     IF v_schema IS NULL OR v_schema = '' THEN
@@ -333,7 +318,7 @@ BEGIN
         SET acctstoptime = TO_TIMESTAMP($1), acctsessiontime = $2,
             acctinputoctets = $3, acctoutputoctets = $4,
             acctterminatecause = NULLIF($5, ''''), connectinfo_stop = NULLIF($6, '''')
-        WHERE acctuniqueid = $7 AND LOWER(username) = LOWER($8)
+        WHERE acctuniqueid = $7 AND username = $8
     ', v_schema)
     USING p_event_timestamp, p_acct_session_time, p_acct_input_octets, p_acct_output_octets,
           p_acct_terminate_cause, p_connect_info, p_acct_unique_session_id, v_username;
@@ -357,20 +342,12 @@ COMMENT ON FUNCTION radius_accounting_stop(VARCHAR, VARCHAR, INTEGER, INTEGER, B
 -- Grant SELECT on radius_user_schema_mapping to admin user (used by FreeRADIUS)
 DO $$
 BEGIN
-    -- Check if table exists before granting (it may not exist yet on first run)
     IF EXISTS (SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename = 'radius_user_schema_mapping') THEN
         GRANT SELECT ON public.radius_user_schema_mapping TO admin;
-        RAISE NOTICE 'Granted SELECT on radius_user_schema_mapping to admin';
-    ELSE
-        RAISE NOTICE 'Table radius_user_schema_mapping does not exist yet - will be created by Laravel migration';
     END IF;
-    
-    -- Grant SELECT on users table (needed for system admin check in get_user_schema)
+
     IF EXISTS (SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename = 'users') THEN
         GRANT SELECT ON public.users TO admin;
-        RAISE NOTICE 'Granted SELECT on users to admin';
-    ELSE
-        RAISE NOTICE 'Table users does not exist yet - will be created by Laravel migration';
     END IF;
 END $$;
 

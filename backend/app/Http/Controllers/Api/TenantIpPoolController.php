@@ -31,7 +31,13 @@ class TenantIpPoolController extends Controller
      */
     public function index(Request $request)
     {
-        $query = TenantIpPool::query();
+        $query = TenantIpPool::query()
+            ->select([
+                'id', 'tenant_id', 'service_type', 'pool_name', 'network_cidr',
+                'gateway_ip', 'range_start', 'range_end', 'dns_primary', 'dns_secondary',
+                'total_ips', 'allocated_ips', 'available_ips', 'status',
+                'created_at', 'updated_at',
+            ]);
 
         // System admin can filter by tenant_id
         if ($request->tenant_id && auth()->user()->role === User::ROLE_SYSTEM_ADMIN) {
@@ -39,15 +45,9 @@ class TenantIpPoolController extends Controller
         }
 
         $pools = $query
-            ->when($request->service_type, function ($q, $serviceType) {
-                $q->forService($serviceType);
-            })
-            ->when($request->status === 'active', function ($q) {
-                $q->active();
-            })
-            ->when($request->status === 'available', function ($q) {
-                $q->available();
-            })
+            ->when($request->service_type, fn ($q, $st) => $q->forService($st))
+            ->when($request->status === 'active', fn ($q) => $q->active())
+            ->when($request->status === 'available', fn ($q) => $q->available())
             ->with('tenant:id,name,slug')
             ->orderBy('service_type')
             ->orderBy('created_at')
@@ -73,17 +73,27 @@ class TenantIpPoolController extends Controller
                 $tenant = \App\Models\Tenant::findOrFail($request->tenant_id);
                 $stats = $this->ipamService->getPoolStats($tenant);
             } else {
-                // Aggregate stats across all tenants
-                $pools = TenantIpPool::withoutGlobalScopes()->get();
+                // Single aggregate query instead of hydrating all pool models
+                $agg = TenantIpPool::withoutGlobalScopes()
+                    ->selectRaw('
+                        COUNT(*) AS total_pools,
+                        COALESCE(SUM(total_ips), 0) AS total_ips,
+                        COALESCE(SUM(allocated_ips), 0) AS allocated_ips,
+                        COALESCE(SUM(available_ips), 0) AS available_ips
+                    ')
+                    ->first();
+
+                $totalIps = (int) $agg->total_ips;
+                $allocatedIps = (int) $agg->allocated_ips;
+
                 $stats = [
-                    'total_pools' => $pools->count(),
-                    'total_ips' => $pools->sum('total_ips'),
-                    'allocated_ips' => $pools->sum('allocated_ips'),
-                    'available_ips' => $pools->sum('available_ips'),
-                    'utilization_percentage' => $pools->sum('total_ips') > 0
-                        ? round(($pools->sum('allocated_ips') / $pools->sum('total_ips')) * 100, 2)
+                    'total_pools' => (int) $agg->total_pools,
+                    'total_ips' => $totalIps,
+                    'allocated_ips' => $allocatedIps,
+                    'available_ips' => (int) $agg->available_ips,
+                    'utilization_percentage' => $totalIps > 0
+                        ? round(($allocatedIps / $totalIps) * 100, 2)
                         : 0,
-                    'pools_by_tenant' => $pools->groupBy('tenant_id')->map(fn($tp) => $tp->count()),
                 ];
             }
         } else {
@@ -155,12 +165,17 @@ class TenantIpPoolController extends Controller
                 ], 422);
             }
 
+            $totalIps = $this->calculateTotalIps($validated['range_start'], $validated['range_end']);
+
             $pool = TenantIpPool::create(array_merge($validated, [
                 'tenant_id' => $tenantId,
-                'total_ips' => $this->calculateTotalIps($validated['range_start'], $validated['range_end']),
+                'total_ips' => $totalIps,
                 'allocated_ips' => 0,
-                'available_ips' => $this->calculateTotalIps($validated['range_start'], $validated['range_end']),
+                'available_ips' => $totalIps,
+                'status' => 'active',
             ]));
+
+            $pool->load('tenant:id,name,slug');
 
             return response()->json([
                 'success' => true,
@@ -194,12 +209,20 @@ class TenantIpPoolController extends Controller
         ])->validate();
 
         try {
+            // Map is_active boolean to status string
+            if (array_key_exists('is_active', $validated)) {
+                $validated['status'] = $validated['is_active'] ? 'active' : 'disabled';
+                unset($validated['is_active']);
+            }
+
             $pool->update($validated);
+            $pool->refresh();
+            $pool->load('tenant:id,name,slug');
 
             return response()->json([
                 'success' => true,
                 'message' => 'IP pool updated successfully',
-                'pool' => $pool->fresh(),
+                'pool' => $pool,
             ]);
 
         } catch (\Exception $e) {
@@ -231,11 +254,13 @@ class TenantIpPoolController extends Controller
         }
 
         try {
+            $poolId = $pool->id;
             $pool->delete();
 
             return response()->json([
                 'success' => true,
                 'message' => 'IP pool deleted successfully',
+                'deleted_id' => $poolId,
             ]);
 
         } catch (\Exception $e) {

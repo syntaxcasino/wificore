@@ -26,6 +26,27 @@ class DDoSProtection
     {
         $ip = $request->ip();
         $blockKey = "ddos:blocked:{$ip}";
+        $path = $request->path();
+
+        // ── Exempt system inter-communication and streaming ─────────────────────
+        $exemptPatterns = [
+            'api/webhooks/*',       // Webhooks from system services
+            'api/routers/stream/*', // Server-sent events for router status
+            '*/sse/*',              // Server-sent events
+            'api/broadcasting/*',   // WebSocket/SSE broadcasting
+            'api/telemetry/*',      // System telemetry/metrics
+        ];
+
+        foreach ($exemptPatterns as $pattern) {
+            if ($request->is($pattern)) {
+                Log::debug('DDoS: Skipping check for exempt path', [
+                    'ip' => $ip,
+                    'path' => $path,
+                    'pattern' => $pattern,
+                ]);
+                return $next($request);
+            }
+        }
 
         // ── Check existing block ────────────────────────────────────────────
         if (Cache::has($blockKey)) {
@@ -36,7 +57,7 @@ class DDoSProtection
 
             Log::warning('DDoS: Blocked IP attempted access', [
                 'ip' => $ip,
-                'path' => $request->path(),
+                'path' => $path,
                 'user_agent' => $request->userAgent(),
                 'retry_after' => $retryAfter,
             ]);

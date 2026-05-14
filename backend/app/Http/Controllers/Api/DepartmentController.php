@@ -11,15 +11,24 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Cache;
 
 class DepartmentController extends Controller
 {
+    private function bustStatsCache(): void
+    {
+        $tenantId = auth()->user()->tenant_id ?? 'global';
+        Cache::forget("dept_stats_{$tenantId}");
+    }
+
     /**
      * Display a listing of departments
+     * OPTIMIZED: Selective eager loading with specific columns
      */
     public function index(Request $request): JsonResponse
     {
-        $query = Department::with(['manager']);
+        $query = Department::with(['manager:id,first_name,last_name'])
+            ->select(['id', 'code', 'name', 'location', 'manager_id', 'status', 'is_active', 'created_at']);
 
         // Filter by status
         if ($request->has('status')) {
@@ -81,6 +90,7 @@ class DepartmentController extends Controller
 
         // Dispatch event for real-time updates
         event(new DepartmentCreated($department, auth()->user()->tenant_id ?? null));
+        $this->bustStatsCache();
 
         Log::info('Department created', [
             'department_id' => $department->id,
@@ -97,11 +107,12 @@ class DepartmentController extends Controller
 
     /**
      * Display the specified department
+     * OPTIMIZED: Selective eager loading with specific columns
      */
     public function show($id): JsonResponse
     {
         $department = Department::with([
-            'manager',
+            'manager:id,first_name,last_name,email',
             'employees' => fn($q) => $q->active()->limit(10),
             'positions' => fn($q) => $q->active()->limit(10)
         ])->findOrFail($id);
@@ -144,6 +155,7 @@ class DepartmentController extends Controller
         // Dispatch event for real-time updates
         $changes = array_diff_assoc($validator->validated(), $originalData);
         event(new DepartmentUpdated($department, $changes, auth()->user()->tenant_id ?? null));
+        $this->bustStatsCache();
 
         Log::info('Department updated', [
             'department_id' => $department->id,
@@ -178,6 +190,7 @@ class DepartmentController extends Controller
 
         // Dispatch event for real-time updates
         event(new DepartmentDeleted($department->id, $departmentData, auth()->user()->tenant_id ?? null));
+        $this->bustStatsCache();
 
         Log::info('Department deleted', [
             'department_id' => $department->id,
@@ -195,14 +208,27 @@ class DepartmentController extends Controller
      */
     public function statistics(): JsonResponse
     {
-        $stats = [
-            'total' => Department::count(),
-            'active' => Department::where('status', 'active')->count(),
-            'pending_approval' => Department::where('status', 'pending_approval')->count(),
-            'inactive' => Department::where('status', 'inactive')->count(),
-            'total_budget' => Department::where('is_active', true)->sum('budget'),
-            'avg_employees_per_dept' => Department::where('is_active', true)->avg('employee_count'),
-        ];
+        $tenantId = auth()->user()->tenant_id ?? 'global';
+
+        $stats = Cache::remember("dept_stats_{$tenantId}", 60, function () {
+            $agg = Department::selectRaw("
+                COUNT(*) as total,
+                COUNT(*) FILTER (WHERE status = 'active')           as active,
+                COUNT(*) FILTER (WHERE status = 'pending_approval') as pending_approval,
+                COUNT(*) FILTER (WHERE status = 'inactive')         as inactive,
+                COALESCE(SUM(budget)         FILTER (WHERE is_active = true), 0) as total_budget,
+                COALESCE(AVG(employee_count) FILTER (WHERE is_active = true), 0) as avg_employees
+            ")->first();
+
+            return [
+                'total'                 => (int)   ($agg->total            ?? 0),
+                'active'                => (int)   ($agg->active           ?? 0),
+                'pending_approval'      => (int)   ($agg->pending_approval ?? 0),
+                'inactive'              => (int)   ($agg->inactive         ?? 0),
+                'total_budget'          => (float) ($agg->total_budget     ?? 0),
+                'avg_employees_per_dept'=> (float) ($agg->avg_employees    ?? 0),
+            ];
+        });
 
         return response()->json([
             'success' => true,
@@ -230,6 +256,7 @@ class DepartmentController extends Controller
         ]);
 
         event(new DepartmentUpdated($department, ['status' => 'active'], auth()->user()->tenant_id ?? null));
+        $this->bustStatsCache();
 
         Log::info('Department approved', [
             'department_id' => $department->id,
