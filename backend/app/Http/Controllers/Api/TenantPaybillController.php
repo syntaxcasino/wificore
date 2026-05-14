@@ -375,7 +375,10 @@ class TenantPaybillController extends Controller
         $tenantId = $request->user()->tenant_id;
 
         try {
-            $user = PppoeUser::findOrFail($userId);
+            // OPTIMIZED: Select only needed columns
+            $user = PppoeUser::query()
+                ->select(['id', 'username', 'account_number'])
+                ->findOrFail($userId);
 
             $this->paybillService->setTenantId($tenantId);
             $this->paybillService->initialize();

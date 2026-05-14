@@ -36,8 +36,12 @@ class PackageDeleted implements ShouldBroadcast
     public function broadcastWith(): array
     {
         return [
-            'package_id' => $this->packageId,
-            'package_name' => $this->packageName,
+            'package' => [
+                'id' => $this->packageId,
+                'name' => $this->packageName,
+            ],
+            'id' => $this->packageId,
+            'packageId' => $this->packageId,
             'message' => "Package '{$this->packageName}' deleted",
             'timestamp' => now()->toIso8601String(),
         ];

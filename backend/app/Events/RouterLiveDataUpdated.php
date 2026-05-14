@@ -7,7 +7,6 @@ use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
-use Illuminate\Support\Facades\Log;
 
 class RouterLiveDataUpdated implements ShouldBroadcast
 {
@@ -17,14 +16,7 @@ class RouterLiveDataUpdated implements ShouldBroadcast
         public string $tenantId,
         public string $routerId,
         public array $liveData
-    ) {
-        // Log when event is created
-        Log::info('RouterLiveDataUpdated event created', [
-            'tenant_id' => $this->tenantId,
-            'router_id' => $this->routerId,
-            'data_keys' => array_keys($this->liveData)
-        ]);
-    }
+    ) {}
 
     public function broadcastOn(): array
     {
@@ -41,11 +33,6 @@ class RouterLiveDataUpdated implements ShouldBroadcast
 
     public function broadcastWith(): array
     {
-        Log::info('Broadcasting router data', [
-            'router_id' => $this->routerId,
-            'timestamp' => now()->toISOString()
-        ]);
-
         return [
             'router_id' => $this->routerId,
             'data' => $this->liveData,
@@ -56,14 +43,6 @@ class RouterLiveDataUpdated implements ShouldBroadcast
 
     public function broadcastWhen(): bool
     {
-        $shouldBroadcast = !empty($this->liveData) && $this->routerId > 0;
-        
-        Log::info('Checking if should broadcast', [
-            'should_broadcast' => $shouldBroadcast,
-            'router_id' => $this->routerId,
-            'has_data' => !empty($this->liveData)
-        ]);
-
-        return true;
+        return !empty($this->liveData) && $this->routerId !== '';
     }
 }

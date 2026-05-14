@@ -11,8 +11,11 @@ use Illuminate\Support\Str;
 
 class TenantMigrationManager
 {
+    private const LOCK_TIMEOUT_SQLSTATE = '55P03';
+
     /**
-     * Run all tenant migrations for a specific tenant
+     * Run all tenant migrations for a specific tenant.
+     * Each migration runs in its own transaction to prevent cascade failures.
      */
     public function runMigrationsForTenant(Tenant $tenant): bool
     {
@@ -29,7 +32,7 @@ class TenantMigrationManager
         }
 
         try {
-            // Get migration files and already-executed list before opening the transaction,
+            // Get migration files and already-executed list before opening any transaction,
             // since these queries target the public schema and don't need tenant search_path.
             $migrationFiles = $this->getTenantMigrationFiles();
             Log::info("Found " . count($migrationFiles) . " migration files", ['files' => array_map('basename', $migrationFiles)]);
@@ -38,32 +41,55 @@ class TenantMigrationManager
             Log::info("Found " . count($executedMigrations) . " executed migrations", ['executed' => $executedMigrations]);
 
             $batch = $this->getNextBatchNumber($tenant);
+            $successCount = 0;
+            $failedCount = 0;
+            $skippedCount = 0;
 
-            // Wrap SET LOCAL + all migration DDL in a single transaction so PgBouncer
-            // holds the same backend PostgreSQL connection throughout. SET LOCAL is
-            // transaction-scoped and is required for PgBouncer transaction pooling mode.
-            DB::transaction(function () use ($tenant, $migrationFiles, $executedMigrations, $batch) {
-                // Force sticky-write mode so all subsequent SELECTs (including
-                // migration guards like current_schema() checks) use the write
-                // PDO that holds this transaction + SET LOCAL search_path.
-                DB::connection()->recordsHaveBeenModified();
-                DB::statement("SET LOCAL search_path TO {$tenant->schema_name}, public");
+            foreach ($migrationFiles as $migrationFile) {
+                $migrationName = pathinfo($migrationFile, PATHINFO_FILENAME);
 
-                foreach ($migrationFiles as $migrationFile) {
-                    $migrationName = pathinfo($migrationFile, PATHINFO_FILENAME);
-
-                    if (in_array($migrationName, $executedMigrations)) {
-                        continue;
-                    }
-
-                    Log::info("Running migration: {$migrationName}");
-                    $this->executeMigration($migrationFile, $tenant, $batch);
-                    $this->recordMigration($tenant, $migrationName, $batch);
-                    Log::info("Executed tenant migration: {$migrationName} for tenant: {$tenant->name}");
+                if (in_array($migrationName, $executedMigrations)) {
+                    $skippedCount++;
+                    continue;
                 }
-            });
 
-            return true;
+                // If a migration is repeatedly failing due to lock contention, back off
+                // for a bit instead of hammering the same DDL over and over.
+                if ($this->isInCooldown($tenant, $migrationName)) {
+                    $skippedCount++;
+                    continue;
+                }
+
+                // Run each migration in its own transaction.
+                // This prevents one failed migration from aborting the entire batch.
+                $result = $this->runSingleMigration($migrationFile, $migrationName, $tenant, $batch);
+                
+                if ($result === 'success') {
+                    $successCount++;
+                    Log::info("Executed tenant migration: {$migrationName} for tenant: {$tenant->name}");
+                } elseif ($result === 'already_exists') {
+                    $successCount++;
+                    Log::warning("Migration object already exists, marked as executed: {$migrationName}", [
+                        'tenant_id' => $tenant->id,
+                    ]);
+                } else {
+                    $failedCount++;
+                    Log::error("Migration failed and will be retried later: {$migrationName}", [
+                        'tenant_id' => $tenant->id,
+                    ]);
+                    // Continue with next migration - don't let one failure stop the batch
+                }
+            }
+
+            Log::info("Migration batch completed for tenant: {$tenant->name}", [
+                'success' => $successCount,
+                'failed' => $failedCount,
+                'skipped' => $skippedCount,
+            ]);
+
+            // Return true if we processed at least one migration successfully or skipped already executed ones
+            // Return false only if there were failures and no successes
+            return $failedCount === 0 || $successCount > 0;
 
         } catch (\Exception $e) {
             Log::error("Failed to run tenant migrations for {$tenant->name}: " . $e->getMessage());
@@ -71,6 +97,189 @@ class TenantMigrationManager
         } finally {
             $lock->release();
         }
+    }
+
+    /**
+     * Run a single migration in its own transaction.
+     * Returns: 'success', 'already_exists', or 'failed'
+     */
+    private function runSingleMigration(string $migrationFile, string $migrationName, Tenant $tenant, int $batch): string
+    {
+        try {
+            // Include the migration once so we can honor its `withinTransaction` setting.
+            $migration = include $migrationFile;
+            $withinTransaction = $this->shouldRunWithinTransaction($migration);
+
+            if ($withinTransaction) {
+                return DB::transaction(function () use ($migration, $migrationName, $tenant, $batch) {
+                    // Ensure all queries use the write PDO during this transaction.
+                    // This keeps SET LOCAL search_path effective under PgBouncer.
+                    $conn = DB::connection();
+                    $conn->useWriteConnectionWhenReading(true);
+
+                    try {
+                        // Set search_path for this transaction
+                        DB::statement("SET LOCAL search_path TO {$tenant->schema_name}, public");
+
+                        Log::info("Running migration: {$migrationName}");
+
+                        $migration->up();
+
+                        // Record the migration
+                        $this->recordMigration($tenant, $migrationName, $batch);
+
+                        return 'success';
+                    } finally {
+                        $conn->useWriteConnectionWhenReading(false);
+                    }
+                });
+            }
+
+            // Some migrations (notably Postgres ALTER TABLE) must NOT be wrapped in a
+            // transaction in order to avoid holding ACCESS EXCLUSIVE locks for the
+            // full migration duration.
+            // Note: we must reset search_path because this is session-scoped.
+            $conn = DB::connection();
+            $conn->useWriteConnectionWhenReading(true);
+            $this->setTenantSearchPath($tenant);
+            try {
+                Log::info("Running migration: {$migrationName} (no transaction)");
+                $migration->up();
+                $this->recordMigration($tenant, $migrationName, $batch);
+                return 'success';
+            } finally {
+                $this->resetSearchPath();
+                $conn->useWriteConnectionWhenReading(false);
+            }
+        } catch (\Illuminate\Database\UniqueConstraintViolationException $e) {
+            // Table/type already exists from a prior partial migration run.
+            // This is safe to ignore — the DDL succeeded previously but the
+            // migration record was not written (transaction rolled back).
+            if (str_contains($e->getMessage(), 'pg_type_typname_nsp_index') ||
+                str_contains($e->getMessage(), 'already exists')) {
+                
+                // Try to record this migration as executed even though objects exist
+                try {
+                    $this->recordMigration($tenant, $migrationName, $batch);
+                } catch (\Exception $recordEx) {
+                    Log::warning("Could not record already-existing migration: {$migrationName}", [
+                        'tenant_id' => $tenant->id,
+                        'error' => $recordEx->getMessage(),
+                    ]);
+                }
+                
+                return 'already_exists';
+            }
+            
+            Log::error("Migration failed with constraint violation: {$migrationName}", [
+                'tenant_id' => $tenant->id,
+                'error' => $e->getMessage(),
+            ]);
+            return 'failed';
+            
+        } catch (\Illuminate\Database\QueryException $e) {
+            if ($this->isLockTimeout($e)) {
+                $this->startCooldown($tenant, $migrationName);
+            }
+
+            // Handle "already exists" errors for broader safety
+            if (str_contains($e->getMessage(), 'already exists') ||
+                str_contains($e->getMessage(), 'pg_type_typname_nsp_index')) {
+                
+                Log::warning("Migration object already exists: {$migrationName}", [
+                    'tenant_id' => $tenant->id,
+                ]);
+                
+                // Try to record this migration as executed
+                try {
+                    $this->recordMigration($tenant, $migrationName, $batch);
+                } catch (\Exception $recordEx) {
+                    Log::warning("Could not record already-existing migration: {$migrationName}", [
+                        'tenant_id' => $tenant->id,
+                        'error' => $recordEx->getMessage(),
+                    ]);
+                }
+                
+                return 'already_exists';
+            }
+            
+            Log::error("Migration failed with query exception: {$migrationName}", [
+                'tenant_id' => $tenant->id,
+                'error' => $e->getMessage(),
+            ]);
+            return 'failed';
+            
+        } catch (\Exception $e) {
+            Log::error("Migration failed: {$migrationName}", [
+                'tenant_id' => $tenant->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return 'failed';
+        } catch (\Throwable $e) {
+            // Prevent worker crashes on non-Exception throwables (e.g. FatalError).
+            Log::error("Migration crashed: {$migrationName}", [
+                'tenant_id' => $tenant->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'type' => get_class($e),
+            ]);
+            return 'failed';
+        }
+    }
+
+    private function shouldRunWithinTransaction(mixed $migration): bool
+    {
+        // Laravel's base Migration defines `$withinTransaction = true;`.
+        // If a migration explicitly sets it to false, we must respect it.
+        try {
+            if (is_object($migration) && property_exists($migration, 'withinTransaction')) {
+                // In some Laravel versions this property isn't typed/public, so be defensive.
+                return (bool) $migration->withinTransaction;
+            }
+        } catch (\Throwable) {
+            // Fall through to default
+        }
+
+        return true;
+    }
+
+    private function isLockTimeout(\Illuminate\Database\QueryException $e): bool
+    {
+        $sqlState = $e->errorInfo[0] ?? null;
+        if ($sqlState === self::LOCK_TIMEOUT_SQLSTATE) {
+            return true;
+        }
+
+        return str_contains($e->getMessage(), self::LOCK_TIMEOUT_SQLSTATE)
+            || str_contains($e->getMessage(), 'canceling statement due to lock timeout');
+    }
+
+    private function cooldownKey(Tenant $tenant, string $migrationName): string
+    {
+        return "tenant_migration_cooldown:{$tenant->id}:{$migrationName}";
+    }
+
+    private function isInCooldown(Tenant $tenant, string $migrationName): bool
+    {
+        return Cache::has($this->cooldownKey($tenant, $migrationName));
+    }
+
+    private function startCooldown(Tenant $tenant, string $migrationName): void
+    {
+        Cache::put($this->cooldownKey($tenant, $migrationName), true, now()->addMinutes(5));
+    }
+
+    private function setTenantSearchPath(Tenant $tenant): void
+    {
+        // schema_name is generated/validated elsewhere; keep quoting minimal but safe.
+        $schema = str_replace('"', '""', (string) $tenant->schema_name);
+        DB::statement("SET search_path TO \"{$schema}\", public");
+    }
+
+    private function resetSearchPath(): void
+    {
+        DB::statement("SET search_path TO public");
     }
     
     /**
@@ -88,7 +297,7 @@ class TenantMigrationManager
                 ]);
                 
                 // Generate new secure schema name
-                $tenant->schema_name = self::generateSecureSchemaName($tenant->slug);
+                $tenant->schema_name = self::generateSecureSchemaName($tenant->slug, (string) $tenant->id);
                 $tenant->saveQuietly(); // Save without triggering events
                 
                 Log::info("Schema name regenerated", [
@@ -185,10 +394,13 @@ class TenantMigrationManager
     /**
      * Generate secure schema name
      */
-    public static function generateSecureSchemaName(string $tenantSlug): string
+    public static function generateSecureSchemaName(string $tenantSlug, ?string $uniqueSeed = null): string
     {
         // Create a hash-based schema name that's hard to guess
-        $hash = hash('sha256', $tenantSlug . config('app.key') . 'tenant_schema_salt');
+        // Include a per-tenant unique seed (typically tenant UUID) to avoid collisions
+        // when a tenant is deleted and recreated with the same slug.
+        $seed = $uniqueSeed ?: $tenantSlug;
+        $hash = hash('sha256', $tenantSlug . '|' . $seed . '|' . config('app.key') . '|tenant_schema_salt');
         
         // Take first 12 characters and prefix with 'ts_' (tenant schema)
         $schemaName = 'ts_' . substr($hash, 0, 12);
@@ -290,59 +502,30 @@ class TenantMigrationManager
     }
     
     /**
-     * Execute a migration file
-     */
-    private function executeMigration(string $migrationFile, Tenant $tenant, int $batch): void
-    {
-        try {
-            // Include the migration file
-            $migration = include $migrationFile;
-            
-            // Execute the up method
-            $migration->up();
-        } catch (\Illuminate\Database\UniqueConstraintViolationException $e) {
-            // Table/type already exists from a prior partial migration run.
-            // This is safe to ignore — the DDL succeeded previously but the
-            // migration record was not written (transaction rolled back).
-            if (str_contains($e->getMessage(), 'pg_type_typname_nsp_index') ||
-                str_contains($e->getMessage(), 'already exists')) {
-                Log::warning("Migration object already exists, marking as executed: " . basename($migrationFile), [
-                    'tenant_id' => $tenant->id,
-                ]);
-                return;
-            }
-            throw $e;
-        } catch (\Exception $e) {
-            // Also catch QueryException with "already exists" for broader safety
-            if ($e instanceof \Illuminate\Database\QueryException &&
-                (str_contains($e->getMessage(), 'already exists') ||
-                 str_contains($e->getMessage(), 'pg_type_typname_nsp_index'))) {
-                Log::warning("Migration object already exists, marking as executed: " . basename($migrationFile), [
-                    'tenant_id' => $tenant->id,
-                ]);
-                return;
-            }
-            Log::error("Migration failed: " . basename($migrationFile), [
-                'tenant_id' => $tenant->id,
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
-            throw $e;
-        }
-    }
-    
-    /**
      * Record migration execution
      */
     private function recordMigration(Tenant $tenant, string $migrationName, int $batch): void
     {
-        DB::table('tenant_schema_migrations')->insert([
-            'id' => Str::uuid(),
-            'tenant_id' => $tenant->id,
-            'migration' => $migrationName,
-            'batch' => $batch,
-            'executed_at' => now()
-        ]);
+        try {
+            DB::table('tenant_schema_migrations')->insert([
+                'id' => Str::uuid(),
+                'tenant_id' => $tenant->id,
+                'migration' => $migrationName,
+                'batch' => $batch,
+                'executed_at' => now()
+            ]);
+        } catch (\Exception $e) {
+            // If we can't record the migration due to transaction abort, 
+            // it will be retried on the next run
+            if (str_contains($e->getMessage(), 'current transaction is aborted')) {
+                Log::warning("Cannot record migration due to transaction abort: {$migrationName}", [
+                    'tenant_id' => $tenant->id,
+                    'error' => $e->getMessage(),
+                ]);
+                return;
+            }
+            throw $e;
+        }
     }
     
     /**

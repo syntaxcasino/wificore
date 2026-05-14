@@ -168,9 +168,14 @@ class TenantContext
             throw new \Exception("Invalid schema name: {$schemaName}");
         }
         
-        // Save original search path if not already saved
+        // Save original search path if not already saved.
+        // MUST use the write PDO: DB::selectOne() routes to the read PDO
+        // (a different physical connection to the read replica) and would
+        // return that replica's search_path, not the write PDO's baseline.
         if (!$this->originalSearchPath) {
-            $result = DB::selectOne("SHOW search_path");
+            $result = DB::connection()->getReadPdo() === DB::connection()->getPdo()
+                ? DB::selectOne("SHOW search_path")
+                : DB::connection()->useWritePdo()->selectOne("SHOW search_path");
             $this->originalSearchPath = $result->search_path ?? 'public';
         }
 
@@ -260,7 +265,9 @@ class TenantContext
      */
     public function getCurrentSearchPath(): string
     {
-        $result = DB::selectOne("SHOW search_path");
+        $result = DB::connection()->getReadPdo() === DB::connection()->getPdo()
+            ? DB::selectOne("SHOW search_path")
+            : DB::connection()->useWritePdo()->selectOne("SHOW search_path");
         return $result->search_path ?? 'public';
     }
     

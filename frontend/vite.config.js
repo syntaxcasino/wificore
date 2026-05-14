@@ -15,7 +15,7 @@ export default defineConfig({
     // import vueDevTools from 'vite-plugin-vue-devtools' and add to plugins[] for dev
     tailwindcss(),
     VitePWA({
-      registerType: 'prompt',
+      registerType: 'autoUpdate',
       injectRegister: 'auto',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png'],
       manifest: {
@@ -50,12 +50,11 @@ export default defineConfig({
         ]
       },
       workbox: {
-        skipWaiting: false,
+        skipWaiting: true,
         clientsClaim: true,
         cleanupOutdatedCaches: true,
         globPatterns: [
-          '**/*.{css,html,ico,png,svg,woff,woff2,webmanifest}',
-          '**/assets/*.{js,css}'
+          '**/*.{ico,png,svg,woff,woff2,webmanifest}'
         ],
         navigateFallback: 'index.html',
         navigateFallbackDenylist: [/^\/api\//, /^\/broadcasting\//],
@@ -67,21 +66,6 @@ export default defineConfig({
         
         // Runtime caching strategies
         runtimeCaching: [
-          {
-            // JS assets - Stale While Revalidate for fast loads with updates
-            urlPattern: /\/assets\/.*\.js$/,
-            handler: 'StaleWhileRevalidate',
-            options: {
-              cacheName: 'js-assets',
-              expiration: {
-                maxEntries: 100,
-                maxAgeSeconds: 30 * 24 * 60 * 60 // 30 days
-              },
-              cacheableResponse: {
-                statuses: [0, 200]
-              }
-            }
-          },
           {
             // CSS assets - Cache first for performance
             urlPattern: /\/assets\/styles\/.*\.css$/,
@@ -128,20 +112,10 @@ export default defineConfig({
             }
           },
           {
-            // API calls - Network first for freshness
+            // API calls (including SSE/stream endpoints) must never be cached by SW.
+            // Caching streamed/chunked responses causes Cache.put() network errors.
             urlPattern: /\/api\//,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'api-cache',
-              expiration: {
-                maxEntries: 100,
-                maxAgeSeconds: 5 * 60 // 5 minutes
-              },
-              cacheableResponse: {
-                statuses: [0, 200]
-              },
-              networkTimeoutSeconds: 10
-            }
+            handler: 'NetworkOnly'
           }
         ],
         
@@ -187,6 +161,16 @@ export default defineConfig({
           if (id.includes('/axios/') || id.includes('/laravel-echo/') || id.includes('/pusher-js/')) {
             return 'vendor-network'
           }
+
+          if (id.includes('/@vueuse/')) return 'vendor-vueuse'
+
+          if (id.includes('/lucide-vue-next/')) return 'vendor-icons'
+
+          if (id.includes('/uuid/')) return 'vendor-uuid'
+
+          if (id.includes('/workbox-') || id.includes('/vite-plugin-pwa/')) return 'vendor-pwa'
+
+          if (id.includes('/tailwindcss/') || id.includes('/@tailwindcss/')) return 'vendor-styles'
 
           // UI utilities (date-fns, lodash, etc.)
           if (id.includes('/date-fns/') || id.includes('/lodash/') || id.includes('/moment/')) {

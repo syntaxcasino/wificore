@@ -265,15 +265,24 @@ class RADIUSServiceController extends TenantAwareService
         try {
             $router = null;
             if ($nasIpAddress) {
-                $router = \App\Models\Router::where('ip_address', $nasIpAddress)
+                // OPTIMIZED: Select only needed columns
+                $router = \App\Models\Router::query()
+                    ->select(['id', 'host', 'ssh_port', 'ssh_user', 'ssh_pass', 'ssh_private_key'])
+                    ->where('ip_address', $nasIpAddress)
                     ->orWhere('vpn_ip', $nasIpAddress)
                     ->first();
             }
 
             if (!$router) {
-                $pppoeUser = \App\Models\PppoeUser::where('username', $username)->first();
+                // OPTIMIZED: Select only needed columns
+                $pppoeUser = \App\Models\PppoeUser::query()
+                    ->select(['id', 'router_id'])
+                    ->where('username', $username)
+                    ->first();
                 if ($pppoeUser) {
-                    $router = \App\Models\Router::find($pppoeUser->router_id);
+                    $router = \App\Models\Router::query()
+                        ->select(['id', 'host', 'ssh_port', 'ssh_user', 'ssh_pass', 'ssh_private_key'])
+                        ->find($pppoeUser->router_id);
                 }
             }
 

@@ -138,8 +138,10 @@ export function useVouchers() {
       
       await axios.post('/vouchers/generate', payload)
       toast.success(`Generated ${formData.quantity} voucher(s)`)
-      await fetchVouchers()
-      await fetchStats()
+      
+      // Purely event-driven - WebSocket events will handle the UI update automatically
+      // No manual fetch needed - events will update the list and stats
+      
       return true
     } catch (err) {
       generateError.value = err.response?.data?.message || 'Failed to generate vouchers'
@@ -157,42 +159,18 @@ export function useVouchers() {
       return false
     }
 
-    // Save current state for potential rollback
-    const previousState = { ...vouchers.value[index] }
-    const previousStats = { ...stats.value }
-
-    // Apply optimistic update
-    vouchers.value[index] = { ...vouchers.value[index], status: 'revoked', _optimistic: true }
-    if (stats.value[previousState.status] > 0) {
-      stats.value[previousState.status]--
-    }
-    stats.value.revoked = (stats.value.revoked || 0) + 1
-    pendingUpdates.value.set(voucher.id, { state: previousState, stats: previousStats })
-
+    // No optimistic updates - let WebSocket events handle everything
+    
     try {
       await axios.post(`/vouchers/${voucher.id}/revoke`)
       toast.success(`Voucher ${voucher.code} revoked`)
 
-      // Remove from pending updates
-      pendingUpdates.value.delete(voucher.id)
-
-      // Fetch fresh data to ensure consistency
-      await fetchVouchers({ page: pagination.value.currentPage })
-      await fetchStats()
+      // Purely event-driven - WebSocket events will handle the UI update automatically
       return true
     } catch (err) {
-      // Rollback on error
-      const currentIndex = vouchers.value.findIndex(v => v.id === voucher.id)
-      if (currentIndex !== -1) {
-        vouchers.value[currentIndex] = previousState
-      }
-      // Restore stats
-      stats.value = previousStats
-      pendingUpdates.value.delete(voucher.id)
-
       const message = err.response?.data?.message || 'Failed to revoke voucher'
       toast.error(message)
-      console.error('Error revoking voucher (rolled back):', err)
+      console.error('Error revoking voucher:', err)
       return false
     }
   }
@@ -267,8 +245,11 @@ export function useVouchers() {
     const timestamp = event.detail?.timestamp || voucherData?.updated_at || voucherData?.created_at
     if (!voucherData?.id) return
 
+    console.log('[Vouchers] Received voucher-created event:', voucherData.code)
+
     // Deduplication: Skip if already processed this event
     if (!dedupStore.tryProcess('voucher-created', voucherData.id, timestamp)) {
+      console.log('[Vouchers] Duplicate voucher-created event ignored:', voucherData.code)
       return
     }
 
@@ -306,8 +287,11 @@ export function useVouchers() {
     const timestamp = event.detail?.timestamp || voucherData?.updated_at
     if (!voucherData?.id) return
 
+    console.log('[Vouchers] Received voucher-updated event:', voucherData.code)
+
     // Deduplication: Skip if already processed this event
     if (!dedupStore.tryProcess('voucher-updated', voucherData.id, timestamp)) {
+      console.log('[Vouchers] Duplicate voucher-updated event ignored:', voucherData.code)
       return
     }
 
@@ -345,8 +329,11 @@ export function useVouchers() {
     const timestamp = event.detail?.timestamp
     if (!voucherId) return
 
+    console.log('[Vouchers] Received voucher-deleted event for ID:', voucherId)
+
     // Deduplication: Skip if already processed this event
     if (!dedupStore.tryProcess('voucher-deleted', voucherId, timestamp)) {
+      console.log('[Vouchers] Duplicate voucher-deleted event ignored:', voucherId)
       return
     }
 
@@ -354,10 +341,12 @@ export function useVouchers() {
     if (voucher && stats.value[voucher.status] > 0) {
       stats.value[voucher.status]--
       stats.value.total = Math.max(0, (stats.value.total || 0) - 1)
+      console.log('[Vouchers] Deleted via event:', voucher.code || `ID ${voucherId}`)
+    } else {
+      console.log('[Vouchers] Voucher not found for deletion, ID:', voucherId)
     }
 
     vouchers.value = vouchers.value.filter(v => v.id !== voucherId)
-    console.log('[Vouchers] Deleted via event:', voucherId)
     lastSyncTimestamp.value = new Date().toISOString()
   }
 

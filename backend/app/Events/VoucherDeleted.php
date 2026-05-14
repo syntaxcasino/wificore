@@ -48,7 +48,12 @@ class VoucherDeleted implements ShouldBroadcast
     public function broadcastWith(): array
     {
         return [
-            'voucher_id' => $this->voucherId,
+            'voucher' => [
+                'id' => $this->voucherId,
+                'code' => $this->code,
+            ],
+            'voucherId' => $this->voucherId,
+            'id' => $this->voucherId,
             'code' => $this->code,
             'message' => $this->code ? "Voucher '{$this->code}' deleted" : 'Voucher deleted',
             'timestamp' => now()->toIso8601String(),

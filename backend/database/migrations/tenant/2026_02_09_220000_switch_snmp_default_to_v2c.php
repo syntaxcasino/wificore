@@ -26,9 +26,42 @@ return new class extends Migration
             });
         }
 
-        // Change default snmp_version column default to '2c'
+        // Change default snmp_version column default to '2c' (idempotent)
         if (Schema::hasColumn('routers', 'snmp_version')) {
-            DB::statement("ALTER TABLE routers ALTER COLUMN snmp_version SET DEFAULT '2c'");
+            $default = DB::selectOne(<<<'SQL'
+                SELECT pg_get_expr(d.adbin, d.adrelid) AS default_expr
+                FROM pg_attrdef d
+                JOIN pg_attribute a ON a.attrelid = d.adrelid AND a.attnum = d.adnum
+                WHERE d.adrelid = 'routers'::regclass
+                  AND a.attname = 'snmp_version'
+                SQL);
+
+            $expr = is_object($default) ? ($default->default_expr ?? null) : null;
+
+            // pg_get_expr returns a SQL expression, e.g. '2c'::character varying
+            if (!is_string($expr) || !str_contains($expr, "'2c'")) {
+                // ALTER TABLE takes an ACCESS EXCLUSIVE lock even for metadata-only changes.
+                // During a live system, that can hit lock_timeout and cause noisy retries.
+                // Be patient here, but keep the scope limited to this statement.
+                $oldLockTimeout = null;
+                try {
+                    $old = DB::selectOne("SHOW lock_timeout");
+                    $oldLockTimeout = is_object($old) ? ($old->lock_timeout ?? null) : null;
+                } catch (\Throwable) {
+                    // Ignore; we'll still attempt the ALTER with a best-effort lock timeout.
+                }
+
+                try {
+                    DB::statement("SET lock_timeout = '60s'");
+                    DB::statement("ALTER TABLE routers ALTER COLUMN snmp_version SET DEFAULT '2c'");
+                } finally {
+                    if (is_string($oldLockTimeout) && $oldLockTimeout !== '') {
+                        // Restore the previous session setting to avoid surprising later statements.
+                        $restore = str_replace("'", "''", $oldLockTimeout);
+                        DB::statement("SET lock_timeout = '{$restore}'");
+                    }
+                }
+            }
         }
 
         // Update existing routers: if snmp_version is 'v3' but v3 credentials are empty,
@@ -54,7 +87,23 @@ return new class extends Migration
     {
         // Revert default back to v3
         if (Schema::hasColumn('routers', 'snmp_version')) {
-            DB::statement("ALTER TABLE routers ALTER COLUMN snmp_version SET DEFAULT 'v3'");
+            $oldLockTimeout = null;
+            try {
+                $old = DB::selectOne("SHOW lock_timeout");
+                $oldLockTimeout = is_object($old) ? ($old->lock_timeout ?? null) : null;
+            } catch (\Throwable) {
+                // Ignore
+            }
+
+            try {
+                DB::statement("SET lock_timeout = '60s'");
+                DB::statement("ALTER TABLE routers ALTER COLUMN snmp_version SET DEFAULT 'v3'");
+            } finally {
+                if (is_string($oldLockTimeout) && $oldLockTimeout !== '') {
+                    $restore = str_replace("'", "''", $oldLockTimeout);
+                    DB::statement("SET lock_timeout = '{$restore}'");
+                }
+            }
         }
 
         if (Schema::hasColumn('routers', 'snmp_community')) {

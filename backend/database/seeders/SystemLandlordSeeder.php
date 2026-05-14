@@ -131,7 +131,7 @@ class SystemLandlordSeeder extends Seeder
         $password = config('saas.landlord.default_admin_password', 'Landlord@123!');
 
         // Check if landlord user already exists
-        $existingUser = User::where('email', $email)->first();
+        $existingUser = User::withoutTenantScope()->where('email', $email)->first();
 
         if ($existingUser) {
             $this->command->info('Landlord user already exists, updating role...');
@@ -144,18 +144,21 @@ class SystemLandlordSeeder extends Seeder
         }
 
         // Create new landlord user
-        $user = User::create([
-            'id' => Str::uuid(),
-            'name' => 'System Landlord',
-            'username' => 'landlord',
-            'email' => $email,
-            'password' => Hash::make($password),
-            'role' => User::ROLE_SYSTEM_ADMIN,
-            'tenant_id' => null, // System admin has no tenant (can access all)
-            'is_active' => true,
-            'email_verified_at' => now(),
-            'account_number' => 'SYS-LANDLORD-001',
-        ]);
+        // Use withoutEvents to avoid BelongsToTenant::creating() assigning a default tenant_id.
+        $user = User::withoutEvents(function () use ($email, $password) {
+            return User::withoutTenantScope()->create([
+                'id' => Str::uuid(),
+                'name' => 'System Landlord',
+                'username' => 'landlord',
+                'email' => $email,
+                'password' => Hash::make($password),
+                'role' => User::ROLE_SYSTEM_ADMIN,
+                'tenant_id' => null, // System admin has no tenant (can access all)
+                'is_active' => true,
+                'email_verified_at' => now(),
+                'account_number' => 'SYS-LANDLORD-001',
+            ]);
+        });
 
         $this->command->info("Created landlord user: {$user->email} (ID: {$user->id})");
 
@@ -184,6 +187,7 @@ class SystemLandlordSeeder extends Seeder
             DB::table('radius_user_schema_mapping')->updateOrInsert(
                 ['username' => $user->username],
                 [
+                    'pppoe_user_id' => null,
                     'schema_name' => 'public',
                     'tenant_id' => null,
                     'user_role' => User::ROLE_SYSTEM_ADMIN,

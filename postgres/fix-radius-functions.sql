@@ -8,15 +8,15 @@ CREATE OR REPLACE FUNCTION radius_authorize_check(p_username VARCHAR)
 RETURNS TABLE(id INTEGER, username VARCHAR, attribute VARCHAR, value VARCHAR, op VARCHAR) AS $func$
 DECLARE
     v_schema VARCHAR;
+    v_username VARCHAR;
 BEGIN
-    -- Get user's schema
-    v_schema := get_user_schema(p_username);
+    v_username := LOWER(BTRIM(REGEXP_REPLACE(COALESCE(p_username, ''), '[[:cntrl:]]', '', 'g')));
+    v_schema := get_user_schema(v_username);
 
     IF v_schema IS NULL OR v_schema = '' THEN
         RETURN;
     END IF;
     
-    -- Query radcheck table using fully qualified name
     RETURN QUERY EXECUTE format('
         SELECT 
             id::INTEGER,
@@ -28,7 +28,7 @@ BEGIN
         WHERE username = $1
         ORDER BY id
     ', v_schema)
-    USING p_username;
+    USING v_username;
 END;
 $func$ LANGUAGE plpgsql SECURITY DEFINER;
 
@@ -39,15 +39,15 @@ CREATE OR REPLACE FUNCTION radius_authorize_reply(p_username VARCHAR)
 RETURNS TABLE(id INTEGER, username VARCHAR, attribute VARCHAR, value VARCHAR, op VARCHAR) AS $func$
 DECLARE
     v_schema VARCHAR;
+    v_username VARCHAR;
 BEGIN
-    -- Get user's schema
-    v_schema := get_user_schema(p_username);
+    v_username := LOWER(BTRIM(REGEXP_REPLACE(COALESCE(p_username, ''), '[[:cntrl:]]', '', 'g')));
+    v_schema := get_user_schema(v_username);
 
     IF v_schema IS NULL OR v_schema = '' THEN
         RETURN;
     END IF;
     
-    -- Query radreply table using fully qualified name
     RETURN QUERY EXECUTE format('
         SELECT 
             id::INTEGER,
@@ -59,6 +59,6 @@ BEGIN
         WHERE username = $1
         ORDER BY id
     ', v_schema)
-    USING p_username;
+    USING v_username;
 END;
 $func$ LANGUAGE plpgsql SECURITY DEFINER;

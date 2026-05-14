@@ -33,7 +33,7 @@ class ZeroConfigHotspotGenerator
         // Hotspot multi-interface mode A: single Hotspot instance on a shared bridge
         $bridgeName = "br-hs-{$shortId}";
 
-        $radiusServer = config('radius.server_ip', config('services.radius.host', 'wificore-freeradius'));
+        $radiusServer = config('radius.vpn_server_ip', config('services.radius.host', '10.8.0.1'));
         $resolvedRadiusServer = $radiusServer;
         if (filter_var($resolvedRadiusServer, FILTER_VALIDATE_IP) === false) {
             $resolvedRadiusServer = gethostbyname((string) $resolvedRadiusServer);

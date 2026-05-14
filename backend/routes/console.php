@@ -46,27 +46,26 @@ Schedule::job(new ComputeRouterMetricsJob)
     ->withoutOverlapping()
     ->onOneServer();
 
-// Fetch live router data from VictoriaMetrics and broadcast to frontend
-// This runs regardless of polling mode (Telegraf or Laravel) to ensure UI updates
+// Fetch live router data from VictoriaMetrics and broadcast to frontend.
+// Telegraf scrapes frequently; this fanout only hydrates UI broadcasts.
 Schedule::job(new \App\Jobs\ScheduleRouterPollingJob)
-    ->everyFiveSeconds()
+    ->everyFifteenSeconds()
     ->name('fetch-router-live-data')
-    ->withoutOverlapping();
+    ->withoutOverlapping()
+    ->onOneServer();
 
-// Update dashboard statistics at a safer cadence.
-// Every-5-seconds dispatch per tenant causes queue/memory pressure under Octane.
+// Update dashboard statistics every 30 seconds (optimized for low-end device support)
 Schedule::call(function () {
-    // Get all active tenants
-    $tenants = \App\Models\Tenant::whereNull('deleted_at')->pluck('id');
+    $tenants = \App\Models\Tenant::query()
+        ->whereNull('deleted_at')
+        ->where('is_active', true)
+        ->useWritePdo()
+        ->pluck('id');
     
     foreach ($tenants as $tenantId) {
-        // Avoid duplicate queued jobs for the same tenant in a short burst.
-        $lockKey = "dashboard:dispatch-lock:{$tenantId}";
-        if (\Illuminate\Support\Facades\Cache::add($lockKey, 1, 55)) {
-            UpdateDashboardStatsJob::dispatch($tenantId)->onQueue('dashboard');
-        }
+        UpdateDashboardStatsJob::dispatch($tenantId)->onQueue('dashboard');
     }
-})->everyMinute()->name('update-dashboard-stats')->withoutOverlapping();
+})->everyThirtySeconds()->name('update-dashboard-stats')->withoutOverlapping()->onOneServer();
 
 // Schedule the RotateLogs job to run daily at 1:00 AM
 //Schedule::job(new RotateLogs)->dailyAt('01:00');

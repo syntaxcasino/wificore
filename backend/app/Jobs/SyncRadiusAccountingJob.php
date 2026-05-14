@@ -155,7 +155,11 @@ class SyncRadiusAccountingJob implements ShouldQueue
             // -----------------------------------------------------------------
             // PPPoE: sync data_used for active PPPoE users from radacct
             // -----------------------------------------------------------------
-            $pppoeUsers = PppoeUser::where('status', 'active')->get();
+            // OPTIMIZED: Select only needed columns
+            $pppoeUsers = PppoeUser::query()
+                ->select(['id', 'username', 'status'])
+                ->where('status', 'active')
+                ->get();
             $ppSynced   = 0;
             $ppErrors   = 0;
 

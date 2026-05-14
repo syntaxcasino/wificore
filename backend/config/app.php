@@ -56,6 +56,7 @@ return [
         App\Providers\EventServiceProvider::class,
         App\Providers\RouteServiceProvider::class,
         App\Providers\DatabaseServiceProvider::class,
+        App\Providers\QueryPerformanceServiceProvider::class,
     ],
 
     /*

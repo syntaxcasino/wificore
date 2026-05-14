@@ -7,9 +7,20 @@ use App\Models\Tenant;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Illuminate\Support\Facades\Cache;
 
 class TenantController extends Controller
 {
+    private function bustTenantCache(\App\Models\Tenant $tenant): void
+    {
+        Cache::forget("tenant:subdomain:{$tenant->subdomain}");
+        Cache::forget("tenant:public:{$tenant->subdomain}");
+        if ($tenant->custom_domain) {
+            Cache::forget("tenant:domain:{$tenant->custom_domain}");
+        }
+        Cache::forget("tenant_{$tenant->id}_dashboard_stats");
+    }
+
     /**
      * Display a listing of tenants (Super Admin only)
      */
@@ -100,26 +111,47 @@ class TenantController extends Controller
     {
         $tenant->loadCount(['users']);
         
-        // Get statistics from public schema (users only)
-        // Routers, packages, payments are in tenant schemas and cannot be queried cross-schema
+        // Single query for user counts
+        $userRow = \Illuminate\Support\Facades\DB::table('users')
+            ->where('tenant_id', $tenant->id)
+            ->whereNull('deleted_at')
+            ->selectRaw('COUNT(*) as total, COUNT(*) FILTER (WHERE is_active = true) as active')
+            ->first();
+
         $stats = [
-            'total_users' => $tenant->users()->count(),
-            'active_users' => $tenant->users()->where('is_active', true)->count(),
+            'total_users'  => (int) ($userRow->total  ?? 0),
+            'active_users' => (int) ($userRow->active ?? 0),
         ];
-        
+
         // If tenant has a schema, get tenant-schema stats via context switch
         if ($tenant->schema_created && $tenant->schema_name) {
             try {
                 $tenantContext = app(\App\Services\TenantContext::class);
                 $tenantContext->runInTenantContext($tenant, function () use (&$stats) {
-                    $stats['total_routers'] = \App\Models\Router::count();
-                    $stats['active_routers'] = \App\Models\Router::where('status', 'online')->count();
-                    $stats['total_packages'] = \App\Models\Package::count();
-                    $stats['active_packages'] = \App\Models\Package::where('is_active', true)->count();
-                    $stats['total_revenue'] = \App\Models\Payment::where('status', 'completed')->sum('amount');
-                    $stats['monthly_revenue'] = \App\Models\Payment::where('status', 'completed')
-                        ->whereMonth('created_at', now()->month)
-                        ->sum('amount');
+                    // Single query: router + package counts
+                    $routerAgg = \App\Models\Router::selectRaw("
+                        COUNT(*) as total,
+                        COUNT(*) FILTER (WHERE status = 'online') as online
+                    ")->first();
+                    $packageAgg = \App\Models\Package::selectRaw("
+                        COUNT(*) as total,
+                        COUNT(*) FILTER (WHERE is_active = true) as active
+                    ")->first();
+
+                    // Single query: payment revenue
+                    $revenueRow = \App\Models\Payment::where('status', 'completed')
+                        ->selectRaw("
+                            COALESCE(SUM(amount), 0) as total_revenue,
+                            COALESCE(SUM(amount) FILTER (WHERE EXTRACT(MONTH FROM created_at) = ? AND EXTRACT(YEAR FROM created_at) = ?), 0) as monthly_revenue
+                        ", [now()->month, now()->year])
+                        ->first();
+
+                    $stats['total_routers']   = (int)   ($routerAgg->total        ?? 0);
+                    $stats['active_routers']  = (int)   ($routerAgg->online       ?? 0);
+                    $stats['total_packages']  = (int)   ($packageAgg->total       ?? 0);
+                    $stats['active_packages'] = (int)   ($packageAgg->active      ?? 0);
+                    $stats['total_revenue']   = (float) ($revenueRow->total_revenue   ?? 0);
+                    $stats['monthly_revenue'] = (float) ($revenueRow->monthly_revenue ?? 0);
                 });
             } catch (\Exception $e) {
                 \Log::warning('Failed to get tenant schema stats', [
@@ -167,7 +199,8 @@ class TenantController extends Controller
         ]);
         
         $tenant->update($validated);
-        
+        $this->bustTenantCache($tenant);
+
         return response()->json([
             'success' => true,
             'message' => 'Tenant updated successfully',
@@ -185,7 +218,8 @@ class TenantController extends Controller
         ]);
         
         $tenant->suspend($validated['reason'] ?? null);
-        
+        $this->bustTenantCache($tenant);
+
         return response()->json([
             'success' => true,
             'message' => 'Tenant suspended successfully',
@@ -199,7 +233,8 @@ class TenantController extends Controller
     public function activate(Tenant $tenant)
     {
         $tenant->activate();
-        
+        $this->bustTenantCache($tenant);
+
         return response()->json([
             'success' => true,
             'message' => 'Tenant activated successfully',

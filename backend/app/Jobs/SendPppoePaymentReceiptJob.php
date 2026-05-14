@@ -36,8 +36,14 @@ class SendPppoePaymentReceiptJob implements ShouldQueue
     public function handle(MessagingService $messagingService): void
     {
         $this->executeInTenantContext(function () use ($messagingService) {
-            $pppoeUser = PppoeUser::with('package')->find($this->pppoeUserId);
-            $payment = PppoePayment::find($this->paymentId);
+            // OPTIMIZED: Select only needed columns with selective eager loading
+            $pppoeUser = PppoeUser::query()
+                ->select(['id', 'username', 'account_number', 'customer_email', 'customer_phone', 'portal_password', 'package_id'])
+                ->with(['package:id,name'])
+                ->find($this->pppoeUserId);
+            $payment = PppoePayment::query()
+                ->select(['id', 'pppoe_user_id', 'account_number', 'amount', 'payment_method', 'transaction_id', 'status', 'metadata', 'created_at'])
+                ->find($this->paymentId);
 
             if (!$pppoeUser || !$payment || $payment->status !== 'completed') {
                 return;

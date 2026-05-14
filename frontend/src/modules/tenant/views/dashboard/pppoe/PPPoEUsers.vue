@@ -235,6 +235,11 @@
         class="flex items-center w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-purple-50 hover:text-purple-700 transition-colors gap-3">
         <RotateCcw class="w-4 h-4 flex-shrink-0" /> Reset Portal Password
       </button>
+      <div class="border-t border-slate-100 my-1"></div>
+      <button @click="handleDeleteUser(users.find(u => u.id === activeMenu))"
+        class="flex items-center w-full px-4 py-2.5 text-sm text-rose-700 hover:bg-rose-50 transition-colors gap-3">
+        <Trash2 class="w-4 h-4 flex-shrink-0" /> Delete User
+      </button>
     </div>
   </Teleport>
 
@@ -900,7 +905,7 @@ import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from
 import {
   Cable, Eye, EyeOff, AlertCircle, ShieldOff, ShieldCheck, WifiOff, Unplug,
   UserCircle2, KeyRound, CreditCard, Pencil, History, Banknote, Clock,
-  CheckCircle, RotateCcw, Copy, User, Wifi, ReceiptText, TrendingUp, MoreVertical
+  CheckCircle, RotateCcw, Copy, User, Wifi, ReceiptText, TrendingUp, MoreVertical, Trash2
 } from 'lucide-vue-next'
 import axios from '@/modules/common/services/api/axios'
 import DataViewContainer from '@/modules/common/components/base/DataViewContainer.vue'
@@ -926,7 +931,7 @@ const confirmStore = useConfirmStore()
 const {
   users, loading, error,
   activeUsers, inactiveUsers, blockedUsers, expiredUsers,
-  fetchUsers, createUser, updateUser, viewPassword, viewPortalPassword, resetPassword, resetPortalPassword,
+  fetchUsers, createUser, updateUser, deleteUser, viewPassword, viewPortalPassword, resetPassword, resetPortalPassword,
   toggleUserStatus, subscribeToWebSocket, unsubscribeFromWebSocket,
 } = usePppoeUsers()
 
@@ -988,11 +993,8 @@ const openUserPanel = async (user) => {
   editForm.status = user.status || 'active'
   resetEditErrors()
 
-  // load tab data in parallel
-  loadCurrentSession(user)
-  loadSessionHistory(user)
+  // Only load payments eagerly (cheap). Session/history/traffic are deferred to their tabs.
   loadPaymentHistory(user)
-  loadTrafficMetrics(user)
 }
 
 watch(showUserPanel, (v) => {
@@ -1043,14 +1045,12 @@ const loadCurrentSession = async (user, silent = false) => {
 const loadSessionHistory = async (user) => {
   historyLoading.value = true
   try {
-    const res = await axios.get('/pppoe/sessions/inactive', { params: { username: user.username, per_page: 200 } })
+    const res = await axios.get('/pppoe/sessions/inactive', {
+      params: { username: user.username, per_page: 50, page: 1 },
+    })
     const raw = res.data?.data || res.data?.sessions || res.data || []
     const list = Array.isArray(raw) ? raw : []
-    // Always filter client-side to guarantee only this user's sessions are shown
-    const filtered = list.filter(s =>
-      (s.username || '').toLowerCase() === user.username.toLowerCase()
-    )
-    sessionHistory.value = filtered.sort((a, b) =>
+    sessionHistory.value = list.sort((a, b) =>
       new Date(b.disconnected_at || b.acctstoptime || 0) - new Date(a.disconnected_at || a.acctstoptime || 0)
     )
   } catch { sessionHistory.value = [] }
@@ -1262,25 +1262,13 @@ const portalProvisioningUrl = computed(() => {
 
 const handleViewPortalPassword = async () => {
   if (!panelUser.value) return
+  loadingPortalPassword.value = true
   try {
     const meta = await viewPortalPassword(panelUser.value.id)
     portalLoginPath.value = meta?.portal_login_url || '/portal/login'
     portalAccountNumber.value = meta?.account_number || panelUser.value?.account_number || ''
-  } catch { /**/ }
-  // Portal password is stored hashed and cannot be retrieved.
-  // Prompt user to reset to generate a new viewable password.
-  const ok = await confirmStore.open({
-    title: 'View Portal Password',
-    message: 'Portal passwords are stored securely and cannot be viewed. Would you like to generate a new portal password?',
-    confirmText: 'Generate New',
-    cancelText: 'Cancel',
-    variant: 'warning',
-  })
-  if (!ok) return
-  loadingPortalPassword.value = true
-  try {
-    const { portalPassword: newPw } = await resetPortalPassword(panelUser.value.id)
-    userPortalPassword.value = newPw || ''
+    // Use the password from viewPortalPassword response - don't reset
+    userPortalPassword.value = meta?.portal_password || ''
     showPortalPasswordValue.value = true
   } catch { /**/ } finally { loadingPortalPassword.value = false }
 }
@@ -1327,7 +1315,7 @@ const handleUpdateUser = async () => {
     editExpanded.value = false
     resetEditErrors()
     Object.assign(editForm, { package_id: '', router_id: '', simultaneous_use: 1, status: 'active' })
-    await fetchUsers()
+    // No need to call fetchUsers - WebSocket event will update the list
   } catch (err) {
     const message = err.response?.data?.message || 'Failed to update user'
     if (err.response?.status === 422) {
@@ -1353,7 +1341,7 @@ const handleToggleStatus = async (user) => {
     if (panelUser.value?.id === user.id) {
       panelUser.value = { ...panelUser.value, status: action === 'block' ? 'blocked' : 'active' }
     }
-    await fetchUsers()
+    // No need to call fetchUsers - WebSocket event will update the list
   } catch { /**/ }
 }
 
@@ -1420,11 +1408,11 @@ const copyPassword = async () => {
   await navigator.clipboard.writeText(generatedPassword.value).catch(() => {})
 }
 
-const finishCreateUser = async () => {
+const finishCreateUser = () => {
   showPasswordModal.value = false
   generatedPassword.value = ''
   createdUser.value = null
-  await fetchUsers()
+  // No need to call fetchUsers - WebSocket event already added user to list
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────
@@ -1597,6 +1585,26 @@ const handleResetPortalPasswordForMenu = async (user) => {
       userPortalPassword.value = newPortalPwd || ''
       showPortalPasswordValue.value = true
     }, 100)
+  } catch {}
+}
+
+const handleDeleteUser = async (user) => {
+  closeMenu()
+  if (!user) return
+  const confirmed = await confirmStore.open({
+    title: 'Delete User',
+    message: `Permanently delete ${user.username}? This action cannot be undone.`,
+    confirmText: 'Delete',
+    cancelText: 'Cancel',
+    variant: 'danger',
+  })
+  if (!confirmed) return
+  try {
+    await deleteUser(user.id)
+    // Close panel if open for this user
+    if (showUserPanel.value && panelUser.value?.id === user.id) {
+      showUserPanel.value = false
+    }
   } catch {}
 }
 

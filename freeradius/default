@@ -161,7 +161,7 @@ listen {
 	#  reach FreeRADIUS.  Increasing the size of the buffer will
 	#  avoid these packet drops.
 	#
-#	recv_buff = 65536
+	recv_buff = 1048576
 
 	#
 	#  Connection limiting for sockets with "proto = tcp".
@@ -227,6 +227,7 @@ listen {
 	type = acct
 #	interface = eth0
 #	clients = per_socket_clients
+	recv_buff = 1048576
 
 	limit {
 		#  The number of packets received can be rate limited via the
@@ -702,9 +703,9 @@ accounting {
 
 	#
 	#  Create a 'detail'ed log of the packets.
-	#  Note that accounting requests which are proxied
-	#  are also logged in the detail file.
-	detail
+	#  DISABLED: detail writes every accounting packet to disk — severe I/O
+	#  bottleneck under high traffic. SQL accounting handles all logging.
+#	detail
 #	daily
 
 	#  Update the wtmp file
@@ -752,7 +753,8 @@ accounting {
 #	pgsql-voip
 
 	# For Exec-Program and Exec-Program-Wait
-	exec
+	# DISABLED: exec forks a subprocess per accounting packet — catastrophic under load
+#	exec
 
 	#  Filter attributes from the accounting response.
 	attr_filter.accounting_response
@@ -992,8 +994,8 @@ post-auth {
 	#  The "session-state" attributes are not available here.
 	#
 	Post-Auth-Type REJECT {
-		# log failed authentications in SQL, too.
-		sql
+		# DISABLED: sql on every reject saturates DB pool under brute-force/flood
+#		sql
 		attr_filter.access_reject
 
 		# Insert EAP-Failure message if the request was

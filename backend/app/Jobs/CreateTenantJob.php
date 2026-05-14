@@ -214,7 +214,7 @@ class CreateTenantJob implements ShouldQueue
             DB::statement("SET search_path TO public");
             
             DB::table('public.radius_user_schema_mapping')->insert([
-                'username' => $this->adminData['username'],
+                'username' => strtolower(trim($this->adminData['username'])),
                 'schema_name' => $tenant->schema_name,
                 'tenant_id' => $tenant->id,
                 'user_role' => User::ROLE_ADMIN,

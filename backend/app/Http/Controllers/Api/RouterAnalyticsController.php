@@ -18,7 +18,7 @@ class RouterAnalyticsController extends Controller
     public function getRouterRevenue(Request $request)
     {
         $tenantId = auth()->user()->tenant_id;
-        
+
         if (!$tenantId) {
             return response()->json([
                 'error' => 'Tenant ID is required'
@@ -27,50 +27,58 @@ class RouterAnalyticsController extends Controller
 
         $cacheKey = "router_revenue_tenant_{$tenantId}";
 
-        $analytics = Cache::remember($cacheKey, 30, function () use ($tenantId) {
-            // Router is in tenant schema - no tenant_id filter needed
-            $routers = Router::with(['payments' => function($query) {
-                    $query->where('status', 'completed');
-                }])
-                ->get();
+        // OPTIMIZATION: Support pagination for large router lists
+        $perPage = min((int) $request->input('per_page', 50), 100);
+        $page = (int) $request->input('page', 1);
 
-            $routerAnalytics = [];
+        $analytics = Cache::remember($cacheKey, 60, function () use ($perPage) {
+            // Single query: total revenue + count grouped by router_id
+            $revenueByRouter = Payment::where('status', 'completed')
+                ->select('router_id', DB::raw('SUM(amount) as total_revenue'), DB::raw('COUNT(*) as transaction_count'))
+                ->groupBy('router_id')
+                ->get()
+                ->keyBy('router_id');
 
-            foreach ($routers as $router) {
-                $totalRevenue = $router->payments->sum('amount');
-                $transactionCount = $router->payments->count();
-                
-                // Get revenue by package for this router
-                $packageRevenue = Payment::where('router_id', $router->id)
-                    ->where('status', 'completed')
-                    ->select('package_id', DB::raw('SUM(amount) as total_revenue'), DB::raw('COUNT(*) as transaction_count'))
-                    ->groupBy('package_id')
-                    ->with('package:id,name')
-                    ->get()
-                    ->map(function($item) {
-                        return [
-                            'package_id' => $item->package_id,
-                            'package_name' => $item->package->name ?? 'Unknown',
-                            'revenue' => (float) $item->total_revenue,
-                            'transactions' => $item->transaction_count
-                        ];
-                    });
+            // Single query: package breakdown grouped by router_id + package_id
+            $packageRows = Payment::where('status', 'completed')
+                ->select('router_id', 'package_id', DB::raw('SUM(amount) as total_revenue'), DB::raw('COUNT(*) as transaction_count'))
+                ->groupBy('router_id', 'package_id')
+                ->with('package:id,name')
+                ->get()
+                ->groupBy('router_id');
 
-                $routerAnalytics[] = [
-                    'router_id' => $router->id,
-                    'router_name' => $router->name,
-                    'router_location' => $router->location,
-                    'total_revenue' => (float) $totalRevenue,
-                    'transaction_count' => $transactionCount,
-                    'package_breakdown' => $packageRevenue,
-                    'status' => $router->status
-                ];
+            // OPTIMIZATION: Only get routers that have revenue data + limit to reasonable number
+            $routerIdsWithRevenue = $revenueByRouter->keys()->toArray();
+
+            if (empty($routerIdsWithRevenue)) {
+                return collect([]);
             }
 
-            // Sort by revenue (highest first)
-            usort($routerAnalytics, function($a, $b) {
-                return $b['total_revenue'] <=> $a['total_revenue'];
-            });
+            // Get only routers with revenue, limited to top 100 by revenue
+            $routers = Router::select('id', 'name', 'location', 'status')
+                ->whereIn('id', $routerIdsWithRevenue)
+                ->limit(100)
+                ->get();
+
+            $routerAnalytics = $routers->map(function ($router) use ($revenueByRouter, $packageRows) {
+                $rev = $revenueByRouter->get((string) $router->id);
+                $pkgRows = $packageRows->get((string) $router->id, collect());
+
+                return [
+                    'router_id'        => $router->id,
+                    'router_name'      => $router->name,
+                    'router_location'  => $router->location,
+                    'total_revenue'    => (float) ($rev->total_revenue ?? 0),
+                    'transaction_count'=> (int)   ($rev->transaction_count ?? 0),
+                    'package_breakdown'=> $pkgRows->map(fn($item) => [
+                        'package_id'   => $item->package_id,
+                        'package_name' => $item->package->name ?? 'Unknown',
+                        'revenue'      => (float) $item->total_revenue,
+                        'transactions' => (int)   $item->transaction_count,
+                    ])->values(),
+                    'status' => $router->status,
+                ];
+            })->sortByDesc('total_revenue')->values()->all();
 
             return $routerAnalytics;
         });
@@ -99,16 +107,15 @@ class RouterAnalyticsController extends Controller
 
         $cacheKey = "router_details_{$routerId}";
 
-        $analytics = Cache::remember($cacheKey, 30, function () use ($router) {
-            // Total revenue
-            $totalRevenue = $router->payments()
+        $analytics = Cache::remember($cacheKey, 60, function () use ($router) {
+            // Single query for revenue + count
+            $revRow = Payment::where('router_id', $router->id)
                 ->where('status', 'completed')
-                ->sum('amount');
+                ->selectRaw('COALESCE(SUM(amount),0) as total_revenue, COUNT(*) as transaction_count')
+                ->first();
 
-            // Transaction count
-            $transactionCount = $router->payments()
-                ->where('status', 'completed')
-                ->count();
+            $totalRevenue     = (float) ($revRow->total_revenue     ?? 0);
+            $transactionCount = (int)   ($revRow->transaction_count ?? 0);
 
             // Revenue by package
             $packageRevenue = Payment::where('router_id', $router->id)
@@ -210,32 +217,39 @@ class RouterAnalyticsController extends Controller
                 break;
         }
 
+        // Pre-load all requested routers in one query (no N+1)
+        $routers = Router::select('id', 'name')
+            ->whereIn('id', $routerIds)
+            ->get()
+            ->keyBy('id');
+
+        // Single aggregate query across all requested routers
+        $paymentQuery = Payment::whereIn('router_id', $routerIds)
+            ->where('status', 'completed')
+            ->select('router_id', DB::raw('COALESCE(SUM(amount),0) as revenue'), DB::raw('COUNT(*) as transactions'))
+            ->groupBy('router_id');
+
+        if ($dateFilter) {
+            $paymentQuery->where('created_at', '>=', $dateFilter);
+        }
+
+        $paymentsByRouter = $paymentQuery->get()->keyBy('router_id');
+
         $comparison = [];
-
         foreach ($routerIds as $routerId) {
-            $router = Router::where('id', $routerId)
-                ->first();
+            $router = $routers->get($routerId);
+            if (!$router) continue;
 
-            if (!$router) {
-                continue;
-            }
-
-            $query = Payment::where('router_id', $routerId)
-                ->where('status', 'completed');
-
-            if ($dateFilter) {
-                $query->where('created_at', '>=', $dateFilter);
-            }
-
-            $revenue = $query->sum('amount');
-            $transactions = $query->count();
+            $p = $paymentsByRouter->get($routerId);
+            $revenue      = (float) ($p->revenue      ?? 0);
+            $transactions = (int)   ($p->transactions ?? 0);
 
             $comparison[] = [
-                'router_id' => $router->id,
-                'router_name' => $router->name,
-                'revenue' => (float) $revenue,
-                'transactions' => $transactions,
-                'average_per_transaction' => $transactions > 0 ? (float) ($revenue / $transactions) : 0
+                'router_id'               => $router->id,
+                'router_name'             => $router->name,
+                'revenue'                 => $revenue,
+                'transactions'            => $transactions,
+                'average_per_transaction' => $transactions > 0 ? $revenue / $transactions : 0,
             ];
         }
 

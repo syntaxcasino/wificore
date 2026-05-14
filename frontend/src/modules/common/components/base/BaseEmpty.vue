@@ -35,7 +35,7 @@
 
 <script setup>
 import { computed } from 'vue'
-import * as LucideIcons from 'lucide-vue-next'
+import { resolveLucideIcon } from '@/modules/common/utils/lucideIconMap'
 
 const props = defineProps({
   title: {
@@ -83,11 +83,11 @@ const iconClasses = computed(() => {
 })
 
 const iconComponent = computed(() => {
-  return props.icon ? LucideIcons[props.icon] : null
+  return props.icon ? resolveLucideIcon(props.icon, null) : null
 })
 
 const actionIconComponent = computed(() => {
-  return props.actionIcon ? LucideIcons[props.actionIcon] : null
+  return props.actionIcon ? resolveLucideIcon(props.actionIcon, null) : null
 })
 
 const handleAction = () => {

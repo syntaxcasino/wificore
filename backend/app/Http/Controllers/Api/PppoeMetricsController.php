@@ -130,8 +130,8 @@ class PppoeMetricsController extends Controller
         }
 
         // Verify user belongs to tenant
-        $pppoeUser = PppoeUser::where('username', $username)->first();
-        if (!$pppoeUser) {
+        // OPTIMIZED: Use exists() instead of first() - we only need to verify existence
+        if (!PppoeUser::query()->where('username', $username)->exists()) {
             return response()->json([
                 'success' => false,
                 'error' => 'PPPoE user not found',

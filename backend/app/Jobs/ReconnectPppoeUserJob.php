@@ -49,7 +49,10 @@ class ReconnectPppoeUserJob implements ShouldQueue
             ]);
 
             try {
-                $user = PppoeUser::find($this->pppoeUserId);
+                // OPTIMIZED: Select only needed columns
+                $user = PppoeUser::query()
+                    ->select(['id', 'username'])
+                    ->find($this->pppoeUserId);
 
                 if (!$user) {
                     Log::warning('ReconnectPppoeUserJob: User not found', [

@@ -246,7 +246,7 @@ class CreateTenantWorkspaceJob implements ShouldQueue
 
             // Create schema mapping for multi-tenant authentication
             DB::table('public.radius_user_schema_mapping')->insert([
-                'username' => $username,
+                'username' => strtolower(trim($username)),
                 'schema_name' => $tenant->schema_name,
                 'tenant_id' => $tenant->id,
                 'is_active' => true,

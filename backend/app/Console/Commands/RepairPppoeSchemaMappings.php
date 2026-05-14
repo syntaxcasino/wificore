@@ -160,21 +160,23 @@ class RepairPppoeSchemaMappings extends Command
 
         foreach ($pppoeUsers as $pppoeUser) {
             try {
+                $normalizedUsername = strtolower(trim($pppoeUser->username));
+
                 // Check if mapping exists
                 $exists = DB::table('public.radius_user_schema_mapping')
-                    ->where('username', $pppoeUser->username)
+                    ->where('username', $normalizedUsername)
                     ->exists();
 
                 if ($exists) {
                     $skipped++;
-                    $this->line("    ✓ {$pppoeUser->username} - mapping exists");
+                    $this->line("    ✓ {$normalizedUsername} - mapping exists");
                     continue;
                 }
 
                 $missingMapping++;
 
                 if ($dryRun) {
-                    $this->warn("    → {$pppoeUser->username} - WOULD CREATE mapping");
+                    $this->warn("    → {$normalizedUsername} - WOULD CREATE mapping");
                     $fixed++;
                     continue;
                 }
@@ -184,7 +186,7 @@ class RepairPppoeSchemaMappings extends Command
                     INSERT INTO public.radius_user_schema_mapping 
                     (username, schema_name, tenant_id, user_role, is_active, created_at, updated_at)
                     VALUES (?, ?, ?::uuid, 'pppoe', true, NOW(), NOW())
-                ", [$pppoeUser->username, $tenant->schema_name, $tenant->id]);
+                ", [$normalizedUsername, $tenant->schema_name, $tenant->id]);
 
                 $this->info("    ✓ {$pppoeUser->username} - mapping CREATED");
                 $fixed++;

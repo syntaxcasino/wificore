@@ -119,7 +119,7 @@
 <script setup>
 import { computed, ref, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { X } from 'lucide-vue-next'
-import * as LucideIcons from 'lucide-vue-next'
+import { resolveLucideIcon } from '@/modules/common/utils/lucideIconMap'
 
 const props = defineProps({
   modelValue: {
@@ -171,7 +171,7 @@ const panelRef = ref(null)
 const headerShadow = ref(false)
 
 const iconComponent = computed(() => {
-  return props.icon ? LucideIcons[props.icon] || LucideIcons.Circle : null
+  return props.icon ? resolveLucideIcon(props.icon) : null
 })
 
 const widthClass = computed(() => {

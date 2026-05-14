@@ -6,6 +6,7 @@ use App\Models\Tenant;
 use App\Events\RouterStatusUpdated;
 use App\Services\WireguardPeerHealthService;
 use App\Traits\TenantAwareJob;
+use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -20,6 +21,7 @@ class UpdateVpnStatusJob implements ShouldQueue
 
     public $tries = 3;
     public $timeout = 60;
+    public $backoff = [5, 15, 30];
 
     /**
      * Create a new job instance.
@@ -38,7 +40,10 @@ class UpdateVpnStatusJob implements ShouldQueue
         // If no tenant ID is set, this is the main scheduler job.
         // We need to dispatch a job for each active tenant.
         if (!$this->tenantId) {
-            $tenants = Tenant::where('is_active', true)->get();
+            $tenants = Tenant::query()
+                ->where('is_active', true)
+                ->useWritePdo()
+                ->get();
             
             foreach ($tenants as $tenant) {
                 self::dispatch($tenant->id);
@@ -72,6 +77,17 @@ class UpdateVpnStatusJob implements ShouldQueue
                 throw $e;
             }
         });
+    }
+
+    public function middleware(): array
+    {
+        $key = $this->tenantId ? 'update-vpn-status:tenant:' . $this->tenantId : 'update-vpn-status:dispatcher';
+
+        return [
+            (new WithoutOverlapping($key))
+                ->expireAfter(120)
+                ->releaseAfter(5),
+        ];
     }
 
     /**

@@ -62,11 +62,6 @@ class TodoCreated implements ShouldBroadcast, ShouldQueue
             'updated_at' => $todo->updated_at->toIso8601String(),
         ];
         
-        \Log::info("📡 TodoCreated event constructed", [
-            'todo_id' => $todo->id,
-            'tenant_id' => $this->tenantId,
-            'will_broadcast_to' => 'tenant.' . $this->tenantId . '.todos'
-        ]);
     }
 
     /**
@@ -86,13 +81,6 @@ class TodoCreated implements ShouldBroadcast, ShouldQueue
             $channels[] = new PrivateChannel('user.' . $this->todoData['user_id'] . '.todos');
         }
 
-        \Log::info("📡 TodoCreated broadcastOn() called", [
-            'tenant_id' => $this->tenantId,
-            'user_id' => $this->todoData['user_id'] ?? null,
-            'channels' => array_map(fn($ch) => $ch->name, $channels),
-            'todo_id' => $this->todoData['id']
-        ]);
-
         return $channels;
     }
 
@@ -109,17 +97,9 @@ class TodoCreated implements ShouldBroadcast, ShouldQueue
      */
     public function broadcastWith(): array
     {
-        $data = [
+        return [
             'todo' => $this->todoData,
             'timestamp' => now()->toIso8601String(),
         ];
-        
-        \Log::info("📡 TodoCreated broadcastWith() called", [
-            'todo_id' => $this->todoData['id'],
-            'tenant_id' => $this->tenantId,
-            'data_keys' => array_keys($data)
-        ]);
-        
-        return $data;
     }
 }

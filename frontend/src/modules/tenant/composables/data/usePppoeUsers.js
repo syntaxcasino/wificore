@@ -160,6 +160,32 @@ export function usePppoeUsers() {
       loading.value = false
     }
   }
+
+  const deleteUser = async (userId) => {
+    loading.value = true
+    error.value = null
+
+    // Optimistically remove from local list immediately for better UX
+    const deletedUserIndex = users.value.findIndex(u => u.id === userId)
+    const deletedUser = deletedUserIndex !== -1 ? users.value[deletedUserIndex] : null
+    if (deletedUserIndex !== -1) {
+      users.value.splice(deletedUserIndex, 1)
+    }
+
+    try {
+      const response = await axios.delete(`/pppoe/users/${userId}`)
+      return response.data
+    } catch (err) {
+      // Restore user on error
+      if (deletedUser) {
+        users.value.splice(deletedUserIndex, 0, deletedUser)
+      }
+      error.value = err.response?.data?.message || 'Failed to delete PPPoE user'
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
   
   /**
    * Subscribe to WebSocket channels for real-time updates
@@ -190,6 +216,11 @@ export function usePppoeUsers() {
       return
     }
     
+    // Prevent duplicate subscriptions from repeated mount/watch cycles
+    if (echoChannel) {
+      return
+    }
+
     // Subscribe to pppoe-users channel
     echoChannel = window.Echo.private(`tenant.${tenantId}.pppoe-users`)
       .listen('.PppoeUserCreated', (event) => {
@@ -289,6 +320,7 @@ export function usePppoeUsers() {
     getUser,
     createUser,
     updateUser,
+    deleteUser,
     viewPassword,
     viewPortalPassword,
     resetPassword,

@@ -7,6 +7,7 @@ import { onMounted, onUnmounted, ref } from 'vue'
 export function useBroadcasting() {
   const isConnected = ref(false)
   const channels = ref(new Map())
+  const listeners = ref(new Map())
   
   // Store bound handlers for cleanup
   const boundHandlers = new Map()
@@ -23,14 +24,19 @@ export function useBroadcasting() {
       return null
     }
 
-    const channel = window.Echo.private(channelName)
-    
-    // Register event listeners
-    Object.entries(events).forEach(([eventName, handler]) => {
-      channel.listen(eventName, handler)
-    })
+    let channel = channels.value.get(channelName)
+    if (!channel) {
+      channel = window.Echo.private(channelName)
+      channels.value.set(channelName, channel)
+    }
 
-    channels.value.set(channelName, channel)
+    // Register listeners once per channel/event key
+    Object.entries(events).forEach(([eventName, handler]) => {
+      const key = `${channelName}:${eventName}`
+      if (listeners.value.has(key)) return
+      channel.listen(eventName, handler)
+      listeners.value.set(key, handler)
+    })
     
     return channel
   }
@@ -80,6 +86,9 @@ export function useBroadcasting() {
     if (channels.value.has(channelName)) {
       window.Echo.leave(channelName)
       channels.value.delete(channelName)
+      Array.from(listeners.value.keys())
+        .filter((k) => k.startsWith(`${channelName}:`))
+        .forEach((k) => listeners.value.delete(k))
     }
   }
 

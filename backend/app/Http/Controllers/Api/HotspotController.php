@@ -12,8 +12,11 @@ use App\Jobs\DisconnectHotspotUserJob;
 use App\Jobs\GrantHotspotAccessJob;
 use App\Events\HotspotAccessRevoked;
 use App\Events\HotspotUserCreated;
+use App\Events\HotspotUserUpdated;
+use App\Events\HotspotUserDeleted;
 use App\Services\Hotspot\HotspotRadiusService;
 use App\Services\MikroTik\BandwidthHelper;
+use App\Services\RadiusService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -24,6 +27,13 @@ use Illuminate\Support\Str;
 
 class HotspotController extends Controller
 {
+    protected $radiusService;
+
+    public function __construct(RadiusService $radiusService)
+    {
+        $this->radiusService = $radiusService;
+    }
+
     /**
      * Hotspot user login
      * 
@@ -65,12 +75,40 @@ class HotspotController extends Controller
                 ], 401);
             }
 
-            // Verify password
-            if (!password_verify($password, $hotspotUser->password)) {
+            // CENTRALIZED AUTHENTICATION: Use RADIUS for all hotspot authentication
+            try {
+                \Log::info('Hotspot: Verifying password via RADIUS', [
+                    'username' => $username,
+                ]);
+
+                // Use RADIUS service for centralized authentication
+                $authenticated = $this->radiusService->authenticate(
+                    $username,
+                    $password
+                );
+
+                if (!$authenticated) {
+                    \Log::warning('Hotspot: RADIUS authentication failed', [
+                        'username' => $username,
+                    ]);
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Invalid username or password',
+                    ], 401);
+                }
+
+                \Log::info('Hotspot: RADIUS authentication successful', [
+                    'username' => $username,
+                ]);
+            } catch (\Exception $e) {
+                \Log::error('Hotspot: RADIUS authentication error', [
+                    'username' => $username,
+                    'error' => $e->getMessage(),
+                ]);
                 return response()->json([
                     'success' => false,
-                    'message' => 'Invalid username or password',
-                ], 401);
+                    'message' => 'Authentication service unavailable',
+                ], 503);
             }
 
             // Check if user has an active subscription
@@ -284,28 +322,36 @@ class HotspotController extends Controller
     // =========================================================================
 
     /**
-     * List hotspot users with pagination and filtering
+     * List hotspot users with optimized query
      */
     public function listUsers(Request $request)
     {
         try {
-            $query = HotspotUser::with(['package', 'credential'])
+            // OPTIMIZED: Select only needed columns and use efficient eager loading
+            $query = HotspotUser::query()
+                ->select([
+                    'id', 'username', 'phone_number', 'mac_address', 'status', 'is_active',
+                    'has_active_subscription', 'package_id', 'package_name',
+                    'subscription_expires_at', 'data_used', 'simultaneous_use',
+                    'created_at', 'updated_at'
+                ])
+                ->with(['package:id,name,download_speed,upload_speed,speed'])
                 ->when($request->status, function ($q, $status) {
                     return $q->where('status', $status);
                 })
                 ->when($request->package_id, function ($q, $packageId) {
                     return $q->where('package_id', $packageId);
                 })
-                ->when($request->search, function ($q, $search) {
-                    return $q->where(function ($query) use ($search) {
-                        $query->where('username', 'like', "%{$search}%")
-                            ->orWhere('phone', 'like', "%{$search}%")
-                            ->orWhere('voucher_code', 'like', "%{$search}%")
-                            ->orWhere('name', 'like', "%{$search}%");
-                    });
-                })
                 ->when($request->has_subscription !== null, function ($q) use ($request) {
                     return $q->where('has_active_subscription', filter_var($request->has_subscription, FILTER_VALIDATE_BOOLEAN));
+                })
+                ->when($request->search, function ($q, $search) {
+                    $searchTerm = strtolower($search);
+                    return $q->where(function ($sub) use ($searchTerm) {
+                        $sub->whereRaw('LOWER(username) LIKE ?', ["%{$searchTerm}%"])
+                            ->orWhereRaw('LOWER(phone_number) LIKE ?', ["%{$searchTerm}%"])
+                            ->orWhereRaw('LOWER(name) LIKE ?', ["%{$searchTerm}%"]);
+                    });
                 });
 
             $users = $query->latest()->paginate($request->per_page ?? 15);
@@ -461,6 +507,7 @@ class HotspotController extends Controller
                 'admin_grant'
             )->onQueue('hotspot-access');
 
+            \Illuminate\Support\Facades\Cache::forget('hotspot_stats');
             Log::info('Grant access job dispatched for hotspot user', [
                 'user_id' => $userId,
                 'package_id' => $packageId,
@@ -535,6 +582,7 @@ class HotspotController extends Controller
                 $reason
             ))->toOthers();
 
+            \Illuminate\Support\Facades\Cache::forget('hotspot_stats');
             Log::info('Access revoked for hotspot user', [
                 'user_id' => $userId,
                 'username' => $user->username,
@@ -799,6 +847,7 @@ class HotspotController extends Controller
 
             $tenantId = $request->user()->tenant_id;
             broadcast(new HotspotUserCreated($user, null, ['username' => $user->username, 'generated_password' => $plainPassword], $tenantId))->toOthers();
+            \Illuminate\Support\Facades\Cache::forget('hotspot_stats');
 
             Log::info('Hotspot user created by admin', [
                 'user_id'   => $user->id,
@@ -831,7 +880,11 @@ class HotspotController extends Controller
      */
     public function update(Request $request, string $userId)
     {
-        $user = HotspotUser::findOrFail($userId);
+        // OPTIMIZED: Select only needed columns
+        $user = HotspotUser::query()
+            ->select(['id', 'username', 'package_id', 'package_name', 'phone_number', 'mac_address', 
+                      'simultaneous_use', 'is_active', 'status', 'subscription_expires_at', 'created_at', 'updated_at'])
+            ->findOrFail($userId);
 
         $validator = Validator::make($request->all(), [
             'package_id'       => 'sometimes|required|uuid',
@@ -905,10 +958,6 @@ class HotspotController extends Controller
             if ($request->has('mac_address'))      $user->mac_address      = $request->mac_address;
             if ($request->has('simultaneous_use')) {
                 $user->simultaneous_use = (int) $request->simultaneous_use;
-                DB::table('radcheck')->updateOrInsert(
-                    ['username' => $user->username, 'attribute' => 'Simultaneous-Use'],
-                    ['op' => ':=', 'value' => (string) $user->simultaneous_use]
-                );
             }
             if ($request->has('is_active')) $user->is_active = (bool) $request->is_active;
             if ($request->has('status'))    $user->status    = $request->status;
@@ -917,12 +966,43 @@ class HotspotController extends Controller
             $shouldBlock = !$user->is_active
                 || in_array($user->status, ['inactive', 'expired', 'revoked', 'suspended'], true);
 
+            // OPTIMIZED: Batch RADIUS operations using upsert
+            $now = now();
+            $radcheckValues = [];
+            
+            if ($request->has('simultaneous_use')) {
+                $radcheckValues[] = [
+                    'username' => $user->username, 
+                    'attribute' => 'Simultaneous-Use', 
+                    'op' => ':=', 
+                    'value' => (string) $user->simultaneous_use,
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ];
+            }
+            
             if ($shouldBlock) {
-                DB::table('radcheck')->updateOrInsert(
-                    ['username' => $user->username, 'attribute' => 'Auth-Type'],
-                    ['op' => ':=', 'value' => 'Reject']
+                $radcheckValues[] = [
+                    'username' => $user->username, 
+                    'attribute' => 'Auth-Type', 
+                    'op' => ':=', 
+                    'value' => 'Reject',
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ];
+            }
+            
+            // Batch upsert all radcheck values in one query
+            if (!empty($radcheckValues)) {
+                DB::table('radcheck')->upsert(
+                    $radcheckValues,
+                    ['username', 'attribute'],
+                    ['op', 'value', 'updated_at']
                 );
-            } else {
+            }
+            
+            // Remove Auth-Type Reject if not blocking
+            if (!$shouldBlock) {
                 DB::table('radcheck')
                     ->where('username', $user->username)
                     ->where('attribute', 'Auth-Type')
@@ -937,6 +1017,11 @@ class HotspotController extends Controller
                 : null;
             $user->is_expired = $user->subscription_expires_at && $user->subscription_expires_at->isPast();
 
+            // Broadcast event for real-time updates
+            $tenantId = $request->user()->tenant_id;
+            broadcast(new HotspotUserUpdated($user, $tenantId))->toOthers();
+
+            \Illuminate\Support\Facades\Cache::forget('hotspot_stats');
             Log::info('Hotspot user updated', ['user_id' => $user->id, 'username' => $user->username]);
 
             return response()->json([
@@ -960,16 +1045,34 @@ class HotspotController extends Controller
     public function getStats()
     {
         try {
-            $stats = [
-                'total_users' => HotspotUser::count(),
-                'active_users' => HotspotUser::where('has_active_subscription', true)->count(),
-                'expired_users' => HotspotUser::where('status', 'expired')->count(),
-                'active_sessions' => RadiusSession::where('status', 'active')->count(),
-                'today_logins' => RadiusSession::whereDate('session_start', today())->count(),
-                'total_data_usage' => DB::table('radacct')
-                    ->selectRaw('SUM(acctinputoctets + acctoutputoctets) as total')
-                    ->value('total') ?? 0,
-            ];
+            $stats = \Illuminate\Support\Facades\Cache::remember('hotspot_stats', 30, function () {
+                // Single query for all user counts
+                $userCounts = HotspotUser::selectRaw("
+                    COUNT(*) as total,
+                    COUNT(*) FILTER (WHERE has_active_subscription = true) as active,
+                    COUNT(*) FILTER (WHERE status = 'expired') as expired
+                ")->first();
+
+                // Single query for session counts + data usage
+                $today = now()->toDateString();
+                $sessionCounts = RadiusSession::selectRaw("
+                    COUNT(*) FILTER (WHERE status = 'active') as active_sessions,
+                    COUNT(*) FILTER (WHERE session_start::date = ?) as today_logins
+                ", [$today])->first();
+
+                $dataUsage = DB::table('radacct')
+                    ->selectRaw('COALESCE(SUM(acctinputoctets + acctoutputoctets), 0) as total')
+                    ->value('total') ?? 0;
+
+                return [
+                    'total_users'      => (int) ($userCounts->total ?? 0),
+                    'active_users'     => (int) ($userCounts->active ?? 0),
+                    'expired_users'    => (int) ($userCounts->expired ?? 0),
+                    'active_sessions'  => (int) ($sessionCounts->active_sessions ?? 0),
+                    'today_logins'     => (int) ($sessionCounts->today_logins ?? 0),
+                    'total_data_usage' => (float) $dataUsage,
+                ];
+            });
 
             return response()->json([
                 'success' => true,
@@ -980,6 +1083,55 @@ class HotspotController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to fetch statistics',
+            ], 500);
+        }
+    }
+
+    /**
+     * Delete a hotspot user
+     */
+    public function destroy(string $id)
+    {
+        try {
+            // Select only needed columns
+            $user = HotspotUser::query()
+                ->select(['id', 'username'])
+                ->find($id);
+
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Hotspot user not found',
+                ], 404);
+            }
+
+            $username = $user->username;
+
+            // Delete RADIUS entries
+            DB::table('radcheck')->where('username', $username)->delete();
+            DB::table('radreply')->where('username', $username)->delete();
+
+            // Delete the user
+            $user->delete();
+
+            // Broadcast event for real-time updates
+            $tenantId = auth()->user()->tenant_id ?? 'unknown';
+            broadcast(new HotspotUserDeleted($id, $username, $tenantId))->toOthers();
+
+            // Clear cache
+            \Illuminate\Support\Facades\Cache::forget('hotspot_stats');
+
+            Log::info('Hotspot user deleted', ['user_id' => $id, 'username' => $username]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Hotspot user deleted',
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to delete hotspot user', ['user_id' => $id, 'error' => $e->getMessage()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to delete hotspot user: ' . $e->getMessage(),
             ], 500);
         }
     }

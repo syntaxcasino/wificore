@@ -36,9 +36,8 @@ class FetchRouterLiveData implements ShouldQueue
         $this->routerIds = $routerIds;
         $this->onQueue('router-data');
         
-        Log::withContext(['job' => 'FetchRouterLiveData'])->info('Job initialized', [
+        Log::withContext(['job' => 'FetchRouterLiveData'])->debug('Job initialized', [
             'tenant_id' => $tenantId,
-            'router_ids' => $this->routerIds,
             'router_count' => count($this->routerIds),
         ]);
     }
@@ -53,14 +52,13 @@ class FetchRouterLiveData implements ShouldQueue
                 'tenant_id' => $this->tenantId,
                 'attempt' => $this->attempts(),
                 'job_id' => $this->job->getJobId() ?? 'unknown'
-            ])->info('Starting job execution using VictoriaMetrics');
+            ])->debug('Starting job execution using VictoriaMetrics');
 
             try {
                 $routers = Router::whereIn('id', $this->routerIds)->get()->keyBy('id');
 
-                Log::info('Retrieved routers from database', [
+                Log::debug('Retrieved routers from database', [
                     'router_count' => $routers->count(),
-                    'router_ids' => $routers->keys()->toArray()
                 ]);
 
                 if ($routers->isEmpty()) {
@@ -72,15 +70,10 @@ class FetchRouterLiveData implements ShouldQueue
                 $liveDataBatch = [];
                 try {
                     $liveDataBatch = $metricsService->getLatestRouterMetrics($vm, (string) $this->tenantId, $this->routerIds);
-                } catch (\Exception $e) {
-                    Log::error('Failed to fetch batch metrics from VictoriaMetrics', [
-                        'error' => $e->getMessage()
-                    ]);
-                    // Continue with empty batch - allows marking routers as offline if needed, 
-                    // or better, rely on existing data if VM is temporarily down? 
-                    // For now, we assume if VM fetch fails, we can't update status reliably.
-                    // But we should probably not mark everything offline immediately on single scrape failure.
-                    throw $e;
+                } catch (\Throwable $e) {
+                    $this->logVmBatchIssueOnce($e);
+
+                    $liveDataBatch = $this->getCachedLiveDataForRouters();
                 }
 
                 $successfulRouters = [];
@@ -175,7 +168,7 @@ class FetchRouterLiveData implements ShouldQueue
                         }
 
                         if ($handshakeRecentlyActive) {
-                            Log::info('Router has active VPN but no metrics yet - keeping online', [
+                            Log::debug('Router has active VPN but no metrics yet - keeping online', [
                                 'router_id' => $router->id,
                                 'handshake_age_seconds' => $handshakeAge ?? null,
                                 'threshold_seconds' => $inactiveThreshold,
@@ -205,9 +198,7 @@ class FetchRouterLiveData implements ShouldQueue
 
                 $duration = round(microtime(true) - $startTime, 2);
 
-                Log::info('Job completed successfully', [
-                    'successful_routers' => $successfulRouters,
-                    'failed_routers' => $failedRouters,
+                Log::debug('Job completed successfully', [
                     'success_count' => count($successfulRouters),
                     'failure_count' => count($failedRouters),
                     'duration_seconds' => $duration
@@ -221,7 +212,7 @@ class FetchRouterLiveData implements ShouldQueue
                 ]);
 
                 if ($this->attempts() >= $this->tries) {
-                    Log::warning('Skipping forced offline transition after VM fetch failure', [
+                    Log::debug('Skipping forced offline transition after VM fetch failure', [
                         'tenant_id' => $this->tenantId,
                         'router_ids' => $this->routerIds,
                         'reason' => 'Connectivity state is managed by CheckRoutersJob/VerifyVpnConnectivityJob',
@@ -281,6 +272,40 @@ class FetchRouterLiveData implements ShouldQueue
                 'error' => $e->getMessage()
             ]);
         }
+    }
+
+    protected function getCachedLiveDataForRouters(): array
+    {
+        $cachedBatch = [];
+
+        foreach ($this->routerIds as $routerId) {
+            $rid = (string) $routerId;
+            $cached = Cache::get("router_live_data_{$rid}");
+
+            if (is_array($cached) && !empty($cached) && !isset($cached['error'])) {
+                $cachedBatch[$rid] = $cached;
+            }
+        }
+
+        return $cachedBatch;
+    }
+
+    private function logVmBatchIssueOnce(\Throwable $e): void
+    {
+        $cacheKey = sprintf('fetch_router_live_data_vm_batch_failed:%s', (string) $this->tenantId);
+        $context = [
+            'tenant_id' => $this->tenantId,
+            'router_count' => count($this->routerIds),
+            'error' => $e->getMessage(),
+            'exception' => get_class($e),
+        ];
+
+        if (Cache::add($cacheKey, true, now()->addMinutes(5))) {
+            Log::warning('Failed to fetch batch metrics from VictoriaMetrics; using cached live data', $context);
+            return;
+        }
+
+        Log::debug('Failed to fetch batch metrics from VictoriaMetrics; using cached live data', $context);
     }
 
     protected function cacheErrorState(Router $router, \Exception $e): void

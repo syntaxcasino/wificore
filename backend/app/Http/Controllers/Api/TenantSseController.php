@@ -7,6 +7,7 @@ use App\Models\Router;
 use App\Models\Tenant;
 use App\Services\TenantContext;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -115,7 +116,13 @@ class TenantSseController extends Controller
                 try {
                     $redis = Redis::connection('default')->client();
                 } catch (\Exception $e) {
-                    Log::error('Tenant SSE: Redis connection failed', ['error' => $e->getMessage()]);
+                    $this->logRedisIssueOnce(
+                        $tenantId,
+                        'connection_failed',
+                        'Tenant SSE: Redis connection failed',
+                        [],
+                        $e
+                    );
                     $this->sseWrite('error', $eventId++, ['message' => 'Redis connection failed']);
                     return;
                 }
@@ -152,7 +159,9 @@ class TenantSseController extends Controller
 
                         $payload = json_decode($message, true);
                         if (!$payload) {
-                            Log::warning('Tenant SSE: Failed to decode message', ['message' => $message]);
+                            Log::debug('Tenant SSE: Failed to decode message', [
+                                'message_preview' => substr($message, 0, 200),
+                            ]);
                             return;
                         }
 
@@ -163,7 +172,7 @@ class TenantSseController extends Controller
 
                         // Security: verify tenantId in payload matches the authenticated tenant
                         if (isset($payload['data']['tenant_id']) && (string) $payload['data']['tenant_id'] !== (string) $tenantId) {
-                            Log::warning('SSE: tenant mismatch in Redis message', [
+                            Log::debug('SSE: tenant mismatch in Redis message', [
                                 'expected' => $tenantId,
                                 'got'      => $payload['data']['tenant_id'],
                             ]);
@@ -177,11 +186,15 @@ class TenantSseController extends Controller
                         ]);
                     });
                 } catch (\Exception $e) {
-                    Log::error('Tenant SSE: Redis subscribe error', [
-                        'error' => $e->getMessage(),
-                        'trace' => $e->getTraceAsString(),
-                        'tenant_id' => $tenantId,
-                    ]);
+                    $this->logRedisIssueOnce(
+                        $tenantId,
+                        'subscribe_error',
+                        'Tenant SSE: Redis subscribe error',
+                        [
+                            'trace' => $e->getTraceAsString(),
+                        ],
+                        $e
+                    );
                     $this->sseWrite('error', $eventId++, ['message' => 'Stream error: ' . $e->getMessage()]);
                 }
 
@@ -198,8 +211,7 @@ class TenantSseController extends Controller
                     ]);
                     echo "event: error\n";
                     echo 'data: ' . json_encode(['error' => 'Internal stream error: ' . $e->getMessage()]) . "\n\n";
-                    ob_flush();
-                    flush();
+                    $this->flushOutput();
                 } finally {
                     try {
                         $ctx->clearTenant();
@@ -237,7 +249,9 @@ class TenantSseController extends Controller
     private function initialRouterStatus(string $tenantId): ?array
     {
         try {
-            $routers = Router::where('tenant_id', $tenantId)
+            // TenantContext already scopes us to the tenant schema.
+            // Do not filter by tenant_id since tenant tables may not have that column.
+            $routers = Router::query()
                 ->select(['id', 'name', 'status', 'vpn_status', 'last_seen', 'ip_address'])
                 ->get();
 
@@ -269,8 +283,7 @@ class TenantSseController extends Controller
         echo "id: {$id}\n";
         echo "event: {$event}\n";
         echo 'data: ' . json_encode($data) . "\n\n";
-        ob_flush();
-        flush();
+        $this->flushOutput();
     }
 
     private function sseHeaders(): array
@@ -289,9 +302,34 @@ class TenantSseController extends Controller
         return response()->stream(function () use ($message) {
             echo "event: error\n";
             echo 'data: ' . json_encode(['error' => $message]) . "\n\n";
-            ob_flush();
-            flush();
+            $this->flushOutput();
         }, $status, ['Content-Type' => 'text/event-stream', 'Cache-Control' => 'no-cache']);
+    }
+
+    private function flushOutput(): void
+    {
+        if (ob_get_level() > 0) {
+            @ob_flush();
+        }
+        @flush();
+    }
+
+    private function logRedisIssueOnce(string $tenantId, string $issue, string $message, array $context = [], ?\Throwable $e = null): void
+    {
+        $cacheKey = sprintf('tenant_sse_redis_issue:%s:%s', $tenantId, $issue);
+        $context['tenant_id'] = $tenantId;
+
+        if ($e !== null) {
+            $context['error'] = $e->getMessage();
+            $context['exception'] = get_class($e);
+        }
+
+        if (Cache::add($cacheKey, true, now()->addMinutes(5))) {
+            Log::warning($message, $context);
+            return;
+        }
+
+        Log::debug($message, $context);
     }
 
 }

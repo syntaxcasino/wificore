@@ -40,6 +40,13 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        if ($this->app->runningInConsole()) {
+            $consoleMemoryLimit = (string) env('CLI_MEMORY_LIMIT', '512M');
+            if ($consoleMemoryLimit !== '') {
+                @ini_set('memory_limit', $consoleMemoryLimit);
+            }
+        }
+
         Sanctum::usePersonalAccessTokenModel(PersonalAccessToken::class);
         
         // Track completed jobs for statistics
@@ -98,8 +105,8 @@ class AppServiceProvider extends ServiceProvider
             $readHost = (string) ($readHost[0] ?? '');
         }
 
-        $timeout = (float) env('DB_READ_HEALTHCHECK_TIMEOUT', 0.2);
-        $interval = (int) env('DB_READ_HEALTHCHECK_INTERVAL', 5);
+        $timeout = (float) env('DB_READ_HEALTHCHECK_TIMEOUT', 0.5);
+        $interval = (int) env('DB_READ_HEALTHCHECK_INTERVAL', 30);
 
         $check = function (string $host, int $port) use ($database, $username, $password, $timeout): bool {
             if ($host === '') {
@@ -154,18 +161,12 @@ class AppServiceProvider extends ServiceProvider
             }
         }
 
-        if (!$readHealthy) {
-            $directReadHost = (string) env('DB_DIRECT_READ_HOST', '');
-            $directReadPort = (int) env('DB_DIRECT_READ_PORT', env('DB_DIRECT_PORT', 5432));
-            $fallbackReadHost = $directReadHost !== '' ? $directReadHost : (string) env('DB_DIRECT_HOST', (string) $writeHost);
-            $fallbackReadPort = $directReadHost !== '' ? $directReadPort : (int) env('DB_DIRECT_PORT', $writePort);
-
-            if ($fallbackReadHost !== '') {
-                config([
-                    'database.connections.pgsql.read.host' => $fallbackReadHost,
-                    'database.connections.pgsql.read.port' => $fallbackReadPort,
-                ]);
-            }
+        if (!$readHealthy && $writeHost !== '') {
+            config([
+                'database.connections.pgsql.read.host' => $writeHost,
+                'database.connections.pgsql.read.port' => $writePort,
+                'database.connections.pgsql.sticky' => true,
+            ]);
         }
     }
 }

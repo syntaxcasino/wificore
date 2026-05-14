@@ -116,7 +116,7 @@ class RouterController extends Controller
                 ], 403);
             }
 
-            $routers = Router::with(['services', 'accessPoints'])
+            $routers = Router::select(['id', 'name', 'ip_address', 'status', 'vpn_ip', 'vpn_status', 'last_seen', 'model', 'os_version', 'created_at'])
                 ->orderBy('created_at', 'desc')
                 ->get();
 
@@ -301,6 +301,10 @@ class RouterController extends Controller
             "Router '{$router->name}' created with VPN configuration",
             (string) $router->tenant_id
         );
+
+        // Bust tenant dashboard cache for router counts
+        TenantDashboardController::bustEntityCache((string) $router->tenant_id, 'routers');
+        TenantDashboardController::bustEntityCache((string) $router->tenant_id, 'dashboard');
 
         // Generate sanitized script for UI display (hides secrets)
         $sanitizedScript = $this->generateSanitizedScript($router, $connectivityScript);
@@ -511,6 +515,12 @@ class RouterController extends Controller
             $tenantId = $router->tenant_id ?? null;
             if ($tenantId) {
                 event(new \App\Events\RouterUpdated($router->toArray(), (string) $tenantId));
+                \App\Services\CacheInvalidationService::invalidateRouterCache((string) $tenantId, (string) $router->id);
+                Cache::forget("router_revenue_tenant_{$tenantId}");
+                Cache::forget("router_details_{$router->id}");
+                // Bust tenant dashboard cache for router counts
+                TenantDashboardController::bustEntityCache((string) $tenantId, 'routers');
+                TenantDashboardController::bustEntityCache((string) $tenantId, 'dashboard');
             }
 
             AuditLogService::logRouterEvent(
@@ -551,7 +561,16 @@ class RouterController extends Controller
                 "Router '{$routerName}' deleted",
                 (string) $router->tenant_id
             );
+            $tenantId = $router->tenant_id ?? null;
             $router->delete();
+            if ($tenantId) {
+                \App\Services\CacheInvalidationService::invalidateRouterCache((string) $tenantId, $routerId);
+                Cache::forget("router_revenue_tenant_{$tenantId}");
+                Cache::forget("router_details_{$routerId}");
+                // Bust tenant dashboard cache for router counts
+                TenantDashboardController::bustEntityCache((string) $tenantId, 'routers');
+                TenantDashboardController::bustEntityCache((string) $tenantId, 'dashboard');
+            }
             Log::info('Router deleted successfully:', ['router_id' => $routerId]);
             return response()->json(['message' => 'Router deleted successfully']);
         } catch (\Exception $e) {
@@ -1309,14 +1328,35 @@ class RouterController extends Controller
             }
 
             if (!$router) {
+                // OPTIMIZATION: Check if we've recently searched for this token and failed
+                // This prevents repeated full-tenant scans for invalid tokens
+                $notFoundCacheKey = "router_token_notfound:{$configToken}";
+                if (Cache::has($notFoundCacheKey)) {
+                    Log::debug('Router config token recently not found, skipping tenant scan', [
+                        'config_token' => $configToken,
+                    ]);
+                    return response('# ERROR: Configuration not found. Please verify your config token.', 404)
+                        ->header('Content-Type', 'text/plain; charset=utf-8');
+                }
+
                 // CRITICAL: Router table is in tenant schema, but we don't know which tenant yet
                 // Fallback: search across all tenant schemas using write connection only
-                $tenants = Tenant::where('is_active', true)->get();
+                // OPTIMIZATION: Only search tenants that have been active recently (last 30 days)
+                $tenants = Tenant::where('is_active', true)
+                    ->where(function($q) {
+                        $q->whereNull('last_active_at')
+                          ->orWhere('last_active_at', '>=', now()->subDays(30));
+                    })
+                    ->limit(50) // Limit to prevent scanning hundreds of tenants
+                    ->get();
 
+                $searchedCount = 0;
                 foreach ($tenants as $tenant) {
                     if (!$tenant->schema_created || !$tenant->schema_name) {
                         continue;
                     }
+
+                    $searchedCount++;
 
                     try {
                         if ($migrationManager->hasPendingMigrations($tenant)) {
@@ -1351,10 +1391,14 @@ class RouterController extends Controller
                     }
                 }
 
-                if (isset($tenants) && (!$router || !$foundTenant)) {
+                if (!$router || !$foundTenant) {
+                    // Cache the "not found" result for 5 minutes to prevent repeated scans
+                    Cache::put($notFoundCacheKey, true, now()->addMinutes(5));
+
                     Log::warning('Router not found with config token', [
                         'config_token'     => $configToken,
-                        'tenants_searched' => $tenants->count(),
+                        'tenants_searched' => $searchedCount,
+                        'total_tenants'    => $tenants->count(),
                     ]);
                 }
             }

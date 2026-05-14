@@ -329,7 +329,10 @@ class Tenant extends Model
 
             // Generate secure schema name if not set
             if (empty($tenant->schema_name)) {
-                $tenant->schema_name = \App\Services\TenantMigrationManager::generateSecureSchemaName($tenant->slug);
+                $tenant->schema_name = \App\Services\TenantMigrationManager::generateSecureSchemaName(
+                    (string) $tenant->slug,
+                    (string) $tenant->id
+                );
             }
         });
 

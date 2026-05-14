@@ -320,6 +320,9 @@ class PaymentController extends Controller
                     // Note: ProcessPaymentJob is NOT dispatched here because CreateHotspotUserJob
                     // already handles complete hotspot provisioning. ProcessPaymentJob is for
                     // generic subscription provisioning (non-hotspot payments).
+
+                    // CACHE BUST: Clear tenant dashboard cache so revenue shows immediately
+                    TenantDashboardController::bustDashboardCache($tenant->id);
                 }
 
                 $this->logToSystemAndFile("Payment $status", [

@@ -6,7 +6,7 @@ sql {
     port = 6432
     login = "admin"
     password = "secret"
-    radius_db = "wms_770_ts"
+    radius_db = "wms_770_ts_radius"
 
     # PostgreSQL-specific connection options
     # Ensure search_path is set to public schema by default
@@ -31,29 +31,31 @@ sql {
     read_clients = no
     read_groups = no
     read_profiles = no
-    delete_stale_sessions = yes
+    delete_stale_sessions = no
 
     # Set to 'yes' to read radius clients from the database
     # Table to store radius client details
     client_table = "nas"
 
     # Connection pool settings
+    # max should match FreeRADIUS worker thread count (see radiusd.conf num_workers)
     pool {
-        start = 5
-        min = 5
-        max = 10
-        spare = 3
+        start = 10
+        min = 10
+        max = 32
+        spare = 8
         uses = 0
-        lifetime = 60
-        idle_timeout = 30
+        lifetime = 300
+        idle_timeout = 60
         retry_delay = 1
     }
 
-    # Set to 'yes' for no delay (for testing only!)
-    no_query_on_start = yes
+    # Set to 'yes' for no delay (for testing only!) — keep 'no' in production
+    no_query_on_start = no
     
-    # SQL user name attribute - what to use as the username in queries
-    sql_user_name = "%{User-Name}"
+    # SQL-User-Name is the realm-stripped username (e.g. 'john' not 'john@realm.com')
+    # This matches what get_user_schema() and radcheck store after normalization
+    sql_user_name = "%{SQL-User-Name}"
     
     # Group attribute for SQL queries
     group_attribute = "SQL-Group"

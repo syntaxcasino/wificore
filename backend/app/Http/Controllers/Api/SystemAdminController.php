@@ -20,105 +20,91 @@ class SystemAdminController extends Controller
      */
     public function getDashboardStats(Request $request)
     {
-        $stats = Cache::remember('system_admin_dashboard_stats', 30, function () {
-            // Exclude landlord and default system tenants from customer counts
-            $customerTenantQuery = Tenant::where('is_landlord', false)->where('is_default', false);
-            $totalTenants = (clone $customerTenantQuery)->count();
-            $activeTenants = (clone $customerTenantQuery)
-                ->where('is_active', true)
-                ->whereNull('suspended_at')
-                ->count();
+        $stats = Cache::remember('system_admin_dashboard_stats', 60, function () {
+            // Single query for all tenant counts
+            $tenantCounts = DB::table('tenants')
+                ->whereNull('deleted_at')
+                ->where('is_landlord', false)
+                ->where('is_default', false)
+                ->selectRaw("
+                    COUNT(*) as total,
+                    COUNT(*) FILTER (WHERE is_active = true AND suspended_at IS NULL) as active,
+                    COUNT(*) FILTER (WHERE suspended_at IS NOT NULL) as suspended,
+                    COUNT(*) FILTER (WHERE trial_ends_at IS NOT NULL AND trial_ends_at > NOW()) as on_trial,
+                    COUNT(*) FILTER (WHERE is_active = true AND (subscription_ends_at IS NULL OR subscription_ends_at > NOW())) as sub_active,
+                    COUNT(*) FILTER (WHERE is_active = true AND subscription_ends_at IS NOT NULL AND subscription_ends_at > NOW() AND subscription_ends_at <= NOW() + INTERVAL '5 days') as sub_expiring,
+                    COUNT(*) FILTER (WHERE subscription_ends_at IS NOT NULL AND subscription_ends_at < NOW()) as sub_expired
+                ")
+                ->first();
 
-            // Admin/system users in the public schema
-            $totalAdminUsers = User::withoutGlobalScopes()->count();
+            // Single query for all user counts
+            // Note: users table does NOT have soft deletes (no deleted_at column)
+            $userCounts = DB::table('users')
+                ->selectRaw("
+                    COUNT(*) as total,
+                    COUNT(*) FILTER (WHERE is_active = true) as active,
+                    COUNT(*) FILTER (WHERE role = 'admin') as admins
+                ")
+                ->first();
 
-            // Routers, packages, and SERVICE users are in tenant schemas
-            $routerStats = $this->aggregateAcrossTenantSchemas('routers', ['status']);
-            $packageStats = $this->aggregateAcrossTenantSchemas('packages', ['is_active']);
-            $userStats = $this->aggregateServiceUsers();
-            $revenueStats = $this->aggregateRevenue();
-            $totalRouters = $routerStats['total'] ?? 0;
+            // Single cross-schema query for routers, packages, service users, revenue
+            $schemaStats = $this->aggregateAllTenantSchemas();
 
-            // Total users = public admin/system users + tenant hotspot + tenant pppoe users
-            $totalServiceUsers = ($userStats['hotspot_users'] ?? 0) + ($userStats['pppoe_users'] ?? 0);
-            $totalUsers = $totalAdminUsers + $totalServiceUsers;
-            
-            // Get real system metrics
-            $systemMetrics = SystemMetricsService::getAllMetrics();
-            
+            $totalServiceUsers = ($schemaStats['hotspot_users'] ?? 0) + ($schemaStats['pppoe_users'] ?? 0);
+            $totalUsers = ($userCounts->total ?? 0) + $totalServiceUsers;
+
+            // System metrics cached separately at shorter TTL
+            $systemMetrics = Cache::remember('system_metrics', 30, fn() => SystemMetricsService::getAllMetrics());
+
             return [
-                // Flat structure for frontend
-                'totalTenants' => $totalTenants,
-                'activeTenants' => $activeTenants,
-                'totalUsers' => $totalUsers,
-                'totalRouters' => $totalRouters,
-                'totalRevenue' => $revenueStats['total'] ?? 0,
-                'monthlyRevenue' => $revenueStats['monthly'] ?? 0,
+                'totalTenants'   => (int) ($tenantCounts->total ?? 0),
+                'activeTenants'  => (int) ($tenantCounts->active ?? 0),
+                'totalUsers'     => $totalUsers,
+                'totalRouters'   => $schemaStats['routers_total'] ?? 0,
+                'totalRevenue'   => $schemaStats['revenue_total'] ?? 0,
+                'monthlyRevenue' => $schemaStats['revenue_monthly'] ?? 0,
                 'avgResponseTime' => number_format($systemMetrics['average_response_time'], 2),
-                'uptime' => number_format($systemMetrics['uptime'], 1),
-                
-                // System health metrics
+                'uptime'         => number_format($systemMetrics['uptime'], 1),
                 'systemHealth' => [
-                    'uptime' => $systemMetrics['uptime'],
-                    'disk_space' => $systemMetrics['disk_space'],
+                    'uptime'               => $systemMetrics['uptime'],
+                    'disk_space'           => $systemMetrics['disk_space'],
                     'database_connections' => $systemMetrics['database_connections'],
-                    'memory_usage' => $systemMetrics['memory_usage'],
-                    'redis_cache_hit_ratio' => $systemMetrics['redis_cache_hit_ratio'],
-                    'average_response_time' => $systemMetrics['average_response_time'],
+                    'memory_usage'         => $systemMetrics['memory_usage'],
+                    'redis_cache_hit_ratio'=> $systemMetrics['redis_cache_hit_ratio'],
+                    'average_response_time'=> $systemMetrics['average_response_time'],
                 ],
-                
-                // Nested structure for detailed stats
                 'tenants' => [
-                    'total' => $totalTenants,
-                    'active' => $activeTenants,
-                    'suspended' => (clone $customerTenantQuery)->whereNotNull('suspended_at')->count(),
-                    'on_trial' => (clone $customerTenantQuery)->whereNotNull('trial_ends_at')
-                        ->where('trial_ends_at', '>', now())
-                        ->count(),
+                    'total'    => (int) ($tenantCounts->total ?? 0),
+                    'active'   => (int) ($tenantCounts->active ?? 0),
+                    'suspended'=> (int) ($tenantCounts->suspended ?? 0),
+                    'on_trial' => (int) ($tenantCounts->on_trial ?? 0),
                 ],
                 'users' => [
-                    'total' => $totalUsers,
-                    'admin_users' => $totalAdminUsers,
+                    'total'         => $totalUsers,
+                    'admin_users'   => (int) ($userCounts->total ?? 0),
                     'service_users' => $totalServiceUsers,
-                    'active' => User::withoutGlobalScopes()->where('is_active', true)->count(),
-                    'admins' => User::withoutGlobalScopes()->where('role', 'admin')->count(),
-                    'hotspot_users' => $userStats['hotspot_users'] ?? 0,
-                    'pppoe_users' => $userStats['pppoe_users'] ?? 0,
+                    'active'        => (int) ($userCounts->active ?? 0),
+                    'admins'        => (int) ($userCounts->admins ?? 0),
+                    'hotspot_users' => $schemaStats['hotspot_users'] ?? 0,
+                    'pppoe_users'   => $schemaStats['pppoe_users'] ?? 0,
                 ],
                 'routers' => [
-                    'total' => $totalRouters,
-                    'online' => $routerStats['online'] ?? 0,
-                    'offline' => $routerStats['offline'] ?? 0,
+                    'total'  => $schemaStats['routers_total'] ?? 0,
+                    'online' => $schemaStats['routers_online'] ?? 0,
+                    'offline'=> $schemaStats['routers_offline'] ?? 0,
                 ],
                 'packages' => [
-                    'total' => $packageStats['total'] ?? 0,
-                    'active' => $packageStats['active'] ?? 0,
+                    'total'  => $schemaStats['packages_total'] ?? 0,
+                    'active' => $schemaStats['packages_active'] ?? 0,
                 ],
                 'revenue' => [
-                    'total' => $revenueStats['total'] ?? 0,
-                    'monthly' => $revenueStats['monthly'] ?? 0,
+                    'total'   => $schemaStats['revenue_total'] ?? 0,
+                    'monthly' => $schemaStats['revenue_monthly'] ?? 0,
                 ],
                 'subscriptions' => [
-                    'active' => Tenant::where('is_active', true)
-                        ->where('is_landlord', false)
-                        ->where('is_default', false)
-                        ->where(function ($q) {
-                            $q->whereNull('subscription_ends_at')
-                              ->orWhere('subscription_ends_at', '>', now());
-                        })
-                        ->count(),
-                    'expiring_soon' => Tenant::where('is_active', true)
-                        ->where('is_landlord', false)
-                        ->where('is_default', false)
-                        ->whereNotNull('subscription_ends_at')
-                        ->where('subscription_ends_at', '>', now())
-                        ->where('subscription_ends_at', '<=', now()->addDays(5))
-                        ->count(),
-                    'expired' => Tenant::where('is_landlord', false)
-                        ->where('is_default', false)
-                        ->whereNotNull('subscription_ends_at')
-                        ->where('subscription_ends_at', '<', now())
-                        ->count(),
+                    'active'        => (int) ($tenantCounts->sub_active ?? 0),
+                    'expiring_soon' => (int) ($tenantCounts->sub_expiring ?? 0),
+                    'expired'       => (int) ($tenantCounts->sub_expired ?? 0),
                 ],
             ];
         });
@@ -282,106 +268,74 @@ class SystemAdminController extends Controller
     }
 
     /**
-     * Aggregate counts across all tenant schemas for a given table.
-     * Returns totals and breakdowns by specified columns.
+     * Aggregate all tenant-schema stats in the fewest possible queries.
+     * Builds a UNION query across all active tenant schemas to avoid N×queries.
      */
-    private function aggregateAcrossTenantSchemas(string $table, array $breakdownColumns = []): array
+    private function aggregateAllTenantSchemas(): array
     {
-        $result = ['total' => 0];
         $tenants = Tenant::where('schema_created', true)
             ->whereNotNull('schema_name')
-            ->get();
+            ->pluck('schema_name');
 
-        $safeTable = preg_replace('/[^a-zA-Z0-9_]/', '', $table);
+        $result = [
+            'routers_total' => 0, 'routers_online' => 0, 'routers_offline' => 0,
+            'packages_total' => 0, 'packages_active' => 0,
+            'hotspot_users' => 0, 'pppoe_users' => 0,
+            'revenue_total' => 0.0, 'revenue_monthly' => 0.0,
+        ];
 
-        foreach ($tenants as $tenant) {
-            try {
-                $schema = preg_replace('/[^a-zA-Z0-9_]/', '', $tenant->schema_name);
-                $fqn = "{$schema}.{$safeTable}";
-
-                $count = DB::selectOne("SELECT COUNT(*) as cnt FROM {$fqn}");
-                $result['total'] += $count->cnt ?? 0;
-
-                if ($safeTable === 'routers') {
-                    $online = DB::selectOne("SELECT COUNT(*) as cnt FROM {$fqn} WHERE status = 'online'");
-                    $offline = DB::selectOne("SELECT COUNT(*) as cnt FROM {$fqn} WHERE status = 'offline'");
-                    $result['online'] = ($result['online'] ?? 0) + ($online->cnt ?? 0);
-                    $result['offline'] = ($result['offline'] ?? 0) + ($offline->cnt ?? 0);
-                }
-
-                if ($safeTable === 'packages') {
-                    $active = DB::selectOne("SELECT COUNT(*) as cnt FROM {$fqn} WHERE is_active = true");
-                    $result['active'] = ($result['active'] ?? 0) + ($active->cnt ?? 0);
-                }
-            } catch (\Exception $e) {
-                \Log::warning("Failed to aggregate {$safeTable} for tenant {$tenant->name}: " . $e->getMessage());
-            }
+        if ($tenants->isEmpty()) {
+            return $result;
         }
-
-        return $result;
-    }
-
-    /**
-     * Aggregate hotspot_users and pppoe_users counts across all tenant schemas.
-     */
-    private function aggregateServiceUsers(): array
-    {
-        $result = ['hotspot_users' => 0, 'pppoe_users' => 0];
-        $tenants = Tenant::where('schema_created', true)
-            ->whereNotNull('schema_name')
-            ->get();
-
-        foreach ($tenants as $tenant) {
-            try {
-                $schema = preg_replace('/[^a-zA-Z0-9_]/', '', $tenant->schema_name);
-
-                $hsCount = DB::selectOne("SELECT COUNT(*) as cnt FROM {$schema}.hotspot_users");
-                $result['hotspot_users'] += $hsCount->cnt ?? 0;
-            } catch (\Exception $e) {
-                // Table may not exist for this tenant — skip
-            }
-
-            try {
-                $schema = preg_replace('/[^a-zA-Z0-9_]/', '', $tenant->schema_name);
-
-                $ppCount = DB::selectOne("SELECT COUNT(*) as cnt FROM {$schema}.pppoe_users");
-                $result['pppoe_users'] += $ppCount->cnt ?? 0;
-            } catch (\Exception $e) {
-                // Table may not exist for this tenant — skip
-            }
-        }
-
-        return $result;
-    }
-
-    /**
-     * Aggregate payment revenue across all tenant schemas.
-     */
-    private function aggregateRevenue(): array
-    {
-        $result = ['total' => 0, 'monthly' => 0];
-        $tenants = Tenant::where('schema_created', true)
-            ->whereNotNull('schema_name')
-            ->get();
 
         $monthStart = now()->startOfMonth()->toDateTimeString();
+        $routerParts = [];
+        $packageParts = [];
+        $hotspotParts = [];
+        $pppoeParts = [];
+        $revenueParts = [];
 
-        foreach ($tenants as $tenant) {
-            try {
-                $schema = preg_replace('/[^a-zA-Z0-9_]/', '', $tenant->schema_name);
-
-                $total = DB::selectOne("SELECT COALESCE(SUM(amount), 0) as total FROM {$schema}.payments WHERE status = 'completed'");
-                $result['total'] += (float) ($total->total ?? 0);
-
-                $monthly = DB::selectOne(
-                    "SELECT COALESCE(SUM(amount), 0) as total FROM {$schema}.payments WHERE status = 'completed' AND created_at >= ?",
-                    [$monthStart]
-                );
-                $result['monthly'] += (float) ($monthly->total ?? 0);
-            } catch (\Exception $e) {
-                // payments table may not exist for this tenant — skip
-            }
+        foreach ($tenants as $schema) {
+            $s = preg_replace('/[^a-zA-Z0-9_]/', '', $schema);
+            if (!$s) continue;
+            $routerParts[]  = "SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE status='online') as online, COUNT(*) FILTER (WHERE status='offline') as offline FROM {$s}.routers";
+            $packageParts[] = "SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE is_active=true) as active FROM {$s}.packages";
+            $hotspotParts[] = "SELECT COUNT(*) as cnt FROM {$s}.hotspot_users";
+            $pppoeParts[]   = "SELECT COUNT(*) as cnt FROM {$s}.pppoe_users";
+            $revenueParts[] = "SELECT COALESCE(SUM(amount),0) as total, COALESCE(SUM(amount) FILTER (WHERE created_at >= '{$monthStart}'),0) as monthly FROM {$s}.payments WHERE status='completed'";
         }
+
+        $runUnion = function (array $parts, callable $accumulate) {
+            try {
+                $sql = implode(' UNION ALL ', $parts);
+                $rows = DB::select($sql);
+                foreach ($rows as $row) {
+                    $accumulate($row);
+                }
+            } catch (\Exception $e) {
+                \Log::warning('Aggregate query failed: ' . $e->getMessage());
+            }
+        };
+
+        $runUnion($routerParts, function ($r) use (&$result) {
+            $result['routers_total']  += (int) $r->total;
+            $result['routers_online'] += (int) $r->online;
+            $result['routers_offline']+= (int) $r->offline;
+        });
+        $runUnion($packageParts, function ($r) use (&$result) {
+            $result['packages_total'] += (int) $r->total;
+            $result['packages_active']+= (int) $r->active;
+        });
+        $runUnion($hotspotParts, function ($r) use (&$result) {
+            $result['hotspot_users'] += (int) $r->cnt;
+        });
+        $runUnion($pppoeParts, function ($r) use (&$result) {
+            $result['pppoe_users'] += (int) $r->cnt;
+        });
+        $runUnion($revenueParts, function ($r) use (&$result) {
+            $result['revenue_total']   += (float) $r->total;
+            $result['revenue_monthly'] += (float) $r->monthly;
+        });
 
         return $result;
     }

@@ -155,6 +155,7 @@
 
 <script setup>
 import { computed, reactive, ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import PageContainer from '@/modules/common/components/layout/templates/PageContainer.vue'
 import PageHeader from '@/modules/common/components/layout/templates/PageHeader.vue'
 import PageContent from '@/modules/common/components/layout/templates/PageContent.vue'
@@ -176,6 +177,7 @@ const breadcrumbs = computed(() => [
   { label: 'Add User' },
 ])
 
+const router = useRouter()
 const { createUser } = usePppoeUsers()
 const { packages, fetchPackages } = usePackages()
 const { routers, fetchRouters } = useRouters()
@@ -267,7 +269,8 @@ const finish = () => {
   generatedPassword.value = ''
   generatedPortalPassword.value = ''
   createdUser.value = null
-  window.location.href = '/dashboard/pppoe/users'
+  // Use Vue Router for SPA navigation - no full page reload
+  router.push('/dashboard/pppoe/users')
 }
 
 onMounted(() => {

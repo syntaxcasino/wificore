@@ -11,9 +11,22 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Cache;
 
 class ExpenseController extends Controller
 {
+    private function bustStatsCache(): void
+    {
+        $tenantId = auth()->user()->tenant_id ?? 'global';
+        // Expire all month-keyed cache entries for this tenant by pattern-bust
+        // (Redis SCAN is not atomic; we store a version key instead)
+        Cache::forget("expense_stats_version_{$tenantId}");
+        // Also bust current month key directly (most common case)
+        $start = now()->startOfMonth()->toDateString();
+        $end   = now()->endOfMonth()->toDateString();
+        Cache::forget("expense_stats_{$tenantId}_{$start}_{$end}");
+    }
+
     /**
      * Display a listing of expenses
      */
@@ -103,6 +116,7 @@ class ExpenseController extends Controller
 
         // Dispatch event for real-time updates
         event(new ExpenseCreated($expense, auth()->user()->tenant_id ?? null));
+        $this->bustStatsCache();
 
         Log::info('Expense created', [
             'expense_id' => $expense->id,
@@ -172,6 +186,7 @@ class ExpenseController extends Controller
         // Dispatch event for real-time updates
         $changes = array_diff_assoc($validator->validated(), $originalData);
         event(new ExpenseUpdated($expense, $changes, auth()->user()->tenant_id ?? null));
+        $this->bustStatsCache();
 
         Log::info('Expense updated', [
             'expense_id' => $expense->id,
@@ -206,6 +221,7 @@ class ExpenseController extends Controller
 
         // Dispatch event for real-time updates
         event(new ExpenseDeleted($expense->id, $expenseData, auth()->user()->tenant_id ?? null));
+        $this->bustStatsCache();
 
         Log::info('Expense deleted', [
             'expense_id' => $expense->id,
@@ -235,6 +251,7 @@ class ExpenseController extends Controller
         $expense->approve(auth()->id());
 
         event(new ExpenseUpdated($expense, ['status' => 'approved'], auth()->user()->tenant_id ?? null));
+        $this->bustStatsCache();
 
         Log::info('Expense approved', [
             'expense_id' => $expense->id,
@@ -277,6 +294,7 @@ class ExpenseController extends Controller
         $expense->reject(auth()->id(), $request->rejection_reason);
 
         event(new ExpenseUpdated($expense, ['status' => 'rejected'], auth()->user()->tenant_id ?? null));
+        $this->bustStatsCache();
 
         Log::info('Expense rejected', [
             'expense_id' => $expense->id,
@@ -308,6 +326,7 @@ class ExpenseController extends Controller
         $expense->markAsPaid();
 
         event(new ExpenseUpdated($expense, ['status' => 'paid'], auth()->user()->tenant_id ?? null));
+        $this->bustStatsCache();
 
         Log::info('Expense marked as paid', [
             'expense_id' => $expense->id,
@@ -326,27 +345,43 @@ class ExpenseController extends Controller
      */
     public function statistics(Request $request): JsonResponse
     {
-        $startDate = $request->get('start_date', now()->startOfMonth());
-        $endDate = $request->get('end_date', now()->endOfMonth());
+        $startDate = $request->get('start_date', now()->startOfMonth()->toDateString());
+        $endDate   = $request->get('end_date',   now()->endOfMonth()->toDateString());
+        $tenantId  = auth()->user()->tenant_id ?? 'global';
+        $cacheKey  = "expense_stats_{$tenantId}_{$startDate}_{$endDate}";
 
-        $stats = [
-            'total_expenses' => Expense::whereBetween('expense_date', [$startDate, $endDate])->count(),
-            'total_amount' => Expense::whereBetween('expense_date', [$startDate, $endDate])->sum('amount'),
-            'by_status' => [
-                'pending' => Expense::where('status', 'pending')->whereBetween('expense_date', [$startDate, $endDate])->sum('amount'),
-                'approved' => Expense::where('status', 'approved')->whereBetween('expense_date', [$startDate, $endDate])->sum('amount'),
-                'rejected' => Expense::where('status', 'rejected')->whereBetween('expense_date', [$startDate, $endDate])->sum('amount'),
-                'paid' => Expense::where('status', 'paid')->whereBetween('expense_date', [$startDate, $endDate])->sum('amount'),
-            ],
-            'by_category' => Expense::selectRaw('category, SUM(amount) as total')
-                ->whereBetween('expense_date', [$startDate, $endDate])
-                ->groupBy('category')
-                ->get(),
-            'by_payment_method' => Expense::selectRaw('payment_method, COUNT(*) as count, SUM(amount) as total')
-                ->whereBetween('expense_date', [$startDate, $endDate])
-                ->groupBy('payment_method')
-                ->get(),
-        ];
+        $stats = \Illuminate\Support\Facades\Cache::remember($cacheKey, 60, function () use ($startDate, $endDate) {
+            // Single query replaces 6 separate count/sum calls
+            $agg = Expense::whereBetween('expense_date', [$startDate, $endDate])
+                ->selectRaw("
+                    COUNT(*) as total_expenses,
+                    COALESCE(SUM(amount), 0) as total_amount,
+                    COALESCE(SUM(amount) FILTER (WHERE status = 'pending'),  0) as pending_amount,
+                    COALESCE(SUM(amount) FILTER (WHERE status = 'approved'), 0) as approved_amount,
+                    COALESCE(SUM(amount) FILTER (WHERE status = 'rejected'), 0) as rejected_amount,
+                    COALESCE(SUM(amount) FILTER (WHERE status = 'paid'),     0) as paid_amount
+                ")
+                ->first();
+
+            return [
+                'total_expenses' => (int)   ($agg->total_expenses  ?? 0),
+                'total_amount'   => (float) ($agg->total_amount    ?? 0),
+                'by_status' => [
+                    'pending'  => (float) ($agg->pending_amount  ?? 0),
+                    'approved' => (float) ($agg->approved_amount ?? 0),
+                    'rejected' => (float) ($agg->rejected_amount ?? 0),
+                    'paid'     => (float) ($agg->paid_amount     ?? 0),
+                ],
+                'by_category' => Expense::selectRaw('category, SUM(amount) as total')
+                    ->whereBetween('expense_date', [$startDate, $endDate])
+                    ->groupBy('category')
+                    ->get(),
+                'by_payment_method' => Expense::selectRaw('payment_method, COUNT(*) as count, SUM(amount) as total')
+                    ->whereBetween('expense_date', [$startDate, $endDate])
+                    ->groupBy('payment_method')
+                    ->get(),
+            ];
+        });
 
         return response()->json([
             'success' => true,

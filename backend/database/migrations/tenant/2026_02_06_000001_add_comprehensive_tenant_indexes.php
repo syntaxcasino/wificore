@@ -112,9 +112,17 @@ return new class extends Migration
         // =========================================================================
             $this->safeCreateIndex($schema, 'packages', 'packages_type_active_idx', 
                 ['type', 'is_active']);
-            
-            $this->safeCreateIndex($schema, 'packages', 'packages_router_idx', 
-                ['router_id']);
+
+            // Package-to-router assignment is modeled via the pivot table `package_router`,
+            // not `packages.router_id`. Index the pivot for router-scoped package lookups.
+            $this->safeCreateIndex($schema, 'package_router', 'package_router_router_package_idx',
+                ['router_id', 'package_id']);
+
+            // Common API query (captive portal / public packages):
+            // WHERE is_active=true AND is_public=true AND type=? AND (is_global=true OR assigned)
+            // ORDER BY price ASC
+            $this->safeCreateIndex($schema, 'packages', 'packages_type_active_public_global_price_idx',
+                ['type', 'is_active', 'is_public', 'is_global', 'price']);
 
         // =========================================================================
         // PPPOE_USERS TABLE - User status and lookup queries
@@ -580,7 +588,8 @@ return new class extends Migration
             ['router_services', 'router_services_last_checked_at_idx'],
             // Packages
             ['packages', 'packages_type_active_idx'],
-            ['packages', 'packages_router_idx'],
+            ['package_router', 'package_router_router_package_idx'],
+            ['packages', 'packages_type_active_public_global_price_idx'],
             // PPPoE Users
             ['pppoe_users', 'pppoe_users_status_idx'],
             ['pppoe_users', 'pppoe_users_status_router_id_idx'],

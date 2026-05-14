@@ -30,11 +30,11 @@ services:
       args:
         - VITE_API_BASE_URL=${APP_URL}/api
         - VITE_PUSHER_APP_KEY=${PUSHER_APP_KEY}
-        - VITE_PUSHER_HOST=wificore.traidsolutions.com
-        - VITE_PUSHER_PORT=6071
-        - VITE_PUSHER_SCHEME=wss
+        - VITE_PUSHER_HOST=${PUSHER_HOST:-wificore-soketi}
+        - VITE_PUSHER_PORT=${PUSHER_PORT:-6071}
+        - VITE_PUSHER_SCHEME=${PUSHER_SCHEME:-http}
         - VITE_PUSHER_PATH=
-        - VITE_PUSHER_APP_CLUSTER=mt1
+        - VITE_PUSHER_APP_CLUSTER=${PUSHER_APP_CLUSTER:-mt1}
     restart: unless-stopped
     environment:
       - TZ=Africa/Nairobi
@@ -135,7 +135,7 @@ services:
       - PUSHER_APP_SECRET=${PUSHER_APP_SECRET:-app-secret}
       - PUSHER_HOST=${PUSHER_HOST:-wificore-soketi}
       - PUSHER_PORT=${PUSHER_PORT:-6071}
-      - PUSHER_SCHEME=http
+      - PUSHER_SCHEME=${PUSHER_SCHEME:-http}
       - TZ=Africa/Nairobi
       - APP_URL=${APP_URL}
       - FRONTEND_URL=${FRONTEND_URL}
@@ -205,7 +205,7 @@ services:
       wificore-network:
         ipv4_address: 172.70.0.5
     healthcheck:
-      test: ["CMD-SHELL", "/usr/local/sbin/php-fpm -t || exit 1"]
+      test: ["CMD-SHELL", "php-fpm -t || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -214,6 +214,78 @@ services:
       - laravel-storage:/var/www/html/storage:rw
       - laravel-logs:/var/www/html/storage/logs:rw
     user: root  # Run as root initially to set permissions, then switch to www-data in entrypoint
+
+  wificore-queue-worker:
+    container_name: wificore-queue-worker
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      # Queue worker must NOT run migrations/seeders; backend container owns that responsibility.
+      - AUTO_MIGRATE=false
+      - AUTO_SEED=false
+      - APP_KEY=${APP_KEY}
+      - DB_CONNECTION=${DB_CONNECTION:-pgsql}
+      - DB_HOST=${DB_HOST:-wificore-pgbouncer}
+      - DB_READ_HOST=${DB_READ_HOST:-wificore-pgbouncer-read}
+      - DB_PORT=${DB_PORT:-6432}
+      - DB_READ_PORT=${DB_READ_PORT:-6432}
+      - DB_DIRECT_HOST=${DB_DIRECT_HOST:-wificore-postgres}
+      - DB_DIRECT_PORT=${DB_DIRECT_PORT:-5432}
+      - DB_DATABASE=${DB_DATABASE:-wms_770_ts}
+      - DB_USERNAME=${DB_USERNAME:-admin}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - QUEUE_CONNECTION=redis
+      - BROADCAST_DRIVER=pusher
+      - PUSHER_APP_ID=${PUSHER_APP_ID:-app-id}
+      - PUSHER_APP_KEY=${PUSHER_APP_KEY:-app-key}
+      - PUSHER_APP_SECRET=${PUSHER_APP_SECRET:-app-secret}
+      - PUSHER_HOST=${PUSHER_HOST:-wificore-soketi}
+      - PUSHER_PORT=${PUSHER_PORT:-6071}
+      - PUSHER_SCHEME=${PUSHER_SCHEME:-http}
+      - TZ=Africa/Nairobi
+      - APP_URL=${APP_URL}
+      - REDIS_HOST=${REDIS_HOST:-wificore-redis}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - CACHE_DRIVER=redis
+      - SESSION_DRIVER=redis
+      - RADIUS_SERVER_HOST=${RADIUS_SERVER_HOST:-wificore-freeradius}
+      - RADIUS_SERVER_IP=${RADIUS_SERVER_IP:-172.70.0.2}
+      - RADIUS_SERVER_PORT=${RADIUS_SERVER_PORT:-1812}
+      - RADIUS_SECRET=${RADIUS_SECRET}
+      - APP_ENV=${APP_ENV:-production}
+      - MULTITENANCY_MODE=schema
+      - MIKROTIK_SSH_PRIVATE_KEY_PATH=${MIKROTIK_SSH_PRIVATE_KEY_PATH:-/run/secrets/mikrotik_id_rsa}
+      - MIKROTIK_SSH_PRIVATE_KEY_PASSPHRASE=${MIKROTIK_SSH_PRIVATE_KEY_PASSPHRASE:-}
+    depends_on:
+      wificore-postgres:
+        condition: service_healthy
+      wificore-redis:
+        condition: service_healthy
+      wificore-backend:
+        condition: service_healthy
+    networks:
+      wificore-network:
+        # Avoid static-IP collision with wificore-genieacs-ui (172.70.0.15).
+        ipv4_address: 172.70.0.18
+    volumes:
+      - laravel-storage:/var/www/html/storage:rw
+      - laravel-logs:/var/www/html/storage/logs:rw
+    command: >
+      sh -c "
+        echo 'Waiting for backend to be ready...' &&
+        sleep 10 &&
+        echo 'Starting queue workers...' &&
+        php artisan queue:work redis --queue=default,service-control --sleep=3 --tries=2 --timeout=30 --max-jobs=1000 --max-time=3600
+      "
+    healthcheck:
+      test: ["CMD-SHELL", "ps aux | grep 'queue:work' | grep -v grep || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 
   wificore-freeradius:
     build: 
@@ -243,13 +315,19 @@ services:
       timeout: 5s
       retries: 3
       start_period: 30s
+    mem_limit: 512m
+    cpus: 2.0
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
     entrypoint: /bin/sh
     command: >
       -c "
       sleep 5 &&
       chmod 640 /opt/etc/raddb/clients.conf /opt/etc/raddb/mods-available/sql &&
       ln -sf /opt/etc/raddb/mods-available/sql /opt/etc/raddb/mods-enabled/sql &&
-      exec /opt/sbin/radiusd -X
+      exec /opt/sbin/radiusd -f -l stdout
       "
 
   wificore-soketi:

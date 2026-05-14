@@ -23,35 +23,30 @@ class TodoController extends Controller
     {
         try {
             $user = auth()->user();
+            $userId = $user->id;
             $isTenantAdmin = $this->isTenantAdmin($user);
 
-            $query = Todo::with(['creator', 'user']);
+            $query = Todo::select([
+                    'id', 'user_id', 'created_by', 'title', 'description',
+                    'priority', 'status', 'due_date', 'completed_at',
+                    'related_type', 'related_id', 'created_at', 'updated_at', 'deleted_at',
+                ])->with([
+                    'creator:id,name,email',
+                    'user:id,name,email',
+                ]);
 
-        // Only tenant admins see all todos in their tenant
-            if ($isTenantAdmin) {
-                Log::info("Tenant admin viewing all todos", [
-                    'user_id' => $user->id,
-                    'role' => $user->role
-                ]);
-            } else {
-                $query->where('user_id', auth()->id());
-                Log::info("User viewing own assigned todos", [
-                    'user_id' => $user->id,
-                    'role' => $user->role
-                ]);
+            if (!$isTenantAdmin) {
+                $query->where('user_id', $userId);
             }
 
-        // Filter by status
             if ($request->has('status')) {
                 $query->where('status', $request->status);
             }
 
-        // Filter by priority
             if ($request->has('priority')) {
                 $query->where('priority', $request->priority);
             }
 
-        // Filter by assignee (for tenant admin viewing all)
             if ($request->has('assignee_id') && $isTenantAdmin) {
                 if ($request->assignee_id === 'unassigned') {
                     $query->whereNull('user_id');
@@ -62,11 +57,12 @@ class TodoController extends Controller
 
             $todos = $query->latest()->get();
 
-            return response()->json($todos);
+            return response()->json($todos)
+                ->header('Cache-Control', 'no-store, no-cache, must-revalidate')
+                ->header('Pragma', 'no-cache');
         } catch (\Throwable $e) {
             Log::error('Failed to fetch todos', [
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
                 'user_id' => auth()->id(),
             ]);
 
@@ -87,7 +83,7 @@ class TodoController extends Controller
             'priority' => 'required|in:low,medium,high',
             'status' => 'nullable|in:pending,in_progress,completed',
             'due_date' => 'nullable|date',
-            'user_id' => 'nullable|uuid|exists:users,id',
+            'user_id' => 'nullable|uuid|exists:public.users,id',
             'related_type' => 'nullable|string',
             'related_id' => 'nullable|uuid',
             'metadata' => 'nullable|array',
@@ -100,30 +96,33 @@ class TodoController extends Controller
             ], 422);
         }
 
+        $user = auth()->user();
+        $userId = $user->id;
+
         $data = $validator->validated();
         // NO tenant_id needed - schema isolation provides tenancy
-        $data['created_by'] = auth()->id();
+        $data['created_by'] = $userId;
         
         // If no user_id specified, assign to self
         if (!isset($data['user_id'])) {
-            $data['user_id'] = auth()->id();
+            $data['user_id'] = $userId;
         }
 
         $todo = Todo::create($data);
-        $todo->load(['creator', 'user']);
+        $todo->load(['creator:id,name,email', 'user:id,name,email']);
 
         // Log activity
         $activity = TodoActivity::create([
             'todo_id' => $todo->id,
-            'user_id' => auth()->id(),
+            'user_id' => $userId,
             'action' => 'created',
             'new_value' => $todo->toArray(),
             'description' => 'Todo created',
         ]);
 
         // Dispatch events for real-time updates
-        event(new TodoCreated($todo, auth()->user()->tenant_id ?? null));
-        event(new TodoActivityCreated($activity));
+        event(new TodoCreated($todo, $user->tenant_id ?? null));
+        event(new TodoActivityCreated($activity, $user->tenant_id ?? null));
 
         return response()->json([
             'message' => 'Todo created successfully',
@@ -136,15 +135,13 @@ class TodoController extends Controller
      */
     public function show($id)
     {
-        $todo = Todo::with(['creator', 'user'])->findOrFail($id);
-
         $user = auth()->user();
-        $isAdmin = $this->isTenantAdmin($user);
+        $userId = $user->id;
+        $todo = Todo::with(['creator:id,name,email', 'user:id,name,email'])->findOrFail($id);
 
-        // Check if user has access (assigned user, creator, or admin)
-        if ($todo->user_id !== auth()->id() && 
-            $todo->created_by !== auth()->id() && 
-            !$isAdmin) {
+        if ($todo->user_id !== $userId && 
+            $todo->created_by !== $userId && 
+            !$this->isTenantAdmin($user)) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -156,6 +153,8 @@ class TodoController extends Controller
      */
     public function update(Request $request, $id)
     {
+        $user = auth()->user();
+        $userId = $user->id;
         $todo = Todo::findOrFail($id);
 
         // Prevent editing completed todos
@@ -165,13 +164,10 @@ class TodoController extends Controller
             ], 422);
         }
 
-        $user = auth()->user();
-        $isAdmin = $this->isTenantAdmin($user);
-
         // Check if user has access
-        if ($todo->user_id !== auth()->id() && 
-            $todo->created_by !== auth()->id() && 
-            !$isAdmin) {
+        if ($todo->user_id !== $userId && 
+            $todo->created_by !== $userId && 
+            !$this->isTenantAdmin($user)) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -181,7 +177,7 @@ class TodoController extends Controller
             'priority' => 'sometimes|required|in:low,medium,high',
             'status' => 'sometimes|required|in:pending,in_progress,completed',
             'due_date' => 'nullable|date',
-            'user_id' => 'nullable|uuid|exists:users,id',
+            'user_id' => 'nullable|uuid|exists:public.users,id',
             'metadata' => 'nullable|array',
         ]);
 
@@ -193,18 +189,19 @@ class TodoController extends Controller
         }
 
         $data = $validator->validated();
-        $originalData = $todo->toArray();
-        
+
         // If marking as completed, set completed_at
         if (isset($data['status']) && $data['status'] === 'completed' && $todo->status !== 'completed') {
             $data['completed_at'] = now();
         }
 
-        $todo->update($data);
-        $todo->load(['creator', 'user']);
+        $originalData = $todo->toArray();
+        $todo->fill($data);
+        $changes = $todo->getDirty();
+        $todo->save();
+        $todo->load(['creator:id,name,email', 'user:id,name,email']);
 
         // Log activity
-        $changes = array_diff_assoc($todo->toArray(), $originalData);
         if (!empty($changes)) {
             $action = isset($data['status']) && $data['status'] === 'completed' ? 'completed' : 'updated';
             $description = isset($data['status']) && $data['status'] === 'completed' 
@@ -213,18 +210,18 @@ class TodoController extends Controller
 
             $activity = TodoActivity::create([
                 'todo_id' => $todo->id,
-                'user_id' => auth()->id(),
+                'user_id' => $userId,
                 'action' => $action,
                 'old_value' => $originalData,
                 'new_value' => $todo->toArray(),
                 'description' => $description,
             ]);
 
-            event(new TodoActivityCreated($activity));
+            event(new TodoActivityCreated($activity, $user->tenant_id ?? null));
         }
 
         // Dispatch event for real-time updates
-        event(new TodoUpdated($todo, $changes, auth()->user()->tenant_id ?? null));
+        event(new TodoUpdated($todo, $changes, $user->tenant_id ?? null));
 
         return response()->json([
             'message' => 'Todo updated successfully',
@@ -237,6 +234,8 @@ class TodoController extends Controller
      */
     public function destroy($id)
     {
+        $user = auth()->user();
+        $userId = $user->id;
         $todo = Todo::findOrFail($id);
 
         // Prevent deleting completed todos
@@ -246,25 +245,22 @@ class TodoController extends Controller
             ], 422);
         }
 
-        $user = auth()->user();
-        $isAdmin = $this->isTenantAdmin($user);
-
         // Check if user has access
-        if ($todo->user_id !== auth()->id() && 
-            $todo->created_by !== auth()->id() && 
-            !$isAdmin) {
+        if ($todo->user_id !== $userId && 
+            $todo->created_by !== $userId && 
+            !$this->isTenantAdmin($user)) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
         // Store data for event before deletion
         $todoId = $todo->id;
-        $userId = $todo->user_id;
-        $tenantId = auth()->user()?->tenant_id;
+        $assignedUserId = $todo->user_id;
+        $tenantId = $user->tenant_id;
 
         $todo->delete();
 
         // Dispatch event for real-time updates
-        event(new TodoDeleted($todoId, $userId, $tenantId));
+        event(new TodoDeleted($todoId, $assignedUserId, $tenantId));
 
         return response()->json([
             'message' => 'Todo deleted successfully'
@@ -277,44 +273,58 @@ class TodoController extends Controller
     public function statistics(Request $request)
     {
         $user = auth()->user();
-        $userId = auth()->id();
+        $userId = $user->id;
         $isTenantAdmin = $this->isTenantAdmin($user);
 
         // Tenant admin can view tenant-wide statistics
         if ($request->boolean('tenant_wide') && $isTenantAdmin) {
+            // Single aggregated query for all counts
+            $counts = Todo::selectRaw(
+                "COUNT(*) as total,
+                COUNT(*) FILTER (WHERE status = 'pending') as pending,
+                COUNT(*) FILTER (WHERE status = 'in_progress') as in_progress,
+                COUNT(*) FILTER (WHERE status = 'completed') as completed,
+                COUNT(*) FILTER (WHERE user_id IS NULL AND status != 'completed') as unassigned,
+                COUNT(*) FILTER (WHERE status != 'completed' AND due_date < NOW()) as overdue"
+            )->first();
+
+            // Single JOIN query for by_assignee (no N+1)
+            $byAssignee = Todo::selectRaw('todos.user_id, COUNT(*) as count, u.name as user_name')
+                ->leftJoin('public.users as u', 'todos.user_id', '=', 'u.id')
+                ->whereIn('todos.status', ['pending', 'in_progress'])
+                ->groupBy('todos.user_id', 'u.name')
+                ->get()
+                ->map(fn ($item) => [
+                    'user_id'   => $item->user_id,
+                    'user_name' => $item->user_name ?? 'Unassigned',
+                    'count'     => (int) $item->count,
+                ]);
+
             $stats = [
-                'total' => Todo::count(),
-                'pending' => Todo::where('status', 'pending')->count(),
-                'in_progress' => Todo::where('status', 'in_progress')->count(),
-                'completed' => Todo::where('status', 'completed')->count(),
-                'unassigned' => Todo::whereNull('user_id')->where('status', '!=', 'completed')->count(),
-                'overdue' => Todo::where('status', '!=', 'completed')
-                    ->where('due_date', '<', now())
-                    ->count(),
-                'by_assignee' => Todo::selectRaw('user_id, COUNT(*) as count')
-                    ->whereIn('status', ['pending', 'in_progress'])
-                    ->groupBy('user_id')
-                    ->with('user:id,name,email')
-                    ->get()
-                    ->map(function ($item) {
-                        return [
-                            'user_id' => $item->user_id,
-                            'user_name' => $item->user ? $item->user->name : 'Unassigned',
-                            'count' => $item->count
-                        ];
-                    }),
+                'total'      => (int) $counts->total,
+                'pending'    => (int) $counts->pending,
+                'in_progress'=> (int) $counts->in_progress,
+                'completed'  => (int) $counts->completed,
+                'unassigned' => (int) $counts->unassigned,
+                'overdue'    => (int) $counts->overdue,
+                'by_assignee'=> $byAssignee,
             ];
         } else {
-            // Regular user statistics
+            // Single aggregated query for current user
+            $counts = Todo::selectRaw(
+                "COUNT(*) as total,
+                COUNT(*) FILTER (WHERE status = 'pending') as pending,
+                COUNT(*) FILTER (WHERE status = 'in_progress') as in_progress,
+                COUNT(*) FILTER (WHERE status = 'completed') as completed,
+                COUNT(*) FILTER (WHERE status != 'completed' AND due_date < NOW()) as overdue"
+            )->where('user_id', $userId)->first();
+
             $stats = [
-                'total' => Todo::where('user_id', $userId)->count(),
-                'pending' => Todo::where('user_id', $userId)->where('status', 'pending')->count(),
-                'in_progress' => Todo::where('user_id', $userId)->where('status', 'in_progress')->count(),
-                'completed' => Todo::where('user_id', $userId)->where('status', 'completed')->count(),
-                'overdue' => Todo::where('user_id', $userId)
-                    ->where('status', '!=', 'completed')
-                    ->where('due_date', '<', now())
-                    ->count(),
+                'total'       => (int) $counts->total,
+                'pending'     => (int) $counts->pending,
+                'in_progress' => (int) $counts->in_progress,
+                'completed'   => (int) $counts->completed,
+                'overdue'     => (int) $counts->overdue,
             ];
         }
 
@@ -326,10 +336,12 @@ class TodoController extends Controller
      */
     public function markAsCompleted($id)
     {
+        $user = auth()->user();
+        $userId = $user->id;
         $todo = Todo::findOrFail($id);
 
         // Check if user has access
-        if ($todo->user_id !== auth()->id() && $todo->created_by !== auth()->id()) {
+        if ($todo->user_id !== $userId && $todo->created_by !== $userId) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -339,19 +351,21 @@ class TodoController extends Controller
         // Log activity
         $activity = TodoActivity::create([
             'todo_id' => $todo->id,
-            'user_id' => auth()->id(),
+            'user_id' => $userId,
             'action' => 'completed',
             'old_value' => $originalData,
             'new_value' => $todo->toArray(),
             'description' => 'Todo marked as completed',
         ]);
 
-        event(new TodoActivityCreated($activity));
-        event(new TodoUpdated($todo, ['status' => 'completed', 'completed_at' => $todo->completed_at], auth()->user()->tenant_id ?? null));
+        event(new TodoActivityCreated($activity, $user->tenant_id ?? null));
+        event(new TodoUpdated($todo, ['status' => 'completed', 'completed_at' => $todo->completed_at], $user->tenant_id ?? null));
+
+        $todo->load(['creator:id,name,email', 'user:id,name,email']);
 
         return response()->json([
             'message' => 'Todo marked as completed',
-            'todo' => $todo->fresh(['creator', 'user'])
+            'todo' => $todo
         ]);
     }
 
@@ -360,16 +374,17 @@ class TodoController extends Controller
      */
     public function assign(Request $request, $id)
     {
-        $todo = Todo::findOrFail($id);
-
-        // Only admins can assign tasks
         $user = auth()->user();
+        $userId = $user->id;
+
         if (!$this->isTenantAdmin($user)) {
             return response()->json(['message' => 'Unauthorized. Only admins can assign tasks.'], 403);
         }
 
+        $todo = Todo::findOrFail($id);
+
         $validator = Validator::make($request->all(), [
-            'user_id' => 'required|uuid|exists:users,id',
+            'user_id' => 'required|uuid|exists:public.users,id',
         ]);
 
         if ($validator->fails()) {
@@ -382,20 +397,20 @@ class TodoController extends Controller
         $originalData = $todo->toArray();
         $todo->user_id = $request->user_id;
         $todo->save();
-        $todo->load(['creator', 'user']);
+        $todo->load(['creator:id,name,email', 'user:id,name,email']);
 
         // Log activity
         $activity = TodoActivity::create([
             'todo_id' => $todo->id,
-            'user_id' => auth()->id(),
+            'user_id' => $userId,
             'action' => 'assigned',
             'old_value' => $originalData,
             'new_value' => $todo->toArray(),
             'description' => 'Todo assigned to ' . $todo->user->name,
         ]);
 
-        event(new TodoActivityCreated($activity));
-        event(new TodoUpdated($todo, ['user_id' => $request->user_id], auth()->user()->tenant_id ?? null));
+        event(new TodoActivityCreated($activity, $user->tenant_id ?? null));
+        event(new TodoUpdated($todo, ['user_id' => $request->user_id], $user->tenant_id ?? null));
 
         return response()->json([
             'message' => 'Todo assigned successfully',
@@ -408,15 +423,14 @@ class TodoController extends Controller
      */
     public function activities($id)
     {
+        $user = auth()->user();
+        $userId = $user->id;
         $todo = Todo::findOrFail($id);
 
-        $user = auth()->user();
-        $isAdmin = $this->isTenantAdmin($user);
-
         // Check if user has access
-        if ($todo->user_id !== auth()->id() && 
-            $todo->created_by !== auth()->id() && 
-            !$isAdmin) {
+        if ($todo->user_id !== $userId && 
+            $todo->created_by !== $userId && 
+            !$this->isTenantAdmin($user)) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 

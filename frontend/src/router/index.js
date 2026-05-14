@@ -515,7 +515,8 @@ router.beforeEach((to, from, next) => {
   // Handle PPPoE public routes (login)
   if (to.meta.public && to.path.startsWith('/portal')) {
     const pppoeToken = localStorage.getItem('pppoe_portal_token')
-    if (pppoeToken && to.name === 'pppoe-portal.login') {
+    const pppoeUser = localStorage.getItem('pppoe_portal_user')
+    if (pppoeToken && pppoeUser && to.name === 'pppoe-portal.login') {
       return next({ name: 'pppoe-portal.dashboard' })
     }
     return next()

@@ -52,7 +52,14 @@ class SendPppoeInvoicesJob implements ShouldQueue
                 ->setTenantId($this->tenantId)
                 ->initialize();
 
-            $pppoeUsers = PppoeUser::with('package')
+            // OPTIMIZED: Select only needed columns with selective eager loading
+            $pppoeUsers = PppoeUser::query()
+                ->select([
+                    'id', 'username', 'account_number', 'next_payment_due', 'is_active',
+                    'customer_email', 'customer_phone', 'portal_password', 'payment_reference',
+                    'package_id', 'last_invoice_sent_at'
+                ])
+                ->with(['package:id,name,price'])
                 ->whereNotNull('next_payment_due')
                 ->where('is_active', true)
                 ->get()

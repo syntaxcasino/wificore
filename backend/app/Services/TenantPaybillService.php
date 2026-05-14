@@ -247,10 +247,14 @@ class TenantPaybillService extends TenantAwareService
         }
 
         // Find PPPoE user by account number or username (scoped within tenant)
-        $user = PppoeUser::where(function ($query) use ($accountNumber) {
-            $query->where('account_number', $accountNumber)
-                ->orWhere('username', $accountNumber);
-        })->first();
+        // OPTIMIZED: Select only needed columns
+        $user = PppoeUser::query()
+            ->select(['id', 'account_number', 'username', 'payment_status', 'next_payment_due', 'in_grace_period', 'grace_period_ends', 'package_id'])
+            ->where(function ($query) use ($accountNumber) {
+                $query->where('account_number', $accountNumber)
+                    ->orWhere('username', $accountNumber);
+            })
+            ->first();
 
         if (!$user) {
             Log::warning('TenantPaybillService: User not found for validation', [
@@ -326,10 +330,14 @@ class TenantPaybillService extends TenantAwareService
                 'raw_payload' => $data,
             ]);
 
-            $user = PppoeUser::where(function ($query) use ($accountNumber) {
-                $query->where('account_number', $accountNumber)
-                    ->orWhere('username', $accountNumber);
-            })->first();
+            // OPTIMIZED: Select only needed columns
+            $user = PppoeUser::query()
+                ->select(['id', 'account_number', 'username'])
+                ->where(function ($query) use ($accountNumber) {
+                    $query->where('account_number', $accountNumber)
+                        ->orWhere('username', $accountNumber);
+                })
+                ->first();
 
             if ($user) {
                 $transaction->markAsMatched($user->id, 'account_number');
@@ -407,10 +415,14 @@ class TenantPaybillService extends TenantAwareService
      */
     protected function tryMatchTransaction(MpesaTransaction $transaction): bool
     {
-        $user = PppoeUser::where(function ($query) use ($transaction) {
-            $query->where('account_number', $transaction->bill_ref_number)
-                ->orWhere('username', $transaction->bill_ref_number);
-        })->first();
+        // OPTIMIZED: Select only needed columns
+        $user = PppoeUser::query()
+            ->select(['id', 'account_number', 'username', 'payment_status', 'next_payment_due', 'in_grace_period', 'grace_period_ends', 'package_id'])
+            ->where(function ($query) use ($transaction) {
+                $query->where('account_number', $transaction->bill_ref_number)
+                    ->orWhere('username', $transaction->bill_ref_number);
+            })
+            ->first();
 
         if ($user) {
             try {
@@ -484,7 +496,10 @@ class TenantPaybillService extends TenantAwareService
             'details' => [],
         ];
 
-        $overdueUsers = PppoeUser::where('status', 'active')
+        // OPTIMIZED: Select only needed columns
+        $overdueUsers = PppoeUser::query()
+            ->select(['id', 'account_number', 'username', 'status', 'payment_status', 'next_payment_due', 'in_grace_period', 'grace_period_ends'])
+            ->where('status', 'active')
             ->where('payment_status', '!=', 'paid')
             ->where(function ($q) {
                 $q->where('next_payment_due', '<', now())
@@ -516,7 +531,10 @@ class TenantPaybillService extends TenantAwareService
             }
         }
 
-        $expiredGraceUsers = PppoeUser::where('status', 'active')
+        // OPTIMIZED: Select only needed columns
+        $expiredGraceUsers = PppoeUser::query()
+            ->select(['id', 'account_number', 'username', 'status', 'in_grace_period', 'grace_period_ends'])
+            ->where('status', 'active')
             ->where('in_grace_period', true)
             ->where('grace_period_ends', '<', now())
             ->get();

@@ -9,6 +9,7 @@ use App\Models\RouterTenantMap;
 use App\Services\MikroTik\SshExecutor;
 use App\Services\VictoriaMetricsClient;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -18,6 +19,13 @@ class PppoeSessionController extends Controller
     public function index(Request $request, VictoriaMetricsClient $vm)
     {
         $tenantId = $request->user()->tenant_id;
+        $cacheKey = "pppoe_live_sessions_{$tenantId}";
+
+        // Serve from 15s cache to absorb the rapid repeated calls from the frontend
+        $cached = Cache::get($cacheKey);
+        if ($cached !== null) {
+            return response()->json($cached);
+        }
 
         try {
             $rows = collect();
@@ -25,7 +33,7 @@ class PppoeSessionController extends Controller
 
             // Check tenant schema first
             $tenantSchemaExists = Schema::hasTable('radacct');
-            Log::info('PPPoE sessions lookup started', [
+            Log::debug('PPPoE sessions lookup started', [
                 'tenant_id' => $tenantId,
                 'tenant_schema_radacct_exists' => $tenantSchemaExists,
             ]);
@@ -49,7 +57,7 @@ class PppoeSessionController extends Controller
                     ->limit(500)
                     ->get();
                 
-                Log::info('Tenant schema radacct query result', [
+                Log::debug('Tenant schema radacct query result', [
                     'row_count' => $rows->count(),
                 ]);
                 
@@ -62,7 +70,7 @@ class PppoeSessionController extends Controller
             if ($rows->isEmpty()) {
                 $publicRadacctExists = (bool) (DB::selectOne("SELECT to_regclass('public.radacct') AS t")->t ?? null);
                 
-                Log::info('Checking public.radacct fallback', [
+                Log::debug('Checking public.radacct fallback', [
                     'public_radacct_exists' => $publicRadacctExists,
                 ]);
 
@@ -75,9 +83,8 @@ class PppoeSessionController extends Controller
                         ->values()
                         ->all();
 
-                    Log::info('Tenant PPPoE usernames for public.radacct filter', [
+                    Log::debug('Tenant PPPoE usernames for public.radacct filter', [
                         'username_count' => count($tenantUsernames),
-                        'usernames' => array_slice($tenantUsernames, 0, 10), // First 10 only
                     ]);
 
                     if (!empty($tenantUsernames)) {
@@ -100,7 +107,7 @@ class PppoeSessionController extends Controller
                             ->limit(500)
                             ->get();
                         
-                        Log::info('Public radacct query result', [
+                        Log::debug('Public radacct query result', [
                             'row_count' => $rows->count(),
                         ]);
                         
@@ -114,43 +121,37 @@ class PppoeSessionController extends Controller
             // Deduplicate: keep only the most-recent session per username (rows ordered DESC already)
             $rows = $rows->groupBy('username')->map(fn($group) => $group->first())->values();
 
-            // Filter out sessions from offline routers to prevent stale data display
+            // Pre-load all RouterTenantMap rows for this tenant in ONE query
+            // then resolve NAS IP → router_id in memory (eliminates N+1)
+            $nasIpToRouterId = RouterTenantMap::query()
+                ->where('tenant_id', $tenantId)
+                ->get()
+                ->flatMap(fn($m) => array_filter([
+                    $m->ip_address ? [$m->ip_address => $m->router_id] : null,
+                    $m->vpn_ip     ? [$m->vpn_ip     => $m->router_id] : null,
+                ]))
+                ->collapse()
+                ->all();
+
+            $uniqueNasIps = $rows->pluck('nasipaddress')->filter()->unique()->values()->all();
+            $resolvedRouterIds = array_values(array_filter(
+                array_map(fn($ip) => $nasIpToRouterId[$ip] ?? null, $uniqueNasIps)
+            ));
+
             $onlineRouterIds = Router::query()
-                ->whereIn('id', $rows->pluck('nasipaddress')->map(function ($nasIp) use ($tenantId) {
-                    // Resolve NAS IP to router ID via RouterTenantMap
-                    $map = RouterTenantMap::query()
-                        ->where('tenant_id', $tenantId)
-                        ->where(function ($q) use ($nasIp) {
-                            $q->where('ip_address', $nasIp)
-                              ->orWhere('vpn_ip', $nasIp);
-                        })
-                        ->first();
-                    return $map?->router_id;
-                })->filter()->unique()->values())
+                ->whereIn('id', $resolvedRouterIds)
                 ->where('status', 'online')
                 ->pluck('id')
                 ->all();
 
-            $rows = $rows->filter(function ($row) use ($onlineRouterIds, $tenantId) {
+            $rows = $rows->filter(function ($row) use ($nasIpToRouterId, $onlineRouterIds) {
                 $nasIp = $row->nasipaddress ?? null;
                 if (!$nasIp) return false;
-
-                // Resolve NAS IP to router
-                $map = RouterTenantMap::query()
-                    ->where('tenant_id', $tenantId)
-                    ->where(function ($q) use ($nasIp) {
-                        $q->where('ip_address', $nasIp)
-                          ->orWhere('vpn_ip', $nasIp);
-                    })
-                    ->first();
-
-                if (!$map) return false;
-
-                // Only include if router is online
-                return in_array($map->router_id, $onlineRouterIds);
+                $routerId = $nasIpToRouterId[$nasIp] ?? null;
+                return $routerId && in_array($routerId, $onlineRouterIds);
             })->values();
 
-            Log::info('PPPoE sessions after router status filter', [
+            Log::debug('PPPoE sessions after router status filter', [
                 'tenant_id' => $tenantId,
                 'before_filter' => $rows->count(),
                 'after_filter' => $rows->count(),
@@ -231,83 +232,28 @@ class PppoeSessionController extends Controller
                 ];
             })->values();
 
-            Log::info('PPPoE sessions data mapping complete', [
+            Log::debug('PPPoE sessions data mapping complete', [
                 'data_count' => $data->count(),
                 'source' => $source,
                 'usernames_found' => count($usernames),
             ]);
 
-            // If no radacct data, fallback to fetching live sessions from routers via SSH
-            if ($data->isEmpty()) {
-                Log::info('No radacct data found, fetching live sessions from routers via SSH');
-                
-                $liveSessions = $this->fetchLiveSessionsFromRouters((string) $tenantId);
-                
-                if ($liveSessions->isNotEmpty()) {
-                    $data = $liveSessions;
-                    $source = 'router_ssh';
-                    
-                    Log::info('Live sessions fetched from routers', [
-                        'session_count' => $data->count(),
-                    ]);
-                }
-            }
-
-            // Final fallback: Try VictoriaMetrics for active users
-            if ($data->isEmpty()) {
-                Log::info('No radacct data found, trying VM fallback with active users');
-                
-                // Try fetching active users from DB and checking VM for them as a last resort
-                $activeUsers = PppoeUser::where('status', 'active')->get();
-                Log::info('Active PPPoE users from DB', [
-                    'active_user_count' => $activeUsers->count(),
-                ]);
-                
-                if ($activeUsers->isNotEmpty()) {
-                    $usernames = $activeUsers->pluck('username')->all();
-                    $liveMetrics = $this->fetchLiveMetrics($vm, (string) $tenantId, $usernames);
-                    
-                    Log::info('VictoriaMetrics lookup for active users', [
-                        'usernames_checked' => count($usernames),
-                        'metrics_found' => count($liveMetrics),
-                    ]);
-                    
-                    if (!empty($liveMetrics)) {
-                        // Construct minimal session data from VM metrics + DB
-                        $data = $activeUsers->filter(fn($u) => isset($liveMetrics[$u->username]))
-                            ->map(function($u) use ($liveMetrics) {
-                                $m = $liveMetrics[$u->username];
-                                return [
-                                    'id' => $u->username,
-                                    'username' => $u->username,
-                                    'type' => 'pppoe',
-                                    'router_id' => (string) $u->router_id,
-                                    'download_speed' => $m['download_rate'] ?? 0,
-                                    'upload_speed' => $m['upload_rate'] ?? 0,
-                                    'input_octets' => $m['input_octets'] ?? 0,
-                                    'output_octets' => $m['output_octets'] ?? 0,
-                                    'status' => 'active (metrics only)',
-                                ];
-                            })->values();
-                        
-                        if ($data->isNotEmpty()) {
-                            $source = 'vm_fallback';
-                        }
-                    }
-                }
-            }
-
-            Log::info('PPPoE sessions response ready', [
+            Log::debug('PPPoE sessions response ready', [
                 'final_count' => $data->count(),
                 'final_source' => $source,
             ]);
 
-            return response()->json([
-                'success' => true,
-                'data' => $data,
-                'source' => $source,
+            $payload = [
+                'success'   => true,
+                'data'      => $data,
+                'source'    => $source,
                 'tenant_id' => $tenantId,
-            ]);
+            ];
+
+            // Cache for 15 seconds — absorbs burst of parallel frontend calls
+            Cache::put($cacheKey, $payload, 15);
+
+            return response()->json($payload);
         } catch (\Exception $e) {
             Log::error('Failed to fetch PPPoE sessions', [
                 'tenant_id' => $tenantId,
@@ -323,36 +269,34 @@ class PppoeSessionController extends Controller
 
     public function inactive(Request $request)
     {
-        $tenantId = $request->user()->tenant_id;
-        $perPage  = min((int) $request->query('per_page', 200), 1000);
-        $page     = max(1, (int) $request->query('page', 1));
-        $search   = trim((string) $request->query('search', ''));
+        $tenantId       = $request->user()->tenant_id;
+        $perPage        = min((int) $request->query('per_page', 50), 200);
+        $page           = max(1, (int) $request->query('page', 1));
+        $search         = trim((string) $request->query('search', ''));
+        $usernameFilter = trim((string) $request->query('username', ''));
+        $cacheKey       = "pppoe_inactive_{$tenantId}_" . md5("{$usernameFilter}:{$search}:{$page}:{$perPage}");
+
+        $cached = Cache::get($cacheKey);
+        if ($cached !== null) {
+            return response()->json($cached);
+        }
 
         try {
             $rows    = collect();
             $total   = 0;
             $source  = 'none';
 
-            $tenantSchemaExists = Schema::hasTable('radacct');
+            $cols = [
+                'acctsessionid', 'acctuniqueid', 'username',
+                'acctstarttime', 'acctstoptime', 'acctsessiontime',
+                'acctinputoctets', 'acctoutputoctets', 'framedipaddress',
+                'callingstationid', 'nasipaddress', 'acctterminatecause',
+            ];
 
-            if ($tenantSchemaExists) {
-                $q = DB::table('radacct')
-                    ->select([
-                        'acctsessionid',
-                        'acctuniqueid',
-                        'username',
-                        'acctstarttime',
-                        'acctstoptime',
-                        'acctsessiontime',
-                        'acctinputoctets',
-                        'acctoutputoctets',
-                        'framedipaddress',
-                        'callingstationid',
-                        'nasipaddress',
-                        'acctterminatecause',
-                    ])
-                    ->whereNotNull('acctstoptime');
-
+            $applyFilters = function ($q) use ($search, $usernameFilter) {
+                if ($usernameFilter !== '') {
+                    $q->where('username', $usernameFilter);
+                }
                 if ($search !== '') {
                     $q->where(function ($sub) use ($search) {
                         $sub->where('username', 'ilike', "%{$search}%")
@@ -360,13 +304,18 @@ class PppoeSessionController extends Controller
                             ->orWhere('callingstationid', 'ilike', "%{$search}%");
                     });
                 }
+                return $q;
+            };
 
-                $total = $q->count();
-                $rows  = $q->orderByDesc('acctstoptime')
-                    ->offset(($page - 1) * $perPage)
-                    ->limit($perPage)
-                    ->get();
+            $tenantSchemaExists = Cache::remember(
+                "tenant_schema_has_radacct_{$tenantId}", 300, fn() => Schema::hasTable('radacct')
+            );
 
+            if ($tenantSchemaExists) {
+                $q     = $applyFilters(DB::table('radacct')->select($cols)->whereNotNull('acctstoptime'));
+                $paged = $q->orderByDesc('acctstoptime')->paginate($perPage, ['*'], 'page', $page);
+                $rows  = collect($paged->items());
+                $total = $paged->total();
                 if ($rows->isNotEmpty()) {
                     $source = 'tenant_radacct';
                 }
@@ -376,50 +325,20 @@ class PppoeSessionController extends Controller
                 $publicRadacctExists = (bool) (DB::selectOne("SELECT to_regclass('public.radacct') AS t")->t ?? null);
 
                 if ($publicRadacctExists) {
-                    $tenantUsernames = PppoeUser::query()
-                        ->select('username')
-                        ->pluck('username')
-                        ->filter()
-                        ->unique()
-                        ->values()
-                        ->all();
-
-                    if (!empty($tenantUsernames)) {
-                        $q = DB::table('public.radacct')
-                            ->select([
-                                'acctsessionid',
-                                'acctuniqueid',
-                                'username',
-                                'acctstarttime',
-                                'acctstoptime',
-                                'acctsessiontime',
-                                'acctinputoctets',
-                                'acctoutputoctets',
-                                'framedipaddress',
-                                'callingstationid',
-                                'nasipaddress',
-                                'acctterminatecause',
-                            ])
-                            ->whereNotNull('acctstoptime')
-                            ->whereIn('username', $tenantUsernames);
-
-                        if ($search !== '') {
-                            $q->where(function ($sub) use ($search) {
-                                $sub->where('username', 'ilike', "%{$search}%")
-                                    ->orWhere('framedipaddress', 'ilike', "%{$search}%")
-                                    ->orWhere('callingstationid', 'ilike', "%{$search}%");
-                            });
+                    $q = $applyFilters(DB::table('public.radacct')->select($cols)->whereNotNull('acctstoptime'));
+                    if ($usernameFilter === '') {
+                        $tenantUsernames = PppoeUser::query()
+                            ->select('username')->pluck('username')
+                            ->filter()->unique()->values()->all();
+                        if (!empty($tenantUsernames)) {
+                            $q->whereIn('username', $tenantUsernames);
                         }
-
-                        $total = $q->count();
-                        $rows  = $q->orderByDesc('acctstoptime')
-                            ->offset(($page - 1) * $perPage)
-                            ->limit($perPage)
-                            ->get();
-
-                        if ($rows->isNotEmpty()) {
-                            $source = 'public_radacct';
-                        }
+                    }
+                    $paged = $q->orderByDesc('acctstoptime')->paginate($perPage, ['*'], 'page', $page);
+                    $rows  = collect($paged->items());
+                    $total = $paged->total();
+                    if ($rows->isNotEmpty()) {
+                        $source = 'public_radacct';
                     }
                 }
             }
@@ -438,8 +357,7 @@ class PppoeSessionController extends Controller
                 $pkg        = $pppoeUser?->package;
                 $routerName = $pppoeUser?->router?->name ? (string) $pppoeUser->router->name : null;
                 $routerId   = $pppoeUser?->router?->id ? (string) $pppoeUser->router->id : null;
-
-                $duration = (int) ($row->acctsessiontime ?? 0);
+                $duration   = (int) ($row->acctsessiontime ?? 0);
 
                 return [
                     'id'                  => (string) ($row->acctuniqueid ?? $row->acctsessionid ?? $username),
@@ -449,9 +367,7 @@ class PppoeSessionController extends Controller
                     'type'                => 'pppoe',
                     'router_id'           => $routerId,
                     'router_name'         => $routerName,
-                    'user'                => [
-                        'phone' => $pppoeUser?->customer_phone ?? null,
-                    ],
+                    'user'                => ['phone' => $pppoeUser?->customer_phone ?? null],
                     'framed_ip'           => $row->framedipaddress ?? null,
                     'ip_address'          => $row->framedipaddress ?? null,
                     'calling_station_id'  => $row->callingstationid ?? null,
@@ -473,15 +389,19 @@ class PppoeSessionController extends Controller
                 ];
             })->values();
 
-            return response()->json([
-                'success'    => true,
-                'data'       => $data,
-                'total'      => $total,
-                'page'       => $page,
-                'per_page'   => $perPage,
-                'last_page'  => (int) ceil($total / max(1, $perPage)),
-                'source'     => $source,
-            ]);
+            $payload = [
+                'success'   => true,
+                'data'      => $data,
+                'total'     => $total,
+                'page'      => $page,
+                'per_page'  => $perPage,
+                'last_page' => (int) ceil($total / max(1, $perPage)),
+                'source'    => $source,
+            ];
+
+            Cache::put($cacheKey, $payload, 30);
+
+            return response()->json($payload);
         } catch (\Exception $e) {
             Log::error('Failed to fetch inactive PPPoE sessions', [
                 'tenant_id' => $tenantId,
@@ -505,11 +425,17 @@ class PppoeSessionController extends Controller
         $username = (string) $request->input('username');
 
         try {
-            $pppoeUser = PppoeUser::where('username', $username)->first();
+            // OPTIMIZED: Select only needed columns
+            $pppoeUser = PppoeUser::query()
+                ->select(['id', 'router_id'])
+                ->where('username', $username)
+                ->first();
             $router = null;
 
             if ($pppoeUser?->router_id) {
-                $router = Router::find($pppoeUser->router_id);
+                $router = Router::query()
+                    ->select(['id', 'host', 'ssh_port', 'ssh_user', 'ssh_pass', 'ssh_private_key'])
+                    ->find($pppoeUser->router_id);
             }
 
             if (!$router) {
@@ -590,11 +516,17 @@ class PppoeSessionController extends Controller
         foreach ($usernames as $username) {
             // Re-use the single disconnect logic logic (simplified)
             try {
-                $pppoeUser = PppoeUser::where('username', $username)->first();
+                // OPTIMIZED: Select only needed columns
+                $pppoeUser = PppoeUser::query()
+                    ->select(['id', 'router_id'])
+                    ->where('username', $username)
+                    ->first();
                 $router = null;
 
                 if ($pppoeUser?->router_id) {
-                    $router = Router::find($pppoeUser->router_id);
+                    $router = Router::query()
+                        ->select(['id', 'host', 'ssh_port', 'ssh_user', 'ssh_pass', 'ssh_private_key'])
+                        ->find($pppoeUser->router_id);
                 }
 
                 if (!$router) {
@@ -833,11 +765,7 @@ class PppoeSessionController extends Controller
                     $sessions = $sessions->merge($routerSessions);
                     
                 } catch (\Exception $e) {
-                    Log::warning('Failed to fetch sessions from router', [
-                        'router_id' => $router->id,
-                        'router_name' => $router->name,
-                        'error' => $e->getMessage(),
-                    ]);
+                    $this->logRouterSessionFetchFailureOnce($tenantId, $router, $e);
                 }
             }
             
@@ -1011,5 +939,23 @@ class PppoeSessionController extends Controller
         }
         
         return $seconds;
+    }
+
+    private function logRouterSessionFetchFailureOnce(string $tenantId, Router $router, \Throwable $e): void
+    {
+        $cacheKey = sprintf('pppoe_router_session_fetch_failed:%s:%s', $tenantId, (string) $router->id);
+        $context = [
+            'tenant_id' => $tenantId,
+            'router_id' => $router->id,
+            'router_name' => $router->name,
+            'error' => $e->getMessage(),
+        ];
+
+        if (Cache::add($cacheKey, true, now()->addMinutes(5))) {
+            Log::warning('Failed to fetch sessions from router', $context);
+            return;
+        }
+
+        Log::debug('Failed to fetch sessions from router', $context);
     }
 }

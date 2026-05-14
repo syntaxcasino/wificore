@@ -54,6 +54,13 @@ class TenantIpPool extends Model
         'metadata' => 'array',
     ];
 
+    protected $appends = ['is_active'];
+
+    public function getIsActiveAttribute(): bool
+    {
+        return $this->status === 'active';
+    }
+
     public function tenant(): BelongsTo
     {
         return $this->belongsTo(Tenant::class);

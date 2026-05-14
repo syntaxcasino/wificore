@@ -32,20 +32,32 @@ class PackageController extends Controller
             ], 403);
         }
         
-        // Cache packages per tenant - 30 seconds max to prevent stale data
-        return Cache::remember("packages_list_tenant_{$tenantId}", 30, function () {
-            return Package::with(['routers:id,name'])
-                ->orderBy('created_at', 'desc')
-                ->get();
+        // Optimized cache with shorter TTL for real-time updates
+        return Cache::remember("packages_list_tenant_{$tenantId}", 15, function () {
+            return Package::select([
+                'id', 'name', 'description', 'type', 'price', 'duration', 
+                'download_speed', 'upload_speed', 'status', 'is_active', 
+                'hide_from_client', 'is_public', 'created_at', 'updated_at'
+            ])
+            ->with(['routers:id,name']) // Only select needed columns
+            ->orderBy('created_at', 'desc')
+            ->get();
         });
     }
 
     public function show($id)
     {
-        // Schema isolation ensures only tenant's packages are visible
-        $package = Package::where('id', $id)
-            ->with(['routers:id,name'])
-            ->firstOrFail();
+        // Optimized query with specific column selection
+        $package = Package::select([
+            'id', 'name', 'description', 'type', 'price', 'duration', 
+            'upload_speed', 'download_speed', 'speed', 'devices', 'data_limit', 
+            'validity', 'enable_burst', 'enable_schedule', 'scheduled_activation_time',
+            'scheduled_deactivation_time', 'hide_from_client', 'is_global', 
+            'status', 'is_active', 'is_public', 'users_count', 'created_at', 'updated_at'
+        ])
+        ->where('id', $id)
+        ->with(['routers:id,name']) // Only select needed columns
+        ->firstOrFail();
         
         return response()->json($package, 200);
     }
@@ -125,9 +137,10 @@ class PackageController extends Controller
         // Load routers relationship
         $package->load('routers:id,name');
 
-        // Clear cache for current tenant
-        Cache::forget("packages_list_tenant_{$tenantId}");
-
+        // Clear cache for current tenant - comprehensive cache busting
+        $this->bustPackageCache((string) $tenantId);
+        
+        // Broadcast event for real-time updates
         event(new PackageCreated($package->toArray(), (string) $tenantId));
 
         return response()->json([
@@ -226,8 +239,8 @@ class PackageController extends Controller
         // Load routers relationship
         $package->load('routers:id,name');
 
-        // Clear cache for current tenant
-        Cache::forget("packages_list_tenant_{$tenantId}");
+        // Clear cache for current tenant - comprehensive cache busting
+        $this->bustPackageCache((string) $tenantId);
 
         event(new PackageUpdated($package->toArray(), (string) $tenantId));
 
@@ -266,8 +279,8 @@ class PackageController extends Controller
         $packageId = $package->id;
         $package->delete();
 
-        // Clear cache for current tenant
-        Cache::forget("packages_list_tenant_{$tenantId}");
+        // Clear cache for current tenant - comprehensive cache busting
+        $this->bustPackageCache((string) $tenantId);
 
         event(new PackageDeleted((string) $packageId, $packageName, (string) $tenantId));
 
@@ -276,5 +289,30 @@ class PackageController extends Controller
             'message' => 'Package deleted successfully',
             'status' => 'completed',
         ], 200);
+    }
+
+    /**
+     * Comprehensive cache busting for packages to prevent stale data
+     */
+    private function bustPackageCache(string $tenantId): void
+    {
+        // Clear package list cache
+        Cache::forget("packages_list_tenant_{$tenantId}");
+        
+        // Clear package-specific caches
+        $packages = Package::select('id')->get();
+        foreach ($packages as $package) {
+            Cache::forget("package_{$package->id}_tenant_{$tenantId}");
+        }
+        
+        // Clear dashboard stats cache
+        Cache::forget("dashboard_stats_tenant_{$tenantId}");
+        
+        // Clear any voucher caches that might reference packages
+        Cache::forget("vouchers_list_tenant_{$tenantId}");
+        Cache::forget("voucher_stats_tenant_{$tenantId}");
+        
+        // Clear router package assignments cache
+        Cache::tags(["router_packages_{$tenantId}"])->flush();
     }
 }

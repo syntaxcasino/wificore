@@ -222,6 +222,37 @@ export function useHotspot() {
       throw err
     }
   }
+
+  /**
+   * Delete a hotspot user
+   */
+  async function deleteUser(userId) {
+    loading.value = true
+    error.value = null
+
+    // Optimistically remove from local list immediately for better UX
+    const deletedUserIndex = users.value.findIndex(u => u.id === userId)
+    const deletedUser = deletedUserIndex !== -1 ? users.value[deletedUserIndex] : null
+    if (deletedUserIndex !== -1) {
+      users.value.splice(deletedUserIndex, 1)
+      pagination.value.total -= 1
+    }
+
+    try {
+      const response = await axios.delete(`/hotspot/users/${userId}`)
+      return response.data
+    } catch (err) {
+      // Restore user on error
+      if (deletedUser) {
+        users.value.splice(deletedUserIndex, 0, deletedUser)
+        pagination.value.total += 1
+      }
+      error.value = err.response?.data?.message || 'Failed to delete hotspot user'
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
   
   /**
    * Subscribe to WebSocket channels for real-time updates
@@ -233,6 +264,10 @@ export function useHotspot() {
       return
     }
     
+    if (echoChannel) {
+      return
+    }
+
     // Subscribe to hotspot channel
     echoChannel = window.Echo.private(`tenant.${tenantId}.hotspot`)
       .listen('.hotspot.access.granted', (event) => {
@@ -265,6 +300,14 @@ export function useHotspot() {
       .listen('.HotspotUserCreated', (event) => {
         console.log('Hotspot user created:', event)
         handleUserCreated(event)
+      })
+      .listen('.HotspotUserUpdated', (event) => {
+        console.log('Hotspot user updated:', event)
+        handleUserUpdated(event)
+      })
+      .listen('.HotspotUserDeleted', (event) => {
+        console.log('Hotspot user deleted:', event)
+        handleUserDeleted(event)
       })
     
     // Subscribe to dashboard-stats channel for session expiration events
@@ -341,6 +384,23 @@ export function useHotspot() {
     if (!exists && event.user) {
       users.value.unshift(event.user)
       pagination.value.total += 1
+    }
+  }
+
+  function handleUserUpdated(event) {
+    // Update existing user in the list
+    const index = users.value.findIndex(u => u.id === event.user?.id)
+    if (index !== -1) {
+      users.value.splice(index, 1, { ...users.value[index], ...event.user })
+    }
+  }
+
+  function handleUserDeleted(event) {
+    // Remove user from the list
+    const index = users.value.findIndex(u => u.id === event.user_id)
+    if (index !== -1) {
+      users.value.splice(index, 1)
+      pagination.value.total -= 1
     }
   }
   
@@ -468,6 +528,7 @@ export function useHotspot() {
     getUserDetails,
     createUser,
     updateUser,
+    deleteUser,
     setPage,
     setPerPage,
     subscribeToWebSocket,

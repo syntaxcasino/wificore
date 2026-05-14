@@ -18,9 +18,18 @@ class VoucherController extends Controller
      */
     public function index(Request $request)
     {
-        $query = Voucher::with(['package:id,name,price,download_speed,validity', 'router:id,name'])
-            ->orderBy('created_at', 'desc');
+        // Optimized query with specific column selection
+        $query = Voucher::select([
+            'id', 'code', 'package_id', 'router_id', 'status', 'used_by', 
+            'used_at', 'expires_at', 'batch_id', 'created_at', 'updated_at'
+        ])
+        ->with([
+            'package:id,name,price,download_speed,validity', 
+            'router:id,name'
+        ])
+        ->orderBy('created_at', 'desc');
 
+        // Apply filters efficiently
         if ($request->filled('status')) {
             $query->where('status', $request->status);
         }
@@ -34,10 +43,12 @@ class VoucherController extends Controller
         }
 
         if ($request->filled('search')) {
-            $query->where('code', 'ilike', '%' . $request->search . '%');
+            $search = $request->search;
+            $query->where('code', 'ilike', $search . '%'); // More efficient prefix search
         }
 
-        $perPage = $request->input('per_page', 25);
+        // Optimized pagination with reasonable limits
+        $perPage = min($request->input('per_page', 25), 100); // Max 100 per page
         $vouchers = $query->paginate($perPage);
 
         return response()->json([
@@ -51,7 +62,12 @@ class VoucherController extends Controller
      */
     public function show(Voucher $voucher)
     {
-        $voucher->load(['package', 'router', 'usedBy']);
+        // Optimized query with specific column selection
+        $voucher->load([
+            'package:id,name,price,download_speed,validity', 
+            'router:id,name', 
+            'usedBy:id,name,email'
+        ]);
 
         return response()->json([
             'success' => true,
@@ -73,35 +89,46 @@ class VoucherController extends Controller
             'notes' => 'nullable|string|max:500',
         ]);
 
+        $tenantId = $request->user()->tenant_id;
         $batchId = Str::uuid()->toString();
         $vouchers = [];
 
+        // Optimized batch insert for better performance
+        $voucherData = [];
         for ($i = 0; $i < $validated['quantity']; $i++) {
             $code = $this->generateUniqueCode($validated['prefix'] ?? '');
-
-            $voucher = Voucher::create([
+            
+            $voucherData[] = [
                 'code' => $code,
                 'package_id' => $validated['package_id'],
                 'router_id' => $validated['router_id'] ?? null,
                 'status' => 'unused',
                 'expires_at' => $validated['expires_at'] ?? null,
-                'prefix' => $validated['prefix'] ?? null,
-                'notes' => $validated['notes'] ?? null,
                 'batch_id' => $batchId,
-            ]);
+                'created_at' => now(),
+                'updated_at' => now(),
+            ];
+        }
 
-            $vouchers[] = $voucher;
+        // Batch insert for performance
+        Voucher::insert($voucherData);
 
-            // Broadcast event for each voucher created
-            $tenantId = $request->user()->tenant_id;
+        // Retrieve inserted vouchers with relationships
+        $insertedVouchers = Voucher::with([
+            'package:id,name,price,download_speed,validity', 
+            'router:id,name'
+        ])
+        ->where('batch_id', $batchId)
+        ->orderBy('created_at', 'desc')
+        ->get();
+
+        // Broadcast events for each voucher created
+        foreach ($insertedVouchers as $voucher) {
             broadcast(new VoucherCreated($voucher, $tenantId))->toOthers();
         }
 
-        // Load relationships for the response
-        $vouchers = Voucher::with(['package:id,name,price,download_speed,validity'])
-            ->where('batch_id', $batchId)
-            ->orderBy('created_at', 'asc')
-            ->get();
+        // Clear cache for current tenant - comprehensive cache busting
+        $this->bustVoucherCache((string) $tenantId);
 
         return response()->json([
             'success' => true,
@@ -128,8 +155,11 @@ class VoucherController extends Controller
 
         $voucher->update(['status' => 'revoked']);
 
-        // Broadcast event
+        // Clear cache for current tenant - comprehensive cache busting
         $tenantId = auth()->user()?->tenant_id;
+        $this->bustVoucherCache((string) $tenantId);
+
+        // Broadcast event
         broadcast(new VoucherUpdated($voucher, $tenantId))->toOthers();
 
         return response()->json([
@@ -156,6 +186,9 @@ class VoucherController extends Controller
         $tenantId = auth()->user()?->tenant_id;
 
         $voucher->delete();
+
+        // Clear cache for current tenant - comprehensive cache busting
+        $this->bustVoucherCache((string) $tenantId);
 
         // Broadcast event
         broadcast(new VoucherDeleted($voucherId, $tenantId, $voucherCode))->toOthers();
@@ -255,5 +288,33 @@ class VoucherController extends Controller
 
         // Fallback: append UUID fragment
         return ($prefix ? strtoupper($prefix) . '-' : '') . strtoupper(Str::random(12));
+    }
+
+    /**
+     * Comprehensive cache busting for vouchers to prevent stale data
+     */
+    private function bustVoucherCache(string $tenantId): void
+    {
+        // Clear voucher list cache
+        Cache::forget("vouchers_list_tenant_{$tenantId}");
+        
+        // Clear voucher stats cache
+        Cache::forget("voucher_stats_tenant_{$tenantId}");
+        
+        // Clear dashboard stats cache (might include voucher counts)
+        Cache::forget("dashboard_stats_tenant_{$tenantId}");
+        
+        // Clear package caches (vouchers reference packages)
+        Cache::forget("packages_list_tenant_{$tenantId}");
+        
+        // Clear any batch-specific caches
+        $vouchers = Voucher::select('batch_id')->distinct()->whereNotNull('batch_id')->get();
+        foreach ($vouchers as $voucher) {
+            Cache::forget("voucher_batch_{$voucher->batch_id}_tenant_{$tenantId}");
+        }
+        
+        // Clear search and filter caches
+        Cache::tags(["voucher_search_{$tenantId}"])->flush();
+        Cache::tags(["voucher_filters_{$tenantId}"])->flush();
     }
 }

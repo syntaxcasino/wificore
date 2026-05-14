@@ -35,9 +35,12 @@ class UserProvisioningService extends TenantAwareService
 
     private function ensureRadiusSchemaMapping(string $username, string $schemaName, string $tenantId): void
     {
+        $username = strtolower(trim($username));
+
         DB::table('public.radius_user_schema_mapping')->updateOrInsert(
             ['username' => $username],
             [
+                'pppoe_user_id' => null,
                 'schema_name' => $schemaName,
                 'tenant_id' => $tenantId,
                 'user_role' => User::ROLE_HOTSPOT_USER,
@@ -264,6 +267,8 @@ class UserProvisioningService extends TenantAwareService
      */
     protected function createRadiusEntry(string $username, string $password, string $tenantId): void
     {
+        $username = strtolower(trim($username));
+
         try {
             $schemaName = $this->getTenantSchemaName($tenantId);
             if (!$schemaName) {

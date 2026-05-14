@@ -11,15 +11,32 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Cache;
 
 class EmployeeController extends Controller
 {
+    private function bustStatsCache(): void
+    {
+        $tenantId = auth()->user()->tenant_id ?? 'global';
+        Cache::forget("employee_stats_{$tenantId}");
+    }
+
     /**
      * Display a listing of employees
+     * OPTIMIZED: Selective eager loading with specific columns
      */
     public function index(Request $request): JsonResponse
     {
-        $query = Employee::with(['department', 'position', 'user']);
+        $query = Employee::with([
+            'department:id,name',
+            'position:id,title',
+            'user:id,name,email'
+        ])
+        ->select([
+            'id', 'employee_number', 'first_name', 'last_name', 'email', 'phone',
+            'department_id', 'position_id', 'user_id', 'employment_status',
+            'employment_type', 'is_active', 'created_at', 'hired_date'
+        ]);
 
         // Filter by department
         if ($request->has('department_id')) {
@@ -122,6 +139,7 @@ class EmployeeController extends Controller
 
         // Dispatch event for real-time updates
         event(new EmployeeCreated($employee, auth()->user()->tenant_id ?? null));
+        $this->bustStatsCache();
 
         Log::info('Employee created', [
             'employee_id' => $employee->id,
@@ -139,12 +157,13 @@ class EmployeeController extends Controller
 
     /**
      * Display the specified employee
+     * OPTIMIZED: Selective eager loading with specific columns
      */
     public function show($id): JsonResponse
     {
         $employee = Employee::with([
-            'department',
-            'position',
+            'department:id,name,manager_id',
+            'position:id,title,level,salary_min,salary_max',
             'user'
         ])->findOrFail($id);
 
@@ -219,6 +238,7 @@ class EmployeeController extends Controller
         // Dispatch event for real-time updates
         $changes = array_diff_assoc($validator->validated(), $originalData);
         event(new EmployeeUpdated($employee, $changes, auth()->user()->tenant_id ?? null));
+        $this->bustStatsCache();
 
         Log::info('Employee updated', [
             'employee_id' => $employee->id,
@@ -254,6 +274,7 @@ class EmployeeController extends Controller
 
         // Dispatch event for real-time updates
         event(new EmployeeDeleted($employee->id, $employeeData, auth()->user()->tenant_id ?? null));
+        $this->bustStatsCache();
 
         Log::info('Employee deleted', [
             'employee_id' => $employee->id,
@@ -271,23 +292,40 @@ class EmployeeController extends Controller
      */
     public function statistics(): JsonResponse
     {
-        $stats = [
-            'total' => Employee::count(),
-            'active' => Employee::where('employment_status', 'active')->count(),
-            'on_leave' => Employee::where('employment_status', 'on_leave')->count(),
-            'suspended' => Employee::where('employment_status', 'suspended')->count(),
-            'terminated' => Employee::where('employment_status', 'terminated')->count(),
-            'by_type' => [
-                'full_time' => Employee::where('employment_type', 'full_time')->count(),
-                'part_time' => Employee::where('employment_type', 'part_time')->count(),
-                'contract' => Employee::where('employment_type', 'contract')->count(),
-                'intern' => Employee::where('employment_type', 'intern')->count(),
-            ],
-            'by_department' => Employee::with('department:id,name')
-                ->selectRaw('department_id, COUNT(*) as count')
-                ->groupBy('department_id')
-                ->get(),
-        ];
+        $tenantId = auth()->user()->tenant_id ?? 'global';
+
+        $stats = Cache::remember("employee_stats_{$tenantId}", 60, function () {
+            // Single query for all status + type counts
+            $agg = Employee::selectRaw("
+                COUNT(*) as total,
+                COUNT(*) FILTER (WHERE employment_status = 'active')     as active,
+                COUNT(*) FILTER (WHERE employment_status = 'on_leave')   as on_leave,
+                COUNT(*) FILTER (WHERE employment_status = 'suspended')  as suspended,
+                COUNT(*) FILTER (WHERE employment_status = 'terminated') as terminated,
+                COUNT(*) FILTER (WHERE employment_type = 'full_time')    as full_time,
+                COUNT(*) FILTER (WHERE employment_type = 'part_time')    as part_time,
+                COUNT(*) FILTER (WHERE employment_type = 'contract')     as contract,
+                COUNT(*) FILTER (WHERE employment_type = 'intern')       as intern
+            ")->first();
+
+            return [
+                'total'      => (int) ($agg->total      ?? 0),
+                'active'     => (int) ($agg->active     ?? 0),
+                'on_leave'   => (int) ($agg->on_leave   ?? 0),
+                'suspended'  => (int) ($agg->suspended  ?? 0),
+                'terminated' => (int) ($agg->terminated ?? 0),
+                'by_type' => [
+                    'full_time' => (int) ($agg->full_time ?? 0),
+                    'part_time' => (int) ($agg->part_time ?? 0),
+                    'contract'  => (int) ($agg->contract  ?? 0),
+                    'intern'    => (int) ($agg->intern    ?? 0),
+                ],
+                'by_department' => Employee::with('department:id,name')
+                    ->selectRaw('department_id, COUNT(*) as count')
+                    ->groupBy('department_id')
+                    ->get(),
+            ];
+        });
 
         return response()->json([
             'success' => true,
@@ -322,6 +360,7 @@ class EmployeeController extends Controller
         ]);
 
         event(new EmployeeUpdated($employee, ['employment_status' => 'terminated'], auth()->user()->tenant_id ?? null));
+        $this->bustStatsCache();
 
         Log::info('Employee terminated', [
             'employee_id' => $employee->id,

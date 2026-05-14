@@ -110,17 +110,20 @@ CREATE INDEX IF NOT EXISTS radacct_username ON radacct(username);
 CREATE INDEX IF NOT EXISTS radacct_nasipaddress ON radacct(nasipaddress);
 CREATE INDEX IF NOT EXISTS radacct_acctstarttime ON radacct(acctstarttime);
 
+-- OPTIMIZATION: Composite index for PPPoE portal queries (username + time range + sorting)
+CREATE INDEX IF NOT EXISTS radacct_username_starttime ON radacct(username, acctstarttime DESC);
+
+-- OPTIMIZATION: Index for active session lookups (null acctstoptime)
+CREATE INDEX IF NOT EXISTS radacct_username_active ON radacct(username, acctstoptime) WHERE acctstoptime IS NULL;
+
 CREATE TABLE IF NOT EXISTS radpostauth (
     id bigserial PRIMARY KEY,
     username varchar(64) NOT NULL DEFAULT '',
-    pass varchar(64) NOT NULL DEFAULT '',
+    pass varchar(253) NOT NULL DEFAULT '',
     reply varchar(32) NOT NULL DEFAULT '',
     authdate timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
     calledstationid varchar(50) DEFAULT NULL,
     callingstationid varchar(50) DEFAULT NULL
 );
 
--- Insert sample user
-INSERT INTO radcheck (username, attribute, op, value) 
-VALUES ('testuser', 'Cleartext-Password', ':=', 'testpass')
-ON CONFLICT DO NOTHING;
+-- No sample users inserted in production schema

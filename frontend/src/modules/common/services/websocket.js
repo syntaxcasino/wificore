@@ -24,6 +24,8 @@ class WebSocketService {
     this.intentionalDisconnect = false
     this.subscribedChannels = new Map() // Store channel subscriptions for reconnection
     this.connectionState = 'disconnected' // 'connected', 'connecting', 'disconnected'
+    this.authCooldownUntil = new Map()
+    this.authCooldownMs = 5000
   }
 
   /**
@@ -64,7 +66,19 @@ class WebSocketService {
       // after a token refresh always use the current token (not the stale one from init).
       authorizer: (channel) => ({
         authorize: (socketId, callback) => {
+          const now = Date.now()
+          const cooldownUntil = this.authCooldownUntil.get(channel.name) || 0
+          if (cooldownUntil > now) {
+            callback(true, new Error('Auth cooldown active'))
+            return
+          }
+
           const token = localStorage.getItem('authToken')
+          if (!token) {
+            this.authCooldownUntil.set(channel.name, now + this.authCooldownMs)
+            callback(true, new Error('Missing auth token'))
+            return
+          }
           fetch(authEndpoint, {
             method: 'POST',
             headers: {
@@ -81,7 +95,10 @@ class WebSocketService {
               return res.json()
             })
             .then(data => callback(false, data))
-            .catch(err => callback(true, err))
+            .catch(err => {
+              this.authCooldownUntil.set(channel.name, Date.now() + this.authCooldownMs)
+              callback(true, err)
+            })
         },
       }),
     }

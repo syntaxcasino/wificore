@@ -187,9 +187,15 @@ class MpesaC2BService
         }
 
         // Find PPPoE user by account number
+        // OPTIMIZED: Select only needed columns
+        // CRITICAL FIX: Grouped where prevents matching wrong user
         $user = $this->runInTenantContext($this->tenant, function () use ($accountNumber) {
-            return PppoeUser::where('account_number', $accountNumber)
-                ->orWhere('username', $accountNumber)
+            return PppoeUser::query()
+                ->select(['id', 'account_number', 'username', 'payment_status', 'next_payment_due', 'in_grace_period', 'grace_period_ends', 'package_id'])
+                ->where(function ($query) use ($accountNumber) {
+                    $query->where('account_number', $accountNumber)
+                        ->orWhere('username', $accountNumber);
+                })
                 ->first();
         });
 
@@ -241,8 +247,9 @@ class MpesaC2BService
         }
 
         // Check for duplicate transaction
+        // OPTIMIZED: Use exists() instead of first() - we only need to know if it exists
         $existingPayment = $this->runInTenantContext($this->tenant, function () use ($transactionId) {
-            return PppoePayment::where('transaction_id', $transactionId)->first();
+            return PppoePayment::query()->where('transaction_id', $transactionId)->exists();
         });
         if ($existingPayment) {
             Log::warning('M-Pesa C2B: Duplicate transaction', [
@@ -253,9 +260,15 @@ class MpesaC2BService
         }
 
         // Find user
+        // OPTIMIZED: Select only needed columns
+        // CRITICAL FIX: Grouped where prevents matching wrong user
         $user = $this->runInTenantContext($this->tenant, function () use ($accountNumber) {
-            return PppoeUser::where('account_number', $accountNumber)
-                ->orWhere('username', $accountNumber)
+            return PppoeUser::query()
+                ->select(['id', 'account_number', 'username', 'payment_status', 'next_payment_due', 'in_grace_period', 'grace_period_ends', 'package_id'])
+                ->where(function ($query) use ($accountNumber) {
+                    $query->where('account_number', $accountNumber)
+                        ->orWhere('username', $accountNumber);
+                })
                 ->first();
         });
 
