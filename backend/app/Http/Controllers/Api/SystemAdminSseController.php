@@ -61,7 +61,7 @@ class SystemAdminSseController extends \App\Http\Controllers\Controller
                 $this->sseWrite('heartbeat', $eventId++, ['ts' => now()->toIso8601String()]);
 
                 try {
-                    $redis = Redis::connection('default')->client();
+                    $redis = Redis::connection('sse');
                 } catch (\Throwable $e) {
                     $this->logRedisIssueOnce(
                         'system-admin',
@@ -83,12 +83,12 @@ class SystemAdminSseController extends \App\Http\Controllers\Controller
                     ) {
                         if (time() - $startTime > self::MAX_DURATION) {
                             $this->sseWrite('timeout', $eventId++, ['message' => 'Stream timeout — reconnecting']);
-                            $redis->close();
+                            $redis->disconnect();
                             return;
                         }
 
                         if (connection_aborted()) {
-                            $redis->close();
+                            $redis->disconnect();
                             return;
                         }
 
@@ -115,6 +115,8 @@ class SystemAdminSseController extends \App\Http\Controllers\Controller
                     );
                     $this->sseWrite('error', $eventId++, ['message' => 'Stream error: ' . $e->getMessage()]);
                     return;
+                } finally {
+                    $redis->disconnect();
                 }
 
                 Log::info('System-admin SSE stream closed', [

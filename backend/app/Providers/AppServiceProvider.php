@@ -88,6 +88,13 @@ class AppServiceProvider extends ServiceProvider
             return;
         }
 
+        // Avoid live connectivity probes during normal HTTP request boot.
+        // They add latency to every cold cache interval and can cascade badly
+        // when Redis or the pooler is already degraded.
+        if (! $this->shouldRunRuntimeDbHealthchecks()) {
+            return;
+        }
+
         $pgsql = (array) config('database.connections.pgsql', []);
         $writeHost = data_get($pgsql, 'write.host', data_get($pgsql, 'host', env('DB_HOST', '172.70.0.3')));
         $writePort = (int) data_get($pgsql, 'write.port', data_get($pgsql, 'port', env('DB_PORT', 6432)));
@@ -168,5 +175,10 @@ class AppServiceProvider extends ServiceProvider
                 'database.connections.pgsql.sticky' => true,
             ]);
         }
+    }
+
+    private function shouldRunRuntimeDbHealthchecks(): bool
+    {
+        return (bool) env('DB_RUNTIME_POOL_HEALTHCHECKS', false);
     }
 }

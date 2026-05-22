@@ -7,10 +7,13 @@ use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 use App\Models\Tenant;
 use App\Services\TenantContext;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 class SetTenantContext
 {
+    private const TENANT_CACHE_TTL_SECONDS = 30;
+
     /**
      * TenantContext service
      */
@@ -40,10 +43,7 @@ class SetTenantContext
             
             // Regular users: set tenant context
             if ($user->tenant_id) {
-                $tenant = Tenant::select([
-                        'id', 'name', 'schema_name', 'schema_created',
-                        'is_active', 'suspended_at', 'suspension_reason',
-                    ])->find($user->tenant_id);
+                $tenant = $this->resolveTenant((string) $user->tenant_id);
                 
                 if (!$tenant) {
                     return response()->json([
@@ -68,26 +68,22 @@ class SetTenantContext
                     $request->merge(['tenant' => $tenant]);
                     $request->attributes->set('tenant', $tenant);
 
-                    // Never hold a DB transaction for long-lived stream/SSE requests.
-                    // Keeping a transaction open on Octane workers can exhaust pooled
-                    // connections and cause intermittent 500s across unrelated endpoints.
+                    // Streaming requests should never hold a request-wide transaction.
                     if ($this->isStreamingRequest($request)) {
                         $this->tenantContext->setTenant($tenant);
                         return $next($request);
                     }
 
-                    // Wrap the entire request in a DB::transaction() so PgBouncer
-                    // holds a single backend PostgreSQL connection for all statements.
-                    // SET LOCAL search_path is transaction-scoped: it is applied once
-                    // inside setTenant() below and persists for every query in the
-                    // controller as long as PgBouncer does not return the connection
-                    // to the pool. Without a transaction, PgBouncer transaction pooling
-                    // releases the backend between each statement, losing search_path.
+                    // In session-pooled environments, wrapping every tenant request in a
+                    // transaction only inflates request latency and ties up pool slots.
+                    // Keep the old transaction-scoped behavior behind an env flag for
+                    // deployments still using PgBouncer transaction pooling.
+                    if (! $this->shouldWrapRequestInTransaction()) {
+                        $this->tenantContext->setTenant($tenant);
+                        return $next($request);
+                    }
+
                     return \Illuminate\Support\Facades\DB::transaction(function () use ($request, $tenant, $next) {
-                        // Force sticky-write mode so all SELECT queries in this request
-                        // use the write PDO (which holds the open transaction).
-                        // Without this, Eloquent routes SELECTs to the read PDO which
-                        // has no transaction and loses SET LOCAL search_path immediately.
                         \Illuminate\Support\Facades\DB::connection()->recordsHaveBeenModified();
                         $this->tenantContext->setTenant($tenant);
                         return $next($request);
@@ -111,6 +107,11 @@ class SetTenantContext
         }
         
         return $next($request);
+    }
+
+    private function shouldWrapRequestInTransaction(): bool
+    {
+        return (bool) env('DB_REQUEST_SCOPE_TRANSACTION', false);
     }
     
     /**
@@ -144,5 +145,22 @@ class SetTenantContext
                 'error' => $e->getMessage(),
             ]);
         }
+    }
+
+    private function resolveTenant(string $tenantId): ?Tenant
+    {
+        return Cache::remember(
+            "tenant_context:{$tenantId}",
+            self::TENANT_CACHE_TTL_SECONDS,
+            fn () => Tenant::select([
+                'id',
+                'name',
+                'schema_name',
+                'schema_created',
+                'is_active',
+                'suspended_at',
+                'suspension_reason',
+            ])->find($tenantId)
+        );
     }
 }

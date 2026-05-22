@@ -1,6 +1,5 @@
 import { defineStore } from 'pinia'
 import axios from 'axios'
-import { websocketService } from '@/modules/common/services/websocket'
 
 export const useAuthStore = defineStore('auth', {
   state: () => ({
@@ -165,45 +164,36 @@ export const useAuthStore = defineStore('auth', {
     },
     
     initializeWebSocket() {
-      if (!this.user) {
-        console.warn('Cannot initialize WebSocket: No user authenticated')
+      if (!this.user || typeof window === 'undefined' || !window.Echo) {
         return
       }
-      
+
+      const connection = window.Echo.connector?.pusher?.connection
+      if (!connection) {
+        return
+      }
+
+      const state = connection.state
+      if (state === 'connected' || state === 'connecting') {
+        return
+      }
+
       try {
-        console.log('🔌 Initializing WebSocket for user:', this.user.username)
-        
-        // Initialize WebSocket service
-        websocketService.initialize()
-        
-        // Subscribe to tenant channel if user has tenant
-        if (this.tenantId) {
-          websocketService.subscribeTenantChannel(this.tenantId)
-        }
-        
-        // Subscribe to user private channel
-        if (this.user.id) {
-          websocketService.subscribeUserChannel(this.user.id)
-        }
-        
-        // Subscribe to system admin channel if user is system admin
-        if (this.isSystemAdmin) {
-          websocketService.subscribeSystemAdminChannel()
-        }
-        
-        console.log('✅ WebSocket initialized successfully')
+        window.Echo.connect()
       } catch (error) {
-        console.error('❌ Failed to initialize WebSocket:', error)
+        console.error('Failed to connect Echo:', error)
       }
     },
     
     disconnectWebSocket() {
+      if (typeof window === 'undefined' || !window.Echo) {
+        return
+      }
+
       try {
-        console.log('🔌 Disconnecting WebSocket')
-        websocketService.disconnect()
-        console.log('✅ WebSocket disconnected')
+        window.Echo.disconnect()
       } catch (error) {
-        console.error('❌ Failed to disconnect WebSocket:', error)
+        console.error('Failed to disconnect Echo:', error)
       }
     },
     
@@ -212,14 +202,8 @@ export const useAuthStore = defineStore('auth', {
      */
     handleVisibilityChange() {
       if (document.visibilityState === 'visible' && this.isAuthenticated) {
-        const wsState = websocketService.getConnectionState()
-        
-        // Only reinit websocketService if its own echo instance is gone/disconnected.
-        // The echo.js WS (window.Echo) has its own self-healing reconnect loop and
-        // visibilitychange handler — do not interfere with it from here.
-        if (wsState !== 'connected') {
-          console.log('📱 Page visible, websocketService not connected - reinitializing...')
-          websocketService.resetReconnectState()
+        const wsState = window.Echo?.connector?.pusher?.connection?.state
+        if (wsState !== 'connected' && wsState !== 'connecting') {
           this.initializeWebSocket()
         }
       }
@@ -240,11 +224,9 @@ export const useAuthStore = defineStore('auth', {
      */
     restoreWebSocketIfNeeded() {
       if (!this.isAuthenticated) return
-      
-      const wsState = websocketService.getConnectionState()
-      if (wsState !== 'connected') {
-        console.log('🔄 Restoring WebSocket connection...')
-        websocketService.resetReconnectState()
+
+      const wsState = window.Echo?.connector?.pusher?.connection?.state
+      if (wsState !== 'connected' && wsState !== 'connecting') {
         this.initializeWebSocket()
       }
     },

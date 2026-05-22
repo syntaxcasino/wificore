@@ -45,6 +45,7 @@ export function useRouters() {
   let latestMetricsRequestToken = 0
   let fetchDebounceTimer = null
   let isFetchingRouters = false
+  let realtimeInitialized = false
 
   // WebSocket Integration
   const { subscribeToPrivateChannel, unsubscribe } = useBroadcasting()
@@ -124,6 +125,10 @@ export function useRouters() {
   }
 
   const setupRealtimeUpdates = () => {
+    if (realtimeInitialized) {
+      return
+    }
+
     try {
       const tenantId = authStore.tenantId
       if (!tenantId) return
@@ -186,12 +191,17 @@ export function useRouters() {
           }
         }
       })
+      realtimeInitialized = true
   } catch (err) {
     console.warn('setupRealtimeUpdates error:', err.message)
   }
   }
 
   const cleanupRealtimeUpdates = () => {
+    if (!realtimeInitialized) {
+      return
+    }
+
     window.removeEventListener('router-created', handleRouterCreated)
     window.removeEventListener('router-deleted', handleRouterDeleted)
     window.removeEventListener('router-updated', handleRouterUpdated)
@@ -200,6 +210,7 @@ export function useRouters() {
       unsubscribe(routerUpdatesChannel)
       routerUpdatesChannel = null
     }
+    realtimeInitialized = false
   }
 
   const formatTimestamp = (timestamp) => {
@@ -327,9 +338,6 @@ export function useRouters() {
         })
 
       // Routers fetched and sorted successfully
-      
-      // Start listening for real-time updates
-      setupRealtimeUpdates()
     } catch (err) {
       const errorMessage = err.response?.data?.error || 'Failed to fetch routers'
       console.error('fetchRouters error:', err.message, err.response?.data)

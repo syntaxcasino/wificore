@@ -1,6 +1,8 @@
 import { ref, onUnmounted } from 'vue'
 import axios from 'axios'
 
+const PACKAGE_CACHE_TTL_MS = 15 * 1000
+
 export function usePackages() {
   const packages = ref([])
   const loading = ref(true) // Start with loading true to prevent flash of empty state
@@ -37,28 +39,94 @@ export function usePackages() {
   const formMessage = ref({ text: '', type: '' })
   const formSubmitted = ref(false)
   const showMenu = ref(null)
+  let websocketListenersInitialized = false
+
+  const packageCacheKey = () => {
+    if (typeof window === 'undefined') {
+      return null
+    }
+
+    const tenantId = window.localStorage.getItem('selectedTenantId') || 'default'
+    return `tenant:packages:${tenantId}`
+  }
+
+  const sortPackages = (items) => [...items].sort((a, b) => {
+    const dateA = new Date(a.created_at || 0)
+    const dateB = new Date(b.created_at || 0)
+    return dateB - dateA
+  })
+
+  const readCachedPackages = () => {
+    const cacheKey = packageCacheKey()
+    if (!cacheKey) {
+      return null
+    }
+
+    try {
+      const raw = window.sessionStorage.getItem(cacheKey)
+      if (!raw) {
+        return null
+      }
+
+      const parsed = JSON.parse(raw)
+      if (!Array.isArray(parsed?.data) || typeof parsed?.cachedAt !== 'number') {
+        return null
+      }
+
+      if ((Date.now() - parsed.cachedAt) > PACKAGE_CACHE_TTL_MS) {
+        window.sessionStorage.removeItem(cacheKey)
+        return null
+      }
+
+      return parsed.data
+    } catch {
+      return null
+    }
+  }
+
+  const writeCachedPackages = (items) => {
+    const cacheKey = packageCacheKey()
+    if (!cacheKey) {
+      return
+    }
+
+    try {
+      window.sessionStorage.setItem(cacheKey, JSON.stringify({
+        cachedAt: Date.now(),
+        data: items,
+      }))
+    } catch {
+      // Ignore browser storage cache failures
+    }
+  }
 
   const fetchPackages = async () => {
     loading.value = true
     listError.value = ''
+    const cachedPackages = packages.value.length === 0 ? readCachedPackages() : null
+
+    if (cachedPackages) {
+      packages.value = sortPackages(cachedPackages)
+      loading.value = false
+      refreshing.value = true
+    }
+
     try {
       // Use authenticated API endpoint for tenant-aware filtering
       const response = await axios.get('/packages')
       const fetchedPackages = Array.isArray(response.data) ? response.data : (response.data.data || [])
-      
-      // Sort by created_at descending (newest first)
-      packages.value = fetchedPackages.sort((a, b) => {
-        const dateA = new Date(a.created_at || 0)
-        const dateB = new Date(b.created_at || 0)
-        return dateB - dateA
-      })
+      packages.value = sortPackages(fetchedPackages)
+      writeCachedPackages(packages.value)
       setupWebSocketListeners()
     } catch (err) {
       listError.value = err.response?.data?.error || 'Failed to fetch packages'
       console.error('fetchPackages error:', err.message, err.response?.data)
-      packages.value = []
+      if (packages.value.length === 0) {
+        packages.value = []
+      }
     } finally {
       loading.value = false
+      refreshing.value = false
     }
   }
 
@@ -227,6 +295,7 @@ export function usePackages() {
     const exists = packages.value.some(p => p.id === pkg.id)
     if (!exists) {
       packages.value.unshift(pkg)
+      writeCachedPackages(packages.value)
       console.log('[Packages] Added via event:', pkg.name)
     } else {
       console.log('[Packages] Package already exists, ignoring:', pkg.name)
@@ -242,10 +311,12 @@ export function usePackages() {
     const index = packages.value.findIndex(p => p.id === pkg.id)
     if (index !== -1) {
       packages.value.splice(index, 1, { ...packages.value[index], ...pkg })
+      writeCachedPackages(packages.value)
       console.log('[Packages] Updated via event:', pkg.name)
     } else {
       console.log('[Packages] Package not found for update, adding:', pkg.name)
       packages.value.unshift(pkg)
+      writeCachedPackages(packages.value)
     }
   }
 
@@ -258,6 +329,7 @@ export function usePackages() {
     
     const originalLength = packages.value.length
     packages.value = packages.value.filter(p => p.id !== id)
+    writeCachedPackages(packages.value)
     
     if (packages.value.length < originalLength) {
       console.log('[Packages] Deleted via event:', pkgName)
@@ -267,15 +339,25 @@ export function usePackages() {
   }
 
   const setupWebSocketListeners = () => {
+    if (websocketListenersInitialized || typeof window === 'undefined') {
+      return
+    }
+
     window.addEventListener('package-created', handlePackageCreated)
     window.addEventListener('package-updated', handlePackageUpdated)
     window.addEventListener('package-deleted', handlePackageDeleted)
+    websocketListenersInitialized = true
   }
 
   const cleanupWebSocketListeners = () => {
+    if (!websocketListenersInitialized || typeof window === 'undefined') {
+      return
+    }
+
     window.removeEventListener('package-created', handlePackageCreated)
     window.removeEventListener('package-updated', handlePackageUpdated)
     window.removeEventListener('package-deleted', handlePackageDeleted)
+    websocketListenersInitialized = false
   }
 
   onUnmounted(cleanupWebSocketListeners)

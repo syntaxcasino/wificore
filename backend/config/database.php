@@ -277,6 +277,20 @@ return [
             'database' => env('REDIS_DB', '0'),
         ],
 
+        'sse' => [
+            'url' => env('REDIS_URL'),
+            'host' => env('REDIS_HOST', '127.0.0.1'),
+            'username' => $redisUsername,
+            'password' => $redisPassword,
+            'port' => env('REDIS_PORT', '6379'),
+            'database' => env('REDIS_DB', '0'),
+            'persistent' => false,
+            'read_timeout' => env('REDIS_SSE_READ_TIMEOUT', 0),
+            'timeout' => env('REDIS_SSE_TIMEOUT', 5),
+            'retry_interval' => env('REDIS_SSE_RETRY_INTERVAL', 100),
+            'tcp_keepalive' => env('REDIS_SSE_TCP_KEEPALIVE', 60),
+        ],
+
         'cache' => [
             'url' => env('REDIS_URL'),
             'host' => env('REDIS_HOST', '127.0.0.1'),
