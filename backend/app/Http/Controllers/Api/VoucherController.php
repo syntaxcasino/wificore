@@ -9,6 +9,7 @@ use App\Events\VoucherCreated;
 use App\Events\VoucherUpdated;
 use App\Events\VoucherDeleted;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 
 class VoucherController extends Controller
@@ -20,8 +21,9 @@ class VoucherController extends Controller
     {
         // Optimized query with specific column selection
         $query = Voucher::select([
-            'id', 'code', 'package_id', 'router_id', 'status', 'used_by', 
-            'used_at', 'expires_at', 'batch_id', 'created_at', 'updated_at'
+            'id', 'code', 'package_id', 'router_id', 'status', 'used_by',
+            'used_at', 'expires_at', 'prefix', 'notes', 'batch_id',
+            'created_at', 'updated_at'
         ])
         ->with([
             'package:id,name,price,download_speed,validity', 
@@ -91,22 +93,28 @@ class VoucherController extends Controller
 
         $tenantId = $request->user()->tenant_id;
         $batchId = Str::uuid()->toString();
-        $vouchers = [];
+        $prefix = isset($validated['prefix']) ? strtoupper($validated['prefix']) : null;
+        $generatedCodes = [];
+        $timestamp = now();
 
         // Optimized batch insert for better performance
         $voucherData = [];
         for ($i = 0; $i < $validated['quantity']; $i++) {
-            $code = $this->generateUniqueCode($validated['prefix'] ?? '');
-            
+            $code = $this->generateUniqueCode($prefix ?? '', $generatedCodes);
+            $generatedCodes[$code] = true;
+
             $voucherData[] = [
+                'id' => Str::uuid()->toString(),
                 'code' => $code,
                 'package_id' => $validated['package_id'],
                 'router_id' => $validated['router_id'] ?? null,
                 'status' => 'unused',
                 'expires_at' => $validated['expires_at'] ?? null,
+                'prefix' => $prefix,
+                'notes' => $validated['notes'] ?? null,
                 'batch_id' => $batchId,
-                'created_at' => now(),
-                'updated_at' => now(),
+                'created_at' => $timestamp,
+                'updated_at' => $timestamp,
             ];
         }
 
@@ -135,8 +143,8 @@ class VoucherController extends Controller
             'message' => "Successfully generated {$validated['quantity']} voucher(s).",
             'data' => [
                 'batch_id' => $batchId,
-                'count' => $vouchers->count(),
-                'vouchers' => $vouchers,
+                'count' => $insertedVouchers->count(),
+                'vouchers' => $insertedVouchers,
             ],
         ], 201);
     }
@@ -264,7 +272,7 @@ class VoucherController extends Controller
     /**
      * Generate a unique voucher code.
      */
-    private function generateUniqueCode(string $prefix = ''): string
+    private function generateUniqueCode(string $prefix = '', array $generatedCodes = []): string
     {
         $chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
         $maxAttempts = 10;
@@ -281,7 +289,7 @@ class VoucherController extends Controller
             }
             $code .= implode('-', $segments);
 
-            if (!Voucher::where('code', $code)->exists()) {
+            if (!isset($generatedCodes[$code]) && !Voucher::where('code', $code)->exists()) {
                 return $code;
             }
         }

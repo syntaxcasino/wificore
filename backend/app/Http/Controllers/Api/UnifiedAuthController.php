@@ -212,23 +212,19 @@ class UnifiedAuthController extends Controller
             
         }
         
-        // AAA: system_admin uses bcrypt (local, <1ms, no network dependency).
-        // Tenant admins and PPPoE/hotspot users authenticate via FreeRADIUS (centralized AAA).
-        if ($user->role === User::ROLE_SYSTEM_ADMIN) {
-            $authenticated = Hash::check($request->password, $user->password);
-        } else {
-            try {
-                $authenticated = $this->radiusService->authenticate(
-                    $user->username,
-                    $request->password
-                );
-            } catch (\Exception $e) {
-                \Log::error('RADIUS authentication error', [
-                    'username' => $user->username,
-                    'error' => $e->getMessage(),
-                ]);
-                $authenticated = false;
-            }
+        // AAA: All users authenticate via FreeRADIUS (centralized AAA)
+        // System admins, landlords, tenants, and PPPoE/hotspot users all use RADIUS
+        try {
+            $authenticated = $this->radiusService->authenticate(
+                $user->username,
+                $request->password
+            );
+        } catch (\Exception $e) {
+            \Log::error('RADIUS authentication error', [
+                'username' => $user->username,
+                'error' => $e->getMessage(),
+            ]);
+            $authenticated = false;
         }
         
         // Check if authentication was successful

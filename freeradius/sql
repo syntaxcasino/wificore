@@ -55,7 +55,7 @@ sql {
     
     # SQL-User-Name is the realm-stripped username (e.g. 'john' not 'john@realm.com')
     # This matches what get_user_schema() and radcheck store after normalization
-    sql_user_name = "%{SQL-User-Name}"
+    sql_user_name = "%{User-Name}"
     
     # Group attribute for SQL queries
     group_attribute = "SQL-Group"

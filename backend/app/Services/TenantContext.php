@@ -173,9 +173,11 @@ class TenantContext
         // (a different physical connection to the read replica) and would
         // return that replica's search_path, not the write PDO's baseline.
         if (!$this->originalSearchPath) {
+            // useWritePdo() is a Query Builder method, not a Connection method.
+            // We use DB::table() to get a Query Builder, call useWritePdo(), then get the connection.
             $result = DB::connection()->getReadPdo() === DB::connection()->getPdo()
                 ? DB::selectOne("SHOW search_path")
-                : DB::connection()->useWritePdo()->selectOne("SHOW search_path");
+                : DB::table('tenants')->useWritePdo()->getConnection()->selectOne("SHOW search_path");
             $this->originalSearchPath = $result->search_path ?? 'public';
         }
 
@@ -265,9 +267,10 @@ class TenantContext
      */
     public function getCurrentSearchPath(): string
     {
+        // useWritePdo() is a Query Builder method, not a Connection method.
         $result = DB::connection()->getReadPdo() === DB::connection()->getPdo()
             ? DB::selectOne("SHOW search_path")
-            : DB::connection()->useWritePdo()->selectOne("SHOW search_path");
+            : DB::table('tenants')->useWritePdo()->getConnection()->selectOne("SHOW search_path");
         return $result->search_path ?? 'public';
     }
     
