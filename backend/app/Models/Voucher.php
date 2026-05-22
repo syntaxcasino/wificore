@@ -20,6 +20,9 @@ class Voucher extends Model
         'used_by',
         'used_at',
         'expires_at',
+        'prefix',
+        'notes',
+        'batch_id',
     ];
 
     protected $casts = [

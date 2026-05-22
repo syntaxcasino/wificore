@@ -54,7 +54,7 @@ export default defineConfig({
         clientsClaim: true,
         cleanupOutdatedCaches: true,
         globPatterns: [
-          '**/*.{ico,png,svg,woff,woff2,webmanifest}'
+          '**/*.{ico,png,svg,woff,woff2,webmanifest,html}'
         ],
         navigateFallback: 'index.html',
         navigateFallbackDenylist: [/^\/api\//, /^\/broadcasting\//],

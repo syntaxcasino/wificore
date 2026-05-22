@@ -3,11 +3,23 @@
 namespace App\Services;
 
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
 class RouterMetricsService
 {
+    /**
+     * Cache TTL for metrics data in seconds
+     * Metrics change slowly, so 30-60s cache is reasonable
+     */
+    private const METRICS_CACHE_TTL = 30;
+
+    /**
+     * Maximum concurrent HTTP requests to VictoriaMetrics
+     */
+    private const MAX_CONCURRENT_REQUESTS = 5;
+
     public function getLatestRouterMetrics(VictoriaMetricsClient $vm, string $tenantId, array $routerIds): array
     {
         $routerIds = array_values(array_filter(array_map('strval', $routerIds), fn ($id) => $id !== ''));
@@ -15,6 +27,19 @@ class RouterMetricsService
             return [];
         }
 
+        // Check cache first for all routers
+        $cacheKey = "router_metrics_batch:{$tenantId}:" . md5(implode(',', $routerIds));
+        $cached = Cache::get($cacheKey);
+        if ($cached !== null) {
+            Log::debug('RouterMetricsService: returning cached metrics', [
+                'tenant_id' => $tenantId,
+                'router_count' => count($routerIds),
+                'cache_key' => $cacheKey,
+            ]);
+            return $cached;
+        }
+
+        // Build Prometheus selector
         if (count($routerIds) === 1) {
             $selector = sprintf(
                 'tenant_id="%s",router_id="%s"',
@@ -220,7 +245,19 @@ class RouterMetricsService
             }
         }
 
-        return $this->applyCacheFallback($routerIds, $live);
+        $result = $this->applyCacheFallback($routerIds, $live);
+        
+        // Cache the results for 30 seconds to reduce VM query load
+        Cache::put($cacheKey, $result, self::METRICS_CACHE_TTL);
+        
+        Log::debug('RouterMetricsService: cached metrics', [
+            'tenant_id' => $tenantId,
+            'router_count' => count($routerIds),
+            'cache_key' => $cacheKey,
+            'ttl' => self::METRICS_CACHE_TTL,
+        ]);
+        
+        return $result;
     }
 
     private function applyCacheFallback(array $routerIds, array $live): array
