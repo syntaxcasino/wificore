@@ -26,25 +26,45 @@ use Illuminate\Support\Facades\Crypt;
 
 class RouterController extends Controller
 {
+    private const ROUTER_LIST_CACHE_TTL_SECONDS = 15;
+
     public function index(Request $request)
     {
         try {
             $withLive = $request->boolean('with_live', false);
-            
-            // Always return basic router data first (fast response)
-            // GAP-17: paginate to avoid loading all routers + relations in one query
             $perPage = min((int) $request->input('per_page', 25), 100);
-            $routers = Router::with(['services', 'accessPoints'])
-                ->orderBy('created_at', 'desc')
-                ->paginate($perPage);
-            
-            if (!$withLive) {
+            $tenantId = (string) ($request->user()?->tenant_id ?? '');
+
+            if ($tenantId === '') {
                 return response()->json([
-                    'data' => $routers,
-                    'has_live_data' => false,
-                    'message' => 'Router information loaded successfully'
-                ]);
+                    'error' => 'Tenant context not available',
+                    'message' => 'Unable to determine tenant for router listing.',
+                    'data' => [],
+                ], 403);
             }
+
+            $basePayload = Cache::remember(
+                $this->routerListCacheKey($tenantId, $perPage),
+                self::ROUTER_LIST_CACHE_TTL_SECONDS,
+                function () use ($perPage) {
+                    $routers = Router::with(['services', 'accessPoints'])
+                        ->orderBy('created_at', 'desc')
+                        ->paginate($perPage);
+
+                    return [
+                        'data' => $routers,
+                        'has_live_data' => false,
+                        'message' => 'Router information loaded successfully',
+                    ];
+                }
+            );
+
+            if (!$withLive) {
+                return response()->json($basePayload);
+            }
+
+            /** @var \Illuminate\Pagination\LengthAwarePaginator $routers */
+            $routers = $basePayload['data'];
 
             // For with_live=true, return basic data with loading indicators
             // The frontend can then call the live-data endpoint separately
@@ -305,6 +325,7 @@ class RouterController extends Controller
         // Bust tenant dashboard cache for router counts
         TenantDashboardController::bustEntityCache((string) $router->tenant_id, 'routers');
         TenantDashboardController::bustEntityCache((string) $router->tenant_id, 'dashboard');
+        $this->bustRouterListCache((string) $router->tenant_id);
 
         // Generate sanitized script for UI display (hides secrets)
         $sanitizedScript = $this->generateSanitizedScript($router, $connectivityScript);
@@ -521,6 +542,7 @@ class RouterController extends Controller
                 // Bust tenant dashboard cache for router counts
                 TenantDashboardController::bustEntityCache((string) $tenantId, 'routers');
                 TenantDashboardController::bustEntityCache((string) $tenantId, 'dashboard');
+                $this->bustRouterListCache((string) $tenantId);
             }
 
             AuditLogService::logRouterEvent(
@@ -570,6 +592,7 @@ class RouterController extends Controller
                 // Bust tenant dashboard cache for router counts
                 TenantDashboardController::bustEntityCache((string) $tenantId, 'routers');
                 TenantDashboardController::bustEntityCache((string) $tenantId, 'dashboard');
+                $this->bustRouterListCache((string) $tenantId);
             }
             Log::info('Router deleted successfully:', ['router_id' => $routerId]);
             return response()->json(['message' => 'Router deleted successfully']);
@@ -2053,6 +2076,18 @@ EOT;
                 'error' => $e->getMessage(),
             ]);
             return response()->json(['success' => false, 'error' => 'Failed to fetch events'], 500);
+        }
+    }
+
+    private function routerListCacheKey(string $tenantId, int $perPage): string
+    {
+        return "tenant_router_index:{$tenantId}:pp{$perPage}";
+    }
+
+    private function bustRouterListCache(string $tenantId): void
+    {
+        foreach ([15, 20, 25, 50, 100] as $perPage) {
+            Cache::forget($this->routerListCacheKey($tenantId, $perPage));
         }
     }
 }

@@ -112,9 +112,11 @@ class TenantSseController extends Controller
                 // Heartbeat before blocking subscribe
                 $this->sendHeartbeat($eventId++);
 
-                // Create a dedicated Redis connection for blocking SUBSCRIBE
+                // Create a dedicated Redis connection for blocking SUBSCRIBE.
+                // Long-lived SSE subscribers should not share the default app
+                // connection or a finite read timeout.
                 try {
-                    $redis = Redis::connection('default')->client();
+                    $redis = Redis::connection('sse');
                 } catch (\Exception $e) {
                     $this->logRedisIssueOnce(
                         $tenantId,
@@ -128,14 +130,13 @@ class TenantSseController extends Controller
                 }
 
                 // Subscribe to all requested channels
-                // Note: PhpRedis callback signature is ($redis, $channel, $message)
                 Log::info('Tenant SSE: Starting Redis subscribe', [
                     'tenant_id' => $tenantId,
                     'channels' => $redisChannels,
                 ]);
 
                 try {
-                    $redis->subscribe($redisChannels, function ($redisClient, $channel, $message) use (
+                    $redis->subscribe($redisChannels, function ($message, $channel) use (
                         &$eventId, $startTime, $redis, $tenantId
                     ) {
                         Log::debug('Tenant SSE: Received message from Redis', [
@@ -147,13 +148,13 @@ class TenantSseController extends Controller
                         if (time() - $startTime > self::MAX_DURATION) {
                             Log::info('Tenant SSE: Max duration reached, closing stream', ['tenant_id' => $tenantId]);
                             $this->sseWrite('timeout', $eventId++, ['message' => 'Stream timeout — reconnecting']);
-                            $redis->close();
+                            $redis->disconnect();
                             return;
                         }
 
                         if (connection_aborted()) {
                             Log::info('Tenant SSE: Connection aborted', ['tenant_id' => $tenantId]);
-                            $redis->close();
+                            $redis->disconnect();
                             return;
                         }
 
@@ -196,6 +197,8 @@ class TenantSseController extends Controller
                         $e
                     );
                     $this->sseWrite('error', $eventId++, ['message' => 'Stream error: ' . $e->getMessage()]);
+                } finally {
+                    $redis->disconnect();
                 }
 
                 Log::info('Tenant SSE: Redis subscribe ended', ['tenant_id' => $tenantId]);

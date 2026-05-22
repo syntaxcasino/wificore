@@ -9,7 +9,9 @@ use App\Events\AccountSuspended;
 use App\Jobs\TrackFailedLoginJob;
 use App\Jobs\UpdateLoginStatsJob;
 use App\Jobs\UpdatePasswordJob;
+use App\Models\Tenant;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Validator;
@@ -75,9 +77,13 @@ class UnifiedAuthController extends Controller
             
             if ($subdomain && !$this->isReservedSubdomain($subdomain)) {
                 // Find tenant by subdomain
-                $tenant = \App\Models\Tenant::where('subdomain', $subdomain)
-                    ->orWhere('custom_domain', $host)
-                    ->first();
+                $tenant = Cache::remember(
+                    "auth:tenant-host:{$host}",
+                    30,
+                    fn () => Tenant::where('subdomain', $subdomain)
+                        ->orWhere('custom_domain', $host)
+                        ->first()
+                );
                     
                 \Log::debug('Tenant identified from subdomain', ['subdomain' => $subdomain, 'tenant_id' => $tenant?->id]);
             }
@@ -86,6 +92,7 @@ class UnifiedAuthController extends Controller
         // Find user by username or email (without tenant scope for now)
         $user = User::withoutGlobalScope(\App\Models\Scopes\TenantScope::class)
             ->withoutGlobalScope(\App\Scopes\TenantScope::class)
+            ->with(['tenant:id,name,subdomain,custom_domain,schema_name,is_active,suspended_at,suspension_reason'])
             ->where(function ($q) use ($request) {
                 $q->where('username', $request->username)
                   ->orWhere('email', $request->username);
@@ -180,11 +187,15 @@ class UnifiedAuthController extends Controller
         // SCHEMA-BASED MULTI-TENANCY: Validate schema mapping for tenant users
         // Skip for system admins (landlords) - they operate in public schema
         if ($user->tenant_id && $user->role !== User::ROLE_SYSTEM_ADMIN) {
-            $schemaMapping = DB::table('public.radius_user_schema_mapping')
-                ->where('username', $user->username)
-                ->where('tenant_id', $user->tenant_id)
-                ->where('is_active', true)
-                ->first();
+            $schemaMapping = Cache::remember(
+                "auth:schema-mapping:{$user->tenant_id}:{$user->username}",
+                30,
+                fn () => DB::table('public.radius_user_schema_mapping')
+                    ->where('username', $user->username)
+                    ->where('tenant_id', $user->tenant_id)
+                    ->where('is_active', true)
+                    ->first()
+            );
             
             if (!$schemaMapping) {
                 \Log::error('No schema mapping found for tenant user', [
@@ -340,20 +351,38 @@ class UnifiedAuthController extends Controller
      */
     public function logout(Request $request)
     {
+        $startTime = microtime(true);
+        $timings = [];
+
+        // Get user before token deletion for logging
+        $user = $request->user();
+        $timings['get_user'] = round((microtime(true) - $startTime) * 1000, 2);
+
         // Revoke current token (if present)
-        $token = $request->user()?->currentAccessToken();
+        $token = $user?->currentAccessToken();
+        $timings['get_token'] = round((microtime(true) - $startTime) * 1000, 2);
+
         if ($token) {
             $token->delete();
         }
+        $timings['token_delete'] = round((microtime(true) - $startTime) * 1000, 2);
+
+        $totalMs = round((microtime(true) - $startTime) * 1000, 2);
 
         \Log::info('User logged out', [
-            'user_id' => $request->user()?->id,
-            'username' => $request->user()?->username,
+            'user_id' => $user?->id,
+            'username' => $user?->username,
+            'timings_ms' => $timings,
+            'total_ms' => $totalMs,
         ]);
 
         return response()->json([
             'success' => true,
             'message' => 'Logged out successfully',
+            'debug' => [
+                'total_ms' => $totalMs,
+                'token_delete_ms' => $timings['token_delete'] - ($timings['get_token'] ?? 0),
+            ],
         ]);
     }
 

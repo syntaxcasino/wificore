@@ -489,33 +489,47 @@ class PaymentController extends Controller
 
             $deadline = time() + 90;
 
-            Redis::subscribe([$sseChannel], function ($message) use ($payment, $sendEvent, $deadline) {
-                if (time() >= $deadline) {
-                    $sendEvent('timeout', ['payment_id' => $payment->id]);
-                    return false; // Signal to exit subscribe loop
-                }
+            $redis = Redis::connection('sse');
 
-                $decoded = json_decode($message, true);
-                if (!$decoded) return;
+            try {
+                $redis->subscribe([$sseChannel], function ($message) use ($payment, $sendEvent, $deadline, $redis) {
+                    if (time() >= $deadline) {
+                        $sendEvent('timeout', ['payment_id' => $payment->id]);
+                        $redis->disconnect();
+                        return;
+                    }
 
-                // Only care about PaymentCompleted for this specific payment
-                if (($decoded['event'] ?? '') !== 'PaymentCompleted') return;
-                $data = $decoded['data'] ?? [];
-                if (($data['payment']['id'] ?? null) != $payment->id) return;
+                    $decoded = json_decode($message, true);
+                    if (!$decoded) {
+                        return;
+                    }
 
-                // Fetch credentials (set by CreateHotspotUserJob)
-                $credentials = Cache::get("payment_credentials_{$payment->id}");
+                    // Only care about PaymentCompleted for this specific payment
+                    if (($decoded['event'] ?? '') !== 'PaymentCompleted') {
+                        return;
+                    }
 
-                $sendEvent('payment.result', [
-                    'payment_id'  => $payment->id,
-                    'status'      => $data['payment']['status'] ?? 'completed',
-                    'credentials' => $credentials,
-                    'auto_login'  => $credentials !== null,
-                ]);
-                $sendEvent('done', []);
+                    $data = $decoded['data'] ?? [];
+                    if (($data['payment']['id'] ?? null) != $payment->id) {
+                        return;
+                    }
 
-                return false; // Exit subscribe loop
-            });
+                    // Fetch credentials (set by CreateHotspotUserJob)
+                    $credentials = Cache::get("payment_credentials_{$payment->id}");
+
+                    $sendEvent('payment.result', [
+                        'payment_id'  => $payment->id,
+                        'status'      => $data['payment']['status'] ?? 'completed',
+                        'credentials' => $credentials,
+                        'auto_login'  => $credentials !== null,
+                    ]);
+                    $sendEvent('done', []);
+
+                    $redis->disconnect();
+                });
+            } finally {
+                $redis->disconnect();
+            }
         }, 200, [
             'Content-Type'     => 'text/event-stream',
             'Cache-Control'    => 'no-cache',

@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\User;
 use App\Models\Package;
 use App\Models\Router;
 use App\Models\Payment;
@@ -103,8 +102,7 @@ class TenantDashboardController extends Controller
 
         // ── Q1: user counts (public schema, filter by tenant_id) ──────────────
         // NOTE: Tenant schema users table doesn't have soft deletes (no deleted_at column)
-        $userCounts = DB::table('users')
-            ->where('tenant_id', $tenantId)
+        $userCounts = $this->tenantUsersQuery($tenantId)
             ->selectRaw('COUNT(*) as total')
             ->first();
 
@@ -396,9 +394,8 @@ class TenantDashboardController extends Controller
         $perPage = $request->per_page ?? 15;
 
         $users = Cache::remember($cacheKey, self::LIST_CACHE_TTL_SECONDS, function () use ($tenantId, $perPage) {
-            return User::select('id', 'name', 'email', 'username', 'role', 'is_active', 'created_at')
-                ->where('tenant_id', $tenantId)
-                ->whereNull('deleted_at')
+            return $this->tenantUsersQuery($tenantId)
+                ->select('id', 'name', 'email', 'username', 'role', 'is_active', 'created_at')
                 ->orderBy('created_at', 'desc')
                 ->paginate($perPage);
         });
@@ -586,6 +583,14 @@ class TenantDashboardController extends Controller
         $page = $request->page ?? 1;
         $perPage = $request->per_page ?? 15;
         return "{$type}:{$tenantId}:p{$page}:pp{$perPage}";
+    }
+
+    /**
+     * The landlord/public users table has no deleted_at column.
+     */
+    private function tenantUsersQuery(string $tenantId)
+    {
+        return DB::table('users')->where('tenant_id', $tenantId);
     }
 
     /**
