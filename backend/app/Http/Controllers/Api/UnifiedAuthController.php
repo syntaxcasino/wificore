@@ -29,9 +29,13 @@ class UnifiedAuthController extends Controller
      * Unified login for system admins, tenant admins, and hotspot users
      * Uses FreeRADIUS for authentication when applicable
      * Determines user type and returns appropriate dashboard route
+     * 
+     * PERFORMANCE: Added comprehensive timing instrumentation to identify bottlenecks.
      */
     public function login(Request $request)
     {
+        $loginStartTime = microtime(true);
+        $radiusElapsedMs = 0; // Initialize for logging
         \Log::debug('Login attempt', ['username' => $request->username]);
         
         // Rate limiting
@@ -214,6 +218,7 @@ class UnifiedAuthController extends Controller
         
         // AAA: All users authenticate via FreeRADIUS (centralized AAA)
         // System admins, landlords, tenants, and PPPoE/hotspot users all use RADIUS
+        $radiusStartTime = microtime(true);
         try {
             $authenticated = $this->radiusService->authenticate(
                 $user->username,
@@ -226,14 +231,20 @@ class UnifiedAuthController extends Controller
             ]);
             $authenticated = false;
         }
+        $radiusElapsedMs = round((microtime(true) - $radiusStartTime) * 1000, 2);
+        \Log::info('RADIUS authentication timing', [
+            'username' => $user->username,
+            'elapsed_ms' => $radiusElapsedMs,
+            'authenticated' => $authenticated,
+        ]);
         
         // Check if authentication was successful
         if (!$authenticated) {
             RateLimiter::hit($key, 60);
             
-            // EVENT-BASED: Dispatch job to track failed login
-            TrackFailedLoginJob::dispatch($user->id, $request->ip())
-                ->onQueue('auth-tracking');
+            // PERFORMANCE: Use dispatchAfterResponse to avoid blocking response
+            // Failed login tracking is non-critical, can happen after response sent
+            TrackFailedLoginJob::dispatchAfterResponse($user->id, $request->ip());
             
             $remainingAttempts = 5 - $user->failed_login_attempts;
             return response()->json([
@@ -245,9 +256,9 @@ class UnifiedAuthController extends Controller
         // Clear rate limiter on successful login
         RateLimiter::clear($key);
 
-        // EVENT-BASED: Dispatch job to update login stats
-        UpdateLoginStatsJob::dispatch($user->id, $request->ip())
-            ->onQueue('auth-tracking');
+        // PERFORMANCE: Use dispatchAfterResponse for non-critical tracking jobs
+        // This ensures login response is sent immediately without waiting for queue
+        UpdateLoginStatsJob::dispatchAfterResponse($user->id, $request->ip());
 
         // Create token with appropriate abilities based on role
         $abilities = $this->getTokenAbilities($user);
@@ -260,13 +271,16 @@ class UnifiedAuthController extends Controller
         // Determine dashboard route based on role
         $dashboardRoute = $this->getDashboardRoute($user);
 
-        // Log successful login
+        // Log successful login with timing info
+        $totalElapsedMs = round((microtime(true) - $loginStartTime) * 1000, 2);
         \Log::info('User logged in', [
             'user_id' => $user->id,
             'username' => $user->username,
             'role' => $user->role,
             'tenant_id' => $user->tenant_id,
             'ip' => $request->ip(),
+            'total_elapsed_ms' => $totalElapsedMs,
+            'radius_elapsed_ms' => $radiusElapsedMs,
         ]);
 
         // Determine if redirect to subdomain is needed

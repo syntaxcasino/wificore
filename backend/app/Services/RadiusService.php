@@ -40,24 +40,44 @@ class RadiusService extends TenantAwareService
      * NOTE: Schema lookup is handled automatically by PostgreSQL functions.
      * No need to set search_path - functions determine correct schema from username.
      * This provides high performance without connection state changes.
+     * 
+     * PERFORMANCE: Added detailed timing logs to identify bottlenecks.
+     * Timeout is set to 2 seconds to prevent long delays.
      */
     public function authenticate(string $username, string $password): bool
     {
+        $startTime = microtime(true);
+        $timeout = (int) config('radius.timeout', 2);
+        
         try {
-            \Log::info("RADIUS: Attempting authentication for user: {$username}");
+            \Log::info("RADIUS: Attempting authentication for user: {$username}", [
+                'timeout' => $timeout,
+                'server' => config('radius.server_ip', 'wificore-freeradius'),
+            ]);
             
             // PostgreSQL functions automatically determine correct tenant schema
             $result = $this->radius->accessRequest($username, $password);
             
+            $elapsedMs = round((microtime(true) - $startTime) * 1000, 2);
+            
             if ($result === true) {
-                \Log::info("RADIUS: Authentication successful for user: {$username}");
+                \Log::info("RADIUS: Authentication successful for user: {$username}", [
+                    'elapsed_ms' => $elapsedMs,
+                ]);
                 return true;
             } else {
-                \Log::warning("RADIUS: Authentication failed for user: {$username}");
+                \Log::warning("RADIUS: Authentication failed for user: {$username}", [
+                    'elapsed_ms' => $elapsedMs,
+                ]);
                 return false;
             }
         } catch (\Exception $e) {
-            \Log::error("RADIUS error for user {$username}: " . $e->getMessage());
+            $elapsedMs = round((microtime(true) - $startTime) * 1000, 2);
+            \Log::error("RADIUS error for user {$username}", [
+                'error' => $e->getMessage(),
+                'elapsed_ms' => $elapsedMs,
+                'timeout' => $timeout,
+            ]);
             return false;
         }
     }
