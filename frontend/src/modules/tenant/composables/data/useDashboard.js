@@ -1,6 +1,14 @@
 import { ref, computed } from 'vue'
 import axios from 'axios'
 
+// Memoized formatters — created once, reused on every call
+const _currencyFmt = new Intl.NumberFormat('en-KE', {
+  style: 'currency',
+  currency: 'KES',
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 0,
+})
+
 /**
  * Dashboard composable for managing dashboard statistics and updates
  */
@@ -58,11 +66,7 @@ export function useDashboard() {
   })
 
   const analyticsData = ref({
-    retention: {
-      rate: 0,
-      lastMonthUsers: 0,
-      retainedUsers: 0
-    },
+    retention: { rate: 0, lastMonthUsers: 0, retainedUsers: 0 },
     accessPoints: [],
     revenueTrend: [],
     revenueAverage: 0,
@@ -74,214 +78,118 @@ export function useDashboard() {
     userGrowth: 0
   })
 
-  const chartData = ref({
-    labels: [],
-    users: [],
-    revenue: [],
-  })
-
+  const chartData = ref({ labels: [], users: [], revenue: [] })
   const recentActivities = ref([])
   const onlineUsers = ref([])
   const loading = ref(true)
   const lastUpdated = ref(null)
 
   /**
-   * Fetch dashboard statistics from backend
+   * Apply a full backend data payload to local reactive state.
+   * Used by both fetchDashboardStats and updateStatsFromEvent.
+   */
+  const _applyData = (data) => {
+    stats.value = {
+      totalRouters:        data.total_routers || 0,
+      activeSessions:      data.active_sessions || 0,
+      hotspotUsers:        data.hotspot_users || 0,
+      pppoeUsers:          data.pppoe_users || 0,
+      totalUsers:          data.total_users || 0,
+      totalRevenue:        data.total_revenue || 0,
+      dailyIncome:         data.daily_income || 0,
+      weeklyIncome:        data.weekly_income || 0,
+      monthlyIncome:       data.monthly_income || 0,
+      yearlyIncome:        data.yearly_income || 0,
+      monthlyRevenue:      data.monthly_revenue || 0,
+      dataUsage:           data.data_usage || 0,
+      dataUsageUpload:     data.data_usage_upload || 0,
+      dataUsageDownload:   data.data_usage_download || 0,
+      monthlyDataUsage:    data.monthly_data_usage || 0,
+      todayDataUsage:      data.today_data_usage || 0,
+      retentionRate:       data.retention_rate || 0,
+      smsBalance:          data.sms_balance || 0,
+      onlineRouters:       data.online_routers || 0,
+      offlineRouters:      data.offline_routers || 0,
+      provisioningRouters: data.provisioning_routers || 0,
+      lastMonthUsers:      data.last_month_users || 0,
+      retainedUsers:       data.retained_users || 0,
+    }
+
+    if (data.payment_details)   paymentData.value   = data.payment_details
+    if (data.sms_expenses)      expensesData.value  = data.sms_expenses
+    if (data.business_analytics) analyticsData.value = data.business_analytics
+
+    if (data.weekly_users_trend?.length) {
+      chartData.value.labels = data.weekly_users_trend.map((i) => i.date)
+      const maxCount = Math.max(...data.weekly_users_trend.map((i) => i.count), 1)
+      chartData.value.users = data.weekly_users_trend.map((i) => ({
+        value: i.count,
+        percentage: (i.count / maxCount) * 100,
+      }))
+    }
+
+    if (data.weekly_revenue_trend?.length) {
+      const maxRevenue = Math.max(...data.weekly_revenue_trend.map((i) => i.amount), 1)
+      chartData.value.revenue = data.weekly_revenue_trend.map((i) => ({
+        value: i.amount,
+        percentage: (i.amount / maxRevenue) * 100,
+      }))
+    }
+
+    if (data.recent_activities) recentActivities.value = data.recent_activities
+    if (data.online_users)      onlineUsers.value      = data.online_users
+
+    lastUpdated.value = data.last_updated
+  }
+
+  /**
+   * Fetch dashboard statistics from backend.
+   * Only shows loading skeleton on first load (when stats are still zeroed out).
    */
   const fetchDashboardStats = async () => {
+    const isInitial = stats.value.totalRevenue === 0 && stats.value.totalUsers === 0
     try {
+      if (isInitial) loading.value = true
       const response = await axios.get('/tenant/dashboard/stats')
-
       if (response.data?.success) {
-        const data = response.data?.data || {}
-
-        // Update stats
-        stats.value = {
-          totalRouters: data.total_routers || 0,
-          activeSessions: data.active_sessions || 0,
-          hotspotUsers: data.hotspot_users || 0,
-          pppoeUsers: data.pppoe_users || 0,
-          totalUsers: data.total_users || 0,
-          totalRevenue: data.total_revenue || 0,
-          dailyIncome: data.daily_income || 0,
-          weeklyIncome: data.weekly_income || 0,
-          monthlyIncome: data.monthly_income || 0,
-          yearlyIncome: data.yearly_income || 0,
-          monthlyRevenue: data.monthly_revenue || 0,
-          dataUsage: data.data_usage || 0,
-          dataUsageUpload: data.data_usage_upload || 0,
-          dataUsageDownload: data.data_usage_download || 0,
-          monthlyDataUsage: data.monthly_data_usage || 0,
-          todayDataUsage: data.today_data_usage || 0,
-          retentionRate: data.retention_rate || 0,
-          smsBalance: data.sms_balance || 0,
-          onlineRouters: data.online_routers || 0,
-          offlineRouters: data.offline_routers || 0,
-          provisioningRouters: data.provisioning_routers || 0,
-          lastMonthUsers: data.last_month_users || 0,
-          retainedUsers: data.retained_users || 0,
-        }
-
-        // Update payment data
-        if (data.payment_details) {
-          paymentData.value = data.payment_details
-        }
-
-        // Update expenses data
-        if (data.sms_expenses) {
-          expensesData.value = data.sms_expenses
-        }
-
-        // Update analytics data
-        if (data.business_analytics) {
-          analyticsData.value = data.business_analytics
-        }
-
-        // Update chart data
-        if (data.weekly_users_trend && data.weekly_users_trend.length > 0) {
-          chartData.value.labels = data.weekly_users_trend.map((item) => item.date)
-          const maxCount = Math.max(...data.weekly_users_trend.map((i) => i.count), 1)
-          chartData.value.users = data.weekly_users_trend.map((item) => ({
-            value: item.count,
-            percentage: (item.count / maxCount) * 100,
-          }))
-        }
-
-        if (data.weekly_revenue_trend && data.weekly_revenue_trend.length > 0) {
-          const maxRevenue = Math.max(...data.weekly_revenue_trend.map((i) => i.amount), 1)
-          chartData.value.revenue = data.weekly_revenue_trend.map((item) => ({
-            value: item.amount,
-            percentage: (item.amount / maxRevenue) * 100,
-          }))
-        }
-
-        // Update recent activities
-        if (data.recent_activities) {
-          recentActivities.value = data.recent_activities
-        }
-
-        // Update online users
-        if (data.online_users) {
-          onlineUsers.value = data.online_users
-        }
-
-        lastUpdated.value = data.last_updated
-        loading.value = false
+        _applyData(response.data?.data || {})
       }
     } catch (error) {
       console.error('Failed to fetch dashboard stats:', error)
+    } finally {
       loading.value = false
     }
   }
 
   /**
-   * Refresh dashboard statistics
+   * Force-refresh dashboard statistics (triggers cache bust + background job).
    */
   const refreshStats = async () => {
     try {
       await axios.post('/tenant/dashboard/refresh')
-      // Fetch updated stats after a short delay
-      setTimeout(fetchDashboardStats, 1000)
+      setTimeout(fetchDashboardStats, 800)
     } catch (error) {
       console.error('Failed to refresh dashboard stats:', error)
     }
   }
 
   /**
-   * Update stats from WebSocket event
+   * Update stats from SSE/WebSocket event — applies data directly, no API round-trip.
    */
   const updateStatsFromEvent = (data) => {
-    stats.value = {
-      totalRouters: data.total_routers || 0,
-      activeSessions: data.active_sessions || 0,
-      hotspotUsers: data.hotspot_users || 0,
-      pppoeUsers: data.pppoe_users || 0,
-      totalUsers: data.total_users || 0,
-      totalRevenue: data.total_revenue || 0,
-      dailyIncome: data.daily_income || 0,
-      weeklyIncome: data.weekly_income || 0,
-      monthlyIncome: data.monthly_income || 0,
-      yearlyIncome: data.yearly_income || 0,
-      monthlyRevenue: data.monthly_revenue || 0,
-      dataUsage: data.data_usage || 0,
-      dataUsageUpload: data.data_usage_upload || 0,
-      dataUsageDownload: data.data_usage_download || 0,
-      monthlyDataUsage: data.monthly_data_usage || 0,
-      todayDataUsage: data.today_data_usage || 0,
-      retentionRate: data.retention_rate || 0,
-      smsBalance: data.sms_balance || 0,
-      onlineRouters: data.online_routers || 0,
-      offlineRouters: data.offline_routers || 0,
-      provisioningRouters: data.provisioning_routers || 0,
-      lastMonthUsers: data.last_month_users || 0,
-      retainedUsers: data.retained_users || 0,
-    }
-
-    // Update payment data
-    if (data.payment_details) {
-      paymentData.value = data.payment_details
-    }
-
-    // Update expenses data
-    if (data.sms_expenses) {
-      expensesData.value = data.sms_expenses
-    }
-
-    // Update analytics data
-    if (data.business_analytics) {
-      analyticsData.value = data.business_analytics
-    }
-
-    // Update chart data
-    if (data.weekly_users_trend && data.weekly_users_trend.length > 0) {
-      chartData.value.labels = data.weekly_users_trend.map((item) => item.date)
-      const maxCount = Math.max(...data.weekly_users_trend.map((i) => i.count), 1)
-      chartData.value.users = data.weekly_users_trend.map((item) => ({
-        value: item.count,
-        percentage: (item.count / maxCount) * 100,
-      }))
-    }
-
-    if (data.weekly_revenue_trend && data.weekly_revenue_trend.length > 0) {
-      const maxRevenue = Math.max(...data.weekly_revenue_trend.map((i) => i.amount), 1)
-      chartData.value.revenue = data.weekly_revenue_trend.map((item) => ({
-        value: item.amount,
-        percentage: (item.amount / maxRevenue) * 100,
-      }))
-    }
-
-    // Update recent activities
-    if (data.recent_activities) {
-      recentActivities.value = data.recent_activities
-    }
-
-    // Update online users
-    if (data.online_users) {
-      onlineUsers.value = data.online_users
-    }
-
-    lastUpdated.value = data.last_updated
+    _applyData(data)
   }
 
   /**
-   * Format currency value
+   * Format currency value — uses memoized Intl.NumberFormat instance.
    */
-  const formatCurrency = (value) => {
-    return new Intl.NumberFormat('en-KE', {
-      style: 'currency',
-      currency: 'KES',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(value || 0)
-  }
+  const formatCurrency = (value) => _currencyFmt.format(value || 0)
 
   /**
    * Format data size
    */
   const formatDataSize = (gb) => {
-    if (gb >= 1000) {
-      return `${(gb / 1000).toFixed(2)} TB`
-    }
+    if (gb >= 1000) return `${(gb / 1000).toFixed(2)} TB`
     return `${(gb || 0).toFixed(2)} GB`
   }
 
@@ -290,74 +198,48 @@ export function useDashboard() {
    */
   const formatTimeAgo = (timestamp) => {
     if (!timestamp) return 'Never'
-
-    const now = new Date()
-    const updated = new Date(timestamp)
-    const seconds = Math.floor((now - updated) / 1000)
-
+    const seconds = Math.floor((Date.now() - new Date(timestamp)) / 1000)
     if (seconds < 10) return 'just now'
     if (seconds < 60) return `${seconds}s ago`
-
     const minutes = Math.floor(seconds / 60)
     if (minutes < 60) return `${minutes}m ago`
-
     const hours = Math.floor(minutes / 60)
     if (hours < 24) return `${hours}h ago`
-
-    const days = Math.floor(hours / 24)
-    return `${days}d ago`
+    return `${Math.floor(hours / 24)}d ago`
   }
 
-  /**
-   * Calculate router health percentage
-   */
   const routerHealthPercentage = computed(() => {
     const total = stats.value.totalRouters
     if (total === 0) return 0
     return Math.round((stats.value.onlineRouters / total) * 100)
   })
 
-  /**
-   * Get router health status
-   */
   const routerHealthStatus = computed(() => {
     const health = routerHealthPercentage.value
-    if (health >= 90) return { label: 'Excellent', color: 'text-green-600', bgColor: 'bg-green-100' }
-    if (health >= 70) return { label: 'Good', color: 'text-blue-600', bgColor: 'bg-blue-100' }
-    if (health >= 50) return { label: 'Fair', color: 'text-yellow-600', bgColor: 'bg-yellow-100' }
-    return { label: 'Poor', color: 'text-red-600', bgColor: 'bg-red-100' }
+    if (health >= 90) return { label: 'Excellent', color: 'text-green-600 dark:text-green-400', bgColor: 'bg-green-100 dark:bg-green-900/40' }
+    if (health >= 70) return { label: 'Good',      color: 'text-blue-600 dark:text-blue-400',   bgColor: 'bg-blue-100 dark:bg-blue-900/40' }
+    if (health >= 50) return { label: 'Fair',      color: 'text-yellow-600 dark:text-yellow-400', bgColor: 'bg-yellow-100 dark:bg-yellow-900/40' }
+    return               { label: 'Poor',      color: 'text-red-600 dark:text-red-400',     bgColor: 'bg-red-100 dark:bg-red-900/40' }
   })
 
-  /**
-   * Calculate revenue growth
-   */
   const revenueGrowth = computed(() => {
-    if (chartData.value.revenue.length < 2) return null
-    const current = chartData.value.revenue[chartData.value.revenue.length - 1]?.value || 0
-    const previous = chartData.value.revenue[chartData.value.revenue.length - 2]?.value || 0
+    const rev = chartData.value.revenue
+    if (rev.length < 2) return null
+    const current  = rev[rev.length - 1]?.value || 0
+    const previous = rev[rev.length - 2]?.value || 0
     if (previous === 0) return null
     const growth = ((current - previous) / previous) * 100
-    return {
-      value: Math.abs(growth).toFixed(1),
-      direction: growth >= 0 ? 'up' : 'down',
-      isPositive: growth >= 0,
-    }
+    return { value: Math.abs(growth).toFixed(1), direction: growth >= 0 ? 'up' : 'down', isPositive: growth >= 0 }
   })
 
-  /**
-   * Calculate user growth
-   */
   const userGrowth = computed(() => {
-    if (chartData.value.users.length < 2) return null
-    const current = chartData.value.users[chartData.value.users.length - 1]?.value || 0
-    const previous = chartData.value.users[chartData.value.users.length - 2]?.value || 0
+    const usr = chartData.value.users
+    if (usr.length < 2) return null
+    const current  = usr[usr.length - 1]?.value || 0
+    const previous = usr[usr.length - 2]?.value || 0
     if (previous === 0) return null
     const growth = ((current - previous) / previous) * 100
-    return {
-      value: Math.abs(growth).toFixed(1),
-      direction: growth >= 0 ? 'up' : 'down',
-      isPositive: growth >= 0,
-    }
+    return { value: Math.abs(growth).toFixed(1), direction: growth >= 0 ? 'up' : 'down', isPositive: growth >= 0 }
   })
 
   return {

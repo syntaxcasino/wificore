@@ -43,6 +43,8 @@ export function useRouters() {
   const formSubmitted = ref(false)
   const showMenu = ref(null) // Track which router's menu is open (null or router ID)
   let latestMetricsRequestToken = 0
+  let fetchDebounceTimer = null
+  let isFetchingRouters = false
 
   // WebSocket Integration
   const { subscribeToPrivateChannel, unsubscribe } = useBroadcasting()
@@ -245,6 +247,20 @@ export function useRouters() {
   }
 
   const fetchRouters = async () => {
+    // Debounce rapid calls - clear any pending debounce timer
+    if (fetchDebounceTimer) {
+      clearTimeout(fetchDebounceTimer)
+    }
+
+    // Request deduplication: if already fetching, schedule a refresh after current one completes
+    if (isFetchingRouters) {
+      fetchDebounceTimer = setTimeout(() => {
+        fetchRouters()
+      }, 500)
+      return
+    }
+
+    isFetchingRouters = true
     const isInitialLoad = routers.value.length === 0
 
     if (isInitialLoad) {
@@ -271,45 +287,11 @@ export function useRouters() {
       // Filter out null/undefined entries that may occur after delete operations
       const validRouters = fetchedRouters.filter(r => r != null && typeof r === 'object')
       
-      // Sort deterministically so order does not reshuffle between refreshes
-      const sortedRouters = [...validRouters].sort((a, b) => {
-        // Compare by name
-        const nameA = String(a?.name ?? '').trim()
-        const nameB = String(b?.name ?? '').trim()
-        const byName = nameA.localeCompare(nameB, 'en', { numeric: true, sensitivity: 'base' })
-        if (byName !== 0) return byName
+      // Note: Sorting is handled in the computed property (filteredRouters) in the component
+      // This avoids double-sorting and allows the UI to control sort order
+      routers.value = validRouters
 
-        // Compare by IP address
-        const parseIp = (ip) => {
-          const cleanIp = String(ip ?? '').split('/')[0].trim()
-          if (!cleanIp) return null
-          const parts = cleanIp.split('.').map(p => Number(p))
-          if (parts.length !== 4 || parts.some(n => Number.isNaN(n))) return null
-          return parts
-        }
-        const aIp = parseIp(a?.ip_address)
-        const bIp = parseIp(b?.ip_address)
-        if (!aIp && !bIp) {
-          // fall through to id comparison
-        } else if (!aIp) {
-          return 1
-        } else if (!bIp) {
-          return -1
-        } else {
-          for (let i = 0; i < 4; i++) {
-            if (aIp[i] !== bIp[i]) return aIp[i] - bIp[i]
-          }
-        }
-
-        // Compare by ID as final tiebreaker
-        const idA = String(a?.id ?? '')
-        const idB = String(b?.id ?? '')
-        return idA.localeCompare(idB, 'en', { numeric: true, sensitivity: 'base' })
-      })
-
-      routers.value = sortedRouters
-
-      const routerIds = sortedRouters.map((r) => String(r?.id ?? '')).filter((id) => id !== '')
+      const routerIds = validRouters.map((r) => String(r?.id ?? '')).filter((id) => id !== '')
       const requestToken = ++latestMetricsRequestToken
 
       // Do not block initial render; load DB rows first, then hydrate metrics asynchronously.
@@ -360,6 +342,7 @@ export function useRouters() {
     } finally {
       loading.value = false
       refreshing.value = false
+      isFetchingRouters = false
     }
   }
 

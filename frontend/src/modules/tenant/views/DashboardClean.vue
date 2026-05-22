@@ -1,55 +1,75 @@
 <template>
-  <div class="min-h-screen bg-gray-50 dark:bg-slate-900 transition-colors duration-200">
-    <!-- Header -->
-    <div class="px-4 md:px-6 py-3 md:py-5 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
-      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div class="flex items-center gap-3">
-          <div class="w-9 h-9 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-xl flex items-center justify-center shadow flex-shrink-0">
+  <div class="min-h-screen bg-slate-50 dark:bg-slate-900 transition-colors duration-200">
+
+    <!-- ── HEADER ── -->
+    <div class="sticky top-0 z-10 px-4 md:px-6 py-3 border-b border-slate-200 dark:border-slate-700 bg-white/95 dark:bg-slate-800/95 backdrop-blur-sm">
+      <div class="flex items-center justify-between gap-2">
+        <div class="flex items-center gap-2.5 min-w-0">
+          <div class="w-8 h-8 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-lg flex items-center justify-center shadow flex-shrink-0">
             <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
             </svg>
           </div>
-          <div>
-            <h1 class="text-lg sm:text-xl font-bold text-slate-900 dark:text-slate-100 leading-tight">Dashboard</h1>
-            <p class="text-xs text-slate-500 dark:text-slate-400">Network performance &amp; billing overview</p>
+          <div class="min-w-0">
+            <h1 class="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100 leading-tight truncate">Dashboard</h1>
+            <p class="text-[11px] text-slate-500 dark:text-slate-400 hidden sm:block">Network &amp; billing overview</p>
           </div>
         </div>
-        <div class="flex items-center gap-2">
+        <div class="flex items-center gap-1.5 flex-shrink-0">
           <button
             @click="refreshStats"
             :disabled="loading"
-            class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors shadow-sm disabled:opacity-50"
+            class="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-600 transition-colors shadow-sm disabled:opacity-50 active:scale-95"
           >
             <svg class="w-3.5 h-3.5" :class="loading ? 'animate-spin text-blue-500' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
-            Refresh
+            <span class="hidden sm:inline">Refresh</span>
           </button>
-          <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold shadow"
-            :class="isConnected ? 'bg-emerald-600 text-white' : 'bg-red-500 text-white'">
-            <span class="relative flex h-2 w-2">
-              <span v-if="isConnected" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-60"></span>
-              <span class="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
+          <div class="flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-semibold"
+            :class="isConnected ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400' : 'bg-red-500/15 text-red-600 dark:text-red-400'">
+            <span class="relative flex h-1.5 w-1.5">
+              <span v-if="isConnected" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-75"></span>
+              <span class="relative inline-flex rounded-full h-1.5 w-1.5" :class="isConnected ? 'bg-emerald-500' : 'bg-red-500'"></span>
             </span>
-            {{ isConnected ? 'Live' : 'Offline' }}
+            <span class="hidden sm:inline">{{ isConnected ? 'Live' : 'Offline' }}</span>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- Loading State -->
-    <div v-if="loading" class="flex items-center justify-center py-24">
-      <div class="text-center">
-        <div class="w-10 h-10 border-2 border-blue-100 dark:border-blue-900 border-t-blue-600 rounded-full animate-spin mx-auto mb-3"></div>
-        <p class="text-sm text-slate-500 dark:text-slate-400">Loading dashboard...</p>
+    <!-- ── SKELETON (initial load only) ── -->
+    <div v-if="loading" class="p-4 md:p-6 space-y-4">
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div v-for="i in 4" :key="i" class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 animate-pulse">
+          <div class="flex items-center justify-between mb-3">
+            <div class="w-8 h-8 bg-slate-200 dark:bg-slate-700 rounded-lg"></div>
+            <div class="w-10 h-4 bg-slate-200 dark:bg-slate-700 rounded-full"></div>
+          </div>
+          <div class="h-7 bg-slate-200 dark:bg-slate-700 rounded w-3/4 mb-2"></div>
+          <div class="h-3 bg-slate-100 dark:bg-slate-700/50 rounded w-1/2 mb-1"></div>
+          <div class="h-3 bg-slate-100 dark:bg-slate-700/50 rounded w-2/3"></div>
+        </div>
+      </div>
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div v-for="i in 4" :key="i" class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-3 animate-pulse">
+          <div class="h-3 bg-slate-200 dark:bg-slate-700 rounded w-1/2 mb-2"></div>
+          <div class="h-5 bg-slate-200 dark:bg-slate-700 rounded w-3/4"></div>
+        </div>
+      </div>
+      <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-5 animate-pulse">
+        <div class="h-4 bg-slate-200 dark:bg-slate-700 rounded w-32 mb-4"></div>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div v-for="i in 3" :key="i" class="h-24 bg-slate-100 dark:bg-slate-700/50 rounded-xl"></div>
+        </div>
       </div>
     </div>
 
-    <!-- Dashboard Content -->
-    <div v-else class="space-y-5 p-4 md:p-6">
+    <!-- ── DASHBOARD CONTENT ── -->
+    <div v-else class="p-4 md:p-6 space-y-4">
 
-      <!-- ── ROW 1: 4 KPI CARDS ── -->
-      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+      <!-- ROW 1: 4 KPI CARDS -->
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
 
         <!-- Total Revenue -->
         <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-3 sm:p-4 hover:shadow-md dark:hover:shadow-slate-900/50 hover:-translate-y-0.5 transition-all min-w-0">
@@ -114,52 +134,51 @@
           <div class="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">Data Usage</div>
           <div class="text-[10px] text-slate-400 dark:text-slate-500 mt-1 truncate">Total transferred</div>
         </div>
-
       </div>
 
-      <!-- ── ROW 2: SECONDARY METRICS ── -->
+      <!-- ROW 2: SECONDARY METRICS -->
       <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-2 sm:px-4 sm:py-3 min-w-0">
-          <div class="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1 truncate">Daily Income</div>
-          <div class="text-sm sm:text-base md:text-lg font-bold text-slate-900 dark:text-slate-100 truncate">{{ formatCurrency(stats.dailyIncome) }}</div>
+        <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-2.5 sm:px-4 sm:py-3 min-w-0">
+          <div class="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1 truncate">Daily</div>
+          <div class="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100 truncate">{{ formatCurrency(stats.dailyIncome) }}</div>
         </div>
-        <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-2 sm:px-4 sm:py-3 min-w-0">
+        <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-2.5 sm:px-4 sm:py-3 min-w-0">
           <div class="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1 truncate">Weekly</div>
-          <div class="text-sm sm:text-base md:text-lg font-bold text-slate-900 dark:text-slate-100 truncate">{{ formatCurrency(stats.weeklyIncome) }}</div>
+          <div class="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100 truncate">{{ formatCurrency(stats.weeklyIncome) }}</div>
         </div>
-        <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-2 sm:px-4 sm:py-3 min-w-0">
-          <div class="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1 truncate">Hotspot Users</div>
-          <div class="text-sm sm:text-base md:text-lg font-bold text-slate-900 dark:text-slate-100 truncate">{{ stats.hotspotUsers || 0 }}</div>
+        <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-2.5 sm:px-4 sm:py-3 min-w-0">
+          <div class="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1 truncate">Hotspot</div>
+          <div class="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100 truncate">{{ stats.hotspotUsers || 0 }}</div>
         </div>
-        <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-2 sm:px-4 sm:py-3 min-w-0">
-          <div class="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1 truncate">PPPoE Users</div>
-          <div class="text-sm sm:text-base md:text-lg font-bold text-slate-900 dark:text-slate-100 truncate">{{ stats.pppoeUsers || 0 }}</div>
+        <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-2.5 sm:px-4 sm:py-3 min-w-0">
+          <div class="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1 truncate">PPPoE</div>
+          <div class="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100 truncate">{{ stats.pppoeUsers || 0 }}</div>
         </div>
       </div>
 
-      <!-- ── ROW 3: WIDGETS ── -->
+      <!-- ROW 3: WIDGETS — stack on mobile, side-by-side on lg -->
       <PaymentWidget :paymentData="paymentData" />
 
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
         <ExpensesWidget :expensesData="expensesData" />
         <BusinessAnalyticsWidget :analyticsData="analyticsData" />
       </div>
 
-      <!-- ── ROW 4: QUICK ACTIONS ── -->
+      <!-- ROW 4: QUICK ACTIONS -->
       <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-3 sm:p-4 md:p-5">
-        <h3 class="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-3 sm:mb-4">Quick Actions</h3>
-        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 sm:gap-3">
+        <h3 class="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-3">Quick Actions</h3>
+        <div class="grid grid-cols-4 sm:grid-cols-4 md:grid-cols-8 gap-2">
           <router-link
             v-for="action in quickActions"
             :key="action.to"
             :to="action.to"
-            class="flex flex-col items-center gap-2 sm:gap-2.5 p-3 sm:p-4 rounded-xl border-2 border-slate-200 dark:border-slate-700 hover:border-current hover:bg-current/5 dark:hover:bg-current/10 transition-all group min-w-0"
+            class="flex flex-col items-center gap-1.5 p-2.5 sm:p-3 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-current hover:bg-current/5 dark:hover:bg-current/10 active:scale-95 transition-all group min-w-0"
             :class="action.borderClass"
           >
-            <div class="w-9 h-9 sm:w-11 sm:h-11 rounded-lg flex items-center justify-center transition-colors flex-shrink-0" :class="action.iconBg">
+            <div class="w-8 h-8 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center transition-colors flex-shrink-0" :class="action.iconBg">
               <component :is="action.icon" class="w-4 h-4 sm:w-5 sm:h-5" :class="action.iconColor" />
             </div>
-            <span class="text-[11px] sm:text-xs md:text-sm font-semibold text-slate-800 dark:text-slate-200 text-center truncate w-full">{{ action.label }}</span>
+            <span class="text-[10px] sm:text-[11px] font-semibold text-slate-700 dark:text-slate-300 text-center leading-tight w-full line-clamp-2">{{ action.label }}</span>
           </router-link>
         </div>
       </div>
@@ -169,7 +188,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, onUnmounted } from 'vue'
 import { useSSE } from '@/modules/common/composables/websocket/useSSE'
 import { useAuth } from '@/modules/common/composables/auth/useAuth'
 import { useDashboard } from '@/modules/tenant/composables/data/useDashboard'
@@ -210,24 +229,31 @@ onMounted(() => {
   fetchDashboardStats()
 })
 
-// SSE: single connection for dashboard-stats + router-updates channels
-// useSSE auto-closes on onUnmounted
+// ── SSE: debounced refetch so rapid events don't spam the API ─────────────────
+// Stats-payload events apply directly; count-changing events debounce a refetch.
+let _debounceTimer = null
+const debouncedRefetch = () => {
+  clearTimeout(_debounceTimer)
+  _debounceTimer = setTimeout(fetchDashboardStats, 2000)
+}
+onUnmounted(() => clearTimeout(_debounceTimer))
+
 const { isConnected, subscribeMany } = useSSE('/sse/tenant', {
   channels: 'dashboard-stats,router-updates',
 })
 
 subscribeMany({
-  'stats.updated':      (data) => { if (data?.stats) updateStatsFromEvent(data.stats) },
+  'stats.updated':         (data) => { if (data?.stats) updateStatsFromEvent(data.stats) },
   'DashboardStatsUpdated': (data) => { if (data?.stats) updateStatsFromEvent(data.stats) },
-  'RouterStatusUpdated': () => fetchDashboardStats(),
-  'PackageCreated':     () => fetchDashboardStats(),
-  'PackageDeleted':     () => fetchDashboardStats(),
-  'PppoeUserCreated':   () => fetchDashboardStats(),
-  'PppoeUserDeleted':   () => fetchDashboardStats(),
-  'PppoeSessionStarted': () => fetchDashboardStats(),
-  'PppoeSessionEnded':  () => fetchDashboardStats(),
-  'HotspotUserCreated': () => fetchDashboardStats(),
-  'PaymentCompleted':   () => fetchDashboardStats(),
-  'UserCreated':        () => fetchDashboardStats(),
+  'RouterStatusUpdated':   () => debouncedRefetch(),
+  'PackageCreated':        () => debouncedRefetch(),
+  'PackageDeleted':        () => debouncedRefetch(),
+  'PppoeUserCreated':      () => debouncedRefetch(),
+  'PppoeUserDeleted':      () => debouncedRefetch(),
+  'PppoeSessionStarted':   () => debouncedRefetch(),
+  'PppoeSessionEnded':     () => debouncedRefetch(),
+  'HotspotUserCreated':    () => debouncedRefetch(),
+  'PaymentCompleted':      () => debouncedRefetch(),
+  'UserCreated':           () => debouncedRefetch(),
 })
 </script>
