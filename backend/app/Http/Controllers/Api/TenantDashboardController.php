@@ -102,9 +102,9 @@ class TenantDashboardController extends Controller
         $lastMonthEnd   = $now->copy()->subMonth()->endOfMonth()->toDateString();
 
         // ── Q1: user counts (public schema, filter by tenant_id) ──────────────
+        // NOTE: Tenant schema users table doesn't have soft deletes (no deleted_at column)
         $userCounts = DB::table('users')
             ->where('tenant_id', $tenantId)
-            ->whereNull('deleted_at')
             ->selectRaw('COUNT(*) as total')
             ->first();
 
