@@ -44,33 +44,45 @@ class TenantDashboardController extends Controller
         }
 
         $cacheKey = "tenant_dashboard_v2:{$tenantId}";
-        $lockKey = "tenant_dashboard_lock:{$tenantId}";
+        $lockKey  = "tenant_dashboard_lock:{$tenantId}";
 
-        // Fast path: return cached data immediately if available
-        $cached = Cache::get($cacheKey);
-        if ($cached !== null) {
-            return response()->json(['success' => true, 'data' => $cached, 'cached' => true]);
-        }
-
-        // Cache stampede protection: only one process regenerates
-        $lock = Cache::lock($lockKey, self::CACHE_LOCK_SECONDS);
-
+        // Fast path: return cached data immediately if available.
+        // Wrapped in try/catch so a Redis outage degrades gracefully to a DB query.
         try {
+            $cached = Cache::get($cacheKey);
+            if ($cached !== null) {
+                return response()->json(['success' => true, 'data' => $cached, 'cached' => true]);
+            }
+
+            // Cache stampede protection: only one process regenerates
+            $lock  = Cache::lock($lockKey, self::CACHE_LOCK_SECONDS);
             $stats = $lock->get(function () use ($tenantId, $cacheKey) {
-                // Double-check after acquiring lock
                 $cached = Cache::get($cacheKey);
                 if ($cached !== null) {
                     return $cached;
                 }
-
                 return $this->computeDashboardStats($tenantId, $cacheKey);
             });
 
+            // $lock->get() returns null if the lock could not be acquired
+            if ($stats === null) {
+                $stats = $this->computeDashboardStats($tenantId, null);
+            }
+
             return response()->json(['success' => true, 'data' => $stats, 'cached' => false]);
+
         } catch (\Illuminate\Contracts\Cache\LockTimeoutException $e) {
-            // Lock timeout - return stale data or computed fallback
-            $fallback = $this->computeDashboardStats($tenantId, null);
-            return response()->json(['success' => true, 'data' => $fallback, 'cached' => false, 'lock_timeout' => true]);
+            $stats = $this->computeDashboardStats($tenantId, null);
+            return response()->json(['success' => true, 'data' => $stats, 'cached' => false, 'lock_timeout' => true]);
+
+        } catch (\Exception $e) {
+            // Redis unavailable or any other cache/lock failure — skip cache entirely
+            \Illuminate\Support\Facades\Log::warning('Dashboard cache unavailable, falling back to direct query', [
+                'tenant_id' => $tenantId,
+                'error'     => $e->getMessage(),
+            ]);
+            $stats = $this->computeDashboardStats($tenantId, null);
+            return response()->json(['success' => true, 'data' => $stats, 'cached' => false, 'cache_error' => true]);
         }
     }
 
@@ -353,7 +365,11 @@ class TenantDashboardController extends Controller
         ];
 
         if ($cacheKey) {
-            Cache::put($cacheKey, $stats, self::CACHE_TTL_SECONDS);
+            try {
+                Cache::put($cacheKey, $stats, self::CACHE_TTL_SECONDS);
+            } catch (\Exception $e) {
+                // Redis unavailable — stats are still returned, just not cached
+            }
         }
 
         return $stats;
