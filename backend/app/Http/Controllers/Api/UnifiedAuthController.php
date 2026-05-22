@@ -218,24 +218,41 @@ class UnifiedAuthController extends Controller
         
         // AAA: All users authenticate via FreeRADIUS (centralized AAA)
         // System admins, landlords, tenants, and PPPoE/hotspot users all use RADIUS
+        // PERFORMANCE: Use timing-enabled auth to enable fallback on slow RADIUS
         $radiusStartTime = microtime(true);
-        try {
-            $authenticated = $this->radiusService->authenticate(
-                $user->username,
-                $request->password
-            );
-        } catch (\Exception $e) {
-            \Log::error('RADIUS authentication error', [
-                'username' => $user->username,
-                'error' => $e->getMessage(),
-            ]);
-            $authenticated = false;
+        $radiusResult = $this->radiusService->authenticateWithTiming(
+            $user->username,
+            $request->password
+        );
+        $radiusElapsedMs = $radiusResult['elapsed_ms'];
+        $authenticated = $radiusResult['success'];
+        
+        // FALLBACK: If RADIUS is slow (>1000ms) or failed, verify with DB password hash
+        // This ensures login works even if FreeRADIUS is down or slow
+        $usedDbFallback = false;
+        if (!$authenticated && $radiusElapsedMs > 1000) {
+            $fallbackStart = microtime(true);
+            $dbPasswordHash = DB::table('users')
+                ->where('id', $user->id)
+                ->value('password');
+            
+            if ($dbPasswordHash && Hash::check($request->password, $dbPasswordHash)) {
+                $authenticated = true;
+                $usedDbFallback = true;
+                \Log::warning('Login used DB password fallback - RADIUS was slow/failed', [
+                    'user_id' => $user->id,
+                    'username' => $user->username,
+                    'radius_elapsed_ms' => $radiusElapsedMs,
+                    'fallback_elapsed_ms' => round((microtime(true) - $fallbackStart) * 1000, 2),
+                ]);
+            }
         }
-        $radiusElapsedMs = round((microtime(true) - $radiusStartTime) * 1000, 2);
-        \Log::info('RADIUS authentication timing', [
+        
+        \Log::info('Authentication result', [
             'username' => $user->username,
-            'elapsed_ms' => $radiusElapsedMs,
+            'radius_elapsed_ms' => $radiusElapsedMs,
             'authenticated' => $authenticated,
+            'used_db_fallback' => $usedDbFallback,
         ]);
         
         // Check if authentication was successful
@@ -281,6 +298,7 @@ class UnifiedAuthController extends Controller
             'ip' => $request->ip(),
             'total_elapsed_ms' => $totalElapsedMs,
             'radius_elapsed_ms' => $radiusElapsedMs,
+            'used_db_fallback' => $usedDbFallback,
         ]);
 
         // Determine if redirect to subdomain is needed
