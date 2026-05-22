@@ -25,6 +25,28 @@ if ! php -m | grep -qi "^pgsql$"; then
 fi
 
 # =============================================================================
+# 0.5 SUPERVISOR ROLE — Enable only the process set needed by this container
+# =============================================================================
+APP_RUNTIME_ROLE="${APP_RUNTIME_ROLE:-web}"
+
+case "${APP_RUNTIME_ROLE}" in
+  web)
+    rm -f /etc/supervisor/conf.d/laravel-queue.conf
+    echo "🧩 Runtime role: web (PHP-FPM + scheduler only)"
+    ;;
+  queue)
+    rm -f /etc/supervisor/conf.d/php-fpm.conf
+    rm -f /etc/supervisor/conf.d/laravel-scheduler.conf
+    echo "🧩 Runtime role: queue (queue workers only)"
+    ;;
+  *)
+    echo "❌ FATAL: Unknown APP_RUNTIME_ROLE='${APP_RUNTIME_ROLE}'"
+    echo "   Expected one of: web, queue"
+    exit 1
+    ;;
+esac
+
+# =============================================================================
 # 1. DIRECTORY SETUP — Create all required directories
 # =============================================================================
 mkdir -p /var/www/html/storage/framework/{cache,sessions,views} \
