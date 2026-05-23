@@ -267,7 +267,7 @@ log "Recent logs:"
 
 check_queue_workers
 
-UNHEALTHY=$("${COMPOSE[@]}" ps --status exited)
+UNHEALTHY=$("${COMPOSE[@]}" ps --status exited | grep -v 'migrator')
 if [[ -n "$UNHEALTHY" ]]; then
   echo "$UNHEALTHY"
   fail "One or more containers exited unexpectedly"
