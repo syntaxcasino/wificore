@@ -1,151 +1,100 @@
 #!/usr/bin/env bash
-set -e
+set -Eeuo pipefail
 
-# ==========================
-# CONFIG
-# ==========================
+COMPOSE_FILE="docker-compose.production.yml"
+PROJECT_NAME="wificore"
 DOCKERHUB_USERNAME="kja2aro"
 REPO_NAME="wificore"
-APP_PREFIX="wificore"
-
 GIT_SHA=$(git rev-parse --short HEAD 2>/dev/null || echo "latest")
 
-# ==========================
-# ARGUMENT HANDLING
-# ==========================
-BUILD_MODE=${1:-2}  # Default to cached build (2)
+BUILD_MODE=${1:-2}
 
 if [[ "$BUILD_MODE" != "1" && "$BUILD_MODE" != "2" ]]; then
-  echo "❌ Invalid argument. Usage:"
-  echo "  $0 1    # Build with --no-cache (clean build)"
-  echo "  $0 2    # Build with cache (default, faster)"
+  echo "Invalid argument. Usage:"
+  echo "  $0 1    # Build with --no-cache"
+  echo "  $0 2    # Build with cache (default)"
   exit 1
 fi
 
 if [[ "$BUILD_MODE" == "1" ]]; then
-  BUILD_ARGS="--no-cache --parallel"
-  BUILD_TYPE="� NO CACHE (clean build)"
+  BUILD_ARGS=(--no-cache --parallel)
+  BUILD_TYPE="NO CACHE"
 else
-  BUILD_ARGS="--parallel"
-  BUILD_TYPE="⚡ WITH CACHE (faster build)"
+  BUILD_ARGS=(--parallel)
+  BUILD_TYPE="WITH CACHE"
 fi
 
-echo "�🚀 Building & pushing WifiCore images"
-echo "📦 Repo: $DOCKERHUB_USERNAME/$REPO_NAME"
-echo "🏷 Tag: $GIT_SHA"
-echo "🔧 Build Mode: $BUILD_TYPE"
-echo "----------------------------------"
+COMPOSE_BUILD_SERVICES=(
+  wificore-nginx
+  wificore-frontend
+  wificore-backend
+  wificore-freeradius
+  wificore-soketi
+  wificore-postgres
+  wificore-wireguard
+  wificore-provisioning
+  wificore-pgbouncer
+  wificore-redis
+)
 
-# ==========================
-# LOGIN CHECK
-# ==========================
-docker info >/dev/null 2>&1 || {
-  echo "❌ Docker is not running"
+COMPOSE_PUSH_SERVICES=(
+  wificore-nginx
+  wificore-frontend
+  wificore-backend
+  wificore-freeradius
+  wificore-soketi
+  wificore-postgres
+  wificore-wireguard
+  wificore-provisioning
+  wificore-pgbouncer
+  wificore-redis
+)
+
+echo "Building and pushing WifiCore production images"
+echo "Compose file: $COMPOSE_FILE"
+echo "Project: $PROJECT_NAME"
+echo "Git SHA: $GIT_SHA"
+echo "Build mode: $BUILD_TYPE"
+echo
+
+command -v docker >/dev/null 2>&1 || {
+  echo "Docker is not installed"
   exit 1
 }
 
-echo "🔐 Logging in to DockerHub..."
+docker info >/dev/null 2>&1 || {
+  echo "Docker daemon is not running"
+  exit 1
+}
+
+[[ -f "$COMPOSE_FILE" ]] || {
+  echo "Compose file not found: $COMPOSE_FILE"
+  exit 1
+}
+
+echo "Logging in to DockerHub..."
 docker login
 
-# ==========================
-# BUILD
-# ==========================
-echo "🏗 Building images..."
-echo "Building all services with: $BUILD_ARGS"
-docker compose build $BUILD_ARGS \
-  wificore-nginx \
-  wificore-frontend \
-  wificore-backend \
-  wificore-freeradius \
-  wificore-soketi \
-  wificore-postgres \
-  wificore-wireguard \
-  wificore-provisioning \
-  wificore-pgbouncer \
-  wificore-pgbouncer-read \
-  wificore-redis
-# ==========================
-# TAG
-# ==========================
-echo "🏷 Tagging images..."
+echo "Building images from production compose..."
+docker compose -f "$COMPOSE_FILE" --project-name "$PROJECT_NAME" build "${BUILD_ARGS[@]}" "${COMPOSE_BUILD_SERVICES[@]}"
 
-# Tag main application images with git SHA
-docker tag wificore-wificore-backend:latest    $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-backend-$GIT_SHA
-docker tag wificore-wificore-frontend:latest   $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-frontend-$GIT_SHA
-docker tag wificore-wificore-nginx:latest      $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-nginx-$GIT_SHA
-docker tag wificore-wificore-freeradius:latest $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-freeradius-$GIT_SHA
-docker tag wificore-wificore-soketi:latest     $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-soketi-$GIT_SHA
-docker tag wificore-wificore-postgres:latest   $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-postgres-$GIT_SHA
+echo "Pushing production tags used by deploy..."
+docker compose -f "$COMPOSE_FILE" --project-name "$PROJECT_NAME" push "${COMPOSE_PUSH_SERVICES[@]}"
 
-# Tag new Phase 1 services
-docker tag wificore-wificore-wireguard:latest     $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-wireguard-$GIT_SHA
-docker tag wificore-wificore-pgbouncer:latest     $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-pgbouncer-$GIT_SHA
-docker tag wificore-wificore-provisioning:latest  $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-provisioning-$GIT_SHA
-docker tag kja2aro/wificore:wificore-redis        $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-redis-$GIT_SHA
+echo "Tagging immutable backend image..."
+docker tag \
+  "$DOCKERHUB_USERNAME/$REPO_NAME:wificore-backend" \
+  "$DOCKERHUB_USERNAME/$REPO_NAME:wificore-backend-$GIT_SHA"
+docker push "$DOCKERHUB_USERNAME/$REPO_NAME:wificore-backend-$GIT_SHA"
 
-# Tag with "latest" style tags
-docker tag $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-backend-$GIT_SHA       $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-backend
-docker tag $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-frontend-$GIT_SHA      $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-frontend
-docker tag $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-nginx-$GIT_SHA         $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-nginx
-docker tag $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-freeradius-$GIT_SHA    $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-freeradius
-docker tag $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-soketi-$GIT_SHA        $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-soketi
-docker tag $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-postgres-$GIT_SHA      $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-postgres
-docker tag $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-wireguard-$GIT_SHA     $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-wireguard
-docker tag $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-pgbouncer-$GIT_SHA     $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-pgbouncer
-docker tag $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-provisioning-$GIT_SHA  $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-provisioning
-docker tag $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-redis-$GIT_SHA         $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-redis
+echo "Tagging immutable nginx image..."
+docker tag \
+  "$DOCKERHUB_USERNAME/$REPO_NAME:wificore-nginx" \
+  "$DOCKERHUB_USERNAME/$REPO_NAME:wificore-nginx-$GIT_SHA"
+docker push "$DOCKERHUB_USERNAME/$REPO_NAME:wificore-nginx-$GIT_SHA"
 
-# ==========================
-# PUSH
-# ==========================
-echo "📤 Pushing images with git SHA tags..."
-
-docker push $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-backend-$GIT_SHA
-docker push $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-frontend-$GIT_SHA
-docker push $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-nginx-$GIT_SHA
-docker push $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-postgres-$GIT_SHA
-docker push $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-freeradius-$GIT_SHA
-docker push $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-soketi-$GIT_SHA
-docker push $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-wireguard-$GIT_SHA
-docker push $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-pgbouncer-$GIT_SHA
-docker push $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-provisioning-$GIT_SHA
-docker push $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-redis-$GIT_SHA
-
-echo "📤 Pushing images with 'latest' tags..."
-
-docker push $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-backend
-docker push $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-frontend
-docker push $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-nginx
-docker push $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-postgres
-docker push $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-freeradius
-docker push $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-soketi
-docker push $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-wireguard
-docker push $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-pgbouncer
-docker push $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-provisioning
-docker push $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-redis
-
-echo "✅ All images pushed successfully!"
-echo ""
-echo "📋 Pushed images:"
-echo "  - Backend: $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-backend"
-echo "  - Frontend: $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-frontend"
-echo "  - Nginx: $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-nginx"
-echo "  - PostgreSQL: $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-postgres"
-echo "  - FreeRADIUS: $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-freeradius"
-echo "  - Soketi: $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-soketi"
-echo "  - WireGuard: $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-wireguard"
-echo "  - PgBouncer: $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-pgbouncer"
-echo "  - PgBouncer Read: uses the same image tag as PgBouncer ($DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-pgbouncer)"
-echo "  - Provisioning Service: $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-provisioning"
-echo "  - Redis: $DOCKERHUB_USERNAME/$REPO_NAME:${APP_PREFIX}-redis"
-echo ""
-echo "⏰ Completed at: $(date '+%Y-%m-%d %H:%M:%S %Z')"
-echo ""
-echo ""
-echo "⏰ Starting deployment at: $(date '+%Y-%m-%d %H:%M:%S %Z')"
-
-# ==========================
-# DEPLOYMENT
-# ==========================
-ssh 144.91.71.208 -l kja2aro  "cd /opt/wificore && ./deploy.sh --preserve"
-#ssh 144.91.71.208 -l kja2aro  "cd /opt/wificore &&  docker compose -f docker-compose.production.yml exec wificore-backend tail -f -n 1000 storage/logs/laravel.log"
+echo "Deployment target images updated successfully."
+echo "Runtime note: backend image now serves web, sse, scheduler, migrator and queue roles."
+echo
+echo "Starting remote deployment..."
+ssh 144.91.71.208 -l kja2aro "cd /opt/wificore && ./deploy.sh --preserve"

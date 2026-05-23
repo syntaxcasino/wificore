@@ -1,6 +1,9 @@
 services:
   wificore-nginx:
     image: kja2aro/wificore:wificore-nginx
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
     container_name: wificore-nginx
     restart: always
     env_file:
@@ -13,6 +16,8 @@ services:
       wificore-frontend:
         condition: service_healthy
       wificore-backend:
+        condition: service_healthy
+      wificore-backend-sse:
         condition: service_healthy
     networks:
       wificore-network:
@@ -171,9 +176,9 @@ services:
       - TELEGRAF_SLOW_INTERVAL=${TELEGRAF_SLOW_INTERVAL:-30s}
       - TELEGRAF_SNMP_COMMUNITY=${TELEGRAF_SNMP_COMMUNITY:-traidnet-monitor}
       - VICTORIA_METRICS_WRITE_URL=${VICTORIA_METRICS_WRITE_URL:-http://wificore-victoriametrics:8428}
-      # Automatic Database Setup
-      - AUTO_MIGRATE=${AUTO_MIGRATE:-true}
-      - AUTO_SEED=${AUTO_SEED:-true}
+      # Migrations run in the dedicated migrator service.
+      - AUTO_MIGRATE=false
+      - AUTO_SEED=false
       - FRESH_INSTALL=false
       # Multitenancy Configuration
       - MULTITENANCY_MODE=schema
@@ -224,16 +229,235 @@ services:
         max-size: "50m"
         max-file: "5"
 
-  wificore-queue-worker:
+  wificore-backend-sse:
     image: kja2aro/wificore:wificore-backend
-    container_name: wificore-queue-worker
+    container_name: wificore-backend-sse
     restart: always
     env_file:
       - .env.production
     environment:
-      # Queue worker must NOT run migrations/seeders; backend container owns that responsibility.
+      - DB_CONNECTION=pgsql
+      - DB_HOST=${DB_HOST:-wificore-pgbouncer}
+      - DB_READ_HOST=${DB_READ_HOST:-wificore-pgbouncer-read}
+      - DB_PORT=${DB_PORT:-6432}
+      - DB_READ_PORT=${DB_READ_PORT:-6432}
+      - DB_PERSISTENT=${DB_PERSISTENT:-false}
+      - RADIUS_DB_PERSISTENT=${RADIUS_DB_PERSISTENT:-false}
+      - DB_DIRECT_HOST=${DB_DIRECT_HOST:-wificore-postgres}
+      - DB_DIRECT_PORT=${DB_DIRECT_PORT:-5432}
+      - PROVISIONING_SERVICE_URL=http://wificore-provisioning:8080
+      - PROVISIONING_SERVICE_API_KEY=${PROVISIONING_SERVICE_API_KEY:-}
+      - BROADCAST_DRIVER=pusher
+      - PUSHER_HOST=wificore-soketi
+      - PUSHER_PORT=6071
+      - PUSHER_SCHEME=http
+      - TZ=${TZ:-Africa/Nairobi}
+      - APP_ENV=production
+      - APP_DEBUG=false
+      - APP_RUNTIME_ROLE=sse
       - AUTO_MIGRATE=false
       - AUTO_SEED=false
+      - SESSION_SAME_SITE=${SESSION_SAME_SITE:-lax}
+      - SESSION_SECURE_COOKIE=${SESSION_SECURE_COOKIE:-true}
+      - RADIUS_SERVER_HOST=wificore-freeradius
+      - RADIUS_SERVER_IP=${RADIUS_SERVER_IP:-172.70.0.2}
+      - RADIUS_SERVER_PORT=1812
+      - REDIS_HOST=wificore-redis
+      - REDIS_PORT=6379
+      - CACHE_DRIVER=redis
+      - SESSION_DRIVER=redis
+      - ROUTER_POLLING_MODE=${ROUTER_POLLING_MODE:-telegraf}
+      - TELEGRAF_SHARD_INDEX=${TELEGRAF_SHARD_INDEX:-0}
+      - TELEGRAF_SHARD_COUNT=${TELEGRAF_SHARD_COUNT:-1}
+      - TELEGRAF_FAST_INTERVAL=${TELEGRAF_FAST_INTERVAL:-3s}
+      - TELEGRAF_SLOW_INTERVAL=${TELEGRAF_SLOW_INTERVAL:-30s}
+      - TELEGRAF_SNMP_COMMUNITY=${TELEGRAF_SNMP_COMMUNITY:-traidnet-monitor}
+      - VICTORIA_METRICS_WRITE_URL=${VICTORIA_METRICS_WRITE_URL:-http://wificore-victoriametrics:8428}
+      - MULTITENANCY_MODE=schema
+      - AUTO_CREATE_TENANT_SCHEMA=true
+      - AUTO_MIGRATE_TENANT_SCHEMA=true
+      - VPN_MODE=${VPN_MODE:-host}
+      - VPN_INTERFACE=${VPN_INTERFACE_NAME:-wg0}
+      - VPN_SERVER_PORT=${VPN_LISTEN_PORT:-51830}
+      - VPN_SUBNET_BASE=${VPN_SUBNET_BASE:-10.0.0.0/8}
+      - WIREGUARD_CONTROLLER_URL=http://172.70.255.254:8080
+      - MIKROTIK_SSH_PRIVATE_KEY_PATH=${MIKROTIK_SSH_PRIVATE_KEY_PATH:-/run/secrets/mikrotik_id_rsa}
+      - MIKROTIK_SSH_PRIVATE_KEY_PASSPHRASE=${MIKROTIK_SSH_PRIVATE_KEY_PASSPHRASE:-}
+      - MIKROTIK_SSH_CONNECT_RETRIES=${MIKROTIK_SSH_CONNECT_RETRIES:-3}
+      - MIKROTIK_SSH_CONNECT_RETRY_DELAY=${MIKROTIK_SSH_CONNECT_RETRY_DELAY:-1}
+      - MIKROTIK_SSH_AUTO_GENERATE=${MIKROTIK_SSH_AUTO_GENERATE:-true}
+      - MIKROTIK_SSH_AUTO_BOOTSTRAP=${MIKROTIK_SSH_AUTO_BOOTSTRAP:-true}
+    depends_on:
+      wificore-postgres:
+        condition: service_healthy
+      wificore-pgbouncer:
+        condition: service_healthy
+      wificore-pgbouncer-read:
+        condition: service_healthy
+      wificore-redis:
+        condition: service_healthy
+      wificore-victoriametrics:
+        condition: service_started
+      wificore-soketi:
+        condition: service_started
+      wificore-wireguard:
+        condition: service_started
+    networks:
+      wificore-network:
+        ipv4_address: 172.70.0.9
+    healthcheck:
+      test: ["CMD-SHELL", "php-fpm -t || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    volumes:
+      - laravel-storage:/var/www/html/storage:rw
+      - laravel-logs:/var/www/html/storage/logs:rw
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  wificore-scheduler:
+    image: kja2aro/wificore:wificore-backend
+    container_name: wificore-scheduler
+    restart: always
+    env_file:
+      - .env.production
+    environment:
+      - AUTO_MIGRATE=false
+      - AUTO_SEED=false
+      - APP_RUNTIME_ROLE=scheduler
+      - DB_CONNECTION=pgsql
+      - DB_HOST=${DB_HOST:-wificore-pgbouncer}
+      - DB_READ_HOST=${DB_READ_HOST:-wificore-pgbouncer-read}
+      - DB_PORT=${DB_PORT:-6432}
+      - DB_READ_PORT=${DB_READ_PORT:-6432}
+      - DB_DIRECT_HOST=${DB_DIRECT_HOST:-wificore-postgres}
+      - DB_DIRECT_PORT=${DB_DIRECT_PORT:-5432}
+      - DB_DATABASE=${DB_DATABASE:-wms_770_ts}
+      - DB_USERNAME=${DB_USERNAME:-admin}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - REDIS_HOST=${REDIS_HOST:-wificore-redis}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - CACHE_DRIVER=redis
+      - SESSION_DRIVER=redis
+      - BROADCAST_DRIVER=pusher
+      - PUSHER_HOST=${PUSHER_HOST:-wificore-soketi}
+      - PUSHER_PORT=${PUSHER_PORT:-6071}
+      - PUSHER_SCHEME=${PUSHER_SCHEME:-http}
+      - TZ=${TZ:-Africa/Nairobi}
+      - APP_ENV=production
+      - MULTITENANCY_MODE=schema
+      - PROVISIONING_SERVICE_URL=http://wificore-provisioning:8080
+      - PROVISIONING_SERVICE_API_KEY=${PROVISIONING_SERVICE_API_KEY:-}
+      - VICTORIA_METRICS_WRITE_URL=${VICTORIA_METRICS_WRITE_URL:-http://wificore-victoriametrics:8428}
+      - ROUTER_POLLING_MODE=${ROUTER_POLLING_MODE:-telegraf}
+      - TELEGRAF_SHARD_INDEX=${TELEGRAF_SHARD_INDEX:-0}
+      - TELEGRAF_SHARD_COUNT=${TELEGRAF_SHARD_COUNT:-1}
+      - TELEGRAF_FAST_INTERVAL=${TELEGRAF_FAST_INTERVAL:-3s}
+      - TELEGRAF_SLOW_INTERVAL=${TELEGRAF_SLOW_INTERVAL:-30s}
+      - TELEGRAF_SNMP_COMMUNITY=${TELEGRAF_SNMP_COMMUNITY:-traidnet-monitor}
+      - RADIUS_SERVER_HOST=${RADIUS_SERVER_HOST:-wificore-freeradius}
+      - RADIUS_SERVER_IP=${RADIUS_SERVER_IP:-172.70.0.2}
+      - RADIUS_SERVER_PORT=${RADIUS_SERVER_PORT:-1812}
+      - RADIUS_SECRET=${RADIUS_SECRET}
+      - MIKROTIK_SSH_PRIVATE_KEY_PATH=${MIKROTIK_SSH_PRIVATE_KEY_PATH:-/run/secrets/mikrotik_id_rsa}
+      - MIKROTIK_SSH_PRIVATE_KEY_PASSPHRASE=${MIKROTIK_SSH_PRIVATE_KEY_PASSPHRASE:-}
+    depends_on:
+      wificore-postgres:
+        condition: service_healthy
+      wificore-redis:
+        condition: service_healthy
+      wificore-pgbouncer:
+        condition: service_healthy
+      wificore-pgbouncer-read:
+        condition: service_healthy
+      wificore-victoriametrics:
+        condition: service_started
+      wificore-wireguard:
+        condition: service_started
+    networks:
+      wificore-network:
+        ipv4_address: 172.70.0.19
+    volumes:
+      - laravel-storage:/var/www/html/storage:rw
+      - laravel-logs:/var/www/html/storage/logs:rw
+    healthcheck:
+      test: ["CMD-SHELL", "ps aux | grep 'schedule:work' | grep -v grep || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "3"
+
+  wificore-migrator:
+    image: kja2aro/wificore:wificore-backend
+    container_name: wificore-migrator
+    restart: "no"
+    profiles: ["ops"]
+    env_file:
+      - .env.production
+    environment:
+      - APP_RUNTIME_ROLE=migrate
+      - AUTO_MIGRATE=${AUTO_MIGRATE:-true}
+      - AUTO_SEED=${AUTO_SEED:-true}
+      - DB_CONNECTION=pgsql
+      - DB_HOST=${DB_HOST:-wificore-pgbouncer}
+      - DB_READ_HOST=${DB_READ_HOST:-wificore-pgbouncer-read}
+      - DB_PORT=${DB_PORT:-6432}
+      - DB_READ_PORT=${DB_READ_PORT:-6432}
+      - DB_DIRECT_HOST=${DB_DIRECT_HOST:-wificore-postgres}
+      - DB_DIRECT_PORT=${DB_DIRECT_PORT:-5432}
+      - TZ=${TZ:-Africa/Nairobi}
+      - APP_ENV=production
+      - APP_DEBUG=false
+      - CACHE_DRIVER=redis
+      - SESSION_DRIVER=redis
+      - REDIS_HOST=${REDIS_HOST:-wificore-redis}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - VICTORIA_METRICS_WRITE_URL=${VICTORIA_METRICS_WRITE_URL:-http://wificore-victoriametrics:8428}
+      - PROVISIONING_SERVICE_URL=http://wificore-provisioning:8080
+      - PROVISIONING_SERVICE_API_KEY=${PROVISIONING_SERVICE_API_KEY:-}
+      - MULTITENANCY_MODE=schema
+      - AUTO_CREATE_TENANT_SCHEMA=true
+      - AUTO_MIGRATE_TENANT_SCHEMA=true
+      - MIKROTIK_SSH_PRIVATE_KEY_PATH=${MIKROTIK_SSH_PRIVATE_KEY_PATH:-/run/secrets/mikrotik_id_rsa}
+      - MIKROTIK_SSH_PRIVATE_KEY_PASSPHRASE=${MIKROTIK_SSH_PRIVATE_KEY_PASSPHRASE:-}
+    depends_on:
+      wificore-postgres:
+        condition: service_healthy
+      wificore-redis:
+        condition: service_healthy
+    networks:
+      - wificore-network
+    volumes:
+      - laravel-storage:/var/www/html/storage:rw
+      - laravel-logs:/var/www/html/storage/logs:rw
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "3"
+
+  wificore-queue-core:
+    image: kja2aro/wificore:wificore-backend
+    container_name: wificore-queue-core
+    restart: always
+    env_file:
+      - .env.production
+    environment:
+      - AUTO_MIGRATE=false
+      - AUTO_SEED=false
+      - APP_RUNTIME_ROLE=queue
+      - QUEUE_WORKER_GROUP=core
       - DB_CONNECTION=pgsql
       - DB_HOST=${DB_HOST:-wificore-pgbouncer}
       - DB_READ_HOST=${DB_READ_HOST:-wificore-pgbouncer-read}
@@ -264,7 +488,6 @@ services:
       - RADIUS_SERVER_PORT=${RADIUS_SERVER_PORT:-1812}
       - RADIUS_SECRET=${RADIUS_SECRET}
       - APP_ENV=production
-      - APP_RUNTIME_ROLE=queue
       - MULTITENANCY_MODE=schema
       - MIKROTIK_SSH_PRIVATE_KEY_PATH=${MIKROTIK_SSH_PRIVATE_KEY_PATH:-/run/secrets/mikrotik_id_rsa}
       - MIKROTIK_SSH_PRIVATE_KEY_PASSPHRASE=${MIKROTIK_SSH_PRIVATE_KEY_PASSPHRASE:-}
@@ -279,6 +502,213 @@ services:
       wificore-network:
         # Avoid static-IP collision with wificore-genieacs-ui (172.70.0.15).
         ipv4_address: 172.70.0.18
+    volumes:
+      - laravel-storage:/var/www/html/storage:rw
+      - laravel-logs:/var/www/html/storage/logs:rw
+    healthcheck:
+      test: ["CMD-SHELL", "ps aux | grep 'queue:work' | grep -v grep || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "3"
+
+  wificore-queue-router:
+    image: kja2aro/wificore:wificore-backend
+    container_name: wificore-queue-router
+    restart: always
+    env_file:
+      - .env.production
+    environment:
+      - AUTO_MIGRATE=false
+      - AUTO_SEED=false
+      - APP_RUNTIME_ROLE=queue
+      - QUEUE_WORKER_GROUP=router
+      - DB_CONNECTION=pgsql
+      - DB_HOST=${DB_HOST:-wificore-pgbouncer}
+      - DB_READ_HOST=${DB_READ_HOST:-wificore-pgbouncer-read}
+      - DB_PORT=${DB_PORT:-6432}
+      - DB_READ_PORT=${DB_READ_PORT:-6432}
+      - DB_DIRECT_HOST=${DB_DIRECT_HOST:-wificore-postgres}
+      - DB_DIRECT_PORT=${DB_DIRECT_PORT:-5432}
+      - DB_DATABASE=${DB_DATABASE:-wms_770_ts}
+      - DB_USERNAME=${DB_USERNAME:-admin}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - QUEUE_CONNECTION=redis
+      - BROADCAST_DRIVER=pusher
+      - PUSHER_APP_ID=${PUSHER_APP_ID:-app-id}
+      - PUSHER_APP_KEY=${PUSHER_APP_KEY:-app-key}
+      - PUSHER_APP_SECRET=${PUSHER_APP_SECRET:-app-secret}
+      - PUSHER_HOST=${PUSHER_HOST:-wificore-soketi}
+      - PUSHER_PORT=${PUSHER_PORT:-6071}
+      - PUSHER_SCHEME=${PUSHER_SCHEME:-http}
+      - TZ=${TZ:-Africa/Nairobi}
+      - APP_URL=${APP_URL}
+      - REDIS_HOST=${REDIS_HOST:-wificore-redis}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - CACHE_DRIVER=redis
+      - SESSION_DRIVER=redis
+      - RADIUS_SERVER_HOST=${RADIUS_SERVER_HOST:-wificore-freeradius}
+      - RADIUS_SERVER_IP=${RADIUS_SERVER_IP:-172.70.0.2}
+      - RADIUS_SERVER_PORT=${RADIUS_SERVER_PORT:-1812}
+      - RADIUS_SECRET=${RADIUS_SECRET}
+      - APP_ENV=production
+      - MULTITENANCY_MODE=schema
+      - MIKROTIK_SSH_PRIVATE_KEY_PATH=${MIKROTIK_SSH_PRIVATE_KEY_PATH:-/run/secrets/mikrotik_id_rsa}
+      - MIKROTIK_SSH_PRIVATE_KEY_PASSPHRASE=${MIKROTIK_SSH_PRIVATE_KEY_PASSPHRASE:-}
+    depends_on:
+      wificore-postgres:
+        condition: service_healthy
+      wificore-redis:
+        condition: service_healthy
+      wificore-backend:
+        condition: service_healthy
+    networks:
+      wificore-network:
+        ipv4_address: 172.70.0.22
+    volumes:
+      - laravel-storage:/var/www/html/storage:rw
+      - laravel-logs:/var/www/html/storage/logs:rw
+    healthcheck:
+      test: ["CMD-SHELL", "ps aux | grep 'queue:work' | grep -v grep || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "3"
+
+  wificore-queue-metrics:
+    image: kja2aro/wificore:wificore-backend
+    container_name: wificore-queue-metrics
+    restart: always
+    env_file:
+      - .env.production
+    environment:
+      - AUTO_MIGRATE=false
+      - AUTO_SEED=false
+      - APP_RUNTIME_ROLE=queue
+      - QUEUE_WORKER_GROUP=metrics
+      - DB_CONNECTION=pgsql
+      - DB_HOST=${DB_HOST:-wificore-pgbouncer}
+      - DB_READ_HOST=${DB_READ_HOST:-wificore-pgbouncer-read}
+      - DB_PORT=${DB_PORT:-6432}
+      - DB_READ_PORT=${DB_READ_PORT:-6432}
+      - DB_DIRECT_HOST=${DB_DIRECT_HOST:-wificore-postgres}
+      - DB_DIRECT_PORT=${DB_DIRECT_PORT:-5432}
+      - DB_DATABASE=${DB_DATABASE:-wms_770_ts}
+      - DB_USERNAME=${DB_USERNAME:-admin}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - QUEUE_CONNECTION=redis
+      - BROADCAST_DRIVER=pusher
+      - PUSHER_APP_ID=${PUSHER_APP_ID:-app-id}
+      - PUSHER_APP_KEY=${PUSHER_APP_KEY:-app-key}
+      - PUSHER_APP_SECRET=${PUSHER_APP_SECRET:-app-secret}
+      - PUSHER_HOST=${PUSHER_HOST:-wificore-soketi}
+      - PUSHER_PORT=${PUSHER_PORT:-6071}
+      - PUSHER_SCHEME=${PUSHER_SCHEME:-http}
+      - TZ=${TZ:-Africa/Nairobi}
+      - APP_URL=${APP_URL}
+      - REDIS_HOST=${REDIS_HOST:-wificore-redis}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - CACHE_DRIVER=redis
+      - SESSION_DRIVER=redis
+      - RADIUS_SERVER_HOST=${RADIUS_SERVER_HOST:-wificore-freeradius}
+      - RADIUS_SERVER_IP=${RADIUS_SERVER_IP:-172.70.0.2}
+      - RADIUS_SERVER_PORT=${RADIUS_SERVER_PORT:-1812}
+      - RADIUS_SECRET=${RADIUS_SECRET}
+      - APP_ENV=production
+      - MULTITENANCY_MODE=schema
+      - MIKROTIK_SSH_PRIVATE_KEY_PATH=${MIKROTIK_SSH_PRIVATE_KEY_PATH:-/run/secrets/mikrotik_id_rsa}
+      - MIKROTIK_SSH_PRIVATE_KEY_PASSPHRASE=${MIKROTIK_SSH_PRIVATE_KEY_PASSPHRASE:-}
+    depends_on:
+      wificore-postgres:
+        condition: service_healthy
+      wificore-redis:
+        condition: service_healthy
+      wificore-backend:
+        condition: service_healthy
+    networks:
+      wificore-network:
+        ipv4_address: 172.70.0.23
+    volumes:
+      - laravel-storage:/var/www/html/storage:rw
+      - laravel-logs:/var/www/html/storage/logs:rw
+    healthcheck:
+      test: ["CMD-SHELL", "ps aux | grep 'queue:work' | grep -v grep || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "3"
+
+  wificore-queue-realtime:
+    image: kja2aro/wificore:wificore-backend
+    container_name: wificore-queue-realtime
+    restart: always
+    env_file:
+      - .env.production
+    environment:
+      - AUTO_MIGRATE=false
+      - AUTO_SEED=false
+      - APP_RUNTIME_ROLE=queue
+      - QUEUE_WORKER_GROUP=realtime
+      - DB_CONNECTION=pgsql
+      - DB_HOST=${DB_HOST:-wificore-pgbouncer}
+      - DB_READ_HOST=${DB_READ_HOST:-wificore-pgbouncer-read}
+      - DB_PORT=${DB_PORT:-6432}
+      - DB_READ_PORT=${DB_READ_PORT:-6432}
+      - DB_DIRECT_HOST=${DB_DIRECT_HOST:-wificore-postgres}
+      - DB_DIRECT_PORT=${DB_DIRECT_PORT:-5432}
+      - DB_DATABASE=${DB_DATABASE:-wms_770_ts}
+      - DB_USERNAME=${DB_USERNAME:-admin}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - QUEUE_CONNECTION=redis
+      - BROADCAST_DRIVER=pusher
+      - PUSHER_APP_ID=${PUSHER_APP_ID:-app-id}
+      - PUSHER_APP_KEY=${PUSHER_APP_KEY:-app-key}
+      - PUSHER_APP_SECRET=${PUSHER_APP_SECRET:-app-secret}
+      - PUSHER_HOST=${PUSHER_HOST:-wificore-soketi}
+      - PUSHER_PORT=${PUSHER_PORT:-6071}
+      - PUSHER_SCHEME=${PUSHER_SCHEME:-http}
+      - TZ=${TZ:-Africa/Nairobi}
+      - APP_URL=${APP_URL}
+      - REDIS_HOST=${REDIS_HOST:-wificore-redis}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - CACHE_DRIVER=redis
+      - SESSION_DRIVER=redis
+      - RADIUS_SERVER_HOST=${RADIUS_SERVER_HOST:-wificore-freeradius}
+      - RADIUS_SERVER_IP=${RADIUS_SERVER_IP:-172.70.0.2}
+      - RADIUS_SERVER_PORT=${RADIUS_SERVER_PORT:-1812}
+      - RADIUS_SECRET=${RADIUS_SECRET}
+      - APP_ENV=production
+      - MULTITENANCY_MODE=schema
+      - MIKROTIK_SSH_PRIVATE_KEY_PATH=${MIKROTIK_SSH_PRIVATE_KEY_PATH:-/run/secrets/mikrotik_id_rsa}
+      - MIKROTIK_SSH_PRIVATE_KEY_PASSPHRASE=${MIKROTIK_SSH_PRIVATE_KEY_PASSPHRASE:-}
+    depends_on:
+      wificore-postgres:
+        condition: service_healthy
+      wificore-redis:
+        condition: service_healthy
+      wificore-backend:
+        condition: service_healthy
+    networks:
+      wificore-network:
+        ipv4_address: 172.70.0.24
     volumes:
       - laravel-storage:/var/www/html/storage:rw
       - laravel-logs:/var/www/html/storage/logs:rw
@@ -667,6 +1097,7 @@ services:
       - DB_HOST=wificore-postgres
       - DB_PORT=5432
       - DB_DATABASE=${DB_DATABASE:-wms_770_ts}
+      - DB_APP_POOL_MODE=${DB_APP_POOL_MODE:-session}
       - DB_USERNAME=${DB_USERNAME:-admin}
       - DB_PASSWORD=${DB_PASSWORD}
       - TZ=${TZ:-Africa/Nairobi}
@@ -700,6 +1131,7 @@ services:
       - DB_HOST=wificore-postgres-replica
       - DB_PORT=5432
       - DB_DATABASE=${DB_DATABASE:-wms_770_ts}
+      - DB_APP_POOL_MODE=${DB_APP_POOL_MODE:-session}
       - DB_USERNAME=${DB_USERNAME:-admin}
       - DB_PASSWORD=${DB_PASSWORD}
       - TZ=${TZ:-Africa/Nairobi}

@@ -13,6 +13,7 @@ fi
 sed -i "s/host=wificore-postgres /host=${DB_HOST:-wificore-postgres} /g" /etc/pgbouncer/pgbouncer.ini
 sed -i "s/port=5432/port=${DB_PORT:-5432}/g" /etc/pgbouncer/pgbouncer.ini
 sed -i "s/dbname=wms_770_ts/dbname=${DB_DATABASE:-wms_770_ts}/g" /etc/pgbouncer/pgbouncer.ini
+sed -i "s/pool_mode=__APP_POOL_MODE__/pool_mode=${DB_APP_POOL_MODE:-session}/g" /etc/pgbouncer/pgbouncer.ini
 
 # Start PgBouncer
 PGBOUNCER_BIN="$(command -v pgbouncer || true)"

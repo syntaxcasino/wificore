@@ -1,6 +1,13 @@
 FROM alpine:3.20
 
-RUN apk add --no-cache pgbouncer postgresql-client
+RUN set -eux; \
+    for attempt in 1 2 3 4 5; do \
+        apk add --no-cache pgbouncer postgresql-client && break; \
+        if [ "$attempt" -eq 5 ]; then \
+            exit 1; \
+        fi; \
+        sleep 5; \
+    done
 
 RUN addgroup -S pgbouncer && adduser -S -G pgbouncer pgbouncer
 

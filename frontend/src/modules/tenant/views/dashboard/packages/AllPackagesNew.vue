@@ -261,7 +261,6 @@ import { useFilters } from '@/modules/common/composables/utils/useFilters'
 import { usePagination } from '@/modules/common/composables/utils/usePagination'
 import { useConfirmStore } from '@/stores/confirm'
 import { useToast } from '@/modules/common/composables/useToast.js'
-import { useSSE } from '@/modules/common/composables/websocket/useSSE'
 import DataViewContainer from '@/modules/common/components/base/DataViewContainer.vue'
 
 import DataSkeleton from '@/modules/common/components/base/DataSkeleton.vue'
@@ -531,18 +530,6 @@ onMounted(() => {
 onBeforeUnmount(() => {
   document.removeEventListener('click', handleClickOutside)
   cleanupWebSocketListeners()
-})
-
-// SSE: event-driven package updates — useSSE auto-closes on onUnmounted
-const { subscribeMany } = useSSE('/sse/tenant', {
-  channels: 'packages',
-})
-
-subscribeMany({
-  PackageCreated:      (data) => handlePackageCreatedEvent(data),
-  PackageUpdated:      (data) => handlePackageUpdatedEvent(data),
-  PackageDeleted:      (data) => handlePackageDeletedEvent(data),
-  PackageStatusChanged: (data) => handlePackageUpdatedEvent(data),
 })
 
 // WebSocket listeners for redundancy and real-time updates

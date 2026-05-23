@@ -2,7 +2,14 @@
 FROM golang:1.21-alpine AS builder
 
 # Install build dependencies
-RUN apk add --no-cache git gcc musl-dev
+RUN set -eux; \
+    for attempt in 1 2 3 4 5; do \
+        apk add --no-cache git gcc musl-dev && break; \
+        if [ "$attempt" -eq 5 ]; then \
+            exit 1; \
+        fi; \
+        sleep 5; \
+    done
 
 WORKDIR /app
 
@@ -22,7 +29,14 @@ RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o provisioning-serv
 FROM alpine:latest
 
 # Install runtime dependencies
-RUN apk --no-cache add ca-certificates tzdata
+RUN set -eux; \
+    for attempt in 1 2 3 4 5; do \
+        apk --no-cache add ca-certificates tzdata && break; \
+        if [ "$attempt" -eq 5 ]; then \
+            exit 1; \
+        fi; \
+        sleep 5; \
+    done
 
 WORKDIR /root/
 

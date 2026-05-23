@@ -639,6 +639,16 @@ class WebSocketService {
       this.channels.set(routersChannel, ch)
     }
 
+    // ── Dashboard stats updates ──────────────────────────────────────────────
+    const dashboardChannel = `tenant.${tenantId}.dashboard-stats`
+    if (!this.channels.has(dashboardChannel)) {
+      const ch = this.echo.private(dashboardChannel)
+        .listen('.DashboardStatsUpdated', (event) => {
+          window.dispatchEvent(new CustomEvent('dashboard-stats-updated', { detail: event }))
+        })
+      this.channels.set(dashboardChannel, ch)
+    }
+
     // ── Access Points ─────────────────────────────────────────────────────────
     const apChannel = `tenant.${tenantId}.access-points`
     if (!this.channels.has(apChannel)) {

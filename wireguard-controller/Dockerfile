@@ -1,12 +1,19 @@
 FROM python:3.11-alpine
 
 # Install WireGuard and network tools
-RUN apk add --no-cache \
-    wireguard-tools \
-    iptables \
-    iproute2 \
-    bash \
-    curl
+RUN set -eux; \
+    for attempt in 1 2 3 4 5; do \
+        apk add --no-cache \
+            wireguard-tools \
+            iptables \
+            iproute2 \
+            bash \
+            curl && break; \
+        if [ "$attempt" -eq 5 ]; then \
+            exit 1; \
+        fi; \
+        sleep 5; \
+    done
 
 WORKDIR /app
 

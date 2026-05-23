@@ -188,8 +188,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted } from 'vue'
-import { useSSE } from '@/modules/common/composables/websocket/useSSE'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useAuth } from '@/modules/common/composables/auth/useAuth'
 import { useDashboard } from '@/modules/tenant/composables/data/useDashboard'
 import PaymentWidget from '@/modules/tenant/components/dashboard/PaymentWidgetClean.vue'
@@ -225,35 +224,56 @@ const quickActions = computed(() => [
   { to: '/dashboard/settings/general', label: 'Settings', icon: Settings, iconBg: 'bg-slate-100 dark:bg-slate-700', iconColor: 'text-slate-600 dark:text-slate-300', borderClass: 'hover:border-slate-400' },
 ])
 
+const isConnected = ref(false)
+let connection = null
+let handleWsConnected = null
+let handleWsDisconnected = null
+
 onMounted(() => {
   fetchDashboardStats()
+
+  connection = window.Echo?.connector?.pusher?.connection || null
+  if (connection) {
+    isConnected.value = connection.state === 'connected'
+    handleWsConnected = () => { isConnected.value = true }
+    handleWsDisconnected = () => { isConnected.value = false }
+    connection.bind('connected', handleWsConnected)
+    connection.bind('disconnected', handleWsDisconnected)
+  }
+
+  window.addEventListener('dashboard-stats-updated', handleDashboardStatsUpdated)
+  window.addEventListener('router-status-updated', debouncedRefetch)
+  window.addEventListener('package-created', debouncedRefetch)
+  window.addEventListener('package-deleted', debouncedRefetch)
+  window.addEventListener('user-created', debouncedRefetch)
 })
 
-// ── SSE: debounced refetch so rapid events don't spam the API ─────────────────
-// Stats-payload events apply directly; count-changing events debounce a refetch.
 let _debounceTimer = null
 const debouncedRefetch = () => {
   clearTimeout(_debounceTimer)
   _debounceTimer = setTimeout(fetchDashboardStats, 2000)
 }
-onUnmounted(() => clearTimeout(_debounceTimer))
 
-const { isConnected, subscribeMany } = useSSE('/sse/tenant', {
-  channels: 'dashboard-stats,router-updates',
-})
+const handleDashboardStatsUpdated = (event) => {
+  const data = event?.detail
+  if (data?.stats) {
+    updateStatsFromEvent(data.stats)
+    return
+  }
+  debouncedRefetch()
+}
 
-subscribeMany({
-  'stats.updated':         (data) => { if (data?.stats) updateStatsFromEvent(data.stats) },
-  'DashboardStatsUpdated': (data) => { if (data?.stats) updateStatsFromEvent(data.stats) },
-  'RouterStatusUpdated':   () => debouncedRefetch(),
-  'PackageCreated':        () => debouncedRefetch(),
-  'PackageDeleted':        () => debouncedRefetch(),
-  'PppoeUserCreated':      () => debouncedRefetch(),
-  'PppoeUserDeleted':      () => debouncedRefetch(),
-  'PppoeSessionStarted':   () => debouncedRefetch(),
-  'PppoeSessionEnded':     () => debouncedRefetch(),
-  'HotspotUserCreated':    () => debouncedRefetch(),
-  'PaymentCompleted':      () => debouncedRefetch(),
-  'UserCreated':           () => debouncedRefetch(),
+onUnmounted(() => {
+  clearTimeout(_debounceTimer)
+  window.removeEventListener('dashboard-stats-updated', handleDashboardStatsUpdated)
+  window.removeEventListener('router-status-updated', debouncedRefetch)
+  window.removeEventListener('package-created', debouncedRefetch)
+  window.removeEventListener('package-deleted', debouncedRefetch)
+  window.removeEventListener('user-created', debouncedRefetch)
+
+  if (connection && handleWsConnected && handleWsDisconnected) {
+    connection.unbind('connected', handleWsConnected)
+    connection.unbind('disconnected', handleWsDisconnected)
+  }
 })
 </script>
