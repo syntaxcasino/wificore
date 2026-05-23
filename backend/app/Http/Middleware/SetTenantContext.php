@@ -71,6 +71,7 @@ class SetTenantContext
                     // Streaming requests should never hold a request-wide transaction.
                     if ($this->isStreamingRequest($request)) {
                         $this->tenantContext->setTenant($tenant);
+                        \Illuminate\Support\Facades\DB::connection()->recordsHaveBeenModified();
                         return $next($request);
                     }
 
@@ -80,6 +81,12 @@ class SetTenantContext
                     // deployments still using PgBouncer transaction pooling.
                     if (! $this->shouldWrapRequestInTransaction()) {
                         $this->tenantContext->setTenant($tenant);
+                        // Force sticky-write mode so all subsequent SELECTs in this request
+                        // use the same write PDO that received the SET search_path above.
+                        // Without this, the read PDO (a separate connection to the read
+                        // replica) would be used for SELECT queries and it still has
+                        // search_path=public, causing "relation does not exist" errors.
+                        \Illuminate\Support\Facades\DB::connection()->recordsHaveBeenModified();
                         return $next($request);
                     }
 
