@@ -22,13 +22,17 @@ const createEchoConfig = () => {
   
   // Detect if we're in production (HTTPS)
   const isProduction = window.location.protocol === 'https:';
+  // In production always use the actual browser hostname — never trust a build-time
+  // env var which may contain an internal Docker hostname (e.g. wificore-soketi).
   const configuredHost = env.VITE_PUSHER_HOST?.trim();
-  const isInternalDockerHost = configuredHost === 'soketi'
+  const isInternalDockerHost = !configuredHost
+    || configuredHost === 'soketi'
     || configuredHost === 'wificore-soketi'
-    || configuredHost?.endsWith('-soketi');
-  const wsHost = isInternalDockerHost
+    || configuredHost?.includes('-soketi')
+    || !configuredHost.includes('.');
+  const wsHost = (isProduction || isInternalDockerHost)
     ? window.location.hostname
-    : (configuredHost || window.location.hostname);
+    : configuredHost;
   
   // WebSocket configuration
   const config = {
