@@ -256,10 +256,10 @@ describe('Database connection routing', function () {
         expect($cfg['read']['host'])->not->toBeEmpty();
     });
 
-    it('PDO prepared statement emulation is disabled (PostgreSQL compatibility)', function () {
+    it('PDO prepared statement emulation is enabled for PgBouncer-backed connections', function () {
         $cfg = config('database.connections.pgsql');
         $opts = $cfg['options'] ?? [];
-        expect($opts[\PDO::ATTR_EMULATE_PREPARES] ?? true)->toBeFalse();
+        expect($opts[\PDO::ATTR_EMULATE_PREPARES] ?? false)->toBeTrue();
     });
 
     it('useWritePdo forces write connection for sensitive reads', function () {

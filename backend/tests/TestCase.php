@@ -32,6 +32,7 @@ abstract class TestCase extends BaseTestCase
             'DB_USERNAME'    => 'admin',
             'DB_PASSWORD'    => 'secret',
             'DB_PERSISTENT'  => 'false',
+            'DB_EMULATE_PREPARES' => 'true',
         ];
 
         foreach ($vars as $key => $value) {
@@ -53,6 +54,7 @@ abstract class TestCase extends BaseTestCase
         $cfg['read']                           = ['host' => ['wificore-pgbouncer-read'], 'port' => 6432];
         $cfg['write']                          = ['host' => ['wificore-pgbouncer'],      'port' => 6432];
         $cfg['options'][\PDO::ATTR_PERSISTENT] = false;
+        $cfg['options'][\PDO::ATTR_EMULATE_PREPARES] = true;
         config(['database.connections.pgsql' => $cfg]);
 
         return $app;

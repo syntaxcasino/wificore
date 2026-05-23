@@ -102,32 +102,51 @@ class UpdateDashboardStatsJob implements ShouldQueue
                 $offlineRouters = $routerQuery->where('status', 'offline')->count();
                 $provisioningRouters = $routerQuery->where('status', 'provisioning')->count();
 
+                $userSessionsTableExists = (bool) (DB::selectOne("
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables
+                        WHERE table_schema = current_schema()
+                          AND table_name = 'user_sessions'
+                    ) AS exists
+                ")->exists ?? false);
+
                 // Fetch user statistics - Active sessions
                 // UserSession is in tenant schema, no tenant_id needed
-                $activeSessions = UserSession::where('status', 'active')
-                    ->where(function($query) {
-                        $query->whereNull('end_time')
-                              ->orWhere('end_time', '>', now());
-                    })
-                    ->count();
+                $activeSessions = 0;
+                $hotspotUsers = 0;
+                $pppoeUsers = 0;
 
-                // Count hotspot users (sessions with vouchers)
-                $hotspotUsers = UserSession::where('status', 'active')
-                    ->where(function($query) {
-                        $query->whereNull('end_time')
-                              ->orWhere('end_time', '>', now());
-                    })
-                    ->whereNotNull('voucher')
-                    ->count();
+                if ($userSessionsTableExists) {
+                    $activeSessions = UserSession::where('status', 'active')
+                        ->where(function($query) {
+                            $query->whereNull('end_time')
+                                  ->orWhere('end_time', '>', now());
+                        })
+                        ->count();
 
-                // Count PPPoE users (sessions without vouchers or from PPPoE packages)
-                $pppoeUsers = UserSession::where('status', 'active')
-                    ->where(function($query) {
-                        $query->whereNull('end_time')
-                              ->orWhere('end_time', '>', now());
-                    })
-                    ->whereNull('voucher')
-                    ->count();
+                    // Count hotspot users (sessions with vouchers)
+                    $hotspotUsers = UserSession::where('status', 'active')
+                        ->where(function($query) {
+                            $query->whereNull('end_time')
+                                  ->orWhere('end_time', '>', now());
+                        })
+                        ->whereNotNull('voucher')
+                        ->count();
+
+                    // Count PPPoE users (sessions without vouchers or from PPPoE packages)
+                    $pppoeUsers = UserSession::where('status', 'active')
+                        ->where(function($query) {
+                            $query->whereNull('end_time')
+                                  ->orWhere('end_time', '>', now());
+                        })
+                        ->whereNull('voucher')
+                        ->count();
+                } else {
+                    \Log::warning('user_sessions table does not exist in tenant schema yet, defaulting dashboard session metrics to zero', [
+                        'tenant_id' => $this->tenantId,
+                        'schema_name' => $tenant->schema_name,
+                    ]);
+                }
 
                 // Total unique users
                 // User is in public schema, but TenantScope applies via TenantAwareJob
@@ -256,34 +275,41 @@ class UpdateDashboardStatsJob implements ShouldQueue
                     $month['percentage'] = $maxYearlyMonthAmount > 0 ? round(($month['amount'] / $maxYearlyMonthAmount) * 100, 2) : 0;
                 }
 
-                // Calculate data usage from user_sessions (tenant-scoped)
-                $sessionQuery = UserSession::query();
-                // tenant_id removed
-                
-                // Total data usage in GB (from user_sessions table)
-                $totalDataUsage = $sessionQuery->sum('data_used') / (1024 * 1024 * 1024);
-                
-                // Data usage breakdown
-                $totalDataUpload = $sessionQuery->sum('data_upload') / (1024 * 1024 * 1024);
-                $totalDataDownload = $sessionQuery->sum('data_download') / (1024 * 1024 * 1024);
-                
-                // Active sessions data usage (current month)
-                $monthlyDataUsage = UserSession::where('status', 'active')
-                    // tenant_id removed
-                    ->whereMonth('start_time', now()->month)
-                    ->whereYear('start_time', now()->year)
-                    ->sum('data_used') / (1024 * 1024 * 1024);
-                
-                // Today's data usage
-                $todayDataUsage = UserSession::whereDate('start_time', now()->toDateString())
-                    ->sum('data_used') / (1024 * 1024 * 1024);
+                $totalDataUsage = 0;
+                $totalDataUpload = 0;
+                $totalDataDownload = 0;
+                $monthlyDataUsage = 0;
+                $todayDataUsage = 0;
+
+                if ($userSessionsTableExists) {
+                    // Calculate data usage from user_sessions (tenant-scoped)
+                    $sessionQuery = UserSession::query();
+
+                    // Total data usage in GB (from user_sessions table)
+                    $totalDataUsage = $sessionQuery->sum('data_used') / (1024 * 1024 * 1024);
+
+                    // Data usage breakdown
+                    $totalDataUpload = $sessionQuery->sum('data_upload') / (1024 * 1024 * 1024);
+                    $totalDataDownload = $sessionQuery->sum('data_download') / (1024 * 1024 * 1024);
+
+                    // Active sessions data usage (current month)
+                    $monthlyDataUsage = UserSession::where('status', 'active')
+                        ->whereMonth('start_time', now()->month)
+                        ->whereYear('start_time', now()->year)
+                        ->sum('data_used') / (1024 * 1024 * 1024);
+
+                    // Today's data usage
+                    $todayDataUsage = UserSession::whereDate('start_time', now()->toDateString())
+                        ->sum('data_used') / (1024 * 1024 * 1024);
+                }
 
                 // Get weekly active sessions trend (last 7 days)
                 $weeklyUsersTrend = [];
                 for ($i = 6; $i >= 0; $i--) {
                     $date = Carbon::now()->subDays($i);
-                    $count = UserSession::whereDate('start_time', $date->toDateString())
-                        ->count();
+                    $count = $userSessionsTableExists
+                        ? UserSession::whereDate('start_time', $date->toDateString())->count()
+                        : 0;
                     $weeklyUsersTrend[] = [
                         'date' => $date->format('D'),
                         'count' => $count,
