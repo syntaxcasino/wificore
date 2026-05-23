@@ -44,8 +44,20 @@ trait TenantAwareJob
 
         // Tenant bootstrap must not depend on the read replica; read-pool DNS
         // or replica lag should not block queue jobs from entering tenant context.
-        $tenant = Tenant::query()->useWritePdo()->find($this->tenantId);
-        
+        try {
+            $tenant = Tenant::query()->useWritePdo()->find($this->tenantId);
+        } catch (\Illuminate\Database\QueryException $e) {
+            if ($e->getCode() === '08006' || $e->getCode() === '08001') {
+                \Illuminate\Support\Facades\Log::warning('TenantAwareJob: DB connection refused (startup race?), job will retry', [
+                    'tenant_id' => $this->tenantId,
+                    'job_class' => get_class($this),
+                    'error' => $e->getMessage(),
+                ]);
+                throw $e;
+            }
+            throw $e;
+        }
+
         if (!$tenant) {
             throw new \Exception("Tenant not found: {$this->tenantId}");
         }
