@@ -18,6 +18,7 @@ use App\Models\Tenant;
 use App\Events\DashboardStatsUpdated;
 use App\Services\MetricsService;
 use App\Traits\TenantAwareJob;
+use App\Http\Controllers\Api\TenantDashboardController;
 use Carbon\Carbon;
 
 class UpdateDashboardStatsJob implements ShouldQueue
@@ -643,7 +644,9 @@ class UpdateDashboardStatsJob implements ShouldQueue
                 ];
 
                 // Cache the statistics for 30 seconds for near real-time updates (per-tenant)
-                $cacheKey = $this->tenantId ? "dashboard_stats_{$this->tenantId}" : 'dashboard_stats_global';
+                $cacheKey = $this->tenantId
+                    ? TenantDashboardController::versionedPrecomputedDashboardCacheKey((string) $this->tenantId)
+                    : 'dashboard_stats_global';
                 Cache::put($cacheKey, $stats, now()->addSeconds(30));
 
                 // Broadcast the updated statistics to tenant-specific channel

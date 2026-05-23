@@ -19,6 +19,7 @@ class TenantDashboardController extends Controller
     private const CACHE_LOCK_SECONDS = 10;
     private const LIST_CACHE_TTL_SECONDS = 5; // Short TTL for list endpoints
     private const REFRESH_DISPATCH_LOCK_SECONDS = 15;
+    private const VERSION_SUFFIX = ':version';
 
     // Cache key patterns
     private const KEY_DASHBOARD = 'tenant_dashboard_v2';
@@ -45,8 +46,8 @@ class TenantDashboardController extends Controller
             ], 403);
         }
 
-        $cacheKey = "tenant_dashboard_v2:{$tenantId}";
-        $lockKey  = "tenant_dashboard_lock:{$tenantId}";
+        $cacheKey = self::versionedDashboardCacheKey((string) $tenantId);
+        $lockKey  = "tenant_dashboard_lock:{$tenantId}:v" . self::getVersion(self::dashboardVersionKey((string) $tenantId));
 
         // Fast path: return cached data immediately if available.
         // Wrapped in try/catch so a Redis outage degrades gracefully to a DB query.
@@ -111,7 +112,7 @@ class TenantDashboardController extends Controller
 
     private function getPrecomputedCacheKey(string $tenantId): string
     {
-        return "dashboard_stats_{$tenantId}";
+        return self::versionedPrecomputedDashboardCacheKey($tenantId);
     }
 
     /**
@@ -722,7 +723,9 @@ class TenantDashboardController extends Controller
     {
         $page = $request->page ?? 1;
         $perPage = $request->per_page ?? 15;
-        return "{$type}:{$tenantId}:p{$page}:pp{$perPage}";
+        $version = self::getVersion(self::entityVersionKey($tenantId, $type));
+
+        return "{$type}:{$tenantId}:v{$version}:p{$page}:pp{$perPage}";
     }
 
     /**
@@ -739,8 +742,7 @@ class TenantDashboardController extends Controller
      */
     public static function bustDashboardCache(string $tenantId): void
     {
-        Cache::forget("tenant_dashboard_v2:{$tenantId}");
-        Cache::forget("dashboard_stats_{$tenantId}");
+        self::bumpVersion(self::dashboardVersionKey($tenantId));
     }
 
     /**
@@ -749,23 +751,8 @@ class TenantDashboardController extends Controller
      */
     public static function bustAllListCaches(string $tenantId): void
     {
-        $patterns = [
-            "tenant_users:{$tenantId}:*",
-            "tenant_packages:{$tenantId}:*",
-            "tenant_routers:{$tenantId}:*",
-            "tenant_payments:{$tenantId}:*",
-        ];
-
-        foreach ($patterns as $pattern) {
-            // Redis pattern delete (works with Laravel Cache::flush() for patterns if using Redis)
-            // For file/array cache, we can't do pattern deletes, so we just clear specific known keys
-        }
-
-        for ($page = 1; $page <= 5; $page++) {
-            Cache::forget("tenant_users:{$tenantId}:p{$page}:pp15");
-            Cache::forget("tenant_packages:{$tenantId}:p{$page}:pp15");
-            Cache::forget("tenant_routers:{$tenantId}:p{$page}:pp15");
-            Cache::forget("tenant_payments:{$tenantId}:p{$page}:pp15");
+        foreach ([self::KEY_USERS, self::KEY_PACKAGES, self::KEY_ROUTERS, self::KEY_PAYMENTS, self::KEY_SESSIONS] as $entityKey) {
+            self::bumpVersion(self::entityVersionKey($tenantId, $entityKey));
         }
 
         self::bustDashboardCache($tenantId);
@@ -784,24 +771,53 @@ class TenantDashboardController extends Controller
             'sessions' => self::KEY_SESSIONS,
         ];
 
+        if ($entityType === 'dashboard') {
+            self::bustDashboardCache($tenantId);
+            return;
+        }
+
         if (!isset($keyMap[$entityType])) {
             return;
         }
 
-        $key = $keyMap[$entityType];
+        self::bumpVersion(self::entityVersionKey($tenantId, $keyMap[$entityType]));
+    }
 
-        for ($page = 1; $page <= 5; $page++) {
-            for ($perPage = 15; $perPage <= 50; $perPage += 35) {
-                Cache::forget("{$key}:{$tenantId}:p{$page}:pp{$perPage}");
-            }
-        }
+    public static function versionedPrecomputedDashboardCacheKey(string $tenantId): string
+    {
+        $version = self::getVersion(self::dashboardVersionKey($tenantId));
 
-        if (Cache::getStore() instanceof \Illuminate\Cache\RedisStore) {
-            $keys = Cache::getStore()->connection()->keys("{$key}:{$tenantId}:*");
-            if (!empty($keys)) {
-                Cache::getStore()->connection()->del(...$keys);
-            }
-        }
+        return "dashboard_stats_{$tenantId}:v{$version}";
+    }
+
+    public static function versionedDashboardCacheKey(string $tenantId): string
+    {
+        $version = self::getVersion(self::dashboardVersionKey($tenantId));
+
+        return "tenant_dashboard_v2:{$tenantId}:v{$version}";
+    }
+
+    private static function entityVersionKey(string $tenantId, string $entityKey): string
+    {
+        return "tenant_cache_version:{$entityKey}:{$tenantId}";
+    }
+
+    private static function dashboardVersionKey(string $tenantId): string
+    {
+        return "tenant_cache_version:dashboard:{$tenantId}";
+    }
+
+    private static function getVersion(string $versionKey): int
+    {
+        return (int) Cache::rememberForever($versionKey, static fn (): int => 1);
+    }
+
+    private static function bumpVersion(string $versionKey): int
+    {
+        $nextVersion = self::getVersion($versionKey) + 1;
+        Cache::forever($versionKey, $nextVersion);
+
+        return $nextVersion;
     }
 
     /**

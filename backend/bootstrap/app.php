@@ -42,6 +42,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->api(prepend: [
             \App\Http\Middleware\DDoSProtection::class,
             \App\Http\Middleware\EnforceSubdomainTenantBinding::class,
+            \App\Http\Middleware\RecordRequestMetrics::class,
             \App\Http\Middleware\AddCacheHeaders::class,
         ]);
 

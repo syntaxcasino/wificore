@@ -321,8 +321,9 @@ class PaymentController extends Controller
                     // already handles complete hotspot provisioning. ProcessPaymentJob is for
                     // generic subscription provisioning (non-hotspot payments).
 
-                    // CACHE BUST: Clear tenant dashboard cache so revenue shows immediately
-                    TenantDashboardController::bustDashboardCache($tenant->id);
+                    // CACHE BUST: keep tenant revenue widgets and payments list fresh immediately
+                    TenantDashboardController::bustDashboardCache((string) $tenant->id);
+                    TenantDashboardController::bustEntityCache((string) $tenant->id, 'payments');
                 }
 
                 $this->logToSystemAndFile("Payment $status", [

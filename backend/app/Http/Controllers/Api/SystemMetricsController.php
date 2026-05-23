@@ -31,6 +31,7 @@ class SystemMetricsController extends Controller
                 'average' => Cache::get('metrics:response_time:avg', 23),
                 'p95' => Cache::get('metrics:response_time:p95', 45),
                 'p99' => Cache::get('metrics:response_time:p99', 78),
+                'topSlowRoutes' => Cache::get('metrics:response_time:routes', []),
             ];
             
             return response()->json($metrics);

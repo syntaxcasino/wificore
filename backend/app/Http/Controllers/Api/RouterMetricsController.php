@@ -4,18 +4,15 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Router;
-use App\Services\MikrotikSnmpService;
 use App\Services\RouterMetricsService;
 use App\Services\TenantContext;
 use App\Services\VictoriaMetricsClient;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Log;
 
 class RouterMetricsController extends Controller
 {
-    public function live(Request $request, Router $router, VictoriaMetricsClient $vm, TenantContext $tenantContext, RouterMetricsService $metricsService, MikrotikSnmpService $snmpService): JsonResponse
+    public function live(Request $request, Router $router, VictoriaMetricsClient $vm, TenantContext $tenantContext, RouterMetricsService $metricsService): JsonResponse
     {
         $tenantId = $tenantContext->getTenantId();
         if (!$tenantId) {
@@ -30,24 +27,15 @@ class RouterMetricsController extends Controller
         $batch = $metricsService->getLatestRouterMetrics($vm, (string) $tenantId, [$routerId]);
         $liveData = $batch[$routerId] ?? [];
 
-        // Direct SNMP fallback when VictoriaMetrics+Redis both have nothing
-        if (empty($liveData) && $router->snmp_enabled !== false) {
-            try {
-                $snmpData = $snmpService->fetchLiveData($router);
-                if (!empty($snmpData) && ($snmpData['status'] ?? '') !== 'offline') {
-                    $liveData = $snmpData;
-                    $liveData['source'] = 'snmp_direct';
-                    Cache::put("router_live_data_{$routerId}", $liveData, now()->addSeconds(30));
-                }
-            } catch (\Throwable $e) {
-                Log::debug('live() SNMP fallback failed', ['router_id' => $routerId, 'error' => $e->getMessage()]);
-            }
+        if (!empty($liveData)) {
+            $liveData['source'] = $liveData['source'] ?? 'victoriametrics';
         }
 
         return response()->json([
             'success' => true,
             'router_id' => $routerId,
             'live_data' => $liveData,
+            'is_stale' => empty($liveData),
         ]);
     }
 
