@@ -71,8 +71,17 @@ class PppoePortalController extends Controller
         
         $pppoeUser = null;
         if ($cachedUserId) {
-            // Fast path: Load user directly by ID with tenant context
-            $pppoeUser = $this->findPppoeUserByCachedId($cachedUserId);
+            try {
+                // Fast path: Load user directly by ID with tenant context
+                $pppoeUser = $this->findPppoeUserByCachedId($cachedUserId);
+            } catch (\Throwable $e) {
+                Cache::forget($userCacheKey);
+                Log::warning('PPPoE portal cached login lookup failed; cache entry invalidated', [
+                    'account_number' => $identifier,
+                    'cached_user' => $cachedUserId,
+                    'error' => $e->getMessage(),
+                ]);
+            }
         }
         
         // Slow path: Search for user if not in cache
@@ -181,24 +190,33 @@ class PppoePortalController extends Controller
                 ->first(['id', 'schema_name', 'schema_created']);
             
             if ($tenant) {
-                return DB::transaction(function () use ($tenant, $userId) {
-                    DB::connection()->recordsHaveBeenModified();
-                    return $this->tenantContext->runInTenantContext($tenant, function () use ($tenant, $userId) {
-                        // OPTIMIZED: Select only needed columns for portal login
-                        $user = PppoeUser::query()
-                            ->select([
-                                'id', 'username', 'account_number', 'password', 'portal_password',
-                                'package_id', 'status', 'is_active', 'expires_at', 'balance',
-                                'payment_status', 'amount_due', 'amount_paid', 'next_payment_due',
-                                'in_grace_period', 'grace_period_ends', 'customer_email', 'customer_phone'
-                            ])
-                            ->find($userId);
-                        if ($user) {
-                            $user->setAttribute('tenant_id', (string) $tenant->id);
-                        }
-                        return $user;
+                try {
+                    return DB::transaction(function () use ($tenant, $userId) {
+                        DB::connection()->recordsHaveBeenModified();
+                        return $this->tenantContext->runInTenantContext($tenant, function () use ($tenant, $userId) {
+                            // OPTIMIZED: Select only needed columns for portal login
+                            $user = PppoeUser::query()
+                                ->select([
+                                    'id', 'username', 'account_number', 'password', 'portal_password',
+                                    'package_id', 'status', 'is_active', 'expires_at', 'balance',
+                                    'payment_status', 'amount_due', 'amount_paid', 'next_payment_due',
+                                    'in_grace_period', 'grace_period_ends', 'customer_email', 'customer_phone'
+                                ])
+                                ->find($userId);
+                            if ($user) {
+                                $user->setAttribute('tenant_id', (string) $tenant->id);
+                            }
+                            return $user;
+                        });
                     });
-                });
+                } catch (\Throwable $e) {
+                    Log::warning('PPPoE portal cached tenant lookup failed', [
+                        'tenant_id' => $tenant->id,
+                        'schema_name' => $tenant->schema_name,
+                        'user_id' => $userId,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
             }
         }
 
@@ -255,25 +273,41 @@ class PppoePortalController extends Controller
                 ->first(['id', 'schema_name', 'schema_created']);
 
             if ($tenant) {
-                $user = DB::transaction(function () use ($tenant, $mapping) {
-                    DB::connection()->recordsHaveBeenModified();
-                    return $this->tenantContext->runInTenantContext($tenant, function () use ($tenant, $mapping) {
-                        $user = PppoeUser::query()->find($mapping->pppoe_user_id);
-                        if ($user) {
-                            $user->setAttribute('tenant_id', (string) $tenant->id);
-                        }
-                        return $user;
+                try {
+                    $user = DB::transaction(function () use ($tenant, $mapping) {
+                        DB::connection()->recordsHaveBeenModified();
+                        return $this->tenantContext->runInTenantContext($tenant, function () use ($tenant, $mapping) {
+                            $user = PppoeUser::query()->find($mapping->pppoe_user_id);
+                            if ($user) {
+                                $user->setAttribute('tenant_id', (string) $tenant->id);
+                            }
+                            return $user;
+                        });
                     });
-                });
 
-                if ($user) {
-                    return $user;
+                    if ($user) {
+                        return $user;
+                    }
+                } catch (\Throwable $e) {
+                    Log::warning('PPPoE portal mapping-based login lookup failed', [
+                        'tenant_id' => $tenant->id,
+                        'schema_name' => $tenant->schema_name,
+                        'pppoe_user_id' => $mapping->pppoe_user_id,
+                        'identifier' => $identifier,
+                        'error' => $e->getMessage(),
+                    ]);
                 }
             }
         }
 
-        // Fallback: Try account prefix lookup
-        return $this->findPppoeUserForPortalLogin($identifier);
+        // Fallback: Try account prefix lookup, then safe legacy scan if needed
+        $user = $this->findPppoeUserForPortalLogin($identifier);
+
+        if ($user) {
+            return $user;
+        }
+
+        return $this->findPppoeUserAcrossTenantsByIdentifier($identifier);
     }
 
     private function findPppoeUserForPortalLogin(string $identifier): ?PppoeUser
@@ -301,29 +335,40 @@ class PppoePortalController extends Controller
 
     private function findPppoeUserInTenant(Tenant $tenant, string $identifier): ?PppoeUser
     {
-        return DB::transaction(function () use ($tenant, $identifier) {
-            DB::connection()->recordsHaveBeenModified();
+        try {
+            return DB::transaction(function () use ($tenant, $identifier) {
+                DB::connection()->recordsHaveBeenModified();
 
-            return $this->tenantContext->runInTenantContext($tenant, function () use ($tenant, $identifier) {
-                $normalized = strtoupper($identifier);
-                $user = PppoeUser::query()
-                    ->with('package:id,name')
-                    ->where(function ($query) use ($identifier, $normalized) {
-                        $query->where('account_number', $identifier)
-                            ->orWhere('account_number', $normalized)
-                            ->orWhere('username', $identifier)
-                            ->orWhere('username', $normalized);
-                    })
-                    ->first();
+                return $this->tenantContext->runInTenantContext($tenant, function () use ($tenant, $identifier) {
+                    $normalized = strtoupper($identifier);
+                    $user = PppoeUser::query()
+                        ->with('package:id,name')
+                        ->where(function ($query) use ($identifier, $normalized) {
+                            $query->where('account_number', $identifier)
+                                ->orWhere('account_number', $normalized)
+                                ->orWhere('username', $identifier)
+                                ->orWhere('username', $normalized);
+                        })
+                        ->first();
 
-                if ($user) {
-                    $user->setAttribute('tenant_id', (string) $tenant->id);
-                    $user->setAttribute('resolved_tenant_schema', (string) $tenant->schema_name);
-                }
+                    if ($user) {
+                        $user->setAttribute('tenant_id', (string) $tenant->id);
+                        $user->setAttribute('resolved_tenant_schema', (string) $tenant->schema_name);
+                    }
 
-                return $user;
+                    return $user;
+                });
             });
-        });
+        } catch (\Throwable $e) {
+            Log::warning('PPPoE portal tenant lookup failed', [
+                'tenant_id' => $tenant->id,
+                'schema_name' => $tenant->schema_name,
+                'identifier' => $identifier,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
     }
 
     private function resolveTenantIdFromAccountNumber(string $accountNumber): ?string
@@ -408,6 +453,33 @@ class PppoePortalController extends Controller
                 }
             })
             ->first(['id', 'schema_name', 'account_prefix', 'schema_created']);
+    }
+
+    private function findPppoeUserAcrossTenantsByIdentifier(string $identifier): ?PppoeUser
+    {
+        $tenants = Tenant::query()
+            ->where('is_active', true)
+            ->whereNotNull('schema_name')
+            ->where('schema_created', true)
+            ->orderBy('updated_at', 'desc')
+            ->limit(100)
+            ->get(['id', 'schema_name']);
+
+        foreach ($tenants as $tenant) {
+            $user = $this->findPppoeUserInTenant($tenant, $identifier);
+
+            if ($user) {
+                Log::warning('PPPoE portal login fell back to legacy tenant scan', [
+                    'identifier' => $identifier,
+                    'tenant_id' => $tenant->id,
+                    'schema_name' => $tenant->schema_name,
+                ]);
+
+                return $user;
+            }
+        }
+
+        return null;
     }
 
     private function findTenantByPppoeUserId(string $userId): ?Tenant
