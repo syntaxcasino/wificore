@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\File;
 use Exception;
+use App\Services\TenantMigrationManager;
 
 /**
  * TenantSchemaManager Service
@@ -143,27 +144,17 @@ class TenantSchemaManager
     {
         try {
             $schemaName = $tenant->schema_name;
-            
+
             Log::info("Running migrations for tenant: {$tenant->name} ({$schemaName})");
-            
-            // Run in tenant context
-            return $this->tenantContext->runInTenantContext($tenant, function() use ($schemaName) {
-                // Check if tenant migrations directory exists
-                $migrationPath = database_path('migrations/tenant');
-                
-                if (File::exists($migrationPath)) {
-                    Artisan::call('migrate', [
-                        '--path' => 'database/migrations/tenant',
-                        '--force' => true,
-                    ]);
-                    
-                    Log::info("Migrations completed for schema: {$schemaName}");
-                    return true;
-                } else {
-                    Log::warning("Tenant migrations directory not found: {$migrationPath}");
-                    return false;
-                }
-            });
+
+            // Delegate to TenantMigrationManager which sets search_path via
+            // SET (session-level) per migration inside its own transaction,
+            // making it safe under PgBouncer transaction pooling.
+            // Using Artisan::call('migrate') here was broken because runInTenantContext
+            // only issues SET LOCAL (transaction-scoped), which Artisan's own DB
+            // connections never see.
+            $migrationManager = app(TenantMigrationManager::class);
+            return $migrationManager->runMigrationsForTenant($tenant);
         } catch (Exception $e) {
             Log::error("Failed to run migrations for tenant {$tenant->name}: " . $e->getMessage());
             throw $e;
