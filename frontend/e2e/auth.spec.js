@@ -24,8 +24,8 @@ test.describe('Authentication', () => {
       await page.goto('/login')
       
       // Verify form elements exist
-      await expect(page.locator('h1, h2').filter({ hasText: /sign in|login/i }).first()).toBeVisible()
-      await expect(page.locator('input[type="email"], input[name="email"]')).toBeVisible()
+      await expect(page.locator('h1, h2').filter({ hasText: /welcome back|sign in|login/i }).first()).toBeVisible()
+      await expect(page.locator('input[type="text"], input[name="username"]')).toBeVisible()
       await expect(page.locator('input[type="password"], input[name="password"]')).toBeVisible()
       await expect(page.locator('button[type="submit"]')).toBeVisible()
     })
@@ -36,16 +36,21 @@ test.describe('Authentication', () => {
       // Submit empty form
       await page.click('button[type="submit"]')
       
-      // Should show validation feedback
-      const errorMessage = page.locator('text=/required|invalid|please enter/i')
-      await expect(errorMessage.first()).toBeVisible()
+      // The current form uses native HTML5 required validation.
+      const invalidCount = await page.locator('input:invalid').count()
+      expect(invalidCount).toBeGreaterThan(0)
     })
 
     test('should show error for invalid credentials', async ({ page }) => {
       await page.goto('/login')
       
       // Mock failed login
-      await page.route('**/api/auth/login', async (route) => {
+      await page.route('**/login', async (route) => {
+        if (route.request().method() !== 'POST') {
+          await route.fallback()
+          return
+        }
+
         await route.fulfill({
           status: 401,
           contentType: 'application/json',
@@ -53,7 +58,7 @@ test.describe('Authentication', () => {
         })
       })
       
-      await page.fill('input[type="email"]', 'invalid@example.com')
+      await page.fill('input[type="text"], input[name="username"]', 'invalid@example.com')
       await page.fill('input[type="password"]', 'wrongpassword')
       await page.click('button[type="submit"]')
       
@@ -67,7 +72,7 @@ test.describe('Authentication', () => {
       await mockApiResponses.loginSuccess(page)
       
       await page.goto('/login')
-      await page.fill('input[type="email"]', TEST_USERS.tenant.email)
+      await page.fill('input[type="text"], input[name="username"]', TEST_USERS.tenant.username)
       await page.fill('input[type="password"]', TEST_USERS.tenant.password)
       await page.click('button[type="submit"]')
       
@@ -80,14 +85,14 @@ test.describe('Authentication', () => {
       await mockApiResponses.loginSuccess(page)
       
       await page.goto('/login')
-      await page.fill('input[type="email"]', TEST_USERS.tenant.email)
+      await page.fill('input[type="text"], input[name="username"]', TEST_USERS.tenant.username)
       await page.fill('input[type="password"]', TEST_USERS.tenant.password)
       await page.click('button[type="submit"]')
       
       await page.waitForURL('**/dashboard**')
       
       // Verify token is stored
-      const token = await page.evaluate(() => localStorage.getItem('auth_token'))
+      const token = await page.evaluate(() => localStorage.getItem('authToken'))
       expect(token).toBeTruthy()
     })
 
@@ -95,7 +100,7 @@ test.describe('Authentication', () => {
       await mockApiResponses.loginSuccess(page)
       
       await page.goto('/login')
-      await page.fill('input[type="email"]', TEST_USERS.tenant.email)
+      await page.fill('input[type="text"], input[name="username"]', TEST_USERS.tenant.username)
       await page.fill('input[type="password"]', TEST_USERS.tenant.password)
       await page.click('button[type="submit"]')
       
@@ -153,7 +158,7 @@ test.describe('Authentication', () => {
       await expect(page).toHaveURL(/.*login.*/)
       
       // Token should be cleared
-      const token = await page.evaluate(() => localStorage.getItem('auth_token'))
+      const token = await page.evaluate(() => localStorage.getItem('authToken'))
       expect(token).toBeFalsy()
     })
   })
@@ -163,22 +168,23 @@ test.describe('Authentication', () => {
       await mockApiResponses.loginSuccess(page, { role: 'system_admin' })
       
       await page.goto('/login')
-      await page.fill('input[type="email"]', TEST_USERS.systemAdmin.email)
+      await page.fill('input[type="text"], input[name="username"]', TEST_USERS.systemAdmin.username)
       await page.fill('input[type="password"]', TEST_USERS.systemAdmin.password)
       await page.click('button[type="submit"]')
       
-      await page.waitForURL('**/system-admin**')
-      await expect(page).toHaveURL(/.*system-admin.*/)
+      await page.waitForURL('**/system/**')
+      await expect(page).toHaveURL(/.*system\/.*/)
     })
 
     test('tenant should be redirected from system admin routes', async ({ page }) => {
       await auth.setAuthToken(page)
       
-      await page.goto('/system-admin')
+      await page.goto('/system/dashboard')
+      await page.waitForURL('**/dashboard**')
       
       // Should redirect to tenant dashboard or show access denied
       const currentUrl = page.url()
-      expect(currentUrl).not.toContain('/system-admin')
+      expect(currentUrl).not.toContain('/system/')
     })
   })
 })

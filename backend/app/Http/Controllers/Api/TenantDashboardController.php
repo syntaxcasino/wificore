@@ -5,10 +5,11 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Jobs\UpdateDashboardStatsJob;
 use App\Models\Package;
-use App\Models\Router;
 use App\Models\Payment;
+use App\Models\Router;
 use App\Models\UserSession;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
@@ -128,14 +129,16 @@ class TenantDashboardController extends Controller
         $lastMonthStart = $now->copy()->subMonth()->startOfMonth()->toDateString();
         $lastMonthEnd   = $now->copy()->subMonth()->endOfMonth()->toDateString();
         $hasUserSessions = $this->tenantTableExists('user_sessions');
+        $hasPayments = $this->tenantTableExists('payments');
+        $hasRouters = $this->tenantTableExists('routers');
 
-        // ── Q1: user counts (public schema, filter by tenant_id) ──────────────
+        // Q1: user counts (public schema, filter by tenant_id)
         // NOTE: Tenant schema users table doesn't have soft deletes (no deleted_at column)
         $userCounts = $this->tenantUsersQuery($tenantId)
             ->selectRaw('COUNT(*) as total')
             ->first();
 
-        // ── Q2: session counts + hotspot/pppoe split (tenant schema) ──────────
+        // Q2: session counts + hotspot/pppoe split (tenant schema)
         $sessionCounts = $hasUserSessions
             ? UserSession::query()
                 ->selectRaw("
@@ -156,46 +159,69 @@ class TenantDashboardController extends Controller
                 'data_download_bytes' => 0,
             ];
 
-        // ── Q3: all revenue aggregations in one pass ───────────────────────────
-        $revenueCounts = Payment::query()
-            ->where('status', 'completed')
-            ->selectRaw("
-                COALESCE(SUM(amount), 0) as total,
-                COALESCE(SUM(CASE WHEN DATE(created_at) = ? THEN amount ELSE 0 END), 0) as daily,
-                COALESCE(SUM(CASE WHEN DATE(created_at) >= ? THEN amount ELSE 0 END), 0) as weekly,
-                COALESCE(SUM(CASE WHEN DATE(created_at) >= ? THEN amount ELSE 0 END), 0) as monthly,
-                COALESCE(SUM(CASE WHEN DATE(created_at) >= ? THEN amount ELSE 0 END), 0) as yearly,
-                COUNT(CASE WHEN DATE(created_at) = ? THEN 1 END) as daily_count,
-                COUNT(CASE WHEN DATE(created_at) >= ? THEN 1 END) as weekly_count,
-                COUNT(CASE WHEN DATE(created_at) >= ? THEN 1 END) as monthly_count,
-                COUNT(CASE WHEN DATE(created_at) >= ? THEN 1 END) as yearly_count,
-                COALESCE(AVG(CASE WHEN DATE(created_at) >= ? THEN amount END), 0) as avg_30d,
-                COALESCE(MAX(CASE WHEN DATE(created_at) >= ? THEN amount END), 0) as peak_30d,
-                COUNT(DISTINCT CASE WHEN DATE(created_at) >= ? THEN user_id END) as current_month_users,
-                COUNT(DISTINCT CASE WHEN DATE(created_at) BETWEEN ? AND ? THEN user_id END) as last_month_users
-            ", [
-                $today,
-                $weekStart, $monthStart, $yearStart,
-                $today,
-                $weekStart, $monthStart, $yearStart,
-                $monthStart, $monthStart,
-                $monthStart,
-                $lastMonthStart, $lastMonthEnd,
-            ])
-            ->first();
+        // Q3: all revenue aggregations in one pass
+        $revenueCounts = $hasPayments
+            ? Payment::query()
+                ->where('status', 'completed')
+                ->selectRaw("
+                    COALESCE(SUM(amount), 0) as total,
+                    COALESCE(SUM(CASE WHEN DATE(created_at) = ? THEN amount ELSE 0 END), 0) as daily,
+                    COALESCE(SUM(CASE WHEN DATE(created_at) >= ? THEN amount ELSE 0 END), 0) as weekly,
+                    COALESCE(SUM(CASE WHEN DATE(created_at) >= ? THEN amount ELSE 0 END), 0) as monthly,
+                    COALESCE(SUM(CASE WHEN DATE(created_at) >= ? THEN amount ELSE 0 END), 0) as yearly,
+                    COUNT(CASE WHEN DATE(created_at) = ? THEN 1 END) as daily_count,
+                    COUNT(CASE WHEN DATE(created_at) >= ? THEN 1 END) as weekly_count,
+                    COUNT(CASE WHEN DATE(created_at) >= ? THEN 1 END) as monthly_count,
+                    COUNT(CASE WHEN DATE(created_at) >= ? THEN 1 END) as yearly_count,
+                    COALESCE(AVG(CASE WHEN DATE(created_at) >= ? THEN amount END), 0) as avg_30d,
+                    COALESCE(MAX(CASE WHEN DATE(created_at) >= ? THEN amount END), 0) as peak_30d,
+                    COUNT(DISTINCT CASE WHEN DATE(created_at) >= ? THEN user_id END) as current_month_users,
+                    COUNT(DISTINCT CASE WHEN DATE(created_at) BETWEEN ? AND ? THEN user_id END) as last_month_users
+                ", [
+                    $today,
+                    $weekStart, $monthStart, $yearStart,
+                    $today,
+                    $weekStart, $monthStart, $yearStart,
+                    $monthStart, $monthStart,
+                    $monthStart,
+                    $lastMonthStart, $lastMonthEnd,
+                ])
+                ->first()
+            : (object) [
+                'total' => 0,
+                'daily' => 0,
+                'weekly' => 0,
+                'monthly' => 0,
+                'yearly' => 0,
+                'daily_count' => 0,
+                'weekly_count' => 0,
+                'monthly_count' => 0,
+                'yearly_count' => 0,
+                'avg_30d' => 0,
+                'peak_30d' => 0,
+                'current_month_users' => 0,
+                'last_month_users' => 0,
+            ];
 
-        // ── Q4: router counts ──────────────────────────────────────────────────
-        $routerCounts = Router::query()
-            ->selectRaw("
-                COUNT(*) as total,
-                SUM(CASE WHEN status='online' THEN 1 ELSE 0 END) as online,
-                SUM(CASE WHEN status='offline' THEN 1 ELSE 0 END) as offline,
-                SUM(CASE WHEN status='provisioning' THEN 1 ELSE 0 END) as provisioning
-            ")
-            ->first();
+        // Q4: router counts
+        $routerCounts = $hasRouters
+            ? Router::query()
+                ->selectRaw("
+                    COUNT(*) as total,
+                    SUM(CASE WHEN status='online' THEN 1 ELSE 0 END) as online,
+                    SUM(CASE WHEN status='offline' THEN 1 ELSE 0 END) as offline,
+                    SUM(CASE WHEN status='provisioning' THEN 1 ELSE 0 END) as provisioning
+                ")
+                ->first()
+            : (object) [
+                'total' => 0,
+                'online' => 0,
+                'offline' => 0,
+                'provisioning' => 0,
+            ];
 
-        // ── Q5: 7-day daily trend (sessions + payments) in 2 batched selects ──
-        $trendRows = $hasUserSessions
+        // Q5: 7-day daily trend (sessions + payments) in batched selects
+        $trendRows = $hasUserSessions && $hasPayments
             ? DB::select("
                 SELECT
                     g.day::date AS date,
@@ -220,26 +246,27 @@ class TenantDashboardController extends Controller
                 ) p ON p.d = g.day::date
                 ORDER BY g.day ASC
             ")
-            : DB::select("
-                SELECT
-                    g.day::date AS date,
-                    0 AS sessions,
-                    COALESCE(p.amt, 0) AS revenue
-                FROM generate_series(
-                    (NOW() - INTERVAL '6 days')::date,
-                    NOW()::date,
-                    INTERVAL '1 day'
-                ) AS g(day)
-                LEFT JOIN (
-                    SELECT DATE(created_at) AS d, SUM(amount) AS amt
-                    FROM payments
-                    WHERE status = 'completed' AND created_at >= NOW() - INTERVAL '6 days'
-                    GROUP BY DATE(created_at)
-                ) p ON p.d = g.day::date
-                ORDER BY g.day ASC
-            ");
+            : ($hasPayments
+                ? DB::select("
+                    SELECT
+                        g.day::date AS date,
+                        0 AS sessions,
+                        COALESCE(p.amt, 0) AS revenue
+                    FROM generate_series(
+                        (NOW() - INTERVAL '6 days')::date,
+                        NOW()::date,
+                        INTERVAL '1 day'
+                    ) AS g(day)
+                    LEFT JOIN (
+                        SELECT DATE(created_at) AS d, SUM(amount) AS amt
+                        FROM payments
+                        WHERE status = 'completed' AND created_at >= NOW() - INTERVAL '6 days'
+                        GROUP BY DATE(created_at)
+                    ) p ON p.d = g.day::date
+                    ORDER BY g.day ASC
+                ")
+                : $this->emptyTrendRows());
 
-        // ── Build trend arrays ─────────────────────────────────────────────────
         $weeklyUsersTrend   = [];
         $weeklyRevenueTrend = [];
         $revenueTrendData   = [];
@@ -261,7 +288,6 @@ class TenantDashboardController extends Controller
             $userTrendData[]    = ['label' => $day, 'count'  => (int) $row->sessions,  'percentage' => round(($row->sessions / $maxUsr) * 100, 2)];
         }
 
-        // ── Derived metrics ────────────────────────────────────────────────────
         $totalRevenue    = (float) ($revenueCounts->total ?? 0);
         $dailyIncome     = (float) ($revenueCounts->daily ?? 0);
         $weeklyIncome    = (float) ($revenueCounts->weekly ?? 0);
@@ -273,7 +299,7 @@ class TenantDashboardController extends Controller
 
         $currentMonthUsers = (int) ($revenueCounts->current_month_users ?? 0);
         $lastMonthUsers    = (int) ($revenueCounts->last_month_users ?? 0);
-        $retainedUsers     = 0; // Would need a subquery — kept as 0 to avoid extra query
+        $retainedUsers     = 0;
         $retentionRate     = $lastMonthUsers > 0 ? round(($currentMonthUsers / $lastMonthUsers) * 100, 2) : 0;
 
         $revenueAverage = count($revenueTrendData) > 0
@@ -300,12 +326,10 @@ class TenantDashboardController extends Controller
             }
         }
 
-        // ── SMS data from cache (no extra DB query) ────────────────────────────
         $smsBalance        = (int) Cache::get('sms_balance', 0);
         $smsTotalPurchased = (int) Cache::get('sms_total_purchased', 0);
         $smsUsed           = $smsTotalPurchased - $smsBalance;
 
-        // ── Build weekly payment breakdown (derived from trend) ────────────────
         $weeklyDailyBreakdown = [];
         $maxWeeklyAmt = max(array_column($weeklyRevenueTrend, 'amount') ?: [1]);
         foreach ($weeklyRevenueTrend as $row) {
@@ -318,7 +342,6 @@ class TenantDashboardController extends Controller
         }
 
         $stats = [
-            // ── KPI fields (legacy shape for useDashboard.js) ──────────────────
             'total_routers'        => (int) ($routerCounts->total ?? 0),
             'online_routers'       => (int) ($routerCounts->online ?? 0),
             'offline_routers'      => (int) ($routerCounts->offline ?? 0),
@@ -342,14 +365,10 @@ class TenantDashboardController extends Controller
             'sms_balance'          => $smsBalance,
             'last_month_users'     => $lastMonthUsers,
             'retained_users'       => $retainedUsers,
-
-            // ── Trend data ─────────────────────────────────────────────────────
             'weekly_users_trend'   => $weeklyUsersTrend,
             'weekly_revenue_trend' => $weeklyRevenueTrend,
             'recent_activities'    => [],
             'online_users'         => [],
-
-            // ── Payment details widget ─────────────────────────────────────────
             'payment_details' => [
                 'daily' => [
                     'amount' => round($dailyIncome, 2),
@@ -377,8 +396,6 @@ class TenantDashboardController extends Controller
                     'monthlyBreakdown' => [],
                 ],
             ],
-
-            // ── SMS expenses widget ────────────────────────────────────────────
             'sms_expenses' => [
                 'sms' => [
                     'totalPurchased' => $smsTotalPurchased,
@@ -397,8 +414,6 @@ class TenantDashboardController extends Controller
                     'averageCostPerSMS' => 0,
                 ],
             ],
-
-            // ── Business analytics widget ──────────────────────────────────────
             'business_analytics' => [
                 'retention' => [
                     'rate'           => $retentionRate,
@@ -415,7 +430,6 @@ class TenantDashboardController extends Controller
                 'userPeak'       => $maxUsr === 1 ? 0 : $maxUsr,
                 'userGrowth'     => $userGrowth,
             ],
-
             'last_updated' => $now->toIso8601String(),
         ];
 
@@ -443,6 +457,35 @@ class TenantDashboardController extends Controller
         );
 
         return (bool) ($result->exists ?? false);
+    }
+
+    private function emptyTrendRows(): array
+    {
+        $rows = [];
+
+        for ($daysAgo = 6; $daysAgo >= 0; $daysAgo--) {
+            $rows[] = (object) [
+                'date' => now()->subDays($daysAgo)->toDateString(),
+                'sessions' => 0,
+                'revenue' => 0,
+            ];
+        }
+
+        return $rows;
+    }
+
+    private function emptyPaginator(Request $request, int $perPage): LengthAwarePaginator
+    {
+        return new LengthAwarePaginator(
+            items: [],
+            total: 0,
+            perPage: $perPage,
+            currentPage: (int) ($request->page ?? 1),
+            options: [
+                'path' => $request->url(),
+                'query' => $request->query(),
+            ]
+        );
     }
 
     /**
@@ -536,6 +579,15 @@ class TenantDashboardController extends Controller
 
         $cacheKey = $this->getListCacheKey(self::KEY_ROUTERS, $tenantId, $request);
 
+        if (! $this->tenantTableExists('routers')) {
+            return response()->json([
+                'success' => true,
+                'data' => [],
+                'cached' => false,
+                'schema_incomplete' => true,
+            ]);
+        }
+
         $routers = Cache::remember($cacheKey, self::LIST_CACHE_TTL_SECONDS, function () {
             return Router::select('id', 'name', 'ip_address', 'model', 'status', 'last_seen', 'location')
                 ->orderByRaw("CASE WHEN status='online' THEN 0 ELSE 1 END")
@@ -570,7 +622,15 @@ class TenantDashboardController extends Controller
         $cacheKey = $this->getListCacheKey(self::KEY_PAYMENTS, $tenantId, $request);
         $perPage = $request->per_page ?? 15;
 
-        // Don't cache if specific filters are applied
+        if (! $this->tenantTableExists('payments')) {
+            return response()->json([
+                'success' => true,
+                'data' => $this->emptyPaginator($request, $perPage),
+                'cached' => false,
+                'schema_incomplete' => true,
+            ]);
+        }
+
         if ($request->has('status') || $request->has('date_from') || $request->has('date_to')) {
             $payments = $this->fetchPaymentsQuery($request, $perPage);
             return response()->json(['success' => true, 'data' => $payments, 'cached' => false]);
@@ -628,9 +688,17 @@ class TenantDashboardController extends Controller
             ], 403);
         }
 
-        // Sessions are volatile - use very short cache (3 seconds)
         $cacheKey = $this->getListCacheKey(self::KEY_SESSIONS, $tenantId, $request);
         $perPage = $request->per_page ?? 15;
+
+        if (! $this->tenantTableExists('user_sessions')) {
+            return response()->json([
+                'success' => true,
+                'data' => $this->emptyPaginator($request, $perPage),
+                'cached' => false,
+                'schema_incomplete' => true,
+            ]);
+        }
 
         $sessions = Cache::remember($cacheKey, 3, function () use ($perPage) {
             return UserSession::with(['user:id,name,username', 'router:id,name'])
@@ -693,7 +761,6 @@ class TenantDashboardController extends Controller
             // For file/array cache, we can't do pattern deletes, so we just clear specific known keys
         }
 
-        // Clear common list cache keys
         for ($page = 1; $page <= 5; $page++) {
             Cache::forget("tenant_users:{$tenantId}:p{$page}:pp15");
             Cache::forget("tenant_packages:{$tenantId}:p{$page}:pp15");
@@ -701,7 +768,6 @@ class TenantDashboardController extends Controller
             Cache::forget("tenant_payments:{$tenantId}:p{$page}:pp15");
         }
 
-        // Also clear dashboard since it contains list data
         self::bustDashboardCache($tenantId);
     }
 
@@ -724,14 +790,12 @@ class TenantDashboardController extends Controller
 
         $key = $keyMap[$entityType];
 
-        // Clear first 5 pages of this entity type
         for ($page = 1; $page <= 5; $page++) {
             for ($perPage = 15; $perPage <= 50; $perPage += 35) {
                 Cache::forget("{$key}:{$tenantId}:p{$page}:pp{$perPage}");
             }
         }
 
-        // If Redis, try pattern delete
         if (Cache::getStore() instanceof \Illuminate\Cache\RedisStore) {
             Cache::getStore()->connection()->del(Cache::getStore()->connection()->keys("{$key}:{$tenantId}:*"));
         }

@@ -1,8 +1,8 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
-// Eager imports — only for components needed on every page load
-import DashboardLayout from '@/modules/common/components/layout/DashboardLayout.vue'
+// Lazy imports — dashboard shell is large enough to keep out of the entry chunk
+const DashboardLayout = () => import('@/modules/common/components/layout/DashboardLayout.vue')
 
 // Lazy imports — everything else is code-split for better performance
 const PackagesView = () => import('@/modules/common/views/public/PackagesView.vue')
