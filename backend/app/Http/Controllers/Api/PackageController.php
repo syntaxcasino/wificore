@@ -296,23 +296,18 @@ class PackageController extends Controller
      */
     private function bustPackageCache(string $tenantId): void
     {
-        // Clear package list cache
         Cache::forget("packages_list_tenant_{$tenantId}");
-        
-        // Clear package-specific caches
+
         $packages = Package::select('id')->get();
         foreach ($packages as $package) {
             Cache::forget("package_{$package->id}_tenant_{$tenantId}");
         }
-        
-        // Clear dashboard stats cache
-        Cache::forget("dashboard_stats_tenant_{$tenantId}");
-        
-        // Clear any voucher caches that might reference packages
+
+        TenantDashboardController::bustEntityCache($tenantId, 'packages');
+        TenantDashboardController::bustDashboardCache($tenantId);
+
         Cache::forget("vouchers_list_tenant_{$tenantId}");
         Cache::forget("voucher_stats_tenant_{$tenantId}");
-        
-        // Clear router package assignments cache
         Cache::tags(["router_packages_{$tenantId}"])->flush();
     }
 }

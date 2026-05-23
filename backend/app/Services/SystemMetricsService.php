@@ -4,10 +4,19 @@ namespace App\Services;
 
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
-use Carbon\Carbon;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Redis;
 
 class SystemMetricsService
 {
+    private const GLOBAL_RESPONSE_TIMES_KEY = 'metrics:response_time:samples';
+    private const ROUTE_RESPONSE_TIMES_PREFIX = 'metrics:response_time:route:';
+    private const ROUTE_SUMMARY_KEY = 'metrics:response_time:routes';
+    private const GLOBAL_SAMPLE_SIZE = 500;
+    private const ROUTE_SAMPLE_SIZE = 120;
+    private const ROUTE_SUMMARY_LIMIT = 25;
+    private const AGGREGATE_TTL_SECONDS = 600;
+
     /**
      * Get real system uptime percentage
      * Calculates based on when the application started tracking
@@ -34,7 +43,7 @@ class SystemMetricsService
             
             return 99.9; // Default for new installations
         } catch (\Exception $e) {
-            \Log::error('Failed to calculate system uptime', ['error' => $e->getMessage()]);
+            Log::error('Failed to calculate system uptime', ['error' => $e->getMessage()]);
             return 99.9;
         }
     }
@@ -67,7 +76,7 @@ class SystemMetricsService
                 'available_formatted' => number_format($freeGB, 2) . 'GB',
             ];
         } catch (\Exception $e) {
-            \Log::error('Failed to get disk space', ['error' => $e->getMessage()]);
+            Log::error('Failed to get disk space', ['error' => $e->getMessage()]);
             return [
                 'total' => 100,
                 'used' => 15,
@@ -86,17 +95,15 @@ class SystemMetricsService
     public static function getAverageResponseTime(): float
     {
         try {
-            // Get recent response times from cache (stored by middleware)
-            $responseTimes = Cache::get('api_response_times', []);
-            
-            if (empty($responseTimes)) {
-                return 0.03; // Default 30ms
+            $averageMs = Cache::get('metrics:response_time:avg');
+
+            if ($averageMs !== null) {
+                return round(((float) $averageMs) / 1000, 4);
             }
-            
-            $average = array_sum($responseTimes) / count($responseTimes);
-            return round($average, 2);
+
+            return 0.03;
         } catch (\Exception $e) {
-            \Log::error('Failed to calculate average response time', ['error' => $e->getMessage()]);
+            Log::error('Failed to calculate average response time', ['error' => $e->getMessage()]);
             return 0.03;
         }
     }
@@ -123,7 +130,7 @@ class SystemMetricsService
             
             return 98.0; // Default good ratio
         } catch (\Exception $e) {
-            \Log::error('Failed to get Redis cache hit ratio', ['error' => $e->getMessage()]);
+            Log::error('Failed to get Redis cache hit ratio', ['error' => $e->getMessage()]);
             return 98.0;
         }
     }
@@ -157,7 +164,7 @@ class SystemMetricsService
             
             return ['active' => 1, 'max' => 100, 'percentage' => 1.0];
         } catch (\Exception $e) {
-            \Log::error('Failed to get database connections', ['error' => $e->getMessage()]);
+            Log::error('Failed to get database connections', ['error' => $e->getMessage()]);
             return ['active' => 1, 'max' => 100, 'percentage' => 1.0];
         }
     }
@@ -185,7 +192,7 @@ class SystemMetricsService
                 'used_formatted' => number_format($usedMB, 2) . 'MB',
             ];
         } catch (\Exception $e) {
-            \Log::error('Failed to get memory usage', ['error' => $e->getMessage()]);
+            Log::error('Failed to get memory usage', ['error' => $e->getMessage()]);
             return [
                 'used' => 128,
                 'limit' => 512,
@@ -236,21 +243,120 @@ class SystemMetricsService
      * Record API response time
      * Call this from middleware to track response times
      */
-    public static function recordResponseTime(float $timeInSeconds): void
+    public static function recordResponseTime(float $durationMs, ?string $routeKey = null): void
     {
-        try {
-            $responseTimes = Cache::get('api_response_times', []);
-            
-            // Keep only last 100 response times
-            if (count($responseTimes) >= 100) {
-                array_shift($responseTimes);
-            }
-            
-            $responseTimes[] = $timeInSeconds;
-            Cache::put('api_response_times', $responseTimes, now()->addSeconds(30));
-        } catch (\Exception $e) {
-            // Silently fail - don't break the request
+        if ($durationMs <= 0) {
+            return;
         }
+
+        try {
+            $roundedDuration = round($durationMs, 2);
+            $globalKey = self::GLOBAL_RESPONSE_TIMES_KEY;
+            $sanitizedRouteKey = self::sanitizeRouteKey($routeKey);
+            $routeListKey = $sanitizedRouteKey !== null ? self::ROUTE_RESPONSE_TIMES_PREFIX.$sanitizedRouteKey : null;
+
+            Redis::pipeline(function ($pipe) use ($globalKey, $roundedDuration, $routeListKey) {
+                $pipe->lpush($globalKey, (string) $roundedDuration);
+                $pipe->ltrim($globalKey, 0, self::GLOBAL_SAMPLE_SIZE - 1);
+                $pipe->expire($globalKey, self::AGGREGATE_TTL_SECONDS);
+
+                if ($routeListKey !== null) {
+                    $pipe->lpush($routeListKey, (string) $roundedDuration);
+                    $pipe->ltrim($routeListKey, 0, self::ROUTE_SAMPLE_SIZE - 1);
+                    $pipe->expire($routeListKey, self::AGGREGATE_TTL_SECONDS);
+                }
+            });
+
+            if (Cache::add('metrics:response_time:recompute', 1, 5)) {
+                self::refreshResponseTimeAggregates($sanitizedRouteKey);
+            }
+        } catch (\Throwable $e) {
+            Log::debug('Failed to record response time metric', ['error' => $e->getMessage()]);
+        }
+    }
+
+    private static function refreshResponseTimeAggregates(?string $routeKey = null): void
+    {
+        $globalSamples = self::readSamples(self::GLOBAL_RESPONSE_TIMES_KEY);
+        $globalMetrics = self::calculateLatencyMetrics($globalSamples);
+
+        Cache::put('metrics:response_time:avg', $globalMetrics['avg'], now()->addSeconds(self::AGGREGATE_TTL_SECONDS));
+        Cache::put('metrics:response_time:p95', $globalMetrics['p95'], now()->addSeconds(self::AGGREGATE_TTL_SECONDS));
+        Cache::put('metrics:response_time:p99', $globalMetrics['p99'], now()->addSeconds(self::AGGREGATE_TTL_SECONDS));
+        Cache::put('api_response_times', array_slice($globalSamples, 0, 100), now()->addSeconds(self::AGGREGATE_TTL_SECONDS));
+
+        if ($routeKey === null) {
+            return;
+        }
+
+        $routeSamples = self::readSamples(self::ROUTE_RESPONSE_TIMES_PREFIX.$routeKey);
+        if ($routeSamples === []) {
+            return;
+        }
+
+        $routeMetrics = self::calculateLatencyMetrics($routeSamples);
+        $summary = Cache::get(self::ROUTE_SUMMARY_KEY, []);
+        $summary[$routeKey] = [
+            'avg' => $routeMetrics['avg'],
+            'p95' => $routeMetrics['p95'],
+            'p99' => $routeMetrics['p99'],
+            'samples' => count($routeSamples),
+            'updated_at' => now()->toIso8601String(),
+        ];
+
+        uasort($summary, static fn (array $left, array $right): int => $right['p99'] <=> $left['p99']);
+        $summary = array_slice($summary, 0, self::ROUTE_SUMMARY_LIMIT, true);
+
+        Cache::put(self::ROUTE_SUMMARY_KEY, $summary, now()->addSeconds(self::AGGREGATE_TTL_SECONDS));
+    }
+
+    private static function readSamples(string $key): array
+    {
+        $samples = Redis::lrange($key, 0, self::GLOBAL_SAMPLE_SIZE - 1);
+
+        return array_values(array_filter(array_map(static function ($value): float {
+            return round((float) $value, 2);
+        }, $samples), static fn (float $value): bool => $value >= 0));
+    }
+
+    private static function calculateLatencyMetrics(array $samples): array
+    {
+        if ($samples === []) {
+            return [
+                'avg' => 30.0,
+                'p95' => 45.0,
+                'p99' => 78.0,
+            ];
+        }
+
+        sort($samples, SORT_NUMERIC);
+
+        return [
+            'avg' => round(array_sum($samples) / count($samples), 2),
+            'p95' => self::percentile($samples, 95),
+            'p99' => self::percentile($samples, 99),
+        ];
+    }
+
+    private static function percentile(array $sortedSamples, int $percentile): float
+    {
+        if ($sortedSamples === []) {
+            return 0.0;
+        }
+
+        $index = (int) ceil((count($sortedSamples) * $percentile) / 100) - 1;
+        $index = max(0, min($index, count($sortedSamples) - 1));
+
+        return round((float) $sortedSamples[$index], 2);
+    }
+
+    private static function sanitizeRouteKey(?string $routeKey): ?string
+    {
+        if ($routeKey === null || $routeKey === '') {
+            return null;
+        }
+
+        return substr(preg_replace('/[^A-Za-z0-9_.:-]+/', '_', $routeKey) ?? 'unknown', 0, 120);
     }
 
     /**
@@ -263,7 +369,7 @@ class SystemMetricsService
             $currentDowntime = Cache::get('system_downtime_seconds', 0);
             Cache::put('system_downtime_seconds', $currentDowntime + $seconds, now()->addSeconds(30));
         } catch (\Exception $e) {
-            \Log::error('Failed to record downtime', ['error' => $e->getMessage()]);
+            Log::error('Failed to record downtime', ['error' => $e->getMessage()]);
         }
     }
 }

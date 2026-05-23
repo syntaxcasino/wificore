@@ -778,8 +778,7 @@ class RouterController extends Controller
         Router $router,
         VictoriaMetricsClient $vm,
         TenantContext $tenantContext,
-        RouterMetricsService $metricsService,
-        MikrotikSnmpService $snmpService
+        RouterMetricsService $metricsService
     )
     {
         try {
@@ -797,27 +796,7 @@ class RouterController extends Controller
             $hasLive = !empty($live);
 
             if ($hasLive) {
-                $live['source'] = 'victoriametrics';
-            }
-
-            // Direct SNMP fallback: when VictoriaMetrics has no series for this router
-            // (Telegraf not yet collecting or SNMP unreachable), poll the router directly.
-            if (!$hasLive && $router->snmp_enabled !== false) {
-                try {
-                    $snmpLive = $snmpService->fetchLiveData($router);
-                    if (!empty($snmpLive) && ($snmpLive['status'] ?? '') !== 'offline') {
-                        $live = $snmpLive;
-                        $hasLive = true;
-                        $live['source'] = 'snmp_direct';
-                        // Cache for 30 s so FetchRouterLiveData and liveBatch also benefit
-                        Cache::put("router_live_data_{$routerId}", $live, now()->addSeconds(30));
-                    }
-                } catch (\Throwable $snmpErr) {
-                    Log::debug('Direct SNMP fallback failed', [
-                        'router_id' => $routerId,
-                        'error' => $snmpErr->getMessage(),
-                    ]);
-                }
+                $live['source'] = $live['source'] ?? 'victoriametrics';
             }
 
             // Prefer the richer active_connections metric when available, but
@@ -870,6 +849,7 @@ class RouterController extends Controller
                 'hotspots' => [],
                 'radius_servers' => [],
                 'active_connections' => $activeConnections,
+                'is_stale' => !$hasLive,
             ]);
             
         } catch (\Exception $e) {

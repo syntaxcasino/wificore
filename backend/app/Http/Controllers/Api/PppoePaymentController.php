@@ -94,8 +94,9 @@ class PppoePaymentController extends Controller
                 // Update user payment status
                 $this->activateUserAfterPayment($pppoeUser, $payment, $tenantId);
 
-                // CACHE BUST: Clear tenant dashboard cache so revenue shows immediately
-                TenantDashboardController::bustDashboardCache($tenantId);
+                // CACHE BUST: keep tenant revenue widgets and payments list fresh immediately
+                TenantDashboardController::bustDashboardCache((string) $tenantId);
+                TenantDashboardController::bustEntityCache((string) $tenantId, 'payments');
 
                 Log::info('Payment auto-verified', [
                     'payment_id' => $payment->id,

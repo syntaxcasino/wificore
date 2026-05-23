@@ -303,25 +303,17 @@ class VoucherController extends Controller
      */
     private function bustVoucherCache(string $tenantId): void
     {
-        // Clear voucher list cache
         Cache::forget("vouchers_list_tenant_{$tenantId}");
-        
-        // Clear voucher stats cache
         Cache::forget("voucher_stats_tenant_{$tenantId}");
-        
-        // Clear dashboard stats cache (might include voucher counts)
-        Cache::forget("dashboard_stats_tenant_{$tenantId}");
-        
-        // Clear package caches (vouchers reference packages)
-        Cache::forget("packages_list_tenant_{$tenantId}");
-        
-        // Clear any batch-specific caches
+
+        TenantDashboardController::bustDashboardCache($tenantId);
+        TenantDashboardController::bustEntityCache($tenantId, 'packages');
+
         $vouchers = Voucher::select('batch_id')->distinct()->whereNotNull('batch_id')->get();
         foreach ($vouchers as $voucher) {
             Cache::forget("voucher_batch_{$voucher->batch_id}_tenant_{$tenantId}");
         }
-        
-        // Clear search and filter caches
+
         Cache::tags(["voucher_search_{$tenantId}"])->flush();
         Cache::tags(["voucher_filters_{$tenantId}"])->flush();
     }
