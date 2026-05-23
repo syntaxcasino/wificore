@@ -142,6 +142,37 @@ class PppoePortalController extends Controller
         }
         $token = $pppoeUser->createPortalToken($tokenTenantId);
 
+        // Resolve package name inside a tenant transaction so the search_path is set.
+        // The package relation may not be loaded in memory (cache-path and mapping-path
+        // users skip eager-loading), and a lazy-load outside tenant context hits the
+        // public schema which has no `packages` table → SQLSTATE 42P01.
+        $packageName = null;
+        if ($pppoeUser->relationLoaded('package')) {
+            $packageName = $pppoeUser->package?->name;
+        } elseif ($pppoeUser->package_id && $tokenTenantId !== '') {
+            try {
+                $packageTenant = Tenant::query()
+                    ->whereKey($tokenTenantId)
+                    ->whereRaw('is_active = true')
+                    ->first(['id', 'schema_name', 'schema_created']);
+
+                if ($packageTenant) {
+                    $packageName = DB::transaction(function () use ($packageTenant, $pppoeUser) {
+                        DB::connection()->recordsHaveBeenModified();
+                        return $this->tenantContext->runInTenantContext($packageTenant, function () use ($pppoeUser) {
+                            return $pppoeUser->package?->name;
+                        });
+                    });
+                }
+            } catch (\Throwable $e) {
+                Log::warning('PPPoE portal: failed to resolve package name', [
+                    'username' => $pppoeUser->username,
+                    'package_id' => $pppoeUser->package_id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
         // OPTIMIZATION: Pre-warm dashboard cache for faster first load
         $this->warmDashboardCache($pppoeUser);
 
@@ -161,7 +192,7 @@ class PppoePortalController extends Controller
                 'full_name' => $pppoeUser->getBillingName(),
                 'email' => $pppoeUser->getBillingEmail(),
                 'phone' => $pppoeUser->getBillingPhone(),
-                'package_name' => $pppoeUser->package?->name,
+                'package_name' => $packageName,
                 'status' => $pppoeUser->status,
                 'payment_status' => $pppoeUser->payment_status,
                 'expiration_date' => $pppoeUser->expires_at,
@@ -463,7 +494,7 @@ class PppoePortalController extends Controller
             ->where('schema_created', true)
             ->orderBy('updated_at', 'desc')
             ->limit(100)
-            ->get(['id', 'schema_name']);
+            ->get(['id', 'schema_name', 'schema_created']);
 
         foreach ($tenants as $tenant) {
             $user = $this->findPppoeUserInTenant($tenant, $identifier);
