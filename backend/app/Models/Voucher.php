@@ -14,10 +14,13 @@ class Voucher extends Model
 
     protected $fillable = [
         'code',
+        'value',
+        'package_duration_days',
         'package_id',
         'router_id',
         'status',
         'used_by',
+        'used_by_type',
         'used_at',
         'expires_at',
         'prefix',
