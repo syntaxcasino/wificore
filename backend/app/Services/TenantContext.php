@@ -209,7 +209,15 @@ class TenantContext
             $result = DB::connection()->getReadPdo() === DB::connection()->getPdo()
                 ? DB::selectOne("SHOW search_path")
                 : DB::table('tenants')->useWritePdo()->getConnection()->selectOne("SHOW search_path");
-            $this->originalSearchPath = $result->search_path ?? 'public';
+            $raw = $result->search_path ?? 'public';
+            // PostgreSQL's default search_path is '"$user", public'. The "$user" pseudo-schema
+            // is not a real schema name and SET LOCAL rejects it on an aborted transaction.
+            // Normalize by keeping only simple alphanumeric/underscore schema tokens.
+            $parts = array_filter(
+                array_map('trim', explode(',', $raw)),
+                fn (string $p) => preg_match('/^[a-z0-9_]{1,63}$/', $p) === 1
+            );
+            $this->originalSearchPath = implode(', ', $parts) ?: 'public';
         }
 
         // Use SET LOCAL so the search_path is scoped to the current transaction.
