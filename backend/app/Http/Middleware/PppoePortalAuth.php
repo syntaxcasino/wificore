@@ -165,7 +165,7 @@ class PppoePortalAuth
         $tenant = Tenant::query()
             ->whereKey($tenantId)
             ->where('is_active', true)
-            ->first();
+            ->first(['id', 'schema_name', 'schema_created']);
 
         if (!$tenant || !$tenant->schema_name) {
             return null;
@@ -206,7 +206,7 @@ class PppoePortalAuth
                     $query->orWhere('schema_name', (string) $mapping->schema_name);
                 }
             })
-            ->first(['id', 'schema_name']);
+            ->first(['id', 'schema_name', 'schema_created']);
 
         if (!$tenant || !$tenant->schema_name) {
             return null;
@@ -230,7 +230,8 @@ class PppoePortalAuth
         $tenants = Tenant::query()
             ->where('is_active', true)
             ->whereNotNull('schema_name')
-            ->get(['id', 'schema_name']);
+            ->where('schema_created', true)
+            ->get(['id', 'schema_name', 'schema_created']);
 
         foreach ($tenants as $tenant) {
             $user = DB::transaction(function () use ($tenant, $userId) {

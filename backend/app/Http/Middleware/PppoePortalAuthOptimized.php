@@ -82,9 +82,25 @@ class PppoePortalAuthOptimized
         // Attach PPPoE user to request
         $request->attributes->set('pppoe_user', $pppoeUser);
 
-        // OPTIMIZATION: Lazy tenant resolution - only set if needed by downstream
         $resolvedTenantId = $pppoeUser->tenant_id ?? $this->resolveTenantIdForUser($pppoeUser);
         $request->attributes->set('tenant_id', $resolvedTenantId);
+
+        if ($resolvedTenantId) {
+            try {
+                $this->tenantContext->setTenantById((string) $resolvedTenantId);
+            } catch (\Throwable $e) {
+                Log::error('Failed to set tenant context for optimized PPPoE portal request', [
+                    'tenant_id' => $resolvedTenantId,
+                    'user_id' => $pppoeUser->id,
+                    'error' => $e->getMessage(),
+                ]);
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unable to load account context',
+                ], 500);
+            }
+        }
 
         return $next($request);
     }
@@ -106,7 +122,7 @@ class PppoePortalAuthOptimized
             $tenant = Tenant::query()
                 ->whereKey($tenantId)
                 ->where('is_active', true)
-                ->first(['id', 'schema_name']);
+                ->first(['id', 'schema_name', 'schema_created']);
 
             if ($tenant) {
                 try {
@@ -162,12 +178,15 @@ class PppoePortalAuthOptimized
             return null;
         }
 
-        // OPTIMIZATION: Try to find user via mapping first (fastest)
-        $pppoeUser = $this->findPppoeUserByIdViaMapping((string) $userId);
-        
-        // Fallback: Direct tenant lookup if we have tenant ID
-        if (!$pppoeUser && $isV2 && $tenantId) {
+        $pppoeUser = null;
+
+        // Prefer the tenant embedded in v2 tokens before consulting mapping fallback.
+        if ($isV2 && $tenantId) {
             $pppoeUser = $this->findPppoeUserByTenantAndId((string) $tenantId, (string) $userId);
+        }
+
+        if (!$pppoeUser) {
+            $pppoeUser = $this->findPppoeUserByIdViaMapping((string) $userId);
         }
 
         // Last resort: Legacy scan (should rarely happen)
@@ -222,7 +241,8 @@ class PppoePortalAuthOptimized
         $tenant = Tenant::query()
             ->whereKey($tenantId)
             ->where('is_active', true)
-            ->first(['id', 'schema_name']);
+            ->where('schema_created', true)
+            ->first(['id', 'schema_name', 'schema_created']);
 
         if (!$tenant || !$tenant->schema_name) {
             return null;
@@ -262,6 +282,7 @@ class PppoePortalAuthOptimized
 
         $tenant = Tenant::query()
             ->where('is_active', true)
+            ->where('schema_created', true)
             ->where(function ($query) use ($mapping) {
                 if (!empty($mapping->tenant_id)) {
                     $query->whereKey((string) $mapping->tenant_id);
@@ -270,7 +291,7 @@ class PppoePortalAuthOptimized
                     $query->orWhere('schema_name', (string) $mapping->schema_name);
                 }
             })
-            ->first(['id', 'schema_name']);
+            ->first(['id', 'schema_name', 'schema_created']);
 
         if (!$tenant || !$tenant->schema_name) {
             return null;
@@ -303,9 +324,10 @@ class PppoePortalAuthOptimized
         $tenants = Tenant::query()
             ->where('is_active', true)
             ->whereNotNull('schema_name')
+            ->where('schema_created', true)
             ->orderBy('updated_at', 'desc') // Recent activity first
             ->limit(50) // Don't scan unlimited tenants
-            ->get(['id', 'schema_name']);
+            ->get(['id', 'schema_name', 'schema_created']);
 
         foreach ($tenants as $tenant) {
             try {
