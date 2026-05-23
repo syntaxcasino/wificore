@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\Response;
+use Throwable;
 
 /**
  * OPTIMIZED PPPoE Portal Authentication Middleware
@@ -87,14 +88,38 @@ class PppoePortalAuthOptimized
 
         if ($resolvedTenantId) {
             try {
-                $this->tenantContext->setTenantById((string) $resolvedTenantId);
-            } catch (\Throwable $e) {
-                Log::error('Failed to set tenant context for optimized PPPoE portal request', [
+                // Wrap the entire downstream request in a DB::transaction() so that
+                // SET LOCAL search_path persists across all queries under PgBouncer
+                // transaction pooling (pool_mode=transaction). Without this the
+                // search_path is lost between this middleware and the controller,
+                // causing 42P01 on every tenant-schema table.
+                return DB::transaction(function () use ($request, $next, $resolvedTenantId, $pppoeUser) {
+                    DB::connection()->recordsHaveBeenModified();
+                    try {
+                        $this->tenantContext->setTenantById((string) $resolvedTenantId);
+                    } catch (Throwable $e) {
+                        Log::error('Failed to set tenant context for optimized PPPoE portal request', [
+                            'tenant_id' => $resolvedTenantId,
+                            'user_id' => $pppoeUser->id,
+                            'error' => $e->getMessage(),
+                        ]);
+                        return response()->json([
+                            'success' => false,
+                            'message' => 'Unable to load account context',
+                        ], 500);
+                    }
+                    try {
+                        return $next($request);
+                    } finally {
+                        $this->tenantContext->clearTenant();
+                    }
+                });
+            } catch (Throwable $e) {
+                Log::error('Failed to process PPPoE portal request in tenant transaction', [
                     'tenant_id' => $resolvedTenantId,
                     'user_id' => $pppoeUser->id,
                     'error' => $e->getMessage(),
                 ]);
-
                 return response()->json([
                     'success' => false,
                     'message' => 'Unable to load account context',

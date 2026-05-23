@@ -12,6 +12,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\Response;
+use Throwable;
 
 /**
  * PPPoE Portal Authentication Middleware
@@ -58,14 +59,33 @@ class PppoePortalAuth
         $request->attributes->set('tenant_id', $resolvedTenantId);
         if ($resolvedTenantId) {
             try {
-                $this->tenantContext->setTenantById($resolvedTenantId);
-            } catch (\Throwable $e) {
-                Log::error('Failed to set tenant context for PPPoE portal request', [
+                return DB::transaction(function () use ($request, $next, $resolvedTenantId, $pppoeUser) {
+                    DB::connection()->recordsHaveBeenModified();
+                    try {
+                        $this->tenantContext->setTenantById($resolvedTenantId);
+                    } catch (Throwable $e) {
+                        Log::error('Failed to set tenant context for PPPoE portal request', [
+                            'tenant_id' => $resolvedTenantId,
+                            'user_id' => $pppoeUser->id,
+                            'error' => $e->getMessage(),
+                        ]);
+                        return response()->json([
+                            'success' => false,
+                            'message' => 'Unable to load account context',
+                        ], 500);
+                    }
+                    try {
+                        return $next($request);
+                    } finally {
+                        $this->tenantContext->clearTenant();
+                    }
+                });
+            } catch (Throwable $e) {
+                Log::error('Failed to process PPPoE portal request in tenant transaction', [
                     'tenant_id' => $resolvedTenantId,
                     'user_id' => $pppoeUser->id,
                     'error' => $e->getMessage(),
                 ]);
-
                 return response()->json([
                     'success' => false,
                     'message' => 'Unable to load account context',
