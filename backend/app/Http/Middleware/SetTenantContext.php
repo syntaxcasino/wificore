@@ -75,21 +75,12 @@ class SetTenantContext
                         return $next($request);
                     }
 
-                    // In session-pooled environments, wrapping every tenant request in a
-                    // transaction only inflates request latency and ties up pool slots.
-                    // Keep the old transaction-scoped behavior behind an env flag for
-                    // deployments still using PgBouncer transaction pooling.
-                    if (! $this->shouldWrapRequestInTransaction()) {
-                        $this->tenantContext->setTenant($tenant);
-                        // Force sticky-write mode so all subsequent SELECTs in this request
-                        // use the same write PDO that received the SET search_path above.
-                        // Without this, the read PDO (a separate connection to the read
-                        // replica) would be used for SELECT queries and it still has
-                        // search_path=public, causing "relation does not exist" errors.
-                        \Illuminate\Support\Facades\DB::connection()->recordsHaveBeenModified();
-                        return $next($request);
-                    }
-
+                    // PgBouncer write connection runs in transaction pooling mode.
+                    // SET LOCAL search_path only persists within an explicit transaction;
+                    // outside a transaction PgBouncer may route the next statement to a
+                    // different backend connection that still has search_path=public.
+                    // recordsHaveBeenModified() forces sticky-write so all SELECTs inside
+                    // the transaction use the same write PDO (not the read replica).
                     return \Illuminate\Support\Facades\DB::transaction(function () use ($request, $tenant, $next) {
                         \Illuminate\Support\Facades\DB::connection()->recordsHaveBeenModified();
                         $this->tenantContext->setTenant($tenant);
@@ -116,11 +107,6 @@ class SetTenantContext
         return $next($request);
     }
 
-    private function shouldWrapRequestInTransaction(): bool
-    {
-        return (bool) env('DB_REQUEST_SCOPE_TRANSACTION', false);
-    }
-    
     /**
      * Perform any final actions for the request lifecycle.
      *
