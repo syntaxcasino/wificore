@@ -47,9 +47,9 @@ class DatabaseServiceProvider extends ServiceProvider
         try {
             // Set connection pool configuration
             $this->configureConnectionPool();
-            
-            // Optimize database queries
-            $this->optimizeQueries();
+
+            // Keep optional query logging isolated from connection tuning.
+            $this->configureQueryLogging();
         } catch (\Exception $e) {
             // Silently fail if database is not available (e.g., during build)
             Log::debug('Database optimization skipped: ' . $e->getMessage());
@@ -74,19 +74,12 @@ class DatabaseServiceProvider extends ServiceProvider
     /**
      * Optimize database queries
      */
-    protected function optimizeQueries(): void
+    protected function configureQueryLogging(): void
     {
         // Do not retain every query in memory in production.
         // This can cause gradual slowdowns and intermittent 500 responses.
         if ((bool) env('DB_QUERY_LOG', false) && !app()->environment('production')) {
             DB::enableQueryLog();
         }
-
-        // Apply session-level optimizer hints directly via PDO->exec() to avoid
-        // triggering recordsHaveBeenModified() which would disable read replica routing.
-        $pdo = DB::connection()->getPdo();
-        $pdo->exec("SET synchronous_commit = '" . env('DB_SESSION_SYNCHRONOUS_COMMIT', 'on') . "'");
-        $pdo->exec("SET effective_cache_size = '1GB'");
-        $pdo->exec("SET random_page_cost = 1.1");
     }
 }

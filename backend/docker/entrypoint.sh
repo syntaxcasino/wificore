@@ -34,6 +34,37 @@ if ! php -m | grep -qi "^pgsql$"; then
   echo "⚠️  Optional PHP extension 'pgsql' is not loaded (continuing with pdo_pgsql)."
 fi
 
+configure_php_fpm_runtime() {
+  local target="/usr/local/etc/php-fpm.d/zzz-runtime-tuning.conf"
+
+  cat > "${target}" <<EOF
+[www]
+pm = ${PHP_FPM_PM:-dynamic}
+pm.max_children = ${PHP_FPM_PM_MAX_CHILDREN:-24}
+pm.start_servers = ${PHP_FPM_PM_START_SERVERS:-6}
+pm.min_spare_servers = ${PHP_FPM_PM_MIN_SPARE_SERVERS:-4}
+pm.max_spare_servers = ${PHP_FPM_PM_MAX_SPARE_SERVERS:-12}
+pm.max_requests = ${PHP_FPM_PM_MAX_REQUESTS:-750}
+pm.process_idle_timeout = ${PHP_FPM_PM_PROCESS_IDLE_TIMEOUT:-10s}
+pm.status_path = ${PHP_FPM_PM_STATUS_PATH:-/fpm-status}
+ping.path = ${PHP_FPM_PING_PATH:-/fpm-ping}
+ping.response = ${PHP_FPM_PING_RESPONSE:-pong}
+request_terminate_timeout = ${PHP_FPM_REQUEST_TERMINATE_TIMEOUT:-120s}
+request_slowlog_timeout = ${PHP_FPM_REQUEST_SLOWLOG_TIMEOUT:-5s}
+slowlog = /var/www/html/storage/logs/php-fpm-slow.log
+php_admin_value[error_log] = /var/www/html/storage/logs/php-fpm-error.log
+php_admin_flag[log_errors] = on
+php_admin_value[memory_limit] = ${PHP_MEMORY_LIMIT:-192M}
+php_admin_value[max_execution_time] = ${PHP_MAX_EXECUTION_TIME:-120}
+EOF
+
+  echo "✅ PHP-FPM runtime tuning written to ${target}"
+}
+
+if [ "${APP_RUNTIME_ROLE:-web}" = "web" ] || [ "${APP_RUNTIME_ROLE:-web}" = "sse" ]; then
+  configure_php_fpm_runtime
+fi
+
 # =============================================================================
 # 0.5 SUPERVISOR ROLE — Enable only the process set needed by this container
 # =============================================================================
