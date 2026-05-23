@@ -3,6 +3,7 @@
 namespace App\Traits;
 
 use App\Models\Tenant;
+use App\Support\RouteBinding;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -25,6 +26,10 @@ trait TenantRouteBindable
 {
     public function resolveRouteBinding($value, $field = null)
     {
+        if (RouteBinding::isSentinel($value)) {
+            return null;
+        }
+
         $user = request()->user();
 
         if ($user && $user->tenant_id) {

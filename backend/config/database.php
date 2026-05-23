@@ -18,6 +18,8 @@ $normalizeEnvNullable = static function (mixed $value): mixed {
 
 $redisUsername = $normalizeEnvNullable(env('REDIS_USERNAME'));
 $redisPassword = $normalizeEnvNullable(env('REDIS_PASSWORD'));
+$pgbouncerEmulatePrepares = env('DB_EMULATE_PREPARES', true);
+$radiusPgbouncerEmulatePrepares = env('RADIUS_DB_EMULATE_PREPARES', $pgbouncerEmulatePrepares);
 
 return [
 
@@ -136,11 +138,11 @@ return [
                 // Set connection timeout (P2 Security Fix)
                 PDO::ATTR_TIMEOUT => env('DB_TIMEOUT', 5),
                 
-                // CRITICAL: Disable prepared statement emulation for PostgreSQL 18 compatibility
-                // PostgreSQL 18 has strict type checking and emulated prepares send integers
-                // for boolean values, causing "operator does not exist: boolean = integer" errors
-                // PgBouncer session pooling mode is required when this is false
-                PDO::ATTR_EMULATE_PREPARES => false,
+                // PgBouncer rotates backend connections, so server-side prepared
+                // statements can disappear between requests/jobs and trigger
+                // "prepared statement ... does not exist". Use client-side prepares
+                // on pooled connections unless the app talks to Postgres directly.
+                PDO::ATTR_EMULATE_PREPARES => $pgbouncerEmulatePrepares,
                 
                 // Set error mode to exceptions
                 PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
@@ -206,7 +208,7 @@ return [
             'options' => [
                 PDO::ATTR_PERSISTENT => env('RADIUS_DB_PERSISTENT', false),
                 PDO::ATTR_TIMEOUT => env('RADIUS_DB_TIMEOUT', 3), // Fast timeout for portal responsiveness
-                PDO::ATTR_EMULATE_PREPARES => false,
+                PDO::ATTR_EMULATE_PREPARES => $radiusPgbouncerEmulatePrepares,
                 PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
                 PDO::ATTR_AUTOCOMMIT => true,
                 PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_OBJ,
@@ -260,7 +262,7 @@ return [
 
     'redis' => [
 
-        'client' => env('REDIS_CLIENT', 'phpredis'),
+        'client' => env('REDIS_CLIENT', 'predis'),
 
         'options' => [
             'cluster' => env('REDIS_CLUSTER', 'redis'),

@@ -25,9 +25,10 @@ This document ensures all environment and docker-compose files remain synchroniz
 | DB_TIMEOUT | 5 | 5 | 5 | **MUST be identical** |
 | DB_STATEMENT_TIMEOUT | 30000 | 30000 | 30000 | **MUST be identical** |
 | DB_LOCK_TIMEOUT | 10000 | 10000 | 10000 | **MUST be identical** |
-| DB_PERSISTENT | true | true | true | **MUST be identical** |
+| DB_PERSISTENT | false | false | false | **MUST be identical** |
+| DB_EMULATE_PREPARES | true | true | true | **MUST be identical for PgBouncer-backed connections** |
 | **Redis** |
-| REDIS_CLIENT | phpredis | phpredis | phpredis | **MUST be identical** |
+| REDIS_CLIENT | predis | predis | predis | **MUST be identical** |
 | REDIS_HOST | wificore-redis | wificore-redis | wificore-redis | **MUST be identical** |
 | REDIS_PORT | 6379 | 6379 | 6379 | **MUST be identical** |
 | REDIS_PASSWORD | Empty | Value | Value | **NEVER commit actual passwords** |

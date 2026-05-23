@@ -18,7 +18,17 @@ require_php_ext() {
 
 require_php_ext "PDO"
 require_php_ext "pdo_pgsql"
-require_php_ext "redis"
+
+REDIS_CLIENT_DRIVER="${REDIS_CLIENT:-predis}"
+if [ "${REDIS_CLIENT_DRIVER}" = "phpredis" ]; then
+  require_php_ext "redis"
+else
+  if php -m | grep -qi "^redis$"; then
+    echo "✅ PHP extension 'redis' is loaded (client: ${REDIS_CLIENT_DRIVER})"
+  else
+    echo "ℹ️  PHP extension 'redis' is not loaded; continuing with REDIS_CLIENT=${REDIS_CLIENT_DRIVER}"
+  fi
+fi
 
 if ! php -m | grep -qi "^pgsql$"; then
   echo "⚠️  Optional PHP extension 'pgsql' is not loaded (continuing with pdo_pgsql)."
@@ -28,20 +38,70 @@ fi
 # 0.5 SUPERVISOR ROLE — Enable only the process set needed by this container
 # =============================================================================
 APP_RUNTIME_ROLE="${APP_RUNTIME_ROLE:-web}"
+QUEUE_WORKER_GROUP="${QUEUE_WORKER_GROUP:-all}"
+
+disable_all_queue_confs() {
+  rm -f /etc/supervisor/conf.d/laravel-queue*.conf
+}
+
+keep_only_queue_group() {
+  local target="/etc/supervisor/conf.d/laravel-queue-${QUEUE_WORKER_GROUP}.conf"
+
+  if [ ! -f "${target}" ]; then
+    echo "❌ FATAL: Unknown QUEUE_WORKER_GROUP='${QUEUE_WORKER_GROUP}'"
+    echo "   Expected one of: all, core, router, metrics, realtime"
+    exit 1
+  fi
+
+  rm -f /etc/supervisor/conf.d/laravel-queue.conf
+
+  for conffile in /etc/supervisor/conf.d/laravel-queue-*.conf; do
+    [ -f "${conffile}" ] || continue
+    if [ "${conffile}" != "${target}" ]; then
+      rm -f "${conffile}"
+    fi
+  done
+}
 
 case "${APP_RUNTIME_ROLE}" in
   web)
-    rm -f /etc/supervisor/conf.d/laravel-queue.conf
-    echo "🧩 Runtime role: web (PHP-FPM + scheduler only)"
+    rm -f /etc/supervisor/conf.d/laravel-scheduler.conf
+    disable_all_queue_confs
+    echo "🧩 Runtime role: web (PHP-FPM only)"
+    ;;
+  sse)
+    rm -f /etc/supervisor/conf.d/laravel-scheduler.conf
+    disable_all_queue_confs
+    echo "🧩 Runtime role: sse (dedicated PHP-FPM streaming backend)"
+    ;;
+  scheduler)
+    rm -f /etc/supervisor/conf.d/php-fpm.conf
+    disable_all_queue_confs
+    echo "🧩 Runtime role: scheduler (schedule:work only)"
     ;;
   queue)
     rm -f /etc/supervisor/conf.d/php-fpm.conf
     rm -f /etc/supervisor/conf.d/laravel-scheduler.conf
-    echo "🧩 Runtime role: queue (queue workers only)"
+    if [ "${QUEUE_WORKER_GROUP}" = "all" ] || [ -z "${QUEUE_WORKER_GROUP}" ]; then
+      rm -f /etc/supervisor/conf.d/laravel-queue-core.conf \
+            /etc/supervisor/conf.d/laravel-queue-router.conf \
+            /etc/supervisor/conf.d/laravel-queue-metrics.conf \
+            /etc/supervisor/conf.d/laravel-queue-realtime.conf
+      echo "🧩 Runtime role: queue (all worker groups)"
+    else
+      keep_only_queue_group
+      echo "🧩 Runtime role: queue (${QUEUE_WORKER_GROUP} worker group)"
+    fi
+    ;;
+  migrate)
+    rm -f /etc/supervisor/conf.d/php-fpm.conf
+    rm -f /etc/supervisor/conf.d/laravel-scheduler.conf
+    disable_all_queue_confs
+    echo "🧩 Runtime role: migrate (one-shot migrations and seeders)"
     ;;
   *)
     echo "❌ FATAL: Unknown APP_RUNTIME_ROLE='${APP_RUNTIME_ROLE}'"
-    echo "   Expected one of: web, queue"
+    echo "   Expected one of: web, sse, scheduler, queue, migrate"
     exit 1
     ;;
 esac
@@ -228,6 +288,17 @@ if [ "${AUTO_MIGRATE}" = "true" ] || [ "${AUTO_MIGRATE}" = "1" ]; then
       echo "📦 Database has $MIGRATION_RECORDS existing migrations — running pending only"
     fi
 
+    SHOULD_RUN_SEEDERS=false
+    if [ "${FRESH_INSTALL}" = "true" ]; then
+      SHOULD_RUN_SEEDERS=true
+      echo "🌱 Fresh install requested — seeders will run after migrations"
+    elif [ "$TABLE_EXISTS" != "t" ] || [ "$MIGRATION_RECORDS" -eq 0 ]; then
+      SHOULD_RUN_SEEDERS=true
+      echo "🌱 Fresh database detected — seeders will run after migrations"
+    else
+      echo "⏭️  Existing database detected — skipping seeders"
+    fi
+
     # Run migrations with direct DB connection (bypass PgBouncer for DDL)
     echo "🔄 Running database migrations..."
     MIGRATION_EXIT=0
@@ -250,7 +321,7 @@ if [ "${AUTO_MIGRATE}" = "true" ] || [ "${AUTO_MIGRATE}" = "1" ]; then
     echo ""
 
     # Run seeders
-    if [ "${AUTO_SEED}" = "true" ] || [ "${AUTO_SEED}" = "1" ]; then
+    if { [ "${AUTO_SEED}" = "true" ] || [ "${AUTO_SEED}" = "1" ]; } && [ "$SHOULD_RUN_SEEDERS" = "true" ]; then
       echo "🌱 Running database seeders..."
       SEED_EXIT=0
       su -s /bin/sh www-data -c "DB_HOST=${MIGRATE_DB_HOST} DB_PORT=${MIGRATE_DB_PORT} php artisan db:seed --force" || SEED_EXIT=$?
@@ -263,6 +334,8 @@ if [ "${AUTO_MIGRATE}" = "true" ] || [ "${AUTO_MIGRATE}" = "1" ]; then
         exit 1
       fi
       echo "✅ Seeders completed successfully"
+      echo ""
+    elif [ "${AUTO_SEED}" = "true" ] || [ "${AUTO_SEED}" = "1" ]; then
       echo ""
     fi
 
@@ -295,6 +368,31 @@ if [ "${AUTO_MIGRATE}" = "true" ] || [ "${AUTO_MIGRATE}" = "1" ]; then
         ON CONFLICT (id) DO UPDATE SET locked_by = '${CONTAINER_ID}', locked_at = now();" > /dev/null 2>&1 || true
 
       echo "🔒 Migration lock acquired after timeout — running migrations"
+
+      RECOVERY_TABLE_EXISTS=$(PGPASSWORD="${DB_PASSWORD}" psql -h "${MIGRATE_DB_HOST}" -p "${MIGRATE_DB_PORT}" -U "${DB_USERNAME}" -d "${DB_DATABASE}" -t -A -c "
+        SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='migrations');" 2>/dev/null || echo "f")
+      if [ "$RECOVERY_TABLE_EXISTS" = "t" ]; then
+        RECOVERY_MIGRATION_RECORDS=$(PGPASSWORD="${DB_PASSWORD}" psql -h "${MIGRATE_DB_HOST}" -p "${MIGRATE_DB_PORT}" -U "${DB_USERNAME}" -d "${DB_DATABASE}" -t -A -c "
+          SELECT COUNT(*)::text FROM migrations;" 2>/dev/null || echo "0")
+      else
+        RECOVERY_MIGRATION_RECORDS=0
+      fi
+
+      if ! [[ "$RECOVERY_MIGRATION_RECORDS" =~ ^[0-9]+$ ]]; then
+        RECOVERY_MIGRATION_RECORDS=0
+      fi
+
+      RECOVERY_SHOULD_RUN_SEEDERS=false
+      if [ "${FRESH_INSTALL}" = "true" ]; then
+        RECOVERY_SHOULD_RUN_SEEDERS=true
+        echo "🌱 Fresh install requested — seeders will run after migrations"
+      elif [ "$RECOVERY_TABLE_EXISTS" != "t" ] || [ "$RECOVERY_MIGRATION_RECORDS" -eq 0 ]; then
+        RECOVERY_SHOULD_RUN_SEEDERS=true
+        echo "🌱 Fresh database detected — seeders will run after migrations"
+      else
+        echo "⏭️  Existing database detected — skipping seeders"
+      fi
+
       echo "🔄 Running database migrations..."
       MIGRATION_EXIT=0
       if [ "${FRESH_INSTALL}" = "true" ]; then
@@ -314,7 +412,7 @@ if [ "${AUTO_MIGRATE}" = "true" ] || [ "${AUTO_MIGRATE}" = "1" ]; then
       echo "✅ Migrations completed successfully (after timeout recovery)"
 
       # Run seeders if enabled
-      if [ "${AUTO_SEED}" = "true" ] || [ "${AUTO_SEED}" = "1" ]; then
+      if { [ "${AUTO_SEED}" = "true" ] || [ "${AUTO_SEED}" = "1" ]; } && [ "$RECOVERY_SHOULD_RUN_SEEDERS" = "true" ]; then
         echo "🌱 Running database seeders..."
         SEED_EXIT=0
         su -s /bin/sh www-data -c "DB_HOST=${MIGRATE_DB_HOST} DB_PORT=${MIGRATE_DB_PORT} php artisan db:seed --force" || SEED_EXIT=$?
@@ -326,6 +424,8 @@ if [ "${AUTO_MIGRATE}" = "true" ] || [ "${AUTO_MIGRATE}" = "1" ]; then
           exit 1
         fi
         echo "✅ Seeders completed successfully"
+      elif [ "${AUTO_SEED}" = "true" ] || [ "${AUTO_SEED}" = "1" ]; then
+        echo ""
       fi
 
       # Release lock
@@ -351,6 +451,12 @@ if [ "${AUTO_MIGRATE}" = "true" ] || [ "${AUTO_MIGRATE}" = "1" ]; then
 fi
 
 echo "✅ Backend initialization complete!"
+
+if [ "${APP_RUNTIME_ROLE}" = "migrate" ]; then
+  echo "🏁 Migrator role finished successfully."
+  exit 0
+fi
+
 echo "🎉 Starting services..."
 echo ""
 

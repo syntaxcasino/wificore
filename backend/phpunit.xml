@@ -41,6 +41,7 @@
         <env name="DB_USERNAME" value="admin" force="true"/>
         <env name="DB_PASSWORD" value="secret" force="true"/>
         <env name="DB_PERSISTENT" value="false" force="true"/>
+        <env name="DB_EMULATE_PREPARES" value="true" force="true"/>
         <env name="MAIL_MAILER" value="array"/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="QUEUE_CONNECTION" value="sync"/>

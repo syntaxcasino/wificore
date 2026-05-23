@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\UpdateDashboardStatsJob;
 use App\Models\Package;
 use App\Models\Router;
 use App\Models\Payment;
@@ -16,6 +17,7 @@ class TenantDashboardController extends Controller
     private const CACHE_TTL_SECONDS = 30;
     private const CACHE_LOCK_SECONDS = 10;
     private const LIST_CACHE_TTL_SECONDS = 5; // Short TTL for list endpoints
+    private const REFRESH_DISPATCH_LOCK_SECONDS = 15;
 
     // Cache key patterns
     private const KEY_DASHBOARD = 'tenant_dashboard_v2';
@@ -53,6 +55,19 @@ class TenantDashboardController extends Controller
                 return response()->json(['success' => true, 'data' => $cached, 'cached' => true]);
             }
 
+            $precomputed = Cache::get($this->getPrecomputedCacheKey($tenantId));
+            if (is_array($precomputed) && !empty($precomputed)) {
+                Cache::put($cacheKey, $precomputed, self::CACHE_TTL_SECONDS);
+                $this->dispatchDashboardRefresh($tenantId);
+
+                return response()->json([
+                    'success' => true,
+                    'data' => $precomputed,
+                    'cached' => true,
+                    'precomputed' => true,
+                ]);
+            }
+
             // Cache stampede protection: only one process regenerates
             $lock  = Cache::lock($lockKey, self::CACHE_LOCK_SECONDS);
             $stats = $lock->get(function () use ($tenantId, $cacheKey) {
@@ -85,6 +100,19 @@ class TenantDashboardController extends Controller
         }
     }
 
+    private function dispatchDashboardRefresh(string $tenantId): void
+    {
+        $lockKey = "dashboard:request-refresh-lock:{$tenantId}";
+        if (Cache::add($lockKey, 1, self::REFRESH_DISPATCH_LOCK_SECONDS)) {
+            UpdateDashboardStatsJob::dispatch($tenantId)->onQueue('dashboard');
+        }
+    }
+
+    private function getPrecomputedCacheKey(string $tenantId): string
+    {
+        return "dashboard_stats_{$tenantId}";
+    }
+
     /**
      * Compute dashboard statistics with optimized queries.
      * Returns a shape compatible with the frontend useDashboard.js mapping.
@@ -99,6 +127,7 @@ class TenantDashboardController extends Controller
         $yearStart  = $now->copy()->startOfYear()->toDateString();
         $lastMonthStart = $now->copy()->subMonth()->startOfMonth()->toDateString();
         $lastMonthEnd   = $now->copy()->subMonth()->endOfMonth()->toDateString();
+        $hasUserSessions = $this->tenantTableExists('user_sessions');
 
         // ── Q1: user counts (public schema, filter by tenant_id) ──────────────
         // NOTE: Tenant schema users table doesn't have soft deletes (no deleted_at column)
@@ -107,16 +136,25 @@ class TenantDashboardController extends Controller
             ->first();
 
         // ── Q2: session counts + hotspot/pppoe split (tenant schema) ──────────
-        $sessionCounts = UserSession::query()
-            ->selectRaw("
-                SUM(CASE WHEN status='active' AND (end_time IS NULL OR end_time > NOW()) THEN 1 ELSE 0 END) as active_total,
-                SUM(CASE WHEN status='active' AND (end_time IS NULL OR end_time > NOW()) AND voucher IS NOT NULL THEN 1 ELSE 0 END) as hotspot,
-                SUM(CASE WHEN status='active' AND (end_time IS NULL OR end_time > NOW()) AND voucher IS NULL THEN 1 ELSE 0 END) as pppoe,
-                COALESCE(SUM(data_used), 0) as data_used_bytes,
-                COALESCE(SUM(data_upload), 0) as data_upload_bytes,
-                COALESCE(SUM(data_download), 0) as data_download_bytes
-            ")
-            ->first();
+        $sessionCounts = $hasUserSessions
+            ? UserSession::query()
+                ->selectRaw("
+                    SUM(CASE WHEN status='active' AND (end_time IS NULL OR end_time > NOW()) THEN 1 ELSE 0 END) as active_total,
+                    SUM(CASE WHEN status='active' AND (end_time IS NULL OR end_time > NOW()) AND voucher IS NOT NULL THEN 1 ELSE 0 END) as hotspot,
+                    SUM(CASE WHEN status='active' AND (end_time IS NULL OR end_time > NOW()) AND voucher IS NULL THEN 1 ELSE 0 END) as pppoe,
+                    COALESCE(SUM(data_used), 0) as data_used_bytes,
+                    COALESCE(SUM(data_upload), 0) as data_upload_bytes,
+                    COALESCE(SUM(data_download), 0) as data_download_bytes
+                ")
+                ->first()
+            : (object) [
+                'active_total' => 0,
+                'hotspot' => 0,
+                'pppoe' => 0,
+                'data_used_bytes' => 0,
+                'data_upload_bytes' => 0,
+                'data_download_bytes' => 0,
+            ];
 
         // ── Q3: all revenue aggregations in one pass ───────────────────────────
         $revenueCounts = Payment::query()
@@ -157,30 +195,49 @@ class TenantDashboardController extends Controller
             ->first();
 
         // ── Q5: 7-day daily trend (sessions + payments) in 2 batched selects ──
-        $trendRows = DB::select("
-            SELECT
-                g.day::date AS date,
-                COALESCE(s.cnt, 0) AS sessions,
-                COALESCE(p.amt, 0) AS revenue
-            FROM generate_series(
-                (NOW() - INTERVAL '6 days')::date,
-                NOW()::date,
-                INTERVAL '1 day'
-            ) AS g(day)
-            LEFT JOIN (
-                SELECT DATE(start_time) AS d, COUNT(*) AS cnt
-                FROM user_sessions
-                WHERE start_time >= NOW() - INTERVAL '6 days'
-                GROUP BY DATE(start_time)
-            ) s ON s.d = g.day::date
-            LEFT JOIN (
-                SELECT DATE(created_at) AS d, SUM(amount) AS amt
-                FROM payments
-                WHERE status = 'completed' AND created_at >= NOW() - INTERVAL '6 days'
-                GROUP BY DATE(created_at)
-            ) p ON p.d = g.day::date
-            ORDER BY g.day ASC
-        ");
+        $trendRows = $hasUserSessions
+            ? DB::select("
+                SELECT
+                    g.day::date AS date,
+                    COALESCE(s.cnt, 0) AS sessions,
+                    COALESCE(p.amt, 0) AS revenue
+                FROM generate_series(
+                    (NOW() - INTERVAL '6 days')::date,
+                    NOW()::date,
+                    INTERVAL '1 day'
+                ) AS g(day)
+                LEFT JOIN (
+                    SELECT DATE(start_time) AS d, COUNT(*) AS cnt
+                    FROM user_sessions
+                    WHERE start_time >= NOW() - INTERVAL '6 days'
+                    GROUP BY DATE(start_time)
+                ) s ON s.d = g.day::date
+                LEFT JOIN (
+                    SELECT DATE(created_at) AS d, SUM(amount) AS amt
+                    FROM payments
+                    WHERE status = 'completed' AND created_at >= NOW() - INTERVAL '6 days'
+                    GROUP BY DATE(created_at)
+                ) p ON p.d = g.day::date
+                ORDER BY g.day ASC
+            ")
+            : DB::select("
+                SELECT
+                    g.day::date AS date,
+                    0 AS sessions,
+                    COALESCE(p.amt, 0) AS revenue
+                FROM generate_series(
+                    (NOW() - INTERVAL '6 days')::date,
+                    NOW()::date,
+                    INTERVAL '1 day'
+                ) AS g(day)
+                LEFT JOIN (
+                    SELECT DATE(created_at) AS d, SUM(amount) AS amt
+                    FROM payments
+                    WHERE status = 'completed' AND created_at >= NOW() - INTERVAL '6 days'
+                    GROUP BY DATE(created_at)
+                ) p ON p.d = g.day::date
+                ORDER BY g.day ASC
+            ");
 
         // ── Build trend arrays ─────────────────────────────────────────────────
         $weeklyUsersTrend   = [];
@@ -365,12 +422,27 @@ class TenantDashboardController extends Controller
         if ($cacheKey) {
             try {
                 Cache::put($cacheKey, $stats, self::CACHE_TTL_SECONDS);
+                Cache::put($this->getPrecomputedCacheKey($tenantId), $stats, self::CACHE_TTL_SECONDS);
             } catch (\Exception $e) {
                 // Redis unavailable — stats are still returned, just not cached
             }
         }
 
         return $stats;
+    }
+
+    private function tenantTableExists(string $tableName): bool
+    {
+        $result = DB::selectOne(
+            "SELECT EXISTS (
+                SELECT FROM information_schema.tables
+                WHERE table_schema = current_schema()
+                  AND table_name = ?
+            ) AS exists",
+            [$tableName]
+        );
+
+        return (bool) ($result->exists ?? false);
     }
 
     /**
@@ -600,6 +672,7 @@ class TenantDashboardController extends Controller
     public static function bustDashboardCache(string $tenantId): void
     {
         Cache::forget("tenant_dashboard_v2:{$tenantId}");
+        Cache::forget("dashboard_stats_{$tenantId}");
     }
 
     /**

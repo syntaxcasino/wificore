@@ -126,16 +126,25 @@ class SystemAdminSeeder extends Seeder
             ]
         );
 
-        // Add to radius_user_schema_mapping (use public schema for system admin) — idempotent
-        DB::table('radius_user_schema_mapping')->updateOrInsert(
-            ['username' => $username],
+        // Avoid Query Builder updateOrInsert here because PostgreSQL can coerce
+        // booleans to integer literals in generated SQL for updates.
+        DB::statement(
+            'INSERT INTO public.radius_user_schema_mapping (username, schema_name, tenant_id, user_role, is_active, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT (username) DO UPDATE SET
+                schema_name = EXCLUDED.schema_name,
+                tenant_id = EXCLUDED.tenant_id,
+                user_role = EXCLUDED.user_role,
+                is_active = EXCLUDED.is_active,
+                updated_at = EXCLUDED.updated_at',
             [
-                'schema_name' => 'public',
-                'tenant_id' => null,
-                'user_role' => User::ROLE_SYSTEM_ADMIN,
-                'is_active' => true,
-                'created_at' => now(),
-                'updated_at' => now(),
+                $username,
+                'public',
+                null,
+                User::ROLE_SYSTEM_ADMIN,
+                true,
+                now(),
+                now(),
             ]
         );
     }

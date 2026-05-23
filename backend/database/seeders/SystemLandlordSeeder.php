@@ -183,17 +183,27 @@ class SystemLandlordSeeder extends Seeder
                 ]
             );
 
-            // Add schema mapping so FreeRADIUS can find this user
-            DB::table('radius_user_schema_mapping')->updateOrInsert(
-                ['username' => $user->username],
+            // Avoid Query Builder updateOrInsert here because PostgreSQL can coerce
+            // booleans to integer literals in generated SQL for updates.
+            DB::statement(
+                'INSERT INTO public.radius_user_schema_mapping (username, pppoe_user_id, schema_name, tenant_id, user_role, is_active, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                 ON CONFLICT (username) DO UPDATE SET
+                    pppoe_user_id = EXCLUDED.pppoe_user_id,
+                    schema_name = EXCLUDED.schema_name,
+                    tenant_id = EXCLUDED.tenant_id,
+                    user_role = EXCLUDED.user_role,
+                    is_active = EXCLUDED.is_active,
+                    updated_at = EXCLUDED.updated_at',
                 [
-                    'pppoe_user_id' => null,
-                    'schema_name' => 'public',
-                    'tenant_id' => null,
-                    'user_role' => User::ROLE_SYSTEM_ADMIN,
-                    'is_active' => true,
-                    'created_at' => now(),
-                    'updated_at' => now(),
+                    $user->username,
+                    null,
+                    'public',
+                    null,
+                    User::ROLE_SYSTEM_ADMIN,
+                    true,
+                    now(),
+                    now(),
                 ]
             );
 

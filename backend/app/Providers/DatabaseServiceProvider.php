@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use App\Database\PostgresConnection;
+use Illuminate\Database\Connection;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Database\Events\QueryExecuted;
@@ -14,7 +16,9 @@ class DatabaseServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        Connection::resolverFor('pgsql', function ($connection, $database, $prefix, $config) {
+            return new PostgresConnection($connection, $database, $prefix, $config);
+        });
     }
 
     /**
