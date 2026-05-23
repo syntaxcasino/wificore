@@ -1432,11 +1432,14 @@ class PppoePortalController extends Controller
                 return false;
             }
 
-            $portalPassword = $this->tenantContext->runInTenantContext($tenant, function () use ($username) {
-                return DB::table('radcheck')
-                    ->where('username', $username)
-                    ->where('attribute', 'Portal-Password')
-                    ->value('value');
+            $portalPassword = DB::transaction(function () use ($tenant, $username) {
+                DB::connection()->recordsHaveBeenModified();
+                return $this->tenantContext->runInTenantContext($tenant, function () use ($username) {
+                    return DB::table('radcheck')
+                        ->where('username', $username)
+                        ->where('attribute', 'Portal-Password')
+                        ->value('value');
+                });
             });
 
             if (!$portalPassword) {
