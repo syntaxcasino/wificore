@@ -15,20 +15,18 @@ RUN set -eux; \
             unzip \
             git \
             curl \
+        && apk add --no-cache --virtual .phpize-deps $PHPIZE_DEPS \
         && apk add --no-cache --virtual .build-deps \
             libzip-dev \
             postgresql-dev \
-            linux-headers \
-            autoconf \
-            g++ \
-            make && break; \
+            linux-headers && break; \
         if [ "$attempt" -eq 5 ]; then \
             exit 1; \
         fi; \
         sleep 5; \
     done \
  && docker-php-ext-install -j$(nproc) sockets zip pdo pdo_pgsql ftp \
- && apk del .build-deps
+ && apk del .build-deps .phpize-deps
 
 # Install Composer
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
@@ -67,15 +65,13 @@ WORKDIR /var/www/html
 # Install runtime dependencies
 RUN set -eux; \
     for attempt in 1 2 3 4 5; do \
-        apk add --no-cache --virtual .build-deps \
+        apk add --no-cache --virtual .phpize-deps $PHPIZE_DEPS \
+        && apk add --no-cache --virtual .build-deps \
             postgresql-dev \
             libzip-dev \
             icu-dev \
             net-snmp-dev \
             linux-headers \
-            autoconf \
-            g++ \
-            make \
         && apk add --no-cache \
             postgresql-client \
             libzip \
@@ -93,9 +89,10 @@ RUN set -eux; \
         fi; \
         sleep 5; \
     done \
- && rm -rf /var/cache/apk/* \
  && docker-php-ext-install -j$(nproc) pdo_pgsql sockets zip opcache ftp snmp intl \
- && apk del .build-deps \
+ && pecl install redis \
+ && docker-php-ext-enable redis \
+ && apk del .build-deps .phpize-deps \
  && rm -rf /tmp/* /var/cache/apk/*
 
 # Copy custom PHP-FPM and OPcache configuration
