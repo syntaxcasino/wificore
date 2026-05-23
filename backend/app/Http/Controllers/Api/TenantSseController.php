@@ -35,6 +35,8 @@ class TenantSseController extends Controller
 {
     private const MAX_DURATION   = 300;  // 5 min — client must reconnect (browser does this automatically)
     private const HEARTBEAT_SEC  = 25;   // Keep-alive ping interval
+    private const REDIS_RETRY_DELAY_US = 500000;
+    private const STREAM_STOP_SIGNAL = '__tenant_sse_stop__';
 
     /** Sub-channels that are valid for tenant SSE */
     private const VALID_CHANNELS = [
@@ -72,7 +74,7 @@ class TenantSseController extends Controller
             return $this->errorStream('No tenant assigned', 403);
         }
 
-        $tenant = Tenant::where('id', $tenantId)->where('is_active', true)->first();
+        $tenant = Tenant::where('id', $tenantId)->whereRaw('is_active = true')->first();
         if (!$tenant) {
             return $this->errorStream('Tenant not found or inactive', 403);
         }
@@ -112,93 +114,110 @@ class TenantSseController extends Controller
                 // Heartbeat before blocking subscribe
                 $this->sendHeartbeat($eventId++);
 
-                // Create a dedicated Redis connection for blocking SUBSCRIBE.
-                // Long-lived SSE subscribers should not share the default app
-                // connection or a finite read timeout.
-                try {
-                    $redis = Redis::connection('sse');
-                } catch (\Exception $e) {
-                    $this->logRedisIssueOnce(
-                        $tenantId,
-                        'connection_failed',
-                        'Tenant SSE: Redis connection failed',
-                        [],
-                        $e
-                    );
-                    $this->sseWrite('error', $eventId++, ['message' => 'Redis connection failed']);
-                    return;
-                }
-
-                // Subscribe to all requested channels
                 Log::info('Tenant SSE: Starting Redis subscribe', [
                     'tenant_id' => $tenantId,
                     'channels' => $redisChannels,
                 ]);
 
-                try {
-                    $redis->subscribe($redisChannels, function ($message, $channel) use (
-                        &$eventId, $startTime, $redis, $tenantId
-                    ) {
-                        Log::debug('Tenant SSE: Received message from Redis', [
-                            'channel' => $channel,
-                            'message_preview' => substr($message, 0, 200),
-                        ]);
+                while (true) {
+                    if (time() - $startTime > self::MAX_DURATION) {
+                        Log::info('Tenant SSE: Max duration reached, closing stream', ['tenant_id' => $tenantId]);
+                        $this->sseWrite('timeout', $eventId++, ['message' => 'Stream timeout — reconnecting']);
+                        break;
+                    }
 
-                        // Hard timeout — force client reconnect
-                        if (time() - $startTime > self::MAX_DURATION) {
-                            Log::info('Tenant SSE: Max duration reached, closing stream', ['tenant_id' => $tenantId]);
-                            $this->sseWrite('timeout', $eventId++, ['message' => 'Stream timeout — reconnecting']);
-                            $redis->disconnect();
-                            return;
-                        }
+                    if (connection_aborted()) {
+                        Log::info('Tenant SSE: Connection aborted before subscribe', ['tenant_id' => $tenantId]);
+                        break;
+                    }
 
-                        if (connection_aborted()) {
-                            Log::info('Tenant SSE: Connection aborted', ['tenant_id' => $tenantId]);
-                            $redis->disconnect();
-                            return;
-                        }
+                    $redis = null;
 
-                        $payload = json_decode($message, true);
-                        if (!$payload) {
-                            Log::debug('Tenant SSE: Failed to decode message', [
+                    try {
+                        // Create a dedicated Redis connection for blocking SUBSCRIBE.
+                        // Long-lived SSE subscribers should not share the default app connection.
+                        $redis = Redis::connection('sse');
+
+                        $redis->subscribe($redisChannels, function ($message, $channel) use (&$eventId, $startTime, $tenantId) {
+                            if (time() - $startTime > self::MAX_DURATION || connection_aborted()) {
+                                throw new \RuntimeException(self::STREAM_STOP_SIGNAL);
+                            }
+
+                            Log::debug('Tenant SSE: Received message from Redis', [
+                                'channel' => $channel,
                                 'message_preview' => substr($message, 0, 200),
                             ]);
-                            return;
-                        }
 
-                        Log::debug('Tenant SSE: Decoded payload', [
-                            'event' => $payload['event'] ?? 'unknown',
-                            'has_tenant_id' => isset($payload['data']['tenant_id']),
-                        ]);
+                            $payload = json_decode($message, true);
+                            if (!$payload) {
+                                Log::debug('Tenant SSE: Failed to decode message', [
+                                    'message_preview' => substr($message, 0, 200),
+                                ]);
+                                return;
+                            }
 
-                        // Security: verify tenantId in payload matches the authenticated tenant
-                        if (isset($payload['data']['tenant_id']) && (string) $payload['data']['tenant_id'] !== (string) $tenantId) {
-                            Log::debug('SSE: tenant mismatch in Redis message', [
-                                'expected' => $tenantId,
-                                'got'      => $payload['data']['tenant_id'],
+                            Log::debug('Tenant SSE: Decoded payload', [
+                                'event' => $payload['event'] ?? 'unknown',
+                                'has_tenant_id' => isset($payload['data']['tenant_id']),
                             ]);
-                            return;
+
+                            // Security: verify tenantId in payload matches the authenticated tenant
+                            if (isset($payload['data']['tenant_id']) && (string) $payload['data']['tenant_id'] !== (string) $tenantId) {
+                                Log::debug('SSE: tenant mismatch in Redis message', [
+                                    'expected' => $tenantId,
+                                    'got'      => $payload['data']['tenant_id'],
+                                ]);
+                                return;
+                            }
+
+                            $this->sseWrite($payload['event'] ?? 'update', $eventId++, [
+                                'channel' => $payload['channel'] ?? '',
+                                'data'    => $payload['data'] ?? [],
+                                'ts'      => $payload['ts']   ?? now()->toIso8601String(),
+                            ]);
+                        });
+
+                        break;
+                    } catch (\Throwable $e) {
+                        if ($this->isIntentionalStreamStop($e)) {
+                            break;
                         }
 
-                        $this->sseWrite($payload['event'] ?? 'update', $eventId++, [
-                            'channel' => $payload['channel'] ?? '',
-                            'data'    => $payload['data'] ?? [],
-                            'ts'      => $payload['ts']   ?? now()->toIso8601String(),
-                        ]);
-                    });
-                } catch (\Exception $e) {
-                    $this->logRedisIssueOnce(
-                        $tenantId,
-                        'subscribe_error',
-                        'Tenant SSE: Redis subscribe error',
-                        [
-                            'trace' => $e->getTraceAsString(),
-                        ],
-                        $e
-                    );
-                    $this->sseWrite('error', $eventId++, ['message' => 'Stream error: ' . $e->getMessage()]);
-                } finally {
-                    $redis->disconnect();
+                        if ($this->isRecoverableRedisSubscribeException($e) && !connection_aborted()) {
+                            $this->logRedisIssueOnce(
+                                $tenantId,
+                                'subscribe_error',
+                                'Tenant SSE: transient Redis subscribe error',
+                                [],
+                                $e
+                            );
+                            usleep(self::REDIS_RETRY_DELAY_US);
+                            continue;
+                        }
+
+                        $this->logRedisIssueOnce(
+                            $tenantId,
+                            'subscribe_error',
+                            'Tenant SSE: Redis subscribe error',
+                            [
+                                'trace' => $e->getTraceAsString(),
+                            ],
+                            $e
+                        );
+                        $this->sseWrite('error', $eventId++, ['message' => 'Stream error: ' . $e->getMessage()]);
+                        break;
+                    } finally {
+                        if ($redis !== null) {
+                            try {
+                                $redis->disconnect();
+                            } catch (\Throwable $disconnectError) {
+                                Log::debug('Tenant SSE: Redis disconnect failed', [
+                                    'tenant_id' => $tenantId,
+                                    'error' => $disconnectError->getMessage(),
+                                ]);
+                            }
+                        }
+                    }
                 }
 
                 Log::info('Tenant SSE: Redis subscribe ended', ['tenant_id' => $tenantId]);
@@ -333,6 +352,33 @@ class TenantSseController extends Controller
         }
 
         Log::debug($message, $context);
+    }
+
+    private function isIntentionalStreamStop(\Throwable $e): bool
+    {
+        return $e->getMessage() === self::STREAM_STOP_SIGNAL;
+    }
+
+    private function isRecoverableRedisSubscribeException(\Throwable $e): bool
+    {
+        $message = strtolower($e->getMessage());
+
+        foreach ([
+            'read error on connection',
+            'broken pipe',
+            'connection reset by peer',
+            'connection refused',
+            'connection timed out',
+            'operation timed out',
+            'server went away',
+            'socket error on read socket',
+        ] as $needle) {
+            if (str_contains($message, $needle)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
 }
