@@ -93,6 +93,7 @@ RUN set -eux; \
         fi; \
         sleep 5; \
     done \
+ && rm -rf /var/cache/apk/* \
  && docker-php-ext-install -j$(nproc) pdo_pgsql sockets zip opcache ftp snmp intl \
  && apk del .build-deps \
  && rm -rf /tmp/* /var/cache/apk/*
