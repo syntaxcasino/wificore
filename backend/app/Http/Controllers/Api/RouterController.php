@@ -1365,7 +1365,7 @@ class RouterController extends Controller
                 // CRITICAL: Router table is in tenant schema, but we don't know which tenant yet
                 // Fallback: search across all tenant schemas using write connection only
                 // OPTIMIZATION: Only search tenants that have been active recently (last 30 days)
-                $tenants = Tenant::where('is_active', true)
+                $tenants = Tenant::whereRaw('is_active = true')
                     ->where(function($q) {
                         $q->whereNull('last_active_at')
                           ->orWhere('last_active_at', '>=', now()->subDays(30));

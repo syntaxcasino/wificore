@@ -195,7 +195,7 @@ class LandlordBillingController extends Controller
      */
     public function setTenantRates(Request $request, string $tenantId): JsonResponse
     {
-        $tenant = Tenant::where('is_landlord', false)->findOrFail($tenantId);
+        $tenant = Tenant::whereRaw('is_landlord = false')->findOrFail($tenantId);
 
         $validator = Validator::make($request->all(), [
             'pppoe_rate' => 'nullable|numeric|min:0',
@@ -242,7 +242,7 @@ class LandlordBillingController extends Controller
      */
     public function applyOverride(Request $request, string $tenantId): JsonResponse
     {
-        $tenant = Tenant::where('is_landlord', false)->findOrFail($tenantId);
+        $tenant = Tenant::whereRaw('is_landlord = false')->findOrFail($tenantId);
 
         $validator = Validator::make($request->all(), [
             'reason' => 'required|string|max:500',
@@ -284,7 +284,7 @@ class LandlordBillingController extends Controller
      */
     public function removeOverride(string $tenantId): JsonResponse
     {
-        $tenant = Tenant::where('is_landlord', false)->findOrFail($tenantId);
+        $tenant = Tenant::whereRaw('is_landlord = false')->findOrFail($tenantId);
 
         $success = $this->billingService->removeLandlordOverride($tenant);
 
@@ -307,8 +307,8 @@ class LandlordBillingController extends Controller
      */
     public function getOverriddenTenants(): JsonResponse
     {
-        $tenants = Tenant::where('is_landlord', false)
-            ->where('landlord_override', true)
+        $tenants = Tenant::whereRaw('is_landlord = false')
+            ->whereRaw('landlord_override = true')
             ->get(['id', 'name', 'slug', 'landlord_override_reason', 'landlord_override_until', 'subscription_ends_at']);
 
         return response()->json([
@@ -333,7 +333,7 @@ class LandlordBillingController extends Controller
      */
     public function reactivateTenant(Request $request, string $tenantId): JsonResponse
     {
-        $tenant = Tenant::where('is_landlord', false)->findOrFail($tenantId);
+        $tenant = Tenant::whereRaw('is_landlord = false')->findOrFail($tenantId);
 
         $validator = Validator::make($request->all(), [
             'extend_days' => 'nullable|integer|min:1|max:365',
@@ -382,7 +382,7 @@ class LandlordBillingController extends Controller
      */
     public function calculateTenantSubscription(string $tenantId): JsonResponse
     {
-        $tenant = Tenant::where('is_landlord', false)->findOrFail($tenantId);
+        $tenant = Tenant::whereRaw('is_landlord = false')->findOrFail($tenantId);
 
         $subscriptionCost = $this->billingService->calculateSubscriptionCost($tenant);
 
@@ -401,7 +401,7 @@ class LandlordBillingController extends Controller
      */
     public function generateInvoice(Request $request, string $tenantId): JsonResponse
     {
-        $tenant = Tenant::where('is_landlord', false)->findOrFail($tenantId);
+        $tenant = Tenant::whereRaw('is_landlord = false')->findOrFail($tenantId);
 
         $validator = Validator::make($request->all(), [
             'due_days' => 'nullable|integer|min:1|max:30',
@@ -462,7 +462,7 @@ class LandlordBillingController extends Controller
      */
     public function recordPayment(Request $request, string $tenantId): JsonResponse
     {
-        $tenant = Tenant::where('is_landlord', false)->findOrFail($tenantId);
+        $tenant = Tenant::whereRaw('is_landlord = false')->findOrFail($tenantId);
 
         $validator = Validator::make($request->all(), [
             'amount' => 'required|numeric|min:0',
@@ -549,8 +549,8 @@ class LandlordBillingController extends Controller
     {
         $warningDays = config('saas.enforcement.warning_days', 5);
 
-        $tenants = Tenant::where('is_landlord', false)
-            ->where('is_active', true)
+        $tenants = Tenant::whereRaw('is_landlord = false')
+            ->whereRaw('is_active = true')
             ->whereNull('suspended_at')
             ->whereNotNull('subscription_ends_at')
             ->where('subscription_ends_at', '>', now())
@@ -580,7 +580,7 @@ class LandlordBillingController extends Controller
      */
     public function getSuspendedTenants(): JsonResponse
     {
-        $tenants = Tenant::where('is_landlord', false)
+        $tenants = Tenant::whereRaw('is_landlord = false')
             ->whereNotNull('suspended_at')
             ->get(['id', 'name', 'slug', 'suspended_at', 'suspension_reason', 'subscription_ends_at']);
 

@@ -40,8 +40,7 @@ class UpdateVpnStatusJob implements ShouldQueue
         // If no tenant ID is set, this is the main scheduler job.
         // We need to dispatch a job for each active tenant.
         if (!$this->tenantId) {
-            $tenants = Tenant::query()
-                ->where('is_active', true)
+            $tenants = Tenant::active()
                 ->useWritePdo()
                 ->get();
             

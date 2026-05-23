@@ -89,7 +89,7 @@ class UnifiedStreamController extends Controller
 
         // Verify tenant exists and is active
         $tenant = Tenant::where('id', $tenantId)
-            ->where('is_active', true)
+            ->whereRaw('is_active = true')
             ->first();
 
         if (!$tenant) {

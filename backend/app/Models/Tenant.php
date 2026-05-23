@@ -244,8 +244,16 @@ class Tenant extends Model
      */
     public function scopeActive($query)
     {
-        return $query->where('is_active', true)
+        return $query->whereRaw('is_active = true')
             ->whereNull('suspended_at');
+    }
+
+    public function scopeNonLandlord($query)
+    {
+        return $query->whereRaw('is_landlord = false')
+            ->where(function ($q) {
+                $q->whereRaw('is_default = false')->orWhereNull('is_default');
+            });
     }
 
     /**
