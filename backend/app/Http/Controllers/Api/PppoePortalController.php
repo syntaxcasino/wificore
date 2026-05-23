@@ -177,8 +177,8 @@ class PppoePortalController extends Controller
         if ($tenantId && $tenantId !== '') {
             $tenant = Tenant::query()
                 ->whereKey($tenantId)
-                ->where('is_active', true)
-                ->first(['id', 'schema_name']);
+                ->whereRaw('is_active = true')
+                ->first(['id', 'schema_name', 'schema_created']);
             
             if ($tenant) {
                 return DB::transaction(function () use ($tenant, $userId) {
@@ -243,7 +243,7 @@ class PppoePortalController extends Controller
 
         if ($mapping && !empty($mapping->pppoe_user_id)) {
             $tenant = Tenant::query()
-                ->where('is_active', true)
+                ->whereRaw('is_active = true')
                 ->where(function ($query) use ($mapping) {
                     if (!empty($mapping->tenant_id)) {
                         $query->whereKey((string) $mapping->tenant_id);
@@ -252,7 +252,7 @@ class PppoePortalController extends Controller
                         $query->orWhere('schema_name', (string) $mapping->schema_name);
                     }
                 })
-                ->first(['id', 'schema_name']);
+                ->first(['id', 'schema_name', 'schema_created']);
 
             if ($tenant) {
                 $user = DB::transaction(function () use ($tenant, $mapping) {
@@ -347,7 +347,7 @@ class PppoePortalController extends Controller
             // Try to load tenant from cache hit
             $tenant = Tenant::query()
                 ->whereKey($cachedTenantId)
-                ->where('is_active', true)
+                ->whereRaw('is_active = true')
                 ->first(['id', 'schema_name', 'account_prefix', 'schema_created']);
             if ($tenant) {
                 return $tenant;
@@ -356,7 +356,7 @@ class PppoePortalController extends Controller
         }
 
         $tenant = Tenant::query()
-            ->where('is_active', true)
+            ->whereRaw('is_active = true')
             ->whereNotNull('schema_name')
             ->whereNotNull('account_prefix')
             ->whereRaw('? LIKE UPPER(account_prefix) || \'%\'', [$normalized])
@@ -397,7 +397,7 @@ class PppoePortalController extends Controller
         }
 
         return Tenant::query()
-            ->where('is_active', true)
+            ->whereRaw('is_active = true')
             ->where(function ($query) use ($mapping) {
                 if (!empty($mapping->tenant_id)) {
                     $query->whereKey((string) $mapping->tenant_id);
@@ -436,7 +436,7 @@ class PppoePortalController extends Controller
         }
 
         return Tenant::query()
-            ->where('is_active', true)
+            ->whereRaw('is_active = true')
             ->where(function ($query) use ($mapping) {
                 if (!empty($mapping->tenant_id)) {
                     $query->whereKey((string) $mapping->tenant_id);
@@ -1401,7 +1401,7 @@ class PppoePortalController extends Controller
 
         return Tenant::query()
             ->where('id', $tenantId)
-            ->where('is_active', true)
+            ->whereRaw('is_active = true')
             ->whereNotNull('schema_name')
             ->first(['id', 'schema_name', 'account_prefix', 'schema_created']);
     }
