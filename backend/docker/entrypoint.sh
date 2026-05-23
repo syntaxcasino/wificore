@@ -218,7 +218,12 @@ if [ -f /var/www/html/.env ]; then
   su -s /bin/bash www-data -c "php artisan config:cache" || true
   su -s /bin/bash www-data -c "php artisan route:cache" || true
   su -s /bin/bash www-data -c "php artisan event:cache" || true
-  su -s /bin/bash www-data -c "php artisan view:cache" || true
+  # view:cache uses atomic temp-file rename; concurrent containers sharing the
+  # same storage volume race on the same temp file → rename ENOENT error.
+  # Serialise with flock so only one container compiles views at a time.
+  mkdir -p /var/www/html/storage/framework/views
+  flock /var/www/html/storage/framework/views/.view-cache.lock \
+    su -s /bin/bash www-data -c "php artisan view:cache" || true
   echo "✅ Laravel caches built successfully"
   echo ""
 fi
