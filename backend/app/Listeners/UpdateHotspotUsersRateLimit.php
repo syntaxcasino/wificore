@@ -43,7 +43,10 @@ class UpdateHotspotUsersRateLimit implements ShouldQueue
         }
 
         try {
+            DB::transaction(function () use ($tenantId, $packageData) {
+            DB::connection()->recordsHaveBeenModified();
             $this->tenantContext->setTenantById($tenantId);
+            try {
 
             $packageId   = $packageData['id'];
             $newDownload = (string) ($packageData['download_speed'] ?? $packageData['speed'] ?? '0');
@@ -104,13 +107,15 @@ class UpdateHotspotUsersRateLimit implements ShouldQueue
                 'users_count' => $users->count(),
                 'rate_limit'  => $newRateLimit,
             ]);
+            } finally {
+                $this->tenantContext->clearTenant();
+            }
+            }); // end DB::transaction
         } catch (\Exception $e) {
             Log::error("UpdateHotspotUsersRateLimit: failed for package {$packageData['id']}", [
                 'error'     => $e->getMessage(),
                 'tenant_id' => $tenantId,
             ]);
-        } finally {
-            $this->tenantContext->clearTenant();
         }
     }
 }

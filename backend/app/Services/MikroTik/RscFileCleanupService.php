@@ -215,6 +215,9 @@ class RscFileCleanupService
             
             // Wrap in transaction for proper SET LOCAL search_path handling with PgBouncer
             \Illuminate\Support\Facades\DB::transaction(function () use ($routerId, $tenantId, $deploymentFile, $tenantContext) {
+                // Force sticky-write PDO so SET LOCAL search_path and all subsequent
+                // queries target the same write backend connection under PgBouncer.
+                \Illuminate\Support\Facades\DB::connection()->recordsHaveBeenModified();
                 if ($tenantId) {
                     $tenantContext->setTenantById($tenantId);
                 }
