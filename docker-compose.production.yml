@@ -36,6 +36,9 @@ services:
 
   wificore-frontend:
     image: kja2aro/wificore:wificore-frontend
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
     container_name: wificore-frontend
     restart: always
     env_file:
