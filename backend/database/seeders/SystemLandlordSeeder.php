@@ -174,13 +174,16 @@ class SystemLandlordSeeder extends Seeder
     private function addToRadius(User $user, string $password): void
     {
         try {
-            // Add to radcheck table for authentication (use username, not email)
-            DB::table('radcheck')->updateOrInsert(
-                ['username' => $user->username, 'attribute' => 'Cleartext-Password'],
-                [
-                    'op' => ':=',
-                    'value' => $password,
-                ]
+            // Add to radcheck table for authentication (use username, not email).
+            // Use public.radcheck explicitly: the FreeRADIUS radcheck table lives in
+            // the public schema and has NO timestamps. Using a bare 'radcheck' reference
+            // can resolve to the tenant-schema radcheck (which does have timestamps)
+            // depending on current search_path, causing 42703 "column updated_at does not exist".
+            DB::statement(
+                'INSERT INTO public.radcheck (username, attribute, op, value)
+                 VALUES (?, ?, ?, ?)
+                 ON CONFLICT (username, attribute) DO UPDATE SET op = EXCLUDED.op, value = EXCLUDED.value',
+                [$user->username, 'Cleartext-Password', ':=', $password]
             );
 
             // Avoid Query Builder updateOrInsert here because PostgreSQL can coerce
