@@ -797,7 +797,10 @@ class TenantDashboardController extends Controller
         }
 
         if (Cache::getStore() instanceof \Illuminate\Cache\RedisStore) {
-            Cache::getStore()->connection()->del(Cache::getStore()->connection()->keys("{$key}:{$tenantId}:*"));
+            $keys = Cache::getStore()->connection()->keys("{$key}:{$tenantId}:*");
+            if (!empty($keys)) {
+                Cache::getStore()->connection()->del(...$keys);
+            }
         }
     }
 
