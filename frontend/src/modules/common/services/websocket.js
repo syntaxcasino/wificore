@@ -45,14 +45,14 @@ class WebSocketService {
 
     // Detect if we're on HTTPS (ngrok, production) or HTTP (localhost)
     const isSecure = window.location.protocol === 'https:'
-    // Fix: If configured host is internal Docker hostname, use current domain
+    // In production always use browser hostname — never trust a baked-in build-time
+    // env var which may contain an internal Docker hostname (e.g. wificore-soketi).
     const configuredHost = import.meta.env.VITE_PUSHER_HOST
-    const isInternalDockerHost = configuredHost && (
-      configuredHost.includes('-soketi') ||
-      configuredHost.includes('wificore-') ||
-      !configuredHost.includes('.')
-    )
-    const wsHost = isInternalDockerHost ? window.location.hostname : (configuredHost || window.location.hostname)
+    const isInternalDockerHost = !configuredHost
+      || configuredHost.includes('-soketi')
+      || configuredHost.includes('wificore-')
+      || !configuredHost.includes('.')
+    const wsHost = (isSecure || isInternalDockerHost) ? window.location.hostname : configuredHost
     const wsPort = isSecure ? (import.meta.env.VITE_PUSHER_WSS_PORT || 443) : (import.meta.env.VITE_PUSHER_PORT || window.location.port || 8070)
     
     const authEndpoint = import.meta.env.VITE_PUSHER_AUTH_ENDPOINT || '/api/broadcasting/auth'
