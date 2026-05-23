@@ -10,6 +10,10 @@ const user = ref(JSON.parse(localStorage.getItem('pppoe_portal_user') || 'null')
 const isLoading = ref(false);
 const error = ref(null);
 const isLoggingOut = ref(false);
+const dashboardCache = ref(null);
+let dashboardPromise = null;
+let dashboardFetchedAt = 0;
+const DASHBOARD_SEED_MAX_AGE_MS = 10000;
 
 export function usePppoePortal() {
   const router = useRouter();
@@ -45,6 +49,25 @@ export function usePppoePortal() {
     }
   );
 
+  function setDashboardCache(data) {
+    dashboardCache.value = data;
+    dashboardFetchedAt = Date.now();
+  }
+
+  function invalidateDashboardCache() {
+    dashboardCache.value = null;
+    dashboardFetchedAt = 0;
+    dashboardPromise = null;
+  }
+
+  function getDashboardSeed(maxAgeMs = DASHBOARD_SEED_MAX_AGE_MS) {
+    if (!dashboardCache.value) {
+      return null;
+    }
+
+    return Date.now() - dashboardFetchedAt <= maxAgeMs ? dashboardCache.value : null;
+  }
+
   async function login(accountNumber, portalPassword) {
     isLoading.value = true;
     error.value = null;
@@ -53,6 +76,7 @@ export function usePppoePortal() {
     user.value = null;
     localStorage.removeItem('pppoe_portal_token');
     localStorage.removeItem('pppoe_portal_user');
+    invalidateDashboardCache();
 
     try {
       const response = await api.post('/login', {
@@ -68,11 +92,13 @@ export function usePppoePortal() {
         localStorage.setItem('pppoe_portal_token', token.value);
         localStorage.setItem('pppoe_portal_user', JSON.stringify(user.value));
 
+        prefetchDashboard().catch(() => {});
         return { success: true };
       }
     } catch (err) {
       token.value = null;
       user.value = null;
+      invalidateDashboardCache();
       localStorage.removeItem('pppoe_portal_token');
       localStorage.removeItem('pppoe_portal_user');
       error.value = err.response?.data?.message || 'Login failed. Please try again.';
@@ -82,17 +108,41 @@ export function usePppoePortal() {
     }
   }
 
-  async function fetchDashboard() {
-    isLoading.value = true;
-    try {
-      const response = await api.get('/dashboard');
-      return response.data.data;
-    } catch (err) {
-      error.value = err.response?.data?.message || 'Failed to load dashboard';
-      throw err;
-    } finally {
-      isLoading.value = false;
+  async function fetchDashboard(options = {}) {
+    const { force = false } = options;
+
+    if (!force && dashboardPromise) {
+      return dashboardPromise;
     }
+
+    if (!force) {
+      const seed = getDashboardSeed();
+      if (seed) {
+        return seed;
+      }
+    }
+
+    isLoading.value = true;
+    dashboardPromise = api.get('/dashboard')
+      .then((response) => {
+        const data = response.data.data;
+        setDashboardCache(data);
+        return data;
+      })
+      .catch((err) => {
+        error.value = err.response?.data?.message || 'Failed to load dashboard';
+        throw err;
+      })
+      .finally(() => {
+        isLoading.value = false;
+        dashboardPromise = null;
+      });
+
+    return dashboardPromise;
+  }
+
+  function prefetchDashboard() {
+    return fetchDashboard({ force: true });
   }
 
   async function fetchSessionHistory(days = 30) {
@@ -114,6 +164,7 @@ export function usePppoePortal() {
         phone_number: phoneNumber,
         amount: parseFloat(amount),
       });
+      invalidateDashboardCache();
       return response.data;
     } catch (err) {
       error.value = err.response?.data?.message || 'Payment initiation failed';
@@ -129,6 +180,7 @@ export function usePppoePortal() {
       const response = await api.post('/payment/voucher', {
         voucher_code: voucherCode,
       });
+      invalidateDashboardCache();
       return response.data;
     } catch (err) {
       error.value = err.response?.data?.message || 'Voucher redemption failed';
@@ -177,6 +229,7 @@ export function usePppoePortal() {
       // Clear all state
       token.value = null;
       user.value = null;
+      invalidateDashboardCache();
       localStorage.removeItem('pppoe_portal_token');
       localStorage.removeItem('pppoe_portal_user');
       isLoggingOut.value = false;
@@ -206,6 +259,9 @@ export function usePppoePortal() {
     fetchPaymentInstructions,
     checkPaymentStatus,
     clearError,
+    getDashboardSeed,
+    prefetchDashboard,
+    invalidateDashboardCache,
   };
 }
 
