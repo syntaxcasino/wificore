@@ -46,8 +46,11 @@ class UpdatePppoeUsersRateLimit implements ShouldQueue
         }
 
         try {
+            DB::transaction(function () use ($tenantId, $packageData) {
+            DB::connection()->recordsHaveBeenModified();
             // Set tenant context to access tenant tables
             $this->tenantContext->setTenantById($tenantId);
+            try {
 
             $packageId = $packageData['id'];
             $newDownload = $packageData['download_speed'] ?? '0';
@@ -103,14 +106,15 @@ class UpdatePppoeUsersRateLimit implements ShouldQueue
                 }
             }
 
+            } finally {
+                $this->tenantContext->clearTenant();
+            }
+            }); // end DB::transaction
         } catch (\Exception $e) {
             Log::error("Failed to update PPPoE users rate limit for package {$packageData['id']}", [
                 'error' => $e->getMessage(),
                 'tenant_id' => $tenantId
             ]);
-        } finally {
-            // Always clear tenant context
-            $this->tenantContext->clearTenant();
         }
     }
 

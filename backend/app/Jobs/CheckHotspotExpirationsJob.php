@@ -74,6 +74,7 @@ class CheckHotspotExpirationsJob implements ShouldQueue
 
     private function processForTenant(TenantContext $tenantContext, string $tenantId): void
     {
+        DB::connection()->recordsHaveBeenModified();
         $tenantContext->setTenantById($tenantId);
         
         $expiredCount = 0;
