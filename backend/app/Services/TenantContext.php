@@ -142,9 +142,40 @@ class TenantContext
     public function clearTenant(): void
     {
         $targetSearchPath = $this->originalSearchPath ?: $this->systemSchema;
-        $this->setSearchPathStatement($targetSearchPath);
+
+        try {
+            $this->setSearchPathStatement($targetSearchPath);
+        } catch (\Throwable $e) {
+            Log::warning('Failed to reset tenant search path during context clear', [
+                'target_search_path' => $targetSearchPath,
+                'transaction_level' => DB::transactionLevel(),
+                'error' => $e->getMessage(),
+            ]);
+            // If we are inside an aborted transaction the SET LOCAL above was rejected
+            // by PostgreSQL ("current transaction is aborted"). Rolling back here returns
+            // the backend connection to PgBouncer in a clean idle state so the next
+            // request does not inherit the aborted transaction and get 42P01 errors.
+            // Use raw PDO::exec() to bypass Laravel's DB::rollBack() which also goes
+            // through DB::statement() and can fail the same way on an aborted connection.
+            if (DB::transactionLevel() > 0) {
+                try {
+                    DB::connection()->getPdo()->exec('ROLLBACK');
+                    // Reset Laravel's internal $transactions counter to 0 via reflection
+                    // since there is no public API for this. Without it, Laravel thinks
+                    // we are still inside a transaction and future calls may issue
+                    // ROLLBACK TO SAVEPOINT instead of a fresh BEGIN.
+                    $conn = DB::connection();
+                    $ref = new \ReflectionProperty($conn, 'transactions');
+                    $ref->setAccessible(true);
+                    $ref->setValue($conn, 0);
+                } catch (\Throwable) {
+                    // Best-effort; ignore if already rolled back.
+                }
+            }
+        }
+
         $this->originalSearchPath = null;
-        
+
         $this->tenant = null;
         
         // Clear from app container
@@ -231,11 +262,19 @@ class TenantContext
             $this->setTenant($tenant);
             return $callback();
         } finally {
-            // Restore previous tenant context or clear
-            if ($previousTenant) {
-                $this->setTenant($previousTenant);
-            } else {
-                $this->clearTenant();
+            try {
+                if ($previousTenant) {
+                    $this->setTenant($previousTenant);
+                } else {
+                    $this->clearTenant();
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Failed to restore tenant context after scoped operation', [
+                    'tenant_id' => $tenant->id ?? null,
+                    'previous_tenant_id' => $previousTenant?->id,
+                    'transaction_level' => DB::transactionLevel(),
+                    'error' => $e->getMessage(),
+                ]);
             }
         }
     }
