@@ -757,6 +757,7 @@ const {
   initiateMpesaPayment,
   redeemVoucher,
   checkPaymentStatus,
+  getDashboardSeed,
 } = usePppoePortal();
 
 const dashboardData = ref(null);
@@ -904,20 +905,24 @@ const overlayTotalData = computed(() => {
   return formatBytes(total);
 });
 
-async function loadDashboard() {
+function normalizeDashboard(data) {
+  return data && typeof data === 'object'
+    ? {
+        ...emptyDashboard(),
+        ...data,
+        user: { ...emptyDashboard().user, ...(data.user || {}) },
+        usage_stats: { ...emptyDashboard().usage_stats, ...(data.usage_stats || {}) },
+        recent_payments: Array.isArray(data.recent_payments) ? data.recent_payments : [],
+      }
+    : emptyDashboard();
+}
+
+async function loadDashboard(options = {}) {
   const previous = dashboardData.value;
   try {
     loadError.value = '';
-    const data = await fetchDashboard();
-    dashboardData.value = data && typeof data === 'object'
-      ? {
-          ...emptyDashboard(),
-          ...data,
-          user: { ...emptyDashboard().user, ...(data.user || {}) },
-          usage_stats: { ...emptyDashboard().usage_stats, ...(data.usage_stats || {}) },
-          recent_payments: Array.isArray(data.recent_payments) ? data.recent_payments : [],
-        }
-      : emptyDashboard();
+    const data = await fetchDashboard({ force: options.force === true });
+    dashboardData.value = normalizeDashboard(data);
 
     // Non-fatal and non-blocking: slow RADIUS/router history must not delay login/dashboard render.
     fetchSessionHistory(7)
@@ -998,7 +1003,7 @@ async function handleVoucherRedeem() {
     voucherForm.value = { code: '' };
     
     // Refresh dashboard
-    loadDashboard();
+    loadDashboard({ force: true });
   } catch (err) {
     console.error('Voucher redemption failed:', err);
     voucherErrorMessage.value = err?.response?.data?.message || 'Voucher redemption failed. Please check the code and try again.';
@@ -1022,7 +1027,7 @@ async function pollPaymentStatus(transactionId) {
         showSuccess('Payment confirmed. Your dashboard has been refreshed.');
         paymentForm.value = { phone: '' };
         pendingPaymentTransactionId.value = '';
-        await loadDashboard();
+        await loadDashboard({ force: true });
         return;
       }
 
@@ -1106,6 +1111,11 @@ function formatBytes(bytes) {
 }
 
 onMounted(() => {
-  loadDashboard();
+  const seed = getDashboardSeed();
+  if (seed) {
+    dashboardData.value = normalizeDashboard(seed);
+  }
+
+  loadDashboard({ force: !seed });
 });
 </script>
