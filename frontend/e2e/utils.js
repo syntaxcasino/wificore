@@ -12,11 +12,13 @@ import { expect } from '@playwright/test'
  */
 export const TEST_USERS = {
   tenant: {
+    username: 'testuser',
     email: 'test@example.com',
     password: 'password123',
     organization: 'Test Organization'
   },
   systemAdmin: {
+    username: 'sysadmin',
     email: 'admin@traidnet.com',
     password: 'admin123'
   }
@@ -30,19 +32,30 @@ export const mockApiResponses = {
    * Mock successful login response
    */
   loginSuccess: (page, userData = {}) => {
-    return page.route('**/api/auth/login', async (route) => {
+    return page.route('**/login', async (route) => {
+      if (route.request().method() != 'POST') {
+        await route.fallback()
+        return
+      }
+
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          token: 'test-jwt-token',
-          user: {
-            id: 1,
-            email: userData.email || TEST_USERS.tenant.email,
-            name: 'Test User',
-            role: userData.role || 'tenant',
-            organization: userData.organization || TEST_USERS.tenant.organization,
-            ...userData
+          success: true,
+          data: {
+            token: 'test-jwt-token',
+            dashboard_route: userData.role === 'system_admin' ? '/system/dashboard' : '/dashboard',
+            user: {
+              id: 1,
+              username: userData.username || TEST_USERS.tenant.username,
+              email: userData.email || TEST_USERS.tenant.email,
+              name: 'Test User',
+              role: userData.role || 'admin',
+              tenant_id: userData.tenant_id || 'test-tenant-id',
+              organization: userData.organization || TEST_USERS.tenant.organization,
+              ...userData
+            }
           }
         })
       })
@@ -124,6 +137,14 @@ export const mockApiResponses = {
  * Authentication helpers
  */
 export const auth = {
+  ensureAppOrigin: async (page) => {
+    const url = page.url()
+
+    if (!url || url === 'about:blank') {
+      await page.goto('/')
+    }
+  },
+
   /**
    * Login as a specific user type
    */
@@ -131,7 +152,7 @@ export const auth = {
     const user = TEST_USERS[userType]
     
     await page.goto('/login')
-    await page.fill('[data-testid="email-input"]', user.email)
+    await page.fill('input[type="text"], input[name="username"]', user.username || user.email)
     await page.fill('[data-testid="password-input"]', user.password)
     await page.click('[data-testid="login-button"]')
     
@@ -143,8 +164,14 @@ export const auth = {
    * Set auth token in localStorage (for API mocking scenarios)
    */
   setAuthToken: async (page, token = 'test-jwt-token') => {
+    await auth.ensureAppOrigin(page)
+
     await page.evaluate((t) => {
-      localStorage.setItem('auth_token', t)
+      localStorage.setItem('authToken', t)
+      localStorage.setItem('userRole', 'admin')
+      localStorage.setItem('tenantId', 'test-tenant-id')
+      localStorage.setItem('dashboardRoute', '/dashboard')
+      localStorage.setItem('user', JSON.stringify({ id: 1, role: 'admin', tenant_id: 'test-tenant-id', name: 'Test User' }))
     }, token)
   },
 
@@ -152,9 +179,16 @@ export const auth = {
    * Clear authentication
    */
   logout: async (page) => {
+    await auth.ensureAppOrigin(page)
+
     await page.evaluate(() => {
-      localStorage.removeItem('auth_token')
+      localStorage.removeItem('authToken')
+      localStorage.removeItem('userRole')
+      localStorage.removeItem('tenantId')
+      localStorage.removeItem('dashboardRoute')
+      localStorage.removeItem('sidebar-active-menu')
       localStorage.removeItem('user')
+      sessionStorage.clear()
     })
   }
 }

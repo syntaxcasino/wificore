@@ -1002,7 +1002,7 @@ services:
       wificore-backend:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "/opt/sbin/radiusd", "-C"]  
+      test: ["CMD", "/opt/sbin/radiusd", "-C"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -1100,7 +1100,12 @@ services:
       - DB_HOST=wificore-postgres
       - DB_PORT=5432
       - DB_DATABASE=${DB_DATABASE:-wms_770_ts}
-      - DB_APP_POOL_MODE=${DB_APP_POOL_MODE:-session}
+      - DB_APP_POOL_MODE=${DB_APP_POOL_MODE:-transaction}
+      - PGBOUNCER_DEFAULT_POOL_SIZE=${PGBOUNCER_DEFAULT_POOL_SIZE:-20}
+      - PGBOUNCER_MIN_POOL_SIZE=${PGBOUNCER_MIN_POOL_SIZE:-5}
+      - PGBOUNCER_RESERVE_POOL_SIZE=${PGBOUNCER_RESERVE_POOL_SIZE:-10}
+      - PGBOUNCER_MAX_DB_CONNECTIONS=${PGBOUNCER_MAX_DB_CONNECTIONS:-60}
+      - PGBOUNCER_MAX_USER_CONNECTIONS=${PGBOUNCER_MAX_USER_CONNECTIONS:-60}
       - DB_USERNAME=${DB_USERNAME:-admin}
       - DB_PASSWORD=${DB_PASSWORD}
       - TZ=${TZ:-Africa/Nairobi}
@@ -1134,7 +1139,12 @@ services:
       - DB_HOST=wificore-postgres-replica
       - DB_PORT=5432
       - DB_DATABASE=${DB_DATABASE:-wms_770_ts}
-      - DB_APP_POOL_MODE=${DB_APP_POOL_MODE:-session}
+      - DB_APP_POOL_MODE=${DB_APP_POOL_MODE:-transaction}
+      - PGBOUNCER_DEFAULT_POOL_SIZE=${PGBOUNCER_DEFAULT_POOL_SIZE:-20}
+      - PGBOUNCER_MIN_POOL_SIZE=${PGBOUNCER_MIN_POOL_SIZE:-5}
+      - PGBOUNCER_RESERVE_POOL_SIZE=${PGBOUNCER_RESERVE_POOL_SIZE:-10}
+      - PGBOUNCER_MAX_DB_CONNECTIONS=${PGBOUNCER_MAX_DB_CONNECTIONS:-60}
+      - PGBOUNCER_MAX_USER_CONNECTIONS=${PGBOUNCER_MAX_USER_CONNECTIONS:-60}
       - DB_USERNAME=${DB_USERNAME:-admin}
       - DB_PASSWORD=${DB_PASSWORD}
       - TZ=${TZ:-Africa/Nairobi}

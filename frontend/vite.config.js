@@ -6,6 +6,20 @@ import vueJsx from '@vitejs/plugin-vue-jsx'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
+const sourceChunkRules = [
+  ['/src/modules/tenant/views/dashboard/monitoring/TrafficGraphsNew.vue', 'page-monitoring-graphs'],
+  ['/src/modules/system-admin/views/monitoring/SystemMetricsView.vue', 'page-system-metrics'],
+  ['/src/modules/system-admin/views/billing/BillingMetricsView.vue', 'page-system-billing-metrics'],
+]
+
+function getSourceChunkName(id) {
+  for (const [pattern, chunkName] of sourceChunkRules) {
+    if (id.includes(pattern)) return chunkName
+  }
+
+  return null
+}
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
@@ -54,7 +68,12 @@ export default defineConfig({
         clientsClaim: true,
         cleanupOutdatedCaches: true,
         globPatterns: [
-          '**/*.{ico,png,svg,woff,woff2,webmanifest,html}'
+          '**/*.{ico,png,webmanifest,html}'
+        ],
+        globIgnores: [
+          '**/*.map',
+          '**/dev-dist/**',
+          '**/coverage/**'
         ],
         navigateFallback: 'index.html',
         navigateFallbackDenylist: [/^\/api\//, /^\/broadcasting\//],
@@ -147,6 +166,9 @@ export default defineConfig({
       output: {
         // Improved manual chunking for better caching
         manualChunks(id) {
+          const sourceChunkName = getSourceChunkName(id)
+          if (sourceChunkName) return sourceChunkName
+
           if (!id.includes('node_modules')) return
 
           // Core Vue ecosystem (rarely changes)
