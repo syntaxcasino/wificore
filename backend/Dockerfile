@@ -7,19 +7,26 @@ WORKDIR /var/www/html
 
 # Install build dependencies and runtime libraries separately
 # Runtime libs (libpq, libzip) must remain for PHP extensions to work
-RUN apk add --no-cache \
-    libpq \
-    libzip \
-    unzip \
-    git \
-    curl \
- && apk add --no-cache --virtual .build-deps \
-    libzip-dev \
-    postgresql-dev \
-    linux-headers \
-    autoconf \
-    g++ \
-    make \
+RUN set -eux; \
+    for attempt in 1 2 3 4 5; do \
+        apk add --no-cache \
+            libpq \
+            libzip \
+            unzip \
+            git \
+            curl \
+        && apk add --no-cache --virtual .build-deps \
+            libzip-dev \
+            postgresql-dev \
+            linux-headers \
+            autoconf \
+            g++ \
+            make && break; \
+        if [ "$attempt" -eq 5 ]; then \
+            exit 1; \
+        fi; \
+        sleep 5; \
+    done \
  && docker-php-ext-install -j$(nproc) sockets zip pdo pdo_pgsql ftp \
  && apk del .build-deps
 
@@ -58,30 +65,35 @@ FROM php:8.4.14-fpm-alpine AS production
 WORKDIR /var/www/html
 
 # Install runtime dependencies
-RUN apk add --no-cache --virtual .build-deps \
-      postgresql-dev \
-      libzip-dev \
-      icu-dev \
-      net-snmp-dev \
-      linux-headers \
-      autoconf \
-      g++ \
-      make \
- && apk add --no-cache \
-      postgresql-client \
-      libzip \
-      icu-libs \
-      net-snmp \
-      supervisor \
-      sudo \
-      bash \
-      curl \
-      wireguard-tools \
-      iptables \
-      iproute2 \
+RUN set -eux; \
+    for attempt in 1 2 3 4 5; do \
+        apk add --no-cache --virtual .build-deps \
+            postgresql-dev \
+            libzip-dev \
+            icu-dev \
+            net-snmp-dev \
+            linux-headers \
+            autoconf \
+            g++ \
+            make \
+        && apk add --no-cache \
+            postgresql-client \
+            libzip \
+            icu-libs \
+            net-snmp \
+            supervisor \
+            sudo \
+            bash \
+            curl \
+            wireguard-tools \
+            iptables \
+            iproute2 && break; \
+        if [ "$attempt" -eq 5 ]; then \
+            exit 1; \
+        fi; \
+        sleep 5; \
+    done \
  && docker-php-ext-install -j$(nproc) pdo_pgsql sockets zip opcache ftp snmp intl \
- && pecl install redis \
- && docker-php-ext-enable redis \
  && apk del .build-deps \
  && rm -rf /tmp/* /var/cache/apk/*
 
@@ -118,6 +130,10 @@ RUN mkdir -p \
 # Copy Supervisor configs
 COPY --chown=root:root ./supervisor/supervisord.conf /etc/supervisor/supervisord.conf
 COPY --chown=root:root ./supervisor/laravel-queue.conf /etc/supervisor/conf.d/laravel-queue.conf
+COPY --chown=root:root ./supervisor/laravel-queue-core.conf /etc/supervisor/conf.d/laravel-queue-core.conf
+COPY --chown=root:root ./supervisor/laravel-queue-router.conf /etc/supervisor/conf.d/laravel-queue-router.conf
+COPY --chown=root:root ./supervisor/laravel-queue-metrics.conf /etc/supervisor/conf.d/laravel-queue-metrics.conf
+COPY --chown=root:root ./supervisor/laravel-queue-realtime.conf /etc/supervisor/conf.d/laravel-queue-realtime.conf
 COPY --chown=root:root ./supervisor/php-fpm.conf /etc/supervisor/conf.d/php-fpm.conf
 COPY --chown=root:root ./supervisor/laravel-scheduler.conf /etc/supervisor/conf.d/laravel-scheduler.conf
 

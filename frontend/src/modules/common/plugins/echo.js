@@ -22,7 +22,13 @@ const createEchoConfig = () => {
   
   // Detect if we're in production (HTTPS)
   const isProduction = window.location.protocol === 'https:';
-  const wsHost = env.VITE_PUSHER_HOST || window.location.hostname;
+  const configuredHost = env.VITE_PUSHER_HOST?.trim();
+  const isInternalDockerHost = configuredHost === 'soketi'
+    || configuredHost === 'wificore-soketi'
+    || configuredHost?.endsWith('-soketi');
+  const wsHost = isInternalDockerHost
+    ? window.location.hostname
+    : (configuredHost || window.location.hostname);
   
   // WebSocket configuration
   const config = {
