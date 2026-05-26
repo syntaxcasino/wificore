@@ -11,11 +11,15 @@ use App\Events\TodoDeleted;
 use App\Events\TodoActivityCreated;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Log;
 
 class TodoController extends Controller
 {
+    private const LIST_CACHE_TTL_SECONDS = 15;
+    private const LIST_VERSION_PREFIX = 'todo_list_version:';
+
     /**
      * Display a listing of todos for the authenticated user
      */
@@ -23,39 +27,42 @@ class TodoController extends Controller
     {
         try {
             $user = auth()->user();
-            $userId = $user->id;
-            $isTenantAdmin = $this->isTenantAdmin($user);
+            $cacheKey = $this->todoListCacheKey($user, $request);
+            $todos = Cache::remember($cacheKey, self::LIST_CACHE_TTL_SECONDS, function () use ($request, $user) {
+                $userId = $user->id;
+                $isTenantAdmin = $this->isTenantAdmin($user);
 
-            $query = Todo::select([
-                    'id', 'user_id', 'created_by', 'title', 'description',
-                    'priority', 'status', 'due_date', 'completed_at',
-                    'related_type', 'related_id', 'created_at', 'updated_at', 'deleted_at',
-                ])->with([
-                    'creator:id,name,email',
-                    'user:id,name,email',
-                ]);
+                $query = Todo::select([
+                        'id', 'user_id', 'created_by', 'title', 'description',
+                        'priority', 'status', 'due_date', 'completed_at',
+                        'related_type', 'related_id', 'created_at', 'updated_at', 'deleted_at',
+                    ])->with([
+                        'creator:id,name,email',
+                        'user:id,name,email',
+                    ]);
 
-            if (!$isTenantAdmin) {
-                $query->where('user_id', $userId);
-            }
-
-            if ($request->has('status')) {
-                $query->where('status', $request->status);
-            }
-
-            if ($request->has('priority')) {
-                $query->where('priority', $request->priority);
-            }
-
-            if ($request->has('assignee_id') && $isTenantAdmin) {
-                if ($request->assignee_id === 'unassigned') {
-                    $query->whereNull('user_id');
-                } else {
-                    $query->where('user_id', $request->assignee_id);
+                if (!$isTenantAdmin) {
+                    $query->where('user_id', $userId);
                 }
-            }
 
-            $todos = $query->latest()->get();
+                if ($request->has('status')) {
+                    $query->where('status', $request->status);
+                }
+
+                if ($request->has('priority')) {
+                    $query->where('priority', $request->priority);
+                }
+
+                if ($request->has('assignee_id') && $isTenantAdmin) {
+                    if ($request->assignee_id === 'unassigned') {
+                        $query->whereNull('user_id');
+                    } else {
+                        $query->where('user_id', $request->assignee_id);
+                    }
+                }
+
+                return $query->latest()->get();
+            });
 
             return response()->json($todos)
                 ->header('Cache-Control', 'no-store, no-cache, must-revalidate')
@@ -123,6 +130,7 @@ class TodoController extends Controller
         // Dispatch events for real-time updates
         event(new TodoCreated($todo, $user->tenant_id ?? null));
         event(new TodoActivityCreated($activity, $user->tenant_id ?? null));
+        $this->bustTodoCache($user, (string) $todo->user_id, (string) ($user->tenant_id ?? ''));
 
         return response()->json([
             'message' => 'Todo created successfully',
@@ -196,6 +204,7 @@ class TodoController extends Controller
         }
 
         $originalData = $todo->toArray();
+        $previousUserId = (string) $todo->user_id;
         $todo->fill($data);
         $changes = $todo->getDirty();
         $todo->save();
@@ -222,6 +231,7 @@ class TodoController extends Controller
 
         // Dispatch event for real-time updates
         event(new TodoUpdated($todo, $changes, $user->tenant_id ?? null));
+        $this->bustTodoCache($user, (string) $todo->user_id, (string) ($user->tenant_id ?? ''), $previousUserId);
 
         return response()->json([
             'message' => 'Todo updated successfully',
@@ -261,6 +271,7 @@ class TodoController extends Controller
 
         // Dispatch event for real-time updates
         event(new TodoDeleted($todoId, $assignedUserId, $tenantId));
+        $this->bustTodoCache($user, (string) $assignedUserId, (string) $tenantId);
 
         return response()->json([
             'message' => 'Todo deleted successfully'
@@ -275,41 +286,47 @@ class TodoController extends Controller
         $user = auth()->user();
         $userId = $user->id;
         $isTenantAdmin = $this->isTenantAdmin($user);
+        $scope = $isTenantAdmin && $request->boolean('tenant_wide')
+            ? 'tenant:' . (string) ($user->tenant_id ?? $user->id)
+            : 'user:' . (string) $userId;
+        $cacheKey = 'todo_stats:' . $scope . ':v' . $this->todoListVersion($scope) . ':' . ($request->boolean('tenant_wide') ? 'tenant' : 'user');
 
-        // Tenant admin can view tenant-wide statistics
-        if ($request->boolean('tenant_wide') && $isTenantAdmin) {
-            // Single aggregated query for all counts
-            $counts = Todo::selectRaw(
-                "COUNT(*) as total,
-                COUNT(*) FILTER (WHERE status = 'pending') as pending,
-                COUNT(*) FILTER (WHERE status = 'in_progress') as in_progress,
-                COUNT(*) FILTER (WHERE status = 'completed') as completed,
-                COUNT(*) FILTER (WHERE user_id IS NULL AND status != 'completed') as unassigned,
-                COUNT(*) FILTER (WHERE status != 'completed' AND due_date < NOW()) as overdue"
-            )->first();
+        $stats = Cache::remember($cacheKey, self::LIST_CACHE_TTL_SECONDS, function () use ($userId, $isTenantAdmin, $request) {
+            // Tenant admin can view tenant-wide statistics
+            if ($request->boolean('tenant_wide') && $isTenantAdmin) {
+                // Single aggregated query for all counts
+                $counts = Todo::selectRaw(
+                    "COUNT(*) as total,
+                    COUNT(*) FILTER (WHERE status = 'pending') as pending,
+                    COUNT(*) FILTER (WHERE status = 'in_progress') as in_progress,
+                    COUNT(*) FILTER (WHERE status = 'completed') as completed,
+                    COUNT(*) FILTER (WHERE user_id IS NULL AND status != 'completed') as unassigned,
+                    COUNT(*) FILTER (WHERE status != 'completed' AND due_date < NOW()) as overdue"
+                )->first();
 
-            // Single JOIN query for by_assignee (no N+1)
-            $byAssignee = Todo::selectRaw('todos.user_id, COUNT(*) as count, u.name as user_name')
-                ->leftJoin('public.users as u', 'todos.user_id', '=', 'u.id')
-                ->whereIn('todos.status', ['pending', 'in_progress'])
-                ->groupBy('todos.user_id', 'u.name')
-                ->get()
-                ->map(fn ($item) => [
-                    'user_id'   => $item->user_id,
-                    'user_name' => $item->user_name ?? 'Unassigned',
-                    'count'     => (int) $item->count,
-                ]);
+                // Single JOIN query for by_assignee (no N+1)
+                $byAssignee = Todo::selectRaw('todos.user_id, COUNT(*) as count, u.name as user_name')
+                    ->leftJoin('public.users as u', 'todos.user_id', '=', 'u.id')
+                    ->whereIn('todos.status', ['pending', 'in_progress'])
+                    ->groupBy('todos.user_id', 'u.name')
+                    ->get()
+                    ->map(fn ($item) => [
+                        'user_id'   => $item->user_id,
+                        'user_name' => $item->user_name ?? 'Unassigned',
+                        'count'     => (int) $item->count,
+                    ]);
 
-            $stats = [
-                'total'      => (int) $counts->total,
-                'pending'    => (int) $counts->pending,
-                'in_progress'=> (int) $counts->in_progress,
-                'completed'  => (int) $counts->completed,
-                'unassigned' => (int) $counts->unassigned,
-                'overdue'    => (int) $counts->overdue,
-                'by_assignee'=> $byAssignee,
-            ];
-        } else {
+                return [
+                    'total'      => (int) $counts->total,
+                    'pending'    => (int) $counts->pending,
+                    'in_progress'=> (int) $counts->in_progress,
+                    'completed'  => (int) $counts->completed,
+                    'unassigned' => (int) $counts->unassigned,
+                    'overdue'    => (int) $counts->overdue,
+                    'by_assignee'=> $byAssignee,
+                ];
+            }
+
             // Single aggregated query for current user
             $counts = Todo::selectRaw(
                 "COUNT(*) as total,
@@ -319,14 +336,14 @@ class TodoController extends Controller
                 COUNT(*) FILTER (WHERE status != 'completed' AND due_date < NOW()) as overdue"
             )->where('user_id', $userId)->first();
 
-            $stats = [
+            return [
                 'total'       => (int) $counts->total,
                 'pending'     => (int) $counts->pending,
                 'in_progress' => (int) $counts->in_progress,
                 'completed'   => (int) $counts->completed,
                 'overdue'     => (int) $counts->overdue,
             ];
-        }
+        });
 
         return response()->json($stats);
     }
@@ -360,6 +377,7 @@ class TodoController extends Controller
 
         event(new TodoActivityCreated($activity, $user->tenant_id ?? null));
         event(new TodoUpdated($todo, ['status' => 'completed', 'completed_at' => $todo->completed_at], $user->tenant_id ?? null));
+        $this->bustTodoCache($user, (string) $todo->user_id, (string) ($user->tenant_id ?? ''));
 
         $todo->load(['creator:id,name,email', 'user:id,name,email']);
 
@@ -395,6 +413,7 @@ class TodoController extends Controller
         }
 
         $originalData = $todo->toArray();
+        $previousUserId = (string) $todo->user_id;
         $todo->user_id = $request->user_id;
         $todo->save();
         $todo->load(['creator:id,name,email', 'user:id,name,email']);
@@ -411,6 +430,7 @@ class TodoController extends Controller
 
         event(new TodoActivityCreated($activity, $user->tenant_id ?? null));
         event(new TodoUpdated($todo, ['user_id' => $request->user_id], $user->tenant_id ?? null));
+        $this->bustTodoCache($user, (string) $todo->user_id, (string) ($user->tenant_id ?? ''), $previousUserId);
 
         return response()->json([
             'message' => 'Todo assigned successfully',
@@ -446,5 +466,45 @@ class TodoController extends Controller
         }
 
         return $user->role === User::ROLE_ADMIN;
+    }
+
+    private function todoListCacheKey(User $user, Request $request): string
+    {
+        $scope = $this->isTenantAdmin($user)
+            ? 'tenant:' . (string) ($user->tenant_id ?? $user->id)
+            : 'user:' . (string) $user->id;
+
+        $filters = implode('|', [
+            'status=' . ($request->input('status', '*') ?? '*'),
+            'priority=' . ($request->input('priority', '*') ?? '*'),
+            'assignee=' . ($request->input('assignee_id', '*') ?? '*'),
+        ]);
+
+        return 'todos:' . $scope . ':v' . $this->todoListVersion($scope) . ':' . md5($filters);
+    }
+
+    private function todoListVersion(string $scope): int
+    {
+        return (int) Cache::rememberForever(self::LIST_VERSION_PREFIX . $scope, static fn (): int => 1);
+    }
+
+    private function bustTodoCache(User $user, ?string $todoUserId = null, ?string $tenantId = null, ?string $previousTodoUserId = null): void
+    {
+        $scopes = [
+            'user:' . (string) $user->id,
+            'tenant:' . (string) ($tenantId ?: $user->tenant_id ?: $user->id),
+        ];
+
+        if (!empty($todoUserId)) {
+            $scopes[] = 'user:' . $todoUserId;
+        }
+
+        if (!empty($previousTodoUserId)) {
+            $scopes[] = 'user:' . $previousTodoUserId;
+        }
+
+        foreach (array_unique($scopes) as $scope) {
+            Cache::forever(self::LIST_VERSION_PREFIX . $scope, $this->todoListVersion($scope) + 1);
+        }
     }
 }

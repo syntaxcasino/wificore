@@ -28,6 +28,11 @@ use Illuminate\Support\Str;
 
 class HotspotController extends Controller
 {
+    private const LIST_CACHE_TTL_SECONDS = 15;
+    private const LIVE_LIST_CACHE_TTL_SECONDS = 5;
+    private const STATS_CACHE_TTL_SECONDS = 30;
+    private const CACHE_VERSION_PREFIX = 'hotspot_cache_version:';
+
     protected $radiusService;
 
     public function __construct(RadiusService $radiusService)
@@ -253,6 +258,8 @@ class HotspotController extends Controller
                 'ip_address' => $request->ip(),
             ]);
 
+            $this->bustHotspotCache((string) ($hotspotUser->tenant_id ?? auth()->user()->tenant_id ?? ''));
+
             return response()->json([
                 'success' => true,
                 'message' => 'Login successful. You are now connected to the internet.',
@@ -327,6 +334,8 @@ class HotspotController extends Controller
                 'user_id' => $hotspotUser->id,
                 'username' => $username,
             ]);
+
+            $this->bustHotspotCache((string) ($hotspotUser->tenant_id ?? auth()->user()->tenant_id ?? ''));
 
             return response()->json([
                 'success' => true,
@@ -425,53 +434,60 @@ class HotspotController extends Controller
     public function listUsers(Request $request)
     {
         try {
-            // OPTIMIZED: Select only needed columns and use efficient eager loading
-            $query = HotspotUser::query()
-                ->select([
-                    'id', 'username', 'phone_number', 'mac_address', 'status', 'is_active',
-                    'has_active_subscription', 'package_id', 'package_name',
-                    'subscription_expires_at', 'data_used', 'simultaneous_use',
-                    'created_at', 'updated_at'
-                ])
-                ->with(['package:id,name,download_speed,upload_speed,speed'])
-                ->when($request->status, function ($q, $status) {
-                    return $q->where('status', $status);
-                })
-                ->when($request->package_id, function ($q, $packageId) {
-                    return $q->where('package_id', $packageId);
-                })
-                ->when($request->has_subscription !== null, function ($q) use ($request) {
-                    return $q->where('has_active_subscription', filter_var($request->has_subscription, FILTER_VALIDATE_BOOLEAN));
-                })
-                ->when($request->search, function ($q, $search) {
-                    $searchTerm = strtolower($search);
-                    return $q->where(function ($sub) use ($searchTerm) {
-                        $sub->whereRaw('LOWER(username) LIKE ?', ["%{$searchTerm}%"])
-                            ->orWhereRaw('LOWER(phone_number) LIKE ?', ["%{$searchTerm}%"])
-                            ->orWhereRaw('LOWER(name) LIKE ?', ["%{$searchTerm}%"]);
+            $tenantId = (string) (auth()->user()->tenant_id ?? '');
+            $cacheKey = $this->hotspotCacheKey('users', $tenantId, $request);
+
+            $payload = Cache::remember($cacheKey, self::LIST_CACHE_TTL_SECONDS, function () use ($request) {
+                $query = HotspotUser::query()
+                    ->select([
+                        'id', 'username', 'phone_number', 'mac_address', 'status', 'is_active',
+                        'has_active_subscription', 'package_id', 'package_name',
+                        'subscription_expires_at', 'data_used', 'simultaneous_use',
+                        'created_at', 'updated_at'
+                    ])
+                    ->with(['package:id,name,download_speed,upload_speed,speed'])
+                    ->when($request->status, function ($q, $status) {
+                        return $q->where('status', $status);
+                    })
+                    ->when($request->package_id, function ($q, $packageId) {
+                        return $q->where('package_id', $packageId);
+                    })
+                    ->when($request->has_subscription !== null, function ($q) use ($request) {
+                        return $q->where('has_active_subscription', filter_var($request->has_subscription, FILTER_VALIDATE_BOOLEAN));
+                    })
+                    ->when($request->search, function ($q, $search) {
+                        $searchTerm = strtolower($search);
+                        return $q->where(function ($sub) use ($searchTerm) {
+                            $sub->whereRaw('LOWER(username) LIKE ?', ["%{$searchTerm}%"])
+                                ->orWhereRaw('LOWER(phone_number) LIKE ?', ["%{$searchTerm}%"])
+                                ->orWhereRaw('LOWER(name) LIKE ?', ["%{$searchTerm}%"]);
+                        });
                     });
+
+                $users = $query->latest()->paginate($request->per_page ?? 15);
+                $users->getCollection()->transform(function ($user) {
+                    $user->days_to_expiry = $user->subscription_expires_at
+                        ? (int) now()->diffInDays($user->subscription_expires_at, false)
+                        : null;
+                    $user->is_expired = $user->subscription_expires_at && $user->subscription_expires_at->isPast();
+                    return $user;
                 });
 
-            $users = $query->latest()->paginate($request->per_page ?? 15);
-
-            // Add computed fields
-            $users->getCollection()->transform(function ($user) {
-                $user->days_to_expiry = $user->subscription_expires_at
-                    ? (int) now()->diffInDays($user->subscription_expires_at, false)
-                    : null;
-                $user->is_expired = $user->subscription_expires_at && $user->subscription_expires_at->isPast();
-                return $user;
+                return [
+                    'data' => $users->items(),
+                    'meta' => [
+                        'current_page' => $users->currentPage(),
+                        'last_page' => $users->lastPage(),
+                        'per_page' => $users->perPage(),
+                        'total' => $users->total(),
+                    ],
+                ];
             });
 
             return response()->json([
                 'success' => true,
-                'data' => $users->items(),
-                'meta' => [
-                    'current_page' => $users->currentPage(),
-                    'last_page' => $users->lastPage(),
-                    'per_page' => $users->perPage(),
-                    'total' => $users->total(),
-                ],
+                'data' => $payload['data'],
+                'meta' => $payload['meta'],
             ]);
         } catch (\Exception $e) {
             Log::error('Error listing hotspot users', ['error' => $e->getMessage()]);
@@ -562,6 +578,8 @@ class HotspotController extends Controller
                 'admin_id' => auth()->id(),
             ]);
 
+            $this->bustHotspotCache((string) $tenantId);
+
             return response()->json([
                 'success' => true,
                 'message' => 'Disconnect request queued',
@@ -605,7 +623,7 @@ class HotspotController extends Controller
                 'admin_grant'
             )->onQueue('hotspot-access');
 
-            \Illuminate\Support\Facades\Cache::forget('hotspot_stats');
+            $this->bustHotspotCache((string) $tenantId);
             Log::info('Grant access job dispatched for hotspot user', [
                 'user_id' => $userId,
                 'package_id' => $packageId,
@@ -680,7 +698,7 @@ class HotspotController extends Controller
                 $reason
             ))->toOthers();
 
-            \Illuminate\Support\Facades\Cache::forget('hotspot_stats');
+            $this->bustHotspotCache((string) $tenantId);
             Log::info('Access revoked for hotspot user', [
                 'user_id' => $userId,
                 'username' => $user->username,
@@ -708,28 +726,38 @@ class HotspotController extends Controller
     public function listSessions(Request $request)
     {
         try {
-            $query = RadiusSession::with(['hotspotUser'])
-                ->when($request->status, function ($q, $status) {
-                    return $q->where('status', $status);
-                })
-                ->when($request->user_id, function ($q, $userId) {
-                    return $q->where('hotspot_user_id', $userId);
-                })
-                ->when($request->active_only || !$request->status, function ($q) {
-                    return $q->where('status', 'active');
-                });
+            $tenantId = (string) (auth()->user()->tenant_id ?? '');
+            $cacheKey = $this->hotspotCacheKey('sessions', $tenantId, $request);
 
-            $sessions = $query->latest('session_start')->paginate($request->per_page ?? 20);
+            $payload = Cache::remember($cacheKey, self::LIST_CACHE_TTL_SECONDS, function () use ($request) {
+                $query = RadiusSession::with(['hotspotUser'])
+                    ->when($request->status, function ($q, $status) {
+                        return $q->where('status', $status);
+                    })
+                    ->when($request->user_id, function ($q, $userId) {
+                        return $q->where('hotspot_user_id', $userId);
+                    })
+                    ->when($request->active_only || !$request->status, function ($q) {
+                        return $q->where('status', 'active');
+                    });
+
+                $sessions = $query->latest('session_start')->paginate($request->per_page ?? 20);
+
+                return [
+                    'data' => $sessions->items(),
+                    'meta' => [
+                        'current_page' => $sessions->currentPage(),
+                        'last_page' => $sessions->lastPage(),
+                        'per_page' => $sessions->perPage(),
+                        'total' => $sessions->total(),
+                    ],
+                ];
+            });
 
             return response()->json([
                 'success' => true,
-                'data' => $sessions->items(),
-                'meta' => [
-                    'current_page' => $sessions->currentPage(),
-                    'last_page' => $sessions->lastPage(),
-                    'per_page' => $sessions->perPage(),
-                    'total' => $sessions->total(),
-                ],
+                'data' => $payload['data'],
+                'meta' => $payload['meta'],
             ]);
         } catch (\Exception $e) {
             Log::error('Error listing hotspot sessions', ['error' => $e->getMessage()]);
@@ -748,107 +776,116 @@ class HotspotController extends Controller
     public function listLiveSessions(Request $request)
     {
         try {
-            $source = 'none';
+            $tenantId = (string) (auth()->user()->tenant_id ?? '');
+            $cacheKey = $this->hotspotCacheKey('live_sessions', $tenantId, $request);
 
-            // 1. Try tenant-schema radacct first
-            $rows = collect();
-            if (\Illuminate\Support\Facades\Schema::hasTable('radacct')) {
-                $rows = DB::table('radacct')
-                    ->select([
-                        'acctsessionid', 'acctuniqueid', 'username',
-                        'acctstarttime', 'acctsessiontime',
-                        'acctinputoctets', 'acctoutputoctets',
-                        'framedipaddress', 'callingstationid', 'nasipaddress',
-                        'nasportid', 'servicetype',
-                    ])
-                    ->whereNull('acctstoptime')
-                    ->whereIn('servicetype', ['Framed-User', 'Login-User', 'Call-Check', ''])
-                    ->orderByDesc('acctstarttime')
-                    ->limit(500)
-                    ->get();
+            $payload = Cache::remember($cacheKey, self::LIVE_LIST_CACHE_TTL_SECONDS, function () {
+                $source = 'none';
 
-                if ($rows->isNotEmpty()) {
-                    $source = 'tenant_radacct';
+                $rows = collect();
+                if (\Illuminate\Support\Facades\Schema::hasTable('radacct')) {
+                    $rows = DB::table('radacct')
+                        ->select([
+                            'acctsessionid', 'acctuniqueid', 'username',
+                            'acctstarttime', 'acctsessiontime',
+                            'acctinputoctets', 'acctoutputoctets',
+                            'framedipaddress', 'callingstationid', 'nasipaddress',
+                            'nasportid', 'servicetype',
+                        ])
+                        ->whereNull('acctstoptime')
+                        ->whereIn('servicetype', ['Framed-User', 'Login-User', 'Call-Check', ''])
+                        ->orderByDesc('acctstarttime')
+                        ->limit(500)
+                        ->get();
+
+                    if ($rows->isNotEmpty()) {
+                        $source = 'tenant_radacct';
+                    }
                 }
-            }
 
-            // 2. Fallback: public.radacct filtered by tenant hotspot usernames
-            if ($rows->isEmpty()) {
-                $publicExists = (bool) (DB::selectOne("SELECT to_regclass('public.radacct') AS t")->t ?? null);
-                if ($publicExists) {
-                    $usernames = HotspotUser::query()->pluck('username')->filter()->unique()->values()->all();
-                    if (!empty($usernames)) {
-                        $rows = DB::table('public.radacct')
-                            ->select([
-                                'acctsessionid', 'acctuniqueid', 'username',
-                                'acctstarttime', 'acctsessiontime',
-                                'acctinputoctets', 'acctoutputoctets',
-                                'framedipaddress', 'callingstationid', 'nasipaddress',
-                                'nasportid', 'servicetype',
-                            ])
-                            ->whereNull('acctstoptime')
-                            ->whereIn('username', $usernames)
-                            ->orderByDesc('acctstarttime')
-                            ->limit(500)
-                            ->get();
+                if ($rows->isEmpty()) {
+                    $publicExists = (bool) (DB::selectOne("SELECT to_regclass('public.radacct') AS t")->t ?? null);
+                    if ($publicExists) {
+                        $usernames = HotspotUser::query()->pluck('username')->filter()->unique()->values()->all();
+                        if (!empty($usernames)) {
+                            $rows = DB::table('public.radacct')
+                                ->select([
+                                    'acctsessionid', 'acctuniqueid', 'username',
+                                    'acctstarttime', 'acctsessiontime',
+                                    'acctinputoctets', 'acctoutputoctets',
+                                    'framedipaddress', 'callingstationid', 'nasipaddress',
+                                    'nasportid', 'servicetype',
+                                ])
+                                ->whereNull('acctstoptime')
+                                ->whereIn('username', $usernames)
+                                ->orderByDesc('acctstarttime')
+                                ->limit(500)
+                                ->get();
 
-                        if ($rows->isNotEmpty()) {
-                            $source = 'public_radacct';
+                            if ($rows->isNotEmpty()) {
+                                $source = 'public_radacct';
+                            }
                         }
                     }
                 }
-            }
 
-            $usernames = $rows->pluck('username')->filter()->unique()->values()->all();
+                $usernames = $rows->pluck('username')->filter()->unique()->values()->all();
 
-            $hotspotUsersByUsername = HotspotUser::whereIn('username', $usernames)
-                ->with(['package:id,name,data_limit'])
-                ->get()
-                ->keyBy('username');
+                $hotspotUsersByUsername = HotspotUser::whereIn('username', $usernames)
+                    ->with(['package:id,name,data_limit'])
+                    ->get()
+                    ->keyBy('username');
 
-            $data = $rows->map(function ($row) use ($hotspotUsersByUsername) {
-                $username    = (string) ($row->username ?? '');
-                $hsUser      = $hotspotUsersByUsername->get($username);
-                $pkg         = $hsUser?->package;
-                $start       = $row->acctstarttime ? \Carbon\Carbon::parse($row->acctstarttime) : null;
-                $duration    = $start ? max(0, $start->diffInSeconds(now(), false)) : (int) ($row->acctsessiontime ?? 0);
-                $bytesIn     = (int) ($row->acctinputoctets ?? 0);
-                $bytesOut    = (int) ($row->acctoutputoctets ?? 0);
+                $data = $rows->map(function ($row) use ($hotspotUsersByUsername) {
+                    $username    = (string) ($row->username ?? '');
+                    $hsUser      = $hotspotUsersByUsername->get($username);
+                    $pkg         = $hsUser?->package;
+                    $start       = $row->acctstarttime ? \Carbon\Carbon::parse($row->acctstarttime) : null;
+                    $duration    = $start ? max(0, $start->diffInSeconds(now(), false)) : (int) ($row->acctsessiontime ?? 0);
+                    $bytesIn     = (int) ($row->acctinputoctets ?? 0);
+                    $bytesOut    = (int) ($row->acctoutputoctets ?? 0);
+
+                    return [
+                        'id'                 => (string) ($row->acctuniqueid ?? $row->acctsessionid ?? $username),
+                        'acct_session_id'    => $row->acctsessionid ?? null,
+                        'acct_unique_id'     => $row->acctuniqueid ?? null,
+                        'username'           => $username,
+                        'type'               => 'hotspot',
+                        'hotspot_user_id'    => $hsUser?->id,
+                        'framed_ip'          => $row->framedipaddress ?? null,
+                        'ip_address'         => $row->framedipaddress ?? null,
+                        'calling_station_id' => $row->callingstationid ?? null,
+                        'mac_address'        => $row->callingstationid ?? null,
+                        'nas_ip_address'     => $row->nasipaddress ?? null,
+                        'nas_port_id'        => $row->nasportid ?? null,
+                        'start_time'         => $row->acctstarttime ?? null,
+                        'connected_at'       => $row->acctstarttime ?? null,
+                        'duration'           => $duration,
+                        'uptime'             => $duration,
+                        'input_octets'       => $bytesIn,
+                        'output_octets'      => $bytesOut,
+                        'package'            => $pkg ? [
+                            'id'         => (string) $pkg->id,
+                            'name'       => $pkg->name,
+                            'data_limit' => $pkg->data_limit,
+                        ] : null,
+                        'subscription_expires_at' => $hsUser?->subscription_expires_at,
+                        'status'             => 'active',
+                    ];
+                })->values();
 
                 return [
-                    'id'                 => (string) ($row->acctuniqueid ?? $row->acctsessionid ?? $username),
-                    'acct_session_id'    => $row->acctsessionid ?? null,
-                    'acct_unique_id'     => $row->acctuniqueid ?? null,
-                    'username'           => $username,
-                    'type'               => 'hotspot',
-                    'hotspot_user_id'    => $hsUser?->id,
-                    'framed_ip'          => $row->framedipaddress ?? null,
-                    'ip_address'         => $row->framedipaddress ?? null,
-                    'calling_station_id' => $row->callingstationid ?? null,
-                    'mac_address'        => $row->callingstationid ?? null,
-                    'nas_ip_address'     => $row->nasipaddress ?? null,
-                    'nas_port_id'        => $row->nasportid ?? null,
-                    'start_time'         => $row->acctstarttime ?? null,
-                    'connected_at'       => $row->acctstarttime ?? null,
-                    'duration'           => $duration,
-                    'uptime'             => $duration,
-                    'input_octets'       => $bytesIn,
-                    'output_octets'      => $bytesOut,
-                    'package'            => $pkg ? [
-                        'id'         => (string) $pkg->id,
-                        'name'       => $pkg->name,
-                        'data_limit' => $pkg->data_limit,
-                    ] : null,
-                    'subscription_expires_at' => $hsUser?->subscription_expires_at,
-                    'status'             => 'active',
+                    'data' => $data,
+                    'source' => $source,
+                    'total' => $data->count(),
                 ];
-            })->values();
+            });
 
             return response()->json([
                 'success' => true,
-                'data'    => $data,
-                'source'  => $source,
-                'total'   => $data->count(),
+                'data'    => $payload['data'],
+                'source'  => $payload['source'],
+                'total'   => $payload['total'],
             ]);
         } catch (\Exception $e) {
             Log::error('Error fetching live hotspot sessions', ['error' => $e->getMessage()]);
@@ -860,298 +897,21 @@ class HotspotController extends Controller
     }
 
     /**
-     * Create a new hotspot user (admin-initiated, not via payment flow)
-     */
-    public function store(Request $request)
-    {
-        $validator = Validator::make($request->all(), [
-            'username'        => 'required|string|max:64|regex:/^[a-z0-9_.\-]+$/i',
-            'package_id'      => 'required|uuid',
-            'phone_number'    => 'nullable|string|max:30',
-            'mac_address'     => 'nullable|string|max:30',
-            'simultaneous_use' => 'nullable|integer|min:1|max:50',
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Validation failed',
-                'errors'  => $validator->errors(),
-            ], 422);
-        }
-
-        if (HotspotUser::where('username', $request->username)->exists()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Username already exists',
-            ], 422);
-        }
-
-        $package = Package::where('id', $request->package_id)
-            ->where('type', 'hotspot')
-            ->first();
-
-        if (!$package) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Invalid package: must be type hotspot',
-            ], 422);
-        }
-
-        try {
-            $plainPassword   = Str::random(10);
-            $simultaneousUse = (int) ($request->simultaneous_use ?? 1);
-            $rateLimit       = BandwidthHelper::formatMikrotikRateLimit(
-                (string) ($package->download_speed ?? $package->speed ?? '10M'),
-                (string) ($package->upload_speed  ?? $package->speed ?? '10M')
-            );
-
-            DB::beginTransaction();
-
-            $user = HotspotUser::create([
-                'username'              => $request->username,
-                'password'              => bcrypt($plainPassword),
-                'phone_number'          => $request->phone_number,
-                'mac_address'           => $request->mac_address,
-                'has_active_subscription' => false,
-                'package_id'            => $package->id,
-                'package_name'          => $package->name,
-                // subscription_expires_at is NOT set at creation — set when first payment is recorded
-                'is_active'             => true,
-                'status'                => 'inactive',
-            ]);
-
-            // RADIUS credentials
-            $ntHash = strtoupper(hash('md4', mb_convert_encoding($plainPassword, 'UTF-16LE', 'UTF-8')));
-
-            DB::table('radcheck')->insert([
-                ['username' => $user->username, 'attribute' => 'Cleartext-Password', 'op' => ':=', 'value' => $plainPassword],
-                ['username' => $user->username, 'attribute' => 'NT-Password',        'op' => ':=', 'value' => $ntHash],
-                ['username' => $user->username, 'attribute' => 'Auth-Type',          'op' => ':=', 'value' => 'Reject'],
-                ['username' => $user->username, 'attribute' => 'Simultaneous-Use',   'op' => ':=', 'value' => (string) $simultaneousUse],
-            ]);
-
-            if ($rateLimit) {
-                DB::table('radreply')->insert([
-                    ['username' => $user->username, 'attribute' => 'Mikrotik-Rate-Limit', 'op' => ':=', 'value' => $rateLimit],
-                ]);
-            }
-
-            DB::commit();
-
-            $user->load('package');
-            $user->days_to_expiry = null;
-            $user->is_expired     = false;
-
-            $tenantId = $request->user()->tenant_id;
-            broadcast(new HotspotUserCreated($user, null, ['username' => $user->username, 'generated_password' => $plainPassword], $tenantId))->toOthers();
-            \Illuminate\Support\Facades\Cache::forget('hotspot_stats');
-
-            Log::info('Hotspot user created by admin', [
-                'user_id'   => $user->id,
-                'username'  => $user->username,
-                'tenant_id' => $tenantId,
-            ]);
-
-            return response()->json([
-                'success'            => true,
-                'message'            => 'Hotspot user created',
-                'data'               => $user,
-                'generated_password' => $plainPassword,
-            ], 201);
-
-        } catch (\Exception $e) {
-            DB::rollBack();
-            Log::error('Failed to create hotspot user', [
-                'error'    => $e->getMessage(),
-                'username' => $request->username,
-            ]);
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to create hotspot user: ' . $e->getMessage(),
-            ], 500);
-        }
-    }
-
-    /**
-     * Update a hotspot user (admin)
-     */
-    public function update(Request $request, string $userId)
-    {
-        // OPTIMIZED: Select only needed columns
-        $user = HotspotUser::query()
-            ->select(['id', 'username', 'package_id', 'package_name', 'phone_number', 'mac_address', 
-                      'simultaneous_use', 'is_active', 'status', 'subscription_expires_at', 'created_at', 'updated_at'])
-            ->findOrFail($userId);
-
-        $validator = Validator::make($request->all(), [
-            'package_id'       => 'sometimes|required|uuid',
-            'phone_number'     => 'sometimes|nullable|string|max:30',
-            'mac_address'      => 'sometimes|nullable|string|max:30',
-            'simultaneous_use' => 'sometimes|integer|min:1|max:50',
-            'is_active'        => 'sometimes|boolean',
-            'status'           => 'sometimes|string|in:active,inactive,expired,revoked,suspended',
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Validation failed',
-                'errors'  => $validator->errors(),
-            ], 422);
-        }
-
-        try {
-            $previousPackage = $user->package ?? Package::find($user->package_id);
-            $newPackage      = null;
-
-            if ($request->has('package_id')) {
-                $newPackage = Package::where('id', $request->package_id)
-                    ->where('type', 'hotspot')
-                    ->first();
-
-                if (!$newPackage) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Invalid package: must be type hotspot',
-                    ], 422);
-                }
-
-                $rateLimit = BandwidthHelper::formatMikrotikRateLimit(
-                    (string) ($newPackage->download_speed ?? $newPackage->speed ?? '10M'),
-                    (string) ($newPackage->upload_speed  ?? $newPackage->speed ?? '10M')
-                );
-                $user->package_id   = $newPackage->id;
-                $user->package_name = $newPackage->name;
-
-                // Pro-rated expiry: if active subscription, convert remaining days using price ratio
-                $currentExpiry = $user->subscription_expires_at;
-                if ($currentExpiry && $currentExpiry->isFuture() && $previousPackage && (string) $previousPackage->id !== (string) $newPackage->id) {
-                    $daysRemaining   = (int) now()->diffInDays($currentExpiry, false);
-                    $oldDurationDays = PackageExpiryHelper::durationInDays($previousPackage);
-                    $newDurationDays = PackageExpiryHelper::durationInDays($newPackage);
-                    $oldPrice        = (float) ($previousPackage->price ?? 0);
-                    $newPrice        = (float) ($newPackage->price ?? 0);
-
-                    if ($oldDurationDays > 0 && $newPrice > 0) {
-                        $oldDailyRate  = $oldPrice / $oldDurationDays;
-                        $unusedCredit  = max(0, $daysRemaining * $oldDailyRate);
-                        $newDailyRate  = $newPrice / $newDurationDays;
-                        $extraDays     = (int) floor($unusedCredit / $newDailyRate);
-                        $user->subscription_expires_at = now()->addDays(max(0, $extraDays));
-                    } else {
-                        $user->subscription_expires_at = PackageExpiryHelper::calculateExpiresAt($newPackage, now());
-                    }
-                }
-                // No active sub — leave subscription_expires_at untouched (will be set on next payment)
-
-                // Update RADIUS rate limit
-                DB::table('radreply')->updateOrInsert(
-                    ['username' => $user->username, 'attribute' => 'Mikrotik-Rate-Limit'],
-                    ['op' => ':=', 'value' => $rateLimit]
-                );
-            }
-
-            if ($request->has('phone_number'))     $user->phone_number     = $request->phone_number;
-            if ($request->has('mac_address'))      $user->mac_address      = $request->mac_address;
-            if ($request->has('simultaneous_use')) {
-                $user->simultaneous_use = (int) $request->simultaneous_use;
-            }
-            if ($request->has('is_active')) $user->is_active = (bool) $request->is_active;
-            if ($request->has('status'))    $user->status    = $request->status;
-
-            // Sync RADIUS block/unblock
-            $shouldBlock = !$user->is_active
-                || in_array($user->status, ['inactive', 'expired', 'revoked', 'suspended'], true);
-
-            // OPTIMIZED: Batch RADIUS operations using upsert
-            $now = now();
-            $radcheckValues = [];
-            
-            if ($request->has('simultaneous_use')) {
-                $radcheckValues[] = [
-                    'username' => $user->username, 
-                    'attribute' => 'Simultaneous-Use', 
-                    'op' => ':=', 
-                    'value' => (string) $user->simultaneous_use,
-                    'created_at' => $now,
-                    'updated_at' => $now,
-                ];
-            }
-            
-            if ($shouldBlock) {
-                $radcheckValues[] = [
-                    'username' => $user->username, 
-                    'attribute' => 'Auth-Type', 
-                    'op' => ':=', 
-                    'value' => 'Reject',
-                    'created_at' => $now,
-                    'updated_at' => $now,
-                ];
-            }
-            
-            // Batch upsert all radcheck values in one query
-            if (!empty($radcheckValues)) {
-                DB::table('radcheck')->upsert(
-                    $radcheckValues,
-                    ['username', 'attribute'],
-                    ['op', 'value', 'updated_at']
-                );
-            }
-            
-            // Remove Auth-Type Reject if not blocking
-            if (!$shouldBlock) {
-                DB::table('radcheck')
-                    ->where('username', $user->username)
-                    ->where('attribute', 'Auth-Type')
-                    ->where('value', 'Reject')
-                    ->delete();
-            }
-
-            $user->save();
-            $user->load('package');
-            $user->days_to_expiry = $user->subscription_expires_at
-                ? (int) now()->diffInDays($user->subscription_expires_at, false)
-                : null;
-            $user->is_expired = $user->subscription_expires_at && $user->subscription_expires_at->isPast();
-
-            // Broadcast event for real-time updates
-            $tenantId = $request->user()->tenant_id;
-            broadcast(new HotspotUserUpdated($user, $tenantId))->toOthers();
-
-            \Illuminate\Support\Facades\Cache::forget('hotspot_stats');
-            Log::info('Hotspot user updated', ['user_id' => $user->id, 'username' => $user->username]);
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Hotspot user updated',
-                'data'    => $user,
-            ]);
-
-        } catch (\Exception $e) {
-            Log::error('Failed to update hotspot user', ['user_id' => $userId, 'error' => $e->getMessage()]);
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to update hotspot user: ' . $e->getMessage(),
-            ], 500);
-        }
-    }
-
-    /**
      * Get hotspot statistics
      */
     public function getStats()
     {
         try {
-            $stats = \Illuminate\Support\Facades\Cache::remember('hotspot_stats', 30, function () {
-                // Single query for all user counts
+            $tenantId = (string) (auth()->user()->tenant_id ?? '');
+            $cacheKey = $this->hotspotCacheKey('stats', $tenantId);
+
+            $stats = Cache::remember($cacheKey, self::STATS_CACHE_TTL_SECONDS, function () {
                 $userCounts = HotspotUser::selectRaw("
                     COUNT(*) as total,
                     COUNT(*) FILTER (WHERE has_active_subscription = true) as active,
                     COUNT(*) FILTER (WHERE status = 'expired') as expired
                 ")->first();
 
-                // Single query for session counts + data usage
                 $today = now()->toDateString();
                 $sessionCounts = RadiusSession::selectRaw("
                     COUNT(*) FILTER (WHERE status = 'active') as active_sessions,
@@ -1217,7 +977,7 @@ class HotspotController extends Controller
             broadcast(new HotspotUserDeleted($id, $username, $tenantId))->toOthers();
 
             // Clear cache
-            \Illuminate\Support\Facades\Cache::forget('hotspot_stats');
+            $this->bustHotspotCache((string) $tenantId);
 
             Log::info('Hotspot user deleted', ['user_id' => $id, 'username' => $username]);
 
@@ -1231,6 +991,28 @@ class HotspotController extends Controller
                 'success' => false,
                 'message' => 'Failed to delete hotspot user: ' . $e->getMessage(),
             ], 500);
+        }
+    }
+
+    private function hotspotCacheKey(string $bucket, string $tenantId, Request $request = null): string
+    {
+        $tenantScope = $tenantId !== '' ? $tenantId : (string) (auth()->user()->tenant_id ?? 'global');
+        $version = $this->hotspotCacheVersion($tenantScope, $bucket);
+        $queryHash = $request ? md5(json_encode($request->query(), JSON_UNESCAPED_SLASHES)) : 'default';
+
+        return "hotspot:{$bucket}:{$tenantScope}:v{$version}:{$queryHash}";
+    }
+
+    private function hotspotCacheVersion(string $tenantId, string $bucket): int
+    {
+        return (int) Cache::rememberForever(self::CACHE_VERSION_PREFIX . $bucket . ':' . $tenantId, static fn (): int => 1);
+    }
+
+    private function bustHotspotCache(string $tenantId, array $buckets = ['users', 'sessions', 'live_sessions', 'stats']): void
+    {
+        foreach ($buckets as $bucket) {
+            $versionKey = self::CACHE_VERSION_PREFIX . $bucket . ':' . $tenantId;
+            Cache::forever($versionKey, $this->hotspotCacheVersion($tenantId, $bucket) + 1);
         }
     }
 }
