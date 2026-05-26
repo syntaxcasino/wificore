@@ -138,13 +138,22 @@ async function handleLogin() {
 
 <style scoped>
 .portal-login-bg {
-  background: #0f0c29;
-  background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 25%, #f093fb 50%, #f5576c 75%, #4facfe 100%);
+  background-size: 400% 400%;
+  animation: gradientShift 15s ease infinite;
   position: relative;
   overflow: hidden;
 }
 .portal-login-bg.captive {
-  background: linear-gradient(135deg, #1a0000 0%, #3d0000 50%, #200000 100%);
+  background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 25%, #feca57 50%, #ff9ff3 75%, #54a0ff 100%);
+  background-size: 400% 400%;
+  animation: gradientShift 15s ease infinite;
+}
+
+@keyframes gradientShift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
 }
 
 .blob {
@@ -156,30 +165,32 @@ async function handleLogin() {
 }
 .blob-1 { width: 400px; height: 400px; top: -100px; left: -100px; }
 .blob-2 { width: 350px; height: 350px; bottom: -80px; right: -80px; }
-.blob-indigo { background: #6366f1; }
-.blob-purple { background: #a855f7; }
-.blob-red    { background: #ef4444; }
-.blob-orange { background: #f97316; }
+.blob-indigo { background: #a78bfa; }
+.blob-purple { background: #c084fc; }
+.blob-red    { background: #fb7185; }
+.blob-orange { background: #fdba74; }
 
 .glass-card {
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.2);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
 }
 
 .portal-input {
-  background: rgba(255, 255, 255, 0.07);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 12px;
   color: #fff;
-  transition: border-color 0.2s, background 0.2s;
+  transition: all 0.2s ease;
   outline: none;
 }
-.portal-input::placeholder { color: rgba(255,255,255,0.25); }
+.portal-input::placeholder { color: rgba(255,255,255,0.4); }
 .portal-input:focus {
-  border-color: rgba(255, 255, 255, 0.35);
-  background: rgba(255, 255, 255, 0.10);
+  border-color: rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.18);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.1);
 }
 
 @keyframes fadeUp {
