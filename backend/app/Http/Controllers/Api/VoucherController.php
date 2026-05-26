@@ -26,8 +26,7 @@ class VoucherController extends Controller
             'created_at', 'updated_at'
         ])
         ->with([
-            'package:id,name,price,download_speed,validity', 
-            'router:id,name'
+            'package:id,name,price,download_speed,validity'
         ])
         ->orderBy('created_at', 'desc');
 
@@ -212,13 +211,18 @@ class VoucherController extends Controller
      */
     public function stats()
     {
-        $stats = [
-            'total' => Voucher::count(),
-            'unused' => Voucher::where('status', 'unused')->count(),
-            'used' => Voucher::where('status', 'used')->count(),
-            'expired' => Voucher::where('status', 'expired')->count(),
-            'revoked' => Voucher::where('status', 'revoked')->count(),
-        ];
+        $tenantId = auth()->user()?->tenant_id;
+        $cacheKey = 'voucher_stats_tenant_' . $tenantId;
+
+        $stats = Cache::remember($cacheKey, now()->addSeconds(15), function () {
+            return [
+                'total' => Voucher::count(),
+                'unused' => Voucher::where('status', 'unused')->count(),
+                'used' => Voucher::where('status', 'used')->count(),
+                'expired' => Voucher::where('status', 'expired')->count(),
+                'revoked' => Voucher::where('status', 'revoked')->count(),
+            ];
+        });
 
         return response()->json([
             'success' => true,
@@ -231,36 +235,42 @@ class VoucherController extends Controller
      */
     public function recentBatches(Request $request)
     {
-        $batches = Voucher::selectRaw("
-                batch_id,
-                COUNT(*) as quantity,
-                MIN(created_at) as created_at,
-                MAX(package_id) as package_id
-            ")
-            ->whereNotNull('batch_id')
-            ->groupBy('batch_id')
-            ->orderByRaw('MIN(created_at) DESC')
-            ->limit($request->input('limit', 10))
-            ->get();
+        $tenantId = auth()->user()?->tenant_id;
+        $limit = max(1, min((int) $request->input('limit', 10), 25));
+        $cacheKey = 'voucher_recent_batches_tenant_' . $tenantId . '_limit_' . $limit;
 
-        // Load package names
-        $packageIds = $batches->pluck('package_id')->unique();
-        $packages = Package::whereIn('id', $packageIds)->pluck('name', 'id');
+        $result = Cache::remember($cacheKey, now()->addSeconds(15), function () use ($limit) {
+            $batches = Voucher::selectRaw("
+                    batch_id,
+                    COUNT(*) as quantity,
+                    MIN(created_at) as created_at,
+                    MAX(package_id) as package_id
+                ")
+                ->whereNotNull('batch_id')
+                ->groupBy('batch_id')
+                ->orderByRaw('MIN(created_at) DESC')
+                ->limit($limit)
+                ->get();
 
-        $result = $batches->map(function ($batch) use ($packages) {
-            $statusCounts = Voucher::where('batch_id', $batch->batch_id)
-                ->selectRaw("status, COUNT(*) as count")
-                ->groupBy('status')
-                ->pluck('count', 'status');
+            // Load package names
+            $packageIds = $batches->pluck('package_id')->unique();
+            $packages = Package::whereIn('id', $packageIds)->pluck('name', 'id');
 
-            return [
-                'batch_id' => $batch->batch_id,
-                'quantity' => $batch->quantity,
-                'package' => $packages[$batch->package_id] ?? 'Unknown',
-                'package_id' => $batch->package_id,
-                'created_at' => $batch->created_at,
-                'status_counts' => $statusCounts,
-            ];
+            return $batches->map(function ($batch) use ($packages) {
+                $statusCounts = Voucher::where('batch_id', $batch->batch_id)
+                    ->selectRaw("status, COUNT(*) as count")
+                    ->groupBy('status')
+                    ->pluck('count', 'status');
+
+                return [
+                    'batch_id' => $batch->batch_id,
+                    'quantity' => $batch->quantity,
+                    'package' => $packages[$batch->package_id] ?? 'Unknown',
+                    'package_id' => $batch->package_id,
+                    'created_at' => $batch->created_at,
+                    'status_counts' => $statusCounts,
+                ];
+            })->values();
         });
 
         return response()->json([
@@ -312,6 +322,10 @@ class VoucherController extends Controller
         $vouchers = Voucher::select('batch_id')->distinct()->whereNotNull('batch_id')->get();
         foreach ($vouchers as $voucher) {
             Cache::forget("voucher_batch_{$voucher->batch_id}_tenant_{$tenantId}");
+        }
+
+        for ($limit = 1; $limit <= 25; $limit++) {
+            Cache::forget("voucher_recent_batches_tenant_{$tenantId}_limit_{$limit}");
         }
 
         Cache::tags(["voucher_search_{$tenantId}"])->flush();

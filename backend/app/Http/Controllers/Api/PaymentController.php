@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Helpers\PackageExpiryHelper;
 use App\Http\Controllers\Controller;
 use App\Models\Payment;
 use App\Models\PppoePayment;
@@ -32,6 +33,7 @@ use App\Services\PaymentTraceLogger;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Str;
@@ -328,16 +330,14 @@ class PaymentController extends Controller
                     $mpesaReceipt = $processed['data']['mpesa_receipt'] ?? null;
                     $mpesaPhoneNumber = $processed['data']['phone_number'] ?? null;
 
-                    // Resolve billing period from package duration (default 30 days)
-                    $periodStart = now();
-                    $periodEnd   = now()->addDays(30);
-                    if ($status === 'completed') {
-                        $pppoeUser = PppoeUser::with('package:id,duration')->find($pppoePayment->pppoe_user_id);
-                        if ($pppoeUser?->package) {
-                            $durationDays = (int) ($pppoeUser->package->duration ?? 30);
-                            $periodEnd = $periodStart->copy()->addDays($durationDays ?: 30);
-                        }
-                    }
+                    // Resolve billing period from the current active expiry so renewals extend instead of reset
+                    $paymentDate = now();
+                    $pppoeUser = PppoeUser::with('package:id,name,duration,validity,price')->find($pppoePayment->pppoe_user_id);
+                    $currentExpiry = $pppoeUser?->expires_at ? Carbon::parse($pppoeUser->expires_at) : null;
+                    $periodStart = PackageExpiryHelper::resolveRenewalBaseTime($paymentDate, $currentExpiry);
+                    $periodEnd = $pppoeUser?->package
+                        ? PackageExpiryHelper::calculateRenewalExpiresAt($pppoeUser->package, $paymentDate, $currentExpiry)
+                        : $periodStart->copy()->addDays(30);
 
                     $pppoePayment->update([
                         'status'             => $status,
@@ -359,6 +359,8 @@ class PaymentController extends Controller
                             ],
                         ]),
                     ]);
+
+                    Cache::forget('mpesa_stk_limit:' . $pppoePayment->pppoe_user_id);
 
                     if ($status === 'completed' && isset($pppoeUser)) {
                         if ($pppoeUser) {
@@ -446,6 +448,8 @@ class PaymentController extends Controller
                         $timedVoucher->status = 'cancelled';
                         $timedVoucher->save();
                     }
+
+                    Cache::forget('timed_voucher_limit:' . $timedVoucher->pppoe_user_id);
                 });
 
                 $this->logPaymentTrace('callback.pppoe_timed_voucher.' . $status, [
@@ -548,8 +552,16 @@ class PaymentController extends Controller
                     // CACHE BUST: keep tenant revenue widgets and payments list fresh immediately
                     TenantDashboardController::bustDashboardCache((string) $tenant->id);
                     TenantDashboardController::bustEntityCache((string) $tenant->id, 'payments');
-                    Cache::forget('payment_status:' . $paymentContext['payment_id'] . ':' . md5((string) $checkoutRequestId));
-                    Cache::forget('mpesa_stk_limit:' . $paymentContext['payment_id']);
+
+                    $hotspotUser = HotspotUser::query()
+                        ->select(['id', 'phone_number', 'username'])
+                        ->where('phone_number', $tenantPayment->phone_number)
+                        ->orWhere('username', $tenantPayment->phone_number)
+                        ->first();
+
+                    if ($hotspotUser) {
+                        Cache::forget('payment_status:' . $hotspotUser->id . ':' . md5((string) $checkoutRequestId));
+                    }
                 }
 
                 $this->logPaymentTrace('callback.hotspot.' . $status, [

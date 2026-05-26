@@ -461,8 +461,8 @@ const getConnectionActions = (conn) => [
 ]
 
 // Lifecycle (matching Todo pattern with SSE/WebSocket)
-onMounted(async () => {
-  await fetchConnections()
+onMounted(() => {
+  void fetchConnections()
   // Try SSE first, fallback to WebSocket events
   setupSSEListeners()
   setupWebSocketListeners()

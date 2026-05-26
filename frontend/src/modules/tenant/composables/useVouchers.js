@@ -1,11 +1,36 @@
 import { ref, computed } from 'vue'
 import axios from '@/modules/common/services/api/axios'
+import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/modules/common/composables/useToast'
+import { readSnapshot, scheduleAfterPaint, writeSnapshot } from '@/modules/common/composables/performance/useViewCache'
 import { useEventDeduplicationStore } from '@/stores/eventDeduplication'
 
 export function useVouchers() {
   const toast = useToast()
   const dedupStore = useEventDeduplicationStore()
+  const authStore = useAuthStore()
+  const cacheKey = () => `tenant:vouchers:${authStore.user?.tenant_id || authStore.tenantId || 'default'}:v1`
+
+  const hydrateSnapshot = () => {
+    const snapshot = readSnapshot(cacheKey(), 30 * 1000)
+    if (!snapshot || typeof snapshot !== 'object') return false
+    if (Array.isArray(snapshot.vouchers)) vouchers.value = snapshot.vouchers
+    if (Array.isArray(snapshot.packages)) packages.value = snapshot.packages
+    if (snapshot.pagination && typeof snapshot.pagination === 'object') {
+      pagination.value = { ...pagination.value, ...snapshot.pagination }
+    }
+    if (snapshot.stats && typeof snapshot.stats === 'object') {
+      stats.value = { ...stats.value, ...snapshot.stats }
+    }
+    return true
+  }
+
+  const persistSnapshot = () => writeSnapshot(cacheKey(), {
+    vouchers: vouchers.value,
+    packages: packages.value,
+    pagination: pagination.value,
+    stats: stats.value,
+  })
 
   // State
   const vouchers = ref([])
@@ -47,10 +72,21 @@ export function useVouchers() {
 
   // Actions
   const fetchPackages = async () => {
+    if (packages.value.length === 0) {
+      hydrateSnapshot()
+      if (packages.value.length === 0) {
+        scheduleAfterPaint(() => {
+          if (packages.value.length === 0) {
+            // Keep background loading only; the page can render without packages.
+          }
+        })
+      }
+    }
     try {
       const res = await axios.get('/packages')
       const data = res.data.data || res.data
       packages.value = Array.isArray(data) ? data : (data.data || [])
+      persistSnapshot()
       return packages.value
     } catch (err) {
       console.error('Failed to fetch packages:', err)
@@ -59,9 +95,13 @@ export function useVouchers() {
   }
 
   const fetchStats = async () => {
+    if (stats.value.total === 0) {
+      hydrateSnapshot()
+    }
     try {
       const res = await axios.get('/vouchers/stats')
       stats.value = res.data.data || {}
+      persistSnapshot()
       return stats.value
     } catch (err) {
       console.error('Failed to fetch voucher stats:', err)
@@ -70,6 +110,12 @@ export function useVouchers() {
   }
 
   const fetchVouchers = async (params = {}) => {
+    const isInitial = vouchers.value.length === 0
+    if (isInitial && !hydrateSnapshot()) {
+      scheduleAfterPaint(() => {
+        if (vouchers.value.length === 0) loading.value = true
+      })
+    }
     loading.value = true
     error.value = null
     
@@ -96,6 +142,7 @@ export function useVouchers() {
       } else if (Array.isArray(data)) {
         vouchers.value = data
       }
+      persistSnapshot()
       
       return vouchers.value
     } catch (err) {
@@ -105,6 +152,18 @@ export function useVouchers() {
       throw err
     } finally {
       loading.value = false
+    }
+  }
+
+  const fetchVoucherDetails = async (voucherId) => {
+    if (!voucherId) return null
+
+    try {
+      const res = await axios.get(`/vouchers/${voucherId}`)
+      return res.data.data || res.data
+    } catch (err) {
+      console.error('Failed to fetch voucher details:', err)
+      throw err
     }
   }
 
@@ -427,6 +486,7 @@ export function useVouchers() {
     fetchPackages,
     fetchStats,
     fetchVouchers,
+    fetchVoucherDetails,
     refreshVouchers,
     goToPage,
     generateVouchers,

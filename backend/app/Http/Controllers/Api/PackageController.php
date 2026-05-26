@@ -39,7 +39,6 @@ class PackageController extends Controller
                 'download_speed', 'upload_speed', 'status', 'is_active', 
                 'hide_from_client', 'is_public', 'created_at', 'updated_at'
             ])
-            ->with(['routers:id,name']) // Only select needed columns
             ->orderBy('created_at', 'desc')
             ->get();
         });
@@ -308,6 +307,8 @@ class PackageController extends Controller
 
         Cache::forget("vouchers_list_tenant_{$tenantId}");
         Cache::forget("voucher_stats_tenant_{$tenantId}");
+        Cache::forget("pppoe_portal_plans:{$tenantId}");
+        Cache::forget("pppoe_portal_timed_voucher_options:{$tenantId}");
         Cache::tags(["router_packages_{$tenantId}"])->flush();
     }
 }

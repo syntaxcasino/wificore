@@ -1,14 +1,28 @@
 import { defineStore } from 'pinia'
 import axios from 'axios'
 
+function readJsonStorage(key) {
+  if (typeof window === 'undefined') return null
+  const raw = localStorage.getItem(key)
+  if (!raw) return null
+
+  try {
+    return JSON.parse(raw)
+  } catch (error) {
+    console.warn(`Invalid JSON in ${key}; clearing stale value`, error)
+    localStorage.removeItem(key)
+    return null
+  }
+}
+
 export const useAuthStore = defineStore('auth', {
   state: () => ({
     user: null,
-    token: localStorage.getItem('authToken') || null,
-    isAuthenticated: !!localStorage.getItem('authToken'),
-    role: localStorage.getItem('userRole') || null,
-    tenantId: localStorage.getItem('tenantId') || null,
-    dashboardRoute: localStorage.getItem('dashboardRoute') || '/dashboard',
+    token: typeof window === 'undefined' ? null : localStorage.getItem('authToken') || null,
+    isAuthenticated: typeof window === 'undefined' ? false : !!localStorage.getItem('authToken'),
+    role: typeof window === 'undefined' ? null : localStorage.getItem('userRole') || null,
+    tenantId: typeof window === 'undefined' ? null : localStorage.getItem('tenantId') || null,
+    dashboardRoute: typeof window === 'undefined' ? '/dashboard' : localStorage.getItem('dashboardRoute') || '/dashboard',
   }),
   
   getters: {
@@ -145,12 +159,16 @@ export const useAuthStore = defineStore('auth', {
     },
     
     initializeAuth() {
+      if (typeof window === 'undefined') {
+        return
+      }
+
       const token = localStorage.getItem('authToken')
-      const user = localStorage.getItem('user')
+      const user = readJsonStorage('user')
       
       if (token && user) {
         this.token = token
-        this.user = JSON.parse(user)
+        this.user = user
         this.role = this.user.role
         this.tenantId = this.user.tenant_id
         this.isAuthenticated = true
@@ -160,6 +178,11 @@ export const useAuthStore = defineStore('auth', {
         
         // Initialize WebSocket if user is authenticated
         this.initializeWebSocket()
+        return
+      }
+
+      if (token || user) {
+        this.clearAuth()
       }
     },
     

@@ -1,28 +1,28 @@
 <template>
-  <div class="min-h-screen flex flex-col bg-slate-100 text-slate-900">
+  <div :class="['min-h-screen flex flex-col transition-colors duration-300', isDark ? 'bg-slate-950 text-slate-100' : 'bg-slate-100 text-slate-900']">
 
     <!-- ── Top Bar ── -->
-    <header class="sticky top-0 z-40 flex items-center justify-between px-4 sm:px-6 lg:px-8 h-16 bg-white border-b border-slate-200 shadow-sm">
+    <header :class="['sticky top-0 z-40 flex items-center justify-between px-4 sm:px-6 lg:px-8 h-16 border-b transition-colors duration-300', isDark ? 'bg-slate-900 border-slate-800 shadow-lg shadow-black/20' : 'bg-white border-slate-200 shadow-sm']">
       <div class="flex items-center gap-3">
         <div class="w-9 h-9 bg-indigo-600 rounded-lg flex items-center justify-center flex-shrink-0">
           <i class="fas fa-wifi text-white text-sm"></i>
         </div>
         <div class="hidden sm:flex flex-col leading-tight">
-          <span class="font-semibold text-sm text-slate-800">{{ dashboardData?.user?.provider_name || 'My Account' }}</span>
-          <span v-if="dashboardData?.user?.provider_name" class="text-[10px] text-slate-500">Customer Portal</span>
+          <span :class="['font-semibold text-sm', isDark ? 'text-slate-200' : 'text-slate-800']">{{ dashboardData?.user?.provider_name || 'My Account' }}</span>
+          <span v-if="dashboardData?.user?.provider_name" :class="['text-[10px]', isDark ? 'text-slate-400' : 'text-slate-500']">Customer Portal</span>
         </div>
       </div>
       <div class="flex items-center gap-3">
-        <button @click="toggleDarkMode" class="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-700 hover:bg-indigo-200 flex items-center justify-center transition-all shadow-sm hover:shadow" title="Toggle theme">
-          <i :class="['fas text-base', isDark ? 'fa-sun' : 'fa-moon']"></i>
+        <button @click="toggleDarkMode" class="w-11 h-11 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 flex items-center justify-center transition-all shadow-lg shadow-indigo-500/30 hover:shadow-xl" title="Toggle theme">
+          <i :class="['fas text-lg', isDark ? 'fa-sun' : 'fa-moon']"></i>
         </button>
-        <div class="hidden sm:flex items-center gap-2 rounded-lg px-3 py-1.5 bg-slate-100">
-          <div class="w-5 h-5 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center">
+        <div :class="['hidden sm:flex items-center gap-2 rounded-lg px-3 py-1.5 transition-colors', isDark ? 'bg-slate-800' : 'bg-slate-100']">
+          <div :class="['w-5 h-5 rounded-full flex items-center justify-center', isDark ? 'bg-slate-700 text-slate-400' : 'bg-slate-200 text-slate-600']">
             <i class="fas fa-user text-[10px]"></i>
           </div>
-          <span class="text-sm font-medium text-slate-700">{{ user?.full_name || user?.username || 'Account' }}</span>
+          <span :class="['text-sm font-medium', isDark ? 'text-slate-300' : 'text-slate-700']">{{ user?.full_name || user?.username || 'Account' }}</span>
         </div>
-        <button @click="handleLogout" class="flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-lg border border-slate-200 text-slate-600 hover:text-red-600 hover:bg-red-50 hover:border-red-200 transition-colors">
+        <button @click="handleLogout" :class="['flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-lg border transition-colors', isDark ? 'border-slate-700 text-slate-400 hover:text-red-400 hover:bg-red-950 hover:border-red-800' : 'border-slate-200 text-slate-600 hover:text-red-600 hover:bg-red-50 hover:border-red-200']">
           <i class="fas fa-arrow-right-from-bracket"></i>
           <span class="hidden sm:inline">Logout</span>
         </button>
@@ -30,14 +30,14 @@
     </header>
 
     <!-- ── Nav Tabs ── -->
-    <nav class="flex items-center gap-1 px-4 sm:px-6 lg:px-8 pt-3 pb-3 bg-white border-b border-slate-200 overflow-x-auto">
-      <button class="px-3 py-1.5 text-sm font-medium rounded-lg bg-indigo-50 text-indigo-700">
+    <nav :class="['flex items-center gap-1 px-4 sm:px-6 lg:px-8 pt-3 pb-3 border-b overflow-x-auto transition-colors duration-300', isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200']">
+      <button :class="['px-3 py-1.5 text-sm font-medium rounded-lg transition-colors', isDark ? 'bg-indigo-500/20 text-indigo-300' : 'bg-indigo-50 text-indigo-700']">
         Overview
       </button>
-      <button @click="openPaymentsOverlay" class="px-3 py-1.5 text-sm font-medium rounded-lg text-slate-600 hover:bg-slate-100 transition-colors">
+      <button @click="openPaymentsOverlay" :class="['px-3 py-1.5 text-sm font-medium rounded-lg transition-colors', isDark ? 'text-slate-400 hover:bg-slate-800' : 'text-slate-600 hover:bg-slate-100']">
         Payments
       </button>
-      <button @click="openHistoryOverlay" class="px-3 py-1.5 text-sm font-medium rounded-lg text-slate-600 hover:bg-slate-100 transition-colors">
+      <button @click="openHistoryOverlay" :class="['px-3 py-1.5 text-sm font-medium rounded-lg transition-colors', isDark ? 'text-slate-400 hover:bg-slate-800' : 'text-slate-600 hover:bg-slate-100']">
         Usage History
       </button>
     </nav>
@@ -48,18 +48,18 @@
       <div v-if="isLoading && !dashboardData" class="flex items-center justify-center h-64">
         <div class="text-center">
           <div class="w-10 h-10 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p class="text-sm text-slate-500">Loading your account…</p>
+          <p :class="['text-sm', isDark ? 'text-slate-400' : 'text-slate-500']">Loading your account…</p>
         </div>
       </div>
 
       <!-- Error -->
-      <div v-else-if="loadError" class="rounded-xl p-4 mb-6 bg-red-50 border border-red-200">
+      <div v-else-if="loadError" :class="['rounded-xl p-4 mb-6 border transition-colors', isDark ? 'bg-red-500/10 border-red-500/30' : 'bg-red-50 border-red-200']">
         <div class="flex items-start gap-3">
           <i class="fas fa-circle-exclamation text-red-500 mt-0.5 flex-shrink-0"></i>
           <div class="flex-1">
-            <p class="font-semibold text-sm text-slate-800">Failed to load dashboard</p>
-            <p class="text-sm mt-1 text-slate-600">{{ loadError }}</p>
-            <button @click="loadDashboard" class="mt-3 px-4 py-2 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg text-sm font-medium transition-colors">Retry</button>
+            <p :class="['font-semibold text-sm', isDark ? 'text-slate-200' : 'text-slate-800']">Failed to load dashboard</p>
+            <p :class="['text-sm mt-1', isDark ? 'text-slate-400' : 'text-slate-600']">{{ loadError }}</p>
+            <button @click="loadDashboard" :class="['mt-3 px-4 py-2 rounded-lg text-sm font-medium transition-colors', isDark ? 'bg-red-500/20 hover:bg-red-500/30 text-red-400' : 'bg-red-100 hover:bg-red-200 text-red-700']">Retry</button>
           </div>
         </div>
       </div>
@@ -84,52 +84,52 @@
         <!-- ── Stats ── -->
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <!-- Session -->
-          <div class="rounded-xl p-5 bg-white border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
-            <div class="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center mb-3">
+          <div :class="['rounded-xl p-5 border shadow-sm hover:shadow-md transition-all', isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200']">
+            <div :class="['w-10 h-10 rounded-xl flex items-center justify-center mb-3', isDark ? 'bg-indigo-500/20 text-indigo-400' : 'bg-indigo-50 text-indigo-600']">
               <i class="fas fa-signal"></i>
             </div>
-            <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Session</p>
-            <p class="font-bold text-xl text-slate-900 mt-1">{{ dashboardData.current_session ? dashboardData.current_session.duration_formatted : '--' }}</p>
-            <span class="mt-2 inline-flex text-xs font-semibold px-2.5 py-1 rounded-full" :class="dashboardData.current_session ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'">
+            <p :class="['text-xs font-semibold uppercase tracking-wide', isDark ? 'text-slate-500' : 'text-slate-400']">Session</p>
+            <p :class="['font-bold text-xl mt-1', isDark ? 'text-slate-100' : 'text-slate-900']">{{ dashboardData.current_session ? dashboardData.current_session.duration_formatted : '--' }}</p>
+            <span class="mt-2 inline-flex text-xs font-semibold px-2.5 py-1 rounded-full" :class="dashboardData.current_session ? (isDark ? 'bg-emerald-500/20 text-emerald-400' : 'bg-emerald-100 text-emerald-700') : (isDark ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-500')">
               {{ dashboardData.current_session ? 'Online' : 'Offline' }}
             </span>
           </div>
           <!-- Balance -->
-          <div class="rounded-xl p-5 bg-white border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
-            <div class="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center mb-3">
+          <div :class="['rounded-xl p-5 border shadow-sm hover:shadow-md transition-all', isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200']">
+            <div :class="['w-10 h-10 rounded-xl flex items-center justify-center mb-3', isDark ? 'bg-emerald-500/20 text-emerald-400' : 'bg-emerald-50 text-emerald-600']">
               <i class="fas fa-wallet"></i>
             </div>
-            <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Balance</p>
-            <p class="font-bold text-xl text-slate-900 mt-1">KES {{ formatNumber(dashboardData.user?.balance || 0) }}</p>
-            <p class="mt-2 text-xs text-slate-500">Exp: {{ formatDate(dashboardData.user?.expiration_date) }}</p>
+            <p :class="['text-xs font-semibold uppercase tracking-wide', isDark ? 'text-slate-500' : 'text-slate-400']">Balance</p>
+            <p :class="['font-bold text-xl mt-1', isDark ? 'text-slate-100' : 'text-slate-900']">KES {{ formatNumber(dashboardData.user?.balance || 0) }}</p>
+            <p :class="['mt-2 text-xs', isDark ? 'text-slate-400' : 'text-slate-500']">Exp: {{ formatDate(dashboardData.user?.expiration_date) }}</p>
           </div>
           <!-- Usage -->
-          <div class="rounded-xl p-5 bg-white border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
-            <div class="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center mb-3">
+          <div :class="['rounded-xl p-5 border shadow-sm hover:shadow-md transition-all', isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200']">
+            <div :class="['w-10 h-10 rounded-xl flex items-center justify-center mb-3', isDark ? 'bg-blue-500/20 text-blue-400' : 'bg-blue-50 text-blue-600']">
               <i class="fas fa-chart-line"></i>
             </div>
-            <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide">30-Day Usage</p>
-            <p class="font-bold text-xl text-slate-900 mt-1">{{ dashboardData.usage_stats?.total_usage_formatted || '0 B' }}</p>
-            <p class="mt-2 text-xs text-slate-500">{{ dashboardData.usage_stats?.total_sessions || 0 }} sessions</p>
+            <p :class="['text-xs font-semibold uppercase tracking-wide', isDark ? 'text-slate-500' : 'text-slate-400']">30-Day Usage</p>
+            <p :class="['font-bold text-xl mt-1', isDark ? 'text-slate-100' : 'text-slate-900']">{{ dashboardData.usage_stats?.total_usage_formatted || '0 B' }}</p>
+            <p :class="['mt-2 text-xs', isDark ? 'text-slate-400' : 'text-slate-500']">{{ dashboardData.usage_stats?.total_sessions || 0 }} sessions</p>
           </div>
           <!-- Payment -->
-          <div class="rounded-xl p-5 bg-white border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
-            <div class="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center mb-3">
+          <div :class="['rounded-xl p-5 border shadow-sm hover:shadow-md transition-all', isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200']">
+            <div :class="['w-10 h-10 rounded-xl flex items-center justify-center mb-3', isDark ? 'bg-amber-500/20 text-amber-400' : 'bg-amber-50 text-amber-600']">
               <i class="fas fa-receipt"></i>
             </div>
-            <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Payment</p>
-            <p class="font-bold text-xl text-slate-900 mt-1">{{ paymentStatusLabel }}</p>
-            <p class="mt-2 text-xs text-slate-500">Due {{ formatDate(dashboardData.user?.next_payment_due || dashboardData.user?.expiration_date) }}</p>
+            <p :class="['text-xs font-semibold uppercase tracking-wide', isDark ? 'text-slate-500' : 'text-slate-400']">Payment</p>
+            <p :class="['font-bold text-xl mt-1', isDark ? 'text-slate-100' : 'text-slate-900']">{{ paymentStatusLabel }}</p>
+            <p :class="['mt-2 text-xs', isDark ? 'text-slate-400' : 'text-slate-500']">Due {{ formatDate(dashboardData.user?.next_payment_due || dashboardData.user?.expiration_date) }}</p>
           </div>
         </div>
 
         <!-- ── Main grid ── -->
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
           <!-- Account Details -->
-          <div class="lg:col-span-2 rounded-xl overflow-hidden border bg-white border-slate-200">
-            <div class="px-4 py-3 flex items-center gap-2 border-b border-slate-100 bg-slate-50">
-              <i class="fas fa-user-circle text-slate-600 text-sm"></i>
-              <h3 class="font-semibold text-sm text-slate-800">Account Details</h3>
+          <div :class="['lg:col-span-2 rounded-xl overflow-hidden border transition-colors', isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200']">
+            <div :class="['px-4 py-3 flex items-center gap-2 border-b transition-colors', isDark ? 'border-slate-800 bg-slate-950' : 'border-slate-100 bg-slate-50']">
+              <i :class="['text-sm', isDark ? 'text-slate-400' : 'text-slate-600', 'fas fa-user-circle']"></i>
+              <h3 :class="['font-semibold text-sm', isDark ? 'text-slate-200' : 'text-slate-800']">Account Details</h3>
             </div>
             <div class="p-4 grid grid-cols-2 sm:grid-cols-3 gap-4">
               <div v-for="(cell, i) in [
@@ -142,21 +142,21 @@
                 {l:'Plan Price',  v: 'KES '+formatNumber(planAmount)},
                 {l:'Paid',        v: 'KES '+formatNumber(dashboardData.user?.amount_paid||0)},
               ]" :key="i" class="flex flex-col gap-0.5">
-                <p class="text-xs font-medium text-slate-500 uppercase">{{ cell.l }}</p>
-                <p class="text-sm font-medium text-slate-900" :class="cell.tr ? 'truncate' : ''">{{ cell.v }}</p>
+                <p :class="['text-xs font-medium uppercase', isDark ? 'text-slate-500' : 'text-slate-500']">{{ cell.l }}</p>
+                <p :class="['text-sm font-medium', isDark ? 'text-slate-200' : 'text-slate-900', cell.tr ? 'truncate' : '']">{{ cell.v }}</p>
               </div>
               <div class="flex flex-col gap-0.5">
-                <p class="text-xs font-medium text-slate-500 uppercase">Amount Due</p>
-                <p class="text-sm font-bold text-red-600">KES {{ formatNumber(paymentAmount) }}</p>
+                <p :class="['text-xs font-medium uppercase', isDark ? 'text-slate-500' : 'text-slate-500']">Amount Due</p>
+                <p class="text-sm font-bold text-red-500">KES {{ formatNumber(paymentAmount) }}</p>
               </div>
             </div>
           </div>
 
           <!-- Quick Actions -->
-          <div class="rounded-xl overflow-hidden border bg-white border-slate-200">
-            <div class="px-4 py-3 flex items-center gap-2 border-b border-slate-100 bg-slate-50">
-              <i class="fas fa-bolt text-slate-600 text-sm"></i>
-              <h3 class="font-semibold text-sm text-slate-800">Quick Actions</h3>
+          <div :class="['rounded-xl overflow-hidden border transition-colors', isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200']">
+            <div :class="['px-4 py-3 flex items-center gap-2 border-b transition-colors', isDark ? 'border-slate-800 bg-slate-950' : 'border-slate-100 bg-slate-50']">
+              <i :class="['text-sm', isDark ? 'text-slate-400' : 'text-slate-600', 'fas fa-bolt']"></i>
+              <h3 :class="['font-semibold text-sm', isDark ? 'text-slate-200' : 'text-slate-800']">Quick Actions</h3>
             </div>
             <div class="p-4 space-y-2">
               <button @click="openPaymentModal" class="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium border transition-colors bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700">
@@ -168,12 +168,12 @@
               <button @click="openTimedVoucherOverlay" class="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium border transition-colors bg-slate-800 text-white border-slate-800 hover:bg-slate-900">
                 <i class="fas fa-hourglass-half"></i>Buy Timed Voucher
               </button>
-              <div class="pt-2 space-y-2 border-t border-slate-100">
-                <button @click="openPlanSwitchOverlay" class="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium border transition-colors bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200">
+              <div :class="['pt-2 space-y-2 border-t', isDark ? 'border-slate-800' : 'border-slate-100']">
+                <button @click="openPlanSwitchOverlay" :class="['w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium border transition-colors', isDark ? 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700' : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200']">
                   <i class="fas fa-arrows-rotate"></i>Switch Plan
-                  <span v-if="dashboardData.user?.pending_package_id" class="ml-auto text-xs px-1.5 py-0.5 rounded-full font-medium bg-amber-100 text-amber-700">Pending</span>
+                  <span v-if="dashboardData.user?.pending_package_id" :class="['ml-auto text-xs px-1.5 py-0.5 rounded-full font-medium', isDark ? 'bg-amber-500/20 text-amber-400' : 'bg-amber-100 text-amber-700']">Pending</span>
                 </button>
-                <button @click="openPauseOverlay" class="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium border transition-colors" :class="dashboardData.user?.is_paused ? 'bg-amber-100 text-amber-700 border-amber-200 hover:bg-amber-200' : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'">
+                <button @click="openPauseOverlay" class="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium border transition-colors" :class="dashboardData.user?.is_paused ? (isDark ? 'bg-amber-500/20 text-amber-400 border-amber-500/30 hover:bg-amber-500/30' : 'bg-amber-100 text-amber-700 border-amber-200 hover:bg-amber-200') : (isDark ? 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700' : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200')">
                   <i :class="['fas', dashboardData.user?.is_paused ? 'fa-circle-play' : 'fa-circle-pause']"></i>
                   {{ dashboardData.user?.is_paused ? 'Resume Account' : 'Pause Account' }}
                 </button>
@@ -183,22 +183,22 @@
         </div>
 
         <!-- ── Live Session ── -->
-        <div v-if="dashboardData.current_session" class="rounded-xl overflow-hidden border mb-6 bg-white border-slate-200">
-          <div class="px-4 py-3 flex items-center gap-2 border-b border-slate-100 bg-slate-50">
+        <div v-if="dashboardData.current_session" :class="['rounded-xl overflow-hidden border mb-6 transition-colors', isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200']">
+          <div :class="['px-4 py-3 flex items-center gap-2 border-b transition-colors', isDark ? 'border-slate-800 bg-slate-950' : 'border-slate-100 bg-slate-50']">
             <span class="w-2 h-2 bg-emerald-500 rounded-full animate-pulse flex-shrink-0"></span>
-            <h3 class="font-semibold text-sm text-slate-800">Live Session</h3>
-            <span class="ml-auto text-xs font-mono text-slate-500">{{ dashboardData.current_session.ip_address }}</span>
+            <h3 :class="['font-semibold text-sm', isDark ? 'text-slate-200' : 'text-slate-800']">Live Session</h3>
+            <span :class="['ml-auto text-xs font-mono', isDark ? 'text-slate-400' : 'text-slate-500']">{{ dashboardData.current_session.ip_address }}</span>
           </div>
           <div class="p-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div v-for="(s, i) in [
-              {icon:'fa-arrow-down',   color:'text-emerald-600', label:'Download', val: dashboardData.current_session.download_formatted},
-              {icon:'fa-arrow-up',     color:'text-blue-600',    label:'Upload',   val: dashboardData.current_session.upload_formatted},
-              {icon:'fa-clock',        color:'text-indigo-600',  label:'Duration', val: dashboardData.current_session.duration_formatted},
-              {icon:'fa-network-wired',color:'text-slate-600',   label:'IP',       val: dashboardData.current_session.ip_address, mono:true},
-            ]" :key="i" class="flex flex-col items-center justify-center p-3 rounded-lg text-center bg-slate-50">
+              {icon:'fa-arrow-down',   color:isDark?'text-emerald-400':'text-emerald-600', label:'Download', val: dashboardData.current_session.download_formatted},
+              {icon:'fa-arrow-up',     color:isDark?'text-blue-400':'text-blue-600',    label:'Upload',   val: dashboardData.current_session.upload_formatted},
+              {icon:'fa-clock',        color:isDark?'text-indigo-400':'text-indigo-600',  label:'Duration', val: dashboardData.current_session.duration_formatted},
+              {icon:'fa-network-wired',color:isDark?'text-slate-400':'text-slate-600',   label:'IP',       val: dashboardData.current_session.ip_address, mono:true},
+            ]" :key="i" :class="['flex flex-col items-center justify-center p-3 rounded-lg text-center transition-colors', isDark ? 'bg-slate-800' : 'bg-slate-50']">
               <i :class="['fas mb-1', s.icon, s.color]"></i>
-              <p class="text-xs mb-0.5 text-slate-500">{{ s.label }}</p>
-              <p class="font-semibold text-sm text-slate-900" :class="s.mono ? 'font-mono text-xs' : ''">{{ s.val }}</p>
+              <p :class="['text-xs mb-0.5', isDark ? 'text-slate-400' : 'text-slate-500']">{{ s.label }}</p>
+              <p :class="['font-semibold text-sm', isDark ? 'text-slate-200' : 'text-slate-900', s.mono ? 'font-mono text-xs' : '']">{{ s.val }}</p>
             </div>
           </div>
         </div>
@@ -206,13 +206,13 @@
       </template>
 
       <!-- No data fallback -->
-      <div v-else class="rounded-xl p-5 border bg-amber-50 border-amber-200">
+      <div v-else :class="['rounded-xl p-5 border transition-colors', isDark ? 'bg-amber-500/10 border-amber-500/30' : 'bg-amber-50 border-amber-200']">
         <div class="flex items-start gap-3">
-          <i class="fas fa-triangle-exclamation text-amber-600 mt-0.5 flex-shrink-0"></i>
+          <i class="fas fa-triangle-exclamation text-amber-500 mt-0.5 flex-shrink-0"></i>
           <div>
-            <p class="font-semibold text-sm text-slate-800">Dashboard temporarily unavailable</p>
-            <p class="text-sm mt-1 text-slate-600">Please retry or log in again.</p>
-            <button @click="loadDashboard" class="mt-3 px-4 py-2 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded-lg text-sm font-medium transition-colors">Retry</button>
+            <p :class="['font-semibold text-sm', isDark ? 'text-slate-200' : 'text-slate-800']">Dashboard temporarily unavailable</p>
+            <p :class="['text-sm mt-1', isDark ? 'text-slate-400' : 'text-slate-600']">Please retry or log in again.</p>
+            <button @click="loadDashboard" :class="['mt-3 px-4 py-2 rounded-lg text-sm font-medium transition-colors', isDark ? 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-400' : 'bg-amber-100 hover:bg-amber-200 text-amber-700']">Retry</button>
           </div>
         </div>
       </div>
@@ -220,24 +220,24 @@
     </main>
 
     <!-- ── Footer ── -->
-    <footer :class="['hidden sm:block border-t px-6 py-4 transition-colors duration-200', isDark ? 'border-white/10 bg-gray-950' : 'border-gray-200 bg-white']">
+    <footer :class="['hidden sm:block border-t px-6 py-4 transition-colors duration-200', isDark ? 'border-slate-800 bg-slate-950' : 'border-slate-200 bg-white']">
       <div class="flex items-center justify-between gap-4">
         <div class="flex items-center gap-2">
           <div class="w-5 h-5 bg-indigo-600 rounded flex items-center justify-center"><i class="fas fa-wifi text-white text-[9px]"></i></div>
-          <span :class="['text-xs font-semibold', isDark ? 'text-white/50' : 'text-gray-400']">{{ dashboardData?.user?.provider_name || 'WifiCore Portal' }}</span>
+          <span :class="['text-xs font-semibold', isDark ? 'text-slate-400' : 'text-slate-500']">{{ dashboardData?.user?.provider_name || 'WifiCore Portal' }}</span>
         </div>
-        <p :class="['text-xs', isDark ? 'text-white/30' : 'text-gray-400']">Need help? Contact <span v-if="dashboardData?.user?.provider_name" class="font-medium">{{ dashboardData.user.provider_name }}</span><span v-else>your ISP</span></p>
-        <p :class="['text-xs', isDark ? 'text-white/25' : 'text-gray-400']">© {{ new Date().getFullYear() }}</p>
+        <p :class="['text-xs', isDark ? 'text-slate-500' : 'text-slate-400']">Need help? Contact <span v-if="dashboardData?.user?.provider_name" class="font-medium">{{ dashboardData.user.provider_name }}</span><span v-else>your ISP</span></p>
+        <p :class="['text-xs', isDark ? 'text-slate-600' : 'text-slate-400']">© {{ new Date().getFullYear() }}</p>
       </div>
     </footer>
 
     <!-- ── Mobile bottom nav ── -->
-    <nav class="fixed bottom-0 left-0 right-0 sm:hidden flex items-center justify-around px-2 pt-2 pb-3 z-40 border-t border-slate-200 bg-white">
-      <button class="flex flex-col items-center gap-1 flex-1 py-1 text-[10px] font-semibold rounded-lg text-indigo-600"><i class="fas fa-gauge-high text-lg"></i>Home</button>
-      <button @click="openPaymentsOverlay" class="flex flex-col items-center gap-1 flex-1 py-1 text-[10px] font-semibold text-slate-400 hover:text-slate-700"><i class="fas fa-credit-card text-lg"></i>Pay</button>
+    <nav :class="['fixed bottom-0 left-0 right-0 sm:hidden flex items-center justify-around px-2 pt-2 pb-3 z-40 border-t transition-colors', isDark ? 'border-slate-800 bg-slate-950' : 'border-slate-200 bg-white']">
+      <button :class="['flex flex-col items-center gap-1 flex-1 py-1 text-[10px] font-semibold rounded-lg', isDark ? 'text-indigo-400' : 'text-indigo-600']"><i class="fas fa-gauge-high text-lg"></i>Home</button>
+      <button @click="openPaymentsOverlay" :class="['flex flex-col items-center gap-1 flex-1 py-1 text-[10px] font-semibold', isDark ? 'text-slate-400 hover:text-slate-300' : 'text-slate-400 hover:text-slate-700']"><i class="fas fa-credit-card text-lg"></i>Pay</button>
       <button @click="openPaymentModal" class="w-12 h-12 bg-indigo-600 rounded-full flex items-center justify-center text-white shadow-lg flex-shrink-0"><i class="fas fa-bolt text-xl"></i></button>
-      <button @click="openHistoryOverlay" class="flex flex-col items-center gap-1 flex-1 py-1 text-[10px] font-semibold text-slate-400 hover:text-slate-700"><i class="fas fa-chart-bar text-lg"></i>Usage</button>
-      <button @click="handleLogout" class="flex flex-col items-center gap-1 flex-1 py-1 text-[10px] font-semibold text-slate-400 hover:text-red-500"><i class="fas fa-arrow-right-from-bracket text-lg"></i>Logout</button>
+      <button @click="openHistoryOverlay" :class="['flex flex-col items-center gap-1 flex-1 py-1 text-[10px] font-semibold', isDark ? 'text-slate-400 hover:text-slate-300' : 'text-slate-400 hover:text-slate-700']"><i class="fas fa-chart-bar text-lg"></i>Usage</button>
+      <button @click="handleLogout" :class="['flex flex-col items-center gap-1 flex-1 py-1 text-[10px] font-semibold', isDark ? 'text-slate-400 hover:text-red-400' : 'text-slate-400 hover:text-red-500']"><i class="fas fa-arrow-right-from-bracket text-lg"></i>Logout</button>
     </nav>
 
     <!-- ── M-Pesa Payment Modal ── -->
@@ -1358,8 +1358,6 @@ onMounted(() => {
   }
 
   loadDashboard({ force: !seed });
-  loadPlans();
-  loadTimedVoucherOptions();
 });
 
 onBeforeUnmount(() => {

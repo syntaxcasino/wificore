@@ -94,17 +94,20 @@ class CreateHotspotUserJob implements ShouldQueue
                     return;
                 }
 
-                // Generate credentials — normalize to lowercase for consistent RADIUS lookup
-                $username    = strtolower(trim((string) $payment->phone_number));
-                $password    = Str::random(12);
-                $periodStart = Carbon::parse($payment->payment_date ?? $payment->created_at ?? now());
-                $periodEnd   = PackageExpiryHelper::calculateExpiresAt($package, $periodStart);
-
                 // Check for existing user with same phone number (reactivation scenario)
                 $existingUser = HotspotUser::where(function ($query) use ($payment) {
                     $query->where('phone_number', $payment->phone_number)
                         ->orWhere('username', $payment->phone_number);
                 })->first();
+
+                // Generate credentials — normalize to lowercase for consistent RADIUS lookup
+                $username    = strtolower(trim((string) $payment->phone_number));
+                $password    = Str::random(12);
+                $paymentDate = Carbon::parse($payment->payment_date ?? $payment->created_at ?? now());
+                $currentExpiry = $existingUser?->subscription_expires_at ? Carbon::parse($existingUser->subscription_expires_at) : null;
+                $periodStart = PackageExpiryHelper::resolveRenewalBaseTime($paymentDate, $currentExpiry);
+                $periodEnd   = PackageExpiryHelper::calculateRenewalExpiresAt($package, $paymentDate, $currentExpiry);
+
 
                 if ($existingUser) {
                     // REACTIVATION: Existing user found - extend subscription and update credentials

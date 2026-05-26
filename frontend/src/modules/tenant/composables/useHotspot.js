@@ -164,7 +164,6 @@ export function useHotspot() {
         if (index !== -1) {
           users.value.splice(index, 1, { ...users.value[index], ...updatedUser })
           persistSnapshot()
-          persistSnapshot()
         }
       }
       
@@ -191,7 +190,6 @@ export function useHotspot() {
         const index = users.value.findIndex(u => u.id === userId)
         if (index !== -1) {
           users.value.splice(index, 1, { ...users.value[index], ...updatedUser })
-          persistSnapshot()
           persistSnapshot()
         }
       }
@@ -226,6 +224,7 @@ export function useHotspot() {
       if (newUser) {
         users.value.unshift(newUser)
         pagination.value.total += 1
+        persistSnapshot()
       }
       return response.data
     } catch (err) {
@@ -243,7 +242,10 @@ export function useHotspot() {
       const updated = response.data?.data
       if (updated) {
         const idx = users.value.findIndex(u => u.id === userId)
-        if (idx !== -1) users.value.splice(idx, 1, { ...users.value[idx], ...updated })
+        if (idx !== -1) {
+          users.value.splice(idx, 1, { ...users.value[idx], ...updated })
+          persistSnapshot()
+        }
       }
       return response.data
     } catch (err) {
@@ -256,15 +258,7 @@ export function useHotspot() {
    * Delete a hotspot user
    */
   async function deleteUser(userId) {
-    if (users.value.length === 0) {
-      if (!hydrateSnapshot()) {
-        scheduleAfterPaint(() => {
-          if (users.value.length === 0) loading.value = true
-        })
-      }
-    } else {
-      loading.value = true
-    }
+    loading.value = true
     error.value = null
 
     // Optimistically remove from local list immediately for better UX

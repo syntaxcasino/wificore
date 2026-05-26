@@ -58,15 +58,17 @@ class PppoePaymentController extends Controller
         try {
             // OPTIMIZED: Select only needed columns and eager load relation
             $pppoeUser = PppoeUser::query()
-                ->select(['id', 'username', 'account_number', 'package_id'])
-                ->with(['package:id,name'])
+                ->select(['id', 'username', 'account_number', 'package_id', 'expires_at'])
+                ->with(['package:id,name,duration,validity'])
                 ->findOrFail($request->pppoe_user_id);
 
             // Determine period boundaries
-            $periodStart = Carbon::parse($request->payment_date);
-            $package     = $pppoeUser->package;
-            $periodEnd   = $package
-                ? PackageExpiryHelper::calculateExpiresAt($package, $periodStart)
+            $paymentDate   = Carbon::parse($request->payment_date);
+            $currentExpiry = $pppoeUser->expires_at ? Carbon::parse($pppoeUser->expires_at) : null;
+            $periodStart   = PackageExpiryHelper::resolveRenewalBaseTime($paymentDate, $currentExpiry);
+            $package       = $pppoeUser->package;
+            $periodEnd     = $package
+                ? PackageExpiryHelper::calculateRenewalExpiresAt($package, $paymentDate, $currentExpiry)
                 : $periodStart->copy()->addDays(30);
 
             DB::beginTransaction();
@@ -148,6 +150,7 @@ class PppoePaymentController extends Controller
         try {
             DB::beginTransaction();
 
+            $payment->loadMissing('pppoeUser.package');
             $payment->markAsCompleted($request->user()->id);
             
             // Activate user after payment verification

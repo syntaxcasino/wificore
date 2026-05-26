@@ -51,6 +51,25 @@ class PackageExpiryHelper
      *
      * Returns 1 at minimum to prevent division-by-zero.
      */
+    public static function resolveRenewalBaseTime(CarbonInterface $paymentTime, ?CarbonInterface $currentExpiry = null): Carbon
+    {
+        $base = Carbon::instance($paymentTime);
+
+        if ($currentExpiry) {
+            $existingExpiry = Carbon::instance($currentExpiry);
+            if ($existingExpiry->greaterThan($base)) {
+                $base = $existingExpiry;
+            }
+        }
+
+        return $base;
+    }
+
+    public static function calculateRenewalExpiresAt(Package $package, CarbonInterface $paymentTime, ?CarbonInterface $currentExpiry = null): Carbon
+    {
+        return self::calculateExpiresAt($package, self::resolveRenewalBaseTime($paymentTime, $currentExpiry));
+    }
+
     public static function durationInDays(Package $package): int
     {
         $validity = trim((string) ($package->validity ?: $package->duration));

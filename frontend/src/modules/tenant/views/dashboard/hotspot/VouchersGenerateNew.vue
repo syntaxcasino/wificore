@@ -288,6 +288,7 @@ const {
   fetchVouchers,
   refreshVouchers,
   fetchStats,
+  fetchVoucherDetails,
   goToPage,
   generateVouchers,
   revokeVoucher,
@@ -381,9 +382,18 @@ const closeCreateOverlay = () => {
   showCreateOverlay.value = false
 }
 
-const openDetailOverlay = (voucher) => {
-  selectedVoucher.value = voucher
+const openDetailOverlay = async (voucher) => {
   showDetailOverlay.value = true
+  selectedVoucher.value = voucher
+
+  try {
+    const details = await fetchVoucherDetails(voucher.id)
+    if (details?.id === voucher.id) {
+      selectedVoucher.value = details
+    }
+  } catch (err) {
+    console.error('Failed to load voucher details:', err)
+  }
 }
 
 const closeDetailOverlay = () => {
@@ -427,10 +437,13 @@ const getVoucherActions = (voucher) => {
 
 // Lifecycle
 onMounted(() => {
-  fetchPackages()
-  fetchVouchers()
-  fetchStats()
+  void fetchVouchers().catch(() => {})
   setupWebSocketListeners()
+
+  requestAnimationFrame(() => {
+    void fetchPackages().catch(() => {})
+    void fetchStats().catch(() => {})
+  })
 })
 
 onUnmounted(() => {

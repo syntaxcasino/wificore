@@ -1299,8 +1299,10 @@ const InfoCell = defineComponent({
 
 // ── Lifecycle ──────────────────────────────────────────────────────────────────
 onMounted(() => {
-  fetchUsers()
-  fetchPackages()
+  void fetchUsers().catch(() => {})
+  requestAnimationFrame(() => {
+    void fetchPackages().catch(() => {})
+  })
   subscribeToWebSocket()
   document.addEventListener('click', handleClickOutside)
   document.addEventListener('keydown', handleKeydown)

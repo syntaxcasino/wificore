@@ -11,6 +11,7 @@ use App\Events\AccessPointUpdated;
 use App\Events\AccessPointDeleted;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 class AccessPointController extends Controller
@@ -29,40 +30,45 @@ class AccessPointController extends Controller
     public function list(Request $request): JsonResponse
     {
         try {
-            // OPTIMIZATION: Use selective columns in eager loading
-            $query = AccessPoint::with([
-                'router:id,name,ip_address,status',
-                'activeSessions' => fn($q) => $q->select('id', 'access_point_id', 'status')->where('status', 'active')->limit(5)
-            ])
-            ->select([
-                'id', 'name', 'ip_address', 'mac_address', 'serial_number', 'status',
-                'router_id', 'model', 'firmware_version', 'active_users', 'last_seen_at', 'created_at'
-            ]);
+            $tenantId = (string) ($request->user()?->tenant_id ?? '');
+            $cacheKey = 'ap_list_' . $tenantId . '_' . md5((string) $request->getQueryString());
 
-            // Search functionality
-            if ($request->has('search')) {
-                $search = $request->search;
-                $query->where(function($q) use ($search) {
-                    $q->where('name', 'like', "%{$search}%")
-                      ->orWhere('ip_address', 'like', "%{$search}%")
-                      ->orWhere('mac_address', 'like', "%{$search}%")
-                      ->orWhere('serial_number', 'like', "%{$search}%");
-                });
-            }
+            $accessPoints = Cache::remember($cacheKey, now()->addSeconds(15), function () use ($request) {
+                // OPTIMIZATION: Use selective columns in eager loading
+                $query = AccessPoint::with([
+                    'router:id,name,ip_address,status',
+                    'activeSessions' => fn($q) => $q->select('id', 'access_point_id', 'status')->where('status', 'active')->limit(5)
+                ])
+                ->select([
+                    'id', 'name', 'ip_address', 'mac_address', 'serial_number', 'status',
+                    'router_id', 'model', 'firmware_version', 'active_users', 'last_seen_at', 'created_at'
+                ]);
 
-            // Filter by status
-            if ($request->has('status')) {
-                $query->where('status', $request->status);
-            }
+                // Search functionality
+                if ($request->has('search')) {
+                    $search = $request->search;
+                    $query->where(function($q) use ($search) {
+                        $q->where('name', 'like', "%{$search}%")
+                          ->orWhere('ip_address', 'like', "%{$search}%")
+                          ->orWhere('mac_address', 'like', "%{$search}%")
+                          ->orWhere('serial_number', 'like', "%{$search}%");
+                    });
+                }
 
-            // Filter by router
-            if ($request->has('router_id')) {
-                $query->where('router_id', $request->router_id);
-            }
+                // Filter by status
+                if ($request->has('status')) {
+                    $query->where('status', $request->status);
+                }
 
-            // OPTIMIZATION: Add pagination instead of loading all records
-            $perPage = min((int) $request->input('per_page', 50), 100);
-            $accessPoints = $query->paginate($perPage);
+                // Filter by router
+                if ($request->has('router_id')) {
+                    $query->where('router_id', $request->router_id);
+                }
+
+                // OPTIMIZATION: Add pagination instead of loading all records
+                $perPage = min((int) $request->input('per_page', 50), 100);
+                return $query->paginate($perPage);
+            });
 
             return response()->json([
                 'success' => true,
@@ -84,7 +90,8 @@ class AccessPointController extends Controller
     public function tenantStatistics(): JsonResponse
     {
         try {
-            $stats = \Illuminate\Support\Facades\Cache::remember('ap_tenant_stats', 30, function () {
+            $tenantId = (string) (auth()->user()?->tenant_id ?? 'default');
+            $stats = Cache::remember('ap_tenant_stats_' . $tenantId, 30, function () {
                 $row = AccessPoint::selectRaw("
                     COUNT(*) as total,
                     COUNT(*) FILTER (WHERE status = 'online') as online,
@@ -161,7 +168,7 @@ class AccessPointController extends Controller
 
             // Broadcast event for WebSocket
             broadcast(new AccessPointCreated($ap))->toOthers();
-            \Illuminate\Support\Facades\Cache::forget('ap_tenant_stats');
+            Cache::forget('ap_tenant_stats_' . ($ap->tenant_id ?? 'default'));
 
             return response()->json([
                 'success' => true,
@@ -226,7 +233,7 @@ class AccessPointController extends Controller
 
             // Broadcast event for WebSocket
             broadcast(new AccessPointUpdated($ap))->toOthers();
-            \Illuminate\Support\Facades\Cache::forget('ap_tenant_stats');
+            Cache::forget('ap_tenant_stats_' . ($accessPoint->tenant_id ?? 'default'));
 
             return response()->json([
                 'success' => true,
@@ -256,7 +263,7 @@ class AccessPointController extends Controller
             if ($success) {
                 // Broadcast event for WebSocket
                 broadcast(new AccessPointDeleted($id, $tenantId))->toOthers();
-                \Illuminate\Support\Facades\Cache::forget('ap_tenant_stats');
+                Cache::forget('ap_tenant_stats_' . ($accessPoint->tenant_id ?? 'default'));
             }
 
             return response()->json([
@@ -299,7 +306,10 @@ class AccessPointController extends Controller
     public function statistics(AccessPoint $accessPoint): JsonResponse
     {
         try {
-            $stats = $this->apManager->getStatistics($accessPoint);
+            $cacheKey = 'ap_stats_' . ($accessPoint->tenant_id ?? 'default') . '_' . $accessPoint->id;
+            $stats = Cache::remember($cacheKey, now()->addSeconds(15), function () use ($accessPoint) {
+                return $this->apManager->getStatistics($accessPoint);
+            });
 
             return response()->json([
                 'success' => true,
