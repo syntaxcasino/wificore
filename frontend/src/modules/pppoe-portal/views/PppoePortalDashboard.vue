@@ -1,8 +1,8 @@
 <template>
-  <div class="min-h-screen flex flex-col bg-slate-50 text-slate-900">
+  <div class="min-h-screen flex flex-col bg-slate-100 text-slate-900">
 
     <!-- ── Top Bar ── -->
-    <header class="sticky top-0 z-40 flex items-center justify-between px-4 sm:px-6 lg:px-8 h-16 bg-white border-b border-slate-200">
+    <header class="sticky top-0 z-40 flex items-center justify-between px-4 sm:px-6 lg:px-8 h-16 bg-white border-b border-slate-200 shadow-sm">
       <div class="flex items-center gap-3">
         <div class="w-9 h-9 bg-indigo-600 rounded-lg flex items-center justify-center flex-shrink-0">
           <i class="fas fa-wifi text-white text-sm"></i>
@@ -13,6 +13,9 @@
         </div>
       </div>
       <div class="flex items-center gap-3">
+        <button @click="toggleDarkMode" class="w-9 h-9 rounded-lg border border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100 flex items-center justify-center transition-colors" title="Toggle theme">
+          <i :class="['fas', isDark ? 'fa-sun' : 'fa-moon']"></i>
+        </button>
         <div class="hidden sm:flex items-center gap-2 rounded-lg px-3 py-1.5 bg-slate-100">
           <div class="w-5 h-5 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center">
             <i class="fas fa-user text-[10px]"></i>
@@ -39,7 +42,7 @@
       </button>
     </nav>
 
-    <main class="flex-1 px-4 sm:px-6 lg:px-8 py-6 pb-24 sm:pb-10 max-w-7xl mx-auto w-full">
+    <main class="flex-1 p-4 sm:p-6 lg:p-8 pb-24 sm:pb-8 w-full">
 
       <!-- Loading -->
       <div v-if="isLoading && !dashboardData" class="flex items-center justify-center h-64">
@@ -64,64 +67,64 @@
       <template v-else-if="dashboardData">
 
         <!-- ── Hero ── -->
-        <div class="rounded-xl p-4 sm:p-5 mb-6 flex items-center gap-4 border text-white" :class="accountStatus.heroClass">
-          <div class="w-11 h-11 rounded-xl bg-white/15 flex items-center justify-center flex-shrink-0">
+        <div class="rounded-xl p-5 sm:p-6 mb-6 flex items-center gap-4 border text-white shadow-lg" :class="accountStatus.heroClass">
+          <div class="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0">
             <i :class="['fas text-xl', accountStatus.icon]"></i>
           </div>
           <div class="flex-1 min-w-0">
-            <p class="font-semibold text-base leading-tight">{{ accountStatus.title }}</p>
-            <p class="text-sm text-white/80 mt-0.5 truncate">{{ accountStatus.message }}</p>
+            <p class="font-semibold text-lg leading-tight">{{ accountStatus.title }}</p>
+            <p class="text-sm text-white/90 mt-1 truncate">{{ accountStatus.message }}</p>
           </div>
           <button v-if="dashboardData.user?.status !== 'paused'" @click="openPaymentModal"
-            class="flex-shrink-0 bg-white hover:bg-slate-100 text-slate-900 text-sm font-medium px-4 py-2 rounded-lg whitespace-nowrap transition-colors">
+            class="flex-shrink-0 bg-white hover:bg-slate-100 text-slate-900 text-sm font-semibold px-5 py-2.5 rounded-lg whitespace-nowrap transition-all shadow-md hover:shadow-lg">
             Pay Now
           </button>
         </div>
 
         <!-- ── Stats ── -->
-        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <!-- Session -->
-          <div class="rounded-xl p-4 bg-white border border-slate-200">
-            <div class="w-8 h-8 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center mb-2">
-              <i class="fas fa-signal text-sm"></i>
+          <div class="rounded-xl p-5 bg-white border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
+            <div class="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center mb-3">
+              <i class="fas fa-signal"></i>
             </div>
-            <p class="text-xs font-medium text-slate-500 uppercase">Session</p>
-            <p class="font-semibold text-lg text-slate-900">{{ dashboardData.current_session ? dashboardData.current_session.duration_formatted : '--' }}</p>
-            <span class="mt-1.5 inline-flex text-xs font-medium px-2 py-0.5 rounded-full" :class="dashboardData.current_session ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'">
+            <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Session</p>
+            <p class="font-bold text-xl text-slate-900 mt-1">{{ dashboardData.current_session ? dashboardData.current_session.duration_formatted : '--' }}</p>
+            <span class="mt-2 inline-flex text-xs font-semibold px-2.5 py-1 rounded-full" :class="dashboardData.current_session ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'">
               {{ dashboardData.current_session ? 'Online' : 'Offline' }}
             </span>
           </div>
           <!-- Balance -->
-          <div class="rounded-xl p-4 bg-white border border-slate-200">
-            <div class="w-8 h-8 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center mb-2">
-              <i class="fas fa-wallet text-sm"></i>
+          <div class="rounded-xl p-5 bg-white border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
+            <div class="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center mb-3">
+              <i class="fas fa-wallet"></i>
             </div>
-            <p class="text-xs font-medium text-slate-500 uppercase">Balance</p>
-            <p class="font-semibold text-lg text-slate-900">KES {{ formatNumber(dashboardData.user?.balance || 0) }}</p>
-            <p class="mt-1 text-xs text-slate-500">Exp: {{ formatDate(dashboardData.user?.expiration_date) }}</p>
+            <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Balance</p>
+            <p class="font-bold text-xl text-slate-900 mt-1">KES {{ formatNumber(dashboardData.user?.balance || 0) }}</p>
+            <p class="mt-2 text-xs text-slate-500">Exp: {{ formatDate(dashboardData.user?.expiration_date) }}</p>
           </div>
           <!-- Usage -->
-          <div class="rounded-xl p-4 bg-white border border-slate-200">
-            <div class="w-8 h-8 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center mb-2">
-              <i class="fas fa-chart-line text-sm"></i>
+          <div class="rounded-xl p-5 bg-white border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
+            <div class="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center mb-3">
+              <i class="fas fa-chart-line"></i>
             </div>
-            <p class="text-xs font-medium text-slate-500 uppercase">30-Day Usage</p>
-            <p class="font-semibold text-lg text-slate-900">{{ dashboardData.usage_stats?.total_usage_formatted || '0 B' }}</p>
-            <p class="mt-1 text-xs text-slate-500">{{ dashboardData.usage_stats?.total_sessions || 0 }} sessions</p>
+            <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide">30-Day Usage</p>
+            <p class="font-bold text-xl text-slate-900 mt-1">{{ dashboardData.usage_stats?.total_usage_formatted || '0 B' }}</p>
+            <p class="mt-2 text-xs text-slate-500">{{ dashboardData.usage_stats?.total_sessions || 0 }} sessions</p>
           </div>
           <!-- Payment -->
-          <div class="rounded-xl p-4 bg-white border border-slate-200">
-            <div class="w-8 h-8 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center mb-2">
-              <i class="fas fa-receipt text-sm"></i>
+          <div class="rounded-xl p-5 bg-white border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
+            <div class="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center mb-3">
+              <i class="fas fa-receipt"></i>
             </div>
-            <p class="text-xs font-medium text-slate-500 uppercase">Payment</p>
-            <p class="font-semibold text-lg text-slate-900">{{ paymentStatusLabel }}</p>
-            <p class="mt-1 text-xs text-slate-500">Due {{ formatDate(dashboardData.user?.next_payment_due || dashboardData.user?.expiration_date) }}</p>
+            <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Payment</p>
+            <p class="font-bold text-xl text-slate-900 mt-1">{{ paymentStatusLabel }}</p>
+            <p class="mt-2 text-xs text-slate-500">Due {{ formatDate(dashboardData.user?.next_payment_due || dashboardData.user?.expiration_date) }}</p>
           </div>
         </div>
 
         <!-- ── Main grid ── -->
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
           <!-- Account Details -->
           <div class="lg:col-span-2 rounded-xl overflow-hidden border bg-white border-slate-200">
             <div class="px-4 py-3 flex items-center gap-2 border-b border-slate-100 bg-slate-50">
@@ -766,6 +769,12 @@ const handleLogout = () => {
   logout();
 };
 
+const toggleDarkMode = () => {
+  isDark.value = !isDark.value;
+  localStorage.setItem('pppoe-dark-mode', isDark.value ? '1' : '0');
+  document.documentElement.classList.toggle('dark', isDark.value);
+};
+
 const closePaymentModal = () => {
   if (paymentStep.value === 'processing') return;
   leavePaymentStatusChannel();
@@ -1336,6 +1345,13 @@ async function handleBuyTimedVoucher() {
 }
 
 onMounted(() => {
+  // Load dark mode preference
+  const savedDarkMode = localStorage.getItem('pppoe-dark-mode');
+  if (savedDarkMode === '1') {
+    isDark.value = true;
+    document.documentElement.classList.add('dark');
+  }
+
   const seed = getDashboardSeed();
   if (seed) {
     dashboardData.value = normalizeDashboard(seed);
