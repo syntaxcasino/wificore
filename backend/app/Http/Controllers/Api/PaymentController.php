@@ -113,11 +113,11 @@ class PaymentController extends Controller
                     }
                 }
 
-                // IDEMPOTENCY CHECK: Prevent duplicate payments from double-clicks
+                // IDEMPOTENCY CHECK: Prevent duplicate payments while any pending request still exists
                 $recentPendingPayment = Payment::where('phone_number', $validated['phone_number'])
                     ->where('package_id', $validated['package_id'])
                     ->where('status', 'pending')
-                    ->where('created_at', '>', now()->subMinutes(2))
+                    ->latest('created_at')
                     ->first();
 
                 return [

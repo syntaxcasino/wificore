@@ -1056,15 +1056,13 @@ SQL;
         }
 
         try {
-            // OPTIMIZATION: Use composite index (user_id, payment_method, status, created_at)
-            // LIMIT 1 forces index usage and early termination
+            // IDEMPOTENCY: only one pending STK request should exist per user at a time
             $recentPending = PppoePayment::query()
                 ->where('pppoe_user_id', $pppoeUser->id)
                 ->where('payment_method', 'mpesa')
                 ->where('status', 'pending')
-                ->where('created_at', '>', Carbon::now()->subMinutes(2))
                 ->select(['id', 'transaction_id'])
-                ->limit(1)
+                ->latest('created_at')
                 ->first();
 
             if ($recentPending) {
