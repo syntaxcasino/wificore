@@ -1,574 +1,364 @@
 <template>
-  <div class="min-h-screen bg-gray-50">
-    <!-- Header -->
-    <header class="bg-white shadow-sm sticky top-0 z-50">
-      <div class="w-full px-4 sm:px-6 lg:px-8 xl:px-12">
-        <div class="flex items-center justify-between h-14 sm:h-16">
-          <div class="flex items-center gap-3">
-            <div class="w-10 h-10 bg-indigo-600 rounded-lg flex items-center justify-center">
-              <i class="fas fa-wifi text-white text-lg"></i>
-            </div>
-            <h1 class="text-xl font-bold text-gray-900">Customer Portal</h1>
-          </div>
-          
-          <div class="flex items-center gap-4">
-            <span class="text-sm text-gray-600 hidden sm:block">
-              Welcome, <strong>{{ user?.full_name || user?.username }}</strong>
-            </span>
-            <button
-              @click="handleLogout"
-              class="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 hover:border-red-200 hover:bg-red-50 hover:text-red-700 transition-colors"
-              title="Logout"
-            >
-              <i class="fas fa-sign-out-alt"></i>
-              <span class="hidden sm:inline">Logout</span>
-            </button>
-          </div>
+  <div :class="['min-h-screen flex flex-col transition-colors duration-200', isDark ? 'bg-gray-950 text-white' : 'bg-slate-100 text-gray-900']">
+
+    <!-- ── Top Bar ── -->
+    <header :class="['sticky top-0 z-40 flex items-center justify-between px-4 sm:px-6 h-14 backdrop-blur-md border-b transition-colors duration-200', isDark ? 'bg-gray-950/90 border-white/10' : 'bg-white/95 border-gray-200']">
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center shadow-lg shadow-indigo-500/30 flex-shrink-0">
+          <i class="fas fa-wifi text-white text-sm"></i>
         </div>
-        <nav class="flex items-center gap-1 sm:gap-2 border-t border-gray-100 py-2 overflow-x-auto">
-          <button
-            class="px-3 py-2 rounded-md text-sm font-medium text-indigo-700 bg-indigo-50 whitespace-nowrap"
-          >
-            <i class="fas fa-house mr-0 sm:mr-2"></i><span class="hidden sm:inline">Dashboard</span>
-          </button>
-          <button
-            @click="openPaymentsOverlay"
-            class="px-3 py-2 rounded-md text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 whitespace-nowrap"
-          >
-            <i class="fas fa-credit-card mr-0 sm:mr-2"></i><span class="hidden sm:inline">Payments</span>
-          </button>
-          <button
-            @click="openHistoryOverlay"
-            class="px-3 py-2 rounded-md text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 whitespace-nowrap"
-          >
-            <i class="fas fa-clock-rotate-left mr-0 sm:mr-2"></i><span class="hidden sm:inline">Usage History</span>
-          </button>
-        </nav>
+        <div class="hidden sm:flex flex-col leading-tight">
+          <span :class="['font-semibold text-sm leading-tight', isDark ? 'text-white' : 'text-gray-800']">{{ dashboardData?.user?.provider_name || 'My Account' }}</span>
+          <span v-if="dashboardData?.user?.provider_name" :class="['text-[10px]', isDark ? 'text-white/40' : 'text-gray-400']">Customer Portal</span>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <div :class="['hidden sm:flex items-center gap-2 rounded-lg px-3 py-1.5 border', isDark ? 'bg-white/5 border-white/10' : 'bg-gray-50 border-gray-200']">
+          <div class="w-5 h-5 rounded-full bg-indigo-500/15 text-indigo-500 flex items-center justify-center">
+            <i class="fas fa-user text-[10px]"></i>
+          </div>
+          <span :class="['text-sm font-medium', isDark ? 'text-white/90' : 'text-gray-700']">{{ user?.full_name || user?.username || 'Account' }}</span>
+        </div>
+        <button @click="isDark = !isDark" :class="['w-8 h-8 flex items-center justify-center rounded-lg border transition-colors', isDark ? 'bg-white/10 border-white/20 text-white/80 hover:bg-white/20' : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-100']">
+          <i :class="['fas text-sm', isDark ? 'fa-sun' : 'fa-moon']"></i>
+        </button>
+        <button @click="handleLogout" :class="['flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg border border-transparent transition-colors', isDark ? 'text-white/50 hover:text-red-400 hover:bg-red-500/10 hover:border-red-500/20' : 'text-gray-400 hover:text-red-500 hover:bg-red-50 hover:border-red-200']">
+          <i class="fas fa-arrow-right-from-bracket"></i>
+          <span class="hidden sm:inline">Logout</span>
+        </button>
       </div>
     </header>
 
-    <main class="w-full px-4 sm:px-6 lg:px-8 xl:px-12 py-6 sm:py-8">
-      <!-- Loading State -->
+    <!-- ── Nav Tabs ── -->
+    <nav :class="['flex items-center gap-1 px-4 sm:px-6 pt-2 pb-2 overflow-x-auto border-b transition-colors duration-200', isDark ? 'border-white/10' : 'border-gray-200']">
+      <button :class="['px-3 py-1.5 text-xs font-semibold rounded-lg whitespace-nowrap transition-colors', isDark ? 'bg-indigo-500/20 text-indigo-400' : 'bg-indigo-50 text-indigo-600']">
+        <i class="fas fa-gauge-high mr-1.5"></i>Overview
+      </button>
+      <button @click="openPaymentsOverlay" :class="['px-3 py-1.5 text-xs font-semibold rounded-lg whitespace-nowrap transition-colors', isDark ? 'text-white/50 hover:bg-white/10 hover:text-white' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-800']">
+        <i class="fas fa-credit-card mr-1.5"></i>Payments
+      </button>
+      <button @click="openHistoryOverlay" :class="['px-3 py-1.5 text-xs font-semibold rounded-lg whitespace-nowrap transition-colors', isDark ? 'text-white/50 hover:bg-white/10 hover:text-white' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-800']">
+        <i class="fas fa-chart-bar mr-1.5"></i>Usage
+      </button>
+    </nav>
+
+    <main class="flex-1 px-4 sm:px-6 py-5 pb-28 sm:pb-10">
+
+      <!-- Loading -->
       <div v-if="isLoading && !dashboardData" class="flex items-center justify-center h-64">
         <div class="text-center">
-          <i class="fas fa-spinner fa-spin text-3xl text-indigo-600 mb-4"></i>
-          <p class="text-gray-600">Loading your dashboard...</p>
+          <div class="w-10 h-10 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p :class="['text-sm', isDark ? 'text-white/50' : 'text-gray-500']">Loading your account…</p>
         </div>
       </div>
 
-      <div v-else-if="loadError" class="bg-red-50 border border-red-200 text-red-800 rounded-xl p-5 mb-6">
+      <!-- Error -->
+      <div v-else-if="loadError" :class="['rounded-2xl p-5 mb-5 border border-red-400/30', isDark ? 'bg-white/5' : 'bg-white']">
         <div class="flex items-start gap-3">
-          <i class="fas fa-exclamation-circle mt-0.5"></i>
-          <div>
-            <p class="font-semibold">Failed to load dashboard</p>
-            <p class="text-sm opacity-90">{{ loadError }}</p>
-            <button
-              @click="loadDashboard"
-              class="mt-3 px-3 py-2 bg-red-700 text-white rounded-md text-sm hover:bg-red-800 transition-colors"
-            >
-              Retry
-            </button>
+          <i class="fas fa-circle-exclamation text-red-400 mt-0.5 flex-shrink-0"></i>
+          <div class="flex-1">
+            <p :class="['font-semibold text-sm', isDark ? 'text-white' : 'text-gray-800']">Failed to load dashboard</p>
+            <p :class="['text-xs mt-1', isDark ? 'text-white/50' : 'text-gray-500']">{{ loadError }}</p>
+            <button @click="loadDashboard" class="mt-3 px-4 py-2 bg-red-500/15 hover:bg-red-500/25 text-red-500 rounded-lg text-xs font-semibold transition-colors">Retry</button>
           </div>
         </div>
       </div>
 
       <template v-else-if="dashboardData">
-        <!-- Account Status Banner -->
-        <div 
-          :class="[
-            'rounded-xl p-4 mb-6 flex items-center gap-4',
-            accountStatus.class
-          ]"
-        >
-          <div class="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center">
-            <i :class="['fas', accountStatus.icon, 'text-xl']"></i>
+
+        <!-- ── Hero ── -->
+        <div :class="['rounded-2xl p-4 sm:p-5 mb-5 flex items-center gap-4 border text-white', accountStatus.heroClass]">
+          <div class="w-11 h-11 rounded-xl bg-white/15 flex items-center justify-center flex-shrink-0">
+            <i :class="['fas text-xl', accountStatus.icon]"></i>
           </div>
-          <div class="flex-1">
-            <h2 class="font-semibold text-lg">{{ accountStatus.title }}</h2>
-            <p class="text-sm opacity-90">{{ accountStatus.message }}</p>
+          <div class="flex-1 min-w-0">
+            <p class="font-bold text-base leading-tight">{{ accountStatus.title }}</p>
+            <p class="text-sm text-white/70 mt-0.5 truncate">{{ accountStatus.message }}</p>
           </div>
-          <button
-            v-if="user?.status === 'active'"
-            @click="openPaymentModal"
-            class="px-4 py-2 bg-white text-gray-900 rounded-lg font-medium hover:bg-gray-100 transition-colors"
-          >
-            <i class="fas fa-plus-circle mr-2"></i>
-            Top Up
+          <button v-if="dashboardData.user?.status !== 'paused'" @click="openPaymentModal"
+            class="flex-shrink-0 bg-white/20 hover:bg-white/30 text-white text-xs font-semibold px-3 py-2 rounded-lg border border-white/25 whitespace-nowrap transition-colors">
+            <i class="fas fa-bolt mr-1"></i>Pay Now
           </button>
         </div>
 
-        <!-- Stats Grid -->
-        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 sm:gap-6 mb-6 sm:mb-8">
-          <!-- Current Session -->
-          <div class="bg-white rounded-xl shadow-sm p-4 sm:p-6">
-            <div class="flex items-center justify-between mb-3 sm:mb-4">
-              <div class="w-10 h-10 sm:w-12 sm:h-12 bg-green-100 rounded-lg flex items-center justify-center">
-                <i class="fas fa-signal text-green-600 text-lg sm:text-xl"></i>
-              </div>
-              <span 
-                :class="[
-                  'px-2 py-1 text-xs font-medium rounded-full',
-                  dashboardData.current_session ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
-                ]"
-              >
-                {{ dashboardData.current_session ? 'Online' : 'Offline' }}
-              </span>
-            </div>
-            <h3 class="text-gray-500 text-sm font-medium">Current Session</h3>
-            <p class="text-2xl font-bold text-gray-900 mt-1">
-              {{ dashboardData.current_session ? dashboardData.current_session.duration_formatted : '--' }}
-            </p>
-            <p v-if="dashboardData.current_session" class="text-xs text-gray-500 mt-2">
-              IP: {{ dashboardData.current_session.ip_address }}
-            </p>
+        <!-- ── Stats ── -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+          <!-- Session -->
+          <div :class="['rounded-2xl p-4 flex flex-col border transition-colors', isDark ? 'bg-white/5 border-white/10' : 'bg-white border-gray-200']">
+            <div :class="['w-8 h-8 rounded-lg flex items-center justify-center mb-2 flex-shrink-0', isDark ? 'bg-emerald-500/15 text-emerald-400' : 'bg-emerald-100 text-emerald-600']"><i class="fas fa-signal text-sm"></i></div>
+            <p :class="['text-[10px] font-semibold uppercase tracking-wider', isDark ? 'text-white/40' : 'text-gray-400']">Session</p>
+            <p :class="['font-bold text-base mt-0.5 leading-tight', isDark ? 'text-white' : 'text-gray-900']">{{ dashboardData.current_session ? dashboardData.current_session.duration_formatted : '--' }}</p>
+            <span :class="['mt-1.5 self-start text-[10px] font-bold px-2 py-0.5 rounded-full', dashboardData.current_session ? (isDark ? 'bg-emerald-500/15 text-emerald-400' : 'bg-emerald-100 text-emerald-700') : (isDark ? 'bg-white/10 text-white/40' : 'bg-gray-100 text-gray-500')]">{{ dashboardData.current_session ? 'Online' : 'Offline' }}</span>
           </div>
-
           <!-- Balance -->
-          <div class="bg-white rounded-xl shadow-sm p-4 sm:p-6">
-            <div class="flex items-center justify-between mb-3 sm:mb-4">
-              <div class="w-10 h-10 sm:w-12 sm:h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                <i class="fas fa-wallet text-blue-600 text-lg sm:text-xl"></i>
-              </div>
-            </div>
-            <h3 class="text-gray-500 text-sm font-medium">Account Balance</h3>
-            <p class="text-2xl font-bold text-gray-900 mt-1">
-              KES {{ formatNumber(dashboardData.user?.balance || 0) }}
-            </p>
-            <p class="text-xs text-gray-500 mt-2">
-              Expires: {{ formatDate(dashboardData.user?.expiration_date) }}
-            </p>
+          <div :class="['rounded-2xl p-4 flex flex-col border transition-colors', isDark ? 'bg-white/5 border-white/10' : 'bg-white border-gray-200']">
+            <div :class="['w-8 h-8 rounded-lg flex items-center justify-center mb-2 flex-shrink-0', isDark ? 'bg-blue-500/15 text-blue-400' : 'bg-blue-100 text-blue-600']"><i class="fas fa-wallet text-sm"></i></div>
+            <p :class="['text-[10px] font-semibold uppercase tracking-wider', isDark ? 'text-white/40' : 'text-gray-400']">Balance</p>
+            <p :class="['font-bold text-base mt-0.5 leading-tight', isDark ? 'text-white' : 'text-gray-900']">KES {{ formatNumber(dashboardData.user?.balance || 0) }}</p>
+            <p :class="['mt-1 text-xs truncate', isDark ? 'text-white/40' : 'text-gray-400']">Exp: {{ formatDate(dashboardData.user?.expiration_date) }}</p>
           </div>
-
-          <!-- Data Usage -->
-          <div class="bg-white rounded-xl shadow-sm p-4 sm:p-6">
-            <div class="flex items-center justify-between mb-3 sm:mb-4">
-              <div class="w-10 h-10 sm:w-12 sm:h-12 bg-purple-100 rounded-lg flex items-center justify-center">
-                <i class="fas fa-chart-line text-purple-600 text-lg sm:text-xl"></i>
-              </div>
-            </div>
-            <h3 class="text-gray-500 text-sm font-medium">30-Day Usage</h3>
-            <p class="text-2xl font-bold text-gray-900 mt-1">
-              {{ dashboardData.usage_stats?.total_usage_formatted || '0 B' }}
-            </p>
-            <p class="text-xs text-gray-500 mt-2">
-              {{ dashboardData.usage_stats?.total_sessions || 0 }} sessions
-            </p>
+          <!-- Usage -->
+          <div :class="['rounded-2xl p-4 flex flex-col border transition-colors', isDark ? 'bg-white/5 border-white/10' : 'bg-white border-gray-200']">
+            <div :class="['w-8 h-8 rounded-lg flex items-center justify-center mb-2 flex-shrink-0', isDark ? 'bg-purple-500/15 text-purple-400' : 'bg-purple-100 text-purple-600']"><i class="fas fa-chart-line text-sm"></i></div>
+            <p :class="['text-[10px] font-semibold uppercase tracking-wider', isDark ? 'text-white/40' : 'text-gray-400']">30-Day Usage</p>
+            <p :class="['font-bold text-base mt-0.5 leading-tight', isDark ? 'text-white' : 'text-gray-900']">{{ dashboardData.usage_stats?.total_usage_formatted || '0 B' }}</p>
+            <p :class="['mt-1 text-xs', isDark ? 'text-white/40' : 'text-gray-400']">{{ dashboardData.usage_stats?.total_sessions || 0 }} sessions</p>
           </div>
-
-          <!-- Payment Status -->
-          <div class="bg-white rounded-xl shadow-sm p-4 sm:p-6">
-            <div class="flex items-center justify-between mb-3 sm:mb-4">
-              <div class="w-10 h-10 sm:w-12 sm:h-12 bg-emerald-100 rounded-lg flex items-center justify-center">
-                <i class="fas fa-money-bill-wave text-emerald-600 text-lg sm:text-xl"></i>
-              </div>
-              <span :class="['px-2 py-1 text-xs font-medium rounded-full', paymentStatusClass]">
-                {{ paymentStatusLabel }}
-              </span>
-            </div>
-            <h3 class="text-gray-500 text-sm font-medium">Payment Status</h3>
-            <p class="text-lg font-bold text-gray-900 mt-1">
-              {{ paymentStatusLabel }}
-            </p>
-            <p class="text-xs text-gray-500 mt-2">
-              Due: {{ formatDate(dashboardData.user?.next_payment_due || dashboardData.user?.expiration_date) }}
-            </p>
-          </div>
-
-          <!-- Package -->
-          <div class="bg-white rounded-xl shadow-sm p-4 sm:p-6">
-            <div class="flex items-center justify-between mb-3 sm:mb-4">
-              <div class="w-10 h-10 sm:w-12 sm:h-12 bg-orange-100 rounded-lg flex items-center justify-center">
-                <i class="fas fa-box text-orange-600 text-lg sm:text-xl"></i>
-              </div>
-            </div>
-            <h3 class="text-gray-500 text-sm font-medium">Current Plan</h3>
-            <p class="text-lg font-bold text-gray-900 mt-1 truncate">
-              {{ dashboardData.user?.package?.name || 'No Plan' }}
-            </p>
-            <p v-if="dashboardData.user?.package" class="text-xs text-gray-500 mt-2">
-              {{ dashboardData.user.package.download_speed }} ↓ / {{ dashboardData.user.package.upload_speed }} ↑
-            </p>
-            <p v-else class="text-xs text-gray-500 mt-2">
-              No package is associated with this account
-            </p>
+          <!-- Payment -->
+          <div :class="['rounded-2xl p-4 flex flex-col border transition-colors', isDark ? 'bg-white/5 border-white/10' : 'bg-white border-gray-200']">
+            <div :class="['w-8 h-8 rounded-lg flex items-center justify-center mb-2 flex-shrink-0', isDark ? 'bg-amber-500/15 text-amber-400' : 'bg-amber-100 text-amber-600']"><i class="fas fa-receipt text-sm"></i></div>
+            <p :class="['text-[10px] font-semibold uppercase tracking-wider', isDark ? 'text-white/40' : 'text-gray-400']">Payment</p>
+            <p :class="['font-bold text-base mt-0.5 leading-tight', isDark ? 'text-white' : 'text-gray-900']">{{ paymentStatusLabel }}</p>
+            <p :class="['mt-1 text-xs truncate', isDark ? 'text-white/40' : 'text-gray-400']">Due {{ formatDate(dashboardData.user?.next_payment_due || dashboardData.user?.expiration_date) }}</p>
           </div>
         </div>
 
-        <!-- Main Content: Account Info & Quick Top Up Row -->
-        <div class="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-6">
-          <!-- Account Information -->
-          <div class="xl:col-span-2 bg-white rounded-xl shadow-sm overflow-hidden">
-            <div class="px-4 sm:px-6 py-4 border-b border-gray-200">
-              <h3 class="font-semibold text-gray-900 flex items-center gap-2">
-                <i class="fas fa-user-circle text-indigo-500"></i>
-                Account Information
-              </h3>
+        <!-- ── Main grid ── -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-5">
+          <!-- Account Details -->
+          <div :class="['lg:col-span-2 rounded-2xl overflow-hidden border transition-colors', isDark ? 'bg-white/5 border-white/10' : 'bg-white border-gray-200']">
+            <div :class="['px-4 py-3 flex items-center gap-2 border-b', isDark ? 'border-white/10' : 'border-gray-100']">
+              <i class="fas fa-user-circle text-indigo-500 text-sm"></i>
+              <h3 :class="['font-semibold text-sm', isDark ? 'text-white' : 'text-gray-800']">Account Details</h3>
             </div>
-            <div class="p-4 sm:p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              <div class="rounded-lg bg-gray-50 p-3 sm:p-4">
-                <p class="text-xs font-medium uppercase text-gray-500">Account Number</p>
-                <p class="mt-1 font-semibold text-gray-900 text-sm sm:text-base">{{ dashboardData.user?.account_number || '--' }}</p>
+            <div class="p-4 grid grid-cols-2 sm:grid-cols-3 gap-4">
+              <div v-for="(cell, i) in [
+                {l:'Account No.', v: dashboardData.user?.account_number||'--'},
+                {l:'Username',    v: dashboardData.user?.username||'--'},
+                {l:'Full Name',   v: dashboardData.user?.full_name||'--'},
+                {l:'Phone',       v: dashboardData.user?.phone||'--'},
+                {l:'Expires',     v: formatDate(dashboardData.user?.expiration_date)},
+                {l:'Plan',        v: dashboardData.user?.package?.name||'No Plan', tr:true},
+                {l:'Plan Price',  v: 'KES '+formatNumber(planAmount)},
+                {l:'Paid',        v: 'KES '+formatNumber(dashboardData.user?.amount_paid||0)},
+              ]" :key="i" class="flex flex-col gap-0.5">
+                <p :class="['text-[10px] font-semibold uppercase tracking-wider', isDark ? 'text-white/40' : 'text-gray-400']">{{ cell.l }}</p>
+                <p :class="['text-xs font-semibold', cell.tr ? 'truncate' : '', isDark ? 'text-white' : 'text-gray-800']">{{ cell.v }}</p>
               </div>
-              <div class="rounded-lg bg-gray-50 p-3 sm:p-4">
-                <p class="text-xs font-medium uppercase text-gray-500">Username</p>
-                <p class="mt-1 font-semibold text-gray-900 text-sm sm:text-base">{{ dashboardData.user?.username || '--' }}</p>
-              </div>
-              <div class="rounded-lg bg-gray-50 p-3 sm:p-4">
-                <p class="text-xs font-medium uppercase text-gray-500">Full Name</p>
-                <p class="mt-1 font-semibold text-gray-900 text-sm sm:text-base">{{ dashboardData.user?.full_name || '--' }}</p>
-              </div>
-              <div class="rounded-lg bg-gray-50 p-3 sm:p-4">
-                <p class="text-xs font-medium uppercase text-gray-500">Phone</p>
-                <p class="mt-1 font-semibold text-gray-900 text-sm sm:text-base">{{ dashboardData.user?.phone || '--' }}</p>
-              </div>
-              <div class="rounded-lg bg-gray-50 p-3 sm:p-4">
-                <p class="text-xs font-medium uppercase text-gray-500">Email</p>
-                <p class="mt-1 font-semibold text-gray-900 text-sm sm:text-base">{{ dashboardData.user?.email || '--' }}</p>
-              </div>
-              <div class="rounded-lg bg-gray-50 p-3 sm:p-4">
-                <p class="text-xs font-medium uppercase text-gray-500">Expires</p>
-                <p class="mt-1 font-semibold text-gray-900 text-sm sm:text-base">{{ formatDate(dashboardData.user?.expiration_date) }}</p>
-              </div>
-              <div class="rounded-lg bg-gray-50 p-3 sm:p-4">
-                <p class="text-xs font-medium uppercase text-gray-500">Plan Amount</p>
-                <p class="mt-1 font-semibold text-gray-900 text-sm sm:text-base">KES {{ formatNumber(planAmount) }}</p>
-              </div>
-              <div class="rounded-lg bg-gray-50 p-3 sm:p-4">
-                <p class="text-xs font-medium uppercase text-gray-500">Amount Paid</p>
-                <p class="mt-1 font-semibold text-gray-900 text-sm sm:text-base">KES {{ formatNumber(dashboardData.user?.amount_paid || 0) }}</p>
-              </div>
-              <div class="rounded-lg bg-gray-50 p-3 sm:p-4">
-                <p class="text-xs font-medium uppercase text-gray-500">Amount Due</p>
-                <p class="mt-1 font-semibold text-gray-900 text-sm sm:text-base">KES {{ formatNumber(paymentAmount) }}</p>
+              <div class="flex flex-col gap-0.5">
+                <p :class="['text-[10px] font-semibold uppercase tracking-wider', isDark ? 'text-white/40' : 'text-gray-400']">Amount Due</p>
+                <p :class="['text-xs font-bold', isDark ? 'text-amber-400' : 'text-amber-600']">KES {{ formatNumber(paymentAmount) }}</p>
               </div>
             </div>
           </div>
 
-          <!-- Quick Top Up -->
-          <div class="bg-white rounded-xl shadow-sm overflow-hidden">
-            <div class="px-4 sm:px-6 py-4 border-b border-gray-200">
-              <h3 class="font-semibold text-gray-900 flex items-center gap-2">
-                <i class="fas fa-credit-card text-indigo-500"></i>
-                Quick Top Up
-              </h3>
+          <!-- Quick Actions -->
+          <div :class="['rounded-2xl overflow-hidden border transition-colors', isDark ? 'bg-white/5 border-white/10' : 'bg-white border-gray-200']">
+            <div :class="['px-4 py-3 flex items-center gap-2 border-b', isDark ? 'border-white/10' : 'border-gray-100']">
+              <i class="fas fa-bolt text-yellow-500 text-sm"></i>
+              <h3 :class="['font-semibold text-sm', isDark ? 'text-white' : 'text-gray-800']">Quick Actions</h3>
             </div>
-            <div class="p-4 sm:p-6 space-y-3">
-              <button
-                @click="openPaymentModal"
-                class="w-full py-3 px-4 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
-              >
-                <i class="fas fa-mobile-alt"></i>
-                M-Pesa Payment
+            <div class="p-4 space-y-2">
+              <button @click="openPaymentModal" :class="['w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold border transition-colors', isDark ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/25' : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100']">
+                <i class="fas fa-mobile-screen-button"></i>Pay via M-Pesa
               </button>
-              <button
-                @click="showVoucherModal = true"
-                class="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
-              >
-                <i class="fas fa-ticket-alt"></i>
-                Redeem Voucher
+              <button @click="showVoucherModal = true" :class="['w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold border transition-colors', isDark ? 'bg-indigo-500/15 text-indigo-400 border-indigo-500/20 hover:bg-indigo-500/25' : 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100']">
+                <i class="fas fa-ticket"></i>Redeem Voucher
               </button>
-            </div>
-
-            <!-- Payment History (Compact) -->
-            <div class="px-4 sm:px-6 pb-4 sm:pb-6">
-              <div class="border-t border-gray-200 pt-4">
-                <div class="flex items-center justify-between gap-2 mb-3">
-                  <h4 class="font-medium text-gray-900 text-sm flex items-center gap-2">
-                    <i class="fas fa-receipt text-indigo-500 text-xs"></i>
-                    Payment History
-                  </h4>
-                  <button
-                    @click="openPaymentsOverlay"
-                    class="text-xs text-indigo-600 hover:text-indigo-700 font-medium"
-                  >
-                    View All
-                  </button>
-                </div>
-                <div class="space-y-2">
-                  <div
-                    v-for="payment in dashboardData.recent_payments?.slice(0, 3)"
-                    :key="payment.id"
-                    class="flex items-center justify-between py-2 border-b border-gray-100 last:border-0"
-                  >
-                    <div>
-                      <p class="font-medium text-gray-900 text-sm">KES {{ payment.amount }}</p>
-                      <p class="text-xs text-gray-500">{{ formatDate(payment.created_at) }}</p>
-                    </div>
-                    <span
-                      :class="[
-                        'px-2 py-0.5 text-xs font-medium rounded-full',
-                        payment.status === 'completed' ? 'bg-green-100 text-green-700' :
-                        payment.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
-                        'bg-red-100 text-red-700'
-                      ]"
-                    >
-                      {{ payment.status }}
-                    </span>
-                  </div>
-                  <div v-if="!dashboardData.recent_payments?.length" class="py-4 text-center text-gray-500 text-sm">
-                    No recent payments
-                  </div>
-                </div>
+              <button @click="openTimedVoucherOverlay" :class="['w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold border transition-colors', isDark ? 'bg-purple-500/15 text-purple-400 border-purple-500/20 hover:bg-purple-500/25' : 'bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100']">
+                <i class="fas fa-hourglass-half"></i>Buy Timed Voucher
+              </button>
+              <div :class="['pt-2 space-y-2 border-t', isDark ? 'border-white/10' : 'border-gray-100']">
+                <button @click="openPlanSwitchOverlay" :class="['w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-colors', isDark ? 'bg-white/5 text-white/60 border-white/10 hover:bg-white/10 hover:text-white' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100']">
+                  <i class="fas fa-arrows-rotate"></i>Switch Plan
+                  <span v-if="dashboardData.user?.pending_package_id" :class="['ml-auto text-[10px] px-1.5 py-0.5 rounded-full font-semibold', isDark ? 'bg-amber-500/20 text-amber-400' : 'bg-amber-100 text-amber-700']">Pending</span>
+                </button>
+                <button @click="openPauseOverlay" :class="['w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-colors',
+                  dashboardData.user?.is_paused
+                    ? (isDark ? 'bg-amber-500/15 text-amber-400 border-amber-500/20 hover:bg-amber-500/25' : 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100')
+                    : (isDark ? 'bg-white/5 text-white/60 border-white/10 hover:bg-white/10 hover:text-white' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100')]">
+                  <i :class="['fas', dashboardData.user?.is_paused ? 'fa-circle-play' : 'fa-circle-pause']"></i>
+                  {{ dashboardData.user?.is_paused ? 'Resume Account' : 'Pause Account' }}
+                </button>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- Current Session Details (if active) -->
-        <div v-if="dashboardData.current_session" class="bg-white rounded-xl shadow-sm overflow-hidden mb-6">
-          <div class="px-4 sm:px-6 py-4 border-b border-gray-200">
-            <h3 class="font-semibold text-gray-900 flex items-center gap-2">
-              <i class="fas fa-info-circle text-indigo-500"></i>
-              Current Session Details
-            </h3>
+        <!-- ── Live Session ── -->
+        <div v-if="dashboardData.current_session" :class="['rounded-2xl overflow-hidden border mb-5 transition-colors', isDark ? 'bg-white/5 border-white/10' : 'bg-white border-gray-200']">
+          <div :class="['px-4 py-3 flex items-center gap-2 border-b', isDark ? 'border-white/10' : 'border-gray-100']">
+            <span class="w-2 h-2 bg-emerald-500 rounded-full animate-pulse flex-shrink-0"></span>
+            <h3 :class="['font-semibold text-sm', isDark ? 'text-white' : 'text-gray-800']">Live Session</h3>
+            <span :class="['ml-auto text-xs font-mono', isDark ? 'text-white/40' : 'text-gray-400']">{{ dashboardData.current_session.ip_address }}</span>
           </div>
-          <div class="p-4 sm:p-6">
-            <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              <div class="text-center p-3 sm:p-4 bg-gray-50 rounded-lg">
-                <i class="fas fa-download text-green-500 mb-2 text-lg"></i>
-                <p class="text-xs text-gray-500">Download</p>
-                <p class="font-semibold text-gray-900">{{ dashboardData.current_session.download_formatted }}</p>
-              </div>
-              <div class="text-center p-3 sm:p-4 bg-gray-50 rounded-lg">
-                <i class="fas fa-upload text-blue-500 mb-2 text-lg"></i>
-                <p class="text-xs text-gray-500">Upload</p>
-                <p class="font-semibold text-gray-900">{{ dashboardData.current_session.upload_formatted }}</p>
-              </div>
-              <div class="text-center p-3 sm:p-4 bg-gray-50 rounded-lg">
-                <i class="fas fa-clock text-purple-500 mb-2 text-lg"></i>
-                <p class="text-xs text-gray-500">Duration</p>
-                <p class="font-semibold text-gray-900">{{ dashboardData.current_session.duration_formatted }}</p>
-              </div>
-              <div class="text-center p-3 sm:p-4 bg-gray-50 rounded-lg">
-                <i class="fas fa-network-wired text-orange-500 mb-2 text-lg"></i>
-                <p class="text-xs text-gray-500">IP Address</p>
-                <p class="font-semibold text-gray-900 text-xs">{{ dashboardData.current_session.ip_address }}</p>
-              </div>
+          <div class="p-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div v-for="(s, i) in [
+              {icon:'fa-arrow-down',   color:'text-emerald-500', label:'Download', val: dashboardData.current_session.download_formatted},
+              {icon:'fa-arrow-up',     color:'text-blue-500',    label:'Upload',   val: dashboardData.current_session.upload_formatted},
+              {icon:'fa-clock',        color:'text-purple-500',  label:'Duration', val: dashboardData.current_session.duration_formatted},
+              {icon:'fa-network-wired',color:'text-amber-500',   label:'IP',       val: dashboardData.current_session.ip_address, mono:true},
+            ]" :key="i" :class="['flex flex-col items-center justify-center p-3 rounded-xl text-center', isDark ? 'bg-white/5' : 'bg-slate-50']">
+              <i :class="['fas mb-1', s.icon, s.color]"></i>
+              <p :class="['text-xs mb-0.5', isDark ? 'text-white/40' : 'text-gray-400']">{{ s.label }}</p>
+              <p :class="['font-semibold text-sm', s.mono ? 'font-mono text-xs' : '', isDark ? 'text-white' : 'text-gray-800']">{{ s.val }}</p>
             </div>
           </div>
         </div>
 
-        <!-- Recent Sessions (Full Width) -->
-        <div class="bg-white rounded-xl shadow-sm overflow-hidden mb-6">
-          <div class="px-4 sm:px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-            <h3 class="font-semibold text-gray-900 flex items-center gap-2">
-              <i class="fas fa-history text-indigo-500"></i>
-              Recent Sessions
-            </h3>
-            <button
-              @click="openHistoryOverlay"
-              class="text-sm text-indigo-600 hover:text-indigo-700 font-medium"
-            >
-              View All
-            </button>
-          </div>
-          <div class="divide-y divide-gray-100">
-            <div
-              v-for="session in recentSessions"
-              :key="session.id"
-              class="px-4 sm:px-6 py-3 sm:py-4 hover:bg-gray-50 transition-colors"
-            >
-              <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div class="flex items-center gap-3 sm:gap-4">
-                  <div
-                    :class="[
-                      'w-2 h-2 rounded-full flex-shrink-0',
-                      session.status === 'active' ? 'bg-green-500 animate-pulse' : 'bg-gray-400'
-                    ]"
-                  ></div>
-                  <div>
-                    <p class="font-medium text-gray-900 text-sm sm:text-base">{{ formatDateTime(session.start_time) }}</p>
-                    <p class="text-xs sm:text-sm text-gray-500">{{ session.duration_formatted }}</p>
-                  </div>
-                </div>
-                <div class="text-left sm:text-right pl-5 sm:pl-0">
-                  <p class="font-medium text-gray-900 text-sm sm:text-base">{{ session.total_formatted }}</p>
-                  <p class="text-xs text-gray-500">{{ session.download_formatted }} ↓ {{ session.upload_formatted }} ↑</p>
-                </div>
-              </div>
-            </div>
-            <div v-if="recentSessions.length === 0" class="px-4 sm:px-6 py-8 text-center text-gray-500">
-              <i class="fas fa-inbox text-3xl sm:text-4xl mb-3 opacity-30"></i>
-              <p class="text-sm sm:text-base">No recent sessions found</p>
-            </div>
-          </div>
-        </div>
-
-        <!-- Support Section (Bottom) -->
-        <div class="bg-indigo-50 rounded-xl p-4 sm:p-6">
-          <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div>
-              <h3 class="font-semibold text-indigo-900 mb-1 flex items-center gap-2">
-                <i class="fas fa-headset"></i>
-                Need Help?
-              </h3>
-              <p class="text-sm text-indigo-700">
-                Contact your service provider for assistance with your account.
-              </p>
-            </div>
-            <div class="flex flex-wrap gap-4 text-sm text-indigo-600">
-              <p v-if="user?.email" class="flex items-center gap-2">
-                <i class="fas fa-envelope"></i>
-                <span class="break-all">{{ user.email }}</span>
-              </p>
-              <p v-if="user?.phone" class="flex items-center gap-2">
-                <i class="fas fa-phone"></i>
-                {{ user.phone }}
-              </p>
-            </div>
-          </div>
-        </div>
       </template>
 
-      <div v-else class="bg-amber-50 border border-amber-200 text-amber-800 rounded-xl p-5">
+      <!-- No data fallback -->
+      <div v-else :class="['rounded-2xl p-5 border border-amber-400/30', isDark ? 'bg-white/5' : 'bg-white']">
         <div class="flex items-start gap-3">
-          <i class="fas fa-exclamation-triangle mt-0.5"></i>
+          <i class="fas fa-triangle-exclamation text-amber-500 mt-0.5 flex-shrink-0"></i>
           <div>
-            <p class="font-semibold">Dashboard data is temporarily unavailable</p>
-            <p class="text-sm opacity-90">Please retry. If this persists, log in again.</p>
-            <button
-              @click="loadDashboard"
-              class="mt-3 px-3 py-2 bg-amber-700 text-white rounded-md text-sm hover:bg-amber-800 transition-colors"
-            >
-              Retry
-            </button>
+            <p :class="['font-semibold text-sm', isDark ? 'text-white' : 'text-gray-800']">Dashboard temporarily unavailable</p>
+            <p :class="['text-xs mt-1', isDark ? 'text-white/50' : 'text-gray-500']">Please retry or log in again.</p>
+            <button @click="loadDashboard" class="mt-3 px-4 py-2 bg-amber-500/15 hover:bg-amber-500/25 text-amber-500 rounded-lg text-xs font-semibold transition-colors">Retry</button>
           </div>
         </div>
       </div>
+
     </main>
 
-    <!-- M-Pesa Payment Modal -->
+    <!-- ── Footer ── -->
+    <footer :class="['hidden sm:block border-t px-6 py-4 transition-colors duration-200', isDark ? 'border-white/10 bg-gray-950' : 'border-gray-200 bg-white']">
+      <div class="flex items-center justify-between gap-4">
+        <div class="flex items-center gap-2">
+          <div class="w-5 h-5 bg-indigo-600 rounded flex items-center justify-center"><i class="fas fa-wifi text-white text-[9px]"></i></div>
+          <span :class="['text-xs font-semibold', isDark ? 'text-white/50' : 'text-gray-400']">{{ dashboardData?.user?.provider_name || 'WifiCore Portal' }}</span>
+        </div>
+        <p :class="['text-xs', isDark ? 'text-white/30' : 'text-gray-400']">Need help? Contact <span v-if="dashboardData?.user?.provider_name" class="font-medium">{{ dashboardData.user.provider_name }}</span><span v-else>your ISP</span></p>
+        <p :class="['text-xs', isDark ? 'text-white/25' : 'text-gray-400']">© {{ new Date().getFullYear() }}</p>
+      </div>
+    </footer>
+
+    <!-- ── Mobile bottom nav ── -->
+    <nav :class="['fixed bottom-0 left-0 right-0 sm:hidden flex items-center justify-around px-2 pt-2 pb-3 z-40 border-t backdrop-blur-md transition-colors', isDark ? 'bg-gray-950/95 border-white/10' : 'bg-white/97 border-gray-200']">
+      <button :class="['flex flex-col items-center gap-1 flex-1 py-1 text-[10px] font-semibold rounded-lg', isDark ? 'text-indigo-400' : 'text-indigo-600']"><i class="fas fa-gauge-high text-lg"></i>Home</button>
+      <button @click="openPaymentsOverlay" :class="['flex flex-col items-center gap-1 flex-1 py-1 text-[10px] font-semibold', isDark ? 'text-white/40 hover:text-white' : 'text-gray-400 hover:text-gray-700']"><i class="fas fa-credit-card text-lg"></i>Pay</button>
+      <button @click="openPaymentModal" class="w-12 h-12 bg-gradient-to-br from-indigo-500 to-indigo-700 rounded-full flex items-center justify-center text-white shadow-lg shadow-indigo-500/40 flex-shrink-0"><i class="fas fa-bolt text-xl"></i></button>
+      <button @click="openHistoryOverlay" :class="['flex flex-col items-center gap-1 flex-1 py-1 text-[10px] font-semibold', isDark ? 'text-white/40 hover:text-white' : 'text-gray-400 hover:text-gray-700']"><i class="fas fa-chart-bar text-lg"></i>Usage</button>
+      <button @click="handleLogout" :class="['flex flex-col items-center gap-1 flex-1 py-1 text-[10px] font-semibold', isDark ? 'text-white/40 hover:text-red-400' : 'text-gray-400 hover:text-red-500']"><i class="fas fa-arrow-right-from-bracket text-lg"></i>Logout</button>
+    </nav>
+
+    <!-- ── M-Pesa Payment Modal ── -->
     <Teleport to="body">
-      <div v-if="showPaymentModal" class="fixed inset-0 z-50 overflow-y-auto">
-        <div class="flex min-h-full items-center justify-center p-4 bg-black/50">
-          <div class="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
-            <div class="flex items-center justify-between mb-6">
-              <h3 class="text-xl font-semibold text-gray-900">M-Pesa Payment</h3>
-              <button @click="closePaymentModal" class="text-gray-400 hover:text-gray-600" title="Close">
-                <i class="fas fa-times text-xl"></i>
-              </button>
+      <div v-if="showPaymentModal" :class="['fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4', isDark ? 'bg-black/80' : 'bg-black/50']">
+        <div :class="['w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl overflow-hidden border shadow-2xl', isDark ? 'bg-gray-900 border-white/10' : 'bg-white border-gray-200']">
+          <!-- Header -->
+          <div :class="['flex items-center justify-between px-5 pt-5 pb-4 border-b', isDark ? 'border-white/10' : 'border-gray-100']">
+            <div class="flex items-center gap-2">
+              <div :class="['w-7 h-7 rounded-lg flex items-center justify-center', isDark ? 'bg-emerald-500/20' : 'bg-emerald-100']"><i :class="['fas fa-mobile-screen-button text-sm', isDark ? 'text-emerald-400' : 'text-emerald-600']"></i></div>
+              <h3 :class="['font-bold text-base', isDark ? 'text-white' : 'text-gray-800']">M-Pesa Payment</h3>
             </div>
-
-            <form @submit.prevent="handleMpesaPayment" class="space-y-4">
-              <div v-if="paymentStatusMessage" class="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
-                <div class="flex items-start gap-2">
-                  <i class="fas fa-circle-info mt-0.5"></i>
-                  <p>{{ paymentStatusMessage }}</p>
-                </div>
-              </div>
-
-              <div v-if="paymentErrorMessage" class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-                <div class="flex items-start gap-2">
-                  <i class="fas fa-exclamation-circle mt-0.5"></i>
-                  <p>{{ paymentErrorMessage }}</p>
-                </div>
-              </div>
-
+            <button @click="closePaymentModal" :disabled="paymentStep === 'processing'" :class="['transition-colors disabled:opacity-20', isDark ? 'text-white/40 hover:text-white' : 'text-gray-400 hover:text-gray-700']"><i class="fas fa-xmark text-lg"></i></button>
+          </div>
+          <!-- Steps -->
+          <div :class="['flex items-center px-5 py-3 gap-2 border-b', isDark ? 'border-white/5' : 'border-gray-100']">
+            <div :class="['w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0', paymentStep==='form' ? 'bg-indigo-500 text-white' : 'bg-emerald-500 text-white']">1</div>
+            <div :class="['flex-1 h-px', isDark ? 'bg-white/10' : 'bg-gray-200']"></div>
+            <div :class="['w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0', paymentStep==='processing' ? 'bg-amber-500 text-white' : (paymentStep==='success'||paymentStep==='failed') ? 'bg-emerald-500 text-white' : (isDark ? 'bg-white/10 text-white/30' : 'bg-gray-100 text-gray-400')]">2</div>
+            <div :class="['flex-1 h-px', isDark ? 'bg-white/10' : 'bg-gray-200']"></div>
+            <div :class="['w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0', paymentStep==='success' ? 'bg-emerald-500 text-white' : paymentStep==='failed' ? 'bg-red-500 text-white' : (isDark ? 'bg-white/10 text-white/30' : 'bg-gray-100 text-gray-400')]">3</div>
+          </div>
+          <!-- Body -->
+          <div class="px-5 py-5 space-y-4">
+            <template v-if="paymentStep === 'form'">
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Phone Number</label>
+                <label :class="['block text-xs font-semibold uppercase tracking-wider mb-2', isDark ? 'text-white/50' : 'text-gray-500']">M-Pesa Number</label>
                 <div class="relative">
-                  <span class="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-medium">254</span>
-                  <input
-                    v-model="paymentForm.phone"
-                    type="tel"
-                    placeholder="7XX XXX XXX"
-                    maxlength="9"
-                    required
-                    class="w-full pl-14 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                  />
+                  <span :class="['absolute left-3.5 top-1/2 -translate-y-1/2 font-medium text-sm', isDark ? 'text-white/40' : 'text-gray-400']">254</span>
+                  <input v-model="paymentForm.phone" type="tel" placeholder="7XX XXX XXX" maxlength="9" required :class="['w-full pl-12 pr-4 py-3 rounded-xl text-sm border outline-none transition-colors', isDark ? 'bg-white/8 border-white/15 text-white placeholder-white/30 focus:border-indigo-500/60' : 'bg-gray-50 border-gray-200 text-gray-900 placeholder-gray-400 focus:border-indigo-400']" />
                 </div>
-                <p class="text-xs text-gray-500 mt-1">Format: 2547XX XXX XXX</p>
               </div>
-
-              <div class="rounded-lg border border-green-200 bg-green-50 p-4">
-                <label class="block text-sm font-medium text-gray-700 mb-2">Amount (KES)</label>
-                <p class="text-3xl font-bold text-gray-900">KES {{ formatNumber(paymentAmount) }}</p>
-                <p class="mt-1 text-sm text-gray-600">
-                  {{ dashboardData?.user?.package?.name || 'Current plan' }} amount. Custom top-up amounts are disabled for this portal.
-                </p>
+              <div :class="['rounded-xl p-4 border', isDark ? 'bg-white/5 border-emerald-500/20' : 'bg-emerald-50 border-emerald-200']">
+                <p :class="['text-xs', isDark ? 'text-white/50' : 'text-gray-500']">{{ dashboardData?.user?.package?.name || 'Renewal' }}</p>
+                <p :class="['text-2xl font-bold mt-0.5', isDark ? 'text-white' : 'text-gray-900']">KES {{ formatNumber(paymentAmount) }}</p>
+                <p :class="['text-xs mt-1', isDark ? 'text-white/40' : 'text-gray-400']">Account renewed upon confirmation</p>
               </div>
-
-              <button
-                type="submit"
-                :disabled="paymentLoading"
-                class="w-full py-3 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
-              >
+              <div v-if="paymentErrorMessage" class="rounded-xl bg-red-500/10 border border-red-500/25 px-4 py-3 text-sm text-red-500 flex items-start gap-2">
+                <i class="fas fa-circle-exclamation mt-0.5 flex-shrink-0"></i><p>{{ paymentErrorMessage }}</p>
+              </div>
+              <button @click="handleMpesaPayment" :disabled="paymentLoading || !paymentForm.phone" class="w-full py-3.5 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-xl transition-colors flex items-center justify-center gap-2 disabled:opacity-40">
                 <i v-if="paymentLoading" class="fas fa-spinner fa-spin"></i>
-                <span>{{ paymentLoading ? 'Processing...' : 'Pay with M-Pesa' }}</span>
+                <span>{{ paymentLoading ? 'Sending…' : 'Pay KES ' + formatNumber(paymentAmount) }}</span>
               </button>
-
-              <button
-                type="button"
-                @click="closePaymentModal"
-                class="w-full py-3 border border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-50 transition-colors"
-              >
-                Close
-              </button>
-            </form>
+            </template>
+            <template v-else-if="paymentStep === 'processing'">
+              <div class="flex flex-col items-center py-3 text-center">
+                <div :class="['w-16 h-16 rounded-2xl flex items-center justify-center mb-4', isDark ? 'bg-amber-500/15' : 'bg-amber-100']"><i :class="['fas fa-mobile-screen-button text-2xl animate-bounce', isDark ? 'text-amber-400' : 'text-amber-600']"></i></div>
+                <p :class="['font-bold mb-1', isDark ? 'text-white' : 'text-gray-800']">Check your phone</p>
+                <p :class="['text-sm mb-4', isDark ? 'text-white/50' : 'text-gray-500']">STK sent to <strong :class="isDark ? 'text-white/80' : 'text-gray-700'">{{ maskedPhone }}</strong> — enter PIN to confirm.</p>
+                <div :class="['w-full rounded-full h-1.5 mb-3 overflow-hidden', isDark ? 'bg-white/5' : 'bg-gray-100']"><div class="bg-amber-500 h-1.5 rounded-full animate-pulse" style="width:65%"></div></div>
+                <p :class="['text-xs', isDark ? 'text-white/40' : 'text-gray-400']">{{ paymentStatusMessage }}</p>
+                <div class="mt-4 grid grid-cols-2 gap-3 w-full">
+                  <div :class="['rounded-xl p-3', isDark ? 'bg-white/5' : 'bg-gray-50']"><p :class="['text-xs', isDark ? 'text-white/40' : 'text-gray-400']">Amount</p><p :class="['font-semibold text-sm', isDark ? 'text-white' : 'text-gray-800']">KES {{ formatNumber(paymentAmount) }}</p></div>
+                  <div :class="['rounded-xl p-3', isDark ? 'bg-white/5' : 'bg-gray-50']"><p :class="['text-xs', isDark ? 'text-white/40' : 'text-gray-400']">Check</p><p :class="['font-semibold text-sm', isDark ? 'text-white' : 'text-gray-800']">{{ paymentPollAttempt }} / 18</p></div>
+                </div>
+              </div>
+            </template>
+            <template v-else-if="paymentStep === 'success'">
+              <div class="flex flex-col items-center py-3 text-center">
+                <div :class="['w-16 h-16 rounded-2xl flex items-center justify-center mb-4', isDark ? 'bg-emerald-500/15' : 'bg-emerald-100']"><i :class="['fas fa-circle-check text-3xl', isDark ? 'text-emerald-400' : 'text-emerald-600']"></i></div>
+                <p :class="['font-bold mb-1', isDark ? 'text-white' : 'text-gray-800']">Payment Confirmed!</p>
+                <p :class="['text-sm mb-4', isDark ? 'text-white/50' : 'text-gray-500']">Account renewed successfully.</p>
+                <div :class="['w-full rounded-xl p-4 text-left space-y-2 text-sm border', isDark ? 'bg-white/5 border-emerald-500/20' : 'bg-emerald-50 border-emerald-200']">
+                  <div class="flex justify-between"><span :class="isDark ? 'text-white/40' : 'text-gray-500'">Paid</span><span :class="['font-semibold', isDark ? 'text-white' : 'text-gray-800']">KES {{ formatNumber(paymentAmount) }}</span></div>
+                  <div v-if="paymentConfirmation.receipt" class="flex justify-between"><span :class="isDark ? 'text-white/40' : 'text-gray-500'">Receipt</span><span :class="['font-mono text-xs', isDark ? 'text-white/80' : 'text-gray-700']">{{ paymentConfirmation.receipt }}</span></div>
+                  <div v-if="paymentConfirmation.nextDue" class="flex justify-between"><span :class="isDark ? 'text-white/40' : 'text-gray-500'">Next Due</span><span class="font-semibold text-emerald-500">{{ formatDate(paymentConfirmation.nextDue) }}</span></div>
+                </div>
+              </div>
+              <button @click="closePaymentModal" class="w-full py-3.5 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-xl transition-colors">Done</button>
+            </template>
+            <template v-else-if="paymentStep === 'failed'">
+              <div class="flex flex-col items-center py-3 text-center">
+                <div :class="['w-16 h-16 rounded-2xl flex items-center justify-center mb-4', isDark ? 'bg-red-500/15' : 'bg-red-100']"><i :class="['fas fa-circle-xmark text-3xl', isDark ? 'text-red-400' : 'text-red-500']"></i></div>
+                <p :class="['font-bold mb-1', isDark ? 'text-white' : 'text-gray-800']">Payment Not Completed</p>
+                <p :class="['text-sm mb-4', isDark ? 'text-white/50' : 'text-gray-500']">{{ paymentErrorMessage || 'Cancelled or timed out.' }}</p>
+              </div>
+              <button @click="paymentStep = 'form'; paymentErrorMessage = ''" class="w-full py-3.5 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-xl transition-colors">Try Again</button>
+            </template>
+            <button @click="closePaymentModal" :disabled="paymentStep === 'processing'" :class="['w-full py-3 rounded-xl font-semibold text-sm border transition-colors disabled:opacity-20', isDark ? 'border-white/10 text-white/40 hover:text-white/70 hover:border-white/20' : 'border-gray-200 text-gray-400 hover:text-gray-600 hover:border-gray-300']">
+              {{ paymentStep === 'success' ? 'Done' : 'Close' }}
+            </button>
           </div>
         </div>
       </div>
     </Teleport>
 
+    <!-- ── Reusable drawer bg classes via inline binding ── -->
+
     <!-- Payments Slideout -->
     <Teleport to="body">
       <div v-if="showPaymentsOverlay" class="fixed inset-0 z-50">
-        <div class="absolute inset-0 bg-black/40" @click="showPaymentsOverlay = false"></div>
-        <aside class="absolute right-0 top-0 h-full w-full max-w-xl bg-white shadow-2xl flex flex-col">
-          <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-            <div>
-              <h3 class="text-lg font-semibold text-gray-900">Payments</h3>
-              <p class="text-sm text-gray-500">Pay your plan amount and review recent payments.</p>
-            </div>
-            <button @click="showPaymentsOverlay = false" class="p-2 text-gray-400 hover:text-gray-700" title="Close">
-              <i class="fas fa-times text-xl"></i>
-            </button>
+        <div class="absolute inset-0 bg-black/60" @click="showPaymentsOverlay = false"></div>
+        <aside :class="['absolute right-0 top-0 h-full w-full lg:w-1/2 flex flex-col border-l shadow-2xl transition-colors', isDark ? 'bg-gray-900 border-white/10 text-white' : 'bg-white border-gray-200 text-gray-900']">
+          <div :class="['flex items-center justify-between px-5 py-4 border-b flex-shrink-0', isDark ? 'border-white/10' : 'border-gray-100']">
+            <div><p :class="['font-bold', isDark ? 'text-white' : 'text-gray-800']">Payments</p><p :class="['text-xs mt-0.5', isDark ? 'text-white/40' : 'text-gray-400']">Pay &amp; view history</p></div>
+            <button @click="showPaymentsOverlay = false" :class="['w-8 h-8 flex items-center justify-center rounded-lg transition-colors', isDark ? 'text-white/40 hover:bg-white/10 hover:text-white' : 'text-gray-400 hover:bg-gray-100 hover:text-gray-700']"><i class="fas fa-xmark"></i></button>
           </div>
-          <div class="flex-1 overflow-y-auto p-6 space-y-6">
-            <div class="rounded-xl border border-indigo-100 bg-indigo-50 p-5">
-              <p class="text-sm text-indigo-700">Current Plan</p>
-              <p class="mt-1 text-xl font-bold text-indigo-950">{{ dashboardData?.user?.package?.name || 'No Plan' }}</p>
-              <div class="mt-4 grid grid-cols-2 gap-3 text-sm">
-                <div>
-                  <p class="text-indigo-700">Plan Amount</p>
-                  <p class="font-semibold text-indigo-950">KES {{ formatNumber(planAmount) }}</p>
-                </div>
-                <div>
-                  <p class="text-indigo-700">Amount Due</p>
-                  <p class="font-semibold text-indigo-950">KES {{ formatNumber(paymentAmount) }}</p>
-                </div>
+          <div class="flex-1 overflow-y-auto p-4 space-y-4">
+            <div :class="['rounded-xl p-4 border border-indigo-500/25', isDark ? 'bg-white/5' : 'bg-indigo-50']">
+              <p :class="['text-xs', isDark ? 'text-white/40' : 'text-gray-400']">Current Plan</p>
+              <p :class="['font-bold text-base mt-0.5', isDark ? 'text-white' : 'text-gray-800']">{{ dashboardData?.user?.package?.name || 'No Plan' }}</p>
+              <div class="mt-3 grid grid-cols-2 gap-3">
+                <div><p :class="['text-xs', isDark ? 'text-white/40' : 'text-gray-400']">Plan Amount</p><p :class="['font-semibold text-sm', isDark ? 'text-white' : 'text-gray-800']">KES {{ formatNumber(planAmount) }}</p></div>
+                <div><p :class="['text-xs', isDark ? 'text-white/40' : 'text-gray-400']">Amount Due</p><p :class="['font-bold text-sm', isDark ? 'text-amber-400' : 'text-amber-600']">KES {{ formatNumber(paymentAmount) }}</p></div>
               </div>
-              <button
-                @click="openPaymentModal"
-                class="mt-5 w-full rounded-lg bg-green-600 px-4 py-3 font-semibold text-white hover:bg-green-700"
-              >
-                <i class="fas fa-mobile-alt mr-2"></i>
-                Pay KES {{ formatNumber(paymentAmount) }} with M-Pesa
-              </button>
+              <button @click="openPaymentModal" class="mt-4 w-full py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-xl text-sm transition-colors"><i class="fas fa-mobile-screen-button mr-2"></i>Pay KES {{ formatNumber(paymentAmount) }}</button>
             </div>
-
             <div>
-              <h4 class="mb-3 font-semibold text-gray-900">Recent Payment History</h4>
-              <div class="divide-y divide-gray-100 rounded-xl border border-gray-200">
-                <div
-                  v-for="payment in dashboardData?.recent_payments || []"
-                  :key="payment.id"
-                  class="p-4 flex items-center justify-between gap-4"
-                >
-                  <div>
-                    <p class="font-semibold text-gray-900">KES {{ formatNumber(payment.amount || 0) }}</p>
-                    <p class="text-xs text-gray-500">{{ formatDate(payment.created_at) }} · {{ formatPaymentMethod(payment.payment_method) }}</p>
+              <p :class="['text-xs font-semibold uppercase tracking-wider mb-3', isDark ? 'text-white/40' : 'text-gray-400']">Payment History</p>
+              <div class="space-y-2">
+                <div v-for="payment in dashboardData?.recent_payments || []" :key="payment.id" :class="['rounded-xl p-3 flex items-center justify-between gap-3 border', isDark ? 'bg-white/5 border-white/8' : 'bg-gray-50 border-gray-100']">
+                  <div class="min-w-0">
+                    <p :class="['font-semibold text-sm', isDark ? 'text-white' : 'text-gray-800']">KES {{ formatNumber(payment.amount || 0) }}</p>
+                    <p :class="['text-xs', isDark ? 'text-white/40' : 'text-gray-400']">{{ formatDate(payment.created_at) }} · {{ formatPaymentMethod(payment.payment_method) }}</p>
+                    <p v-if="payment.payment_reference" :class="['text-xs font-mono truncate', isDark ? 'text-white/30' : 'text-gray-300']">{{ payment.payment_reference }}</p>
                   </div>
-                  <span :class="['px-2 py-1 text-xs font-medium rounded-full', payment.status === 'completed' ? 'bg-green-100 text-green-700' : payment.status === 'pending' ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700']">
-                    {{ payment.status || 'unknown' }}
-                  </span>
+                  <span :class="['flex-shrink-0 text-[10px] px-2 py-1 rounded-full font-bold', payment.status==='completed' ? (isDark ? 'bg-emerald-500/15 text-emerald-400' : 'bg-emerald-100 text-emerald-700') : payment.status==='pending' ? (isDark ? 'bg-amber-500/15 text-amber-400' : 'bg-amber-100 text-amber-700') : (isDark ? 'bg-red-500/15 text-red-400' : 'bg-red-100 text-red-600')]">{{ payment.status || 'unknown' }}</span>
                 </div>
-                <div v-if="!dashboardData?.recent_payments?.length" class="p-8 text-center text-gray-500">
-                  <i class="fas fa-receipt mb-3 text-4xl text-gray-200"></i>
-                  <p>No payment history found</p>
+                <div v-if="!dashboardData?.recent_payments?.length" class="py-10 text-center">
+                  <i :class="['fas fa-receipt text-3xl mb-3', isDark ? 'text-white/20' : 'text-gray-200']"></i>
+                  <p :class="['text-sm', isDark ? 'text-white/30' : 'text-gray-400']">No payment history</p>
                 </div>
               </div>
             </div>
+          </div>
+          <div :class="['p-4 flex-shrink-0 border-t', isDark ? 'border-white/10' : 'border-gray-100']">
+            <button @click="showPaymentsOverlay = false" :class="['w-full py-2.5 rounded-xl font-semibold text-sm border transition-colors', isDark ? 'border-white/10 text-white/50 hover:bg-white/5' : 'border-gray-200 text-gray-500 hover:bg-gray-50']">Close</button>
           </div>
         </aside>
       </div>
@@ -577,86 +367,206 @@
     <!-- Usage History Slideout -->
     <Teleport to="body">
       <div v-if="showHistoryOverlay" class="fixed inset-0 z-50">
-        <div class="absolute inset-0 bg-black/40" @click="showHistoryOverlay = false"></div>
-        <aside class="absolute right-0 top-0 h-full w-full max-w-4xl bg-white shadow-2xl flex flex-col">
-          <div class="px-6 py-4 border-b border-gray-200 flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h3 class="text-lg font-semibold text-gray-900">Usage History</h3>
-              <p class="text-sm text-gray-500">Sessions, bandwidth, IPs, and totals.</p>
-            </div>
+        <div class="absolute inset-0 bg-black/60" @click="showHistoryOverlay = false"></div>
+        <aside :class="['absolute right-0 top-0 h-full w-full lg:w-1/2 flex flex-col border-l shadow-2xl', isDark ? 'bg-gray-900 border-white/10 text-white' : 'bg-white border-gray-200 text-gray-900']">
+          <div :class="['flex items-center justify-between px-5 py-4 border-b flex-shrink-0', isDark ? 'border-white/10' : 'border-gray-100']">
+            <p :class="['font-bold', isDark ? 'text-white' : 'text-gray-800']">Usage History</p>
             <div class="flex items-center gap-3">
-              <select
-                v-model="historyDays"
-                @change="fetchOverlayHistory"
-                class="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500"
-              >
-                <option :value="7">Last 7 days</option>
-                <option :value="30">Last 30 days</option>
-                <option :value="60">Last 60 days</option>
-                <option :value="90">Last 90 days</option>
+              <select v-model="historyDays" @change="fetchOverlayHistory" :class="['text-xs px-3 py-1.5 rounded-lg border outline-none', isDark ? 'bg-white/8 border-white/15 text-white' : 'bg-gray-50 border-gray-200 text-gray-700']">
+                <option :value="7">7 days</option><option :value="30">30 days</option><option :value="60">60 days</option><option :value="90">90 days</option>
               </select>
-              <button @click="showHistoryOverlay = false" class="p-2 text-gray-400 hover:text-gray-700" title="Close">
-                <i class="fas fa-times text-xl"></i>
-              </button>
+              <button @click="showHistoryOverlay = false" :class="['w-8 h-8 flex items-center justify-center rounded-lg transition-colors', isDark ? 'text-white/40 hover:bg-white/10 hover:text-white' : 'text-gray-400 hover:bg-gray-100']"><i class="fas fa-xmark"></i></button>
             </div>
           </div>
-          <div class="flex-1 overflow-y-auto p-6">
-            <div v-if="historyLoading" class="flex h-48 items-center justify-center text-indigo-600">
-              <i class="fas fa-spinner fa-spin mr-2"></i>
-              Loading usage history...
-            </div>
+          <div class="flex-1 overflow-y-auto p-4">
+            <div v-if="historyLoading" class="flex h-48 items-center justify-center"><div class="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div></div>
             <template v-else>
-              <div class="mb-5 grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div class="rounded-lg bg-gray-50 p-4">
-                  <p class="text-sm text-gray-500">Sessions</p>
-                  <p class="text-xl font-bold text-gray-900">{{ historyData?.total_sessions || 0 }}</p>
-                </div>
-                <div class="rounded-lg bg-gray-50 p-4">
-                  <p class="text-sm text-gray-500">Total Time</p>
-                  <p class="text-xl font-bold text-gray-900">{{ overlayTotalDuration }}</p>
-                </div>
-                <div class="rounded-lg bg-gray-50 p-4">
-                  <p class="text-sm text-gray-500">Total Data</p>
-                  <p class="text-xl font-bold text-gray-900">{{ overlayTotalData }}</p>
+              <div class="grid grid-cols-3 gap-3 mb-4">
+                <div v-for="(s, i) in [{l:'Sessions',v:historyData?.total_sessions||0},{l:'Total Time',v:overlayTotalDuration},{l:'Total Data',v:overlayTotalData}]" :key="i" :class="['rounded-xl p-3 border', isDark ? 'bg-white/5 border-white/8' : 'bg-gray-50 border-gray-100']">
+                  <p :class="['text-xs', isDark ? 'text-white/40' : 'text-gray-400']">{{ s.l }}</p>
+                  <p :class="['font-bold', isDark ? 'text-white' : 'text-gray-800']">{{ s.v }}</p>
                 </div>
               </div>
-              <div class="overflow-x-auto rounded-xl border border-gray-200">
+              <div :class="['overflow-x-auto rounded-xl border', isDark ? 'border-white/8' : 'border-gray-100']">
                 <table class="w-full text-sm">
-                  <thead class="bg-gray-50 text-xs uppercase text-gray-500">
-                    <tr>
-                      <th class="px-4 py-3 text-left">Date</th>
-                      <th class="px-4 py-3 text-left">Duration</th>
-                      <th class="px-4 py-3 text-left">Download</th>
-                      <th class="px-4 py-3 text-left">Upload</th>
-                      <th class="px-4 py-3 text-left">Total</th>
-                      <th class="px-4 py-3 text-left">IP</th>
-                      <th class="px-4 py-3 text-left">Status</th>
-                    </tr>
+                  <thead :class="['text-[10px] uppercase tracking-wider', isDark ? 'bg-white/5 text-white/30' : 'bg-gray-50 text-gray-400']">
+                    <tr><th class="px-4 py-3 text-left">Date</th><th class="px-4 py-3 text-left">Duration</th><th class="px-4 py-3 text-left">Down</th><th class="px-4 py-3 text-left">Up</th><th class="px-4 py-3 text-left">Total</th><th class="px-4 py-3 text-left">IP</th><th class="px-4 py-3 text-left">Status</th></tr>
                   </thead>
-                  <tbody class="divide-y divide-gray-100">
-                    <tr v-for="session in historyData?.sessions || []" :key="session.id" class="hover:bg-gray-50">
-                      <td class="px-4 py-3">
-                        <p class="font-medium text-gray-900">{{ formatDate(session.start_time) }}</p>
-                        <p class="text-xs text-gray-500">{{ formatDateTime(session.start_time) }}</p>
-                      </td>
-                      <td class="px-4 py-3">{{ session.duration_formatted }}</td>
-                      <td class="px-4 py-3">{{ session.download_formatted }}</td>
-                      <td class="px-4 py-3">{{ session.upload_formatted }}</td>
-                      <td class="px-4 py-3 font-semibold">{{ session.total_formatted }}</td>
-                      <td class="px-4 py-3 font-mono text-xs">{{ session.ip_address || '--' }}</td>
-                      <td class="px-4 py-3">
-                        <span :class="['px-2 py-1 rounded-full text-xs font-medium', session.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600']">
-                          {{ session.status === 'active' ? 'Active' : 'Completed' }}
-                        </span>
-                      </td>
+                  <tbody :class="isDark ? 'text-white/60' : 'text-gray-600'">
+                    <tr v-for="session in historyData?.sessions || []" :key="session.id" :class="['border-t', isDark ? 'border-white/5' : 'border-gray-50']">
+                      <td class="px-4 py-3"><p :class="['text-xs font-medium', isDark ? 'text-white' : 'text-gray-800']">{{ formatDate(session.start_time) }}</p><p :class="['text-[10px]', isDark ? 'text-white/30' : 'text-gray-400']">{{ formatDateTime(session.start_time) }}</p></td>
+                      <td class="px-4 py-3 text-xs">{{ session.duration_formatted }}</td>
+                      <td :class="['px-4 py-3 text-xs', isDark ? 'text-emerald-400' : 'text-emerald-600']">{{ session.download_formatted }}</td>
+                      <td :class="['px-4 py-3 text-xs', isDark ? 'text-blue-400' : 'text-blue-600']">{{ session.upload_formatted }}</td>
+                      <td :class="['px-4 py-3 text-xs font-semibold', isDark ? 'text-white' : 'text-gray-800']">{{ session.total_formatted }}</td>
+                      <td :class="['px-4 py-3 font-mono text-xs', isDark ? 'text-white/30' : 'text-gray-400']">{{ session.ip_address || '--' }}</td>
+                      <td class="px-4 py-3"><span :class="['text-[10px] px-2 py-0.5 rounded-full font-bold', session.status==='active' ? (isDark ? 'bg-emerald-500/15 text-emerald-400' : 'bg-emerald-100 text-emerald-700') : (isDark ? 'bg-white/8 text-white/40' : 'bg-gray-100 text-gray-500')]">{{ session.status==='active' ? 'Active' : 'Done' }}</span></td>
                     </tr>
-                    <tr v-if="!historyData?.sessions?.length">
-                      <td colspan="7" class="px-4 py-10 text-center text-gray-500">No usage history found</td>
-                    </tr>
+                    <tr v-if="!historyData?.sessions?.length"><td colspan="7" :class="['px-4 py-10 text-center text-sm', isDark ? 'text-white/30' : 'text-gray-400']">No history found</td></tr>
                   </tbody>
                 </table>
               </div>
             </template>
+          </div>
+          <div :class="['p-4 flex-shrink-0 border-t', isDark ? 'border-white/10' : 'border-gray-100']">
+            <button @click="showHistoryOverlay = false" :class="['w-full py-2.5 rounded-xl font-semibold text-sm border transition-colors', isDark ? 'border-white/10 text-white/50 hover:bg-white/5' : 'border-gray-200 text-gray-500 hover:bg-gray-50']">Close</button>
+          </div>
+        </aside>
+      </div>
+    </Teleport>
+
+    <!-- Timed Voucher Overlay -->
+    <Teleport to="body">
+      <div v-if="showTimedVoucherOverlay" class="fixed inset-0 z-50">
+        <div class="absolute inset-0 bg-black/60" @click="showTimedVoucherOverlay = false"></div>
+        <aside :class="['absolute right-0 top-0 h-full w-full lg:w-1/2 flex flex-col border-l shadow-2xl', isDark ? 'bg-gray-900 border-white/10 text-white' : 'bg-white border-gray-200 text-gray-900']">
+          <div :class="['flex items-center justify-between px-5 py-4 border-b flex-shrink-0', isDark ? 'border-white/10' : 'border-gray-100']">
+            <div>
+              <p :class="['font-bold flex items-center gap-2', isDark ? 'text-white' : 'text-gray-800']"><i class="fas fa-hourglass-half text-purple-500"></i>Timed Voucher</p>
+              <p :class="['text-xs mt-0.5', isDark ? 'text-white/40' : 'text-gray-400']">Temporary M-Pesa internet access</p>
+            </div>
+            <button @click="showTimedVoucherOverlay = false" :class="['w-8 h-8 flex items-center justify-center rounded-lg transition-colors', isDark ? 'text-white/40 hover:bg-white/10 hover:text-white' : 'text-gray-400 hover:bg-gray-100']"><i class="fas fa-xmark"></i></button>
+          </div>
+          <div class="flex-1 overflow-y-auto p-4 space-y-4">
+            <div v-if="activeTimedVoucher" :class="['rounded-xl p-3 border border-purple-500/30', isDark ? 'bg-purple-500/10' : 'bg-purple-50']">
+              <p :class="['font-semibold text-sm flex items-center gap-2', isDark ? 'text-purple-400' : 'text-purple-700']"><i class="fas fa-circle-check"></i>Active Voucher</p>
+              <p :class="['text-xs mt-1', isDark ? 'text-white/40' : 'text-gray-500']">{{ activeTimedVoucher.duration_label }} — Exp: {{ formatDateTime(activeTimedVoucher.expires_at) }}</p>
+            </div>
+            <div>
+              <p :class="['text-xs font-semibold uppercase tracking-wider mb-2', isDark ? 'text-white/40' : 'text-gray-400']">1 — Choose Package</p>
+              <div v-if="tvPackagesLoading" class="flex justify-center py-4"><div class="w-6 h-6 border-2 border-purple-500 border-t-transparent rounded-full animate-spin"></div></div>
+              <div v-else class="space-y-2">
+                <div v-for="pkg in tvPackages" :key="pkg.id" @click="selectedTvPackage = pkg; selectedTvDuration = null"
+                  :class="['flex items-center justify-between rounded-xl p-3 cursor-pointer transition-all border', selectedTvPackage?.id === pkg.id ? 'border-purple-500/60 bg-purple-500/10' : (isDark ? 'bg-white/5 border-white/8 hover:border-purple-500/30' : 'bg-gray-50 border-gray-100 hover:border-purple-300')]">
+                  <div><p :class="['font-medium text-sm', isDark ? 'text-white' : 'text-gray-800']">{{ pkg.name }}</p><p :class="['text-xs', isDark ? 'text-white/40' : 'text-gray-400']">{{ pkg.download_speed }}↓ / {{ pkg.upload_speed }}↑</p></div>
+                  <p :class="['text-xs font-semibold', isDark ? 'text-purple-400' : 'text-purple-700']">KES {{ formatNumber(pkg.monthly_price) }}/mo</p>
+                </div>
+                <p v-if="!tvPackages.length" :class="['text-center py-4 text-sm', isDark ? 'text-white/30' : 'text-gray-400']">No packages available.</p>
+              </div>
+            </div>
+            <div v-if="selectedTvPackage">
+              <p :class="['text-xs font-semibold uppercase tracking-wider mb-2', isDark ? 'text-white/40' : 'text-gray-400']">2 — Choose Duration</p>
+              <div class="grid grid-cols-2 gap-2">
+                <div v-for="dur in selectedTvPackage.durations" :key="dur.hours" @click="selectedTvDuration = dur"
+                  :class="['rounded-xl p-3 cursor-pointer transition-all border', selectedTvDuration?.hours === dur.hours ? 'border-purple-500/60 bg-purple-500/10' : (isDark ? 'bg-white/5 border-white/8 hover:border-purple-500/30' : 'bg-gray-50 border-gray-100 hover:border-purple-300')]">
+                  <p :class="['font-semibold text-sm', isDark ? 'text-white' : 'text-gray-800']">{{ dur.label }}</p>
+                  <p :class="['font-bold text-sm mt-0.5', isDark ? 'text-purple-400' : 'text-purple-700']">KES {{ formatNumber(dur.price) }}</p>
+                </div>
+              </div>
+            </div>
+            <div v-if="selectedTvPackage && selectedTvDuration">
+              <p :class="['text-xs font-semibold uppercase tracking-wider mb-2', isDark ? 'text-white/40' : 'text-gray-400']">3 — Confirm &amp; Pay</p>
+              <div :class="['rounded-xl p-4 mb-3 space-y-2 text-sm border border-purple-500/20', isDark ? 'bg-white/5' : 'bg-purple-50']">
+                <div class="flex justify-between"><span :class="isDark ? 'text-white/40' : 'text-gray-500'">Package</span><span :class="['font-semibold', isDark ? 'text-white' : 'text-gray-800']">{{ selectedTvPackage.name }}</span></div>
+                <div class="flex justify-between"><span :class="isDark ? 'text-white/40' : 'text-gray-500'">Duration</span><span :class="['font-semibold', isDark ? 'text-white' : 'text-gray-800']">{{ selectedTvDuration.label }}</span></div>
+                <div :class="['flex justify-between border-t pt-2', isDark ? 'border-white/10' : 'border-purple-200']"><span :class="isDark ? 'text-white/40' : 'text-gray-500'">Total</span><span :class="['font-bold text-base', isDark ? 'text-purple-400' : 'text-purple-700']">KES {{ formatNumber(selectedTvDuration.price) }}</span></div>
+              </div>
+              <label :class="['block text-xs font-semibold uppercase tracking-wider mb-2', isDark ? 'text-white/50' : 'text-gray-500']">M-Pesa Number</label>
+              <div class="relative mb-3">
+                <span :class="['absolute left-3.5 top-1/2 -translate-y-1/2 font-medium text-sm', isDark ? 'text-white/40' : 'text-gray-400']">254</span>
+                <input v-model="timedVoucherPhone" type="tel" placeholder="7XX XXX XXX" maxlength="9" :class="['w-full pl-12 pr-4 py-3 rounded-xl text-sm border outline-none transition-colors', isDark ? 'bg-white/8 border-white/15 text-white placeholder-white/30 focus:border-purple-500/60' : 'bg-gray-50 border-gray-200 text-gray-900 placeholder-gray-400 focus:border-purple-400']" />
+              </div>
+              <div v-if="timedVoucherMessage" :class="['text-sm rounded-xl px-4 py-3 mb-3', timedVoucherSuccess ? (isDark ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-emerald-50 text-emerald-700 border border-emerald-200') : (isDark ? 'bg-red-500/10 text-red-400 border border-red-500/20' : 'bg-red-50 text-red-600 border border-red-200')]">{{ timedVoucherMessage }}</div>
+              <button @click="handleBuyTimedVoucher" :disabled="timedVoucherLoading || !timedVoucherPhone" class="w-full py-3.5 bg-purple-500 hover:bg-purple-600 text-white font-bold rounded-xl transition-colors flex items-center justify-center gap-2 disabled:opacity-40">
+                <i v-if="timedVoucherLoading" class="fas fa-spinner fa-spin"></i>
+                <span>{{ timedVoucherLoading ? 'Sending…' : 'Activate — KES ' + formatNumber(selectedTvDuration.price) }}</span>
+              </button>
+            </div>
+          </div>
+          <div :class="['p-4 flex-shrink-0 border-t', isDark ? 'border-white/10' : 'border-gray-100']">
+            <button @click="showTimedVoucherOverlay = false" :class="['w-full py-2.5 rounded-xl font-semibold text-sm border transition-colors', isDark ? 'border-white/10 text-white/50 hover:bg-white/5' : 'border-gray-200 text-gray-500 hover:bg-gray-50']">Close</button>
+          </div>
+        </aside>
+      </div>
+    </Teleport>
+
+    <!-- Pause/Resume Overlay -->
+    <Teleport to="body">
+      <div v-if="showPauseOverlay" class="fixed inset-0 z-50">
+        <div class="absolute inset-0 bg-black/60" @click="showPauseOverlay = false"></div>
+        <aside :class="['absolute right-0 top-0 h-full w-full lg:w-1/2 flex flex-col border-l shadow-2xl', isDark ? 'bg-gray-900 border-white/10 text-white' : 'bg-white border-gray-200 text-gray-900']">
+          <div :class="['flex items-center justify-between px-5 py-4 border-b flex-shrink-0', isDark ? 'border-white/10' : 'border-gray-100']">
+            <p :class="['font-bold flex items-center gap-2', isDark ? 'text-white' : 'text-gray-800']">
+              <i :class="['fas', dashboardData?.user?.is_paused ? (isDark ? 'fa-circle-play text-amber-400' : 'fa-circle-play text-amber-500') : (isDark ? 'fa-circle-pause text-teal-400' : 'fa-circle-pause text-teal-500')]"></i>
+              {{ dashboardData?.user?.is_paused ? 'Resume Account' : 'Pause Account' }}
+            </p>
+            <button @click="showPauseOverlay = false" :class="['w-8 h-8 flex items-center justify-center rounded-lg transition-colors', isDark ? 'text-white/40 hover:bg-white/10 hover:text-white' : 'text-gray-400 hover:bg-gray-100']"><i class="fas fa-xmark"></i></button>
+          </div>
+          <div class="flex-1 overflow-y-auto p-4 space-y-4">
+            <template v-if="dashboardData?.user?.is_paused">
+              <div :class="['rounded-xl p-4 border border-amber-500/25', isDark ? 'bg-amber-500/10' : 'bg-amber-50']">
+                <p :class="['font-semibold text-sm flex items-center gap-2', isDark ? 'text-amber-400' : 'text-amber-700']"><i class="fas fa-circle-pause"></i>Account is Paused</p>
+                <p :class="['text-xs mt-2', isDark ? 'text-white/50' : 'text-gray-500']">Pause expires <strong :class="isDark ? 'text-white' : 'text-gray-700'">{{ formatDate(dashboardData.user.pause_ends_at) }}</strong>.</p>
+                <p :class="['text-xs mt-1', isDark ? 'text-white/50' : 'text-gray-500']">Resuming early credits unused days back.</p>
+              </div>
+              <button @click="handleResumeAccount" :disabled="pauseLoading" class="w-full py-3.5 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl transition-colors flex items-center justify-center gap-2 disabled:opacity-50">
+                <i v-if="pauseLoading" class="fas fa-spinner fa-spin"></i><span>{{ pauseLoading ? 'Resuming…' : 'Resume Now' }}</span>
+              </button>
+            </template>
+            <template v-else>
+              <div :class="['rounded-xl p-4 border border-teal-500/25 space-y-1.5', isDark ? 'bg-teal-500/10' : 'bg-teal-50']">
+                <p :class="['font-semibold text-sm flex items-center gap-2 mb-2', isDark ? 'text-teal-400' : 'text-teal-700']"><i class="fas fa-circle-info"></i>About Pause</p>
+                <p :class="['text-xs', isDark ? 'text-white/50' : 'text-gray-500']">Account must be fully paid before pausing.</p>
+                <p :class="['text-xs', isDark ? 'text-white/50' : 'text-gray-500']">Maximum 30 days. Internet suspended during pause.</p>
+                <p :class="['text-xs', isDark ? 'text-white/50' : 'text-gray-500']">Resuming early credits unused days back.</p>
+              </div>
+              <div v-if="dashboardData?.user?.payment_status !== 'paid'" class="rounded-xl bg-red-500/10 border border-red-500/20 p-3 text-xs text-red-500">
+                <i class="fas fa-circle-exclamation mr-1"></i>Account must be fully paid to enable pause.
+              </div>
+              <button @click="handlePauseAccount" :disabled="pauseLoading || dashboardData?.user?.payment_status !== 'paid'" class="w-full py-3.5 bg-teal-500 hover:bg-teal-600 text-white font-bold rounded-xl transition-colors flex items-center justify-center gap-2 disabled:opacity-40">
+                <i v-if="pauseLoading" class="fas fa-spinner fa-spin"></i><span>{{ pauseLoading ? 'Pausing…' : 'Pause My Account' }}</span>
+              </button>
+            </template>
+          </div>
+          <div :class="['p-4 flex-shrink-0 border-t', isDark ? 'border-white/10' : 'border-gray-100']">
+            <button @click="showPauseOverlay = false" :class="['w-full py-2.5 rounded-xl font-semibold text-sm border transition-colors', isDark ? 'border-white/10 text-white/50 hover:bg-white/5' : 'border-gray-200 text-gray-500 hover:bg-gray-50']">Close</button>
+          </div>
+        </aside>
+      </div>
+    </Teleport>
+
+    <!-- Plan Switch Overlay -->
+    <Teleport to="body">
+      <div v-if="showPlanSwitchOverlay" class="fixed inset-0 z-50">
+        <div class="absolute inset-0 bg-black/60" @click="showPlanSwitchOverlay = false"></div>
+        <aside :class="['absolute right-0 top-0 h-full w-full lg:w-1/2 flex flex-col border-l shadow-2xl', isDark ? 'bg-gray-900 border-white/10 text-white' : 'bg-white border-gray-200 text-gray-900']">
+          <div :class="['flex items-center justify-between px-5 py-4 border-b flex-shrink-0', isDark ? 'border-white/10' : 'border-gray-100']">
+            <div>
+              <p :class="['font-bold flex items-center gap-2', isDark ? 'text-white' : 'text-gray-800']"><i class="fas fa-arrows-rotate text-indigo-500"></i>Switch Plan</p>
+              <p :class="['text-xs mt-0.5', isDark ? 'text-white/40' : 'text-gray-400']">Effective at next renewal</p>
+            </div>
+            <button @click="showPlanSwitchOverlay = false" :class="['w-8 h-8 flex items-center justify-center rounded-lg transition-colors', isDark ? 'text-white/40 hover:bg-white/10 hover:text-white' : 'text-gray-400 hover:bg-gray-100']"><i class="fas fa-xmark"></i></button>
+          </div>
+          <div class="flex-1 overflow-y-auto p-4 space-y-3">
+            <div v-if="dashboardData.user?.pending_package_id" :class="['rounded-xl p-3 border border-amber-500/25 text-xs', isDark ? 'bg-amber-500/10 text-amber-400' : 'bg-amber-50 text-amber-700']">
+              <i class="fas fa-circle-info mr-1"></i>Switch scheduled for <strong>{{ formatDate(dashboardData.user?.plan_switch_effective_date) }}</strong>.
+            </div>
+            <div v-if="plansLoading" class="flex justify-center py-8"><div class="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div></div>
+            <div v-else class="space-y-2">
+              <div v-for="plan in availablePlans" :key="plan.id"
+                :class="['flex items-center justify-between rounded-xl border p-3 transition-all cursor-pointer',
+                  dashboardData.user?.package_id === plan.id ? 'border-indigo-400/50 bg-indigo-500/10 cursor-default' :
+                  selectedPlanId === plan.id ? 'border-indigo-500/60 bg-indigo-500/10' :
+                  (isDark ? 'bg-white/5 border-white/8 hover:border-indigo-500/30' : 'bg-gray-50 border-gray-100 hover:border-indigo-300')]"
+                @click="dashboardData.user?.package_id !== plan.id && (selectedPlanId = plan.id)">
+                <div>
+                  <div class="flex items-center gap-2">
+                    <p :class="['font-semibold text-sm', isDark ? 'text-white' : 'text-gray-800']">{{ plan.name }}</p>
+                    <span v-if="dashboardData.user?.package_id === plan.id" :class="['text-[10px] px-1.5 py-0.5 rounded-full font-semibold', isDark ? 'bg-indigo-500/20 text-indigo-400' : 'bg-indigo-100 text-indigo-700']">Current</span>
+                  </div>
+                  <p :class="['text-xs mt-0.5', isDark ? 'text-white/40' : 'text-gray-400']">{{ plan.download_speed }}↓ / {{ plan.upload_speed }}↑</p>
+                </div>
+                <p :class="['font-bold text-sm', isDark ? 'text-white' : 'text-gray-800']">KES {{ formatNumber(plan.price) }}<span :class="['text-xs font-normal', isDark ? 'text-white/30' : 'text-gray-400']">/mo</span></p>
+              </div>
+            </div>
+            <p v-if="!plansLoading && !availablePlans.length" :class="['text-center py-8 text-sm', isDark ? 'text-white/30' : 'text-gray-400']">No plans available.</p>
+            <button @click="handlePlanSwitch" :disabled="!selectedPlanId || planSwitchLoading" class="w-full py-3.5 bg-indigo-500 hover:bg-indigo-600 text-white font-bold rounded-xl transition-colors flex items-center justify-center gap-2 disabled:opacity-40">
+              <i v-if="planSwitchLoading" class="fas fa-spinner fa-spin"></i>
+              <span>{{ planSwitchLoading ? 'Scheduling…' : 'Schedule Plan Switch' }}</span>
+            </button>
+          </div>
+          <div :class="['p-4 flex-shrink-0 border-t', isDark ? 'border-white/10' : 'border-gray-100']">
+            <button @click="showPlanSwitchOverlay = false" :class="['w-full py-2.5 rounded-xl font-semibold text-sm border transition-colors', isDark ? 'border-white/10 text-white/50 hover:bg-white/5' : 'border-gray-200 text-gray-500 hover:bg-gray-50']">Close</button>
           </div>
         </aside>
       </div>
@@ -664,79 +574,42 @@
 
     <!-- Voucher Modal -->
     <Teleport to="body">
-      <div v-if="showVoucherModal" class="fixed inset-0 z-50 overflow-y-auto">
-        <div class="flex min-h-full items-center justify-center p-4 bg-black/50">
-          <div class="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
-            <div class="flex items-center justify-between mb-6">
-              <h3 class="text-xl font-semibold text-gray-900">Redeem Voucher</h3>
-              <button @click="closeVoucherModal" class="text-gray-400 hover:text-gray-600" title="Close">
-                <i class="fas fa-times text-xl"></i>
-              </button>
+      <div v-if="showVoucherModal" :class="['fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4', isDark ? 'bg-black/80' : 'bg-black/50']">
+        <div :class="['w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl overflow-hidden border shadow-2xl', isDark ? 'bg-gray-900 border-white/10' : 'bg-white border-gray-200']">
+          <div :class="['flex items-center justify-between px-5 pt-5 pb-4 border-b', isDark ? 'border-white/10' : 'border-gray-100']">
+            <div class="flex items-center gap-2">
+              <div :class="['w-7 h-7 rounded-lg flex items-center justify-center', isDark ? 'bg-indigo-500/20' : 'bg-indigo-100']"><i :class="['fas fa-ticket text-sm', isDark ? 'text-indigo-400' : 'text-indigo-600']"></i></div>
+              <h3 :class="['font-bold text-base', isDark ? 'text-white' : 'text-gray-800']">Redeem Voucher</h3>
             </div>
-
-            <form @submit.prevent="handleVoucherRedeem" class="space-y-4">
-              <div v-if="voucherStatusMessage" class="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
-                <div class="flex items-start gap-2">
-                  <i class="fas fa-circle-info mt-0.5"></i>
-                  <p>{{ voucherStatusMessage }}</p>
-                </div>
-              </div>
-
-              <div v-if="voucherErrorMessage" class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-                <div class="flex items-start gap-2">
-                  <i class="fas fa-exclamation-circle mt-0.5"></i>
-                  <p>{{ voucherErrorMessage }}</p>
-                </div>
-              </div>
-
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Voucher Code</label>
-                <input
-                  v-model="voucherForm.code"
-                  type="text"
-                  placeholder="Enter voucher code"
-                  required
-                  class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 uppercase"
-                />
-                <p class="text-xs text-gray-500 mt-1">Enter the voucher code exactly as shown</p>
-              </div>
-
-              <button
-                type="submit"
-                :disabled="voucherLoading"
-                class="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
-              >
-                <i v-if="voucherLoading" class="fas fa-spinner fa-spin"></i>
-                <span>{{ voucherLoading ? 'Redeeming...' : 'Redeem Voucher' }}</span>
-              </button>
-
-              <button
-                type="button"
-                @click="closeVoucherModal"
-                class="w-full py-3 border border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-50 transition-colors"
-              >
-                Close
-              </button>
-            </form>
+            <button @click="closeVoucherModal" :class="['w-8 h-8 flex items-center justify-center rounded-lg transition-colors', isDark ? 'text-white/40 hover:bg-white/10 hover:text-white' : 'text-gray-400 hover:bg-gray-100']"><i class="fas fa-xmark text-lg"></i></button>
           </div>
+          <form @submit.prevent="handleVoucherRedeem" class="px-5 py-5 space-y-4">
+            <div v-if="voucherStatusMessage" :class="['rounded-xl border px-4 py-3 text-sm flex items-start gap-2', isDark ? 'bg-blue-500/10 border-blue-500/20 text-blue-400' : 'bg-blue-50 border-blue-200 text-blue-700']">
+              <i class="fas fa-circle-info mt-0.5 flex-shrink-0"></i><p>{{ voucherStatusMessage }}</p>
+            </div>
+            <div v-if="voucherErrorMessage" :class="['rounded-xl border px-4 py-3 text-sm flex items-start gap-2', isDark ? 'bg-red-500/10 border-red-500/20 text-red-400' : 'bg-red-50 border-red-200 text-red-600']">
+              <i class="fas fa-circle-exclamation mt-0.5 flex-shrink-0"></i><p>{{ voucherErrorMessage }}</p>
+            </div>
+            <div>
+              <label :class="['block text-xs font-semibold uppercase tracking-wider mb-2', isDark ? 'text-white/50' : 'text-gray-500']">Voucher Code</label>
+              <input v-model="voucherForm.code" type="text" placeholder="Enter code" required :class="['w-full px-4 py-3 rounded-xl text-sm border outline-none transition-colors uppercase tracking-widest', isDark ? 'bg-white/8 border-white/15 text-white placeholder-white/30 focus:border-indigo-500/60' : 'bg-gray-50 border-gray-200 text-gray-900 placeholder-gray-400 focus:border-indigo-400']" />
+            </div>
+            <button type="submit" :disabled="voucherLoading" class="w-full py-3.5 bg-indigo-500 hover:bg-indigo-600 text-white font-bold rounded-xl transition-colors flex items-center justify-center gap-2 disabled:opacity-50">
+              <i v-if="voucherLoading" class="fas fa-spinner fa-spin"></i>
+              <span>{{ voucherLoading ? 'Redeeming…' : 'Redeem Voucher' }}</span>
+            </button>
+            <button type="button" @click="closeVoucherModal" :class="['w-full py-3 rounded-xl font-semibold text-sm border transition-colors', isDark ? 'border-white/10 text-white/40 hover:bg-white/5 hover:text-white/70' : 'border-gray-200 text-gray-400 hover:bg-gray-50 hover:text-gray-600']">Close</button>
+          </form>
         </div>
       </div>
     </Teleport>
 
     <!-- Success Toast -->
     <Teleport to="body">
-      <Transition
-        enter-active-class="transition duration-300 ease-out"
-        enter-from-class="transform translate-y-2 opacity-0"
-        enter-to-class="transform translate-y-0 opacity-100"
-        leave-active-class="transition duration-200 ease-in"
-        leave-from-class="transform translate-y-0 opacity-100"
-        leave-to-class="transform translate-y-2 opacity-0"
-      >
-        <div v-if="successMessage" class="fixed bottom-4 right-4 z-50">
-          <div class="bg-green-600 text-white px-6 py-3 rounded-lg shadow-lg flex items-center gap-3">
-            <i class="fas fa-check-circle"></i>
-            <span>{{ successMessage }}</span>
+      <Transition enter-active-class="transition duration-300 ease-out" enter-from-class="translate-y-2 opacity-0" enter-to-class="translate-y-0 opacity-100" leave-active-class="transition duration-200 ease-in" leave-from-class="translate-y-0 opacity-100" leave-to-class="translate-y-2 opacity-0">
+        <div v-if="successMessage" class="fixed bottom-6 right-4 z-[60] sm:bottom-4">
+          <div class="bg-emerald-500 text-white px-5 py-3 rounded-xl shadow-2xl shadow-emerald-500/30 flex items-center gap-3 text-sm font-semibold">
+            <i class="fas fa-circle-check"></i><span>{{ successMessage }}</span>
           </div>
         </div>
       </Transition>
@@ -745,7 +618,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import { usePppoePortal } from '../composables/usePppoePortal.js';
 
 const { 
@@ -758,7 +631,15 @@ const {
   redeemVoucher,
   checkPaymentStatus,
   getDashboardSeed,
+  pauseAccount,
+  resumeAccount,
+  fetchPlans,
+  requestPlanSwitch,
+  fetchTimedVoucherOptions,
+  buyTimedVoucher,
 } = usePppoePortal();
+
+const isDark = ref(false);
 
 const dashboardData = ref(null);
 const recentSessions = ref([]);
@@ -779,6 +660,45 @@ const pendingPaymentTransactionId = ref('');
 const historyDays = ref(30);
 const historyData = ref(null);
 
+// Pause/Resume
+const pauseLoading = ref(false);
+
+// Plan Switch
+const availablePlans = ref([]);
+const plansLoading = ref(false);
+const selectedPlanId = ref(null);
+const planSwitchLoading = ref(false);
+
+// Overlay toggles
+const showTimedVoucherOverlay = ref(false);
+const showPauseOverlay = ref(false);
+const showPlanSwitchOverlay = ref(false);
+const showRecentSessionsOverlay = ref(false);
+
+// Timed Vouchers
+const tvPackages = ref([]);
+const tvPackagesLoading = ref(false);
+const selectedTvPackage = ref(null);
+const selectedTvDuration = ref(null);
+const timedVoucherOptions = ref([]);
+const activeTimedVoucher = ref(null);
+const selectedVoucherIdx = ref(null);
+const timedVoucherPhone = ref('');
+const timedVoucherLoading = ref(false);
+const timedVoucherMessage = ref('');
+const timedVoucherSuccess = ref(false);
+
+// Recent Sessions overlay data
+const allRecentSessions = ref([]);
+
+const paymentStep = ref('form'); // 'form' | 'processing' | 'success' | 'failed'
+const paymentPollAttempt = ref(0);
+const maskedPhone = ref('');
+const paymentConfirmation = ref({ receipt: '', paidAt: null, nextDue: null, expiresAt: null, status: '' });
+const paymentStatusPollTimer = ref(null);
+const paymentEventChannelName = ref('');
+const paymentEventReceived = ref(false);
+
 const paymentForm = ref({
   phone: '',
 });
@@ -794,9 +714,18 @@ const handleLogout = () => {
 };
 
 const closePaymentModal = () => {
+  if (paymentStep.value === 'processing') return;
+  leavePaymentStatusChannel();
+  clearPaymentStatusPollTimer();
   showPaymentModal.value = false;
+  paymentStep.value = 'form';
   paymentErrorMessage.value = '';
   paymentStatusMessage.value = '';
+  paymentPollAttempt.value = 0;
+  pendingPaymentTransactionId.value = '';
+  maskedPhone.value = '';
+  paymentEventReceived.value = false;
+  paymentConfirmation.value = { receipt: '', paidAt: null, nextDue: null, expiresAt: null, status: '' };
 };
 
 const closeVoucherModal = () => {
@@ -829,29 +758,36 @@ const accountStatus = computed(() => {
   switch (status) {
     case 'active':
       return {
-        class: 'bg-green-50 border border-green-200 text-green-800',
-        icon: 'fa-check-circle',
+        heroClass: 'hero-active',
+        icon: 'fa-circle-check',
         title: 'Account Active',
         message: 'Your internet service is active and running',
       };
+    case 'paused':
+      return {
+        heroClass: 'hero-paused',
+        icon: 'fa-circle-pause',
+        title: 'Account Paused',
+        message: 'Your account is paused. Internet access is suspended.',
+      };
     case 'suspended':
       return {
-        class: 'bg-red-50 border border-red-200 text-red-800',
-        icon: 'fa-exclamation-triangle',
+        heroClass: 'hero-suspended',
+        icon: 'fa-triangle-exclamation',
         title: 'Account Suspended',
         message: 'Please make a payment to restore service',
       };
     case 'expired':
       return {
-        class: 'bg-yellow-50 border border-yellow-200 text-yellow-800',
+        heroClass: 'hero-expired',
         icon: 'fa-clock',
         title: 'Account Expired',
         message: 'Your package has expired. Please renew',
       };
     default:
       return {
-        class: 'bg-gray-50 border border-gray-200 text-gray-800',
-        icon: 'fa-question-circle',
+        heroClass: 'hero-unknown',
+        icon: 'fa-circle-question',
         title: 'Unknown Status',
         message: 'Please contact support',
       };
@@ -949,6 +885,31 @@ function openPaymentsOverlay() {
   showPaymentsOverlay.value = true;
 }
 
+function openTimedVoucherOverlay() {
+  timedVoucherMessage.value = '';
+  timedVoucherSuccess.value = false;
+  timedVoucherPhone.value = '';
+  selectedTvPackage.value = null;
+  selectedTvDuration.value = null;
+  showTimedVoucherOverlay.value = true;
+  if (!tvPackages.value.length) loadTimedVoucherOptions();
+}
+
+function openPauseOverlay() {
+  showPauseOverlay.value = true;
+}
+
+function openPlanSwitchOverlay() {
+  selectedPlanId.value = null;
+  showPlanSwitchOverlay.value = true;
+  if (!availablePlans.value.length) loadPlans();
+}
+
+function openRecentSessionsOverlay() {
+  allRecentSessions.value = dashboardData.value?.recent_sessions || recentSessions.value || [];
+  showRecentSessionsOverlay.value = true;
+}
+
 async function openHistoryOverlay() {
   showHistoryOverlay.value = true;
   await fetchOverlayHistory();
@@ -970,18 +931,24 @@ async function handleMpesaPayment() {
   paymentLoading.value = true;
   paymentStatusMessage.value = '';
   paymentErrorMessage.value = '';
+  paymentEventReceived.value = false;
+  clearPaymentStatusPollTimer();
+  leavePaymentStatusChannel();
   try {
     const phone = '254' + paymentForm.value.phone.replace(/\D/g, '');
+    maskedPhone.value = phone.slice(0, 6) + '****' + phone.slice(-2);
     const result = await initiateMpesaPayment(phone, paymentAmount.value);
 
     pendingPaymentTransactionId.value = result?.data?.transaction_id || '';
-    paymentStatusMessage.value = result.message || 'Payment request sent. Complete the M-Pesa prompt on your phone.';
-    showSuccess(paymentStatusMessage.value);
+    paymentStep.value = 'processing';
+    paymentPollAttempt.value = 0;
+    paymentStatusMessage.value = 'Waiting for M-Pesa confirmation…';
 
     if (pendingPaymentTransactionId.value) {
+      subscribeToPaymentStatus(pendingPaymentTransactionId.value);
       pollPaymentStatus(pendingPaymentTransactionId.value);
     } else {
-      setTimeout(loadDashboard, 3000);
+      setTimeout(loadDashboard, 4000);
     }
   } catch (err) {
     console.error('Payment failed:', err);
@@ -1013,41 +980,130 @@ async function handleVoucherRedeem() {
 }
 
 async function pollPaymentStatus(transactionId) {
-  let attempts = 0;
   const maxAttempts = 18;
 
   const check = async () => {
-    attempts += 1;
+    if (!pendingPaymentTransactionId.value || pendingPaymentTransactionId.value !== transactionId || paymentEventReceived.value) {
+      return;
+    }
+
+    paymentPollAttempt.value += 1;
     try {
-      const status = await checkPaymentStatus(transactionId);
-      const value = String(status?.status || '').toLowerCase();
-      paymentStatusMessage.value = `Payment status: ${value || 'pending'}`;
+      const res = await checkPaymentStatus(transactionId);
+      const data = res?.data ?? res;
+      const value = String(data?.status || '').toLowerCase();
+
+      const attempt = paymentPollAttempt.value;
+      const dots = '.'.repeat((attempt % 3) + 1);
+      paymentStatusMessage.value = `Checking status${dots} (attempt ${attempt})`;
 
       if (value === 'completed' || value === 'paid') {
-        showSuccess('Payment confirmed. Your dashboard has been refreshed.');
-        paymentForm.value = { phone: '' };
-        pendingPaymentTransactionId.value = '';
-        await loadDashboard({ force: true });
+        applySuccessfulPaymentUpdate(data);
         return;
       }
 
       if (value === 'failed' || value === 'cancelled') {
-        paymentErrorMessage.value = 'Payment was not completed. Start another request when ready.';
+        applyFailedPaymentUpdate(data);
         return;
       }
 
-      if (attempts < maxAttempts) {
-        setTimeout(check, 10000);
+      if (paymentPollAttempt.value < maxAttempts) {
+        paymentStatusPollTimer.value = window.setTimeout(check, 10000);
+      } else {
+        paymentStep.value = 'failed';
+        paymentErrorMessage.value = 'Payment confirmation timed out. If you entered your PIN, please wait a moment then refresh the page.';
       }
     } catch (err) {
       console.error('Payment status check failed:', err);
-      if (attempts < maxAttempts) {
-        setTimeout(check, 10000);
+      if (paymentPollAttempt.value < maxAttempts) {
+        paymentStatusPollTimer.value = window.setTimeout(check, 10000);
       }
     }
   };
 
-  check();
+  paymentStatusPollTimer.value = window.setTimeout(check, 5000);
+}
+
+function clearPaymentStatusPollTimer() {
+  if (paymentStatusPollTimer.value) {
+    window.clearTimeout(paymentStatusPollTimer.value);
+    paymentStatusPollTimer.value = null;
+  }
+}
+
+function leavePaymentStatusChannel() {
+  if (paymentEventChannelName.value && typeof window !== 'undefined' && window.Echo) {
+    window.Echo.leave(paymentEventChannelName.value);
+  }
+  paymentEventChannelName.value = '';
+}
+
+function subscribeToPaymentStatus(transactionId) {
+  if (typeof window === 'undefined' || !window.Echo || !transactionId) {
+    return;
+  }
+
+  leavePaymentStatusChannel();
+
+  const channelName = `pppoe-portal.payment.${transactionId}`;
+  paymentEventChannelName.value = channelName;
+
+  window.Echo
+    .channel(channelName)
+    .listen('.pppoe.payment.updated', (event) => {
+      if (!event || event.transaction_id !== transactionId) {
+        return;
+      }
+
+      paymentEventReceived.value = true;
+      paymentStatusMessage.value = 'Payment status updated.';
+
+      const status = String(event.status || '').toLowerCase();
+      if (status === 'completed' || status === 'paid') {
+        applySuccessfulPaymentUpdate(event);
+        return;
+      }
+
+      if (status === 'failed' || status === 'cancelled') {
+        applyFailedPaymentUpdate(event);
+      }
+    });
+}
+
+function applySuccessfulPaymentUpdate(data) {
+  paymentEventReceived.value = true;
+  clearPaymentStatusPollTimer();
+  leavePaymentStatusChannel();
+
+  paymentConfirmation.value = {
+    receipt: data.payment_reference || '',
+    paidAt: data.paid_at || null,
+    nextDue: data.user?.next_payment_due || data.next_payment_due || null,
+    expiresAt: data.user?.expiration_date || null,
+    status: data.user?.status || 'active',
+  };
+
+  if (data.user && dashboardData.value?.user) {
+    dashboardData.value = {
+      ...dashboardData.value,
+      user: { ...dashboardData.value.user, ...data.user },
+    };
+  }
+
+  paymentStep.value = 'success';
+  paymentStatusMessage.value = 'Payment confirmed successfully.';
+  paymentForm.value = { phone: '' };
+  pendingPaymentTransactionId.value = '';
+  loadDashboard({ force: true });
+}
+
+function applyFailedPaymentUpdate(data = {}) {
+  paymentEventReceived.value = true;
+  clearPaymentStatusPollTimer();
+  leavePaymentStatusChannel();
+  paymentStep.value = 'failed';
+  pendingPaymentTransactionId.value = '';
+  paymentErrorMessage.value = data.message || 'Payment was cancelled or not completed. You can try again.';
 }
 
 function showSuccess(message) {
@@ -1110,6 +1166,96 @@ function formatBytes(bytes) {
   return `${value.toFixed(2)} ${units[unitIndex]}`;
 }
 
+async function handlePauseAccount() {
+  pauseLoading.value = true;
+  try {
+    const result = await pauseAccount();
+    showSuccess(result.message || 'Account paused successfully.');
+    showPauseOverlay.value = false;
+    await loadDashboard({ force: true });
+  } catch (err) {
+    console.error('Pause failed:', err);
+    showSuccess(err?.response?.data?.message || 'Failed to pause account.');
+  } finally {
+    pauseLoading.value = false;
+  }
+}
+
+async function handleResumeAccount() {
+  pauseLoading.value = true;
+  try {
+    const result = await resumeAccount();
+    showSuccess(result.message || 'Account resumed.');
+    showPauseOverlay.value = false;
+    await loadDashboard({ force: true });
+  } catch (err) {
+    console.error('Resume failed:', err);
+    showSuccess(err?.response?.data?.message || 'Failed to resume account.');
+  } finally {
+    pauseLoading.value = false;
+  }
+}
+
+async function loadPlans() {
+  plansLoading.value = true;
+  try {
+    const result = await fetchPlans();
+    availablePlans.value = result.data || [];
+  } catch (err) {
+    console.error('Failed to load plans:', err);
+  } finally {
+    plansLoading.value = false;
+  }
+}
+
+async function handlePlanSwitch() {
+  if (!selectedPlanId.value) return;
+  planSwitchLoading.value = true;
+  try {
+    const result = await requestPlanSwitch(selectedPlanId.value);
+    showSuccess(result.message || 'Plan switch scheduled.');
+    selectedPlanId.value = null;
+    showPlanSwitchOverlay.value = false;
+    await loadDashboard({ force: true });
+  } catch (err) {
+    console.error('Plan switch failed:', err);
+    showSuccess(err?.response?.data?.message || 'Plan switch failed.');
+  } finally {
+    planSwitchLoading.value = false;
+  }
+}
+
+async function loadTimedVoucherOptions() {
+  tvPackagesLoading.value = true;
+  try {
+    const result = await fetchTimedVoucherOptions();
+    tvPackages.value = result.packages || [];
+    activeTimedVoucher.value = result.active_voucher || null;
+  } catch (err) {
+    console.error('Failed to load timed voucher options:', err);
+  } finally {
+    tvPackagesLoading.value = false;
+  }
+}
+
+async function handleBuyTimedVoucher() {
+  if (!selectedTvPackage.value || !selectedTvDuration.value || !timedVoucherPhone.value) return;
+  timedVoucherLoading.value = true;
+  timedVoucherMessage.value = '';
+  try {
+    const phone = '254' + timedVoucherPhone.value.replace(/\D/g, '');
+    const result = await buyTimedVoucher(phone, selectedTvPackage.value.id, selectedTvDuration.value.hours);
+    timedVoucherSuccess.value = true;
+    timedVoucherMessage.value = result.message || 'Payment request sent. Enter your M-Pesa PIN.';
+    showSuccess(timedVoucherMessage.value);
+  } catch (err) {
+    timedVoucherSuccess.value = false;
+    timedVoucherMessage.value = err?.response?.data?.message || 'Failed to initiate payment.';
+  } finally {
+    timedVoucherLoading.value = false;
+  }
+}
+
 onMounted(() => {
   const seed = getDashboardSeed();
   if (seed) {
@@ -1117,5 +1263,26 @@ onMounted(() => {
   }
 
   loadDashboard({ force: !seed });
+  loadPlans();
+  loadTimedVoucherOptions();
+});
+
+onBeforeUnmount(() => {
+  clearPaymentStatusPollTimer();
+  leavePaymentStatusChannel();
 });
 </script>
+
+<style>
+/* Thin scrollbars */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(128,128,128,0.25); border-radius: 9999px; }
+
+/* ══ Hero card variants — used by accountStatus.heroClass computed ══ */
+.hero-active    { background: linear-gradient(135deg, #064e3b, #065f46); border-color: rgba(16,185,129,0.4); }
+.hero-paused    { background: linear-gradient(135deg, #451a03, #78350f); border-color: rgba(245,158,11,0.4); }
+.hero-suspended { background: linear-gradient(135deg, #450a0a, #7f1d1d); border-color: rgba(239,68,68,0.4);  }
+.hero-expired   { background: linear-gradient(135deg, #422006, #713f12); border-color: rgba(234,179,8,0.4);  }
+.hero-unknown   { background: linear-gradient(135deg, #1e1b4b, #2e1065); border-color: rgba(99,102,241,0.4); }
+</style>

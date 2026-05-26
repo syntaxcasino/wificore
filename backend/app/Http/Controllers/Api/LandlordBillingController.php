@@ -4,12 +4,14 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Tenant;
+use App\Models\SystemPaymentSetting;
 use App\Models\User;
 use App\Notifications\TenantInvoiceNotification;
 use App\Notifications\TenantPaymentReceiptNotification;
 use App\Services\SaasBillingService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Validator;
@@ -43,6 +45,74 @@ class LandlordBillingController extends Controller
                 'enforcement' => config('saas.enforcement'),
             ],
         ]);
+    }
+
+    public function getLoggingConfiguration(): JsonResponse
+    {
+        $settings = SystemPaymentSetting::getActive();
+
+        return response()->json([
+            'success' => true,
+            'logging' => [
+                'payment_trace_mode' => $settings?->payment_trace_mode ?? 'stdout',
+                'available_modes' => ['stdout', 'persistent', 'both'],
+                'trace_file' => storage_path('logs/payment_trace.log'),
+            ],
+        ]);
+    }
+
+    public function updateLoggingConfiguration(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'payment_trace_mode' => 'required|in:stdout,persistent,both',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        try {
+            $settings = SystemPaymentSetting::first();
+
+            if ($settings) {
+                $settings->update([
+                    'payment_trace_mode' => $request->payment_trace_mode,
+                ]);
+            } else {
+                $settings = SystemPaymentSetting::create([
+                    'payment_trace_mode' => $request->payment_trace_mode,
+                    'is_active' => true,
+                ]);
+            }
+
+            Cache::forget('system_payment_trace_mode');
+
+            Log::info('Landlord updated payment logging mode', [
+                'payment_trace_mode' => $request->payment_trace_mode,
+                'updated_by' => auth()->id(),
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Payment logging mode updated',
+                'logging' => [
+                    'payment_trace_mode' => $settings->payment_trace_mode ?? $request->payment_trace_mode,
+                    'available_modes' => ['stdout', 'persistent', 'both'],
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Failed to update payment logging mode', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to update payment logging mode',
+            ], 500);
+        }
     }
 
     /**

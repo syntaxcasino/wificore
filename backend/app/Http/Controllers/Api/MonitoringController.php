@@ -92,8 +92,7 @@ class MonitoringController extends Controller
         }
 
         try {
-            $routerStats = Router::where('tenant_id', $tenantId)
-                ->selectRaw("status, COUNT(*) as count")
+            $routerStats = Router::selectRaw("status, COUNT(*) as count")
                 ->groupBy('status')
                 ->pluck('count', 'status')
                 ->toArray();

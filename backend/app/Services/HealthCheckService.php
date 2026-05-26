@@ -9,6 +9,7 @@ use App\Models\Router;
 use App\Models\User;
 use App\Models\Payment;
 use App\Models\HotspotUser;
+use App\Services\QueueMetricsService;
 
 class HealthCheckService
 {
@@ -559,23 +560,9 @@ class HealthCheckService
     private function checkQueues(): array
     {
         try {
-            // Pending jobs
-            $pendingJobs = DB::table('jobs')->count();
-            
-            // Failed jobs
-            $failedJobs = DB::table('failed_jobs')->count();
-            
-            // Get failed jobs by queue
-            $failedByQueue = DB::table('failed_jobs')
-                ->select('queue', DB::raw('count(*) as count'))
-                ->groupBy('queue')
-                ->get()
-                ->mapWithKeys(function ($item) {
-                    return [$item->queue => $item->count];
-                })
-                ->toArray();
-            
-            // Get recent failed jobs
+            $metrics = app(QueueMetricsService::class)->getRealtimeMetrics();
+            $failedJobs = $metrics['failed_jobs'];
+            $workersRunning = ! empty($metrics['workers_by_queue']);
             $recentFailed = DB::table('failed_jobs')
                 ->select('queue', 'exception', 'failed_at')
                 ->orderBy('failed_at', 'desc')
@@ -585,54 +572,31 @@ class HealthCheckService
                     return [
                         'queue' => $job->queue,
                         'error' => substr($job->exception, 0, 100) . '...',
-                        'failed_at' => $job->failed_at
+                        'failed_at' => $job->failed_at,
                     ];
                 })
                 ->toArray();
-            
-            // Get processed jobs count from logs (minimal 30s cache for performance)
-            $processedJobs = \Cache::remember('queue_processed_jobs_count', 30, function() {
-                try {
-                    $logDir = storage_path('logs');
-                    $command = "grep -h ' DONE' " . escapeshellarg($logDir) . "/*-queue.log 2>/dev/null | wc -l";
-                    $count = (int) trim(shell_exec($command));
-                    return $count > 0 ? $count : 0;
-                } catch (\Exception $e) {
-                    return 0;
-                }
-            });
-            
-            // Check if workers are running (via supervisor - matches both singular and plural)
-            $workersRunning = false;
-            $workerCount = 0;
-            try {
-                $supervisorStatus = shell_exec('supervisorctl -c /etc/supervisor/supervisord.conf status 2>/dev/null | grep -E "laravel-queue" | grep "RUNNING"');
-                if (!empty($supervisorStatus)) {
-                    $workersRunning = true;
-                    $workerCount = substr_count($supervisorStatus, 'RUNNING');
-                }
-            } catch (\Exception $e) {
-                // Ignore
-            }
-            
-            // Determine status
+
             $status = 'healthy';
             if ($failedJobs > 50) {
                 $status = 'critical';
-            } elseif ($failedJobs > 10) {
-                $status = 'warning';
-            } elseif (!$workersRunning) {
+            } elseif ($failedJobs > 10 || ! $workersRunning) {
                 $status = 'warning';
             }
-            
+
             return [
                 'status' => $status,
-                'pending_jobs' => $pendingJobs,
-                'processed_jobs' => $processedJobs,
+                'pending_jobs' => $metrics['pending_jobs'],
+                'processing_jobs' => $metrics['processing_jobs'],
+                'delayed_jobs' => $metrics['delayed_jobs'],
+                'processed_jobs' => Cache::get('queue_processed_jobs_count', 0),
                 'failed_jobs' => $failedJobs,
                 'workers_running' => $workersRunning,
-                'worker_count' => $workerCount,
-                'failed_by_queue' => $failedByQueue,
+                'worker_count' => $metrics['active_workers'],
+                'workers_by_queue' => $metrics['workers_by_queue'],
+                'configured_workers_by_queue' => $metrics['configured_workers_by_queue'],
+                'oldest_pending_job_age_seconds' => $metrics['oldest_pending_job_age_seconds'],
+                'failed_by_queue' => $metrics['failed_by_queue'],
                 'recent_failures' => $recentFailed
             ];
         } catch (\Exception $e) {

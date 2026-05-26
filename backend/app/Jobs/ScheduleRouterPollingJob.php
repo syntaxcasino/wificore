@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Models\Router;
 use App\Models\Tenant;
+use App\Services\ProvisioningServiceClient;
 use App\Traits\TenantAwareJob;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -17,60 +18,67 @@ class ScheduleRouterPollingJob implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
     use TenantAwareJob;
 
-    /**
-     * Create a new job instance.
-     */
     public function __construct(string $tenantId = null)
     {
         $this->tenantId = $tenantId;
         $this->onQueue('router-monitoring');
     }
 
-    /**
-     * Execute the job.
-     */
-    public function handle(): void
+    public function handle(ProvisioningServiceClient $provisioningClient): void
     {
-        // If no tenant ID is set, this is the main scheduler job.
-        // We need to dispatch a job for each active tenant.
-        if (!$this->tenantId) {
+        if (! $this->tenantId) {
             $tenants = Tenant::active()
                 ->useWritePdo()
                 ->get();
-            
+
             foreach ($tenants as $tenant) {
                 self::dispatch($tenant->id);
             }
-            
-            //Log::debug("Dispatched router polling jobs for " . $tenants->count() . " tenants");
+
             return;
         }
 
-        $this->executeInTenantContext(function() {
+        $this->executeInTenantContext(function () use ($provisioningClient) {
             try {
-                // Poll all routers except those under provisioning
                 $routers = Router::whereNotIn('status', ['pending', 'deploying', 'provisioning', 'verifying'])
-                    ->pluck('id')
-                    ->toArray();
-                
-                if (!empty($routers)) {
-                    // Dispatch in chunks for better performance
-                    $chunks = array_chunk($routers, 10);
-                    foreach ($chunks as $chunk) {
-                        FetchRouterLiveData::dispatch($this->tenantId, $chunk);
-                    }
-                    
-                    Log::debug('Scheduled live data fetch', [
+                    ->limit(1000)
+                    ->get(['id', 'name', 'ip_address', 'vpn_ip', 'status', 'vpn_status', 'model', 'os_version']);
+
+                if ($routers->isEmpty()) {
+                    Log::debug('Skipping live data refresh because tenant has no operational routers', [
                         'tenant_id' => $this->tenantId,
-                        'router_count' => count($routers),
-                        'chunk_count' => count($chunks)
                     ]);
+                    return;
                 }
+
+                $payload = [
+                    'monitoring' => [
+                        'routers' => $routers->map(fn (Router $router) => [
+                            'router_id' => (string) $router->id,
+                            'router_name' => (string) $router->name,
+                            'ip_address' => (string) $router->ip_address,
+                            'vpn_ip' => (string) ($router->vpn_ip ?? ''),
+                            'status' => (string) ($router->status ?? ''),
+                            'vpn_status' => (string) ($router->vpn_status ?? ''),
+                            'model' => (string) ($router->model ?? ''),
+                            'os_version' => (string) ($router->os_version ?? ''),
+                        ])->values()->all(),
+                    ],
+                ];
+
+                $provisioningClient->submitLiveDataRefreshCommand((string) $this->tenantId, $payload);
+
+                Log::debug('Submitted live data refresh command', [
+                    'tenant_id' => $this->tenantId,
+                    'router_count' => $routers->count(),
+                ]);
             } catch (\Exception $e) {
                 Log::error('Failed to schedule router polling', [
                     'tenant_id' => $this->tenantId,
-                    'error' => $e->getMessage()
+                    'error' => $e->getMessage(),
                 ]);
+
+                throw $e;
             }
         });
     }

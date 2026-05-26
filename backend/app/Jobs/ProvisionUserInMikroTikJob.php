@@ -6,7 +6,7 @@ use App\Models\UserSubscription;
 use App\Models\Router;
 use App\Events\UserProvisioned;
 use App\Events\ProvisioningFailed;
-use App\Services\MikroTik\SshExecutor;
+use App\Services\ProvisioningServiceClient;
 use App\Traits\TenantAwareJob;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -41,9 +41,9 @@ class ProvisionUserInMikroTikJob implements ShouldQueue
     /**
      * Execute the job.
      */
-    public function handle(): void
+    public function handle(ProvisioningServiceClient $provisioningClient): void
     {
-        $this->executeInTenantContext(function() {
+        $this->executeInTenantContext(function() use ($provisioningClient) {
             Log::info('MikroTik provisioning job started', [
                 'job_id' => $this->job->getJobId(),
                 'subscription_id' => $this->subscriptionId,
@@ -65,20 +65,16 @@ class ProvisionUserInMikroTikJob implements ShouldQueue
 
                 $router = Router::findOrFail($this->routerId);
 
-                // Use SSH-only provisioning via SshExecutor (no RouterOS API)
-                $ssh = new SshExecutor($router, 10);
-                $ssh->connect();
-
-                // Check if user already exists (by name)
-                $userExists = $this->checkUserExists($ssh, $subscription->mikrotik_username);
+                // Use Go-backed provisioning execution instead of direct PHP router execution.
+                $userExists = $this->checkUserExists($provisioningClient, $router, $subscription->mikrotik_username);
 
                 if ($userExists) {
-                    Log::info('User already exists in MikroTik, updating via SSH', [
+                    Log::info('User already exists in MikroTik, updating via provisioning service', [
                         'username' => $subscription->mikrotik_username
                     ]);
-                    $this->updateUser($ssh, $subscription);
+                    $this->updateUser($provisioningClient, $router, $subscription);
                 } else {
-                    $this->createUser($ssh, $subscription);
+                    $this->createUser($provisioningClient, $router, $subscription);
                 }
 
                 Log::info('User provisioned in MikroTik successfully', [
@@ -123,15 +119,17 @@ class ProvisionUserInMikroTikJob implements ShouldQueue
     /**
      * Check if user exists in MikroTik
      */
-    protected function checkUserExists(SshExecutor $ssh, string $username): bool
+    protected function checkUserExists(ProvisioningServiceClient $provisioningClient, Router $router, string $username): bool
     {
         try {
-            $command = sprintf('/ip hotspot user print detail without-paging where name="%s"', addslashes($username));
-            $output = $ssh->exec($command);
+            $results = $provisioningClient->executeCommands($router, [
+                sprintf('/ip hotspot user print detail without-paging where name="%s"', addslashes($username)),
+            ], $this->tenantId);
+            $output = (string) ($results[0]['output'] ?? '');
 
             return strpos($output, 'name="' . $username . '"') !== false;
         } catch (\Exception $e) {
-            Log::debug('Failed to check user existence via SSH', [
+            Log::debug('Failed to check user existence via provisioning service', [
                 'username' => $username,
                 'error' => $e->getMessage(),
             ]);
@@ -142,7 +140,7 @@ class ProvisionUserInMikroTikJob implements ShouldQueue
     /**
      * Create user in MikroTik
      */
-    protected function createUser(SshExecutor $ssh, UserSubscription $subscription): void
+    protected function createUser(ProvisioningServiceClient $provisioningClient, Router $router, UserSubscription $subscription): void
     {
         $package = $subscription->package;
 
@@ -161,13 +159,13 @@ class ProvisionUserInMikroTikJob implements ShouldQueue
             addslashes($comment)
         );
 
-        $ssh->exec($command);
+        $provisioningClient->executeCommands($router, [$command], $this->tenantId);
     }
 
     /**
      * Update existing user in MikroTik
      */
-    protected function updateUser(SshExecutor $ssh, UserSubscription $subscription): void
+    protected function updateUser(ProvisioningServiceClient $provisioningClient, Router $router, UserSubscription $subscription): void
     {
         $package = $subscription->package;
 
@@ -184,7 +182,7 @@ class ProvisionUserInMikroTikJob implements ShouldQueue
             addslashes($profile)
         );
 
-        $ssh->exec($command);
+        $provisioningClient->executeCommands($router, [$command], $this->tenantId);
     }
 
     /**

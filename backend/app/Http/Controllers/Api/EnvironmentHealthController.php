@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Redis;
+use App\Services\QueueMetricsService;
 use Illuminate\Support\Facades\Storage;
 
 class EnvironmentHealthController extends Controller
@@ -206,13 +207,17 @@ class EnvironmentHealthController extends Controller
     private function checkQueue(): array
     {
         try {
-            $pending = DB::table('jobs')->count();
-            $failed = DB::table('failed_jobs')->count();
+            $metrics = app(QueueMetricsService::class)->getRealtimeMetrics();
+            $failed = $metrics['failed_jobs'];
 
             return [
                 'status' => $failed < 10 ? 'healthy' : 'degraded',
-                'pending_jobs' => $pending,
+                'pending_jobs' => $metrics['pending_jobs'],
+                'processing_jobs' => $metrics['processing_jobs'],
+                'delayed_jobs' => $metrics['delayed_jobs'],
                 'failed_jobs' => $failed,
+                'active_workers' => $metrics['active_workers'],
+                'oldest_pending_job_age_seconds' => $metrics['oldest_pending_job_age_seconds'],
             ];
         } catch (\Exception $e) {
             return [

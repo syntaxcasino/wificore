@@ -4,6 +4,9 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Payment;
+use App\Models\PppoePayment;
+use App\Models\PppoeTimedVoucher;
+use App\Models\PppoeUser;
 use App\Models\Voucher;
 use App\Models\SystemLog;
 use App\Models\HotspotUser;
@@ -12,6 +15,7 @@ use App\Models\RadiusSession;
 use App\Models\Package;
 use App\Models\RouterTenantMap;
 use App\Services\MpesaService;
+use App\Services\PppoeBillingLifecycleService;
 use App\Services\MikrotikSessionService;
 use App\Services\UserProvisioningService;
 use App\Jobs\ProcessPaymentJob;
@@ -22,7 +26,9 @@ use App\Jobs\ReconnectSubscriptionJob;
 use App\Services\SubscriptionManager;
 use App\Events\PaymentCompleted;
 use App\Events\HotspotUserCreated;
+use App\Events\PppoePortalPaymentUpdated;
 use App\Services\TenantContext;
+use App\Services\PaymentTraceLogger;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -235,15 +241,33 @@ class PaymentController extends Controller
             );
 
             $checkoutRequestId = $callbackData['Body']['stkCallback']['CheckoutRequestID'] ?? null;
-            
+            $traceId = 'mpesa:' . Str::uuid()->toString();
+
             if (!$checkoutRequestId) {
+                $this->logPaymentTrace('callback.invalid', [
+                    'trace_id' => $traceId,
+                    'raw_callback' => $callbackData,
+                ], 'error');
                 return response()->json(['success' => false, 'message' => 'Invalid callback data']);
             }
 
+            $resultCode = (int) ($callbackData['Body']['stkCallback']['ResultCode'] ?? -1);
+            $status = $resultCode === 0 ? 'completed' : 'failed';
+            $this->logPaymentTrace('callback.received', [
+                'trace_id' => $traceId,
+                'checkout_request_id' => $checkoutRequestId,
+                'result_code' => $resultCode,
+                'status' => $status,
+            ]);
+
             // 1. Find the transaction mapping in public schema
             $mapping = \App\Models\MpesaTransactionMap::where('checkout_request_id', $checkoutRequestId)->first();
-            
+
             if (!$mapping) {
+                $this->logPaymentTrace('callback.mapping_missing', [
+                    'trace_id' => $traceId,
+                    'checkout_request_id' => $checkoutRequestId,
+                ], 'error');
                 Log::error("M-Pesa Callback: No transaction map found for CheckoutRequestID: $checkoutRequestId");
                 return response()->json(['success' => false, 'message' => 'Transaction not found']);
             }
@@ -251,16 +275,198 @@ class PaymentController extends Controller
             // 2. Switch to Tenant Context (include public for shared tables)
             $tenant = \App\Models\Tenant::find($mapping->tenant_id);
             if (!$tenant || !$tenant->is_active) {
+                $this->logPaymentTrace('callback.tenant_invalid', [
+                    'trace_id' => $traceId,
+                    'checkout_request_id' => $checkoutRequestId,
+                    'tenant_id' => $mapping->tenant_id,
+                ], 'error');
                 Log::error("M-Pesa Callback: Tenant not found or inactive for ID: {$mapping->tenant_id}");
                 return response()->json(['success' => false, 'message' => 'Tenant not found or inactive']);
             }
 
+            $this->logPaymentTrace('callback.tenant_resolved', [
+                'trace_id' => $traceId,
+                'checkout_request_id' => $checkoutRequestId,
+                'tenant_id' => $tenant->id,
+                'tenant_slug' => $tenant->slug,
+                'payment_type' => $mapping->payment_type ?? null,
+                'related_id' => $mapping->related_id ?? null,
+            ]);
+
             $this->logToSystemAndFile('M-Pesa Callback Received', ['raw_callback_data' => $callbackData, 'tenant' => $tenant->slug], 'info');
 
             $processed = $this->mpesaService->processCallback($callbackData);
-            
-            $resultCode = (int) ($callbackData['Body']['stkCallback']['ResultCode'] ?? -1);
-            $status = $resultCode === 0 ? 'completed' : 'failed';
+
+            // ---------------------------------------------------------------
+            // PPPoE Portal payment path (payment_type = 'pppoe')
+            // ---------------------------------------------------------------
+            if (($mapping->payment_type ?? '') === 'pppoe') {
+                $this->logPaymentTrace('callback.branch.pppoe', [
+                    'trace_id' => $traceId,
+                    'checkout_request_id' => $checkoutRequestId,
+                    'tenant_id' => $tenant->id,
+                    'related_id' => $mapping->related_id,
+                    'status' => $status,
+                ]);
+
+                $this->runInTenantContext($tenant, function () use ($mapping, $status, $processed, $callbackData, $tenant, $traceId, $checkoutRequestId, $resultCode) {
+                    $pppoePayment = PppoePayment::find($mapping->related_id);
+
+                    if (!$pppoePayment) {
+                        Log::error('M-Pesa PPPoE Callback: PppoePayment not found', [
+                            'related_id' => $mapping->related_id,
+                            'tenant'     => $tenant->slug,
+                        ]);
+                        return;
+                    }
+
+                    // Idempotency guard
+                    if (in_array($pppoePayment->status, ['completed', 'failed'])) {
+                        return;
+                    }
+
+                    $mpesaReceipt = $processed['data']['mpesa_receipt'] ?? null;
+
+                    // Resolve billing period from package duration (default 30 days)
+                    $periodStart = now();
+                    $periodEnd   = now()->addDays(30);
+                    if ($status === 'completed') {
+                        $pppoeUser = PppoeUser::with('package:id,duration')->find($pppoePayment->pppoe_user_id);
+                        if ($pppoeUser?->package) {
+                            $durationDays = (int) ($pppoeUser->package->duration ?? 30);
+                            $periodEnd = $periodStart->copy()->addDays($durationDays ?: 30);
+                        }
+                    }
+
+                    $pppoePayment->update([
+                        'status'             => $status,
+                        'verified_at'        => $status === 'completed' ? now() : null,
+                        'payment_date'       => $status === 'completed' ? now() : $pppoePayment->payment_date,
+                        'period_start'       => $periodStart,
+                        'period_end'         => $periodEnd,
+                        'payment_reference'  => $mpesaReceipt ?? $pppoePayment->payment_reference,
+                        'metadata'           => array_merge((array) ($pppoePayment->metadata ?? []), [
+                            'callback_response' => $callbackData,
+                            'mpesa_receipt'     => $mpesaReceipt,
+                            'processing_trace'  => [
+                                'trace_id' => $traceId,
+                                'checkout_request_id' => $checkoutRequestId,
+                                'tenant_id' => $tenant->id,
+                                'result_code' => $resultCode,
+                                'status' => $status,
+                            ],
+                        ]),
+                    ]);
+
+                    if ($status === 'completed' && isset($pppoeUser)) {
+                        if ($pppoeUser) {
+                            app(PppoeBillingLifecycleService::class)
+                                ->handleSuccessfulPayment($pppoeUser, $pppoePayment, (string) $tenant->id, 'mpesa_portal');
+
+                            $pppoeUser->refresh();
+                        }
+                    }
+
+                    event(new PppoePortalPaymentUpdated(
+                        transactionId: (string) $pppoePayment->transaction_id,
+                        status: (string) $pppoePayment->status,
+                        tenantId: (string) $tenant->id,
+                        payment: $pppoePayment->fresh(),
+                        user: isset($pppoeUser) && $pppoeUser ? $pppoeUser : PppoeUser::find($pppoePayment->pppoe_user_id),
+                    ));
+                });
+
+                $this->logPaymentTrace('callback.pppoe.' . $status, [
+                    'trace_id' => $traceId,
+                    'transaction_id' => $checkoutRequestId,
+                    'tenant' => $tenant->slug,
+                    'result_code' => $resultCode,
+                    'status' => $status,
+                    'payment_id' => $pppoePayment->id,
+                ], $status === 'completed' ? 'info' : 'warning');
+
+                return response()->json(['success' => true, 'message' => 'Callback processed successfully']);
+            }
+
+            // ---------------------------------------------------------------
+            // PPPoE Timed Voucher path (payment_type = 'pppoe_timed_voucher')
+            // ---------------------------------------------------------------
+            if (($mapping->payment_type ?? '') === 'pppoe_timed_voucher') {
+                $this->logPaymentTrace('callback.branch.pppoe_timed_voucher', [
+                    'trace_id' => $traceId,
+                    'checkout_request_id' => $checkoutRequestId,
+                    'tenant_id' => $tenant->id,
+                    'related_id' => $mapping->related_id,
+                    'status' => $status,
+                ]);
+
+                $this->runInTenantContext($tenant, function () use ($mapping, $status, $processed, $callbackData, $traceId, $checkoutRequestId, $tenant, $resultCode) {
+                    $timedVoucher = PppoeTimedVoucher::find($mapping->related_id);
+
+                    if (!$timedVoucher) {
+                        Log::error('M-Pesa Timed Voucher Callback: PppoeTimedVoucher not found', [
+                            'related_id' => $mapping->related_id,
+                        ]);
+                        return;
+                    }
+
+                    if (!in_array($timedVoucher->status, ['pending_payment'])) {
+                        return;
+                    }
+
+                    $mpesaReceipt = $processed['data']['mpesa_receipt'] ?? null;
+
+                    if ($status === 'completed') {
+                        $timedVoucher->payment_reference = $mpesaReceipt ?? $timedVoucher->transaction_id;
+                        $timedVoucher->amount_paid       = $timedVoucher->price;
+                        $timedVoucher->activate();
+
+                        // Set RADIUS Session-Timeout so the user gets kicked automatically when voucher expires
+                        $pppoeUser = PppoeUser::find($timedVoucher->pppoe_user_id);
+                        if ($pppoeUser && $timedVoucher->expires_at) {
+                            $sessionTimeout = max(60, (int) now()->diffInSeconds($timedVoucher->expires_at, false));
+                            DB::table('radreply')->upsert(
+                                [['username' => $pppoeUser->username, 'attribute' => 'Session-Timeout', 'op' => ':=', 'value' => (string) $sessionTimeout, 'created_at' => now(), 'updated_at' => now()]],
+                                ['username', 'attribute'],
+                                ['op', 'value', 'updated_at']
+                            );
+
+                            $versionKey = 'pppoe_portal_dashboard_version:' . $pppoeUser->id;
+                            Cache::forever($versionKey, ((int) Cache::get($versionKey, 1)) + 1);
+                        }
+
+                        Log::info('PPPoE timed voucher activated', [
+                            'voucher_id'     => $timedVoucher->id,
+                            'duration_label' => $timedVoucher->duration_label,
+                            'expires_at'     => $timedVoucher->expires_at,
+                        ]);
+                    } else {
+                        $timedVoucher->status = 'cancelled';
+                        $timedVoucher->save();
+                    }
+                });
+
+                $this->logPaymentTrace('callback.pppoe_timed_voucher.' . $status, [
+                    'trace_id' => $traceId,
+                    'transaction_id' => $checkoutRequestId,
+                    'tenant' => $tenant->slug,
+                    'result_code' => $resultCode,
+                    'status' => $status,
+                    'voucher_id' => $timedVoucher->id,
+                ], $status === 'completed' ? 'info' : 'warning');
+
+                return response()->json(['success' => true, 'message' => 'Callback processed successfully']);
+            }
+
+            // ---------------------------------------------------------------
+            // Hotspot Payment path (legacy)
+            // ---------------------------------------------------------------
+            $this->logPaymentTrace('callback.branch.hotspot', [
+                'trace_id' => $traceId,
+                'checkout_request_id' => $checkoutRequestId,
+                'tenant_id' => $tenant->id,
+                'status' => $status,
+            ]);
 
             $payment = $this->runInTenantContext($tenant, function () use ($checkoutRequestId) {
                 return Payment::with('package')->where('transaction_id', $checkoutRequestId)->first();
@@ -269,6 +475,12 @@ class PaymentController extends Controller
             if ($payment) {
                 // IDEMPOTENCY GUARD: Skip if already processed
                 if (in_array($payment->status, ['completed', 'failed'])) {
+                    $this->logPaymentTrace('callback.hotspot.duplicate', [
+                        'trace_id' => $traceId,
+                        'transaction_id' => $checkoutRequestId,
+                        'existing_status' => $payment->status,
+                        'tenant' => $tenant->slug,
+                    ], 'warning');
                     Log::info('M-Pesa Callback: Payment already processed (duplicate callback)', [
                         'transaction_id' => $checkoutRequestId,
                         'existing_status' => $payment->status,
@@ -277,7 +489,7 @@ class PaymentController extends Controller
                     return response()->json(['success' => true, 'message' => 'Already processed']);
                 }
 
-                $paymentContext = $this->runInTenantContext($tenant, function () use ($checkoutRequestId, $status, $callbackData, $processed) {
+                $paymentContext = $this->runInTenantContext($tenant, function () use ($checkoutRequestId, $status, $callbackData, $processed, $traceId, $resultCode, $tenant) {
                     $tenantPayment = Payment::with('package', 'subscription')
                         ->where('transaction_id', $checkoutRequestId)
                         ->first();
@@ -288,7 +500,15 @@ class PaymentController extends Controller
 
                     $tenantPayment->update([
                         'status' => $status,
-                        'callback_response' => $callbackData,
+                        'callback_response' => array_merge((array) $callbackData, [
+                            '_trace' => [
+                                'trace_id' => $traceId,
+                                'checkout_request_id' => $checkoutRequestId,
+                                'tenant_id' => $tenant->id,
+                                'status' => $status,
+                                'result_code' => $resultCode,
+                            ],
+                        ]),
                         'amount' => $processed['data']['amount'] ?? $tenantPayment->amount,
                         'phone_number' => $processed['data']['phone_number'] ?? $tenantPayment->phone_number,
                         'mpesa_receipt' => $processed['data']['mpesa_receipt'] ?? null,
@@ -309,12 +529,14 @@ class PaymentController extends Controller
                     // EVENT-BASED: Dispatch hotspot user creation job (async)
                     // This handles all hotspot provisioning: HotspotUser, RADIUS entries, credentials
                     CreateHotspotUserJob::dispatch($paymentContext['payment_id'], $paymentContext['package_id'], $tenant->id)
-                        ->onQueue('hotspot-provisioning');
+                        ->onQueue('hotspot-provisioning')
+                        ->afterCommit();
 
                     // EVENT-BASED: Handle subscription reconnection (for PPPoE/generic subscriptions only)
                     if (($paymentContext['subscription_disconnected'] ?? false) && !empty($paymentContext['subscription_id'])) {
                         ReconnectSubscriptionJob::dispatch($paymentContext['payment_id'], $paymentContext['subscription_id'], $tenant->id)
-                            ->onQueue('subscription-reconnection');
+                            ->onQueue('subscription-reconnection')
+                            ->afterCommit();
                     }
 
                     // Note: ProcessPaymentJob is NOT dispatched here because CreateHotspotUserJob
@@ -324,21 +546,36 @@ class PaymentController extends Controller
                     // CACHE BUST: keep tenant revenue widgets and payments list fresh immediately
                     TenantDashboardController::bustDashboardCache((string) $tenant->id);
                     TenantDashboardController::bustEntityCache((string) $tenant->id, 'payments');
+                    Cache::forget('payment_status:' . $paymentContext['payment_id'] . ':' . md5((string) $checkoutRequestId));
+                    Cache::forget('mpesa_stk_limit:' . $paymentContext['payment_id']);
                 }
 
-                $this->logToSystemAndFile("Payment $status", [
+                $this->logPaymentTrace('callback.hotspot.' . $status, [
+                    'trace_id' => $traceId,
                     'transaction_id' => $checkoutRequestId,
                     'tenant' => $tenant->slug,
                     'result_code' => $resultCode,
                     'status' => $status,
+                    'payment_id' => $paymentContext['payment_id'] ?? null,
+                    'subscription_id' => $paymentContext['subscription_id'] ?? null,
                 ], $status === 'completed' ? 'info' : 'warning');
             } else {
+                $this->logPaymentTrace('callback.hotspot.not_found', [
+                    'trace_id' => $traceId,
+                    'transaction_id' => $checkoutRequestId,
+                    'tenant' => $tenant->slug,
+                    'result_code' => $resultCode,
+                ], 'warning');
                 $this->logToSystemAndFile('Payment Not Found', ['transaction_id' => $checkoutRequestId, 'tenant' => $tenant->slug], 'warning');
             }
 
             return response()->json(['success' => true, 'message' => 'Callback processed successfully']);
 
         } catch (\Exception $e) {
+            $this->logPaymentTrace('callback.exception', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ], 'error');
             $this->logToSystemAndFile('Callback Processing Error', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
@@ -422,6 +659,22 @@ class PaymentController extends Controller
             Log::warning('SystemLog::create failed', ['action' => $action, 'error' => $e->getMessage()]);
         }
         Log::$logLevel($action, $sanitizedDetails);
+    }
+
+    protected function logPaymentTrace(string $stage, array $details, string $logLevel = 'info'): void
+    {
+        $logger = app(PaymentTraceLogger::class);
+        $sanitizedDetails = $logger->sanitizeLogData($details);
+        $logger->log($stage, $sanitizedDetails, $logLevel);
+
+        try {
+            SystemLog::create(['action' => 'Payment Trace: ' . $stage, 'details' => $sanitizedDetails]);
+        } catch (\Throwable $e) {
+            Log::warning('SystemLog::create failed', [
+                'action' => 'Payment Trace: ' . $stage,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     protected function sanitizeLogData(array $data): array

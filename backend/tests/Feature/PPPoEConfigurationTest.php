@@ -38,6 +38,7 @@ it('generates a deployment-ready PPPoE script that blocks unauthenticated access
     expect($script)
         ->toContain('/ppp aaa set use-radius="yes" accounting="yes" interim-update="5m"')
         ->toContain('interface-list="PA-1c88e82c"')
+        ->toContain('disable-running-check=no')
         ->toContain('comment="PPPoE-1c88e82c-BLOCK-UNAUTH"')
         ->toContain('in-interface-list="PA-1c88e82c" out-interface-list="WAN" action="accept" comment="PPPoE-1c88e82c-INET-AUTH"')
         ->toContain('in-interface-list="WAN" out-interface-list="PA-1c88e82c" connection-state="established,related" action="accept" comment="PPPoE-1c88e82c-WAN-EST"')

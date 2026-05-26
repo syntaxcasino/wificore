@@ -170,13 +170,14 @@ class SnmpConfigurationService
     {
         try {
             $result = $this->sshService->executeCommand($router, '/snmp print');
-            
-            $enabled = str_contains($result, 'enabled: yes');
-            
+
+            $output = (string) ($result['output'] ?? '');
+            $enabled = str_contains($output, 'enabled: yes');
+
             return [
                 'success' => true,
                 'enabled' => $enabled,
-                'output' => $result,
+                'output' => $output,
             ];
         } catch (\Exception $e) {
             return [

@@ -99,6 +99,12 @@ return [
     |
     */
 
+
+    'provisioning' => [
+        'url' => env('PROVISIONING_SERVICE_URL', 'http://wificore-provisioning:8080'),
+        'api_key' => env('PROVISIONING_SERVICE_API_KEY'),
+    ],
+
     'wireguard' => [
         'controller_url' => env('WIREGUARD_CONTROLLER_URL', 'http://172.70.255.254:8080'),
         'api_key' => env('WIREGUARD_API_KEY'),

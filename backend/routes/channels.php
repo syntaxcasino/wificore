@@ -112,13 +112,38 @@ Broadcast::channel('router-provisioning.{routerId}', function ($user, $routerId)
     if (!$user->isAdmin()) {
         return false;
     }
-    // System admins have full access
+
+    // System admins have full access.
     if ($user->isSystemAdmin()) {
         return true;
     }
-    // Tenant admins may only listen to routers they own
-    $router = \App\Models\Router::find($routerId);
-    return $router && (string) $router->tenant_id === (string) $user->tenant_id;
+
+    if (!$user->tenant_id) {
+        return false;
+    }
+
+    $tenant = \App\Models\Tenant::query()
+        ->whereKey($user->tenant_id)
+        ->where('schema_created', true)
+        ->first();
+
+    if (!$tenant) {
+        \Illuminate\Support\Facades\Log::warning('Router provisioning channel auth denied: tenant schema unavailable', [
+            'user_id' => $user->id,
+            'tenant_id' => $user->tenant_id,
+            'router_id' => $routerId,
+        ]);
+        return false;
+    }
+
+    return \Illuminate\Support\Facades\DB::transaction(function () use ($tenant, $routerId, $user) {
+        \Illuminate\Support\Facades\DB::connection()->recordsHaveBeenModified();
+
+        return app(\App\Services\TenantContext::class)->runInTenantContext($tenant, function () use ($routerId, $user) {
+            $router = \App\Models\Router::on('pgsql')->useWritePdo()->find($routerId);
+            return $router && (string) $router->tenant_id === (string) $user->tenant_id;
+        });
+    });
 });
 
 // Tenant-specific dashboard stats channel

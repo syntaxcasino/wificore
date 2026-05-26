@@ -36,8 +36,10 @@ class MikroTikBinaryApiService implements MikroTikApiInterface
     /** @var resource|false */
     private $socket = false;
 
-    private string $host;
-    private int $port;
+    private array $hostCandidates = [];
+    private array $portCandidates = [];
+    private ?string $connectedHost = null;
+    private ?int $connectedPort = null;
     private string $username;
     private string $password;
     private int $timeout;
@@ -46,21 +48,8 @@ class MikroTikBinaryApiService implements MikroTikApiInterface
     {
         $this->router  = $router;
         $this->timeout = $timeout;
-
-        $ip = $router->ip_address;
-        if (str_contains($ip, '/')) {
-            [$ip] = explode('/', $ip, 2);
-        }
-        $this->host = $ip;
-
-        // Binary API plain-text port is 8728. The router->port field stores the
-        // API port configured during bootstrap (/ip service set api port=...) which
-        // defaults to 8728. Avoid overriding valid 8729 (api-ssl); only normalise
-        // clearly non-API ports (HTTP/HTTPS) back to 8728.
-        $this->port = (int) ($router->port ?? 8728);
-        if ($this->port === 80 || $this->port === 443) {
-            $this->port = 8728;
-        }
+        $this->hostCandidates = $this->resolveHostCandidates($router);
+        $this->portCandidates = $this->resolvePortCandidates($router);
 
         $this->username = $router->username;
         $decrypted = PasswordEncryptionService::safeDecrypt($router);
@@ -81,26 +70,26 @@ class MikroTikBinaryApiService implements MikroTikApiInterface
      */
     public function connect(): void
     {
-        $errCode = 0;
-        $errStr  = '';
+        $lastError = null;
 
-        $this->socket = @fsockopen(
-            $this->host,
-            $this->port,
-            $errCode,
-            $errStr,
-            $this->timeout
-        );
-
-        if ($this->socket === false) {
-            throw new \RuntimeException(
-                "Binary API connection failed to {$this->host}:{$this->port} — {$errStr} ({$errCode})"
-            );
+        foreach ($this->hostCandidates as $host) {
+            foreach ($this->portCandidates as $port) {
+                try {
+                    $this->openSocket($host, $port);
+                    $this->login();
+                    $this->connectedHost = $host;
+                    $this->connectedPort = $port;
+                    return;
+                } catch (\Throwable $e) {
+                    $lastError = $e;
+                    $this->disconnect();
+                }
+            }
         }
 
-        stream_set_timeout($this->socket, $this->timeout);
-
-        $this->login();
+        throw new \RuntimeException(
+            'Binary API connection failed for router ' . $this->router->id . ': ' . ($lastError?->getMessage() ?? 'no reachable endpoint')
+        );
     }
 
     /**
@@ -112,6 +101,8 @@ class MikroTikBinaryApiService implements MikroTikApiInterface
             @fclose($this->socket);
         }
         $this->socket = false;
+        $this->connectedHost = null;
+        $this->connectedPort = null;
     }
 
     /**
@@ -133,6 +124,58 @@ class MikroTikBinaryApiService implements MikroTikApiInterface
         } finally {
             $this->disconnect();
         }
+    }
+
+    private function resolveHostCandidates(Router $router): array
+    {
+        $candidates = [];
+        foreach ([$router->vpn_ip, $router->ip_address] as $rawHost) {
+            if (!is_string($rawHost) || trim($rawHost) === '') {
+                continue;
+            }
+            $host = trim(explode('/', $rawHost, 2)[0]);
+            if ($host !== '' && !in_array($host, $candidates, true)) {
+                $candidates[] = $host;
+            }
+        }
+
+        if (empty($candidates)) {
+            throw new \RuntimeException('Router has no reachable IP for Binary API (router id: ' . $router->id . ')');
+        }
+
+        return $candidates;
+    }
+
+    private function resolvePortCandidates(Router $router): array
+    {
+        $configuredPort = (int) ($router->port ?? 0);
+        $candidates = [];
+
+        // This client speaks plain RouterOS API, not api-ssl. If the stored port points at
+        // api-ssl or another management service, still try the plain API port first.
+        if ($configuredPort > 0 && !in_array($configuredPort, [22, 80, 443, 8291, 8729], true)) {
+            $candidates[] = $configuredPort;
+        }
+
+        $candidates[] = 8728;
+
+        return array_values(array_unique($candidates));
+    }
+
+    private function openSocket(string $host, int $port): void
+    {
+        $errCode = 0;
+        $errStr = '';
+
+        $this->socket = @fsockopen($host, $port, $errCode, $errStr, $this->timeout);
+
+        if ($this->socket === false) {
+            throw new \RuntimeException(
+                "Binary API connection failed to {$host}:{$port} — {$errStr} ({$errCode})"
+            );
+        }
+
+        stream_set_timeout($this->socket, $this->timeout);
     }
 
     /**

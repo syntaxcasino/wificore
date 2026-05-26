@@ -2,9 +2,11 @@
 
 namespace App\Jobs;
 
+use App\Models\Router;
 use App\Models\Tenant;
-use App\Events\RouterStatusUpdated;
-use App\Services\WireguardPeerHealthService;
+use App\Models\TenantVpnTunnel;
+use App\Models\VpnConfiguration;
+use App\Services\ProvisioningServiceClient;
 use App\Traits\TenantAwareJob;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Bus\Queueable;
@@ -23,52 +25,84 @@ class UpdateVpnStatusJob implements ShouldQueue
     public $timeout = 60;
     public $backoff = [5, 15, 30];
 
-    /**
-     * Create a new job instance.
-     */
     public function __construct($tenantId = null)
     {
         $this->tenantId = $tenantId;
         $this->onQueue('router-checks');
     }
 
-    /**
-     * Execute the job.
-     */
-    public function handle(WireguardPeerHealthService $peerHealthService): void
+    public function handle(ProvisioningServiceClient $provisioningClient): void
     {
-        // If no tenant ID is set, this is the main scheduler job.
-        // We need to dispatch a job for each active tenant.
-        if (!$this->tenantId) {
+        if (! $this->tenantId) {
             $tenants = Tenant::active()
                 ->useWritePdo()
                 ->get();
-            
+
             foreach ($tenants as $tenant) {
                 self::dispatch($tenant->id);
             }
-            
-            Log::info("Dispatched VPN status update jobs for " . $tenants->count() . " tenants");
+
+            Log::info('Dispatched VPN status update jobs for ' . $tenants->count() . ' tenants');
             return;
         }
 
-        $this->executeInTenantContext(function() use ($peerHealthService) {
-            Log::info('Refreshing WireGuard peer health...', ['tenant_id' => $this->tenantId]);
+        $this->executeInTenantContext(function () use ($provisioningClient) {
+            Log::info('Submitting WireGuard peer health refresh command', ['tenant_id' => $this->tenantId]);
+
+            $tunnels = TenantVpnTunnel::query()
+                ->get(['interface_name']);
+
+            $peerMappings = VpnConfiguration::query()
+                ->with(['router:id,name,ip_address,vpn_ip,model,os_version,status'])
+                ->get()
+                ->filter(fn (VpnConfiguration $config) => $config->router !== null && ! empty($config->client_public_key))
+                ->map(function (VpnConfiguration $config) {
+                    $router = $config->router;
+
+                    return [
+                        'public_key' => (string) $config->client_public_key,
+                        'router_id' => (string) $router->id,
+                        'router_name' => (string) $router->name,
+                        'ip_address' => (string) $router->ip_address,
+                        'vpn_ip' => (string) $router->vpn_ip,
+                        'model' => (string) ($router->model ?? ''),
+                        'os_version' => (string) ($router->os_version ?? ''),
+                        'vpn_config_status' => (string) ($config->status ?? ''),
+                        'previous_router_status' => (string) ($router->status ?? ''),
+                    ];
+                })
+                ->values()
+                ->all();
+
+            if ($tunnels->isEmpty() || $peerMappings === []) {
+                Log::info('Skipping VPN status refresh command because tenant has no WireGuard monitoring payload', [
+                    'tenant_id' => $this->tenantId,
+                    'tunnel_count' => $tunnels->count(),
+                    'peer_mapping_count' => count($peerMappings),
+                ]);
+                return;
+            }
+
+            $payload = [
+                'monitoring' => [
+                    'tunnels' => $tunnels->map(fn (TenantVpnTunnel $tunnel) => [
+                        'interface_name' => (string) $tunnel->interface_name,
+                    ])->values()->all(),
+                    'peer_mappings' => $peerMappings,
+                    'inactive_threshold' => (int) config('vpn.monitoring.inactive_threshold', 190),
+                ],
+            ];
 
             try {
-                $updatedRouters = $peerHealthService->refreshPeerStats((string) $this->tenantId);
+                $provisioningClient->submitVpnStatusRefreshCommand((string) $this->tenantId, $payload);
 
-                if (!empty($updatedRouters)) {
-                    broadcast(new RouterStatusUpdated($updatedRouters, (string) $this->tenantId))->toOthers();
-                }
-
-                Log::info('WireGuard peer health refresh completed', [
+                Log::info('WireGuard peer health refresh command submitted', [
                     'tenant_id' => $this->tenantId,
-                    'updated_router_count' => count($updatedRouters),
+                    'tunnel_count' => $tunnels->count(),
+                    'peer_mapping_count' => count($peerMappings),
                 ]);
-
             } catch (\Exception $e) {
-                Log::error('Failed to refresh WireGuard peer health', [
+                Log::error('Failed to submit WireGuard peer health refresh command', [
                     'tenant_id' => $this->tenantId,
                     'error' => $e->getMessage(),
                 ]);
@@ -89,9 +123,6 @@ class UpdateVpnStatusJob implements ShouldQueue
         ];
     }
 
-    /**
-     * Handle a job failure.
-     */
     public function failed(\Throwable $exception): void
     {
         Log::error('UpdateVpnStatusJob failed', [

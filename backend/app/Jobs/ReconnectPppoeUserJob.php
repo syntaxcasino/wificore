@@ -12,6 +12,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -49,12 +50,29 @@ class ReconnectPppoeUserJob implements ShouldQueue
             ]);
 
             try {
+                Cache::put($this->reconnectJobCacheKey(), [
+                    'status' => 'running',
+                    'tenant_id' => $this->tenantId,
+                    'pppoe_user_id' => $this->pppoeUserId,
+                    'started_at' => now()->toIso8601String(),
+                    'attempt' => $this->attempts(),
+                    'queue' => 'service-control',
+                ], now()->addHour());
+
                 // OPTIMIZED: Select only needed columns
                 $user = PppoeUser::query()
                     ->select(['id', 'username'])
                     ->find($this->pppoeUserId);
 
                 if (!$user) {
+                    Cache::put($this->reconnectJobCacheKey(), [
+                        'status' => 'not_found',
+                        'tenant_id' => $this->tenantId,
+                        'pppoe_user_id' => $this->pppoeUserId,
+                        'updated_at' => now()->toIso8601String(),
+                        'queue' => 'service-control',
+                    ], now()->addHour());
+
                     Log::warning('ReconnectPppoeUserJob: User not found', [
                         'pppoe_user_id' => $this->pppoeUserId,
                         'tenant_id' => $this->tenantId,
@@ -75,6 +93,14 @@ class ReconnectPppoeUserJob implements ShouldQueue
                     'in_grace_period' => false,
                     'grace_period_ends' => null,
                 ]);
+
+                Cache::put($this->reconnectJobCacheKey(), [
+                    'status' => 'completed',
+                    'tenant_id' => $this->tenantId,
+                    'pppoe_user_id' => $this->pppoeUserId,
+                    'completed_at' => now()->toIso8601String(),
+                    'queue' => 'service-control',
+                ], now()->addHour());
 
                 Log::info('ReconnectPppoeUserJob: User reconnection enabled', [
                     'pppoe_user_id' => $this->pppoeUserId,
@@ -136,10 +162,24 @@ class ReconnectPppoeUserJob implements ShouldQueue
 
     public function failed(\Throwable $exception): void
     {
+        Cache::put($this->reconnectJobCacheKey(), [
+            'status' => 'failed',
+            'tenant_id' => $this->tenantId,
+            'pppoe_user_id' => $this->pppoeUserId,
+            'failed_at' => now()->toIso8601String(),
+            'error' => $exception->getMessage(),
+            'queue' => 'service-control',
+        ], now()->addHour());
+
         Log::critical('ReconnectPppoeUserJob: Job failed permanently', [
             'pppoe_user_id' => $this->pppoeUserId,
             'tenant_id' => $this->tenantId,
             'error' => $exception->getMessage(),
         ]);
+    }
+
+    private function reconnectJobCacheKey(): string
+    {
+        return 'pppoe_reconnect_job:' . $this->tenantId . ':' . $this->pppoeUserId;
     }
 }

@@ -19,6 +19,7 @@ use App\Services\MikroTik\BandwidthHelper;
 use App\Services\RadiusService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -32,6 +33,103 @@ class HotspotController extends Controller
     public function __construct(RadiusService $radiusService)
     {
         $this->radiusService = $radiusService;
+    }
+
+    public function debugPaymentState(Request $request)
+    {
+        $user = $request->attributes->get('hotspot_user');
+
+        if (!$user) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized'], 401);
+        }
+
+        $validated = $request->validate([
+            'payment_id' => 'nullable|string',
+        ]);
+
+        $tenantId = (string) ($request->attributes->get('tenant_id') ?? $user->tenant_id ?? '');
+        $paymentId = trim((string) ($validated['payment_id'] ?? ''));
+
+        $latestPayment = null;
+        if ($paymentId !== '') {
+            $latestPayment = \App\Models\Payment::query()
+                ->select(['id', 'phone_number', 'amount', 'package_id', 'router_id', 'status', 'mac_address', 'transaction_id', 'payment_method', 'payment_date', 'created_at', 'updated_at', 'callback_response'])
+                ->where('id', $paymentId)
+                ->where('phone_number', $user->phone_number)
+                ->first();
+        } else {
+            $latestPayment = \App\Models\Payment::query()
+                ->select(['id', 'phone_number', 'amount', 'package_id', 'router_id', 'status', 'mac_address', 'transaction_id', 'payment_method', 'payment_date', 'created_at', 'updated_at', 'callback_response'])
+                ->where('phone_number', $user->phone_number)
+                ->orderByDesc('updated_at')
+                ->orderByDesc('created_at')
+                ->first();
+        }
+
+        $paymentTransactionId = (string) ($latestPayment?->transaction_id ?? '');
+        $paymentStatusCacheKey = $paymentTransactionId !== ''
+            ? 'payment_status:' . $user->id . ':' . md5($paymentTransactionId)
+            : null;
+
+        $jobCacheKey = 'hotspot_reconnect_job:' . $tenantId . ':' . ($latestPayment?->id ?? $user->id);
+        $jobState = Cache::get($jobCacheKey) ?? [
+            'status' => $user->has_active_subscription ? 'idle' : 'not_queued',
+            'tenant_id' => $tenantId,
+            'hotspot_user_id' => $user->id,
+        ];
+
+        $credentialsCacheKey = $latestPayment ? 'tenant_' . $tenantId . '_payment_credentials_' . $latestPayment->id : null;
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'tenant_id' => $tenantId,
+                'user' => [
+                    'id' => $user->id,
+                    'username' => $user->username,
+                    'phone_number' => $user->phone_number,
+                    'status' => $user->status,
+                    'has_active_subscription' => $user->has_active_subscription,
+                    'subscription_expires_at' => $user->subscription_expires_at?->toIso8601String(),
+                    'last_login_at' => $user->last_login_at?->toIso8601String(),
+                    'last_login_ip' => $user->last_login_ip,
+                    'package_id' => $user->package_id,
+                    'package_name' => $user->package_name,
+                    'data_used' => $user->data_used,
+                    'data_limit' => $user->data_limit,
+                ],
+                'latest_payment' => $latestPayment ? [
+                    'id' => $latestPayment->id,
+                    'transaction_id' => $latestPayment->transaction_id,
+                    'status' => $latestPayment->status,
+                    'amount' => $latestPayment->amount,
+                    'payment_date' => $latestPayment->payment_date?->toIso8601String(),
+                    'created_at' => $latestPayment->created_at?->toIso8601String(),
+                    'updated_at' => $latestPayment->updated_at?->toIso8601String(),
+                    'callback_response' => $latestPayment->callback_response,
+                ] : null,
+                'callback' => $latestPayment ? [
+                    'status' => $latestPayment->status,
+                    'payment_date' => $latestPayment->payment_date?->toIso8601String(),
+                    'callback_response' => $latestPayment->callback_response,
+                    'payment_method' => $latestPayment->payment_method,
+                ] : null,
+                'cache' => [
+                    'payment_status' => $paymentStatusCacheKey ? [
+                        'key' => $paymentStatusCacheKey,
+                        'exists' => Cache::has($paymentStatusCacheKey),
+                        'value' => Cache::get($paymentStatusCacheKey),
+                    ] : null,
+                    'hotspot_credentials' => $credentialsCacheKey ? [
+                        'key' => $credentialsCacheKey,
+                        'exists' => Cache::has($credentialsCacheKey),
+                        'value' => Cache::get($credentialsCacheKey),
+                    ] : null,
+                ],
+                'provisioning_job' => $jobState,
+                'generated_at' => now()->toIso8601String(),
+            ],
+        ]);
     }
 
     /**

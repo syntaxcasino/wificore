@@ -4,8 +4,9 @@ namespace App\Jobs;
 
 use App\Models\PppoeUser;
 use App\Models\Router;
+use App\Models\RouterTask;
 use App\Models\Tenant;
-use App\Services\MikroTik\SshExecutor;
+use App\Services\ProvisioningServiceClient;
 use App\Traits\TenantAwareJob;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -29,7 +30,7 @@ class CheckPppoePaymentStatusJob implements ShouldQueue
         $this->onQueue('payment-checks');
     }
 
-    public function handle(): void
+    public function handle(ProvisioningServiceClient $provisioningClient): void
     {
         // If no tenant ID, dispatch for all active tenants
         if (!$this->tenantId) {
@@ -77,7 +78,7 @@ class CheckPppoePaymentStatusJob implements ShouldQueue
                         // Payment overdue or no due date, suspend immediately
                         $user->suspendForNonPayment();
                         $this->blockUserInRadius($user);
-                        $this->disconnectPppoeSessions($user);
+                        $this->disconnectPppoeSessions($user, $provisioningClient);
 
                         Log::warning('PPPoE user suspended for non-payment', [
                             'tenant_id' => $this->tenantId,
@@ -105,7 +106,7 @@ class CheckPppoePaymentStatusJob implements ShouldQueue
                     $this->blockUserInRadius($user);
 
                     // Disconnect active PPPoE session immediately (best-effort)
-                    $this->disconnectPppoeSessions($user);
+                    $this->disconnectPppoeSessions($user, $provisioningClient);
 
                     Log::warning('PPPoE user suspended - grace period expired', [
                         'tenant_id' => $this->tenantId,
@@ -136,7 +137,7 @@ class CheckPppoePaymentStatusJob implements ShouldQueue
 
                     // Block in RADIUS and disconnect active session (best-effort)
                     $this->blockUserInRadius($user);
-                    $this->disconnectPppoeSessions($user);
+                    $this->disconnectPppoeSessions($user, $provisioningClient);
 
                     Log::info('PPPoE user subscription expired, payment required', [
                         'tenant_id' => $this->tenantId,
@@ -146,11 +147,94 @@ class CheckPppoePaymentStatusJob implements ShouldQueue
                     ]);
                 }
 
+                // 4. Auto-resume accounts whose pause period has expired
+                $expiredPauses = PppoeUser::query()
+                    ->select(['id', 'username', 'account_number', 'paused_at', 'pause_ends_at', 'expires_at'])
+                    ->whereNotNull('paused_at')
+                    ->where('pause_ends_at', '<', now())
+                    ->get();
+
+                foreach ($expiredPauses as $user) {
+                    // Clear pause — no days credited back (pause window fully consumed)
+                    $user->update([
+                        'paused_at'     => null,
+                        'pause_ends_at' => null,
+                        'pause_reason'  => null,
+                    ]);
+
+                    // Remove RADIUS reject so the user can reconnect
+                    DB::table('radcheck')
+                        ->where('username', $user->username)
+                        ->where('attribute', 'Auth-Type')
+                        ->where('value', 'Reject')
+                        ->delete();
+
+                    Log::info('PPPoE paused account auto-resumed after pause expiry', [
+                        'tenant_id'  => $this->tenantId,
+                        'user_id'    => $user->id,
+                        'username'   => $user->username,
+                    ]);
+                }
+
+                // 5. Apply pending plan switches where effective_date has passed
+                $pendingSwitches = PppoeUser::query()
+                    ->select(['id', 'username', 'account_number', 'package_id', 'pending_package_id', 'plan_switch_effective_date', 'rate_limit'])
+                    ->whereNotNull('pending_package_id')
+                    ->where('plan_switch_effective_date', '<=', now())
+                    ->get();
+
+                foreach ($pendingSwitches as $user) {
+                    $newPackage = \App\Models\Package::query()
+                        ->select(['id', 'name', 'download_speed', 'upload_speed'])
+                        ->where('id', $user->pending_package_id)
+                        ->where('is_active', true)
+                        ->first();
+
+                    if (!$newPackage) {
+                        Log::warning('PPPoE plan switch skipped: package not found or inactive', [
+                            'user_id'    => $user->id,
+                            'package_id' => $user->pending_package_id,
+                        ]);
+                        $user->update(['pending_package_id' => null, 'plan_switch_effective_date' => null]);
+                        continue;
+                    }
+
+                    $rateLimit = $newPackage->download_speed && $newPackage->upload_speed
+                        ? $newPackage->download_speed . 'M/' . $newPackage->upload_speed . 'M'
+                        : $user->rate_limit;
+
+                    $user->update([
+                        'package_id'                 => $newPackage->id,
+                        'pending_package_id'         => null,
+                        'plan_switch_effective_date' => null,
+                        'rate_limit'                 => $rateLimit,
+                    ]);
+
+                    // Update RADIUS rate-limit reply attribute
+                    if ($rateLimit) {
+                        DB::table('radreply')->upsert(
+                            [['username' => $user->username, 'attribute' => 'Mikrotik-Rate-Limit', 'op' => ':=', 'value' => $rateLimit, 'created_at' => now(), 'updated_at' => now()]],
+                            ['username', 'attribute'],
+                            ['op', 'value', 'updated_at']
+                        );
+                    }
+
+                    Log::info('PPPoE plan switch applied', [
+                        'tenant_id'       => $this->tenantId,
+                        'user_id'         => $user->id,
+                        'username'        => $user->username,
+                        'new_package'     => $newPackage->name,
+                        'new_rate_limit'  => $rateLimit,
+                    ]);
+                }
+
                 Log::info('PPPoE payment status check completed', [
                     'tenant_id' => $this->tenantId,
                     'unpaid_users_processed' => $unpaidUsers->count(),
                     'grace_period_expired' => $expiredGraceUsers->count(),
                     'expired_subscriptions' => $expiredSubscriptions->count(),
+                    'pauses_auto_resumed'  => $expiredPauses->count(),
+                    'plan_switches_applied' => $pendingSwitches->count(),
                 ]);
 
             } catch (\Exception $e) {
@@ -162,7 +246,7 @@ class CheckPppoePaymentStatusJob implements ShouldQueue
         });
     }
 
-    private function disconnectPppoeSessions(PppoeUser $user): void
+    private function disconnectPppoeSessions(PppoeUser $user, ProvisioningServiceClient $provisioningClient): void
     {
         try {
             if (empty($user->router_id) || empty($user->username)) {
@@ -171,25 +255,48 @@ class CheckPppoePaymentStatusJob implements ShouldQueue
 
             // OPTIMIZED: Select only needed columns
             $router = Router::query()
-                ->select(['id', 'host', 'ssh_port', 'ssh_user', 'ssh_pass', 'ssh_private_key'])
+                ->select(['id', 'host', 'ssh_port', 'ssh_user', 'ssh_pass', 'ssh_private_key', 'ip_address', 'vpn_ip', 'username', 'password', 'port'])
                 ->find($user->router_id);
             if (!$router) {
                 return;
             }
 
-            $ssh = new SshExecutor($router, 5);
-            $ssh->connect();
-
             $username = (string) $user->username;
-            $ssh->exec(sprintf('/ppp active remove [find name="%s"]', addslashes($username)));
-            $ssh->exec(sprintf('/ppp active remove [find user="%s"]', addslashes($username)));
-            $ssh->disconnect();
+            $commands = [
+                sprintf(':do { /ppp active remove [find name="%s"] } on-error={}', addslashes($username)),
+                sprintf(':do { /ppp active remove [find user="%s"] } on-error={}', addslashes($username)),
+            ];
 
-            Log::info('PPPoE sessions disconnected due to subscription state (best-effort)', [
+            $task = RouterTask::create([
+                'tenant_id' => $this->tenantId,
+                'router_id' => $router->id,
+                'user_id' => $user->id,
+                'type' => RouterTask::TYPE_SERVICE_CONTROL_ACTION,
+                'status' => RouterTask::STATUS_QUEUED,
+                'progress' => 0,
+                'message' => 'Queueing PPPoE enforcement disconnect',
+                'request_payload' => [
+                    'context' => 'disconnect_pppoe_enforcement',
+                    'action' => 'disconnect_pppoe_enforcement',
+                    'username' => $username,
+                    'commands' => $commands,
+                ],
+            ]);
+
+            $provisioningClient->submitTaskCommand(
+                $router,
+                $this->tenantId,
+                RouterTask::TYPE_SERVICE_CONTROL_ACTION,
+                ['commands' => $commands, 'context' => 'disconnect_pppoe_enforcement', 'action' => 'disconnect_pppoe_enforcement'],
+                $task
+            );
+
+            Log::info('PPPoE session disconnect command submitted via provisioning service (best-effort)', [
                 'tenant_id' => $this->tenantId,
                 'user_id' => (string) $user->id,
                 'username' => $username,
                 'router_id' => (string) $router->id,
+                'task_id' => $task->id,
             ]);
         } catch (\Exception $e) {
             Log::warning('Failed to disconnect PPPoE sessions (best-effort)', [

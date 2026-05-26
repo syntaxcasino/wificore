@@ -135,6 +135,41 @@ class SubscriptionManager extends TenantAwareService
     }
 
     /**
+     * Renew the payment state without executing any router-side action.
+     *
+     * @return bool True when the subscription should be reconnected.
+     */
+    public function renewPayment(UserSubscription $subscription): bool
+    {
+        try {
+            $shouldReconnect = $subscription->isDisconnected();
+            $nextPaymentDate = $this->calculateNextPaymentDate($subscription);
+
+            $subscription->update([
+                'next_payment_date' => $nextPaymentDate,
+                'reminder_count' => 0,
+                'last_reminder_sent_at' => null,
+            ]);
+
+            Log::info("Subscription payment renewed", [
+                'subscription_id' => $subscription->id,
+                'user_id' => $subscription->user_id,
+                'next_payment_date' => $nextPaymentDate,
+                'should_reconnect' => $shouldReconnect,
+            ]);
+
+            return $shouldReconnect;
+        } catch (\Exception $e) {
+            Log::error("Failed to renew subscription payment", [
+                'subscription_id' => $subscription->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return false;
+        }
+    }
+
+    /**
      * Check if subscription needs renewal
      * 
      * @param UserSubscription $subscription
@@ -194,25 +229,18 @@ class SubscriptionManager extends TenantAwareService
     public function processPayment(UserSubscription $subscription): void
     {
         try {
-            // Calculate next payment date
-            $nextPaymentDate = $this->calculateNextPaymentDate($subscription);
-            
-            // Update subscription
-            $subscription->update([
-                'next_payment_date' => $nextPaymentDate,
-                'reminder_count' => 0,
-                'last_reminder_sent_at' => null,
-            ]);
-            
-            // If user was disconnected, reconnect them
-            if ($subscription->isDisconnected()) {
+            $shouldReconnect = $this->renewPayment($subscription);
+
+            // If user was disconnected, reconnect them.
+            if ($shouldReconnect) {
                 $this->reconnectUser($subscription);
             }
-            
+
             Log::info("Payment processed for subscription", [
                 'subscription_id' => $subscription->id,
                 'user_id' => $subscription->user_id,
-                'next_payment_date' => $nextPaymentDate,
+                'next_payment_date' => $subscription->next_payment_date,
+                'reconnected' => $shouldReconnect,
             ]);
         } catch (\Exception $e) {
             Log::error("Failed to process payment", [

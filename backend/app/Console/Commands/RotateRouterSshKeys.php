@@ -39,67 +39,73 @@ class RotateRouterSshKeys extends Command
         
         foreach ($tenants as $tenant) {
             $this->info("Processing tenant: {$tenant->name} (ID: {$tenant->id})");
-            
+
             try {
-                // Set tenant context
-                $tenantContext = app(TenantContext::class);
-                $tenantContext->setTenant($tenant);
-                
-                // Switch to tenant schema
-                DB::statement("SET search_path TO {$tenant->schema_name}");
-                
-                // Get rotation service
-                $rotationService = app(SshKeyRotationService::class);
-                
-                // Get routers needing rotation
-                $routers = $force 
-                    ? DB::table('routers')->whereNotNull('ssh_key')->get()
-                    : $rotationService->getRoutersNeedingRotation();
-                
+                // CRITICAL: Use DB::transaction with recordsHaveBeenModified for PgBouncer compatibility
+                // SET LOCAL search_path only persists within a transaction under pool_mode=transaction
+                // We need to get the router list first, then process within transaction
+                $routers = DB::transaction(function () use ($tenant, $force, $rotationService) {
+                    DB::connection()->recordsHaveBeenModified();
+
+                    // Set tenant context within transaction
+                    $tenantContext = app(TenantContext::class);
+                    $tenantContext->setTenantById((string) $tenant->id);
+
+                    // Get routers needing rotation
+                    return $force
+                        ? \App\Models\Router::whereNotNull('ssh_key')->get()
+                        : $rotationService->getRoutersNeedingRotation();
+                });
+
                 if ($routers->isEmpty()) {
                     $this->info("  No routers need key rotation for tenant {$tenant->name}");
                     continue;
                 }
-                
+
                 $this->info("  Found {$routers->count()} router(s) needing key rotation");
-                
+
                 foreach ($routers as $routerData) {
-                    // Load full router model
-                    $router = \App\Models\Router::find($routerData->id);
-                    
+                    // Load full router model within transaction
+                    $router = DB::transaction(function () use ($tenant, $routerData) {
+                        DB::connection()->recordsHaveBeenModified();
+                        $tenantContext = app(TenantContext::class);
+                        $tenantContext->setTenantById((string) $tenant->id);
+                        return \App\Models\Router::find($routerData->id);
+                    });
+
                     if (!$router) {
                         $this->warn("  Router {$routerData->id} not found, skipping");
                         continue;
                     }
-                    
+
                     try {
                         $this->info("  Rotating key for router: {$router->name} (ID: {$router->id})");
-                        
+
                         $result = $rotationService->rotateKey($router);
-                        
+
                         $this->info("  ✓ Key rotated successfully for {$router->name}");
                         $this->line("    Fingerprint: {$result['fingerprint']}");
                         $this->line("    Duration: {$result['duration']}");
-                        
+
                         $totalRotated++;
-                        
+
                     } catch (\Exception $e) {
                         $this->error("  ✗ Failed to rotate key for {$router->name}: {$e->getMessage()}");
-                        
+
                         Log::error('SSH key rotation failed in command', [
                             'router_id' => $router->id,
                             'router_name' => $router->name,
                             'tenant_id' => $tenant->id,
                             'error' => $e->getMessage()
                         ]);
-                        
+
                         $totalFailed++;
                     }
                 }
-                
+
             } catch (\Exception $e) {
                 $this->error("Failed to process tenant {$tenant->name}: {$e->getMessage()}");
-                
+
                 Log::error('Tenant processing failed in SSH key rotation', [
                     'tenant_id' => $tenant->id,
                     'error' => $e->getMessage()

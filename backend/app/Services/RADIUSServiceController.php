@@ -4,9 +4,11 @@ namespace App\Services;
 
 use App\Models\User;
 use App\Models\UserSubscription;
+use App\Models\RouterTask;
 use App\Models\ServiceControlLog;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use App\Services\ProvisioningServiceClient;
 
 class RADIUSServiceController extends TenantAwareService
 {
@@ -184,9 +186,10 @@ class RADIUSServiceController extends TenantAwareService
     {
         try {
             $activeSessions = $this->getActiveSessions($user);
+            $provisioningClient = app(ProvisioningServiceClient::class);
             
             foreach ($activeSessions as $session) {
-                $this->sendCoADisconnect($session);
+                $this->sendCoADisconnect($session, $provisioningClient);
             }
             
             Log::info("Active sessions terminated", [
@@ -204,14 +207,14 @@ class RADIUSServiceController extends TenantAwareService
     /**
      * Send CoA Disconnect-Request
      *
-     * Strategy (RFC 5176 first, SSH fallback):
+     * Strategy (RFC 5176 first, Go-backed fallback):
      *  1. Try RFC 5176 Disconnect-Request via CoAService (UDP/3799) — preferred, no SSH needed.
      *  2. On CoA failure, fall back to SSH-based session removal so the user is always kicked.
      *
      * @param array $session  A radacct row cast to array
      * @return bool
      */
-    private function sendCoADisconnect(array $session): bool
+    private function sendCoADisconnect(array $session, ProvisioningServiceClient $provisioningClient): bool
     {
         $username     = $session['username'] ?? null;
         $nasIpAddress = $session['nasipaddress'] ?? null;
@@ -248,26 +251,26 @@ class RADIUSServiceController extends TenantAwareService
                 return true;
             }
 
-            Log::warning('CoA disconnect: RFC 5176 failed, falling back to SSH', [
+            Log::warning('CoA disconnect: RFC 5176 failed, falling back to Go-backed execution', [
                 'username' => $username,
                 'message'  => $result->message,
             ]);
         } catch (\Exception $e) {
-            Log::warning('CoA disconnect: CoAService exception, falling back to SSH', [
+            Log::warning('CoA disconnect: CoAService exception, falling back to Go-backed execution', [
                 'username' => $username,
                 'error'    => $e->getMessage(),
             ]);
         }
 
         // ---------------------------------------------------------------
-        // 2. SSH fallback — terminate session directly on the router
+        // 2. Go-backed fallback — terminate session directly on the router
         // ---------------------------------------------------------------
         try {
             $router = null;
             if ($nasIpAddress) {
                 // OPTIMIZED: Select only needed columns
                 $router = \App\Models\Router::query()
-                    ->select(['id', 'host', 'ssh_port', 'ssh_user', 'ssh_pass', 'ssh_private_key'])
+                    ->select(['id', 'host', 'ssh_port', 'ssh_user', 'ssh_pass', 'ssh_private_key', 'ip_address', 'vpn_ip', 'username', 'password', 'port'])
                     ->where('ip_address', $nasIpAddress)
                     ->orWhere('vpn_ip', $nasIpAddress)
                     ->first();
@@ -281,39 +284,60 @@ class RADIUSServiceController extends TenantAwareService
                     ->first();
                 if ($pppoeUser) {
                     $router = \App\Models\Router::query()
-                        ->select(['id', 'host', 'ssh_port', 'ssh_user', 'ssh_pass', 'ssh_private_key'])
+                        ->select(['id', 'host', 'ssh_port', 'ssh_user', 'ssh_pass', 'ssh_private_key', 'ip_address', 'vpn_ip', 'username', 'password', 'port'])
                         ->find($pppoeUser->router_id);
                 }
             }
 
             if (!$router) {
-                Log::warning('CoA disconnect: Router not found for SSH fallback', [
+                Log::warning('CoA disconnect: Router not found for Go-backed fallback', [
                     'username' => $username,
                     'nas_ip'   => $nasIpAddress,
                 ]);
                 return false;
             }
 
-            $ssh = new \App\Services\MikroTik\SshExecutor($router, 15);
-            $ssh->connect();
+            $escapedUsername = addslashes($username);
+            $commands = [
+                sprintf(':do { /ppp active remove [find name="%s"] } on-error={}', $escapedUsername),
+                sprintf(':do { /ip hotspot active remove [find user="%s"] } on-error={}', $escapedUsername),
+            ];
 
-            try {
-                $escapedUsername = addslashes($username);
-                $ssh->exec(sprintf(':do { /ppp active remove [find name="%s"] } on-error={}', $escapedUsername));
-                $ssh->exec(sprintf(':do { /ip hotspot active remove [find user="%s"] } on-error={}', $escapedUsername));
-            } finally {
-                $ssh->disconnect();
-            }
+            $task = RouterTask::create([
+                'tenant_id' => $this->getTenantId(),
+                'router_id' => $router->id,
+                'type' => RouterTask::TYPE_SERVICE_CONTROL_ACTION,
+                'status' => RouterTask::STATUS_QUEUED,
+                'progress' => 0,
+                'message' => 'Queueing RADIUS disconnect fallback',
+                'request_payload' => [
+                    'context' => 'radius_disconnect_fallback',
+                    'action' => 'radius_disconnect_fallback',
+                    'username' => $username,
+                    'session_id' => $sessionId,
+                    'nas_ip' => $nasIpAddress,
+                    'commands' => $commands,
+                ],
+            ]);
 
-            Log::info('CoA disconnect: Session terminated via SSH fallback', [
+            $provisioningClient->submitTaskCommand(
+                $router,
+                $this->getTenantId(),
+                RouterTask::TYPE_SERVICE_CONTROL_ACTION,
+                ['commands' => $commands, 'context' => 'radius_disconnect_fallback', 'action' => 'radius_disconnect_fallback'],
+                $task
+            );
+
+            Log::info('CoA disconnect: Session termination command submitted via Go-backed async execution', [
                 'username'  => $username,
                 'router_id' => $router->id,
                 'nas_ip'    => $nasIpAddress,
+                'task_id'   => $task->id,
             ]);
 
             return true;
         } catch (\Exception $e) {
-            Log::error('CoA disconnect: SSH fallback also failed', [
+            Log::error('CoA disconnect: Go-backed fallback also failed', [
                 'username' => $username,
                 'nas_ip'   => $nasIpAddress,
                 'error'    => $e->getMessage(),

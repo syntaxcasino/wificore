@@ -4,9 +4,10 @@ namespace App\Jobs;
 
 use App\Models\RadiusSession;
 use App\Models\Router;
+use App\Models\RouterTask;
 use App\Models\SessionDisconnection;
 use App\Events\SessionExpired;
-use App\Services\MikroTik\SshExecutor;
+use App\Services\ProvisioningServiceClient;
 use App\Traits\TenantAwareJob;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -42,9 +43,9 @@ class DisconnectHotspotUserJob implements ShouldQueue
     /**
      * Execute the job.
      */
-    public function handle(): void
+    public function handle(ProvisioningServiceClient $provisioningClient): void
     {
-        $this->executeInTenantContext(function() {
+        $this->executeInTenantContext(function() use ($provisioningClient) {
             $session = RadiusSession::find($this->radiusSessionId);
             
             if (!$session) {
@@ -71,7 +72,7 @@ class DisconnectHotspotUserJob implements ShouldQueue
                 $this->blockUserInRadius((string) $session->username);
 
                 // 2. Terminate active Hotspot session on NAS (required for immediate cutoff)
-                if (!$this->sendRadiusDisconnect($session)) {
+                if (!$this->sendRadiusDisconnect($session, $provisioningClient)) {
                     throw new \RuntimeException('Failed to terminate active Hotspot session on NAS');
                 }
                 
@@ -159,7 +160,7 @@ class DisconnectHotspotUserJob implements ShouldQueue
     /**
      * Send RADIUS disconnect packet
      */
-    private function sendRadiusDisconnect(RadiusSession $session): bool
+    private function sendRadiusDisconnect(RadiusSession $session, ProvisioningServiceClient $provisioningClient): bool
     {
         $username = trim((string) $session->username);
         if ($username === '') {
@@ -185,26 +186,47 @@ class DisconnectHotspotUserJob implements ShouldQueue
                 return false;
             }
 
-            $ssh = new SshExecutor($router, 10);
-            $ssh->connect();
-
-            try {
-                $escapedUsername = addslashes($username);
-                $ssh->exec(sprintf(':do { /ip hotspot active remove [find user="%s"] } on-error={}', $escapedUsername));
-
-                if (!empty($session->mac_address)) {
-                    $ssh->exec(sprintf(':do { /ip hotspot host remove [find mac-address="%s"] } on-error={}', addslashes((string) $session->mac_address)));
-                }
-            } finally {
-                $ssh->disconnect();
+            $escapedUsername = addslashes($username);
+            $commands = [
+                sprintf(':do { /ip hotspot active remove [find user="%s"] } on-error={}', $escapedUsername),
+            ];
+            if (!empty($session->mac_address)) {
+                $commands[] = sprintf(':do { /ip hotspot host remove [find mac-address="%s"] } on-error={}', addslashes((string) $session->mac_address));
             }
 
-            Log::info('Hotspot session terminated on router', [
+            $task = RouterTask::create([
+                'tenant_id' => $this->tenantId,
+                'router_id' => $router->id,
+                'user_id' => $session->hotspot_user_id,
+                'type' => RouterTask::TYPE_SERVICE_CONTROL_ACTION,
+                'status' => RouterTask::STATUS_QUEUED,
+                'progress' => 0,
+                'message' => 'Queueing hotspot disconnect',
+                'request_payload' => [
+                    'context' => 'disconnect_hotspot_user',
+                    'action' => 'disconnect_hotspot_user',
+                    'username' => $username,
+                    'reason' => $this->reason,
+                    'session_id' => $session->id,
+                    'commands' => $commands,
+                ],
+            ]);
+
+            $provisioningClient->submitTaskCommand(
+                $router,
+                $this->tenantId,
+                RouterTask::TYPE_SERVICE_CONTROL_ACTION,
+                ['commands' => $commands, 'context' => 'disconnect_hotspot_user', 'action' => 'disconnect_hotspot_user'],
+                $task
+            );
+
+            Log::info('Hotspot session disconnect command submitted via provisioning service', [
                 'session_id' => $session->id,
                 'username' => $username,
                 'router_id' => $router->id,
                 'nas_ip' => $nasIp,
                 'tenant_id' => $this->tenantId,
+                'task_id' => $task->id,
             ]);
 
             return true;

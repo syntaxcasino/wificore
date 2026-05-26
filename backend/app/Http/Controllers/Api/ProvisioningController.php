@@ -3,12 +3,14 @@
 namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 
+use App\Jobs\ExecuteProvisioningServiceRouterTaskJob;
 use App\Models\RouterConfig;
+use App\Models\RouterTask;
+use App\Services\ProvisioningServiceClient;
 use Illuminate\Http\Request;
-use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
-use RouterOS\Client;
-use RouterOS\Query;
+use Illuminate\Support\Str;
 
 class ProvisioningController extends Controller
 {
@@ -70,71 +72,52 @@ class ProvisioningController extends Controller
     /**
      * Fetch interface information from the router using RouterOS API.
      */
-    public function fetchInterfaces(Request $request)
+    public function fetchInterfaces(Request $request, ProvisioningServiceClient $provisioningClient)
     {
         $request->validate([
             'router_id' => 'required|exists:router_configs,id',
         ]);
 
-        $router = RouterConfig::findOrFail($request->router_id);
+        $routerConfig = RouterConfig::with('router')->findOrFail($request->router_id);
+        $router = $routerConfig->router;
+
+        if (!$router) {
+            return response()->json(['error' => 'Router not found for configuration'], 404);
+        }
 
         try {
-            // Initialize RouterOS client
-            $client = new Client([
-                'host' => $router->ip_address,
-                'port' => $router->port,
-                'user' => $router->username,
-                'pass' => $router->password,
-            ]);
+            $liveData = $provisioningClient->fetchLiveData($router, 'provisioning', (string) $router->tenant_id);
 
-            // Fetch interfaces
-            $interfaceQuery = new Query('/interface/print');
-            $interfaceQuery->where('detail', true);
-            $interfaces = $client->query($interfaceQuery)->read();
-
-            // Fetch routerboard info
-            $routerboardQuery = new Query('/system/routerboard/print');
-            $routerboard = $client->query($routerboardQuery)->read();
-
-            // Fetch system resource info
-            $systemQuery = new Query('/system/resource/print');
-            $system = $client->query($systemQuery)->read();
-
-            // Format response
-            $interfaceData = [
-                'interfaces' => array_map(function ($iface) {
+            return response()->json([
+                'interfaces' => array_map(function (array $iface) {
                     return [
-                        'name' => $iface['name'],
+                        'name' => $iface['name'] ?? 'Unknown',
                         'type' => $iface['type'] ?? 'Unknown',
-                        'mac' => $iface['mac-address'] ?? 'N/A',
+                        'mac' => $iface['mac-address'] ?? ($iface['mac'] ?? 'N/A'),
                     ];
-                }, $interfaces),
+                }, $liveData['interfaces'] ?? []),
                 'routerboard' => [
-                    'model' => $routerboard[0]['model'] ?? 'Unknown',
-                    'serial' => $routerboard[0]['serial-number'] ?? 'N/A',
+                    'model' => $liveData['board_name'] ?? ($router->model ?? 'Unknown'),
+                    'serial' => 'N/A',
                 ],
                 'system' => [
-                    'version' => $system[0]['version'] ?? 'N/A',
-                    'cpu' => $system[0]['cpu'] ?? 'N/A',
+                    'version' => $liveData['version'] ?? ($router->os_version ?? 'N/A'),
+                    'cpu' => $liveData['cpu_load'] ?? 'N/A',
                 ],
-            ];
-
-            // Update router details
-            $router->update([
-                'model' => $interfaceData['routerboard']['model'],
-                'os_version' => $interfaceData['system']['version'],
-                'location' => $router->location ?? 'Unknown',
-                'status' => 'active',
+            ], 200);
+        } catch (\Exception $e) {
+            Log::error('Failed to fetch interfaces via provisioning service', [
+                'router_id' => $router->id,
+                'router_config_id' => $routerConfig->id,
+                'error' => $e->getMessage(),
             ]);
 
-            return response()->json($interfaceData, 200);
-        } catch (\Exception $e) {
             return response()->json(['error' => 'Failed to fetch interfaces: ' . $e->getMessage()], 500);
         }
     }
 
     /**
-     * Apply service configurations to the router using RouterOS API.
+     * Apply service configurations to the router using provisioning service.
      */
     public function applyConfigs(Request $request)
     {
@@ -144,69 +127,76 @@ class ProvisioningController extends Controller
             'configurations' => 'required|array',
         ]);
 
-        $router = RouterConfig::findOrFail($request->router_id);
+        $routerConfig = RouterConfig::with('router')->findOrFail($request->router_id);
+        $router = $routerConfig->router;
+
+        if (!$router) {
+            return response()->json(['error' => 'Router not found for configuration'], 404);
+        }
 
         try {
-            // Initialize RouterOS client
-            $client = new Client([
-                'host' => $router->ip_address,
-                'port' => $router->port,
-                'user' => $router->username,
-                'pass' => $router->password,
-            ]);
+            $commands = [];
 
-            // Generate and apply configuration commands
             foreach ($request->interface_assignments as $assignment) {
-                $iface = $assignment['interface'];
-                $service = $assignment['service'];
+                $iface = $assignment['interface'] ?? null;
+                $service = $assignment['service'] ?? null;
                 $config = $request->configurations[$iface] ?? [];
 
+                if (!$iface || !$service) {
+                    continue;
+                }
+
                 if ($service === 'hotspot') {
-                    // Configure IP pool
-                    $client->query((new Query('/ip/pool/add'))
-                        ->equal('name', "hs-pool-{$iface}")
-                        ->equal('ranges', $config['ip_pool']))->read();
-
-                    // Configure hotspot profile
-                    $client->query((new Query('/ip/hotspot/profile/add'))
-                        ->equal('name', $config['hotspot_profile'])
-                        ->equal('hotspot-address', $router->ip_address))->read();
-
-                    // Configure hotspot
-                    $client->query((new Query('/ip/hotspot/add'))
-                        ->equal('name', "hotspot-{$iface}")
-                        ->equal('interface', $iface)
-                        ->equal('profile', $config['hotspot_profile'])
-                        ->equal('address-pool', "hs-pool-{$iface}"))->read();
+                    $commands[] = '/ip pool add name="hs-pool-' . $iface . '" ranges=' . $config['ip_pool'];
+                    $commands[] = '/ip hotspot profile add name="' . $config['hotspot_profile'] . '" hotspot-address=' . $router->ip_address;
+                    $commands[] = '/ip hotspot add name="hotspot-' . $iface . '" interface=' . $iface . ' profile="' . $config['hotspot_profile'] . '" address-pool="hs-pool-' . $iface . '"';
                 } elseif ($service === 'pppoe') {
-                    // Configure IP pool
-                    $client->query((new Query('/ip/pool/add'))
-                        ->equal('name', "pppoe-pool-{$iface}")
-                        ->equal('ranges', $config['ip_pool']))->read();
-
-                    // Configure PPP profile
-                    $client->query((new Query('/ppp/profile/add'))
-                        ->equal('name', "pppoe-profile-{$iface}")
-                        ->equal('local-address', $router->ip_address)
-                        ->equal('address-pool', "pppoe-pool-{$iface}"))->read();
-
-                    // Configure PPPoE server
-                    $client->query((new Query('/interface/pppoe-server/server/add'))
-                        ->equal('service-name', $config['pppoe_service'])
-                        ->equal('interface', $iface)
-                        ->equal('authentication', 'pap,chap'))->read();
+                    $commands[] = '/ip pool add name="pppoe-pool-' . $iface . '" ranges=' . $config['ip_pool'];
+                    $commands[] = '/ppp profile add name="pppoe-profile-' . $iface . '" local-address=' . $router->ip_address . ' address-pool="pppoe-pool-' . $iface . '"';
+                    $commands[] = '/interface pppoe-server server add service-name="' . $config['pppoe_service'] . '" interface=' . $iface . ' authentication=pap,chap';
                 }
             }
 
-            // Save configurations to router model
-            $router->update([
-                'interface_assignments' => $request->interface_assignments,
-                'configurations' => $request->configurations,
-                'status' => 'active',
+            if ($commands === []) {
+                return response()->json(['error' => 'No valid provisioning commands were generated'], 422);
+            }
+
+            $task = RouterTask::create([
+                'tenant_id' => (string) $router->tenant_id,
+                'router_id' => (string) $router->id,
+                'user_id' => (string) auth()->id(),
+                'type' => RouterTask::TYPE_APPLY_SERVICE_CONFIGS,
+                'status' => RouterTask::STATUS_QUEUED,
+                'progress' => 0,
+                'message' => 'Task accepted and queued',
+                'request_payload' => [
+                    'commands' => $commands,
+                    'source' => 'legacy_provisioning_controller',
+                ],
             ]);
 
-            return response()->json(['message' => 'Configurations applied successfully'], 200);
+            ExecuteProvisioningServiceRouterTaskJob::dispatch($task->id, (string) $router->tenant_id, (string) $router->id);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Configuration apply task accepted',
+                'task' => [
+                    'id' => $task->id,
+                    'type' => $task->type,
+                    'status' => $task->status,
+                    'progress' => $task->progress,
+                    'router_id' => $task->router_id,
+                    'created_at' => $task->created_at,
+                    'status_url' => route('api.routers.tasks.show', ['router' => $task->router_id, 'task' => $task->id]),
+                ],
+            ], 202);
         } catch (\Exception $e) {
+            Log::error('Failed to apply configurations via provisioning service', [
+                'router_id' => $router->id,
+                'router_config_id' => $routerConfig->id,
+                'error' => $e->getMessage(),
+            ]);
+
             return response()->json(['error' => 'Failed to apply configurations: ' . $e->getMessage()], 500);
         }
     }

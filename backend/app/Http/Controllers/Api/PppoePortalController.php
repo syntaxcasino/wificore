@@ -6,18 +6,23 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\MpesaTransactionMap;
+use App\Models\Package;
 use App\Models\PppoePayment;
+use App\Models\PppoeTimedVoucher;
 use App\Models\PppoeUser;
+use App\Models\SystemLog;
 use App\Models\Voucher;
 use App\Services\MpesaService;
 use App\Services\RadiusService;
 use App\Services\TenantPaybillService;
 use App\Services\TenantContext;
+use App\Services\PaymentTraceLogger;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Carbon\Carbon;
 use App\Models\Tenant;
 use InvalidArgumentException;
@@ -37,6 +42,7 @@ class PppoePortalController extends Controller
     private const DASHBOARD_CACHE_TTL_SECONDS = 15;
     private const PAYMENTS_CACHE_TTL_SECONDS = 15;
     private const RADIUS_CACHE_TTL_SECONDS = 15;
+    private const DASHBOARD_CACHE_LOCK_SECONDS = 10;
 
     private bool $radiusUnavailableLogged = false;
 
@@ -206,6 +212,27 @@ class PppoePortalController extends Controller
         ]);
     }
 
+    private function attachResolvedTenantId(PppoeUser $user, string $tenantId): PppoeUser
+    {
+        $user->tenant_id = $tenantId;
+        $user->syncOriginalAttribute('tenant_id');
+
+        return $user;
+    }
+
+    private function attachResolvedTenantContext(PppoeUser $user, string $tenantId, ?string $schemaName = null): PppoeUser
+    {
+        $user->tenant_id = $tenantId;
+        $user->syncOriginalAttribute('tenant_id');
+
+        if ($schemaName !== null && $schemaName !== '') {
+            $user->resolved_tenant_schema = $schemaName;
+            $user->syncOriginalAttribute('resolved_tenant_schema');
+        }
+
+        return $user;
+    }
+
     /**
      * OPTIMIZED: Find user by cached ID (fast path)
      */
@@ -241,7 +268,7 @@ class PppoePortalController extends Controller
                                 ])
                                 ->find($userId);
                             if ($user) {
-                                $user->setAttribute('tenant_id', (string) $tenant->id);
+                                $this->attachResolvedTenantId($user, (string) $tenant->id);
                             }
                             return $user;
                         });
@@ -270,11 +297,31 @@ class PppoePortalController extends Controller
             dispatch(function () use ($pppoeUser) {
                 $radiusData = $this->getOptimizedRadiusData($pppoeUser);
                 Cache::put($this->radiusCacheKey($pppoeUser), $radiusData, now()->addSeconds(self::RADIUS_CACHE_TTL_SECONDS));
+
+                $dashboardData = $this->buildDashboardData($pppoeUser);
+                Cache::put($this->dashboardCacheKey($pppoeUser), $dashboardData, now()->addSeconds(self::DASHBOARD_CACHE_TTL_SECONDS));
+                Cache::put($this->paymentsCacheKey($pppoeUser), $dashboardData['recent_payments'] ?? [], now()->addSeconds(self::PAYMENTS_CACHE_TTL_SECONDS));
             })->onQueue('low');
         } catch (\Throwable $e) {
             // Silent fail - cache warming is optional
             Log::debug('Dashboard cache warming failed', [
                 'username' => $pppoeUser->username,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    private function logPaymentTrace(string $stage, array $details, string $logLevel = 'info'): void
+    {
+        $logger = app(PaymentTraceLogger::class);
+        $sanitizedDetails = $logger->sanitizeLogData($details);
+        $logger->log($stage, $sanitizedDetails, $logLevel);
+
+        try {
+            SystemLog::create(['action' => 'PPPoE Payment Trace: ' . $stage, 'details' => $sanitizedDetails]);
+        } catch (\Throwable $e) {
+            Log::warning('SystemLog::create failed', [
+                'action' => 'PPPoE Payment Trace: ' . $stage,
                 'error' => $e->getMessage(),
             ]);
         }
@@ -316,7 +363,7 @@ class PppoePortalController extends Controller
                         return $this->tenantContext->runInTenantContext($tenant, function () use ($tenant, $mapping) {
                             $user = PppoeUser::query()->find($mapping->pppoe_user_id);
                             if ($user) {
-                                $user->setAttribute('tenant_id', (string) $tenant->id);
+                                $this->attachResolvedTenantId($user, (string) $tenant->id);
                             }
                             return $user;
                         });
@@ -389,8 +436,8 @@ class PppoePortalController extends Controller
                         ->first();
 
                     if ($user) {
-                        $user->setAttribute('tenant_id', (string) $tenant->id);
-                        $user->setAttribute('resolved_tenant_schema', (string) $tenant->schema_name);
+                        $this->attachResolvedTenantId($user, (string) $tenant->id);
+                        
                     }
 
                     return $user;
@@ -570,18 +617,76 @@ class PppoePortalController extends Controller
             return response()->json(['success' => false, 'message' => 'Unauthorized'], 401);
         }
 
-        // CRITICAL OPTIMIZATION: Full dashboard cache (reduces DB queries to 0-1)
         $dashboardCacheKey = $this->dashboardCacheKey($pppoeUser);
-        $cachedDashboard = Cache::get($dashboardCacheKey);
-        
-        if ($cachedDashboard) {
+
+        try {
+            $cachedDashboard = Cache::get($dashboardCacheKey);
+            if ($cachedDashboard !== null) {
+                return response()->json([
+                    'success' => true,
+                    'data' => $cachedDashboard,
+                    'cached' => true,
+                ]);
+            }
+
+            $lock = Cache::lock($this->dashboardLockKey($pppoeUser), self::DASHBOARD_CACHE_LOCK_SECONDS);
+            $lockResult = $lock->get(function () use ($dashboardCacheKey, $pppoeUser) {
+                $cached = Cache::get($dashboardCacheKey);
+                if ($cached !== null) {
+                    return ['data' => $cached, 'cached' => true];
+                }
+
+                $dashboardData = $this->buildDashboardData($pppoeUser);
+                Cache::put($dashboardCacheKey, $dashboardData, now()->addSeconds(self::DASHBOARD_CACHE_TTL_SECONDS));
+
+                return ['data' => $dashboardData, 'cached' => false];
+            });
+
+            if ($lockResult === null) {
+                $dashboardData = $this->buildDashboardData($pppoeUser);
+                Cache::put($dashboardCacheKey, $dashboardData, now()->addSeconds(self::DASHBOARD_CACHE_TTL_SECONDS));
+
+                return response()->json([
+                    'success' => true,
+                    'data' => $dashboardData,
+                    'cached' => false,
+                    'lock_timeout' => true,
+                ]);
+            }
+
             return response()->json([
                 'success' => true,
-                'data' => $cachedDashboard,
-                'cached' => true,
+                'data' => $lockResult['data'],
+                'cached' => (bool) ($lockResult['cached'] ?? false),
+            ]);
+        } catch (\Illuminate\Contracts\Cache\LockTimeoutException $e) {
+            $dashboardData = $this->buildDashboardData($pppoeUser);
+            Cache::put($dashboardCacheKey, $dashboardData, now()->addSeconds(self::DASHBOARD_CACHE_TTL_SECONDS));
+
+            return response()->json([
+                'success' => true,
+                'data' => $dashboardData,
+                'cached' => false,
+                'lock_timeout' => true,
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('PPPoE portal dashboard cache failed', [
+                'account_number' => $pppoeUser->account_number,
+                'error' => $e->getMessage(),
+            ]);
+
+            $dashboardData = $this->buildDashboardData($pppoeUser);
+            return response()->json([
+                'success' => true,
+                'data' => $dashboardData,
+                'cached' => false,
+                'cache_error' => true,
             ]);
         }
+    }
 
+    private function buildDashboardData(PppoeUser $pppoeUser): array
+    {
         // OPTIMIZATION 1: Aggressive RADIUS caching (60s TTL)
         $radiusCacheKey = $this->radiusCacheKey($pppoeUser);
         $radiusData = Cache::get($radiusCacheKey);
@@ -608,13 +713,23 @@ class PppoePortalController extends Controller
         // OPTIMIZATION 3: Cache payments separately (they change frequently)
         $paymentsCacheKey = $this->paymentsCacheKey($pppoeUser);
         $recentPayments = Cache::get($paymentsCacheKey);
-        
-        if (!$recentPayments) {
+
+        if ($recentPayments === null) {
             $recentPayments = PppoePayment::query()
                 ->where('pppoe_user_id', $pppoeUser->id)
-                ->orderBy('created_at', 'desc')
+                ->orderByDesc('created_at')
                 ->limit(5)
-                ->cursor()
+                ->get([
+                    'id',
+                    'amount',
+                    'status',
+                    'payment_method',
+                    'transaction_id',
+                    'payment_reference',
+                    'notes',
+                    'verified_at',
+                    'created_at',
+                ])
                 ->map(fn ($p) => [
                     'id'                => $p->id,
                     'amount'            => $p->amount,
@@ -627,27 +742,17 @@ class PppoePortalController extends Controller
                     'created_at'        => $p->created_at,
                 ])
                 ->all();
-            
-            // Cache payments for 30 seconds (fresher than dashboard)
+
             Cache::put($paymentsCacheKey, $recentPayments, now()->addSeconds(self::PAYMENTS_CACHE_TTL_SECONDS));
         }
 
-        $dashboardData = [
+        return [
             'user' => $userData,
             'current_session' => $radiusData['current_session'],
             'usage_stats' => $radiusData['usage_stats'],
             'recent_payments' => $recentPayments,
             'cached_at' => now()->toIso8601String(),
         ];
-
-        // Cache full dashboard for 30 seconds
-        Cache::put($dashboardCacheKey, $dashboardData, now()->addSeconds(self::DASHBOARD_CACHE_TTL_SECONDS));
-
-        return response()->json([
-            'success' => true,
-            'data' => $dashboardData,
-            'cached' => false,
-        ]);
     }
 
     /**
@@ -663,59 +768,74 @@ class PppoePortalController extends Controller
             ];
         }
 
-        $thirtyDaysAgo = Carbon::now()->subDays(30);
+        $thirtyDaysAgo = Carbon::now()->subDays(30)->toDateTimeString();
+        $username = (string) $pppoeUser->username;
 
-        // SINGLE QUERY: Get current session (most recent without stop time) AND usage stats
-        $radiusDb = DB::connection('radius');
-        
-        // Current session subquery
-        $currentSession = $radiusDb->table('radacct')
-            ->where('username', $pppoeUser->username)
-            ->whereNull('acctstoptime')
-            ->orderBy('acctstarttime', 'desc')
-            ->first([
-                'acctstarttime as start_time',
-                'acctsessiontime as duration_seconds',
-                'framedipaddress as ip_address',
-                'nasipaddress as nas_ip',
-                'acctinputoctets as download_bytes',
-                'acctoutputoctets as upload_bytes',
-            ]);
+        // SINGLE QUERY: fetch current session and aggregate stats in one round-trip.
+        $sql = <<<SQL
+SELECT
+    cs.start_time,
+    cs.duration_seconds,
+    cs.ip_address,
+    cs.nas_ip,
+    cs.download_bytes,
+    cs.upload_bytes,
+    st.total_sessions,
+    st.total_duration,
+    st.total_download,
+    st.total_upload
+FROM (
+    SELECT
+        acctstarttime AS start_time,
+        acctsessiontime AS duration_seconds,
+        framedipaddress AS ip_address,
+        nasipaddress AS nas_ip,
+        acctinputoctets AS download_bytes,
+        acctoutputoctets AS upload_bytes
+    FROM radacct
+    WHERE username = ?
+      AND acctstoptime IS NULL
+    ORDER BY acctstarttime DESC
+    LIMIT 1
+) cs
+LEFT JOIN (
+    SELECT
+        COUNT(*) AS total_sessions,
+        COALESCE(SUM(acctsessiontime), 0) AS total_duration,
+        COALESCE(SUM(acctinputoctets), 0) AS total_download,
+        COALESCE(SUM(acctoutputoctets), 0) AS total_upload
+    FROM radacct
+    WHERE username = ?
+      AND acctstarttime >= ?
+) st ON 1 = 1
+LIMIT 1
+SQL;
 
-        // Aggregated stats (separate query but can be parallelized)
-        $stats = $radiusDb->table('radacct')
-            ->where('username', $pppoeUser->username)
-            ->where('acctstarttime', '>=', $thirtyDaysAgo)
-            ->select(
-                DB::raw('COUNT(*) as total_sessions'),
-                DB::raw('SUM(acctsessiontime) as total_duration'),
-                DB::raw('SUM(acctinputoctets) as total_download'),
-                DB::raw('SUM(acctoutputoctets) as total_upload')
-            )
-            ->first();
+        $rows = DB::connection('radius')->select($sql, [$username, $username, $thirtyDaysAgo]);
+        $row = $rows[0] ?? null;
 
         return [
-            'current_session' => $currentSession ? [
-                'start_time' => $currentSession->start_time,
-                'duration_formatted' => $this->formatDuration($currentSession->duration_seconds),
-                'duration_seconds' => $currentSession->duration_seconds,
-                'ip_address' => $currentSession->ip_address,
-                'nas_ip' => $currentSession->nas_ip,
-                'download_formatted' => $this->formatBytes($currentSession->download_bytes),
-                'download_bytes' => $currentSession->download_bytes,
-                'upload_formatted' => $this->formatBytes($currentSession->upload_bytes),
-                'upload_bytes' => $currentSession->upload_bytes,
+            'current_session' => $row && $row->start_time ? [
+                'start_time' => $row->start_time,
+                'duration_formatted' => $this->formatDuration($row->duration_seconds ?? 0),
+                'duration_seconds' => $row->duration_seconds ?? 0,
+                'ip_address' => $row->ip_address,
+                'nas_ip' => $row->nas_ip,
+                'download_formatted' => $this->formatBytes($row->download_bytes ?? 0),
+                'download_bytes' => $row->download_bytes ?? 0,
+                'upload_formatted' => $this->formatBytes($row->upload_bytes ?? 0),
+                'upload_bytes' => $row->upload_bytes ?? 0,
             ] : null,
             'usage_stats' => [
                 'period_days' => 30,
-                'total_sessions' => $stats->total_sessions ?? 0,
-                'total_duration_formatted' => $this->formatDuration($stats->total_duration ?? 0),
-                'total_duration_seconds' => $stats->total_duration ?? 0,
-                'total_download_formatted' => $this->formatBytes($stats->total_download ?? 0),
-                'total_download_bytes' => $stats->total_download ?? 0,
-                'total_upload_formatted' => $this->formatBytes($stats->total_upload ?? 0),
-                'total_upload_bytes' => $stats->total_upload ?? 0,
-                'total_usage_formatted' => $this->formatBytes(($stats->total_download ?? 0) + ($stats->total_upload ?? 0)),
+                'total_sessions' => (int) ($row->total_sessions ?? 0),
+                'total_duration_formatted' => $this->formatDuration($row->total_duration ?? 0),
+                'total_duration_seconds' => (int) ($row->total_duration ?? 0),
+                'total_download_formatted' => $this->formatBytes($row->total_download ?? 0),
+                'total_download_bytes' => (int) ($row->total_download ?? 0),
+                'total_upload_formatted' => $this->formatBytes($row->total_upload ?? 0),
+                'total_upload_bytes' => (int) ($row->total_upload ?? 0),
+                'total_usage_formatted' => $this->formatBytes(((int) ($row->total_download ?? 0)) + ((int) ($row->total_upload ?? 0))),
             ],
         ];
     }
@@ -750,8 +870,18 @@ class PppoePortalController extends Controller
 
         $package = $pppoeUser->package;
 
+        $providerName = null;
+        if ($pppoeUser->tenant_id) {
+            $providerName = Cache::remember(
+                'tenant_name:' . $pppoeUser->tenant_id,
+                now()->addMinutes(60),
+                fn () => Tenant::query()->whereKey($pppoeUser->tenant_id)->value('name')
+            );
+        }
+
         return [
             'id' => $pppoeUser->id,
+            'provider_name' => $providerName,
             'account_number' => $pppoeUser->account_number,
             'username' => $pppoeUser->username,
             'full_name' => $pppoeUser->getBillingName(),
@@ -769,7 +899,12 @@ class PppoePortalController extends Controller
             'next_payment_due' => $pppoeUser->next_payment_due?->toIso8601String(),
             'amount_due' => $pppoeUser->amount_due,
             'amount_paid' => $pppoeUser->amount_paid,
-            'balance' => $pppoeUser->balance ?? 0,
+            'balance'                    => $pppoeUser->balance ?? 0,
+            'paused_at'                  => $pppoeUser->paused_at?->toIso8601String(),
+            'pause_ends_at'              => $pppoeUser->pause_ends_at?->toIso8601String(),
+            'is_paused'                  => $pppoeUser->isPaused(),
+            'pending_package_id'         => $pppoeUser->pending_package_id,
+            'plan_switch_effective_date' => $pppoeUser->plan_switch_effective_date?->toIso8601String(),
         ];
     }
 
@@ -905,8 +1040,14 @@ class PppoePortalController extends Controller
 
         // OPTIMIZATION: Rate limit check via cache (prevents hammering the DB)
         $rateLimitKey = 'mpesa_stk_limit:' . $pppoeUser->id;
+        $traceId = 'mpesa:' . Str::uuid()->toString();
         if (Cache::has($rateLimitKey)) {
             $recentTx = Cache::get($rateLimitKey);
+            $this->logPaymentTrace('pppoe.stk.rate_limited', [
+                'trace_id' => $traceId,
+                'account_number' => $pppoeUser->account_number,
+                'pending_transaction' => $recentTx['transaction_id'] ?? null,
+            ], 'warning');
             return response()->json([
                 'success' => false,
                 'message' => 'A payment request is already pending. Please wait.',
@@ -929,7 +1070,12 @@ class PppoePortalController extends Controller
             if ($recentPending) {
                 // Cache the pending transaction for 2 minutes to reduce DB hits
                 Cache::put($rateLimitKey, ['transaction_id' => $recentPending->transaction_id], now()->addMinutes(2));
-                
+                $this->logPaymentTrace('pppoe.stk.recent_pending', [
+                    'trace_id' => $traceId,
+                    'account_number' => $pppoeUser->account_number,
+                    'pending_transaction' => $recentPending->transaction_id,
+                ], 'warning');
+
                 return response()->json([
                     'success' => false,
                     'message' => 'A payment request is already pending. Please wait.',
@@ -938,13 +1084,24 @@ class PppoePortalController extends Controller
             }
 
             // Initiate M-Pesa STK Push
+            $tenantIdForPayment = $request->attributes->get('tenant_id');
             $mpesaService = app(MpesaService::class);
+            if ($tenantIdForPayment) {
+                $mpesaService->setTenantPaymentContext((string) $tenantIdForPayment);
+            }
             $stkResponse = $mpesaService->initiateSTKPush(
                 $validated['phone_number'],
                 $validated['amount']
             );
 
             if (!$stkResponse['success']) {
+                $this->logPaymentTrace('pppoe.stk.failed', [
+                    'trace_id' => $traceId,
+                    'account_number' => $pppoeUser->account_number,
+                    'tenant_id' => $tenantIdForPayment,
+                    'error' => $stkResponse['message'] ?? 'Unknown error',
+                    'response' => $stkResponse,
+                ], 'error');
                 Log::error('M-Pesa STK Push failed', [
                     'account_number' => $pppoeUser->account_number,
                     'error' => $stkResponse['message'] ?? 'Unknown error',
@@ -991,16 +1148,27 @@ class PppoePortalController extends Controller
                 ]);
             }
 
+            $this->logPaymentTrace('pppoe.stk.created', [
+                'trace_id' => $traceId,
+                'account_number' => $pppoeUser->account_number,
+                'payment_id' => $payment->id,
+                'checkout_request_id' => $checkoutRequestId,
+                'merchant_request_id' => $merchantRequestId,
+                'tenant_id' => $tenantId,
+            ]);
+
             // Cache the pending transaction to prevent duplicate STK pushes
             Cache::put($rateLimitKey, ['transaction_id' => $checkoutRequestId], now()->addMinutes(2));
 
             // Invalidate dashboard and payments cache to show new pending payment
             $this->invalidateDashboardCache($pppoeUser);
 
-            Log::info('M-Pesa STK Push initiated for PPPoE user', [
+            $this->logPaymentTrace('pppoe.stk.initiated', [
+                'trace_id' => $traceId,
                 'account_number' => $pppoeUser->account_number,
                 'amount' => $validated['amount'],
                 'transaction_id' => $payment->transaction_id,
+                'payment_id' => $payment->id,
             ]);
 
             return response()->json([
@@ -1015,6 +1183,11 @@ class PppoePortalController extends Controller
             ]);
 
         } catch (\Exception $e) {
+            $this->logPaymentTrace('pppoe.stk.exception', [
+                'account_number' => $pppoeUser->account_number,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ], 'error');
             Log::error('Error initiating M-Pesa payment', [
                 'account_number' => $pppoeUser->account_number,
                 'error' => $e->getMessage(),
@@ -1221,7 +1394,7 @@ class PppoePortalController extends Controller
 
         // OPTIMIZATION: Use composite index (user_id, transaction_id) with selective fields
         $payment = PppoePayment::query()
-            ->select(['transaction_id', 'status', 'amount', 'payment_method', 'created_at', 'verified_at', 'payment_date'])
+            ->select(['transaction_id', 'status', 'amount', 'payment_method', 'created_at', 'verified_at', 'payment_date', 'period_end', 'payment_reference'])
             ->where('pppoe_user_id', $pppoeUser->id)
             ->where('transaction_id', $transactionId)
             ->first();
@@ -1233,17 +1406,40 @@ class PppoePortalController extends Controller
             ], 404);
         }
 
+        // Reload user fields if payment completed so frontend can display updated billing
+        $userUpdate = null;
+        if ($payment->status === 'completed') {
+            $fresh = PppoeUser::query()
+                ->select(['id', 'status', 'payment_status', 'next_payment_due', 'last_payment_date', 'expires_at', 'amount_due', 'amount_paid', 'balance'])
+                ->find($pppoeUser->id);
+            if ($fresh) {
+                $userUpdate = [
+                    'status'            => $fresh->status,
+                    'payment_status'    => $fresh->payment_status,
+                    'next_payment_due'  => $fresh->next_payment_due?->toIso8601String(),
+                    'last_payment_date' => $fresh->last_payment_date?->toIso8601String(),
+                    'expiration_date'   => $fresh->expires_at?->toIso8601String(),
+                    'amount_due'        => $fresh->amount_due,
+                    'amount_paid'       => $fresh->amount_paid,
+                    'balance'           => $fresh->balance ?? 0,
+                ];
+            }
+        }
+
         $result = [
-            'transaction_id' => $payment->transaction_id,
-            'status' => $payment->status,
-            'amount' => $payment->amount,
-            'payment_method' => $payment->payment_method,
-            'created_at' => $payment->created_at,
-            'paid_at' => $payment->verified_at ?? $payment->payment_date,
+            'transaction_id'    => $payment->transaction_id,
+            'status'            => $payment->status,
+            'amount'            => $payment->amount,
+            'payment_method'    => $payment->payment_method,
+            'payment_reference' => $payment->payment_reference,
+            'created_at'        => $payment->created_at,
+            'paid_at'           => $payment->verified_at ?? $payment->payment_date,
+            'next_payment_due'  => $payment->period_end?->toIso8601String(),
+            'user'              => $userUpdate,
         ];
 
         // Cache pending payments briefly (they may change soon), completed for longer
-        $ttl = $payment->status === 'pending' ? 10 : 300; // 10s for pending, 5min for completed
+        $ttl = $payment->status === 'pending' ? 10 : 300;
         Cache::put($cacheKey, $result, now()->addSeconds($ttl));
 
         return response()->json([
@@ -1257,6 +1453,123 @@ class PppoePortalController extends Controller
      * Get payment instructions for both STK and Paybill.
      * OPTIMIZED: Aggressive caching since paybill settings rarely change
      */
+    public function debugPaymentState(Request $request): JsonResponse
+    {
+        $pppoeUser = $request->attributes->get('pppoe_user');
+
+        if (!$pppoeUser) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized'], 401);
+        }
+
+        $validated = $request->validate([
+            'transaction_id' => 'nullable|string',
+        ]);
+
+        $tenantId = $this->resolveTenantIdForRequestUser($request, $pppoeUser);
+        $transactionId = trim((string) ($validated['transaction_id'] ?? ''));
+
+        $latestPaymentQuery = PppoePayment::query()
+            ->select([
+                'id', 'pppoe_user_id', 'account_number', 'amount', 'payment_method',
+                'payment_reference', 'transaction_id', 'status', 'payment_date',
+                'verified_at', 'period_start', 'period_end', 'notes', 'metadata',
+                'created_at', 'updated_at',
+            ])
+            ->where('pppoe_user_id', $pppoeUser->id);
+
+        if ($transactionId !== '') {
+            $latestPaymentQuery->where('transaction_id', $transactionId);
+        }
+
+        $latestPayment = $latestPaymentQuery
+            ->orderByDesc('verified_at')
+            ->orderByDesc('payment_date')
+            ->orderByDesc('created_at')
+            ->first();
+
+        $latestTransactionId = $transactionId !== ''
+            ? $transactionId
+            : (string) ($latestPayment?->transaction_id ?? '');
+
+        $paymentStatusCacheKey = $latestTransactionId !== ''
+            ? 'payment_status:' . $pppoeUser->id . ':' . md5($latestTransactionId)
+            : null;
+
+        $reconnectJobCacheKey = 'pppoe_reconnect_job:' . $tenantId . ':' . $pppoeUser->id;
+
+        $reconnectJobState = Cache::get($reconnectJobCacheKey);
+        if (!$reconnectJobState) {
+            $reconnectJobState = [
+                'status' => $pppoeUser->status === 'active' ? 'idle' : 'not_queued',
+                'tenant_id' => $tenantId,
+                'pppoe_user_id' => $pppoeUser->id,
+            ];
+        }
+
+        $paymentStatusCache = null;
+        if ($paymentStatusCacheKey) {
+            $paymentStatusCache = [
+                'key' => $paymentStatusCacheKey,
+                'exists' => Cache::has($paymentStatusCacheKey),
+                'value' => Cache::get($paymentStatusCacheKey),
+            ];
+        }
+
+        $debug = [
+            'tenant_id' => $tenantId,
+            'user' => [
+                'id' => $pppoeUser->id,
+                'account_number' => $pppoeUser->account_number,
+                'username' => $pppoeUser->username,
+                'status' => $pppoeUser->status,
+                'payment_status' => $pppoeUser->payment_status,
+                'next_payment_due' => $pppoeUser->next_payment_due?->toIso8601String(),
+                'last_payment_date' => $pppoeUser->last_payment_date?->toIso8601String(),
+                'expires_at' => $pppoeUser->expires_at?->toIso8601String(),
+                'amount_due' => $pppoeUser->amount_due,
+                'amount_paid' => $pppoeUser->amount_paid,
+                'balance' => $pppoeUser->balance ?? 0,
+            ],
+            'latest_payment' => $latestPayment ? [
+                'id' => $latestPayment->id,
+                'transaction_id' => $latestPayment->transaction_id,
+                'status' => $latestPayment->status,
+                'amount' => $latestPayment->amount,
+                'payment_method' => $latestPayment->payment_method,
+                'payment_reference' => $latestPayment->payment_reference,
+                'payment_date' => $latestPayment->payment_date?->toIso8601String(),
+                'verified_at' => $latestPayment->verified_at?->toIso8601String(),
+                'period_start' => $latestPayment->period_start?->toIso8601String(),
+                'period_end' => $latestPayment->period_end?->toIso8601String(),
+                'notes' => $latestPayment->notes,
+                'metadata' => $latestPayment->metadata,
+            ] : null,
+            'callback' => $latestPayment ? [
+                'status' => $latestPayment->status,
+                'verified_at' => $latestPayment->verified_at?->toIso8601String(),
+                'payment_date' => $latestPayment->payment_date?->toIso8601String(),
+                'callback_response' => data_get($latestPayment->metadata, 'callback_response'),
+                'mpesa_receipt' => data_get($latestPayment->metadata, 'mpesa_receipt'),
+                'source' => data_get($latestPayment->metadata, 'source'),
+            ] : null,
+            'cache' => [
+                'dashboard_version' => Cache::get($this->dashboardVersionKey($pppoeUser), 1),
+                'payments_version' => Cache::get($this->paymentsVersionKey($pppoeUser), 1),
+                'radius_cache_present' => Cache::has($this->radiusCacheKey($pppoeUser)),
+                'payment_status' => $paymentStatusCache,
+                'mpesa_stk_limit' => [
+                    'key' => 'mpesa_stk_limit:' . $pppoeUser->id,
+                    'exists' => Cache::has('mpesa_stk_limit:' . $pppoeUser->id),
+                    'value' => Cache::get('mpesa_stk_limit:' . $pppoeUser->id),
+                ],
+            ],
+            'reconnect_job' => $reconnectJobState,
+            'generated_at' => now()->toIso8601String(),
+        ];
+
+        return response()->json(['success' => true, 'data' => $debug]);
+    }
+
     public function paymentInstructions(Request $request): JsonResponse
     {
         $pppoeUser = $request->attributes->get('pppoe_user');
@@ -1371,6 +1684,460 @@ class PppoePortalController extends Controller
             'success' => true,
             'message' => 'Logged out successfully',
         ]);
+    }
+
+    // ============== Admin: Timed Voucher Markup Setting ==============
+
+    /**
+     * GET /api/pppoe/portal/admin/voucher-markup
+     * Returns the current timed voucher markup % for the authenticated tenant admin.
+     */
+    public function getTimedVoucherMarkupSetting(Request $request): JsonResponse
+    {
+        $tenant = Tenant::find($request->user()->tenant_id);
+        if (!$tenant) {
+            return response()->json(['success' => false, 'message' => 'Tenant not found'], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data'    => [
+                'markup_pct' => (float) ($tenant->getSetting('timed_voucher_markup_pct') ?? 50.0),
+            ],
+        ]);
+    }
+
+    /**
+     * PUT /api/pppoe/portal/admin/voucher-markup
+     * Allows the tenant admin to set the markup percentage applied to timed voucher prices.
+     */
+    public function updateTimedVoucherMarkupSetting(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'markup_pct' => 'required|numeric|min:0|max:500',
+        ]);
+
+        $tenant = Tenant::find($request->user()->tenant_id);
+        if (!$tenant) {
+            return response()->json(['success' => false, 'message' => 'Tenant not found'], 404);
+        }
+
+        $tenant->setSetting('timed_voucher_markup_pct', (float) $validated['markup_pct']);
+
+        Log::info('PPPoE timed voucher markup updated', [
+            'tenant_id'  => $tenant->id,
+            'markup_pct' => $validated['markup_pct'],
+            'updated_by' => $request->user()->id,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Timed voucher markup updated successfully.',
+            'data'    => ['markup_pct' => (float) $validated['markup_pct']],
+        ]);
+    }
+
+    // ============== Feature: Account Pause ==============
+
+    public function pauseAccount(Request $request): JsonResponse
+    {
+        $pppoeUser = $request->attributes->get('pppoe_user');
+        if (!$pppoeUser) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized'], 401);
+        }
+
+        if ($pppoeUser->payment_status !== 'paid') {
+            return response()->json(['success' => false, 'message' => 'Account must be fully paid before it can be paused.'], 422);
+        }
+        if ($pppoeUser->isPaused()) {
+            return response()->json(['success' => false, 'message' => 'Account is already paused.'], 422);
+        }
+        if ($pppoeUser->isSuspended()) {
+            return response()->json(['success' => false, 'message' => 'Suspended accounts cannot be paused.'], 422);
+        }
+
+        $pauseEndsAt = $pppoeUser->expires_at ?? now()->addDays(30);
+
+        $pppoeUser->update([
+            'paused_at'     => now(),
+            'pause_ends_at' => $pauseEndsAt,
+            'pause_reason'  => 'User-requested pause',
+        ]);
+
+        DB::table('radcheck')->updateOrInsert(
+            ['username' => $pppoeUser->username, 'attribute' => 'Auth-Type'],
+            ['op' => ':=', 'value' => 'Reject']
+        );
+
+        $this->invalidateDashboardCache($pppoeUser);
+
+        Log::info('PPPoE portal: account paused', [
+            'account_number' => $pppoeUser->account_number,
+            'pause_ends_at'  => $pauseEndsAt,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Account paused. Internet access is suspended until you resume or the pause expires.',
+            'data'    => [
+                'paused_at'     => $pppoeUser->paused_at?->toIso8601String(),
+                'pause_ends_at' => $pppoeUser->pause_ends_at?->toIso8601String(),
+            ],
+        ]);
+    }
+
+    public function resumeAccount(Request $request): JsonResponse
+    {
+        $pppoeUser = $request->attributes->get('pppoe_user');
+        if (!$pppoeUser) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized'], 401);
+        }
+
+        if (!$pppoeUser->isPaused()) {
+            return response()->json(['success' => false, 'message' => 'Account is not currently paused.'], 422);
+        }
+
+        $pausedAt       = $pppoeUser->paused_at ?? now();
+        $daysElapsed    = (int) $pausedAt->diffInDays(now(), true);
+        $pauseEndsAt    = $pppoeUser->pause_ends_at;
+        $totalPauseDays = $pauseEndsAt ? (int) $pausedAt->diffInDays($pauseEndsAt, true) : 0;
+        $remainingDays  = max(0, $totalPauseDays - $daysElapsed);
+
+        $newExpiry = ($pppoeUser->expires_at ?? now())->addDays($remainingDays);
+
+        $pppoeUser->update([
+            'paused_at'     => null,
+            'pause_ends_at' => null,
+            'pause_reason'  => null,
+            'expires_at'    => $newExpiry,
+        ]);
+
+        DB::table('radcheck')
+            ->where('username', $pppoeUser->username)
+            ->where('attribute', 'Auth-Type')
+            ->where('value', 'Reject')
+            ->delete();
+
+        $this->invalidateDashboardCache($pppoeUser);
+
+        Log::info('PPPoE portal: account resumed early', [
+            'account_number' => $pppoeUser->account_number,
+            'days_credited'  => $remainingDays,
+            'new_expiry'     => $newExpiry,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => "Account resumed. {$remainingDays} day(s) credited back to your subscription.",
+            'data'    => [
+                'new_expiry'    => $newExpiry->toIso8601String(),
+                'days_credited' => $remainingDays,
+            ],
+        ]);
+    }
+
+    // ============== Feature: Plan Switch ==============
+
+    public function availablePlans(Request $request): JsonResponse
+    {
+        $pppoeUser = $request->attributes->get('pppoe_user');
+        if (!$pppoeUser) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized'], 401);
+        }
+
+        $tenantId = $request->attributes->get('tenant_id');
+        $cacheKey = 'pppoe_portal_plans:' . $tenantId;
+        $plans    = Cache::get($cacheKey);
+
+        if (!$plans) {
+            $plans = Package::query()
+                ->where('is_active', true)
+                ->where(function ($q) {
+                    $q->where('type', 'pppoe')->orWhereNull('type');
+                })
+                ->orderBy('price')
+                ->get(['id', 'name', 'price', 'download_speed', 'upload_speed', 'duration', 'description'])
+                ->map(fn ($p) => [
+                    'id'             => $p->id,
+                    'name'           => $p->name,
+                    'price'          => $p->price,
+                    'download_speed' => $p->download_speed,
+                    'upload_speed'   => $p->upload_speed,
+                    'duration'       => $p->duration,
+                    'description'    => $p->description,
+                ])
+                ->all();
+
+            Cache::put($cacheKey, $plans, now()->addMinutes(5));
+        }
+
+        return response()->json([
+            'success'          => true,
+            'data'             => $plans,
+            'current_plan_id'  => $pppoeUser->package_id,
+            'pending_plan_id'  => $pppoeUser->pending_package_id,
+            'effective_date'   => $pppoeUser->plan_switch_effective_date?->toIso8601String(),
+        ]);
+    }
+
+    public function requestPlanSwitch(Request $request): JsonResponse
+    {
+        $pppoeUser = $request->attributes->get('pppoe_user');
+        if (!$pppoeUser) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized'], 401);
+        }
+
+        $validated = $request->validate(['package_id' => 'required|uuid']);
+
+        if ($validated['package_id'] === (string) $pppoeUser->package_id) {
+            return response()->json(['success' => false, 'message' => 'You are already on this plan.'], 422);
+        }
+
+        $package = Package::query()
+            ->where('id', $validated['package_id'])
+            ->where('is_active', true)
+            ->first(['id', 'name', 'price']);
+
+        if (!$package) {
+            return response()->json(['success' => false, 'message' => 'Selected plan not found or unavailable.'], 404);
+        }
+
+        $effectiveDate = $pppoeUser->expires_at ?? now()->addDays(30);
+
+        $pppoeUser->update([
+            'pending_package_id'         => $package->id,
+            'plan_switch_effective_date' => $effectiveDate,
+        ]);
+
+        $this->invalidateDashboardCache($pppoeUser);
+
+        Log::info('PPPoE portal: plan switch requested', [
+            'account_number'   => $pppoeUser->account_number,
+            'new_package_id'   => $package->id,
+            'new_package_name' => $package->name,
+            'effective_date'   => $effectiveDate,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => "Plan switch to \"{$package->name}\" scheduled for " . $effectiveDate->toDateString() . '. It takes effect at your next renewal.',
+            'data'    => [
+                'pending_package_id'         => $package->id,
+                'pending_package_name'       => $package->name,
+                'plan_switch_effective_date' => $effectiveDate->toIso8601String(),
+            ],
+        ]);
+    }
+
+    // ============== Feature: Timed Vouchers ==============
+
+    private const TIMED_VOUCHER_DURATIONS = [
+        ['label' => '8 Hours',  'hours' => 8,   'fraction' => 8/720],
+        ['label' => '1 Day',    'hours' => 24,  'fraction' => 1/30],
+        ['label' => '3 Days',   'hours' => 72,  'fraction' => 3/30],
+        ['label' => '1 Week',   'hours' => 168, 'fraction' => 7/30],
+    ];
+
+    /**
+     * Get the configured markup percentage for timed vouchers.
+     * Reads tenant.settings.timed_voucher_markup_pct (default 50).
+     */
+    private function getTimedVoucherMarkup(?Tenant $tenant): float
+    {
+        if (!$tenant) {
+            return 50.0;
+        }
+        $pct = $tenant->getSetting('timed_voucher_markup_pct');
+        return (float) ($pct ?? 50.0);
+    }
+
+    /**
+     * Compute the timed-voucher price for a package + duration with markup.
+     *   base  = monthly_price × duration_fraction
+     *   final = ceil(base × (1 + markup/100))  — minimum KES 10
+     */
+    private function calcTimedVoucherPrice(float $monthlyPrice, float $fraction, float $markupPct): int
+    {
+        $base  = $monthlyPrice * $fraction;
+        $final = $base * (1 + $markupPct / 100);
+        return max(10, (int) ceil($final));
+    }
+
+    public function timedVoucherOptions(Request $request): JsonResponse
+    {
+        $pppoeUser = $request->attributes->get('pppoe_user');
+        if (!$pppoeUser) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized'], 401);
+        }
+
+        // Resolve tenant to read markup setting
+        $tenantId = $request->attributes->get('tenant_id') ?? $pppoeUser->getAttribute('tenant_id');
+        $tenant   = $tenantId ? Tenant::find($tenantId) : null;
+        $markup   = $this->getTimedVoucherMarkup($tenant);
+
+        // Load active packages so user can pick bandwidth tier
+        $packages = Package::query()
+            ->where('is_active', true)
+            ->orderBy('price')
+            ->get(['id', 'name', 'download_speed', 'upload_speed', 'price']);
+
+        // Build a matrix: for each package, compute price per duration (with markup)
+        $packageOptions = $packages->map(function ($pkg) use ($markup) {
+            $monthlyPrice = (float) $pkg->price;
+            $durations = array_map(function ($d) use ($monthlyPrice, $markup) {
+                return [
+                    'label'  => $d['label'],
+                    'hours'  => $d['hours'],
+                    'price'  => $this->calcTimedVoucherPrice($monthlyPrice, $d['fraction'], $markup),
+                ];
+            }, self::TIMED_VOUCHER_DURATIONS);
+
+            return [
+                'id'             => $pkg->id,
+                'name'           => $pkg->name,
+                'download_speed' => $pkg->download_speed,
+                'upload_speed'   => $pkg->upload_speed,
+                'monthly_price'  => $monthlyPrice,
+                'durations'      => $durations,
+            ];
+        })->values()->all();
+
+        $active = PppoeTimedVoucher::query()
+            ->where('pppoe_user_id', $pppoeUser->id)
+            ->where('status', 'active')
+            ->where('expires_at', '>', now())
+            ->first(['id', 'duration_label', 'duration_hours', 'activated_at', 'expires_at']);
+
+        return response()->json([
+            'success' => true,
+            'data'    => [
+                'packages'       => $packageOptions,
+                'active_voucher' => $active ? [
+                    'id'             => $active->id,
+                    'duration_label' => $active->duration_label,
+                    'duration_hours' => $active->duration_hours,
+                    'activated_at'   => $active->activated_at?->toIso8601String(),
+                    'expires_at'     => $active->expires_at?->toIso8601String(),
+                ] : null,
+            ],
+        ]);
+    }
+
+    public function buyTimedVoucher(Request $request): JsonResponse
+    {
+        $pppoeUser = $request->attributes->get('pppoe_user');
+        if (!$pppoeUser) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized'], 401);
+        }
+
+        $validHours = array_column(self::TIMED_VOUCHER_DURATIONS, 'hours');
+        $validated  = $request->validate([
+            'phone_number'   => 'required|string|regex:/^254[0-9]{9}$/',
+            'package_id'     => 'required|uuid',
+            'duration_hours' => 'required|integer|in:' . implode(',', $validHours),
+        ]);
+
+        $package = Package::query()
+            ->where('id', $validated['package_id'])
+            ->where('is_active', true)
+            ->first(['id', 'name', 'download_speed', 'upload_speed', 'price']);
+
+        if (!$package) {
+            return response()->json(['success' => false, 'message' => 'Selected package not found.'], 404);
+        }
+
+        // Find the matching duration and compute price with markup
+        $durationDef = collect(self::TIMED_VOUCHER_DURATIONS)->firstWhere('hours', $validated['duration_hours']);
+        $tenantId    = $request->attributes->get('tenant_id') ?? $pppoeUser->getAttribute('tenant_id');
+        $tenant      = $tenantId ? Tenant::find($tenantId) : null;
+        $markup      = $this->getTimedVoucherMarkup($tenant);
+        $price       = $this->calcTimedVoucherPrice((float) $package->price, $durationDef['fraction'], $markup);
+
+        $option = [
+            'label' => $durationDef['label'],
+            'hours' => $durationDef['hours'],
+            'price' => $price,
+        ];
+
+        $rateLimitKey = 'timed_voucher_limit:' . $pppoeUser->id;
+        if (Cache::has($rateLimitKey)) {
+            return response()->json(['success' => false, 'message' => 'A voucher purchase is already pending.'], 429);
+        }
+
+        try {
+            $mpesaService = app(MpesaService::class);
+            if ($tenantId) {
+                $mpesaService->setTenantPaymentContext((string) $tenantId);
+            }
+            $stkResponse  = $mpesaService->initiateSTKPush(
+                $validated['phone_number'],
+                $option['price']
+            );
+
+            if (!($stkResponse['success'] ?? false)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $stkResponse['message'] ?? 'Failed to initiate payment.',
+                ], 500);
+            }
+
+            $checkoutRequestId = $stkResponse['data']['CheckoutRequestID'];
+            $merchantRequestId = $stkResponse['data']['MerchantRequestID'] ?? null;
+
+            $voucher = PppoeTimedVoucher::create([
+                'pppoe_user_id'  => $pppoeUser->id,
+                'account_number' => $pppoeUser->account_number,
+                'duration_label' => $option['label'],
+                'duration_hours' => $option['hours'],
+                'price'          => $option['price'],
+                'status'         => 'pending_payment',
+                'transaction_id' => $checkoutRequestId,
+                'metadata'       => [
+                    'package_id'     => $package->id,
+                    'package_name'   => $package->name,
+                    'download_speed' => $package->download_speed,
+                    'upload_speed'   => $package->upload_speed,
+                ],
+            ]);
+
+            $tenantId = $request->attributes->get('tenant_id');
+            if ($tenantId) {
+                MpesaTransactionMap::create([
+                    'checkout_request_id' => $checkoutRequestId,
+                    'merchant_request_id' => $merchantRequestId,
+                    'tenant_id'           => $tenantId,
+                    'payment_type'        => 'pppoe_timed_voucher',
+                    'related_id'          => $voucher->id,
+                ]);
+            }
+
+            Cache::put($rateLimitKey, true, now()->addMinutes(2));
+
+            Log::info('PPPoE timed voucher STK push initiated', [
+                'account_number' => $pppoeUser->account_number,
+                'option'         => $option['label'],
+                'amount'         => $option['price'],
+                'transaction_id' => $checkoutRequestId,
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Payment request sent to your phone. Please enter your M-Pesa PIN.',
+                'data'    => [
+                    'voucher_id'     => $voucher->id,
+                    'transaction_id' => $checkoutRequestId,
+                    'duration_label' => $option['label'],
+                    'amount'         => $option['price'],
+                    'phone_number'   => $this->maskPhoneNumber($validated['phone_number']),
+                ],
+            ]);
+        } catch (\Exception $e) {
+            Log::error('PPPoE timed voucher purchase failed', [
+                'account_number' => $pppoeUser->account_number,
+                'error'          => $e->getMessage(),
+            ]);
+            return response()->json(['success' => false, 'message' => 'An error occurred while processing your request.'], 500);
+        }
     }
 
     // ============== Helper Methods ==============
@@ -1570,11 +2337,18 @@ class PppoePortalController extends Controller
 
         $sessionVersionKey = 'pppoe_sessions_v:' . $pppoeUser->id;
         Cache::forever($sessionVersionKey, ((int) Cache::get($sessionVersionKey, 0)) + 1);
+
+        $this->warmDashboardCache($pppoeUser);
     }
 
     private function dashboardCacheKey(PppoeUser $pppoeUser): string
     {
         return 'pppoe_portal_dashboard:' . $pppoeUser->id . ':v' . $this->getPortalCacheVersion($this->dashboardVersionKey($pppoeUser));
+    }
+
+    private function dashboardLockKey(PppoeUser $pppoeUser): string
+    {
+        return 'pppoe_portal_dashboard_lock:' . $pppoeUser->id . ':v' . $this->getPortalCacheVersion($this->dashboardVersionKey($pppoeUser));
     }
 
     private function paymentsCacheKey(PppoeUser $pppoeUser): string
@@ -1596,6 +2370,7 @@ class PppoePortalController extends Controller
     {
         return 'pppoe_portal_payments_version:' . $pppoeUser->id;
     }
+
 
     private function getPortalCacheVersion(string $key): int
     {

@@ -11,6 +11,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use App\Services\QueueMetricsService;
 use Illuminate\Support\Facades\Schema;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -269,9 +270,8 @@ class UnifiedStreamController extends Controller
      */
     private function fetchRouterStatus(Tenant $tenant, string $tenantId): array
     {
-        // Query from public schema with tenant_id filter
-        $routers = Router::where('tenant_id', $tenantId)
-            ->select(['id', 'name', 'ip_address', 'status', 'vpn_status', 'last_seen', 'model', 'os_version', 'vpn_last_handshake'])
+        // Query from tenant schema (search_path isolation)
+        $routers = Router::select(['id', 'name', 'ip_address', 'status', 'vpn_status', 'last_seen', 'model', 'os_version', 'vpn_last_handshake'])
             ->get();
 
         return [
@@ -379,9 +379,13 @@ class UnifiedStreamController extends Controller
     private function fetchSystemHealth(string $tenantId): array
     {
         // Queue stats
+        $queueMetrics = app(QueueMetricsService::class)->getRealtimeMetrics();
         $queueStats = [
-            'pending' => DB::table('jobs')->count(),
-            'failed' => DB::table('failed_jobs')->count(),
+            'pending' => $queueMetrics['pending_jobs'],
+            'processing' => $queueMetrics['processing_jobs'],
+            'delayed' => $queueMetrics['delayed_jobs'],
+            'failed' => $queueMetrics['failed_jobs'],
+            'workers' => $queueMetrics['active_workers'],
         ];
 
         // Connection counts

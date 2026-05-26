@@ -2,7 +2,9 @@
 
 namespace App\Providers;
 
+use App\Contracts\ProvisioningCommandBus;
 use App\Listeners\TrackCompletedJobs;
+use App\Services\ProvisioningServiceClient;
 use App\Models\PersonalAccessToken;
 use App\Services\RadiusService;
 use Illuminate\Database\Eloquent\Relations\Relation;
@@ -26,6 +28,8 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(RadiusService::class, function ($app) {
             return new RadiusService();
         });
+
+        $this->app->singleton(ProvisioningCommandBus::class, ProvisioningServiceClient::class);
         
         // TenantContext carries request-scoped mutable state (tenant/search_path).
         // Under Octane, singleton would leak state across requests.

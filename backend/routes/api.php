@@ -47,6 +47,9 @@ use App\Http\Controllers\Api\SystemAdminSseController;
 use App\Http\Controllers\Api\MonitoringController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\Api\TodoController;
+use App\Http\Controllers\Api\InternalProvisioningTaskController;
+use App\Http\Controllers\Api\InternalProvisioningServiceController;
+use App\Http\Controllers\Api\InternalMonitoringController;
 // NEW: PPPoE Portal Controller
 use App\Http\Controllers\Api\PppoePortalController;
 // HR Module Controllers
@@ -170,6 +173,27 @@ Route::middleware('auth:sanctum')->group(function () {
 // =============================================================================
 // PUBLIC ROUTES - No authentication required
 // =============================================================================
+
+Route::middleware('provisioning.internal')->post('/internal/provisioning/router-tasks/{task}/status', [InternalProvisioningTaskController::class, 'updateStatus'])
+    ->name('api.internal.provisioning.router-tasks.status');
+
+Route::middleware('provisioning.internal')->post('/internal/provisioning/router-services/{service}/status', [InternalProvisioningServiceController::class, 'updateStatus'])
+    ->name('api.internal.provisioning.router-services.status');
+
+Route::middleware('provisioning.internal')->post('/internal/provisioning/monitoring/tenants/{tenant}/vpn-status', [InternalMonitoringController::class, 'updateVpnStatus'])
+    ->name('api.internal.provisioning.monitoring.vpn-status');
+
+Route::middleware('provisioning.internal')->post('/internal/provisioning/monitoring/tenants/{tenant}/router-status', [InternalMonitoringController::class, 'updateRouterStatus'])
+    ->name('api.internal.provisioning.monitoring.router-status');
+
+Route::middleware('provisioning.internal')->post('/internal/provisioning/monitoring/tenants/{tenant}/live-data', [InternalMonitoringController::class, 'updateLiveData'])
+    ->name('api.internal.provisioning.monitoring.live-data');
+
+Route::middleware('provisioning.internal')->post('/internal/provisioning/monitoring/tenants/{tenant}/router-metrics', [InternalMonitoringController::class, 'updateRouterMetrics'])
+    ->name('api.internal.provisioning.monitoring.router-metrics');
+
+Route::middleware('provisioning.internal')->post('/internal/provisioning/monitoring/tenants/{tenant}/vpn-verification', [InternalMonitoringController::class, 'updateVpnVerification'])
+    ->name('api.internal.provisioning.monitoring.vpn-verification');
 
 // Public Packages - Tenant-specific packages for hotspot users
 Route::get('/public/packages', [PublicPackageController::class, 'getPublicPackages'])
@@ -316,10 +340,50 @@ Route::prefix('pppoe-portal')->group(function () {
         Route::get('/payment/status', [PppoePortalController::class, 'checkPaymentStatus'])
             ->middleware('throttle:30,1')
             ->name('api.pppoe-portal.payment.status');
+        Route::get('/debug/payment-state', [PppoePortalController::class, 'debugPaymentState'])
+            ->middleware('throttle:30,1')
+            ->name('api.pppoe-portal.debug.payment-state');
         Route::post('/logout', [PppoePortalController::class, 'logout'])
             ->name('api.pppoe-portal.logout');
+
+        // Account Pause
+        Route::post('/account/pause', [PppoePortalController::class, 'pauseAccount'])
+            ->middleware('throttle:5,1')
+            ->name('api.pppoe-portal.account.pause');
+        Route::post('/account/resume', [PppoePortalController::class, 'resumeAccount'])
+            ->middleware('throttle:5,1')
+            ->name('api.pppoe-portal.account.resume');
+
+        // Plan Switch
+        Route::get('/plans', [PppoePortalController::class, 'availablePlans'])
+            ->middleware('throttle:30,1')
+            ->name('api.pppoe-portal.plans');
+        Route::post('/plans/switch', [PppoePortalController::class, 'requestPlanSwitch'])
+            ->middleware('throttle:5,1')
+            ->name('api.pppoe-portal.plans.switch');
+
+        // Timed Vouchers
+        Route::get('/vouchers/timed/options', [PppoePortalController::class, 'timedVoucherOptions'])
+            ->middleware('throttle:30,1')
+            ->name('api.pppoe-portal.vouchers.timed.options');
+        Route::post('/vouchers/timed/buy', [PppoePortalController::class, 'buyTimedVoucher'])
+            ->middleware('throttle:5,1')
+            ->name('api.pppoe-portal.vouchers.timed.buy');
     });
 });
+
+// ============================================================
+// PPPoE Portal Admin Settings (authenticated tenant admin)
+// ============================================================
+Route::prefix('pppoe/portal/admin')
+    ->middleware(['auth:sanctum'])
+    ->name('api.pppoe-portal.admin.')
+    ->group(function () {
+        Route::get('/voucher-markup', [PppoePortalController::class, 'getTimedVoucherMarkupSetting'])
+            ->name('voucher-markup.get');
+        Route::put('/voucher-markup', [PppoePortalController::class, 'updateTimedVoucherMarkupSetting'])
+            ->name('voucher-markup.update');
+    });
 
 // Health Check - Public (for monitoring/uptime)
 Route::get('/health/ping', [HealthController::class, 'ping'])
@@ -455,6 +519,10 @@ Route::middleware(['auth:sanctum', 'system.admin'])->prefix('system')->name('api
         // Configuration
         Route::get('/configuration', [\App\Http\Controllers\Api\LandlordBillingController::class, 'getConfiguration'])
             ->name('configuration');
+        Route::get('/logging', [\App\Http\Controllers\Api\LandlordBillingController::class, 'getLoggingConfiguration'])
+            ->name('logging');
+        Route::put('/logging', [\App\Http\Controllers\Api\LandlordBillingController::class, 'updateLoggingConfiguration'])
+            ->name('logging.update');
         Route::put('/paybill', [\App\Http\Controllers\Api\LandlordBillingController::class, 'updateDefaultPaybill'])
             ->name('paybill.update');
         Route::put('/rates', [\App\Http\Controllers\Api\LandlordBillingController::class, 'updateBillingRates'])
@@ -829,6 +897,7 @@ Route::middleware(['auth:sanctum', 'role:admin', 'user.active', 'tenant.context'
 
         // Stage 3: Get router interfaces once connected
         Route::get('/{router}/interfaces', [RouterController::class, 'getRouterInterfaces'])->name('interfaces');
+        Route::post('/{router}/interfaces/discover', [RouterController::class, 'discoverInterfaces'])->name('interfaces.discover');
 
         // Stage 4: Generate service configuration
         Route::post('/{router}/generate-service-config', [RouterController::class, 'generateServiceConfig'])->name('generate-service-config');
@@ -838,6 +907,8 @@ Route::middleware(['auth:sanctum', 'role:admin', 'user.active', 'tenant.context'
 
         // Get provisioning status
         Route::get('/{router}/provisioning-status', [RouterController::class, 'getProvisioningStatus'])->name('provisioning-status');
+        Route::post('/{router}/tasks', [RouterController::class, 'createTask'])->name('tasks.create');
+        Route::get('/{router}/tasks/{task}', [RouterController::class, 'getTaskStatus'])->name('tasks.show');
 
         // Reset provisioning for reprovisioning
         Route::post('/{router}/reset-provisioning', [RouterController::class, 'resetProvisioning'])->name('reset-provisioning');
@@ -1239,6 +1310,10 @@ Route::middleware(['auth:sanctum', 'role:admin', 'user.active', 'tenant.context'
         // Get hotspot statistics
         Route::get('/stats', [\App\Http\Controllers\Api\HotspotController::class, 'getStats'])
             ->name('stats');
+
+        // Debug hotspot payment/provisioning state
+        Route::get('/debug/payment-state', [\App\Http\Controllers\Api\HotspotController::class, 'debugPaymentState'])
+            ->name('debug.payment-state');
     });
 });
 

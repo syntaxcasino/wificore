@@ -3,6 +3,7 @@
 namespace App\Services\MikroTik;
 
 use App\Models\Router;
+use App\Models\Tenant;
 use App\Services\TenantContext;
 use Illuminate\Support\Facades\Log;
 
@@ -212,31 +213,46 @@ class RscFileCleanupService
         // Delay cleanup by 60 seconds to ensure deployment is complete
         dispatch(function () use ($routerId, $tenantId, $deploymentFile) {
             $tenantContext = app(TenantContext::class);
-            
+
             // Wrap in transaction for proper SET LOCAL search_path handling with PgBouncer
             \Illuminate\Support\Facades\DB::transaction(function () use ($routerId, $tenantId, $deploymentFile, $tenantContext) {
                 // Force sticky-write PDO so SET LOCAL search_path and all subsequent
                 // queries target the same write backend connection under PgBouncer.
                 \Illuminate\Support\Facades\DB::connection()->recordsHaveBeenModified();
-                if ($tenantId) {
-                    $tenantContext->setTenantById($tenantId);
+
+                $tenant = $tenantId
+                    ? Tenant::query()->whereKey($tenantId)->where('schema_created', true)->first()
+                    : null;
+
+                if ($tenantId && !$tenant) {
+                    Log::warning('RSC cleanup skipped: tenant schema unavailable', [
+                        'router_id' => $routerId,
+                        'tenant_id' => $tenantId,
+                        'deployment_file' => $deploymentFile,
+                    ]);
+                    return;
                 }
 
-                try {
-                    // Now load the router - tenant context is already set
+                $loadRouter = function () use ($routerId, $deploymentFile) {
                     $router = Router::on('pgsql')->useWritePdo()->find($routerId);
                     if (!$router) {
-                        Log::warning('RSC cleanup: Router not found', ['router_id' => $routerId]);
+                        Log::warning('RSC cleanup: Router not found', [
+                            'router_id' => $routerId,
+                            'deployment_file' => $deploymentFile,
+                        ]);
                         return;
                     }
 
                     $service = new self();
                     $service->cleanupRscFiles($router, $deploymentFile);
-                } finally {
-                    if ($tenantId) {
-                        $tenantContext->clearTenant();
-                    }
+                };
+
+                if ($tenant) {
+                    $tenantContext->runInTenantContext($tenant, $loadRouter);
+                    return;
                 }
+
+                $loadRouter();
             });
         })->delay(now()->addSeconds(60));
     }

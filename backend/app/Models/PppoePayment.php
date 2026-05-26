@@ -21,10 +21,24 @@ class PppoePayment extends Model
         parent::boot();
 
         static::saved(function ($payment) {
-            // Invalidate portal cache when payment status changes
-            if ($payment->wasChanged('status')) {
-                Cache::forget('pppoe_portal_dashboard:' . $payment->pppoe_user_id);
-                Cache::forget('pppoe_portal_payments:' . $payment->pppoe_user_id);
+            $freshnessFields = [
+                'status',
+                'payment_reference',
+                'verified_at',
+                'notes',
+                'amount',
+                'payment_method',
+                'payment_date',
+                'metadata',
+            ];
+
+            // Dashboard/payments keys are versioned (e.g. pppoe_portal_dashboard:{id}:v3),
+            // so we must bump the version counters when any portal-visible payment detail changes.
+            if ($payment->wasRecentlyCreated || $payment->wasChanged($freshnessFields)) {
+                $dashboardVersionKey = 'pppoe_portal_dashboard_version:' . $payment->pppoe_user_id;
+                $paymentsVersionKey  = 'pppoe_portal_payments_version:'  . $payment->pppoe_user_id;
+                Cache::forever($dashboardVersionKey, ((int) Cache::get($dashboardVersionKey, 1)) + 1);
+                Cache::forever($paymentsVersionKey,  ((int) Cache::get($paymentsVersionKey,  1)) + 1);
                 Cache::forget('payment_status:' . $payment->pppoe_user_id . ':' . md5($payment->transaction_id));
             }
         });

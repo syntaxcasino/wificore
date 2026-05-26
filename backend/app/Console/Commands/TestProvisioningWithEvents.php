@@ -30,18 +30,8 @@ class TestProvisioningWithEvents extends Command
             $this->info("\n✅ Provisioning completed successfully!");
             $this->line("Execution time: {$result['execution_time']}");
             $this->line("Script: {$result['script_name']}");
-            
-            $this->info("\nVerification results:");
-            $this->table(
-                ['Check', 'Status', 'Message'],
-                collect($result['verification']['checks'] ?? [])->map(function ($check, $key) {
-                    return [
-                        'check' => $key,
-                        'status' => $check['status'] ? '✅' : '❌',
-                        'message' => $check['message']
-                    ];
-                })
-            );
+            $this->line("Method: {$result['method']}");
+            $this->line("Executed commands: " . ($result['executed_commands'] ?? 'n/a'));
             
             return 0;
         } catch (\Exception $e) {

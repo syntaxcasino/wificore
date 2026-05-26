@@ -46,6 +46,11 @@ class PppoeUser extends Model
         'reminder_count',
         'last_invoice_sent_at',
         'last_receipt_sent_at',
+        'paused_at',
+        'pause_ends_at',
+        'pause_reason',
+        'pending_package_id',
+        'plan_switch_effective_date',
     ];
 
     protected $hidden = [
@@ -65,6 +70,9 @@ class PppoeUser extends Model
         'in_grace_period' => 'boolean',
         'grace_period_ends' => 'datetime',
         'suspended_at' => 'datetime',
+        'paused_at' => 'datetime',
+        'pause_ends_at' => 'datetime',
+        'plan_switch_effective_date' => 'datetime',
         'last_reminder_sent_at' => 'datetime',
         'last_invoice_sent_at' => 'datetime',
         'last_receipt_sent_at' => 'datetime',
@@ -250,6 +258,11 @@ class PppoeUser extends Model
         return $this->hasMany(PppoePayment::class);
     }
 
+    public function timedVouchers()
+    {
+        return $this->hasMany(PppoeTimedVoucher::class);
+    }
+
     public function isPaid(): bool
     {
         return $this->payment_status === 'paid';
@@ -270,10 +283,22 @@ class PppoeUser extends Model
         return $this->suspended_at !== null;
     }
 
+    public function isPaused(): bool
+    {
+        return $this->paused_at !== null
+            && ($this->pause_ends_at === null || $this->pause_ends_at->isFuture());
+    }
+
+    public function hasPendingPlanSwitch(): bool
+    {
+        return $this->pending_package_id !== null;
+    }
+
     public function canConnect(): bool
     {
-        return $this->is_active && 
-               !$this->isSuspended() && 
+        return $this->is_active &&
+               !$this->isSuspended() &&
+               !$this->isPaused() &&
                ($this->isPaid() || $this->isInGracePeriod());
     }
 

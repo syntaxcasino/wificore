@@ -34,12 +34,14 @@ func SetupRouter(logger *logrus.Logger) *gin.Engine {
 	{
 		// Provisioning endpoints
 		v1.POST("/provision", handler.ProvisionRouter)
+		v1.POST("/commands", handler.SubmitCommand)
+		v1.POST("/provision-service", handler.ProvisionService)
 		v1.POST("/deploy-script", handler.DeployScript)
 		v1.POST("/verify", handler.VerifyConnectivity)
-		
+
 		// Live data endpoints
 		v1.POST("/live-data", handler.FetchLiveData)
-		
+
 		// Command execution
 		v1.POST("/execute", handler.ExecuteCommand)
 	}
@@ -51,7 +53,7 @@ func SetupRouter(logger *logrus.Logger) *gin.Engine {
 func LoggerMiddleware(logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := c.Request.Context().Value("start_time")
-		
+
 		c.Next()
 
 		logger.WithFields(logrus.Fields{
@@ -61,7 +63,7 @@ func LoggerMiddleware(logger *logrus.Logger) gin.HandlerFunc {
 			"ip":         c.ClientIP(),
 			"user_agent": c.Request.UserAgent(),
 		}).Info("HTTP request")
-		
+
 		_ = start // Placeholder for timing
 	}
 }

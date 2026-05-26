@@ -196,7 +196,7 @@ class PppoePortalAuth
             return $this->tenantContext->runInTenantContext($tenant, function () use ($tenant, $userId) {
                 $user = PppoeUser::query()->find($userId);
                 if ($user) {
-                    $user->setAttribute('tenant_id', (string) $tenant->id);
+                    $this->attachResolvedTenantId($user, (string) $tenant->id);
                 }
 
                 return $user;
@@ -237,7 +237,7 @@ class PppoePortalAuth
             return $this->tenantContext->runInTenantContext($tenant, function () use ($tenant, $userId) {
                 $user = PppoeUser::query()->find($userId);
                 if ($user) {
-                    $user->setAttribute('tenant_id', (string) $tenant->id);
+                    $this->attachResolvedTenantId($user, (string) $tenant->id);
                 }
 
                 return $user;
@@ -251,6 +251,8 @@ class PppoePortalAuth
             ->where('is_active', true)
             ->whereNotNull('schema_name')
             ->where('schema_created', true)
+            ->orderBy('updated_at', 'desc')
+            ->limit(50)
             ->get(['id', 'schema_name', 'schema_created']);
 
         foreach ($tenants as $tenant) {
@@ -259,7 +261,7 @@ class PppoePortalAuth
                 return $this->tenantContext->runInTenantContext($tenant, function () use ($tenant, $userId) {
                     $user = PppoeUser::query()->find($userId);
                     if ($user) {
-                        $user->setAttribute('tenant_id', (string) $tenant->id);
+                        $this->attachResolvedTenantId($user, (string) $tenant->id);
                     }
 
                     return $user;
@@ -276,6 +278,14 @@ class PppoePortalAuth
         }
 
         return null;
+    }
+
+    private function attachResolvedTenantId(PppoeUser $user, string $tenantId): PppoeUser
+    {
+        $user->tenant_id = $tenantId;
+        $user->syncOriginalAttribute('tenant_id');
+
+        return $user;
     }
 
     private function resolveTenantIdForUser(PppoeUser $pppoeUser): ?string

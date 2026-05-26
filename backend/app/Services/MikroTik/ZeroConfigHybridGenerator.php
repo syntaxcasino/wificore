@@ -196,6 +196,13 @@ class ZeroConfigHybridGenerator
         $dnsSecondary = $pool->dns_secondary ?? '8.8.4.4';
         $dns          = "{$dnsPrimary},{$dnsSecondary}";
         $portalHost = $params['portal_host'] ?? null;
+        $portalUrl = $params['portal_url'] ?? null;
+        $dnsName = $portalHost ?: 'hotspot.local';
+        $portalHtml = null;
+        if ($portalUrl) {
+            $escapedUrl = htmlspecialchars((string) $portalUrl, ENT_QUOTES);
+            $portalHtml = $this->escapeRouterOsString("<html><head><meta http-equiv='refresh' content='0;url={$escapedUrl}'></head><body><a href='{$escapedUrl}'>Continue</a></body></html>");
+        }
         $s          = [];
 
         $s[] = "# Hotspot Config ({$label})";
@@ -208,8 +215,11 @@ class ZeroConfigHybridGenerator
         $s[] = ":do { /ip dhcp-server network remove [/ip dhcp-server network find comment~\"hyb-hs-net-{$id}\"]; } on-error={}";
         $s[] = ":do { /ip dhcp-server network add address=\"{$network}/{$cidr}\" gateway=\"{$gateway}\" dns-server=\"{$dns}\" comment=\"hyb-hs-net-{$id}\"; } on-error={ :error \"hyb-hs-net-fail\" }";
         $s[] = ":do { /ip hotspot profile remove [/ip hotspot profile find name=\"{$profile}\"]; } on-error={}";
-        $s[] = ":do { /ip hotspot profile add name=\"{$profile}\" hotspot-address=\"{$gateway}\" use-radius=yes html-directory=\"hotspot\" http-cookie-lifetime=\"1d\" dns-name=hotspot.local; } on-error={ :error \"hyb-hs-prof-fail\" }";
+        $s[] = ":do { /ip hotspot profile add name=\"{$profile}\" hotspot-address=\"{$gateway}\" use-radius=yes html-directory=\"hotspot\" http-cookie-lifetime=\"1d\" dns-name=\"{$dnsName}\"; } on-error={ :error \"hyb-hs-prof-fail\" }";
         $s[] = ":do { /ip hotspot profile set [/ip hotspot profile find name=\"{$profile}\"] login-by=\"http-chap,http-pap\"; } on-error={ /log warning \"hyb: Failed to set hotspot login-by — default auth methods may be broader than expected\" }";
+        if ($portalHtml) {
+            $s[] = ":do { /file set [/file find name=\"hotspot/login.html\"] contents=\"{$portalHtml}\" } on-error={ /log warning \"hyb-{$id}: Failed to set portal URL (non-fatal)\" }";
+        }
         $s[] = ":do { /ip hotspot remove [/ip hotspot find name=\"{$server}\"]; } on-error={}";
         $s[] = ":do { /ip hotspot add name=\"{$server}\" interface=\"{$iface}\" profile=\"{$profile}\" address-pool=\"{$poolName}\" addresses-per-mac=2 idle-timeout=\"5m\" keepalive-timeout=\"2m\" disabled=no; } on-error={ :error \"hyb-hs-srv-fail\" }";
         if ($portalHost) {
@@ -391,7 +401,7 @@ class ZeroConfigHybridGenerator
 
     private function generateBridgePppoeConfig(array $params): array
     {
-        return $this->buildPppoeConfig($params, $params['bridge'], 'Bridge');
+        return $this->buildPppoeConfig(array_merge($params, ['assign_interface_ip' => false]), $params['bridge'], 'Bridge');
     }
 
     private function buildHotspotConfig(array $params, string $iface, string $label): array
@@ -408,6 +418,13 @@ class ZeroConfigHybridGenerator
         $dnsSecondary = $pool->dns_secondary ?? '8.8.4.4';
         $dns          = "{$dnsPrimary},{$dnsSecondary}";
         $portalHost = $params['portal_host'] ?? null;
+        $portalUrl = $params['portal_url'] ?? null;
+        $dnsName = $portalHost ?: 'hotspot.local';
+        $portalHtml = null;
+        if ($portalUrl) {
+            $escapedUrl = htmlspecialchars((string) $portalUrl, ENT_QUOTES);
+            $portalHtml = $this->escapeRouterOsString("<html><head><meta http-equiv='refresh' content='0;url={$escapedUrl}'></head><body><a href='{$escapedUrl}'>Continue</a></body></html>");
+        }
         $s          = [];
 
         $s[] = "# Hotspot Config ({$label})";
@@ -420,8 +437,11 @@ class ZeroConfigHybridGenerator
         $s[] = ":do { /ip dhcp-server network remove [/ip dhcp-server network find comment~\"hyb-hs-net-{$id}\"]; } on-error={}";
         $s[] = ":do { /ip dhcp-server network add address=\"{$network}/{$cidr}\" gateway=\"{$gateway}\" dns-server=\"{$dns}\" comment=\"hyb-hs-net-{$id}\"; } on-error={ :error \"hyb-hs-net-fail\" }";
         $s[] = ":do { /ip hotspot profile remove [/ip hotspot profile find name=\"{$profile}\"]; } on-error={}";
-        $s[] = ":do { /ip hotspot profile add name=\"{$profile}\" hotspot-address=\"{$gateway}\" use-radius=yes html-directory=\"hotspot\" http-cookie-lifetime=\"1d\" dns-name=hotspot.local; } on-error={ :error \"hyb-hs-prof-fail\" }";
+        $s[] = ":do { /ip hotspot profile add name=\"{$profile}\" hotspot-address=\"{$gateway}\" use-radius=yes html-directory=\"hotspot\" http-cookie-lifetime=\"1d\" dns-name=\"{$dnsName}\"; } on-error={ :error \"hyb-hs-prof-fail\" }";
         $s[] = ":do { /ip hotspot profile set [/ip hotspot profile find name=\"{$profile}\"] login-by=\"http-chap,http-pap\"; } on-error={ /log warning \"hyb: Failed to set hotspot login-by — default auth methods may be broader than expected\" }";
+        if ($portalHtml) {
+            $s[] = ":do { /file set [/file find name=\"hotspot/login.html\"] contents=\"{$portalHtml}\" } on-error={ /log warning \"hyb-{$id}: Failed to set portal URL (non-fatal)\" }";
+        }
         $s[] = ":do { /ip hotspot remove [/ip hotspot find name=\"{$server}\"]; } on-error={}";
         $s[] = ":do { /ip hotspot add name=\"{$server}\" interface=\"{$iface}\" profile=\"{$profile}\" address-pool=\"{$poolName}\" addresses-per-mac=2 idle-timeout=\"5m\" keepalive-timeout=\"2m\" disabled=no; } on-error={ :error \"hyb-hs-srv-fail\" }";
         if ($portalHost) {
@@ -441,12 +461,16 @@ class ZeroConfigHybridGenerator
         $profile     = "hyb-pp-prof-{$id}";
         $serviceName = "hyb-pp-svc-{$id}";
         $gateway     = $this->getSafeGatewayIp($pool->network_cidr, $pool->gateway_ip);
+        [, $pppoeCidr] = array_pad(explode('/', $pool->network_cidr, 2), 2, '24');
+        $assignInterfaceIp = $params['assign_interface_ip'] ?? true;
         $s           = [];
 
         $s[] = "# PPPoE Config ({$label})";
         $s[] = ":do { /interface list add name=\"{$pal}\" } on-error={}";
-        $s[] = ":do { /ip address remove [/ip address find interface=\"{$iface}\"]; } on-error={}";
-        $s[] = ":do { /ip address add address=\"{$gateway}/24\" interface=\"{$iface}\" comment=\"hyb-pp-gw-{$id}\"; } on-error={ :error \"hyb-{$id}: FATAL - PPPoE gateway IP failed\" }";
+        if ($assignInterfaceIp) {
+            $s[] = ":do { /ip address remove [/ip address find interface=\"{$iface}\"]; } on-error={}";
+            $s[] = ":do { /ip address add address=\"{$gateway}/{$pppoeCidr}\" interface=\"{$iface}\" comment=\"hyb-pp-gw-{$id}\"; } on-error={ :error \"hyb-{$id}: FATAL - PPPoE gateway IP failed\" }";
+        }
         $s[] = ":do { /ip pool remove [/ip pool find name=\"{$poolName}\"]; } on-error={}";
         $s[] = ":do { /ip pool add name=\"{$poolName}\" ranges=\"{$pool->range_start}-{$pool->range_end}\" comment=\"hyb-pp-{$id}\"; } on-error={ /log error \"hyb-$id: FATAL - PPPoE pool add failed\" }";
         $s[] = ":do { /ppp profile remove [/ppp profile find name=\"{$profile}\"]; } on-error={}";
@@ -464,6 +488,14 @@ class ZeroConfigHybridGenerator
         $s[] = "";
         return $s;
     }
+
+    /**
+     * Generate tier-based firewall rules for Bridge mode - minimal for hAP lite, full for high-end
+     */
+
+    /**
+     * Generate tier-based firewall rules for Bridge mode - minimal for hAP lite, full for high-end
+     */
 
     /**
      * Generate tier-based firewall rules for Bridge mode - minimal for hAP lite, full for high-end
