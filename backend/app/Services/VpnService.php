@@ -126,14 +126,14 @@ class VpnService extends TenantAwareService
     public function createVpnConfiguration(Tenant $tenant, Router $router): VpnConfiguration
     {
         return $this->tenantContext->runInTenantContext($tenant, function () use ($tenant, $router) {
-            return DB::transaction(function () use ($tenant, $router) {
+            $clientKeys = $this->generateWireGuardKeys();
+            $presharedKey = $this->generatePresharedKey();
+            $serverEndpoint = config('vpn.server_endpoint');
+
+            $vpnConfig = DB::transaction(function () use ($tenant, $router, $clientKeys, $presharedKey, $serverEndpoint) {
                 $tunnel = $this->tunnelService->getOrCreateTenantTunnel($tenant->id);
 
                 $clientIp = $tunnel->getNextAvailableIp();
-
-                $clientKeys = $this->generateWireGuardKeys();
-
-                $serverEndpoint = config('vpn.server_endpoint');
 
                 $interfaceName = 'wg-' . substr($router->id, 0, 8);
 
@@ -149,7 +149,7 @@ class VpnService extends TenantAwareService
                     'server_endpoint' => $serverEndpoint,
                     'listen_port' => $tunnel->listen_port,
                     'interface_name' => $interfaceName,
-                    'preshared_key' => $this->generatePresharedKey(),
+                    'preshared_key' => $presharedKey,
                     'status' => 'pending',
                 ]);
 

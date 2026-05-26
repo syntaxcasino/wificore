@@ -157,7 +157,7 @@ class PppoePortalAuthOptimized
                             // OPTIMIZATION: Eager load package to prevent N+1 in controller
                             $user = PppoeUser::query()->with('package:id,name,download_speed,upload_speed,price')->find($userId);
                             if ($user) {
-                                $user->setAttribute('tenant_id', (string) $tenant->id);
+                                $this->attachResolvedTenantId($user, (string) $tenant->id);
                             }
                             return $user;
                         });
@@ -280,7 +280,7 @@ class PppoePortalAuthOptimized
                     // OPTIMIZATION: Eager load package to prevent N+1 in controller
                     $user = PppoeUser::query()->with('package:id,name,download_speed,upload_speed,price')->find($userId);
                     if ($user) {
-                        $user->setAttribute('tenant_id', (string) $tenant->id);
+                        $this->attachResolvedTenantId($user, (string) $tenant->id);
                     }
                     return $user;
                 });
@@ -329,7 +329,7 @@ class PppoePortalAuthOptimized
                     // OPTIMIZATION: Eager load package to prevent N+1 in controller
                     $user = PppoeUser::query()->with('package:id,name,download_speed,upload_speed,price')->find($userId);
                     if ($user) {
-                        $user->setAttribute('tenant_id', (string) $tenant->id);
+                        $this->attachResolvedTenantId($user, (string) $tenant->id);
                     }
                     return $user;
                 });
@@ -362,7 +362,7 @@ class PppoePortalAuthOptimized
                         // OPTIMIZATION: Eager load package to prevent N+1 in controller
                         $user = PppoeUser::query()->with('package:id,name,download_speed,upload_speed,price')->find($userId);
                         if ($user) {
-                            $user->setAttribute('tenant_id', (string) $tenant->id);
+                            $this->attachResolvedTenantId($user, (string) $tenant->id);
                         }
                         return $user;
                     });
@@ -377,6 +377,17 @@ class PppoePortalAuthOptimized
         }
 
         return null;
+    }
+
+    private function attachResolvedTenantId(PppoeUser $user, string $tenantId): PppoeUser
+    {
+        $user->tenant_id = $tenantId;
+
+        // Expose tenant context to the request lifecycle without making later
+        // model saves try to persist tenant_id into schema-isolated tenant tables.
+        $user->syncOriginalAttribute('tenant_id');
+
+        return $user;
     }
 
     /**

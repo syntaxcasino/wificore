@@ -8,7 +8,7 @@ use App\Models\Payment;
 use App\Models\Package;
 use App\Jobs\ProvisionUserInMikroTikJob;
 use App\Models\Router;
-use App\Services\MikroTik\SshExecutor;
+use App\Services\ProvisioningServiceClient;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -219,23 +219,20 @@ class UserProvisioningService extends TenantAwareService
     protected function provisionInMikroTik(UserSubscription $subscription, array $credentials, string $routerId): void
     {
         try {
-            $router = Router::findOrFail($routerId);
+            $router = Router::query()
+                ->select(['id', 'host', 'ssh_port', 'ssh_user', 'ssh_pass', 'ssh_private_key', 'ip_address', 'vpn_ip', 'username', 'password', 'port'])
+                ->findOrFail($routerId);
             $package = $subscription->package;
-
-            // Use SSH-only provisioning via SshExecutor (no RouterOS API)
-            $ssh = new SshExecutor($router, 10);
-            $ssh->connect();
 
             $username = $credentials['username'];
             $password = $credentials['password'];
             $limitUptime = $this->formatDuration($package->duration);
             $limitBytes = $this->calculateDataLimit($package);
             $profile = $this->getProfileName($package);
-
-            // Create hotspot user via RouterOS CLI
             $comment = 'Auto-provisioned - Subscription #' . $subscription->id;
+
             $command = sprintf(
-                '/ip hotspot user add name="%s" password="%s" limit-uptime=%s limit-bytes-total=%d profile="%s" comment="%s"',
+                ':do { /ip hotspot user add name="%s" password="%s" limit-uptime=%s limit-bytes-total=%d profile="%s" comment="%s" } on-error={}',
                 addslashes($username),
                 addslashes($password),
                 $limitUptime,
@@ -244,13 +241,16 @@ class UserProvisioningService extends TenantAwareService
                 addslashes($comment)
             );
 
-            $result = $ssh->exec($command);
+            app(ProvisioningServiceClient::class)->executeCommands(
+                $router,
+                [$command],
+                (string) ($subscription->user?->tenant_id ?? app(TenantContext::class)->getTenantId() ?? '')
+            );
 
-            \Log::info('User provisioned in MikroTik via SSH', [
+            \Log::info('User provisioned in MikroTik via Go-backed execution', [
                 'subscription_id' => $subscription->id,
                 'router_id' => $routerId,
                 'username' => $username,
-                'result_preview' => substr($result, 0, 200),
             ]);
         } catch (\Exception $e) {
             \Log::error('MikroTik provisioning failed', [

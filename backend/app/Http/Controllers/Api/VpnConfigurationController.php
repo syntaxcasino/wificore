@@ -7,6 +7,7 @@ use App\Jobs\ProvisionVpnConfigurationJob;
 use App\Models\Router;
 use App\Models\VpnConfiguration;
 use App\Services\VpnService;
+use App\Services\ProvisioningServiceClient;
 use App\Services\VpnConnectivityService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -352,37 +353,41 @@ class VpnConfigurationController extends Controller
             'router_id' => $config->router_id,
             'max_wait_seconds' => $maxWaitSeconds,
         ]);
+        $router = Router::findOrFail($config->router_id);
+        $payload = [
+            'monitoring' => [
+                'routers' => [[
+                    'router_id' => (string) $router->id,
+                    'router_name' => (string) $router->name,
+                    'status' => (string) ($router->status ?? ''),
+                    'client_ip' => (string) ($config->client_ip ?? ''),
+                    'provisioning_stage' => (string) ($router->provisioning_stage ?? ''),
+                    'vpn_config_id' => (int) $config->id,
+                ]],
+                'max_wait_seconds' => $maxWaitSeconds,
+                'retry_interval' => $retryInterval,
+            ],
+        ];
 
-        // Wait for connectivity
-        $result = $this->connectivityService->waitForConnectivity(
-            $config,
-            $maxWaitSeconds,
-            $retryInterval
-        );
-
-        // Update status
-        if ($result['success']) {
-            $config->update([
-                'status' => 'connected',
-                'last_handshake_at' => now(),
-            ]);
-        }
+        $response = app(ProvisioningServiceClient::class)
+            ->submitVpnConnectivityWaitCommand((string) $request->user()->tenant_id, $payload);
 
         return response()->json([
-            'success' => $result['success'],
+            'success' => true,
             'data' => [
                 'config_id' => $id,
                 'router_id' => $config->router_id,
                 'client_ip' => $config->client_ip,
                 'connectivity' => [
-                    'reachable' => $result['success'],
-                    'packet_loss' => $result['packet_loss'],
-                    'latency_ms' => $result['latency'],
-                    'status' => $result['success'] ? 'connected' : 'timeout',
-                    'attempts' => $result['attempts'] ?? null,
+                    'reachable' => null,
+                    'packet_loss' => null,
+                    'latency_ms' => null,
+                    'status' => 'queued',
+                    'attempts' => null,
                 ],
-                'message' => $result['message'],
+                'message' => 'VPN connectivity verification submitted',
+                'command_id' => $response['command_id'] ?? null,
             ],
-        ]);
+        ], 202);
     }
 }

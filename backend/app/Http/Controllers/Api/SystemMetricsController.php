@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Services\MetricsService;
+use App\Services\QueueMetricsService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -82,72 +83,36 @@ class SystemMetricsController extends Controller
     /**
      * Get queue statistics (real-time from cache)
      */
-    public function getQueueStats(): JsonResponse
+    public function getQueueStats(QueueMetricsService $queueMetrics): JsonResponse
     {
         try {
-            // Try to get from cache first (updated by background job every minute)
             $cachedMetrics = Cache::get('metrics:queue:latest');
-            
-            if ($cachedMetrics) {
-                \Log::info('Queue stats served from cache', [
-                    'workers' => $cachedMetrics['active_workers'] ?? 0
-                ]);
-                
-                return response()->json([
-                    'pending' => $cachedMetrics['pending_jobs'] ?? 0,
-                    'processing' => $cachedMetrics['processing_jobs'] ?? 0,
-                    'failed' => $cachedMetrics['failed_jobs'] ?? 0,
-                    'completed' => $cachedMetrics['completed_jobs'] ?? 0,
-                    'workers' => $cachedMetrics['active_workers'] ?? 0,
-                    'workersByQueue' => $cachedMetrics['workers_by_queue'] ?? (object)[],
-                    'pendingByQueue' => $cachedMetrics['pending_by_queue'] ?? (object)[],
-                    'failedByQueue' => $cachedMetrics['failed_by_queue'] ?? (object)[],
-                    'source' => 'cache'
-                ]);
-            }
-            
-            // Fallback: collect metrics directly (if cache is empty)
-            \Log::warning('Cache miss - collecting queue stats directly');
-            
-            $pendingByQueue = DB::table('jobs')
-                ->select('queue', DB::raw('count(*) as count'))
-                ->whereNull('reserved_at')
-                ->groupBy('queue')
-                ->pluck('count', 'queue')
-                ->toArray();
-            
-            $failedByQueue = DB::table('failed_jobs')
-                ->select('queue', DB::raw('count(*) as count'))
-                ->groupBy('queue')
-                ->pluck('count', 'queue')
-                ->toArray();
-            
-            $processingJobs = DB::table('jobs')
-                ->whereNotNull('reserved_at')
-                ->count();
-            
-            $workersByQueue = $this->getWorkersByQueue();
-            $activeWorkers = array_sum($workersByQueue);
-            $completedLastHour = Cache::get('queue:completed:last_hour', 0);
-            
-            $stats = [
-                'pending' => DB::table('jobs')->count(),
-                'processing' => $processingJobs,
-                'failed' => DB::table('failed_jobs')->count(),
-                'completed' => $completedLastHour,
-                'workers' => $activeWorkers,
-                'workersByQueue' => empty($workersByQueue) ? (object)[] : $workersByQueue,
-                'pendingByQueue' => empty($pendingByQueue) ? (object)[] : $pendingByQueue,
-                'failedByQueue' => empty($failedByQueue) ? (object)[] : $failedByQueue,
-                'source' => 'direct'
-            ];
-            
-            return response()->json($stats);
+            $metrics = is_array($cachedMetrics) && ! empty($cachedMetrics)
+                ? $cachedMetrics
+                : $queueMetrics->getRealtimeMetrics();
+
+            return response()->json([
+                'pending' => $metrics['pending_jobs'] ?? 0,
+                'processing' => $metrics['processing_jobs'] ?? 0,
+                'delayed' => $metrics['delayed_jobs'] ?? 0,
+                'failed' => $metrics['failed_jobs'] ?? 0,
+                'completed' => $metrics['completed_jobs'] ?? 0,
+                'workers' => $metrics['active_workers'] ?? 0,
+                'workersByQueue' => $metrics['workers_by_queue'] ?? (object) [],
+                'configuredWorkersByQueue' => $metrics['configured_workers_by_queue'] ?? (object) [],
+                'pendingByQueue' => $metrics['pending_by_queue'] ?? (object) [],
+                'processingByQueue' => $metrics['processing_by_queue'] ?? (object) [],
+                'delayedByQueue' => $metrics['delayed_by_queue'] ?? (object) [],
+                'failedByQueue' => $metrics['failed_by_queue'] ?? (object) [],
+                'oldestPendingAgeByQueue' => $metrics['oldest_pending_age_by_queue'] ?? (object) [],
+                'oldestPendingJobAgeSeconds' => $metrics['oldest_pending_job_age_seconds'] ?? null,
+                'source' => is_array($cachedMetrics) && ! empty($cachedMetrics) ? 'cache' : 'redis',
+            ]);
         } catch (\Exception $e) {
             \Log::error('Failed to get queue stats', [
                 'error' => $e->getMessage()
             ]);
-            
+
             return response()->json([
                 'error' => 'Failed to retrieve queue statistics',
                 'message' => $e->getMessage()

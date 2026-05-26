@@ -36,6 +36,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'subdomain.binding' => \App\Http\Middleware\EnforceSubdomainTenantBinding::class,
             'sse.auth' => \App\Http\Middleware\AuthenticateSseToken::class,
             'wireguard.webhook' => \App\Http\Middleware\VerifyWireGuardWebhookSignature::class,
+            'provisioning.internal' => \App\Http\Middleware\VerifyProvisioningInternalApiKey::class,
         ]);
 
         // Apply DDoS protection and subdomain binding globally to API routes

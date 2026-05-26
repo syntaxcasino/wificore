@@ -3,59 +3,25 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Services\QueueMetricsService;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 
 class QueueStatsController extends Controller
 {
-    /**
-     * Get queue statistics
-     */
-    public function index(): JsonResponse
+    public function index(QueueMetricsService $queueMetrics): JsonResponse
     {
         try {
-            // Pending jobs
-            $pendingJobs = DB::table('jobs')->count();
-            $pendingByQueue = DB::table('jobs')
-                ->select('queue', DB::raw('count(*) as count'))
-                ->groupBy('queue')
-                ->get()
-                ->mapWithKeys(fn($item) => [$item->queue => $item->count])
-                ->toArray();
-
-            // Failed jobs
-            $failedJobs = DB::table('failed_jobs')->count();
-            $failedByQueue = DB::table('failed_jobs')
-                ->select('queue', DB::raw('count(*) as count'))
-                ->groupBy('queue')
-                ->get()
-                ->mapWithKeys(fn($item) => [$item->queue => $item->count])
-                ->toArray();
-
-            // Processed jobs (estimated)
+            $metrics = $queueMetrics->getRealtimeMetrics();
             $processedCount = $this->getProcessedJobsCount();
-            
-            // Total jobs
-            $totalJobs = $pendingJobs + $failedJobs + $processedCount;
-
-            // Success rate
-            $successRate = $totalJobs > 0 ? round(($processedCount / $totalJobs) * 100, 2) : 0;
-            $failureRate = $totalJobs > 0 ? round(($failedJobs / $totalJobs) * 100, 2) : 0;
-
-            // Recent activity (last 24 hours)
-            $recentActivity = $this->getRecentActivity();
-
-            // Worker status
-            $workerRunning = $this->checkWorkerRunning();
-
-            // Queue health status
+            $totalJobs = $metrics['pending_jobs'] + $metrics['failed_jobs'] + $processedCount;
+            $workerRunning = ! empty($metrics['workers_by_queue']);
             $status = 'healthy';
-            if ($failedJobs > 50) {
+
+            if ($metrics['failed_jobs'] > 50) {
                 $status = 'critical';
-            } elseif ($failedJobs > 10) {
-                $status = 'warning';
-            } elseif (!$workerRunning) {
+            } elseif ($metrics['failed_jobs'] > 10 || ! $workerRunning) {
                 $status = 'warning';
             }
 
@@ -65,116 +31,95 @@ class QueueStatsController extends Controller
                     'summary' => [
                         'total_jobs' => $totalJobs,
                         'processed' => $processedCount,
-                        'pending' => $pendingJobs,
-                        'failed' => $failedJobs,
-                        'success_rate' => $successRate,
-                        'failure_rate' => $failureRate,
+                        'pending' => $metrics['pending_jobs'],
+                        'processing' => $metrics['processing_jobs'],
+                        'delayed' => $metrics['delayed_jobs'],
+                        'failed' => $metrics['failed_jobs'],
+                        'oldest_pending_job_age_seconds' => $metrics['oldest_pending_job_age_seconds'],
+                        'success_rate' => $totalJobs > 0 ? round(($processedCount / $totalJobs) * 100, 2) : 0,
+                        'failure_rate' => $totalJobs > 0 ? round(($metrics['failed_jobs'] / $totalJobs) * 100, 2) : 0,
                     ],
-                    'pending_by_queue' => $pendingByQueue,
-                    'failed_by_queue' => $failedByQueue,
-                    'recent_activity' => $recentActivity,
+                    'configured_queues' => $metrics['configured_queues'],
+                    'pending_by_queue' => $metrics['pending_by_queue'],
+                    'processing_by_queue' => $metrics['processing_by_queue'],
+                    'delayed_by_queue' => $metrics['delayed_by_queue'],
+                    'failed_by_queue' => $metrics['failed_by_queue'],
+                    'oldest_pending_age_by_queue' => $metrics['oldest_pending_age_by_queue'],
                     'worker_status' => [
                         'running' => $workerRunning,
                         'status' => $workerRunning ? 'active' : 'stopped',
+                        'workers_by_queue' => $metrics['workers_by_queue'],
+                        'configured_workers_by_queue' => $metrics['configured_workers_by_queue'],
                     ],
+                    'recent_activity' => $this->getRecentActivity(),
                     'health_status' => $status,
                     'tracking_since' => Cache::get('queue_stats_start_time', now())->toIso8601String(),
-                ]
+                ],
             ]);
         } catch (\Exception $e) {
             return response()->json([
                 'status' => 'error',
                 'message' => 'Failed to fetch queue statistics',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
 
-    /**
-     * Get processed jobs count
-     */
     private function getProcessedJobsCount(): int
     {
-        if (!Cache::has('queue_stats_start_time')) {
-            // Max 30 seconds cache to prevent stale data
+        if (! Cache::has('queue_stats_start_time')) {
             Cache::put('queue_stats_start_time', now(), now()->addSeconds(30));
         }
 
-        // Get count from logs with minimal caching (30 seconds for performance)
         return $this->estimateProcessedFromLogs();
     }
 
-    /**
-     * Estimate processed jobs from logs
-     * Minimal caching (30 seconds) for performance while maintaining near real-time data
-     */
     private function estimateProcessedFromLogs(): int
     {
-        // Check cache first (30 second cache for performance)
         $cacheKey = 'queue_processed_jobs_count';
         $cached = Cache::get($cacheKey);
-        
+
         if ($cached !== null) {
             return $cached;
         }
-        
+
         try {
-            // Count from all queue log files using shell command for efficiency
             $logDir = storage_path('logs');
-            
-            // Use grep to count DONE entries efficiently
             $command = "grep -h ' DONE' " . escapeshellarg($logDir) . "/*-queue.log 2>/dev/null | wc -l";
             $count = (int) trim(shell_exec($command));
-            
-            // If shell command fails, fallback to PHP
-            if ($count === 0) {
-                $queueLogs = glob($logDir . '/*-queue.log');
-                
-                foreach ($queueLogs as $logFile) {
+
+            if ($count == 0) {
+                foreach (glob($logDir . '/*-queue.log') as $logFile) {
                     if (file_exists($logFile)) {
-                        // Count "DONE" entries which indicate successful job completion
-                        $content = file_get_contents($logFile);
-                        $count += substr_count($content, ' DONE');
+                        $count += substr_count((string) file_get_contents($logFile), ' DONE');
                     }
                 }
             }
-            
-            // Cache for only 30 seconds to maintain near real-time stats
+
             Cache::put($cacheKey, $count, now()->addSeconds(30));
-            
             return $count;
         } catch (\Exception $e) {
             return 0;
         }
     }
 
-    /**
-     * Get recent activity
-     */
     private function getRecentActivity(): array
     {
         try {
-            // Last 24 hours
             $failed24h = DB::table('failed_jobs')
                 ->where('failed_at', '>=', now()->subDay())
                 ->count();
-
-            // Last 7 days
             $failedWeek = DB::table('failed_jobs')
                 ->where('failed_at', '>=', now()->subWeek())
                 ->count();
 
-            // Count processed jobs from queue logs (last 24 hours)
-            $processed24h = $this->countRecentProcessedJobs(1);
-            $processedWeek = $this->countRecentProcessedJobs(7);
-
             return [
                 'last_24_hours' => [
-                    'processed' => $processed24h,
+                    'processed' => $this->countRecentProcessedJobs(1),
                     'failed' => $failed24h,
                 ],
                 'last_7_days' => [
-                    'processed' => $processedWeek,
+                    'processed' => $this->countRecentProcessedJobs(7),
                     'failed' => $failedWeek,
                 ],
             ];
@@ -186,103 +131,47 @@ class QueueStatsController extends Controller
         }
     }
 
-    /**
-     * Count recently processed jobs from logs
-     */
     private function countRecentProcessedJobs(int $days): int
     {
-        // Check cache first (30 second cache for near real-time data)
         $cacheKey = "queue_processed_last_{$days}_days";
         $cached = Cache::get($cacheKey);
-        
+
         if ($cached !== null) {
             return $cached;
         }
-        
+
         try {
             $logDir = storage_path('logs');
             $count = 0;
             $cutoffDate = now()->subDays($days)->format('Y-m-d');
-            
-            // Use shell command for efficiency
             $command = "grep -h ' DONE' " . escapeshellarg($logDir) . "/*-queue.log 2>/dev/null | grep -c '" . $cutoffDate . "'";
             $shellCount = (int) trim(shell_exec($command));
-            
+
             if ($shellCount > 0) {
                 $count = $shellCount;
             } else {
-                // Fallback to PHP parsing
-                $queueLogs = glob($logDir . '/*-queue.log');
-                
-                foreach ($queueLogs as $logFile) {
-                    if (file_exists($logFile)) {
-                        $lines = file($logFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-                        foreach ($lines as $line) {
-                            // Check if line contains DONE and is within date range
-                            if (strpos($line, ' DONE') !== false) {
-                                // Extract date from line (format: 2025-10-12 01:41:08)
-                                if (preg_match('/(\d{4}-\d{2}-\d{2})/', $line, $matches)) {
-                                    if ($matches[1] >= $cutoffDate) {
-                                        $count++;
-                                    }
-                                }
-                            }
+                foreach (glob($logDir . '/*-queue.log') as $logFile) {
+                    if (! file_exists($logFile)) {
+                        continue;
+                    }
+
+                    $lines = file($logFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [];
+                    foreach ($lines as $line) {
+                        if (strpos($line, ' DONE') === false) {
+                            continue;
+                        }
+
+                        if (preg_match('/(\d{4}-\d{2}-\d{2})/', $line, $matches) && $matches[1] >= $cutoffDate) {
+                            $count++;
                         }
                     }
                 }
             }
-            
-            // Cache for only 30 seconds to maintain near real-time stats
+
             Cache::put($cacheKey, $count, now()->addSeconds(30));
-            
             return $count;
         } catch (\Exception $e) {
             return 0;
-        }
-    }
-
-    /**
-     * Check if worker is running
-     */
-    private function checkWorkerRunning(): bool
-    {
-        try {
-            // Check if supervisor is managing workers (matches both singular and plural)
-            $supervisorStatus = shell_exec('supervisorctl -c /etc/supervisor/supervisord.conf status 2>/dev/null | grep -E "laravel-queue" | grep "RUNNING"');
-            if (!empty($supervisorStatus)) {
-                return true;
-            }
-            
-            // Fallback to process check
-            if (PHP_OS_FAMILY === 'Windows') {
-                $output = shell_exec('tasklist /FI "IMAGENAME eq php.exe" 2>NUL | findstr "queue:work"');
-            } else {
-                $output = shell_exec('pgrep -f "queue:work" 2>/dev/null');
-            }
-            
-            return !empty(trim($output));
-        } catch (\Exception $e) {
-            return false;
-        }
-    }
-
-    /**
-     * Increment processed job counter
-     */
-    public function incrementProcessed(): JsonResponse
-    {
-        try {
-            $current = Cache::get('queue_stats_processed_count', 0);
-            // Max 30 seconds cache to prevent stale data
-            Cache::put('queue_stats_processed_count', $current + 1, now()->addSeconds(30));
-
-            // Also increment 24h and week counters
-            Cache::increment('queue_processed_24h', 1);
-            Cache::increment('queue_processed_week', 1);
-
-            return response()->json(['status' => 'success']);
-        } catch (\Exception $e) {
-            return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
         }
     }
 }

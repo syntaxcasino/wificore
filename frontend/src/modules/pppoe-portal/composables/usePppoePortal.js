@@ -212,6 +212,85 @@ export function usePppoePortal() {
     }
   }
 
+  async function pauseAccount() {
+    isLoading.value = true;
+    try {
+      const response = await api.post('/account/pause');
+      invalidateDashboardCache();
+      return response.data;
+    } catch (err) {
+      error.value = err.response?.data?.message || 'Failed to pause account';
+      throw err;
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  async function resumeAccount() {
+    isLoading.value = true;
+    try {
+      const response = await api.post('/account/resume');
+      invalidateDashboardCache();
+      return response.data;
+    } catch (err) {
+      error.value = err.response?.data?.message || 'Failed to resume account';
+      throw err;
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  async function fetchPlans() {
+    try {
+      const response = await api.get('/plans');
+      return response.data;
+    } catch (err) {
+      error.value = err.response?.data?.message || 'Failed to load plans';
+      throw err;
+    }
+  }
+
+  async function requestPlanSwitch(packageId) {
+    isLoading.value = true;
+    try {
+      const response = await api.post('/plans/switch', { package_id: packageId });
+      invalidateDashboardCache();
+      return response.data;
+    } catch (err) {
+      error.value = err.response?.data?.message || 'Failed to request plan switch';
+      throw err;
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  async function fetchTimedVoucherOptions() {
+    try {
+      const response = await api.get('/vouchers/timed/options');
+      return response.data.data;
+    } catch (err) {
+      error.value = err.response?.data?.message || 'Failed to load voucher options';
+      throw err;
+    }
+  }
+
+  async function buyTimedVoucher(phoneNumber, packageId, durationHours) {
+    isLoading.value = true;
+    try {
+      const response = await api.post('/vouchers/timed/buy', {
+        phone_number:   phoneNumber,
+        package_id:     packageId,
+        duration_hours: durationHours,
+      });
+      return response.data;
+    } catch (err) {
+      error.value = err.response?.data?.message || 'Failed to purchase voucher';
+      throw err;
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
   async function logout(options = {}) {
     const { skipServerCall = false } = options;
     if (isLoggingOut.value) {
@@ -262,6 +341,12 @@ export function usePppoePortal() {
     getDashboardSeed,
     prefetchDashboard,
     invalidateDashboardCache,
+    pauseAccount,
+    resumeAccount,
+    fetchPlans,
+    requestPlanSwitch,
+    fetchTimedVoucherOptions,
+    buyTimedVoucher,
   };
 }
 

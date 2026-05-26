@@ -5,8 +5,9 @@ namespace App\Jobs;
 use App\Events\PppoeUserDisconnectedForNonPayment;
 use App\Models\PppoeUser;
 use App\Models\Router;
+use App\Models\RouterTask;
 use App\Events\PppoeUserPaymentStatusChanged;
-use App\Services\MikroTik\SshExecutor;
+use App\Services\ProvisioningServiceClient;
 use App\Traits\TenantAwareJob;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -42,9 +43,9 @@ class DisconnectPppoeUserJob implements ShouldQueue
         $this->onQueue('service-control');
     }
 
-    public function handle(): void
+    public function handle(ProvisioningServiceClient $provisioningClient): void
     {
-        $this->executeInTenantContext(function () {
+        $this->executeInTenantContext(function () use ($provisioningClient) {
             Log::info('DisconnectPppoeUserJob: Starting', [
                 'pppoe_user_id' => $this->pppoeUserId,
                 'tenant_id' => $this->tenantId,
@@ -70,7 +71,7 @@ class DisconnectPppoeUserJob implements ShouldQueue
                 $this->blockInRadius($user);
 
                 // Disconnect active session on router
-                $this->disconnectFromRouter($user);
+                $this->disconnectFromRouter($user, $provisioningClient);
 
                 // Update user status
                 $user->update([
@@ -149,13 +150,13 @@ class DisconnectPppoeUserJob implements ShouldQueue
     }
 
     /**
-     * Disconnect user from router via SSH
+     * Disconnect user from router via the Go provisioning service
      */
-    protected function disconnectFromRouter(PppoeUser $user): void
+    protected function disconnectFromRouter(PppoeUser $user, ProvisioningServiceClient $provisioningClient): void
     {
         // OPTIMIZED: Select only needed columns
         $router = Router::query()
-            ->select(['id', 'host', 'ssh_port', 'ssh_user', 'ssh_pass', 'ssh_private_key'])
+            ->select(['id', 'host', 'ssh_port', 'ssh_user', 'ssh_pass', 'ssh_private_key', 'ip_address', 'vpn_ip', 'username', 'password', 'port'])
             ->find($user->router_id);
         
         if (!$router) {
@@ -166,30 +167,62 @@ class DisconnectPppoeUserJob implements ShouldQueue
         }
 
         try {
-            $ssh = new SshExecutor($router, 15);
-            $ssh->connect();
-            
-            // Remove active PPPoE session by name
             $escapedUsername = addslashes($user->username);
-            $ssh->exec(sprintf('/ppp active remove [find name="%s"]', $escapedUsername));
-            
-            // Also try by user field (some RouterOS versions use 'user' instead of 'name')
-            $ssh->exec(sprintf('/ppp active remove [find user="%s"]', $escapedUsername));
-            
-            $ssh->disconnect();
+            $commands = [
+                sprintf(':do { /ppp active remove [find name="%s"] } on-error={}', $escapedUsername),
+                sprintf(':do { /ppp active remove [find user="%s"] } on-error={}', $escapedUsername),
+            ];
 
-            Log::info('DisconnectPppoeUserJob: Disconnected from router', [
+            $task = RouterTask::create([
+                'tenant_id' => $this->tenantId,
+                'router_id' => $router->id,
+                'user_id' => $user->id,
+                'type' => RouterTask::TYPE_SERVICE_CONTROL_ACTION,
+                'status' => RouterTask::STATUS_QUEUED,
+                'progress' => 0,
+                'message' => 'Queueing PPPoE disconnect',
+                'request_payload' => [
+                    'context' => 'disconnect_pppoe_user',
+                    'action' => 'disconnect_pppoe_user',
+                    'username' => $user->username,
+                    'reason' => $this->reason,
+                    'commands' => $commands,
+                ],
+            ]);
+
+            $provisioningClient->submitTaskCommand(
+                $router,
+                $this->tenantId,
+                RouterTask::TYPE_SERVICE_CONTROL_ACTION,
+                ['commands' => $commands, 'context' => 'disconnect_pppoe_user', 'action' => 'disconnect_pppoe_user'],
+                $task
+            );
+
+            Log::info('DisconnectPppoeUserJob: Disconnection command submitted via provisioning service', [
                 'username' => $user->username,
                 'router_id' => $router->id,
+                'task_id' => $task->id,
             ]);
 
         } catch (\Exception $e) {
-            Log::warning('DisconnectPppoeUserJob: Router disconnect failed (non-fatal)', [
+            Log::warning('DisconnectPppoeUserJob: Async router disconnect submission failed', [
                 'username' => $user->username,
                 'router_id' => $router->id ?? null,
                 'error' => $e->getMessage(),
             ]);
-            // Don't throw - RADIUS block is more important
+            // Best-effort fallback to immediate execution so enforcement still completes.
+            try {
+                $provisioningClient->executeCommands($router, $commands ?? [
+                    sprintf(':do { /ppp active remove [find name="%s"] } on-error={}', addslashes($user->username)),
+                    sprintf(':do { /ppp active remove [find user="%s"] } on-error={}', addslashes($user->username)),
+                ], $this->tenantId);
+            } catch (\Exception $fallbackException) {
+                Log::warning('DisconnectPppoeUserJob: Router disconnect fallback failed (non-fatal)', [
+                    'username' => $user->username,
+                    'router_id' => $router->id ?? null,
+                    'error' => $fallbackException->getMessage(),
+                ]);
+            }
         }
     }
 

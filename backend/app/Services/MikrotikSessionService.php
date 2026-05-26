@@ -2,78 +2,34 @@
 
 namespace App\Services;
 
-use Illuminate\Support\Facades\Log;
 use App\Models\SystemLog;
-use App\Models\Router;
-use App\Models\Voucher;
-use RouterOS\Client;
-use RouterOS\Query;
-use RouterOS\Exceptions\ClientException;
-use RouterOS\Exceptions\ConfigException;
-use RouterOS\Exceptions\QueryException;
+use Illuminate\Support\Facades\Log;
 
 class MikrotikSessionService extends TenantAwareService
 {
-    protected $client;
-    protected $config;
-    protected $connectionError;
+    protected array $config;
+    protected ?string $connectionError;
+    protected ProvisioningServiceClient $provisioningClient;
 
     public function __construct()
     {
         $this->config = config('mikrotik');
         $this->connectionError = null;
+        $this->provisioningClient = app(ProvisioningServiceClient::class);
     }
 
     protected function connect(): void
     {
-        if ($this->client && $this->isConnected()) {
-            return;
-        }
-
         try {
-            $this->client = $this->createClient([
-                'host' => $this->config['host'],
-                'user' => $this->config['user'],
-                'pass' => $this->config['pass'],
-                'port' => $this->config['port'],
-                'timeout' => $this->config['timeout'] ?? 10,
-                'attempts' => $this->config['attempts'] ?? 3,
-                'delay' => $this->config['delay'] ?? 1,
-            ]);
-
-            $this->logToSystemAndFile(
-                'Mikrotik connection established',
-                ['host' => $this->config['host']],
-                'info'
-            );
-
-        } catch (ClientException | ConfigException | QueryException | \Exception $e) {
+            $this->execute(['/system identity print']);
+        } catch (\Exception $e) {
             $this->connectionError = $e->getMessage();
-            $this->logToSystemAndFile(
-                'Mikrotik connection failed',
-                [
-                    'error' => $this->connectionError,
-                    'config' => $this->sanitizeConfig($this->config)
-                ],
-                'error'
-            );
+            $this->logToSystemAndFile('Mikrotik connection failed', [
+                'error' => $this->connectionError,
+                'config' => $this->sanitizeConfig($this->config),
+            ], 'error');
             throw new \RuntimeException('Mikrotik connection failed: ' . $this->connectionError);
         }
-    }
-
-    protected function isConnected(): bool
-    {
-        try {
-            $this->client->query('/system/identity/print')->read();
-            return true;
-        } catch (\Exception $e) {
-            return false;
-        }
-    }
-
-    protected function createClient(array $config): Client
-    {
-        return new Client($config);
     }
 
     public function createSession(string $voucher, string $macAddress, string $profile, int $durationHours): array
@@ -81,263 +37,124 @@ class MikrotikSessionService extends TenantAwareService
         try {
             $this->connect();
 
-            $uptime = $durationHours . 'h';
+            $existing = $this->execute([
+                sprintf('/ip/hotspot/active/print detail without-paging where mac-address="%s"', addslashes($macAddress)),
+            ])[0]['output'] ?? '';
 
-            // Check if session already exists in MikroTik (NOT in our cache)
-            // Query MikroTik directly to avoid stale cache issues
-            $existingQuery = (new Query('/ip/hotspot/active/print'))
-                ->where('mac-address', $macAddress);
-            $existing = $this->client->query($existingQuery)->read();
-            
-            if (!empty($existing)) {
+            if (trim($existing) !== '') {
                 return [
                     'success' => true,
                     'message' => 'Session already active in MikroTik',
-                    'data' => ['existing_session' => $existing[0]]
+                    'data' => ['existing_session' => $existing],
                 ];
             }
 
-            // Create hotspot user
-            $userResponse = $this->createHotspotUser($voucher, $macAddress, $profile, $uptime);
-            
-            // Authenticate user
-            $authResponse = $this->authenticateUser($voucher);
-            
-            if (!$authResponse['success']) {
-                throw new \Exception('User created but authentication failed: ' . $authResponse['message']);
-            }
+            $uptime = $durationHours . 'h';
+            $comment = 'Created via API on ' . now()->toDateTimeString();
 
-            $this->logToSystemAndFile(
-                'Mikrotik user created and authenticated',
-                [
-                    'voucher' => $voucher,
-                    'mac_address' => $macAddress,
-                    'profile' => $profile,
-                    'duration' => $uptime,
-                    'user_response' => $userResponse,
-                    'auth_response' => $authResponse
-                ],
-                'info'
-            );
+            $create = $this->execute([
+                sprintf('/ip/hotspot/user/add name="%s" password="%s" mac-address="%s" profile="%s" limit-uptime="%s" comment="%s"', addslashes($voucher), addslashes($voucher), addslashes($macAddress), addslashes($profile), addslashes($uptime), addslashes($comment)),
+            ]);
+
+            $authResponse = $this->authenticateUser($voucher);
+            if (!($authResponse['success'] ?? false)) {
+                throw new \Exception('User created but authentication failed: ' . ($authResponse['message'] ?? 'unknown error'));
+            }
 
             return [
                 'success' => true,
                 'message' => 'User created and authenticated successfully',
                 'data' => [
-                    'user_creation' => $userResponse,
-                    'authentication' => $authResponse
-                ]
-            ];
-
-        } catch (\Exception $e) {
-            $this->logToSystemAndFile(
-                'Mikrotik session creation failed',
-                [
-                    'voucher' => $voucher,
-                    'mac_address' => $macAddress,
-                    'error' => $e->getMessage(),
-                    'trace' => $e->getTraceAsString()
+                    'user_creation' => $create,
+                    'authentication' => $authResponse,
                 ],
-                'error'
-            );
+            ];
+        } catch (\Exception $e) {
+            $this->logToSystemAndFile('Mikrotik session creation failed', [
+                'voucher' => $voucher,
+                'mac_address' => $macAddress,
+                'error' => $e->getMessage(),
+            ], 'error');
 
             return [
                 'success' => false,
                 'message' => 'Session creation failed: ' . $e->getMessage(),
                 'error' => $e->getMessage(),
-                'code' => $e->getCode() ?: 500
+                'code' => $e->getCode() ?: 500,
             ];
         }
-    }
-
-    protected function createHotspotUser(string $voucher, string $macAddress, string $profile, string $uptime): array
-    {
-        $query = (new Query('/ip/hotspot/user/add'))
-            ->equal('name', $voucher)
-            ->equal('password', $voucher)
-            ->equal('mac-address', $macAddress)
-            ->equal('profile', $profile)
-            ->equal('limit-uptime', $uptime)
-            ->equal('comment', 'Created via API on ' . now()->toDateTimeString());
-
-        $response = $this->client->query($query)->read();
-
-        // Log raw response for debugging
-        Log::info('Mikrotik add user raw response', ['response' => $response]);
-
-        // Instead of strictly checking 'ret', check for error conditions
-        if (empty($response)) {
-            throw new \Exception('Failed to create user: Mikrotik returned an empty response.');
-        }
-
-        if (isset($response[0]['!trap'])) {
-            throw new \Exception('Mikrotik returned an error: ' . json_encode($response));
-        }
-
-        return $response;
     }
 
     public function authenticateUser(string $voucher): array
     {
         try {
             $this->connect();
-
-            $query = (new Query('/ip/hotspot/active/login'))
-                ->equal('user', $voucher)
-                ->equal('password', $voucher);
-
-            $response = $this->client->query($query)->read();
-
-            $this->logToSystemAndFile(
-                'Mikrotik user authenticated',
-                [
-                    'voucher' => $voucher,
-                    'response' => $response
-                ],
-                'info'
-            );
+            $results = $this->execute([
+                sprintf('/ip/hotspot/active/login user="%s" password="%s"', addslashes($voucher), addslashes($voucher)),
+            ]);
 
             return [
                 'success' => true,
                 'message' => 'User authenticated successfully',
-                'data' => $response
+                'data' => $results,
             ];
-
         } catch (\Exception $e) {
-            $this->logToSystemAndFile(
-                'Mikrotik authentication failed',
-                [
-                    'voucher' => $voucher,
-                    'error' => $e->getMessage(),
-                    'trace' => $e->getTraceAsString()
-                ],
-                'error'
-            );
+            $this->logToSystemAndFile('Mikrotik authentication failed', [
+                'voucher' => $voucher,
+                'error' => $e->getMessage(),
+            ], 'error');
 
             return [
                 'success' => false,
                 'message' => 'Authentication failed: ' . $e->getMessage(),
                 'error' => $e->getMessage(),
-                'code' => $e->getCode() ?: 500
+                'code' => $e->getCode() ?: 500,
             ];
         }
     }
 
     public function getActiveUsers(): array
     {
-        try {
-            $this->connect();
-
-            $query = new Query('/ip/hotspot/active/print');
-            $users = $this->client->query($query)->read();
-
-            return [
-                'success' => true,
-                'data' => $users,
-                'count' => count($users)
-            ];
-
-        } catch (\Exception $e) {
-            $this->logToSystemAndFile(
-                'Failed to get active users',
-                [
-                    'error' => $e->getMessage(),
-                    'trace' => $e->getTraceAsString()
-                ],
-                'error'
-            );
-
-            return [
-                'success' => false,
-                'message' => 'Failed to get active users',
-                'error' => $e->getMessage()
-            ];
-        }
+        return $this->readList('/ip/hotspot/active/print detail without-paging', 'Failed to get active users');
     }
 
-    /**
-     * Get all hotspot users from Mikrotik
-     */
     public function getAllHotspotUsers(): array
     {
-        try {
-            $this->connect();
-
-            $query = new Query('/ip/hotspot/user/print');
-            $users = $this->client->query($query)->read();
-
-            return [
-                'success' => true,
-                'data' => $users,
-                'count' => count($users)
-            ];
-
-        } catch (\Exception $e) {
-            $this->logToSystemAndFile(
-                'Failed to get all hotspot users',
-                [
-                    'error' => $e->getMessage(),
-                    'trace' => $e->getTraceAsString()
-                ],
-                'error'
-            );
-
-            return [
-                'success' => false,
-                'message' => 'Failed to get all hotspot users',
-                'error' => $e->getMessage()
-            ];
-        }
+        return $this->readList('/ip/hotspot/user/print detail without-paging', 'Failed to get all hotspot users');
     }
 
-    /**
-     * Disconnect an active hotspot user by MAC address
-     */
     public function disconnectUser(string $macAddress): array
     {
         try {
             $this->connect();
 
-            // Find active session by MAC address
-            $activeQuery = (new Query('/ip/hotspot/active/print'))
-                ->where('mac-address', $macAddress);
-            $active = $this->client->query($activeQuery)->read();
+            $active = $this->execute([
+                sprintf('/ip/hotspot/active/print detail without-paging where mac-address="%s"', addslashes($macAddress)),
+            ])[0]['output'] ?? '';
 
-            if (empty($active)) {
+            if (trim($active) === '') {
                 return [
                     'success' => false,
                     'message' => 'No active session found for MAC address',
                 ];
             }
 
-            $id = $active[0]['.id'] ?? null;
-            if (!$id) {
-                return [
-                    'success' => false,
-                    'message' => 'Unable to determine session ID for disconnection',
-                ];
-            }
-
-            // Disconnect the active session
-            $removeQuery = (new Query('/ip/hotspot/active/remove'))
-                ->equal('.id', $id);
-            $this->client->query($removeQuery)->read();
+            $this->execute([
+                sprintf(':do { /ip hotspot active remove [find mac-address="%s"] } on-error={}', addslashes($macAddress)),
+            ]);
 
             $this->logToSystemAndFile('Hotspot session disconnected', [
                 'mac_address' => $macAddress,
-                'session_id' => $id,
             ], 'info');
 
             return [
                 'success' => true,
                 'message' => 'User disconnected successfully',
             ];
-
         } catch (\Exception $e) {
             $this->logToSystemAndFile('Failed to disconnect user', [
                 'mac_address' => $macAddress,
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
             ], 'error');
 
             return [
@@ -346,6 +163,92 @@ class MikrotikSessionService extends TenantAwareService
                 'error' => $e->getMessage(),
             ];
         }
+    }
+
+    protected function execute(array $commands): array
+    {
+        return $this->provisioningClient->executeCommandsWithConnection(
+            'mikrotik-session-service',
+            $this->connectionPayload(),
+            $commands,
+            $this->tenantId(),
+        );
+    }
+
+    protected function readList(string $command, string $failureMessage): array
+    {
+        try {
+            $this->connect();
+            $results = $this->execute([$command]);
+            $output = $results[0]['output'] ?? '';
+
+            return [
+                'success' => true,
+                'data' => $this->parseDetailBlocks($output),
+                'count' => count($this->parseDetailBlocks($output)),
+            ];
+        } catch (\Exception $e) {
+            $this->logToSystemAndFile($failureMessage, [
+                'error' => $e->getMessage(),
+            ], 'error');
+
+            return [
+                'success' => false,
+                'message' => $failureMessage,
+                'error' => $e->getMessage(),
+            ];
+        }
+    }
+
+    protected function connectionPayload(): array
+    {
+        return [
+            'ip_address' => (string) ($this->config['host'] ?? ''),
+            'vpn_ip' => null,
+            'username' => (string) ($this->config['user'] ?? ''),
+            'password' => (string) ($this->config['pass'] ?? ''),
+            'ssh_port' => (int) ($this->config['port'] ?? 22),
+        ];
+    }
+
+    protected function tenantId(): string
+    {
+        return (string) ($this->config['tenant_id'] ?? 'system');
+    }
+
+    protected function parseDetailBlocks(string $output): array
+    {
+        $records = [];
+        $current = [];
+
+        foreach (preg_split('/?
+/', $output) as $line) {
+            $line = trim($line);
+            if ($line === '') {
+                if ($current !== []) {
+                    $records[] = $current;
+                    $current = [];
+                }
+                continue;
+            }
+
+            if (preg_match('/^\d+\s+/', $line) && $current !== []) {
+                $records[] = $current;
+                $current = [];
+            }
+
+            if (preg_match_all('/([A-Za-z0-9_.\/-]+):\s*([^\s].*?)(?=\s+[A-Za-z0-9_.\/-]+:|$)/', $line, $matches, PREG_SET_ORDER)) {
+                foreach ($matches as $match) {
+                    $current[$match[1]] = trim($match[2], '"');
+                }
+            }
+        }
+
+        if ($current !== []) {
+            $records[] = $current;
+        }
+
+        return $records;
     }
 
     protected function logToSystemAndFile(string $action, array $details, string $logLevel = 'info'): void
@@ -358,7 +261,6 @@ class MikrotikSessionService extends TenantAwareService
                 'details' => $sanitizedDetails,
             ]);
         } catch (\Throwable $e) {
-            // Swallow DB errors so logging never crashes the service
         }
 
         Log::$logLevel($action, $sanitizedDetails);
@@ -367,9 +269,9 @@ class MikrotikSessionService extends TenantAwareService
     protected function sanitizeLogData(array $data): array
     {
         $sensitiveKeys = ['pass', 'password', 'secret', 'auth'];
-        
+
         array_walk_recursive($data, function (&$value, $key) use ($sensitiveKeys) {
-            if (in_array(strtolower($key), $sensitiveKeys)) {
+            if (in_array(strtolower($key), $sensitiveKeys, true)) {
                 $value = '*****';
             }
         });

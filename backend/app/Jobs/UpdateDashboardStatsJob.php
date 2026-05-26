@@ -415,6 +415,7 @@ class UpdateDashboardStatsJob implements ShouldQueue
                 // Business Analytics - Active users per access point
                 try {
                     $accessPointsData = Router::where('status', 'online')
+                        ->limit(500)
                         ->get()
                         ->map(function ($router) {
                             // Count active sessions via payments linked to this router
@@ -446,6 +447,7 @@ class UpdateDashboardStatsJob implements ShouldQueue
                     // Fallback if relationship doesn't exist
                     \Log::warning('Could not load access point data: ' . $e->getMessage());
                     $accessPointsData = Router::where('status', 'online')
+                        ->limit(500)
                         ->get()
                         ->map(function ($router) {
                             return [

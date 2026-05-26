@@ -3,12 +3,14 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\ExecuteProvisioningServiceRouterTaskJob;
 use App\Jobs\RouterProbingJob;
+use App\Jobs\RouterProvisioningJob;
 use App\Models\Router;
 use App\Models\RouterConfig;
+use App\Models\RouterTask;
 use App\Models\RouterTenantMap;
 use App\Models\Tenant;
-use App\Services\MikrotikProvisioningService;
 use App\Services\MikrotikSnmpService;
 use App\Services\RouterMetricsService;
 use App\Services\TenantContext;
@@ -16,6 +18,7 @@ use App\Services\TenantMigrationManager;
 use App\Services\VictoriaMetricsClient;
 use App\Models\SystemLog;
 use App\Services\AuditLogService;
+use App\Services\ProvisioningServiceClient;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -1039,64 +1042,46 @@ class RouterController extends Controller
                 'commands' => 'nullable|array',
             ]);
 
-            Log::info('Deploying service configuration', [
+            Log::info('Queueing service configuration deployment', [
                 'router_id' => $router->id,
                 'service_type' => $validated['service_type'],
                 'command_count' => count($validated['commands'] ?? []),
             ]);
 
-            // Prepare provisioning data
-            $provisioningData = [
+            $task = $this->createRouterTask($router, RouterTask::TYPE_DEPLOY_SERVICE_CONFIG, [
                 'service_type' => $validated['service_type'],
                 'enable_hotspot' => $validated['service_type'] === 'hotspot',
                 'enable_pppoe' => $validated['service_type'] === 'pppoe',
-            ];
-
-            // Update router status to deploying
-            $router->update([
-                'status' => 'deploying',
+                'commands' => $validated['commands'] ?? [],
             ]);
 
-            // Dispatch the provisioning job
-            $tenantId = auth()->user()->tenant_id;
-            \App\Jobs\RouterProvisioningJob::dispatch($router->id, $tenantId, $provisioningData);
+            $this->dispatchRouterTask($task);
 
             AuditLogService::logRouterEvent(
                 'provisioning_started',
                 (string) $router->id,
                 'info',
-                ['service_type' => $validated['service_type'] ?? 'unknown', 'tenant_id' => $tenantId],
-                "Provisioning started for router '{$router->name}'",
-                (string) $router->tenant_id
+                ['service_type' => $validated['service_type'] ?? 'unknown', 'tenant_id' => $task->tenant_id, 'task_id' => $task->id],
+                "Provisioning queued for router '{$router->name}'",
+                (string) $task->tenant_id
             );
 
-            Log::info('Provisioning job dispatched', [
-                'router_id' => $router->id,
-                'tenant_id' => $tenantId,
-                'service_type' => $validated['service_type'],
-            ]);
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Deployment job dispatched successfully',
-                'router_id' => $router->id,
-                'status' => 'deploying',
-            ]);
+            return $this->routerTaskAcceptedResponse($task, 'Deployment task accepted');
         } catch (\Illuminate\Validation\ValidationException $e) {
             return response()->json([
                 'success' => false,
                 'error' => 'Validation failed: ' . json_encode($e->errors()),
             ], 422);
         } catch (\Exception $e) {
-            Log::error('Failed to deploy service configuration', [
+            Log::error('Failed to queue service configuration deployment', [
                 'router_id' => $router->id,
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
-            
+
             return response()->json([
                 'success' => false,
-                'error' => 'Failed to deploy configuration: ' . $e->getMessage(),
+                'error' => 'Failed to queue deployment: ' . $e->getMessage(),
             ], 500);
         }
     }
@@ -1110,42 +1095,58 @@ class RouterController extends Controller
     public function getProvisioningStatus(Router $router)
     {
         try {
-            // Check router status
+            $tenantId = (string) ($router->tenant_id ?? auth()->user()?->tenant_id ?? '');
+
+            $task = $tenantId !== ''
+                ? RouterTask::forRouter($tenantId, (string) $router->id)
+                    ->whereIn('type', [
+                        RouterTask::TYPE_DEPLOY_SERVICE_CONFIG,
+                        RouterTask::TYPE_APPLY_SERVICE_CONFIGS,
+                        RouterTask::TYPE_VERIFY_CONNECTIVITY,
+                        RouterTask::TYPE_DISCOVER_INTERFACES,
+                    ])
+                    ->latest('created_at')
+                    ->first()
+                : null;
+
+            if ($task) {
+                return response()->json([
+                    'success' => true,
+                    'status' => $task->status,
+                    'router_status' => $router->status,
+                    'router_id' => $router->id,
+                    'task_id' => $task->id,
+                    'task_type' => $task->type,
+                    'progress' => $task->progress,
+                    'message' => $task->message,
+                    'error' => $task->error_message,
+                    'result' => $task->result_payload,
+                    'started_at' => $task->started_at,
+                    'completed_at' => $task->completed_at,
+                ]);
+            }
+
             $status = $router->status;
-            
-            // Map router status to provisioning status
             $provisioningStatus = match($status) {
                 'active', 'online' => 'completed',
-                'deploying', 'provisioning' => 'deploying',
+                'deploying', 'provisioning', 'verifying' => 'running',
                 'failed', 'connection_failed' => 'failed',
                 default => 'pending',
             };
 
-            Log::info('Provisioning status checked', [
-                'router_id' => $router->id,
-                'router_status' => $status,
-                'provisioning_status' => $provisioningStatus,
-            ]);
-
-            $response = [
+            return response()->json([
                 'success' => true,
                 'status' => $provisioningStatus,
                 'router_status' => $status,
                 'router_id' => $router->id,
-            ];
-
-            // Add error message if failed
-            if ($provisioningStatus === 'failed') {
-                $response['error'] = 'Router provisioning failed. Check logs for details.';
-            }
-
-            return response()->json($response);
+                'task_id' => null,
+            ]);
         } catch (\Exception $e) {
             Log::error('Failed to get provisioning status', [
                 'router_id' => $router->id,
                 'error' => $e->getMessage(),
             ]);
-            
+
             return response()->json([
                 'success' => false,
                 'status' => 'unknown',
@@ -1154,9 +1155,9 @@ class RouterController extends Controller
         }
     }
 
-    public function verifyConnectivity(Router $router, MikrotikProvisioningService $provisioningService)
+    public function verifyConnectivity(Router $router)
     {
-        Log::info('verifyConnectivity called for router:', [
+        Log::info('Queueing connectivity verification for router', [
             'router_id' => $router->id,
             'ip_address' => $router->ip_address,
             'username' => $router->username,
@@ -1164,43 +1165,17 @@ class RouterController extends Controller
         ]);
 
         try {
-            $result = $provisioningService->verifyConnectivity($router);
+            $task = $this->createRouterTask($router, RouterTask::TYPE_VERIFY_CONNECTIVITY);
+            $this->dispatchRouterTask($task);
 
-            if ($result['status'] !== 'connected' && $result['status'] !== 'online') {
-                return response()->json([
-                    'status' => 'disconnected',
-                    'error' => $result['message'] ?? 'Router is not reachable via SSH',
-                ], 500);
-            }
-
-            // Update router metadata
-            $router->update([
-                'model' => $result['model'] ?? $router->model,
-                'os_version' => $result['os_version'] ?? $router->os_version,
-                'last_seen' => $result['last_seen'] ?? now(),
-                'status' => 'online',
-            ]);
-
-            Log::info('Connectivity verified successfully for router via SSH:', [
-                'router_id' => $router->id,
-                'model' => $router->model,
-                'os_version' => $router->os_version,
-            ]);
-
-            return response()->json([
-                'status' => 'connected',
-                'model' => $router->model,
-                'os_version' => $router->os_version,
-                'last_seen' => $router->last_seen,
-                'interfaces' => $result['interfaces'] ?? [],
-            ]);
+            return $this->routerTaskAcceptedResponse($task, 'Connectivity verification task accepted');
         } catch (\Exception $e) {
             $errorMessage = match (true) {
                 strpos($e->getMessage(), 'decrypt') !== false => 'Failed to decrypt password. Check OpenSSL configuration and database integrity.',
-                default => 'Failed to connect to router via SSH: ' . $e->getMessage(),
+                default => 'Failed to queue connectivity verification: ' . $e->getMessage(),
             };
 
-            Log::error('Failed to verify connectivity: ' . $e->getMessage(), [
+            Log::error('Failed to queue connectivity verification', [
                 'router_id' => $router->id,
                 'ip_address' => $router->ip_address,
                 'username' => $router->username,
@@ -1209,7 +1184,7 @@ class RouterController extends Controller
             ]);
 
             return response()->json([
-                'status' => 'disconnected',
+                'success' => false,
                 'error' => $errorMessage,
             ], 500);
         }
@@ -1702,20 +1677,6 @@ EOT;
                 ]);
                 return false;
             }
-            if (preg_match('/[;{}]/', $line)) {
-                Log::error('Invalid script: Disallowed characters (;, {}, etc.) detected', [
-                    'line_number' => $index + 1,
-                    'line_content' => $line,
-                ]);
-                return false;
-            }
-            if (preg_match('/\b(set|add)\s+[^=]*$/', $line)) {
-                Log::error('Invalid script: Incomplete command detected', [
-                    'line_number' => $index + 1,
-                    'line_content' => $line,
-                ]);
-                return false;
-            }
         }
         return true;
     }
@@ -1723,206 +1684,188 @@ EOT;
     public function applyConfigs(Request $request, $routerId)
     {
         $router = Router::findOrFail($routerId);
-        $initialHost = explode('/', $router->ip_address)[0] ?? null;
-        $routerName = $router->name;
 
         $routerConfig = RouterConfig::where('router_id', $routerId)
             ->where('config_type', 'service')
             ->first();
 
         if (!$routerConfig || empty(trim($routerConfig->config_content))) {
-            Log::error('No valid service configuration found in database for router:', [
+            Log::error('No valid service configuration found in database for router', [
                 'router_id' => $routerId,
-                'router_name' => $routerName,
+                'router_name' => $router->name,
             ]);
             return response()->json(['error' => 'No valid service configuration found in database'], 400);
         }
 
         $serviceScript = trim($routerConfig->config_content);
-
-        Log::info('Service script retrieved from database:', [
-            'router_id' => $routerId,
-            'router_name' => $routerName,
-            'service_script' => $serviceScript,
-        ]);
-
         if (!$this->validateRouterOsScript($serviceScript)) {
-            Log::error('Service script validation failed:', [
+            Log::error('Service script validation failed', [
                 'router_id' => $routerId,
-                'router_name' => $routerName,
-                'service_script' => $serviceScript,
+                'router_name' => $router->name,
             ]);
             return response()->json(['error' => 'Invalid RouterOS script syntax in configuration'], 400);
         }
 
         try {
-            $client = null;
-            $host = $initialHost;
-            if ($initialHost) {
-                try {
-                    $client = new Client([
-                        'host' => $initialHost,
-                        'user' => $router->username,
-                        'pass' => Crypt::decrypt($router->password),
-                        'port' => $router->port ?? 8728,
-                        'timeout' => 10,
-                        'socket_timeout' => 10,
-                    ]);
-                } catch (ClientException|ConfigException $e) {
-                    Log::warning('Initial IP connection failed, attempting discovery:', [
-                        'router_id' => $routerId,
-                        'initial_host' => $initialHost,
-                        'error' => $e->getMessage(),
-                    ]);
-                    $host = null;
-                }
-            }
+            $task = $this->createRouterTask($router, RouterTask::TYPE_APPLY_SERVICE_CONFIGS);
+            $this->dispatchRouterTask($task);
 
-            if (!$client) {
-                $host = $this->discoverRouterIp($routerName);
-                if (!$host) {
-                    throw new \Exception('Could not discover router IP for ' . $routerName);
-                }
-                $client = new Client([
-                    'host' => $host,
-                    'user' => $router->username,
-                    'pass' => Crypt::decrypt($router->password),
-                    'port' => $router->port ?? 8728,
-                    'timeout' => 10,
-                    'socket_timeout' => 10,
-                ]);
-            }
-
-            $ipQuery = new Query('/ip/address/print');
-            $ipQuery->where('interface', 'ether2');
-            $ipResponse = $client->query($ipQuery)->read();
-            $currentIp = isset($ipResponse[0]['address']) ? $ipResponse[0]['address'] : null;
-
-            if ($currentIp && $currentIp !== $router->ip_address) {
-                $router->update(['ip_address' => $currentIp]);
-                Log::info('Router IP updated in database:', [
-                    'router_id' => $routerId,
-                    'old_ip' => $router->ip_address,
-                    'new_ip' => $currentIp,
-                ]);
-                $host = explode('/', $currentIp)[0];
-                $client = new Client([
-                    'host' => $host,
-                    'user' => $router->username,
-                    'pass' => Crypt::decrypt($router->password),
-                    'port' => $router->port ?? 8728,
-                    'timeout' => 30,
-                    'socket_timeout' => 30,
-                ]);
-            } elseif (!$currentIp) {
-                throw new \Exception('Failed to retrieve current IP address from router');
-            }
-
-            $resourceQuery = new Query('/system/resource/print');
-            $resource = $client->query($resourceQuery)->read();
-            $freeSpace = $resource[0]['free-hdd-space'] ?? 0;
-            if ($freeSpace < 5 * 1024 * 1024) {
-                throw new \Exception('Insufficient disk space: ' . $freeSpace . ' bytes');
-            }
-
-            $fileQuery = new Query('/file/print');
-            $fileQuery->where('name', 'hotspot_config_*.rsc');
-            $files = $client->query($fileQuery)->read();
-            foreach ($files as $file) {
-                if (isset($file['.id'])) {
-                    $removeQuery = new Query('/file/remove');
-                    $removeQuery->add('=.id=' . $file['.id']);
-                    $client->query($removeQuery)->read();
-                }
-            }
-
-            $fileName = 'hotspot_config_' . time() . '.rsc';
-
-            $createFileQuery = new Query('/file/add');
-            $createFileQuery->add('=name=' . $fileName);
-            $client->query($createFileQuery)->read();
-
-            $fileCheckQuery = new Query('/file/print');
-            $fileCheckQuery->where('name', $fileName);
-            $fileCheck = $client->query($fileCheckQuery)->read();
-            if (empty($fileCheck) || !isset($fileCheck[0]['.id'])) {
-                throw new \Exception('Failed to create .rsc file on router: ' . $fileName);
-            }
-
-            $fileSetQuery = new Query('/file/set');
-            $fileSetQuery->add('=.id=' . $fileCheck[0]['.id']);
-            $fileSetQuery->add('=contents=' . $serviceScript);
-            $client->query($fileSetQuery)->read();
-
-            $fileVerifyQuery = new Query('/file/print');
-            $fileVerifyQuery->where('name', $fileName);
-            $fileVerifyQuery->add('detail');
-            $fileVerify = $client->query($fileVerifyQuery)->read();
-            $fileContents = $fileVerify[0]['contents'] ?? '';
-            if (empty(trim($fileContents))) {
-                Log::error('Failed to write service script to .rsc file:', [
-                    'router_id' => $routerId,
-                    'file_name' => $fileName,
-                    'attempted_content' => $serviceScript,
-                ]);
-                throw new \Exception('Failed to write service script to .rsc file: ' . $fileName);
-            }
-            Log::info('Verified .rsc file contents:', [
+            return $this->routerTaskAcceptedResponse($task, 'Configuration apply task accepted');
+        } catch (\Exception $e) {
+            Log::error('Failed to queue configuration apply for router', [
                 'router_id' => $routerId,
-                'file_name' => $fileName,
-                'file_contents' => $fileContents,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
             ]);
+            return response()->json(['error' => 'Failed to queue configuration apply: ' . $e->getMessage()], 500);
+        }
+    }
 
-            $importQuery = new Query('/import');
-            $importQuery->add('=file-name=' . $fileName);
-            $response = $client->query($importQuery)->read();
+    public function discoverInterfaces(Router $router)
+    {
+        try {
+            $task = $this->createRouterTask($router, RouterTask::TYPE_DISCOVER_INTERFACES);
+            $this->dispatchRouterTask($task);
 
-            if (isset($response['!trap'])) {
-                Log::error('Failed to import .rsc file:', [
-                    'router_id' => $routerId,
-                    'file_name' => $fileName,
-                    'error' => json_encode($response['!trap']),
-                ]);
-                throw new \Exception('Import failed: ' . json_encode($response['!trap']));
-            }
-
-            // Delete the .rsc file after successful import
-            $fileDeleteQuery = new Query('/file/remove');
-            $fileDeleteQuery->add('=.id=' . $fileCheck[0]['.id']);
-            $client->query($fileDeleteQuery)->read();
-            Log::info('Configuration file deleted successfully:', [
-                'router_id' => $routerId,
-                'file_name' => $fileName,
-            ]);
-
-            Log::info('Configuration applied successfully for router:', [
-                'router_id' => $routerId,
-                'file_name' => $fileName,
-                'host' => $host,
+            return $this->routerTaskAcceptedResponse($task, 'Interface discovery task accepted');
+        } catch (\Exception $e) {
+            Log::error('Failed to queue router interface discovery', [
+                'router_id' => $router->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
             ]);
 
             return response()->json([
-                'message' => 'Configuration applied successfully',
-                'file_name' => $fileName,
-                'note' => 'The .rsc file has been deleted after successful configuration.'
-            ]);
-        } catch (ClientException|ConfigException|QueryException $e) {
-            Log::error('RouterOS error applying configuration:', [
-                'router_id' => $routerId,
-                'host' => $host ?? $initialHost,
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
-            return response()->json(['error' => 'RouterOS error: ' . $e->getMessage()], 500);
-        } catch (\Exception $e) {
-            Log::error('Failed to apply configuration for router:', [
-                'router_id' => $routerId,
-                'host' => $host ?? $initialHost,
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
-            return response()->json(['error' => 'Failed to apply configuration: ' . $e->getMessage()], 500);
+                'success' => false,
+                'error' => 'Failed to queue interface discovery: ' . $e->getMessage(),
+            ], 500);
         }
+    }
+
+    public function createTask(Request $request, Router $router)
+    {
+        $validated = $request->validate([
+            'type' => 'required|string|in:' . implode(',', [
+                RouterTask::TYPE_DEPLOY_SERVICE_CONFIG,
+                RouterTask::TYPE_APPLY_SERVICE_CONFIGS,
+                RouterTask::TYPE_VERIFY_CONNECTIVITY,
+                RouterTask::TYPE_DISCOVER_INTERFACES,
+            ]),
+            'payload' => 'nullable|array',
+        ]);
+
+        $payload = $validated['payload'] ?? [];
+        if ($validated['type'] === RouterTask::TYPE_DEPLOY_SERVICE_CONFIG) {
+            validator($payload, [
+                'service_type' => 'required|string|in:hotspot,pppoe',
+                'commands' => 'nullable|array',
+            ])->validate();
+            $payload['enable_hotspot'] = ($payload['service_type'] ?? null) === 'hotspot';
+            $payload['enable_pppoe'] = ($payload['service_type'] ?? null) === 'pppoe';
+        }
+
+        if ($validated['type'] === RouterTask::TYPE_APPLY_SERVICE_CONFIGS) {
+            $routerConfig = RouterConfig::where('router_id', $router->id)
+                ->where('config_type', 'service')
+                ->first();
+            if (!$routerConfig || empty(trim($routerConfig->config_content))) {
+                return response()->json(['success' => false, 'error' => 'No valid service configuration found in database'], 400);
+            }
+            if (!$this->validateRouterOsScript(trim($routerConfig->config_content))) {
+                return response()->json(['success' => false, 'error' => 'Invalid RouterOS script syntax in configuration'], 400);
+            }
+        }
+
+        $task = $this->createRouterTask($router, $validated['type'], $payload);
+        $this->dispatchRouterTask($task);
+
+        return $this->routerTaskAcceptedResponse($task, 'Router task accepted');
+    }
+
+    public function getTaskStatus(Router $router, string $taskId)
+    {
+        $tenantId = (string) ($router->tenant_id ?? auth()->user()?->tenant_id ?? '');
+
+        $task = RouterTask::forRouter($tenantId, (string) $router->id)
+            ->whereKey($taskId)
+            ->first();
+
+        if (!$task) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Router task not found',
+            ], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'task' => [
+                'id' => $task->id,
+                'type' => $task->type,
+                'status' => $task->status,
+                'progress' => $task->progress,
+                'message' => $task->message,
+                'error' => $task->error_message,
+                'result' => $task->result_payload,
+                'started_at' => $task->started_at,
+                'completed_at' => $task->completed_at,
+                'created_at' => $task->created_at,
+                'router_id' => $task->router_id,
+            ],
+        ]);
+    }
+
+    private function createRouterTask(Router $router, string $type, array $payload = []): RouterTask
+    {
+        $tenantId = (string) ($router->tenant_id ?? auth()->user()?->tenant_id ?? '');
+        if ($tenantId === '') {
+            throw new \RuntimeException('Tenant context not available for router task');
+        }
+
+        return RouterTask::create([
+            'tenant_id' => $tenantId,
+            'router_id' => (string) $router->id,
+            'user_id' => auth()->id(),
+            'type' => $type,
+            'status' => RouterTask::STATUS_QUEUED,
+            'progress' => 0,
+            'message' => 'Task accepted and queued',
+            'request_payload' => $payload,
+        ]);
+    }
+
+    private function dispatchRouterTask(RouterTask $task): void
+    {
+        switch ($task->type) {
+            case RouterTask::TYPE_DEPLOY_SERVICE_CONFIG:
+                RouterProvisioningJob::dispatch($task->router_id, $task->tenant_id, $task->request_payload ?? [], $task->id);
+                return;
+
+            case RouterTask::TYPE_APPLY_SERVICE_CONFIGS:
+            case RouterTask::TYPE_VERIFY_CONNECTIVITY:
+            case RouterTask::TYPE_DISCOVER_INTERFACES:
+                ExecuteProvisioningServiceRouterTaskJob::dispatch($task->id, $task->tenant_id, $task->router_id);
+                return;
+        }
+
+        throw new \InvalidArgumentException('Unsupported router task type: ' . $task->type);
+    }
+
+    private function routerTaskAcceptedResponse(RouterTask $task, string $message)
+    {
+        return response()->json([
+            'success' => true,
+            'message' => $message,
+            'task' => [
+                'id' => $task->id,
+                'type' => $task->type,
+                'status' => $task->status,
+                'progress' => $task->progress,
+                'router_id' => $task->router_id,
+                'created_at' => $task->created_at,
+                'status_url' => route('api.routers.tasks.show', ['router' => $task->router_id, 'task' => $task->id]),
+            ],
+        ], 202);
     }
 
     private function discoverRouterIp($routerName)
@@ -1975,26 +1918,32 @@ EOT;
     {
         $ipList = [];
         $baseIp = preg_replace('/\.\d+\/\d+$/', '.1', $subnet);
-        $timeout = 1;
+        $provisioningClient = app(ProvisioningServiceClient::class);
+        $tenantId = (string) ($this->router->tenant_id ?? 'system');
 
         for ($i = 1; $i <= 254; $i++) {
             $ip = str_replace('.1', '.' . $i, $baseIp);
+
             try {
-                $client = new Client([
-                    'host' => $ip,
-                    'user' => $this->router->username,
-                    'pass' => Crypt::decrypt($this->router->password),
-                    'port' => $this->router->port ?? 8728,
-                    'timeout' => $timeout,
-                    'socket_timeout' => $timeout,
-                ]);
-                $identityQuery = new Query('/system/identity/print');
-                $identity = $client->query($identityQuery)->read();
-                if (isset($identity[0]['name']) && $identity[0]['name'] === $routerName) {
+                $results = $provisioningClient->executeCommandsWithConnection(
+                    'router-scan:' . $ip,
+                    [
+                        'ip_address' => $ip,
+                        'vpn_ip' => null,
+                        'username' => $this->router->username,
+                        'password' => Crypt::decrypt($this->router->password),
+                        'ssh_port' => (int) ($this->router->port ?? 22),
+                    ],
+                    ['/system identity print'],
+                    $tenantId,
+                );
+
+                $identity = (string) ($results[0]['output'] ?? '');
+                if (preg_match('/name:\s*(.+)/', $identity, $match) && trim($match[1]) === $routerName) {
                     $ipList[] = $ip;
                     break;
                 }
-            } catch (ClientException|ConfigException $e) {
+            } catch (\Throwable $e) {
                 continue;
             }
         }

@@ -56,6 +56,15 @@ class CreateHotspotUserJob implements ShouldQueue
     public function handle(): void
     {
         $this->executeInTenantContext(function() {
+            Cache::put($this->jobCacheKey(), [
+                'status' => 'running',
+                'tenant_id' => $this->tenantId,
+                'payment_id' => $this->paymentId,
+                'package_id' => $this->packageId,
+                'started_at' => now()->toIso8601String(),
+                'queue' => 'hotspot-provisioning',
+            ], now()->addHour());
+
             DB::beginTransaction();
             
             try {
@@ -249,6 +258,16 @@ class CreateHotspotUserJob implements ShouldQueue
                     // Broadcast reactivation event
                     broadcast(new HotspotUserCreated($existingUser, $payment, $credentials, $this->tenantId))->toOthers();
 
+                    Cache::put($this->jobCacheKey(), [
+                        'status' => 'completed',
+                        'tenant_id' => $this->tenantId,
+                        'payment_id' => $this->paymentId,
+                        'hotspot_user_id' => $existingUser->id,
+                        'completed_at' => now()->toIso8601String(),
+                        'queue' => 'hotspot-provisioning',
+                        'mode' => 'reactivation',
+                    ], now()->addHour());
+
                     Log::info('Hotspot user reactivated successfully (async)', [
                         'user_id' => $existingUser->id,
                         'username' => $existingUser->username,
@@ -373,6 +392,16 @@ class CreateHotspotUserJob implements ShouldQueue
                 // Broadcast event
                 broadcast(new HotspotUserCreated($hotspotUser, $payment, $credentials, $this->tenantId))->toOthers();
 
+                Cache::put($this->jobCacheKey(), [
+                    'status' => 'completed',
+                    'tenant_id' => $this->tenantId,
+                    'payment_id' => $this->paymentId,
+                    'hotspot_user_id' => $hotspotUser->id,
+                    'completed_at' => now()->toIso8601String(),
+                    'queue' => 'hotspot-provisioning',
+                    'mode' => 'create',
+                ], now()->addHour());
+
                 Log::info('Hotspot user created successfully (async)', [
                     'user_id' => $hotspotUser->id,
                     'username' => $username,
@@ -399,11 +428,26 @@ class CreateHotspotUserJob implements ShouldQueue
 
     public function failed(?\Throwable $exception): void
     {
+        Cache::put($this->jobCacheKey(), [
+            'status' => 'failed',
+            'tenant_id' => $this->tenantId,
+            'payment_id' => $this->paymentId,
+            'package_id' => $this->packageId,
+            'failed_at' => now()->toIso8601String(),
+            'error' => $exception?->getMessage(),
+            'queue' => 'hotspot-provisioning',
+        ], now()->addHour());
+
         Log::critical('CreateHotspotUserJob permanently failed', [
             'payment_id' => $this->paymentId,
             'package_id' => $this->packageId,
             'tenant_id' => $this->tenantId,
             'error' => $exception?->getMessage(),
         ]);
+    }
+
+    private function jobCacheKey(): string
+    {
+        return 'hotspot_reconnect_job:' . $this->tenantId . ':' . $this->paymentId;
     }
 }

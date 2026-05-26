@@ -6,7 +6,7 @@ use App\Models\Router;
 use App\Models\RouterService;
 use App\Events\HotspotProvisionRequested;
 use App\Events\HotspotProvisioned;
-use App\Services\MikroTik\SshExecutor;
+use App\Services\ProvisioningServiceClient;
 use App\Services\RouterServiceManager;
 use App\Traits\TenantAwareJob;
 use Illuminate\Bus\Queueable;
@@ -20,7 +20,7 @@ use Illuminate\Support\Facades\Log;
  * Queued job to provision Hotspot on a MikroTik router.
  * 
  * All MikroTik operations MUST run in queued jobs.
- * This job generates the configuration script and executes it via SSH.
+ * This job generates the configuration script and executes it via the Go provisioning service.
  */
 class ProvisionHotspotJob implements ShouldQueue
 {
@@ -41,9 +41,9 @@ class ProvisionHotspotJob implements ShouldQueue
         $this->onQueue('router-provisioning');
     }
 
-    public function handle(RouterServiceManager $serviceManager): void
+    public function handle(RouterServiceManager $serviceManager, ProvisioningServiceClient $provisioningClient): void
     {
-        $this->executeInTenantContext(function () use ($serviceManager) {
+        $this->executeInTenantContext(function () use ($serviceManager, $provisioningClient) {
             $startTime = microtime(true);
             
             $service = RouterService::find($this->serviceId);
@@ -76,16 +76,11 @@ class ProvisionHotspotJob implements ShouldQueue
                     'tenant_id' => $this->tenantId,
                 ]);
                 
-                // Connect to router via SSH (use VPN IP if available)
-                $connectionIp = $router->vpn_ip ?? $router->ip_address;
-                $ssh = new SshExecutor($router, 60);
-                $ssh->connect();
-                
-                // Execute the script
-                $result = $ssh->exec($script);
-                
-                // Verify deployment
-                $verification = $this->verifyDeployment($ssh, $service);
+                // Execute the script via the Go provisioning service
+                $provisioningClient->deployScript($router, $script, $this->tenantId);
+
+                // Verify deployment using Go-backed command execution
+                $verification = $this->verifyDeployment($provisioningClient, $router, $service);
                 
                 if (!$verification['success']) {
                     throw new \Exception($verification['error'] ?? 'Deployment verification failed');
@@ -148,40 +143,39 @@ class ProvisionHotspotJob implements ShouldQueue
         });
     }
 
-    private function verifyDeployment(SshExecutor $ssh, RouterService $service): array
+    private function verifyDeployment(ProvisioningServiceClient $provisioningClient, Router $router, RouterService $service): array
     {
         try {
             $routerId = $service->router_id;
             
-            // Check hotspot server exists
-            $hotspotServer = "hs-server-{$routerId}-0";
-            $serverCount = (int) trim($ssh->exec("/ip hotspot print count-only where name=\"{$hotspotServer}\""));
+            $results = $provisioningClient->executeCommands($router, [
+                '/ip hotspot print count-only where name="hs-server-' . $routerId . '-0"',
+                '/ip hotspot profile print count-only where name="hs-profile-' . $routerId . '-0"',
+                '/radius print count-only where service=hotspot',
+            ], $this->tenantId);
+
+            $serverCount = (int) trim((string) ($results[0]['output'] ?? '0'));
+            $profileCount = (int) trim((string) ($results[1]['output'] ?? '0'));
+            $radiusCount = (int) trim((string) ($results[2]['output'] ?? '0'));
             
             if ($serverCount < 1) {
                 return [
                     'success' => false,
-                    'error' => "Hotspot server not found: {$hotspotServer}",
+                    'error' => 'Hotspot server not found: hs-server-' . $routerId . '-0',
                 ];
             }
-            
-            // Check hotspot profile exists
-            $hotspotProfile = "hs-profile-{$routerId}-0";
-            $profileCount = (int) trim($ssh->exec("/ip hotspot profile print count-only where name=\"{$hotspotProfile}\""));
             
             if ($profileCount < 1) {
                 return [
                     'success' => false,
-                    'error' => "Hotspot profile not found: {$hotspotProfile}",
+                    'error' => 'Hotspot profile not found: hs-profile-' . $routerId . '-0',
                 ];
             }
             
-            // Check RADIUS is configured
-            $radiusCount = (int) trim($ssh->exec('/radius print count-only where service=hotspot'));
-            
             return [
                 'success' => true,
-                'hotspot_server' => $hotspotServer,
-                'hotspot_profile' => $hotspotProfile,
+                'hotspot_server' => 'hs-server-' . $routerId . '-0',
+                'hotspot_profile' => 'hs-profile-' . $routerId . '-0',
                 'radius_configured' => $radiusCount > 0,
             ];
             

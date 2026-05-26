@@ -4,7 +4,8 @@ namespace App\Jobs;
 
 use App\Models\PppoeUser;
 use App\Models\Router;
-use App\Services\MikroTik\SshExecutor;
+use App\Models\RouterTask;
+use App\Services\ProvisioningServiceClient;
 use App\Traits\TenantAwareJob;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -49,9 +50,9 @@ class DisconnectPppoeSessionJob implements ShouldQueue
     /**
      * Execute the job.
      */
-    public function handle(): void
+    public function handle(ProvisioningServiceClient $provisioningClient): void
     {
-        $this->executeInTenantContext(function () {
+        $this->executeInTenantContext(function () use ($provisioningClient) {
             Log::info('DisconnectPppoeSessionJob: Starting', [
                 'pppoe_user_id' => $this->pppoeUserId,
                 'tenant_id' => $this->tenantId,
@@ -93,7 +94,7 @@ class DisconnectPppoeSessionJob implements ShouldQueue
                 }
 
                 // Execute SSH disconnect
-                $this->disconnectFromRouter($user, $router);
+                $this->disconnectFromRouter($user, $router, $provisioningClient);
 
                 Log::info('DisconnectPppoeSessionJob: Completed successfully', [
                     'pppoe_user_id' => $this->pppoeUserId,
@@ -121,32 +122,51 @@ class DisconnectPppoeSessionJob implements ShouldQueue
     }
 
     /**
-     * Disconnect user session from router via SSH
+     * Disconnect user session from router via the Go provisioning service
      */
-    protected function disconnectFromRouter(PppoeUser $user, Router $router): void
+    protected function disconnectFromRouter(PppoeUser $user, Router $router, ProvisioningServiceClient $provisioningClient): void
     {
         try {
-            $ssh = new SshExecutor($router, 10);
-            $ssh->connect();
-
             $escapedUsername = addslashes($user->username);
+            $commands = [
+                sprintf(':do { /ppp active remove [find name="%s"] } on-error={}', $escapedUsername),
+                sprintf(':do { /ppp active remove [find user="%s"] } on-error={}', $escapedUsername),
+            ];
 
-            // Remove active PPPoE session by name
-            $ssh->exec(sprintf('/ppp active remove [find name="%s"]', $escapedUsername));
+            $task = RouterTask::create([
+                'tenant_id' => $this->tenantId,
+                'router_id' => $router->id,
+                'user_id' => $user->id,
+                'type' => RouterTask::TYPE_SERVICE_CONTROL_ACTION,
+                'status' => RouterTask::STATUS_QUEUED,
+                'progress' => 0,
+                'message' => 'Queueing PPPoE session disconnect',
+                'request_payload' => [
+                    'context' => 'disconnect_pppoe_session',
+                    'action' => 'disconnect_pppoe_session',
+                    'username' => $user->username,
+                    'reason' => $this->reason,
+                    'commands' => $commands,
+                ],
+            ]);
 
-            // Also try by user field (some RouterOS versions use 'user' instead of 'name')
-            $ssh->exec(sprintf('/ppp active remove [find user="%s"]', $escapedUsername));
+            $provisioningClient->submitTaskCommand(
+                $router,
+                $this->tenantId,
+                RouterTask::TYPE_SERVICE_CONTROL_ACTION,
+                ['commands' => $commands, 'context' => 'disconnect_pppoe_session', 'action' => 'disconnect_pppoe_session'],
+                $task
+            );
 
-            $ssh->disconnect();
-
-            Log::info('DisconnectPppoeSessionJob: Disconnected from router', [
+            Log::info('DisconnectPppoeSessionJob: Disconnection command submitted via provisioning service', [
                 'username' => $user->username,
                 'router_id' => $router->id,
                 'reason' => $this->reason,
+                'task_id' => $task->id,
             ]);
 
         } catch (\Exception $e) {
-            Log::warning('DisconnectPppoeSessionJob: Router disconnect failed (non-fatal)', [
+            Log::warning('DisconnectPppoeSessionJob: Async router disconnect submission failed', [
                 'username' => $user->username,
                 'router_id' => $router->id,
                 'error' => $e->getMessage(),

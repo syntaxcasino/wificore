@@ -2,9 +2,10 @@
 
 namespace App\Console\Commands;
 
+use App\Services\QueueMetricsService;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 
 class QueueStats extends Command
 {
@@ -26,7 +27,7 @@ class QueueStats extends Command
     /**
      * Execute the console command.
      */
-    public function handle()
+    public function handle(QueueMetricsService $queueMetrics): int
     {
         $this->info('📊 Queue Statistics');
         $this->info('==================');
@@ -39,85 +40,74 @@ class QueueStats extends Command
             $this->newLine();
         }
 
-        // Pending jobs (currently in queue)
-        $pendingJobs = DB::table('jobs')->count();
-        $pendingByQueue = DB::table('jobs')
-            ->select('queue', DB::raw('count(*) as count'))
-            ->groupBy('queue')
-            ->get();
+        $metrics = $queueMetrics->getRealtimeMetrics();
+        $pendingJobs = $metrics['pending_jobs'];
+        $processingJobs = $metrics['processing_jobs'];
+        $delayedJobs = $metrics['delayed_jobs'];
+        $failedJobs = $metrics['failed_jobs'];
 
-        // Failed jobs
-        $failedJobs = DB::table('failed_jobs')->count();
-        $failedByQueue = DB::table('failed_jobs')
-            ->select('queue', DB::raw('count(*) as count'))
-            ->groupBy('queue')
-            ->get();
-
-        // Processed jobs (estimated from cache or log analysis)
         $processedCount = $this->getProcessedJobsCount();
         $startTime = Cache::get('queue_stats_start_time', now());
         $duration = now()->diffForHumans($startTime, true);
-
-        // Total jobs
         $totalJobs = $pendingJobs + $failedJobs + $processedCount;
 
-        // Display summary
         $this->table(
             ['Metric', 'Count'],
             [
                 ['Total Jobs (all time)', $totalJobs],
                 ['✅ Processed Successfully', $processedCount],
                 ['⏳ Pending in Queue', $pendingJobs],
+                ['🔄 Reserved / Processing', $processingJobs],
+                ['🕒 Delayed', $delayedJobs],
                 ['❌ Failed', $failedJobs],
             ]
         );
 
         $this->newLine();
 
-        // Success rate
         if ($totalJobs > 0) {
             $successRate = round(($processedCount / $totalJobs) * 100, 2);
             $failureRate = round(($failedJobs / $totalJobs) * 100, 2);
-            
-            $this->info("📈 Performance Metrics:");
+
+            $this->info('📈 Performance Metrics:');
             $this->line("   Success Rate: {$successRate}%");
             $this->line("   Failure Rate: {$failureRate}%");
             $this->line("   Tracking Since: {$startTime->format('Y-m-d H:i:s')} ({$duration})");
             $this->newLine();
         }
 
-        // Pending jobs by queue
-        if ($pendingJobs > 0) {
-            $this->info('⏳ Pending Jobs by Queue:');
+        if ($pendingJobs > 0 || $processingJobs > 0 || $delayedJobs > 0 || $failedJobs > 0) {
+            $this->info('⏳ Queue Backlog by Queue:');
+            $rows = [];
+            foreach ($metrics['configured_queues'] as $queue) {
+                $rows[] = [
+                    $queue,
+                    $metrics['pending_by_queue'][$queue] ?? 0,
+                    $metrics['processing_by_queue'][$queue] ?? 0,
+                    $metrics['delayed_by_queue'][$queue] ?? 0,
+                    $metrics['failed_by_queue'][$queue] ?? 0,
+                    $metrics['oldest_pending_age_by_queue'][$queue] ?? 'N/A',
+                    $metrics['workers_by_queue'][$queue] ?? 0,
+                    $metrics['configured_workers_by_queue'][$queue] ?? 0,
+                ];
+            }
+
             $this->table(
-                ['Queue', 'Count'],
-                $pendingByQueue->map(fn($item) => [$item->queue, $item->count])
+                ['Queue', 'Pending', 'Reserved', 'Delayed', 'Failed', 'Oldest Pending Age (s)', 'Workers', 'Configured'],
+                $rows
             );
             $this->newLine();
         }
 
-        // Failed jobs by queue
-        if ($failedJobs > 0) {
-            $this->warn('❌ Failed Jobs by Queue:');
-            $this->table(
-                ['Queue', 'Count'],
-                $failedByQueue->map(fn($item) => [$item->queue, $item->count])
-            );
-            $this->newLine();
-        }
-
-        // Recent activity (last 24 hours from Laravel log)
         $this->info('📅 Recent Activity (Last 24 Hours):');
-        $recentStats = $this->getRecentActivity();
         $this->table(
             ['Period', 'Processed', 'Failed'],
-            $recentStats
+            $this->getRecentActivity()
         );
         $this->newLine();
 
-        // Worker status
+        $workerRunning = ! empty($metrics['workers_by_queue']);
         $this->info('👷 Queue Worker Status:');
-        $workerRunning = $this->checkWorkerRunning();
         if ($workerRunning) {
             $this->line('   Status: ✅ Running');
         } else {
@@ -126,38 +116,30 @@ class QueueStats extends Command
         }
         $this->newLine();
 
-        // Recommendations
         if ($failedJobs > 10) {
             $this->warn('💡 Recommendation: You have many failed jobs. Run: php artisan queue:diagnose-failed');
         }
         if ($pendingJobs > 100) {
             $this->warn('💡 Recommendation: Queue is backing up. Consider adding more workers.');
         }
-        if (!$workerRunning) {
+        if (! $workerRunning) {
             $this->error('💡 Recommendation: Start queue worker: php artisan queue:work');
         }
 
         return 0;
     }
 
-    /**
-     * Get processed jobs count from cache
-     */
     private function getProcessedJobsCount(): int
     {
-        // Initialize counter if not exists (30 seconds max to prevent stale data)
-        if (!Cache::has('queue_stats_start_time')) {
+        if (! Cache::has('queue_stats_start_time')) {
             Cache::put('queue_stats_start_time', now(), 30);
         }
 
-        // Try to get from cache
         $count = Cache::get('queue_stats_processed_count', 0);
 
-        // If zero, try to estimate from log file
         if ($count === 0) {
             $count = $this->estimateProcessedFromLogs();
             if ($count > 0) {
-                // 30 seconds max to prevent stale data
                 Cache::put('queue_stats_processed_count', $count, 30);
             }
         }
@@ -165,36 +147,27 @@ class QueueStats extends Command
         return $count;
     }
 
-    /**
-     * Estimate processed jobs from log file
-     */
     private function estimateProcessedFromLogs(): int
     {
         $logPath = storage_path('logs/laravel.log');
-        
-        if (!file_exists($logPath)) {
+
+        if (! file_exists($logPath)) {
             return 0;
         }
 
         try {
-            // Count "Processing:" entries in log (indicates job started)
             $command = "grep -c 'Processing:' " . escapeshellarg($logPath) . " 2>/dev/null || echo 0";
-            $count = (int) trim(shell_exec($command));
-            
-            return $count;
+            return (int) trim(shell_exec($command));
         } catch (\Exception $e) {
             return 0;
         }
     }
 
-    /**
-     * Get recent activity from logs
-     */
     private function getRecentActivity(): array
     {
         $logPath = storage_path('logs/laravel.log');
-        
-        if (!file_exists($logPath)) {
+
+        if (! file_exists($logPath)) {
             return [
                 ['Last 24 hours', 0, 0],
                 ['Last 7 days', 0, 0],
@@ -202,15 +175,11 @@ class QueueStats extends Command
         }
 
         try {
-            // Get log entries from last 24 hours
             $yesterday = now()->subDay()->format('Y-m-d');
             $lastWeek = now()->subWeek()->format('Y-m-d');
-            
-            // Count processed jobs (simplified - counts log entries)
+
             $processed24h = $this->countLogEntries($logPath, 'Processing:', $yesterday);
             $processedWeek = $this->countLogEntries($logPath, 'Processing:', $lastWeek);
-            
-            // Count failed jobs
             $failed24h = DB::table('failed_jobs')
                 ->where('failed_at', '>=', now()->subDay())
                 ->count();
@@ -230,35 +199,13 @@ class QueueStats extends Command
         }
     }
 
-    /**
-     * Count log entries matching pattern after date
-     */
     private function countLogEntries(string $logPath, string $pattern, string $afterDate): int
     {
         try {
-            $command = "grep '{$pattern}' " . escapeshellarg($logPath) . 
-                      " | grep -c '{$afterDate}' 2>/dev/null || echo 0";
+            $command = "grep '{$pattern}' " . escapeshellarg($logPath) . " | grep -c '{$afterDate}' 2>/dev/null || echo 0";
             return (int) trim(shell_exec($command));
         } catch (\Exception $e) {
             return 0;
-        }
-    }
-
-    /**
-     * Check if queue worker is running
-     */
-    private function checkWorkerRunning(): bool
-    {
-        try {
-            if (PHP_OS_FAMILY === 'Windows') {
-                $output = shell_exec('tasklist /FI "IMAGENAME eq php.exe" 2>NUL | findstr "queue:work"');
-            } else {
-                $output = shell_exec('ps aux | grep "queue:work" | grep -v grep');
-            }
-            
-            return !empty($output);
-        } catch (\Exception $e) {
-            return false;
         }
     }
 }

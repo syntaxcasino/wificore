@@ -31,18 +31,52 @@ class TenantContext
     protected ?string $originalSearchPath = null;
 
     /**
+     * Cached active tenant ID for fast re-entry checks
+     */
+    protected ?string $activeTenantId = null;
+
+    /**
+     * Cached active schema name for fast re-entry checks
+     */
+    protected ?string $activeSchemaName = null;
+
+    /**
+     * Cached active search path for fast re-entry checks
+     */
+    protected ?string $activeSearchPath = null;
+
+    /**
      * Set tenant context by tenant object
      * 
      * @param Tenant|null $tenant
      * @return void
      */
-    public function setTenant(?Tenant $tenant): void
+    public function setTenant(?Tenant $tenant, bool $force = true): void
     {
         if (!$tenant) {
             $this->clearTenant();
             return;
         }
         
+        $targetSearchPath = $tenant->schema_created && $tenant->schema_name
+            ? $this->buildSearchPath($tenant->schema_name)
+            : null;
+
+        if (
+            !$force
+            && $tenant->schema_created
+            && $tenant->schema_name
+            && DB::transactionLevel() > 0
+            && $this->activeTenantId === (string) $tenant->id
+            && $this->activeSchemaName === $tenant->schema_name
+            && $this->activeSearchPath === $targetSearchPath
+        ) {
+            $this->tenant = $tenant;
+            app()->instance('current_tenant', $tenant);
+
+            return;
+        }
+
         $this->tenant = $tenant;
         
         // Also set in app container for model events to access
@@ -143,38 +177,41 @@ class TenantContext
     {
         $targetSearchPath = $this->originalSearchPath ?: $this->systemSchema;
 
+        if (
+            $this->tenant === null
+            && $this->activeSearchPath === $targetSearchPath
+            && $this->activeTenantId === null
+        ) {
+            if (app()->has('current_tenant')) {
+                app()->forgetInstance('current_tenant');
+            }
+
+            return;
+        }
+
         try {
             $this->setSearchPathStatement($targetSearchPath);
         } catch (\Throwable $e) {
-            Log::warning('Failed to reset tenant search path during context clear', [
-                'target_search_path' => $targetSearchPath,
-                'transaction_level' => DB::transactionLevel(),
-                'error' => $e->getMessage(),
-            ]);
-            // If we are inside an aborted transaction the SET LOCAL above was rejected
-            // by PostgreSQL ("current transaction is aborted"). Rolling back here returns
-            // the backend connection to PgBouncer in a clean idle state so the next
-            // request does not inherit the aborted transaction and get 42P01 errors.
-            // Use raw PDO::exec() to bypass Laravel's DB::rollBack() which also goes
-            // through DB::statement() and can fail the same way on an aborted connection.
-            if (DB::transactionLevel() > 0) {
-                try {
-                    DB::connection()->getPdo()->exec('ROLLBACK');
-                    // Reset Laravel's internal $transactions counter to 0 via reflection
-                    // since there is no public API for this. Without it, Laravel thinks
-                    // we are still inside a transaction and future calls may issue
-                    // ROLLBACK TO SAVEPOINT instead of a fresh BEGIN.
-                    $conn = DB::connection();
-                    $ref = new \ReflectionProperty($conn, 'transactions');
-                    $ref->setAccessible(true);
-                    $ref->setValue($conn, 0);
-                } catch (\Throwable) {
-                    // Best-effort; ignore if already rolled back.
-                }
+            $isAbortedTransaction = DB::transactionLevel() > 0 && str_contains($e->getMessage(), 'current transaction is aborted');
+
+            if ($isAbortedTransaction) {
+                Log::debug('Skipped tenant search path reset because the current transaction is already aborted', [
+                    'target_search_path' => $targetSearchPath,
+                    'transaction_level' => DB::transactionLevel(),
+                ]);
+            } else {
+                Log::warning('Failed to reset tenant search path during context clear', [
+                    'target_search_path' => $targetSearchPath,
+                    'transaction_level' => DB::transactionLevel(),
+                    'error' => $e->getMessage(),
+                ]);
             }
         }
 
         $this->originalSearchPath = null;
+        $this->activeTenantId = null;
+        $this->activeSchemaName = null;
+        $this->activeSearchPath = $targetSearchPath;
 
         $this->tenant = null;
         
@@ -229,6 +266,9 @@ class TenantContext
         // so all SELECT queries use the write PDO (the one inside the transaction).
         // The read PDO has no open transaction so SET LOCAL on it is immediately lost.
         $this->setSearchPathStatement("{$schemaName}, {$this->systemSchema}");
+        $this->activeTenantId = $this->tenant?->id;
+        $this->activeSchemaName = $schemaName;
+        $this->activeSearchPath = "{$schemaName}, {$this->systemSchema}";
         
         Log::debug('Search path set', [
             'schema_name' => $schemaName,
@@ -267,14 +307,18 @@ class TenantContext
         // Do NOT add DB::transaction() here — it would issue a nested SET LOCAL
         // clearTenant() call that resets search_path mid outer-transaction.
         try {
-            $this->setTenant($tenant);
+            $this->setTenant($tenant, false);
             return $callback();
         } finally {
             try {
                 if ($previousTenant) {
-                    $this->setTenant($previousTenant);
+                    if ($this->tenant?->id !== $previousTenant->id) {
+                        $this->setTenant($previousTenant, true);
+                    }
                 } else {
-                    $this->clearTenant();
+                    if ($this->tenant !== null) {
+                        $this->clearTenant();
+                    }
                 }
             } catch (\Throwable $e) {
                 Log::warning('Failed to restore tenant context after scoped operation', [
@@ -302,7 +346,9 @@ class TenantContext
             return $callback();
         } finally {
             if ($previousTenant) {
-                $this->setTenant($previousTenant);
+                if ($this->tenant?->id !== $previousTenant->id) {
+                    $this->setTenant($previousTenant, true);
+                }
             }
         }
     }
@@ -361,9 +407,20 @@ class TenantContext
     {
         if (DB::transactionLevel() > 0) {
             DB::statement("SET LOCAL search_path TO {$searchPath}");
+            $this->activeSearchPath = $searchPath;
             return;
         }
 
         DB::statement("SET search_path TO {$searchPath}");
+        $this->activeSearchPath = $searchPath;
+    }
+
+
+    /**
+     * Build a normalized tenant search path.
+     */
+    protected function buildSearchPath(string $schemaName): string
+    {
+        return "{$schemaName}, {$this->systemSchema}";
     }
 }

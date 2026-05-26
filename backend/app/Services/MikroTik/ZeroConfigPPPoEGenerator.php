@@ -224,7 +224,7 @@ class ZeroConfigPPPoEGenerator
         $s[] = ":do { /ip dhcp-client add interface=\"{$wanIface}\" disabled=no } on-error={ /ip dhcp-client set [/ip dhcp-client find interface=\"{$wanIface}\"] disabled=no; }";
         $runningCheckInterfaces = array_values(array_unique(array_merge([$wanIface], $p['interfaces'])));
         foreach ($runningCheckInterfaces as $iface) {
-            $s[] = ":do { /interface ethernet set [find name=\"{$iface}\"]  } on-error={} ";
+            $s[] = ":do { /interface ethernet set [find name=\"{$iface}\"] disable-running-check=no } on-error={} ";
         }
 
 

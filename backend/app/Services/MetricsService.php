@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Facades\Log;
+use App\Services\QueueMetricsService;
 use App\Models\PerformanceMetric;
 
 /**
@@ -324,9 +325,10 @@ class MetricsService extends TenantAwareService
                 ];
             }
             
-            // Get additional system metrics (only public schema tables)
-            $pendingJobs = DB::table('jobs')->count();
-            $failedJobs = DB::table('failed_jobs')->count();
+            // Queue metrics come from Redis-backed runtime state, not the database jobs table.
+            $queueMetrics = app(QueueMetricsService::class)->getRealtimeMetrics();
+            $pendingJobs = $queueMetrics['pending_jobs'];
+            $failedJobs = $queueMetrics['failed_jobs'];
 
             PerformanceMetric::create([
                 'recorded_at' => now(),

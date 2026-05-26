@@ -14,6 +14,7 @@ use App\Models\QueueMetric;
 use App\Models\SystemHealthMetric;
 use App\Models\PerformanceMetric;
 use App\Events\SystemMetricsUpdated;
+use App\Services\QueueMetricsService;
 
 class CollectSystemMetricsJob implements ShouldQueue
 {
@@ -24,13 +25,13 @@ class CollectSystemMetricsJob implements ShouldQueue
         $this->onQueue('monitoring');
     }
 
-    public function handle(): void
+    public function handle(QueueMetricsService $queueMetrics): void
     {
         try {
             $now = now();
             
             // Collect all metrics
-            $queueMetrics = $this->collectQueueMetrics();
+            $queueMetrics = $this->collectQueueMetrics($queueMetrics);
             $healthMetrics = $this->collectHealthMetrics();
             $performanceMetrics = $this->collectPerformanceMetrics();
             
@@ -61,135 +62,29 @@ class CollectSystemMetricsJob implements ShouldQueue
         }
     }
 
-    private function collectQueueMetrics(): array
+    private function collectQueueMetrics(QueueMetricsService $queueMetrics): array
     {
         try {
-            // Get queue statistics
-            $pending = DB::table('jobs')->whereNull('reserved_at')->count();
-            $processing = DB::table('jobs')->whereNotNull('reserved_at')->count();
-            $failed = DB::table('failed_jobs')->count();
-            $completed = Cache::get('queue:completed:last_hour', 0);
-            
-            // Get workers by queue using exec()
-            $workersByQueue = $this->getWorkersByQueue();
-            $activeWorkers = array_sum($workersByQueue);
-            
-            // Get pending by queue
-            $pendingByQueue = DB::table('jobs')
-                ->select('queue', DB::raw('count(*) as count'))
-                ->whereNull('reserved_at')
-                ->groupBy('queue')
-                ->pluck('count', 'queue')
-                ->toArray();
-            
-            // Get failed by queue
-            $failedByQueue = DB::table('failed_jobs')
-                ->select('queue', DB::raw('count(*) as count'))
-                ->groupBy('queue')
-                ->pluck('count', 'queue')
-                ->toArray();
-            
-            return [
-                'pending_jobs' => $pending,
-                'processing_jobs' => $processing,
-                'failed_jobs' => $failed,
-                'completed_jobs' => $completed,
-                'active_workers' => $activeWorkers,
-                'workers_by_queue' => $workersByQueue,
-                'pending_by_queue' => $pendingByQueue,
-                'failed_by_queue' => $failedByQueue,
-            ];
+            return $queueMetrics->getRealtimeMetrics();
         } catch (\Exception $e) {
             \Log::error('Failed to collect queue metrics', ['error' => $e->getMessage()]);
             return [
                 'pending_jobs' => 0,
                 'processing_jobs' => 0,
+                'delayed_jobs' => 0,
                 'failed_jobs' => 0,
                 'completed_jobs' => 0,
                 'active_workers' => 0,
+                'configured_queues' => [],
+                'configured_workers_by_queue' => [],
                 'workers_by_queue' => [],
                 'pending_by_queue' => [],
+                'processing_by_queue' => [],
+                'delayed_by_queue' => [],
                 'failed_by_queue' => [],
+                'oldest_pending_age_by_queue' => [],
+                'oldest_pending_job_age_seconds' => null,
             ];
-        }
-    }
-
-    private function getWorkersByQueue(): array
-    {
-        try {
-            // Use sudo to run supervisorctl as www-data user
-            // This requires sudoers configuration: www-data ALL=(ALL) NOPASSWD: /usr/bin/supervisorctl status
-            $output = [];
-            $return_var = 0;
-            
-            // Try with sudo first (configured in /etc/sudoers.d/supervisorctl)
-            $command = 'sudo /usr/bin/supervisorctl -c /etc/supervisor/supervisord.conf status 2>&1';
-            exec($command, $output, $return_var);
-            
-            // Fallback: Try without sudo (in case we're running as root)
-            if ($return_var !== 0 || empty($output)) {
-                $output = [];
-                $command = '/usr/bin/supervisorctl -c /etc/supervisor/supervisord.conf status 2>&1';
-                exec($command, $output, $return_var);
-            }
-            
-            // If still failing, log error and return empty
-            if ($return_var !== 0 || empty($output)) {
-                \Log::error('Failed to execute supervisorctl', [
-                    'return_code' => $return_var,
-                    'output' => implode(' | ', array_slice($output, 0, 3)),
-                    'user' => posix_getpwuid(posix_geteuid())['name'] ?? 'unknown'
-                ]);
-                return [];
-            }
-            
-            $workersByQueue = [];
-            $totalWorkers = 0;
-            
-            foreach ($output as $line) {
-                if (empty($line)) continue;
-                
-                // Only process RUNNING workers
-                if (!preg_match('/RUNNING/', $line)) {
-                    continue;
-                }
-                
-                // Match queue name - handle both grouped and ungrouped workers
-                if (preg_match('/laravel-queue(?:s)?:laravel-queue-([a-z0-9\-]+)_\d+/i', $line, $matches)) {
-                    $queueName = $matches[1];
-                    if (!isset($workersByQueue[$queueName])) {
-                        $workersByQueue[$queueName] = 0;
-                    }
-                    $workersByQueue[$queueName]++;
-                    $totalWorkers++;
-                } elseif (preg_match('/laravel-queue-([a-z0-9\-]+):laravel-queue-\1_\d+/i', $line, $matches)) {
-                    // Handle standalone queue workers (not in group)
-                    $queueName = $matches[1];
-                    if (!isset($workersByQueue[$queueName])) {
-                        $workersByQueue[$queueName] = 0;
-                    }
-                    $workersByQueue[$queueName]++;
-                    $totalWorkers++;
-                }
-            }
-            
-            \Log::info('Collected workers in job', [
-                'total_workers' => $totalWorkers,
-                'queues' => count($workersByQueue),
-                'output_lines' => count($output),
-                'method' => 'sudo supervisorctl'
-            ]);
-            
-            return $workersByQueue;
-        } catch (\Exception $e) {
-            \Log::error('Failed to get workers by queue in job', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
-            
-            // Return empty array on error - don't use static fallback
-            // This way we know when workers are actually down
-            return [];
         }
     }
 

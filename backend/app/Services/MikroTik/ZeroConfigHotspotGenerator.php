@@ -399,17 +399,21 @@ class ZeroConfigHotspotGenerator
         $poolName = "hs-pool-{$sid}";
         $userProf = "hs-usr-{$sid}";
         $iface = $params['bridge_name'] ?? $params['interface'];
+        $portalHost = $params['portal_host'] ?? null;
+        $dnsName = $portalHost ?: 'hotspot.local';
+        $portalUrl = $params['captive_portal_url'] ?? null;
+        $portalHtml = null;
 
-        $portalUrl = $params['captive_portal_url']
-            ? str_replace(['\\', '"'], ['\\\\', '\\"'], (string) $params['captive_portal_url'])
-            : null;
+        if ($portalUrl) {
+            $escapedUrl = htmlspecialchars((string) $portalUrl, ENT_QUOTES);
+            $portalHtml = $this->escapeRouterOsString("<html><head><meta http-equiv='refresh' content='0;url={$escapedUrl}'></head><body><a href='{$escapedUrl}'>Continue</a></body></html>");
+        }
 
         return array_values(array_filter([
             "# Hotspot Profile",
             ":do { /ip hotspot profile remove [/ip hotspot profile find name=\"{$profile}\"] } on-error={}",
-            ":do { /ip hotspot profile add name=\"{$profile}\" hotspot-address=\"{$params['gateway_ip']}\" login-by=http-chap,http-pap use-radius=yes html-directory=hotspot dns-name=hotspot.local http-cookie-lifetime=1d } on-error={ /log error \"hs-{$sid}: FATAL - hotspot profile add failed\" }",
-            //($portalUrl ? ":do { /file set hotspot/login.html contents=\"{$portalUrl}\" } on-error={ /log warning \"hs-{$sid}: Failed to set portal URL (non-fatal)\" }" : null),
-           ($portalUrl ? ":do { /file set [/file find name=\"hotspot/login.html\"] contents=\"{$portalUrl}\" } on-error={ /log warning \"hs-{$sid}: Failed to set portal URL (non-fatal)\" }" : null),
+            ":do { /ip hotspot profile add name=\"{$profile}\" hotspot-address=\"{$params['gateway_ip']}\" login-by=http-chap,http-pap use-radius=yes html-directory=hotspot dns-name=\"{$dnsName}\" http-cookie-lifetime=1d } on-error={ /log error \"hs-{$sid}: FATAL - hotspot profile add failed\" }",
+            ($portalHtml ? ":do { /file set [/file find name=\"hotspot/login.html\"] contents=\"{$portalHtml}\" } on-error={ /log warning \"hs-{$sid}: Failed to set portal URL (non-fatal)\" }" : null),
             "# Hotspot Server",
             ":do { /ip hotspot remove [/ip hotspot find name=\"{$server}\"] } on-error={}",
             ":do { /ip hotspot add name=\"{$server}\" interface=\"{$iface}\" profile=\"{$profile}\" address-pool=\"{$poolName}\" addresses-per-mac=2 idle-timeout=5m keepalive-timeout=2m disabled=no } on-error={ /log error \"hs-{$sid}: FATAL - hotspot server add failed\" }",

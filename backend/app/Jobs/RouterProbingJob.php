@@ -5,7 +5,7 @@ namespace App\Jobs;
 use App\Models\Router;
 use App\Events\RouterConnected;
 use App\Events\ProvisioningFailed;
-use App\Services\MikrotikProvisioningService;
+use App\Services\RouterTaskExecutionService;
 use App\Traits\TenantAwareJob;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -39,9 +39,9 @@ class RouterProbingJob implements ShouldQueue
     /**
      * Execute the job.
      */
-    public function handle(MikrotikProvisioningService $provisioningService): void
+    public function handle(RouterTaskExecutionService $taskExecutionService): void
     {
-        $this->executeInTenantContext(function() use ($provisioningService) {
+        $this->executeInTenantContext(function() use ($taskExecutionService) {
             $router = Router::find($this->routerId);
 
             if (!$router) {
@@ -70,7 +70,7 @@ class RouterProbingJob implements ShouldQueue
 
             try {
                 // Verify router connectivity
-                $result = $provisioningService->verifyConnectivity($router);
+                $result = $taskExecutionService->verifyConnectivity($router, $this->tenantId, $task);
 
                 if ($result['status'] === 'connected' || $result['status'] === 'online') {
                     // Router is connected! Update status and broadcast event

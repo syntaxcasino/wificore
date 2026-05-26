@@ -7,6 +7,7 @@ use App\Events\PppoeUserPaymentStatusChanged;
 use App\Jobs\ReconnectPppoeUserJob;
 use App\Models\PppoePayment;
 use App\Models\PppoeUser;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -32,7 +33,20 @@ class PppoeBillingLifecycleService
             ->delete();
 
         if ($wasInactive) {
-            ReconnectPppoeUserJob::dispatch($user->id, $tenantId);
+            DB::afterCommit(function () use ($user, $tenantId) {
+                $key = $this->reconnectJobCacheKey($tenantId, $user->id);
+                Cache::put($key, [
+                    'status' => 'queued',
+                    'tenant_id' => $tenantId,
+                    'pppoe_user_id' => $user->id,
+                    'queued_at' => now()->toIso8601String(),
+                    'queue' => 'service-control',
+                ], now()->addHour());
+
+                ReconnectPppoeUserJob::dispatch($user->id, $tenantId);
+            });
+        } else {
+            Cache::forget($this->reconnectJobCacheKey($tenantId, $user->id));
         }
 
         event(new PaymentReceived($tenantId, $user->id, $payment->id, (float) $payment->amount));
@@ -53,5 +67,10 @@ class PppoeBillingLifecycleService
             'was_inactive' => $wasInactive,
             'source' => $source,
         ]);
+    }
+
+    private function reconnectJobCacheKey(string $tenantId, string $pppoeUserId): string
+    {
+        return 'pppoe_reconnect_job:' . $tenantId . ':' . $pppoeUserId;
     }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Jobs\ReconnectUserJob;
 use App\Models\Payment;
 use App\Models\UserSubscription;
 use App\Services\SubscriptionManager;
@@ -37,7 +38,7 @@ class ReconnectSubscriptionJob implements ShouldQueue
         $this->paymentId = $paymentId;
         $this->subscriptionId = $subscriptionId;
         $this->setTenantContext($tenantId);
-        
+
         // High priority queue for reconnection
         $this->onQueue('subscription-reconnection');
     }
@@ -47,10 +48,10 @@ class ReconnectSubscriptionJob implements ShouldQueue
      */
     public function handle(SubscriptionManager $subscriptionManager): void
     {
-        $this->executeInTenantContext(function() use ($subscriptionManager) {
+        $this->executeInTenantContext(function () use ($subscriptionManager) {
             try {
                 $subscription = UserSubscription::find($this->subscriptionId);
-                
+
                 if (!$subscription) {
                     Log::error('Subscription not found for reconnection', [
                         'subscription_id' => $this->subscriptionId,
@@ -59,16 +60,23 @@ class ReconnectSubscriptionJob implements ShouldQueue
                     return;
                 }
 
-                $subscriptionManager->processPayment($subscription);
-                
+                $shouldReconnect = $subscriptionManager->renewPayment($subscription);
+
+                if ($shouldReconnect) {
+                    ReconnectUserJob::dispatch($subscription->id, $this->tenantId)
+                        ->onQueue('service-control')
+                        ->afterCommit();
+                }
+
                 Log::info('Subscription reconnection processed (async)', [
                     'payment_id' => $this->paymentId,
                     'subscription_id' => $this->subscriptionId,
                     'user_id' => $subscription->user_id,
+                    'should_reconnect' => $shouldReconnect,
                     'job' => 'ReconnectSubscriptionJob',
                     'tenant_id' => $this->tenantId
                 ]);
-                
+
             } catch (\Exception $e) {
                 Log::error('Failed to process subscription reconnection (async)', [
                     'payment_id' => $this->paymentId,
@@ -78,7 +86,7 @@ class ReconnectSubscriptionJob implements ShouldQueue
                     'job' => 'ReconnectSubscriptionJob',
                     'tenant_id' => $this->tenantId
                 ]);
-                
+
                 throw $e;
             }
         });

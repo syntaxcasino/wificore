@@ -30,6 +30,7 @@ class SystemPaymentSetting extends Model
         'confirmation_url',
         'urls_registered_at',
         'is_active',
+        'payment_trace_mode',
         'account_reference_prefix',
         'updated_by',
     ];
@@ -149,6 +150,7 @@ class SystemPaymentSetting extends Model
                 : null,
             'environment' => $this->environment,
             'is_active' => $this->is_active,
+            'payment_trace_mode' => $this->payment_trace_mode ?? 'stdout',
             'account_reference_prefix' => $this->account_reference_prefix,
             'validation_url' => $this->validation_url,
             'confirmation_url' => $this->confirmation_url,

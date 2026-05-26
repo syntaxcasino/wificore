@@ -44,6 +44,7 @@ class RotateLogs implements ShouldQueue
                 'laravel.log',
                 'mpesa_raw.log',
                 'mpesa_raw_callback.log',
+                'payment_trace.log',
             ];
             $maxRotations = 7;
             $maxSize = 10 * 1024 * 1024;
