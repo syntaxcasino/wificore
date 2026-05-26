@@ -1,29 +1,25 @@
 <template>
-  <div :class="['min-h-screen flex flex-col transition-colors duration-200', isDark ? 'bg-gray-950 text-white' : 'bg-slate-100 text-gray-900']">
+  <div class="min-h-screen flex flex-col bg-slate-50 text-slate-900">
 
     <!-- ── Top Bar ── -->
-    <header :class="['sticky top-0 z-40 flex items-center justify-between px-4 sm:px-6 h-16 backdrop-blur-md border-b transition-colors duration-200', isDark ? 'bg-gray-950/90 border-white/10' : 'bg-white/95 border-gray-200']">
+    <header class="sticky top-0 z-40 flex items-center justify-between px-4 sm:px-6 lg:px-8 h-16 bg-white border-b border-slate-200">
       <div class="flex items-center gap-3">
-        <div class="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/30 flex-shrink-0">
-          <i class="fas fa-wifi text-white text-lg"></i>
+        <div class="w-9 h-9 bg-indigo-600 rounded-lg flex items-center justify-center flex-shrink-0">
+          <i class="fas fa-wifi text-white text-sm"></i>
         </div>
         <div class="hidden sm:flex flex-col leading-tight">
-          <span :class="['font-semibold text-sm leading-tight', isDark ? 'text-white' : 'text-gray-800']">{{ dashboardData?.user?.provider_name || 'My Account' }}</span>
-          <span v-if="dashboardData?.user?.provider_name" :class="['text-[10px]', isDark ? 'text-white/40' : 'text-gray-400']">Customer Portal</span>
+          <span class="font-semibold text-sm text-slate-800">{{ dashboardData?.user?.provider_name || 'My Account' }}</span>
+          <span v-if="dashboardData?.user?.provider_name" class="text-[10px] text-slate-500">Customer Portal</span>
         </div>
       </div>
       <div class="flex items-center gap-3">
-        <div :class="['hidden sm:flex items-center gap-2 rounded-lg px-3 py-1.5 border', isDark ? 'bg-white/5 border-white/10' : 'bg-gray-50 border-gray-200']">
-          <div class="w-5 h-5 rounded-full bg-indigo-500/15 text-indigo-500 flex items-center justify-center">
+        <div class="hidden sm:flex items-center gap-2 rounded-lg px-3 py-1.5 bg-slate-100">
+          <div class="w-5 h-5 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center">
             <i class="fas fa-user text-[10px]"></i>
           </div>
-          <span :class="['text-sm font-medium', isDark ? 'text-white/90' : 'text-gray-700']">{{ user?.full_name || user?.username || 'Account' }}</span>
+          <span class="text-sm font-medium text-slate-700">{{ user?.full_name || user?.username || 'Account' }}</span>
         </div>
-        <!-- Theme Toggle - More Visible -->
-        <button @click="isDark = !isDark" :class="['w-10 h-10 flex items-center justify-center rounded-xl border-2 transition-all duration-200 shadow-sm', isDark ? 'bg-amber-500/20 border-amber-500/50 text-amber-400 hover:bg-amber-500/30 hover:shadow-amber-500/20' : 'bg-indigo-100 border-indigo-300 text-indigo-600 hover:bg-indigo-200 hover:shadow-indigo-500/20']" title="Toggle theme">
-          <i :class="['fas text-base', isDark ? 'fa-sun' : 'fa-moon']"></i>
-        </button>
-        <button @click="handleLogout" :class="['flex items-center gap-1.5 text-xs font-semibold px-4 py-2.5 rounded-xl border transition-colors', isDark ? 'bg-white/5 border-white/10 text-white/70 hover:text-red-400 hover:bg-red-500/10 hover:border-red-500/30' : 'bg-white border-gray-200 text-gray-600 hover:text-red-500 hover:bg-red-50 hover:border-red-200']">
+        <button @click="handleLogout" class="flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-lg border border-slate-200 text-slate-600 hover:text-red-600 hover:bg-red-50 hover:border-red-200 transition-colors">
           <i class="fas fa-arrow-right-from-bracket"></i>
           <span class="hidden sm:inline">Logout</span>
         </button>
@@ -31,36 +27,36 @@
     </header>
 
     <!-- ── Nav Tabs ── -->
-    <nav :class="['flex items-center gap-1 px-4 sm:px-6 pt-2 pb-2 overflow-x-auto border-b transition-colors duration-200', isDark ? 'border-white/10' : 'border-gray-200']">
-      <button :class="['px-3 py-1.5 text-xs font-semibold rounded-lg whitespace-nowrap transition-colors', isDark ? 'bg-indigo-500/20 text-indigo-400' : 'bg-indigo-50 text-indigo-600']">
-        <i class="fas fa-gauge-high mr-1.5"></i>Overview
+    <nav class="flex items-center gap-1 px-4 sm:px-6 lg:px-8 pt-3 pb-3 bg-white border-b border-slate-200 overflow-x-auto">
+      <button class="px-3 py-1.5 text-sm font-medium rounded-lg bg-indigo-50 text-indigo-700">
+        Overview
       </button>
-      <button @click="openPaymentsOverlay" :class="['px-3 py-1.5 text-xs font-semibold rounded-lg whitespace-nowrap transition-colors', isDark ? 'text-white/50 hover:bg-white/10 hover:text-white' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-800']">
-        <i class="fas fa-credit-card mr-1.5"></i>Payments
+      <button @click="openPaymentsOverlay" class="px-3 py-1.5 text-sm font-medium rounded-lg text-slate-600 hover:bg-slate-100 transition-colors">
+        Payments
       </button>
-      <button @click="openHistoryOverlay" :class="['px-3 py-1.5 text-xs font-semibold rounded-lg whitespace-nowrap transition-colors', isDark ? 'text-white/50 hover:bg-white/10 hover:text-white' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-800']">
-        <i class="fas fa-chart-bar mr-1.5"></i>Usage
+      <button @click="openHistoryOverlay" class="px-3 py-1.5 text-sm font-medium rounded-lg text-slate-600 hover:bg-slate-100 transition-colors">
+        Usage History
       </button>
     </nav>
 
-    <main class="flex-1 px-4 sm:px-6 lg:px-8 py-5 pb-28 sm:pb-10 max-w-7xl mx-auto w-full">
+    <main class="flex-1 px-4 sm:px-6 lg:px-8 py-6 pb-24 sm:pb-10 max-w-7xl mx-auto w-full">
 
       <!-- Loading -->
       <div v-if="isLoading && !dashboardData" class="flex items-center justify-center h-64">
         <div class="text-center">
           <div class="w-10 h-10 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p :class="['text-sm', isDark ? 'text-white/50' : 'text-gray-500']">Loading your account…</p>
+          <p class="text-sm text-slate-500">Loading your account…</p>
         </div>
       </div>
 
       <!-- Error -->
-      <div v-else-if="loadError" :class="['rounded-2xl p-5 mb-5 border border-red-400/30', isDark ? 'bg-white/5' : 'bg-white']">
+      <div v-else-if="loadError" class="rounded-xl p-4 mb-6 bg-red-50 border border-red-200">
         <div class="flex items-start gap-3">
-          <i class="fas fa-circle-exclamation text-red-400 mt-0.5 flex-shrink-0"></i>
+          <i class="fas fa-circle-exclamation text-red-500 mt-0.5 flex-shrink-0"></i>
           <div class="flex-1">
-            <p :class="['font-semibold text-sm', isDark ? 'text-white' : 'text-gray-800']">Failed to load dashboard</p>
-            <p :class="['text-xs mt-1', isDark ? 'text-white/50' : 'text-gray-500']">{{ loadError }}</p>
-            <button @click="loadDashboard" class="mt-3 px-4 py-2 bg-red-500/15 hover:bg-red-500/25 text-red-500 rounded-lg text-xs font-semibold transition-colors">Retry</button>
+            <p class="font-semibold text-sm text-slate-800">Failed to load dashboard</p>
+            <p class="text-sm mt-1 text-slate-600">{{ loadError }}</p>
+            <button @click="loadDashboard" class="mt-3 px-4 py-2 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg text-sm font-medium transition-colors">Retry</button>
           </div>
         </div>
       </div>
@@ -68,59 +64,69 @@
       <template v-else-if="dashboardData">
 
         <!-- ── Hero ── -->
-        <div :class="['rounded-2xl p-4 sm:p-5 mb-5 flex items-center gap-4 border text-white', accountStatus.heroClass]">
+        <div class="rounded-xl p-4 sm:p-5 mb-6 flex items-center gap-4 border text-white" :class="accountStatus.heroClass">
           <div class="w-11 h-11 rounded-xl bg-white/15 flex items-center justify-center flex-shrink-0">
             <i :class="['fas text-xl', accountStatus.icon]"></i>
           </div>
           <div class="flex-1 min-w-0">
-            <p class="font-bold text-base leading-tight">{{ accountStatus.title }}</p>
-            <p class="text-sm text-white/70 mt-0.5 truncate">{{ accountStatus.message }}</p>
+            <p class="font-semibold text-base leading-tight">{{ accountStatus.title }}</p>
+            <p class="text-sm text-white/80 mt-0.5 truncate">{{ accountStatus.message }}</p>
           </div>
           <button v-if="dashboardData.user?.status !== 'paused'" @click="openPaymentModal"
-            class="flex-shrink-0 bg-white/20 hover:bg-white/30 text-white text-xs font-semibold px-3 py-2 rounded-lg border border-white/25 whitespace-nowrap transition-colors">
-            <i class="fas fa-bolt mr-1"></i>Pay Now
+            class="flex-shrink-0 bg-white hover:bg-slate-100 text-slate-900 text-sm font-medium px-4 py-2 rounded-lg whitespace-nowrap transition-colors">
+            Pay Now
           </button>
         </div>
 
         <!-- ── Stats ── -->
-        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
           <!-- Session -->
-          <div :class="['rounded-2xl p-4 flex flex-col border transition-colors', isDark ? 'bg-white/5 border-white/10' : 'bg-white border-gray-200']">
-            <div :class="['w-8 h-8 rounded-lg flex items-center justify-center mb-2 flex-shrink-0', isDark ? 'bg-emerald-500/15 text-emerald-400' : 'bg-emerald-100 text-emerald-600']"><i class="fas fa-signal text-sm"></i></div>
-            <p :class="['text-[10px] font-semibold uppercase tracking-wider', isDark ? 'text-white/40' : 'text-gray-400']">Session</p>
-            <p :class="['font-bold text-base mt-0.5 leading-tight', isDark ? 'text-white' : 'text-gray-900']">{{ dashboardData.current_session ? dashboardData.current_session.duration_formatted : '--' }}</p>
-            <span :class="['mt-1.5 self-start text-[10px] font-bold px-2 py-0.5 rounded-full', dashboardData.current_session ? (isDark ? 'bg-emerald-500/15 text-emerald-400' : 'bg-emerald-100 text-emerald-700') : (isDark ? 'bg-white/10 text-white/40' : 'bg-gray-100 text-gray-500')]">{{ dashboardData.current_session ? 'Online' : 'Offline' }}</span>
+          <div class="rounded-xl p-4 bg-white border border-slate-200">
+            <div class="w-8 h-8 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center mb-2">
+              <i class="fas fa-signal text-sm"></i>
+            </div>
+            <p class="text-xs font-medium text-slate-500 uppercase">Session</p>
+            <p class="font-semibold text-lg text-slate-900">{{ dashboardData.current_session ? dashboardData.current_session.duration_formatted : '--' }}</p>
+            <span class="mt-1.5 inline-flex text-xs font-medium px-2 py-0.5 rounded-full" :class="dashboardData.current_session ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'">
+              {{ dashboardData.current_session ? 'Online' : 'Offline' }}
+            </span>
           </div>
           <!-- Balance -->
-          <div :class="['rounded-2xl p-4 flex flex-col border transition-colors', isDark ? 'bg-white/5 border-white/10' : 'bg-white border-gray-200']">
-            <div :class="['w-8 h-8 rounded-lg flex items-center justify-center mb-2 flex-shrink-0', isDark ? 'bg-blue-500/15 text-blue-400' : 'bg-blue-100 text-blue-600']"><i class="fas fa-wallet text-sm"></i></div>
-            <p :class="['text-[10px] font-semibold uppercase tracking-wider', isDark ? 'text-white/40' : 'text-gray-400']">Balance</p>
-            <p :class="['font-bold text-base mt-0.5 leading-tight', isDark ? 'text-white' : 'text-gray-900']">KES {{ formatNumber(dashboardData.user?.balance || 0) }}</p>
-            <p :class="['mt-1 text-xs truncate', isDark ? 'text-white/40' : 'text-gray-400']">Exp: {{ formatDate(dashboardData.user?.expiration_date) }}</p>
+          <div class="rounded-xl p-4 bg-white border border-slate-200">
+            <div class="w-8 h-8 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center mb-2">
+              <i class="fas fa-wallet text-sm"></i>
+            </div>
+            <p class="text-xs font-medium text-slate-500 uppercase">Balance</p>
+            <p class="font-semibold text-lg text-slate-900">KES {{ formatNumber(dashboardData.user?.balance || 0) }}</p>
+            <p class="mt-1 text-xs text-slate-500">Exp: {{ formatDate(dashboardData.user?.expiration_date) }}</p>
           </div>
           <!-- Usage -->
-          <div :class="['rounded-2xl p-4 flex flex-col border transition-colors', isDark ? 'bg-white/5 border-white/10' : 'bg-white border-gray-200']">
-            <div :class="['w-8 h-8 rounded-lg flex items-center justify-center mb-2 flex-shrink-0', isDark ? 'bg-purple-500/15 text-purple-400' : 'bg-purple-100 text-purple-600']"><i class="fas fa-chart-line text-sm"></i></div>
-            <p :class="['text-[10px] font-semibold uppercase tracking-wider', isDark ? 'text-white/40' : 'text-gray-400']">30-Day Usage</p>
-            <p :class="['font-bold text-base mt-0.5 leading-tight', isDark ? 'text-white' : 'text-gray-900']">{{ dashboardData.usage_stats?.total_usage_formatted || '0 B' }}</p>
-            <p :class="['mt-1 text-xs', isDark ? 'text-white/40' : 'text-gray-400']">{{ dashboardData.usage_stats?.total_sessions || 0 }} sessions</p>
+          <div class="rounded-xl p-4 bg-white border border-slate-200">
+            <div class="w-8 h-8 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center mb-2">
+              <i class="fas fa-chart-line text-sm"></i>
+            </div>
+            <p class="text-xs font-medium text-slate-500 uppercase">30-Day Usage</p>
+            <p class="font-semibold text-lg text-slate-900">{{ dashboardData.usage_stats?.total_usage_formatted || '0 B' }}</p>
+            <p class="mt-1 text-xs text-slate-500">{{ dashboardData.usage_stats?.total_sessions || 0 }} sessions</p>
           </div>
           <!-- Payment -->
-          <div :class="['rounded-2xl p-4 flex flex-col border transition-colors', isDark ? 'bg-white/5 border-white/10' : 'bg-white border-gray-200']">
-            <div :class="['w-8 h-8 rounded-lg flex items-center justify-center mb-2 flex-shrink-0', isDark ? 'bg-amber-500/15 text-amber-400' : 'bg-amber-100 text-amber-600']"><i class="fas fa-receipt text-sm"></i></div>
-            <p :class="['text-[10px] font-semibold uppercase tracking-wider', isDark ? 'text-white/40' : 'text-gray-400']">Payment</p>
-            <p :class="['font-bold text-base mt-0.5 leading-tight', isDark ? 'text-white' : 'text-gray-900']">{{ paymentStatusLabel }}</p>
-            <p :class="['mt-1 text-xs truncate', isDark ? 'text-white/40' : 'text-gray-400']">Due {{ formatDate(dashboardData.user?.next_payment_due || dashboardData.user?.expiration_date) }}</p>
+          <div class="rounded-xl p-4 bg-white border border-slate-200">
+            <div class="w-8 h-8 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center mb-2">
+              <i class="fas fa-receipt text-sm"></i>
+            </div>
+            <p class="text-xs font-medium text-slate-500 uppercase">Payment</p>
+            <p class="font-semibold text-lg text-slate-900">{{ paymentStatusLabel }}</p>
+            <p class="mt-1 text-xs text-slate-500">Due {{ formatDate(dashboardData.user?.next_payment_due || dashboardData.user?.expiration_date) }}</p>
           </div>
         </div>
 
         <!-- ── Main grid ── -->
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-5">
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
           <!-- Account Details -->
-          <div :class="['lg:col-span-2 rounded-2xl overflow-hidden border transition-colors', isDark ? 'bg-white/5 border-white/10' : 'bg-white border-gray-200']">
-            <div :class="['px-4 py-3 flex items-center gap-2 border-b', isDark ? 'border-white/10' : 'border-gray-100']">
-              <i class="fas fa-user-circle text-indigo-500 text-sm"></i>
-              <h3 :class="['font-semibold text-sm', isDark ? 'text-white' : 'text-gray-800']">Account Details</h3>
+          <div class="lg:col-span-2 rounded-xl overflow-hidden border bg-white border-slate-200">
+            <div class="px-4 py-3 flex items-center gap-2 border-b border-slate-100 bg-slate-50">
+              <i class="fas fa-user-circle text-slate-600 text-sm"></i>
+              <h3 class="font-semibold text-sm text-slate-800">Account Details</h3>
             </div>
             <div class="p-4 grid grid-cols-2 sm:grid-cols-3 gap-4">
               <div v-for="(cell, i) in [
@@ -133,41 +139,38 @@
                 {l:'Plan Price',  v: 'KES '+formatNumber(planAmount)},
                 {l:'Paid',        v: 'KES '+formatNumber(dashboardData.user?.amount_paid||0)},
               ]" :key="i" class="flex flex-col gap-0.5">
-                <p :class="['text-[10px] font-semibold uppercase tracking-wider', isDark ? 'text-white/40' : 'text-gray-400']">{{ cell.l }}</p>
-                <p :class="['text-xs font-semibold', cell.tr ? 'truncate' : '', isDark ? 'text-white' : 'text-gray-800']">{{ cell.v }}</p>
+                <p class="text-xs font-medium text-slate-500 uppercase">{{ cell.l }}</p>
+                <p class="text-sm font-medium text-slate-900" :class="cell.tr ? 'truncate' : ''">{{ cell.v }}</p>
               </div>
               <div class="flex flex-col gap-0.5">
-                <p :class="['text-[10px] font-semibold uppercase tracking-wider', isDark ? 'text-white/40' : 'text-gray-400']">Amount Due</p>
-                <p :class="['text-xs font-bold', isDark ? 'text-amber-400' : 'text-amber-600']">KES {{ formatNumber(paymentAmount) }}</p>
+                <p class="text-xs font-medium text-slate-500 uppercase">Amount Due</p>
+                <p class="text-sm font-bold text-red-600">KES {{ formatNumber(paymentAmount) }}</p>
               </div>
             </div>
           </div>
 
           <!-- Quick Actions -->
-          <div :class="['rounded-2xl overflow-hidden border transition-colors', isDark ? 'bg-white/5 border-white/10' : 'bg-white border-gray-200']">
-            <div :class="['px-4 py-3 flex items-center gap-2 border-b', isDark ? 'border-white/10' : 'border-gray-100']">
-              <i class="fas fa-bolt text-yellow-500 text-sm"></i>
-              <h3 :class="['font-semibold text-sm', isDark ? 'text-white' : 'text-gray-800']">Quick Actions</h3>
+          <div class="rounded-xl overflow-hidden border bg-white border-slate-200">
+            <div class="px-4 py-3 flex items-center gap-2 border-b border-slate-100 bg-slate-50">
+              <i class="fas fa-bolt text-slate-600 text-sm"></i>
+              <h3 class="font-semibold text-sm text-slate-800">Quick Actions</h3>
             </div>
             <div class="p-4 space-y-2">
-              <button @click="openPaymentModal" :class="['w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold border transition-colors', isDark ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/25' : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100']">
+              <button @click="openPaymentModal" class="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium border transition-colors bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700">
                 <i class="fas fa-mobile-screen-button"></i>Pay via M-Pesa
               </button>
-              <button @click="showVoucherModal = true" :class="['w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold border transition-colors', isDark ? 'bg-indigo-500/15 text-indigo-400 border-indigo-500/20 hover:bg-indigo-500/25' : 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100']">
+              <button @click="showVoucherModal = true" class="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium border transition-colors bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700">
                 <i class="fas fa-ticket"></i>Redeem Voucher
               </button>
-              <button @click="openTimedVoucherOverlay" :class="['w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold border transition-colors', isDark ? 'bg-purple-500/15 text-purple-400 border-purple-500/20 hover:bg-purple-500/25' : 'bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100']">
+              <button @click="openTimedVoucherOverlay" class="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium border transition-colors bg-slate-800 text-white border-slate-800 hover:bg-slate-900">
                 <i class="fas fa-hourglass-half"></i>Buy Timed Voucher
               </button>
-              <div :class="['pt-2 space-y-2 border-t', isDark ? 'border-white/10' : 'border-gray-100']">
-                <button @click="openPlanSwitchOverlay" :class="['w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-colors', isDark ? 'bg-white/5 text-white/60 border-white/10 hover:bg-white/10 hover:text-white' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100']">
+              <div class="pt-2 space-y-2 border-t border-slate-100">
+                <button @click="openPlanSwitchOverlay" class="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium border transition-colors bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200">
                   <i class="fas fa-arrows-rotate"></i>Switch Plan
-                  <span v-if="dashboardData.user?.pending_package_id" :class="['ml-auto text-[10px] px-1.5 py-0.5 rounded-full font-semibold', isDark ? 'bg-amber-500/20 text-amber-400' : 'bg-amber-100 text-amber-700']">Pending</span>
+                  <span v-if="dashboardData.user?.pending_package_id" class="ml-auto text-xs px-1.5 py-0.5 rounded-full font-medium bg-amber-100 text-amber-700">Pending</span>
                 </button>
-                <button @click="openPauseOverlay" :class="['w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-colors',
-                  dashboardData.user?.is_paused
-                    ? (isDark ? 'bg-amber-500/15 text-amber-400 border-amber-500/20 hover:bg-amber-500/25' : 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100')
-                    : (isDark ? 'bg-white/5 text-white/60 border-white/10 hover:bg-white/10 hover:text-white' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100')]">
+                <button @click="openPauseOverlay" class="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium border transition-colors" :class="dashboardData.user?.is_paused ? 'bg-amber-100 text-amber-700 border-amber-200 hover:bg-amber-200' : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'">
                   <i :class="['fas', dashboardData.user?.is_paused ? 'fa-circle-play' : 'fa-circle-pause']"></i>
                   {{ dashboardData.user?.is_paused ? 'Resume Account' : 'Pause Account' }}
                 </button>
@@ -177,22 +180,22 @@
         </div>
 
         <!-- ── Live Session ── -->
-        <div v-if="dashboardData.current_session" :class="['rounded-2xl overflow-hidden border mb-5 transition-colors', isDark ? 'bg-white/5 border-white/10' : 'bg-white border-gray-200']">
-          <div :class="['px-4 py-3 flex items-center gap-2 border-b', isDark ? 'border-white/10' : 'border-gray-100']">
+        <div v-if="dashboardData.current_session" class="rounded-xl overflow-hidden border mb-6 bg-white border-slate-200">
+          <div class="px-4 py-3 flex items-center gap-2 border-b border-slate-100 bg-slate-50">
             <span class="w-2 h-2 bg-emerald-500 rounded-full animate-pulse flex-shrink-0"></span>
-            <h3 :class="['font-semibold text-sm', isDark ? 'text-white' : 'text-gray-800']">Live Session</h3>
-            <span :class="['ml-auto text-xs font-mono', isDark ? 'text-white/40' : 'text-gray-400']">{{ dashboardData.current_session.ip_address }}</span>
+            <h3 class="font-semibold text-sm text-slate-800">Live Session</h3>
+            <span class="ml-auto text-xs font-mono text-slate-500">{{ dashboardData.current_session.ip_address }}</span>
           </div>
           <div class="p-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div v-for="(s, i) in [
-              {icon:'fa-arrow-down',   color:'text-emerald-500', label:'Download', val: dashboardData.current_session.download_formatted},
-              {icon:'fa-arrow-up',     color:'text-blue-500',    label:'Upload',   val: dashboardData.current_session.upload_formatted},
-              {icon:'fa-clock',        color:'text-purple-500',  label:'Duration', val: dashboardData.current_session.duration_formatted},
-              {icon:'fa-network-wired',color:'text-amber-500',   label:'IP',       val: dashboardData.current_session.ip_address, mono:true},
-            ]" :key="i" :class="['flex flex-col items-center justify-center p-3 rounded-xl text-center', isDark ? 'bg-white/5' : 'bg-slate-50']">
+              {icon:'fa-arrow-down',   color:'text-emerald-600', label:'Download', val: dashboardData.current_session.download_formatted},
+              {icon:'fa-arrow-up',     color:'text-blue-600',    label:'Upload',   val: dashboardData.current_session.upload_formatted},
+              {icon:'fa-clock',        color:'text-indigo-600',  label:'Duration', val: dashboardData.current_session.duration_formatted},
+              {icon:'fa-network-wired',color:'text-slate-600',   label:'IP',       val: dashboardData.current_session.ip_address, mono:true},
+            ]" :key="i" class="flex flex-col items-center justify-center p-3 rounded-lg text-center bg-slate-50">
               <i :class="['fas mb-1', s.icon, s.color]"></i>
-              <p :class="['text-xs mb-0.5', isDark ? 'text-white/40' : 'text-gray-400']">{{ s.label }}</p>
-              <p :class="['font-semibold text-sm', s.mono ? 'font-mono text-xs' : '', isDark ? 'text-white' : 'text-gray-800']">{{ s.val }}</p>
+              <p class="text-xs mb-0.5 text-slate-500">{{ s.label }}</p>
+              <p class="font-semibold text-sm text-slate-900" :class="s.mono ? 'font-mono text-xs' : ''">{{ s.val }}</p>
             </div>
           </div>
         </div>
@@ -200,13 +203,13 @@
       </template>
 
       <!-- No data fallback -->
-      <div v-else :class="['rounded-2xl p-5 border border-amber-400/30', isDark ? 'bg-white/5' : 'bg-white']">
+      <div v-else class="rounded-xl p-5 border bg-amber-50 border-amber-200">
         <div class="flex items-start gap-3">
-          <i class="fas fa-triangle-exclamation text-amber-500 mt-0.5 flex-shrink-0"></i>
+          <i class="fas fa-triangle-exclamation text-amber-600 mt-0.5 flex-shrink-0"></i>
           <div>
-            <p :class="['font-semibold text-sm', isDark ? 'text-white' : 'text-gray-800']">Dashboard temporarily unavailable</p>
-            <p :class="['text-xs mt-1', isDark ? 'text-white/50' : 'text-gray-500']">Please retry or log in again.</p>
-            <button @click="loadDashboard" class="mt-3 px-4 py-2 bg-amber-500/15 hover:bg-amber-500/25 text-amber-500 rounded-lg text-xs font-semibold transition-colors">Retry</button>
+            <p class="font-semibold text-sm text-slate-800">Dashboard temporarily unavailable</p>
+            <p class="text-sm mt-1 text-slate-600">Please retry or log in again.</p>
+            <button @click="loadDashboard" class="mt-3 px-4 py-2 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded-lg text-sm font-medium transition-colors">Retry</button>
           </div>
         </div>
       </div>
@@ -226,12 +229,12 @@
     </footer>
 
     <!-- ── Mobile bottom nav ── -->
-    <nav :class="['fixed bottom-0 left-0 right-0 sm:hidden flex items-center justify-around px-2 pt-2 pb-3 z-40 border-t backdrop-blur-md transition-colors', isDark ? 'bg-gray-950/95 border-white/10' : 'bg-white/97 border-gray-200']">
-      <button :class="['flex flex-col items-center gap-1 flex-1 py-1 text-[10px] font-semibold rounded-lg', isDark ? 'text-indigo-400' : 'text-indigo-600']"><i class="fas fa-gauge-high text-lg"></i>Home</button>
-      <button @click="openPaymentsOverlay" :class="['flex flex-col items-center gap-1 flex-1 py-1 text-[10px] font-semibold', isDark ? 'text-white/40 hover:text-white' : 'text-gray-400 hover:text-gray-700']"><i class="fas fa-credit-card text-lg"></i>Pay</button>
-      <button @click="openPaymentModal" class="w-12 h-12 bg-gradient-to-br from-indigo-500 to-indigo-700 rounded-full flex items-center justify-center text-white shadow-lg shadow-indigo-500/40 flex-shrink-0"><i class="fas fa-bolt text-xl"></i></button>
-      <button @click="openHistoryOverlay" :class="['flex flex-col items-center gap-1 flex-1 py-1 text-[10px] font-semibold', isDark ? 'text-white/40 hover:text-white' : 'text-gray-400 hover:text-gray-700']"><i class="fas fa-chart-bar text-lg"></i>Usage</button>
-      <button @click="handleLogout" :class="['flex flex-col items-center gap-1 flex-1 py-1 text-[10px] font-semibold', isDark ? 'text-white/40 hover:text-red-400' : 'text-gray-400 hover:text-red-500']"><i class="fas fa-arrow-right-from-bracket text-lg"></i>Logout</button>
+    <nav class="fixed bottom-0 left-0 right-0 sm:hidden flex items-center justify-around px-2 pt-2 pb-3 z-40 border-t border-slate-200 bg-white">
+      <button class="flex flex-col items-center gap-1 flex-1 py-1 text-[10px] font-semibold rounded-lg text-indigo-600"><i class="fas fa-gauge-high text-lg"></i>Home</button>
+      <button @click="openPaymentsOverlay" class="flex flex-col items-center gap-1 flex-1 py-1 text-[10px] font-semibold text-slate-400 hover:text-slate-700"><i class="fas fa-credit-card text-lg"></i>Pay</button>
+      <button @click="openPaymentModal" class="w-12 h-12 bg-indigo-600 rounded-full flex items-center justify-center text-white shadow-lg flex-shrink-0"><i class="fas fa-bolt text-xl"></i></button>
+      <button @click="openHistoryOverlay" class="flex flex-col items-center gap-1 flex-1 py-1 text-[10px] font-semibold text-slate-400 hover:text-slate-700"><i class="fas fa-chart-bar text-lg"></i>Usage</button>
+      <button @click="handleLogout" class="flex flex-col items-center gap-1 flex-1 py-1 text-[10px] font-semibold text-slate-400 hover:text-red-500"><i class="fas fa-arrow-right-from-bracket text-lg"></i>Logout</button>
     </nav>
 
     <!-- ── M-Pesa Payment Modal ── -->
