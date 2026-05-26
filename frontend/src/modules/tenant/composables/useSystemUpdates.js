@@ -1,6 +1,7 @@
 import { ref, computed } from 'vue'
 import axios from 'axios'
 import { useToast } from '@/modules/common/composables/useToast.js'
+import { readSnapshot, scheduleAfterPaint, writeSnapshot } from '@/modules/common/composables/performance/useViewCache'
 
 export function useSystemUpdates() {
   const { error: showError } = useToast()
@@ -14,6 +15,21 @@ export function useSystemUpdates() {
   const lastCheck = ref(null)
   const showRouterDetails = ref(false)
   const selectedRouter = ref(null)
+  const cacheKey = 'tenant:system-updates:v1'
+
+  const hydrateUpdates = () => {
+    const snapshot = readSnapshot(cacheKey, 60 * 1000)
+    if (!snapshot || typeof snapshot !== 'object') return false
+    servers.value = Array.isArray(snapshot.servers) ? snapshot.servers : []
+    routers.value = Array.isArray(snapshot.routers) ? snapshot.routers : []
+    accessPoints.value = Array.isArray(snapshot.accessPoints) ? snapshot.accessPoints : []
+    updateHistory.value = Array.isArray(snapshot.updateHistory) ? snapshot.updateHistory : []
+    lastCheck.value = snapshot.lastCheck || lastCheck.value
+    return true
+  }
+
+  const persistUpdates = () => writeSnapshot(cacheKey, { servers: servers.value, routers: routers.value, accessPoints: accessPoints.value, updateHistory: updateHistory.value, lastCheck: lastCheck.value })
+
 
   const tabs = [
     { id: 'servers', label: 'Servers' },
@@ -59,7 +75,15 @@ export function useSystemUpdates() {
     }[status] || 'bg-slate-100 text-slate-700')
 
   const fetchUpdates = async () => {
-    loading.value = true
+    if (servers.value.length === 0 && routers.value.length === 0 && accessPoints.value.length === 0 && updateHistory.value.length === 0) {
+      if (!hydrateUpdates()) {
+        scheduleAfterPaint(() => {
+          if (servers.value.length === 0 && routers.value.length === 0 && accessPoints.value.length === 0) loading.value = true
+        })
+      }
+    } else {
+      loading.value = true
+    }
     try {
       const [serversRes, routersRes, apsRes, historyRes] = await Promise.all([
         axios.get('/system-updates/servers').catch(() => ({ data: { servers: [] } })),
@@ -72,6 +96,7 @@ export function useSystemUpdates() {
       accessPoints.value = apsRes.data?.access_points || []
       updateHistory.value = historyRes.data?.history || []
       lastCheck.value = new Date().toISOString()
+      persistUpdates()
     } catch (err) {
       console.error('fetchUpdates error:', err)
     } finally {

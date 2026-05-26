@@ -1,10 +1,22 @@
 import { ref, computed } from 'vue'
 import axios from 'axios'
 import { LogIn, LogOut, Clock, AlertCircle } from 'lucide-vue-next'
+import { readSnapshot, scheduleAfterPaint, writeSnapshot } from '@/modules/common/composables/performance/useViewCache'
 
 export function useSessionLogs() {
   const loading = ref(false)
   const logs = ref([])
+
+  const cacheKey = 'tenant:session-logs:v1'
+
+  const hydrateLogs = () => {
+    const snapshot = readSnapshot(cacheKey, 30 * 1000)
+    if (!Array.isArray(snapshot)) return false
+    logs.value = snapshot
+    return true
+  }
+
+  const persistLogs = () => writeSnapshot(cacheKey, logs.value)
 
   const stats = computed(() => ({
     total: logs.value.length,
@@ -38,7 +50,15 @@ export function useSessionLogs() {
     ({ login: 'success', logout: 'info', timeout: 'warning', error: 'error' }[eventType] || 'default')
 
   const fetchLogs = async () => {
-    loading.value = true
+    if (logs.value.length === 0) {
+      if (!hydrateLogs()) {
+        scheduleAfterPaint(() => {
+          if (logs.value.length === 0) loading.value = true
+        })
+      }
+    } else {
+      loading.value = true
+    }
     try {
       const response = await axios.get('/monitoring/session-logs', { params: { per_page: 500 } })
       const data = response.data?.logs?.data || response.data?.logs || response.data?.data || []
@@ -51,6 +71,7 @@ export function useSessionLogs() {
         session_duration: l.session_duration || null,
         created_at: l.created_at || new Date().toISOString()
       }))
+      persistLogs()
     } catch (err) {
       console.error('fetchLogs error:', err)
     } finally {

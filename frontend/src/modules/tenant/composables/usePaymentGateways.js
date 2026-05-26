@@ -2,6 +2,7 @@ import { ref, computed } from 'vue'
 import axios from 'axios'
 import { useToast } from '@/modules/common/composables/useToast.js'
 import { useConfirmStore } from '@/stores/confirm'
+import { readSnapshot, scheduleAfterPaint, writeSnapshot } from '@/modules/common/composables/performance/useViewCache'
 
 export function usePaymentGateways() {
   const { error: showError } = useToast()
@@ -15,6 +16,17 @@ export function usePaymentGateways() {
   const formError = ref(null)
   const testing = ref(false)
   const testAmount = ref('')
+  const cacheKey = 'tenant:payment-gateways:v1'
+
+  const hydrateGateways = () => {
+    const snapshot = readSnapshot(cacheKey, 30 * 1000)
+    if (!Array.isArray(snapshot)) return false
+    gateways.value = snapshot
+    return true
+  }
+
+  const persistGateways = () => writeSnapshot(cacheKey, gateways.value)
+
   const testResult = ref(null)
   const showCreateOverlay = ref(false)
   const showViewOverlay = ref(false)
@@ -67,11 +79,20 @@ export function usePaymentGateways() {
   const onProviderChange = () => { form.value.credentials = {} }
 
   const fetchGateways = async () => {
-    loading.value = true
+    if (gateways.value.length === 0) {
+      if (!hydrateGateways()) {
+        scheduleAfterPaint(() => {
+          if (gateways.value.length === 0) loading.value = true
+        })
+      }
+    } else {
+      loading.value = true
+    }
     error.value = null
     try {
       const response = await axios.get('/settings/payment-gateways')
       gateways.value = response.data?.gateways || []
+      persistGateways()
     } catch (err) {
       error.value = err.response?.data?.message || 'Failed to load payment gateways'
     } finally {

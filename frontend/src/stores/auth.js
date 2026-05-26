@@ -47,9 +47,9 @@ export const useAuthStore = defineStore('auth', {
           // Set axios default header
           axios.defaults.headers.common['Authorization'] = `Bearer ${token}`
           
-          // Initialize WebSocket connection
-          this.initializeWebSocket()
-          
+          // Initialize WebSocket connection after the auth response path completes
+          setTimeout(() => this.initializeWebSocket(), 0)
+
           return { success: true, user, dashboardRoute: dashboard_route }
         }
         

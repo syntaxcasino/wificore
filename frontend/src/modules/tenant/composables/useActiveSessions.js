@@ -6,12 +6,14 @@
 import { ref, computed } from 'vue'
 import axios from '@/modules/common/services/api/axios'
 import { useToast } from '@/modules/common/composables/useToast'
+import { readSnapshot, scheduleAfterPaint, writeSnapshot } from '@/modules/common/composables/performance/useViewCache'
 
 export function useActiveSessions() {
   const loading = ref(false)
   const error = ref(null)
   const sessions = ref([])
   const packages = ref([])
+  const cacheKey = 'tenant:active-sessions:v1'
 
   const { toast } = useToast()
 
@@ -46,14 +48,33 @@ export function useActiveSessions() {
     return result
   })
 
+  const hydrateSessions = () => {
+    const snapshot = readSnapshot(cacheKey, 20 * 1000)
+    if (snapshot && Array.isArray(snapshot.sessions)) {
+      sessions.value = snapshot.sessions
+      packages.value = Array.isArray(snapshot.packages) ? snapshot.packages : packages.value
+      return true
+    }
+    return false
+  }
+
   // API Functions
   const fetchSessions = async () => {
-    loading.value = true
+    const isInitial = sessions.value.length === 0
+    if (isInitial) {
+      const cached = hydrateSessions()
+      if (!cached) {
+        scheduleAfterPaint(() => {
+          if (sessions.value.length === 0) loading.value = true
+        })
+      }
+    }
     error.value = null
     try {
       const response = await axios.get('/hotspot/sessions/active')
       const data = response.data?.sessions || response.data?.data || []
       sessions.value = data
+      writeSnapshot(cacheKey, { sessions: sessions.value, packages: packages.value })
       return data
     } catch (err) {
       // Guard against undefined or non-axios errors
@@ -71,6 +92,7 @@ export function useActiveSessions() {
     try {
       const response = await axios.get('/packages')
       packages.value = (response.data?.data || response.data || []).map(p => ({ id: p.id, name: p.name }))
+      writeSnapshot(cacheKey, { sessions: sessions.value, packages: packages.value })
       return packages.value
     } catch (err) {
       console.warn('Failed to fetch packages:', err)

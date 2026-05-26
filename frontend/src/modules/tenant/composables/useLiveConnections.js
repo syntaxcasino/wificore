@@ -7,6 +7,7 @@ import { ref, computed } from 'vue'
 import axios from '@/modules/common/services/api/axios'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/modules/common/composables/useToast'
+import { readSnapshot, scheduleAfterPaint, writeSnapshot } from '@/modules/common/composables/performance/useViewCache'
 
 export function useLiveConnections() {
   const loading = ref(false)
@@ -31,6 +32,7 @@ export function useLiveConnections() {
 
   const { toast } = useToast()
   const authStore = useAuthStore()
+  const cacheKey = () => `tenant:live-connections:${authStore.tenantId || localStorage.getItem('tenantId') || 'default'}`
 
   // Throttling controls
   let lastStatsFetch = 0
@@ -71,11 +73,27 @@ export function useLiveConnections() {
   )
 
   // API Functions
+  const hydrateConnections = () => {
+    const snapshot = readSnapshot(cacheKey(), 20 * 1000)
+    if (snapshot && Array.isArray(snapshot.connections)) {
+      connections.value = snapshot.connections
+      routers.value = Array.isArray(snapshot.routers) ? snapshot.routers : routers.value
+      if (snapshot.stats) stats.value = snapshot.stats
+      return true
+    }
+    return false
+  }
+
+  const persistConnections = () => writeSnapshot(cacheKey(), { connections: connections.value, routers: routers.value, stats: stats.value })
+
   const fetchConnections = async () => {
     const isInitial = connections.value.length === 0
     if (isInitial) {
-      loading.value = true
-      error.value = null
+      if (!hydrateConnections()) {
+        scheduleAfterPaint(() => {
+          if (connections.value.length === 0) loading.value = true
+        })
+      }
     }
 
     try {
@@ -131,6 +149,7 @@ export function useLiveConnections() {
 
       connections.value = merged
       updateStats()
+      persistConnections()
 
       if (pppoeRes.status === 'rejected' && hotspotRes.status === 'rejected') {
         if (isInitial) {
@@ -157,6 +176,7 @@ export function useLiveConnections() {
       const response = await axios.get('/routers')
       const data = Array.isArray(response.data) ? response.data : (response.data?.data || [])
       routers.value = data.map(r => ({ id: r.id, name: r.name }))
+      persistConnections()
       return routers.value
     } catch (err) {
       console.warn('Failed to fetch routers for filter:', err.message)
@@ -178,6 +198,7 @@ export function useLiveConnections() {
       // Remove from local state
       connections.value = connections.value.filter(c => c.id !== conn.id)
       updateStats()
+      persistConnections()
 
       toast.success(`${conn.username} disconnected successfully`)
       return true

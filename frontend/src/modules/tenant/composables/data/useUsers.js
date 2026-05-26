@@ -1,6 +1,7 @@
 import { ref, computed } from 'vue'
 import axios from 'axios'
 import { useEventDeduplicationStore } from '@/stores/eventDeduplication'
+import { readSnapshot, scheduleAfterPaint, writeSnapshot } from '@/modules/common/composables/performance/useViewCache'
 
 /**
  * Users composable for managing user data and operations
@@ -11,18 +12,37 @@ export function useUsers() {
   const loading = ref(false)
   const error = ref(null)
   const selectedUser = ref(null)
+  const userCacheKey = () => `tenant:users:${localStorage.getItem('tenantId') || 'default'}`
+
+  const hydrateUsers = () => {
+    const snapshot = readSnapshot(userCacheKey(), 30 * 1000)
+    if (Array.isArray(snapshot)) {
+      users.value = snapshot
+      return true
+    }
+    return false
+  }
 
   /**
    * Fetch all users from the API
    */
   const fetchUsers = async () => {
-    loading.value = true
+    const isInitial = users.value.length === 0
+    if (isInitial) {
+      const cached = hydrateUsers()
+      if (!cached) {
+        scheduleAfterPaint(() => {
+          if (users.value.length === 0) loading.value = true
+        })
+      }
+    }
     error.value = null
     
     try {
       const response = await axios.get('/users')
       const data = response.data.data || response.data
       users.value = Array.isArray(data) ? data : []
+      writeSnapshot(userCacheKey(), users.value)
       return users.value
     } catch (err) {
       error.value = err.response?.data?.message || 'Failed to fetch users'
@@ -65,6 +85,7 @@ export function useUsers() {
       const response = await axios.post('/users', userData)
       const newUser = response.data.data || response.data
       users.value.unshift(newUser)
+      writeSnapshot(userCacheKey(), users.value)
       return newUser
     } catch (err) {
       error.value = err.response?.data?.message || 'Failed to create user'
@@ -110,6 +131,7 @@ export function useUsers() {
       // (WebSocket event might have already updated it)
       if (isDataFresher(updatedUser, users.value[index])) {
         users.value[index] = updatedUser
+        writeSnapshot(userCacheKey(), users.value)
       }
 
       return updatedUser
@@ -161,6 +183,7 @@ export function useUsers() {
 
       // Actually remove from the list
       users.value = users.value.filter(u => u.id !== userId)
+      writeSnapshot(userCacheKey(), users.value)
 
       return true
     } catch (err) {
@@ -215,6 +238,7 @@ export function useUsers() {
       // Only update if the response is fresher than what we have
       if (isDataFresher(updatedUser, users.value[index])) {
         users.value[index] = updatedUser
+        writeSnapshot(userCacheKey(), users.value)
       }
 
       return updatedUser

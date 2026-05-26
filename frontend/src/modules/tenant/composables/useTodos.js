@@ -7,6 +7,7 @@ import { ref, computed } from 'vue'
 import axios from '@/modules/common/services/api/axios'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/modules/common/composables/useToast'
+import { readSnapshot, scheduleAfterPaint, writeSnapshot } from '@/modules/common/composables/performance/useViewCache'
 
 export function useTodos() {
   const loading = ref(false)
@@ -22,6 +23,7 @@ export function useTodos() {
   
   const { toast } = useToast()
   const authStore = useAuthStore()
+  const cacheKey = () => `tenant:todos:${authStore.tenantId || localStorage.getItem('tenantId') || 'default'}`
 
   // Computed filters
   const pendingTodos = computed(() => 
@@ -43,9 +45,29 @@ export function useTodos() {
     }) : []
   )
 
+  const hydrateTodos = () => {
+    const snapshot = readSnapshot(cacheKey(), 20 * 1000)
+    if (snapshot && Array.isArray(snapshot.todos)) {
+      todos.value = snapshot.todos
+      stats.value = snapshot.stats || stats.value
+      return true
+    }
+    return false
+  }
+
+  const persistTodos = () => {
+    writeSnapshot(cacheKey(), { todos: todos.value, stats: stats.value })
+  }
+
   // API Functions (trigger events, no polling needed)
   const fetchTodos = async (filters = {}) => {
-    loading.value = true
+    if (todos.value.length === 0) {
+      if (!hydrateTodos()) {
+        scheduleAfterPaint(() => {
+          if (todos.value.length === 0) loading.value = true
+        })
+      }
+    }
     error.value = null
     
     try {
@@ -70,6 +92,7 @@ export function useTodos() {
       
       todos.value = todoData
       updateStats()
+      persistTodos()
       
       return todoData
     } catch (err) {
@@ -135,6 +158,7 @@ export function useTodos() {
       if (newTodo) {
         todos.value.unshift(newTodo)
         updateStats()
+        persistTodos()
       }
 
       toast.success('Todo created successfully')
@@ -162,6 +186,7 @@ export function useTodos() {
         if (index !== -1) {
           todos.value.splice(index, 1, updatedTodo)
           updateStats()
+          persistTodos()
         }
       }
 
@@ -184,6 +209,7 @@ export function useTodos() {
 
       todos.value = todos.value.filter(t => t.id !== todoId)
       updateStats()
+      persistTodos()
 
       toast.success('Todo deleted successfully')
 
@@ -207,6 +233,7 @@ export function useTodos() {
       if (index !== -1 && completedTodo) {
         todos.value.splice(index, 1, completedTodo)
         updateStats()
+        persistTodos()
       }
       
       toast.success('Todo marked as completed')
@@ -233,6 +260,7 @@ export function useTodos() {
         const assignedTodo = response.data?.todo || response.data
         if (assignedTodo) {
           todos.value.splice(index, 1, assignedTodo)
+        persistTodos()
         }
       }
       

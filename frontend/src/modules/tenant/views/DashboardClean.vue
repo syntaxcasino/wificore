@@ -38,35 +38,15 @@
       </div>
     </div>
 
-    <!-- ── SKELETON (initial load only) ── -->
-    <div v-if="loading" class="p-4 md:p-6 space-y-4">
-      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <div v-for="i in 4" :key="i" class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 animate-pulse">
-          <div class="flex items-center justify-between mb-3">
-            <div class="w-8 h-8 bg-slate-200 dark:bg-slate-700 rounded-lg"></div>
-            <div class="w-10 h-4 bg-slate-200 dark:bg-slate-700 rounded-full"></div>
-          </div>
-          <div class="h-7 bg-slate-200 dark:bg-slate-700 rounded w-3/4 mb-2"></div>
-          <div class="h-3 bg-slate-100 dark:bg-slate-700/50 rounded w-1/2 mb-1"></div>
-          <div class="h-3 bg-slate-100 dark:bg-slate-700/50 rounded w-2/3"></div>
-        </div>
-      </div>
-      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div v-for="i in 4" :key="i" class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-3 animate-pulse">
-          <div class="h-3 bg-slate-200 dark:bg-slate-700 rounded w-1/2 mb-2"></div>
-          <div class="h-5 bg-slate-200 dark:bg-slate-700 rounded w-3/4"></div>
-        </div>
-      </div>
-      <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-5 animate-pulse">
-        <div class="h-4 bg-slate-200 dark:bg-slate-700 rounded w-32 mb-4"></div>
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div v-for="i in 3" :key="i" class="h-24 bg-slate-100 dark:bg-slate-700/50 rounded-xl"></div>
-        </div>
+    <div v-if="loading && !hasCachedSnapshot" class="px-4 md:px-6 pt-3">
+      <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-xs text-slate-500 dark:text-slate-400 shadow-sm">
+        <span class="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
+        Loading live metrics
       </div>
     </div>
 
     <!-- ── DASHBOARD CONTENT ── -->
-    <div v-else class="p-4 md:p-6 space-y-4">
+    <div class="p-4 md:p-6 space-y-4">
 
       <!-- ROW 1: 4 KPI CARDS -->
       <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -157,12 +137,31 @@
       </div>
 
       <!-- ROW 3: WIDGETS — stack on mobile, side-by-side on lg -->
-      <PaymentWidget :paymentData="paymentData" />
+      <template v-if="widgetsReady">
+        <PaymentWidget :paymentData="paymentData" />
 
-      <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        <ExpensesWidget :expensesData="expensesData" />
-        <BusinessAnalyticsWidget :analyticsData="analyticsData" />
-      </div>
+        <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+          <ExpensesWidget :expensesData="expensesData" />
+          <BusinessAnalyticsWidget :analyticsData="analyticsData" />
+        </div>
+      </template>
+
+      <template v-else>
+        <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 sm:p-6 animate-pulse">
+          <div class="h-5 bg-slate-200 dark:bg-slate-700 rounded w-48 mb-2"></div>
+          <div class="h-3 bg-slate-100 dark:bg-slate-700/50 rounded w-64 mb-5"></div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div class="h-32 bg-slate-100 dark:bg-slate-700/50 rounded-xl"></div>
+            <div class="h-32 bg-slate-100 dark:bg-slate-700/50 rounded-xl"></div>
+            <div class="h-32 bg-slate-100 dark:bg-slate-700/50 rounded-xl"></div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+          <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 sm:p-6 animate-pulse h-80"></div>
+          <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 sm:p-6 animate-pulse h-80"></div>
+        </div>
+      </template>
 
       <!-- ROW 4: QUICK ACTIONS -->
       <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-3 sm:p-4 md:p-5">
@@ -188,13 +187,14 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, defineAsyncComponent, onMounted, onUnmounted, ref } from 'vue'
 import { useAuth } from '@/modules/common/composables/auth/useAuth'
 import { useDashboard } from '@/modules/tenant/composables/data/useDashboard'
-import PaymentWidget from '@/modules/tenant/components/dashboard/PaymentWidgetClean.vue'
-import ExpensesWidget from '@/modules/tenant/components/dashboard/ExpensesWidgetClean.vue'
-import BusinessAnalyticsWidget from '@/modules/tenant/components/dashboard/BusinessAnalyticsWidgetClean.vue'
 import { Users, Wifi, Package, BarChart3, Radio, CreditCard, Settings, Activity } from 'lucide-vue-next'
+
+const PaymentWidget = defineAsyncComponent(() => import('@/modules/tenant/components/dashboard/PaymentWidgetClean.vue'))
+const ExpensesWidget = defineAsyncComponent(() => import('@/modules/tenant/components/dashboard/ExpensesWidgetClean.vue'))
+const BusinessAnalyticsWidget = defineAsyncComponent(() => import('@/modules/tenant/components/dashboard/BusinessAnalyticsWidgetClean.vue'))
 
 const { user } = useAuth()
 
@@ -204,6 +204,7 @@ const {
   expensesData,
   analyticsData,
   loading,
+  hasCachedSnapshot,
   fetchDashboardStats,
   refreshStats,
   updateStatsFromEvent,
@@ -225,12 +226,33 @@ const quickActions = computed(() => [
 ])
 
 const isConnected = ref(false)
+const widgetsReady = ref(false)
 let connection = null
 let handleWsConnected = null
 let handleWsDisconnected = null
 
+const scheduleNonCriticalWork = (callback) => {
+  if (typeof window === 'undefined') {
+    callback()
+    return
+  }
+
+  if (window.requestIdleCallback) {
+    window.requestIdleCallback(callback, { timeout: 1200 })
+    return
+  }
+
+  window.setTimeout(callback, 0)
+}
+
 onMounted(() => {
-  fetchDashboardStats()
+  scheduleNonCriticalWork(() => {
+    widgetsReady.value = true
+  })
+
+  requestAnimationFrame(() => {
+    fetchDashboardStats()
+  })
 
   connection = window.Echo?.connector?.pusher?.connection || null
   if (connection) {

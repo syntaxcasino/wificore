@@ -9,6 +9,9 @@ const _currencyFmt = new Intl.NumberFormat('en-KE', {
   maximumFractionDigits: 0,
 })
 
+const DASHBOARD_CACHE_KEY = 'tenant-dashboard-snapshot:v1'
+const DASHBOARD_CACHE_TTL_MS = 5 * 60 * 1000
+
 /**
  * Dashboard composable for managing dashboard statistics and updates
  */
@@ -81,7 +84,8 @@ export function useDashboard() {
   const chartData = ref({ labels: [], users: [], revenue: [] })
   const recentActivities = ref([])
   const onlineUsers = ref([])
-  const loading = ref(true)
+  const loading = ref(false)
+  const hasCachedSnapshot = ref(false)
   const lastUpdated = ref(null)
 
   /**
@@ -140,14 +144,53 @@ export function useDashboard() {
     if (data.online_users)      onlineUsers.value      = data.online_users
 
     lastUpdated.value = data.last_updated
+    persistDashboardSnapshot(data)
   }
+
+  const persistDashboardSnapshot = (data) => {
+    if (typeof window === 'undefined') return
+
+    try {
+      localStorage.setItem(DASHBOARD_CACHE_KEY, JSON.stringify({
+        savedAt: Date.now(),
+        data,
+      }))
+      hasCachedSnapshot.value = true
+    } catch (error) {
+      // Best-effort cache only.
+    }
+  }
+
+  const hydrateDashboardSnapshot = () => {
+    if (typeof window === 'undefined') return false
+
+    try {
+      const raw = localStorage.getItem(DASHBOARD_CACHE_KEY)
+      if (!raw) return false
+
+      const parsed = JSON.parse(raw)
+      const savedAt = Number(parsed?.savedAt || 0)
+      if (!parsed?.data || (savedAt && Date.now() - savedAt > DASHBOARD_CACHE_TTL_MS)) {
+        return false
+      }
+
+      _applyData(parsed.data)
+      hasCachedSnapshot.value = true
+      loading.value = false
+      return true
+    } catch (error) {
+      return false
+    }
+  }
+
+  hydrateDashboardSnapshot()
 
   /**
    * Fetch dashboard statistics from backend.
    * Only shows loading skeleton on first load (when stats are still zeroed out).
    */
   const fetchDashboardStats = async () => {
-    const isInitial = stats.value.totalRevenue === 0 && stats.value.totalUsers === 0
+    const isInitial = !hasCachedSnapshot.value && stats.value.totalRevenue === 0 && stats.value.totalUsers === 0
     try {
       if (isInitial) loading.value = true
       const response = await axios.get('/tenant/dashboard/stats')
@@ -251,6 +294,7 @@ export function useDashboard() {
     recentActivities,
     onlineUsers,
     loading,
+    hasCachedSnapshot,
     lastUpdated,
     fetchDashboardStats,
     refreshStats,

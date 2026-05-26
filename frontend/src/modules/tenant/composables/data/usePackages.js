@@ -1,11 +1,12 @@
 import { ref, onUnmounted } from 'vue'
 import axios from 'axios'
+import { scheduleAfterPaint } from '@/modules/common/composables/performance/useViewCache'
 
 const PACKAGE_CACHE_TTL_MS = 15 * 1000
 
 export function usePackages() {
   const packages = ref([])
-  const loading = ref(true) // Start with loading true to prevent flash of empty state
+  const loading = ref(false)
   const refreshing = ref(false)
   const listError = ref('')
   const formError = ref('')
@@ -101,13 +102,20 @@ export function usePackages() {
   }
 
   const fetchPackages = async () => {
-    loading.value = true
+    const isInitialLoad = packages.value.length === 0
     listError.value = ''
-    const cachedPackages = packages.value.length === 0 ? readCachedPackages() : null
 
-    if (cachedPackages) {
-      packages.value = sortPackages(cachedPackages)
-      loading.value = false
+    if (isInitialLoad) {
+      const cachedPackages = readCachedPackages()
+      if (cachedPackages) {
+        packages.value = sortPackages(cachedPackages)
+        refreshing.value = true
+      } else {
+        scheduleAfterPaint(() => {
+          if (packages.value.length === 0) loading.value = true
+        })
+      }
+    } else {
       refreshing.value = true
     }
 

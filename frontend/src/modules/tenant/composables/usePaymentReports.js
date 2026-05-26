@@ -1,11 +1,23 @@
 import { ref, computed, watch } from 'vue'
 import axios from 'axios'
+import { readSnapshot, scheduleAfterPaint, writeSnapshot } from '@/modules/common/composables/performance/useViewCache'
 
 export function usePaymentReports() {
   const loading = ref(false)
   const refreshing = ref(false)
   const payments = ref([])
   const filters = ref({ period: 'month', method: '' })
+  const cacheKey = 'tenant:payment-reports:v1'
+
+  const hydratePayments = () => {
+    const snapshot = readSnapshot(cacheKey, 30 * 1000)
+    if (!Array.isArray(snapshot)) return false
+    payments.value = snapshot
+    return true
+  }
+
+  const persistPayments = () => writeSnapshot(cacheKey, payments.value)
+
 
   const stats = computed(() => {
     const total = payments.value.reduce((sum, p) => sum + Number(p.amount || 0), 0)
@@ -59,7 +71,13 @@ export function usePaymentReports() {
 
   const fetchPayments = async () => {
     const isInitial = payments.value.length === 0
-    if (isInitial) loading.value = true
+    if (isInitial) {
+      if (!hydratePayments()) {
+        scheduleAfterPaint(() => {
+          if (payments.value.length === 0) loading.value = true
+        })
+      }
+    }
     try {
       const params = {}
       if (filters.value.method) params.payment_method = filters.value.method
@@ -67,6 +85,7 @@ export function usePaymentReports() {
       const response = await axios.get('/payments', { params })
       const data = response.data?.data || response.data?.payments || []
       payments.value = Array.isArray(data) ? data : []
+      persistPayments()
     } catch (err) {
       console.error('fetchPayments error:', err)
     } finally {

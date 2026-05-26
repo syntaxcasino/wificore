@@ -2,10 +2,21 @@ import { ref, computed } from 'vue'
 import axios from 'axios'
 import { useToast } from '@/modules/common/composables/useToast.js'
 import { useConfirmStore } from '@/stores/confirm'
+import { readSnapshot, scheduleAfterPaint, writeSnapshot } from '@/modules/common/composables/performance/useViewCache'
 
 export function useMpesaTransactions() {
   const { error: showError } = useToast()
   const confirmStore = useConfirmStore()
+  const cacheKey = 'tenant:mpesa-transactions:v1'
+
+  const hydrateTransactions = () => {
+    const snapshot = readSnapshot(cacheKey, 30 * 1000)
+    if (!Array.isArray(snapshot)) return false
+    transactions.value = snapshot
+    return true
+  }
+
+  const persistTransactions = () => writeSnapshot(cacheKey, transactions.value)
 
   const loading = ref(false)
   const refreshing = ref(false)
@@ -62,7 +73,14 @@ export function useMpesaTransactions() {
 
   const fetchTransactions = async () => {
     const isInitial = transactions.value.length === 0
-    if (isInitial) { loading.value = true; error.value = null } else { refreshing.value = true }
+    if (isInitial) {
+      if (!hydrateTransactions()) {
+        scheduleAfterPaint(() => {
+          if (transactions.value.length === 0) loading.value = true
+        })
+      }
+    } else { refreshing.value = true }
+    error.value = null
     try {
       const response = await axios.get('/billing/paybill/transactions', { params: { per_page: 100 } })
       const data = response.data?.transactions?.data || response.data?.transactions || response.data?.data || []
@@ -80,6 +98,7 @@ export function useMpesaTransactions() {
         description: t.description || t.transaction_desc || '',
         _raw: t
       }))
+      persistTransactions()
     } catch (err) {
       if (isInitial) error.value = err.response?.data?.message || 'Failed to load transactions.'
     } finally {

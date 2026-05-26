@@ -341,9 +341,7 @@ const handleLogin = async () => {
     
     if (result.success) {
       success.value = 'Login successful! Redirecting...'
-      setTimeout(() => {
-        router.push(result.dashboardRoute)
-      }, 500)
+      router.push(result.dashboardRoute)
     } else {
       error.value = result.error || 'Invalid credentials'
     }
