@@ -20,13 +20,14 @@
             <div class="w-11 h-11 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/30">
               <i class="fas fa-wifi text-white text-lg"></i>
             </div>
-            <span class="text-white font-bold text-xl tracking-tight">{{ dashboardData?.user?.provider_name || 'Traidnet' }}</span>
+            <span class="text-white font-bold text-xl tracking-tight">Traidnet</span>
           </div>
         </div>
         
         <div class="max-w-lg">
           <h2 class="text-4xl font-bold text-white mb-4 leading-tight">
-            Your Connection,<n/> <span class="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400">Simplified</span>
+            Your Connection,<br />
+            <span class="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400">Simplified</span>
           </h2>
           <p class="text-slate-300 text-lg leading-relaxed mb-8">Manage everything in one place. From payments to usage tracking, we've got you covered.</p>
           

@@ -84,9 +84,11 @@ class GrantHotspotAccessJob implements ShouldQueue
                     $this->updateRadiusAttributes($user->username, $package);
                 }
                 
-                // Calculate expiration anchored to payment date (not now())
-                $baseTime  = $this->paymentDate ? Carbon::parse($this->paymentDate) : now();
-                $expiresAt = $package ? PackageExpiryHelper::calculateExpiresAt($package, $baseTime) : null;
+                // Calculate expiration anchored to current active expiry when renewing early
+                $paymentTime = $this->paymentDate ? Carbon::parse($this->paymentDate) : now();
+                $currentExpiry = $user->subscription_expires_at ? Carbon::parse($user->subscription_expires_at) : null;
+                $baseTime = PackageExpiryHelper::resolveRenewalBaseTime($paymentTime, $currentExpiry);
+                $expiresAt = $package ? PackageExpiryHelper::calculateRenewalExpiresAt($package, $paymentTime, $currentExpiry) : null;
 
                 // Update user status
                 $user->update([

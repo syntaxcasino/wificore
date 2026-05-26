@@ -1723,6 +1723,7 @@ SQL;
         }
 
         $tenant->setSetting('timed_voucher_markup_pct', (float) $validated['markup_pct']);
+        Cache::forget('pppoe_portal_timed_voucher_options:' . $tenant->id);
 
         Log::info('PPPoE timed voucher markup updated', [
             'tenant_id'  => $tenant->id,
@@ -1972,6 +1973,12 @@ SQL;
 
         // Resolve tenant to read markup setting
         $tenantId = $request->attributes->get('tenant_id') ?? $pppoeUser->getAttribute('tenant_id');
+        $cacheKey = 'pppoe_portal_timed_voucher_options:' . $tenantId;
+        $cached = Cache::get($cacheKey);
+        if (is_array($cached)) {
+            return response()->json($cached);
+        }
+
         $tenant   = $tenantId ? Tenant::find($tenantId) : null;
         $markup   = $this->getTimedVoucherMarkup($tenant);
 
@@ -2008,7 +2015,7 @@ SQL;
             ->where('expires_at', '>', now())
             ->first(['id', 'duration_label', 'duration_hours', 'activated_at', 'expires_at']);
 
-        return response()->json([
+        $response = [
             'success' => true,
             'data'    => [
                 'packages'       => $packageOptions,
@@ -2020,7 +2027,11 @@ SQL;
                     'expires_at'     => $active->expires_at?->toIso8601String(),
                 ] : null,
             ],
-        ]);
+        ];
+
+        Cache::put($cacheKey, $response, now()->addMinutes(5));
+
+        return response()->json($response);
     }
 
     public function buyTimedVoucher(Request $request): JsonResponse

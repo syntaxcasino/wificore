@@ -405,8 +405,10 @@ const openCreateModal = () => {
   isEditing.value = false
   editingAP.value = null
   formError.value = ''
-  fetchAvailableRouters() // Fetch fresh router list
   showFormOverlay.value = true
+  if (!availableRouters.value.length) {
+    void fetchAvailableRouters()
+  }
 }
 
 const handleEdit = (ap) => {
@@ -414,8 +416,10 @@ const handleEdit = (ap) => {
   if (!ap) return
   isEditing.value = true
   editingAP.value = ap
-  fetchAvailableRouters() // Fetch routers for dropdown
   showFormOverlay.value = true
+  if (!availableRouters.value.length) {
+    void fetchAvailableRouters()
+  }
 }
 
 const closeForm = () => {
@@ -511,7 +515,7 @@ const closeDetails = () => {
 
 // Lifecycle
 onMounted(() => {
-  Promise.all([fetchAccessPoints(), fetchStatistics()])
+  void fetchAccessPoints()
   setupWebSocketListeners()
   document.addEventListener('click', handleClickOutside)
   document.addEventListener('keydown', handleKeydown)

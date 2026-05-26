@@ -10,19 +10,32 @@ export function useAuth() {
 
   // Check if user is logged in (e.g., on app load)
   const checkAuth = () => {
-    const token = localStorage.getItem('authToken')
+    const storedToken = localStorage.getItem('authToken')
     const userData = localStorage.getItem('user')
 
-    if (token && userData) {
+    if (storedToken && userData) {
       try {
         user.value = JSON.parse(userData)
         isAuthenticated.value = true
       } catch (error) {
         console.warn('Failed to parse user data from localStorage:', error)
         localStorage.removeItem('user') // Prevent repeated errors
+        localStorage.removeItem('authToken')
+        delete axios.defaults.headers.common['Authorization']
         user.value = null
+        token.value = null
         isAuthenticated.value = false
       }
+      return
+    }
+
+    if (storedToken || userData) {
+      localStorage.removeItem('authToken')
+      localStorage.removeItem('user')
+      delete axios.defaults.headers.common['Authorization']
+      user.value = null
+      token.value = null
+      isAuthenticated.value = false
     }
   }
 

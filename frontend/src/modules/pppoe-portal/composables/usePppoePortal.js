@@ -5,8 +5,26 @@ import axios from 'axios';
 const API_BASE_URL = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || '/api';
 
 // Reactive state
-const token = ref(localStorage.getItem('pppoe_portal_token') || null);
-const user = ref(JSON.parse(localStorage.getItem('pppoe_portal_user') || 'null'));
+function readJsonStorage(key) {
+  if (typeof window === 'undefined') return null;
+  const raw = localStorage.getItem(key);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch (error) {
+    console.warn(`Invalid JSON in ${key}; clearing stale value`, error);
+    localStorage.removeItem(key);
+    return null;
+  }
+}
+
+const storedToken = typeof window === 'undefined' ? null : localStorage.getItem('pppoe_portal_token') || null;
+const storedUser = readJsonStorage('pppoe_portal_user');
+if (typeof window !== 'undefined' && storedToken && !storedUser) {
+  localStorage.removeItem('pppoe_portal_token');
+}
+const token = ref(storedToken && storedUser ? storedToken : null);
+const user = ref(storedUser);
 const isLoading = ref(false);
 const error = ref(null);
 const isLoggingOut = ref(false);
@@ -41,7 +59,8 @@ export function usePppoePortal() {
     (response) => response,
     (error) => {
       const requestUrl = String(error?.config?.url || '');
-      if (error.response?.status === 401 && !requestUrl.includes('/logout') && !isLoggingOut.value) {
+      const isLoginRequest = requestUrl.includes('/login');
+      if (error.response?.status === 401 && !isLoginRequest && !requestUrl.includes('/logout') && !isLoggingOut.value) {
         logout({ skipServerCall: true });
         router.push('/portal/login');
       }

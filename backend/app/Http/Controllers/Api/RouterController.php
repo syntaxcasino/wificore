@@ -50,7 +50,7 @@ class RouterController extends Controller
                 $this->routerListCacheKey($tenantId, $perPage),
                 self::ROUTER_LIST_CACHE_TTL_SECONDS,
                 function () use ($perPage) {
-                    $routers = Router::with(['services', 'accessPoints'])
+                    $routers = Router::select(['id', 'name', 'ip_address', 'status', 'vpn_status', 'last_seen', 'model', 'os_version', 'location', 'created_at'])
                         ->orderBy('created_at', 'desc')
                         ->paginate($perPage);
 

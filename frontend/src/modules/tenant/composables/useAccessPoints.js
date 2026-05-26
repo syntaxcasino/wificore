@@ -30,6 +30,7 @@ export function useAccessPoints() {
     if (!snapshot || typeof snapshot !== 'object') return false
     accessPoints.value = Array.isArray(snapshot.accessPoints) ? snapshot.accessPoints : []
     stats.value = snapshot.stats || stats.value
+    availableRouters.value = Array.isArray(snapshot.availableRouters) ? snapshot.availableRouters : availableRouters.value
     return true
   }
 
@@ -225,7 +226,6 @@ export function useAccessPoints() {
         if (index !== -1) {
           accessPoints.value[index] = { ...accessPoints.value[index], ...updatedAp }
           updateStats()
-          persistAccessPoints()
           persistAccessPoints()
         }
       }

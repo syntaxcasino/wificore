@@ -5,6 +5,7 @@
 
 import { ref, computed } from 'vue'
 import axios from '@/modules/common/services/api/axios'
+import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/modules/common/composables/useToast'
 import { readSnapshot, scheduleAfterPaint, writeSnapshot } from '@/modules/common/composables/performance/useViewCache'
 
@@ -13,9 +14,20 @@ export function useActiveSessions() {
   const error = ref(null)
   const sessions = ref([])
   const packages = ref([])
-  const cacheKey = 'tenant:active-sessions:v1'
+  const authStore = useAuthStore()
+  const cacheKey = () => `tenant:active-sessions:${authStore.user?.tenant_id || authStore.tenantId || 'default'}:v1`
 
   const { toast } = useToast()
+
+  const hydrateSnapshot = () => {
+    const snapshot = readSnapshot(cacheKey(), 20 * 1000)
+    if (!snapshot || typeof snapshot !== 'object') return false
+    if (Array.isArray(snapshot.sessions)) sessions.value = snapshot.sessions
+    if (Array.isArray(snapshot.packages)) packages.value = snapshot.packages
+    return true
+  }
+
+  const persistSnapshot = () => writeSnapshot(cacheKey(), { sessions: sessions.value, packages: packages.value })
 
   // Filters
   const filters = ref({
@@ -49,7 +61,7 @@ export function useActiveSessions() {
   })
 
   const hydrateSessions = () => {
-    const snapshot = readSnapshot(cacheKey, 20 * 1000)
+    const snapshot = readSnapshot(cacheKey(), 20 * 1000)
     if (snapshot && Array.isArray(snapshot.sessions)) {
       sessions.value = snapshot.sessions
       packages.value = Array.isArray(snapshot.packages) ? snapshot.packages : packages.value
@@ -74,7 +86,7 @@ export function useActiveSessions() {
       const response = await axios.get('/hotspot/sessions/active')
       const data = response.data?.sessions || response.data?.data || []
       sessions.value = data
-      writeSnapshot(cacheKey, { sessions: sessions.value, packages: packages.value })
+      persistSnapshot()
       return data
     } catch (err) {
       // Guard against undefined or non-axios errors
@@ -91,8 +103,13 @@ export function useActiveSessions() {
   const fetchPackages = async () => {
     try {
       const response = await axios.get('/packages')
-      packages.value = (response.data?.data || response.data || []).map(p => ({ id: p.id, name: p.name }))
-      writeSnapshot(cacheKey, { sessions: sessions.value, packages: packages.value })
+      const snapshot = readSnapshot(cacheKey(), 20 * 1000)
+      if (packages.value.length === 0 && snapshot && Array.isArray(snapshot.packages)) {
+        packages.value = snapshot.packages
+      }
+      const fetched = (response.data?.data || response.data || []).map(p => ({ id: p.id, name: p.name }))
+      packages.value = fetched
+      persistSnapshot()
       return packages.value
     } catch (err) {
       console.warn('Failed to fetch packages:', err)

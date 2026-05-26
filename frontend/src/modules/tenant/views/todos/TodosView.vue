@@ -573,8 +573,8 @@ const syncSelectedTodoOnUpdate = (event) => {
 }
 
 // Lifecycle
-onMounted(async () => {
-  await fetchTodos()
+onMounted(() => {
+  void fetchTodos().catch(() => {})
   setupWebSocketListeners()
   window.addEventListener('todo-updated', syncSelectedTodoOnUpdate)
   document.addEventListener('click', handleClickOutside)

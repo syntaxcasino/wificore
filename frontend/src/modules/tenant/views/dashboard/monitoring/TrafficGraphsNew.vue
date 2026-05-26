@@ -358,12 +358,12 @@ const loadTraffic = async () => {
   }
 }
 
-onMounted(async () => {
-  await Promise.allSettled([
-    fetchRouters(),
-    loadTraffic(),
-    fetchAllMetrics()
-  ])
+onMounted(() => {
+  void fetchRouters()
+  void loadTraffic()
+  window.requestAnimationFrame(() => {
+    fetchAllMetrics().catch(() => {})
+  })
   setupWebSocketListeners()
 })
 
