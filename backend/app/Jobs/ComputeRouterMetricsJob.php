@@ -99,6 +99,15 @@ class ComputeRouterMetricsJob implements ShouldQueue
                     ],
                 ]);
 
+                if ($response['data']['skipped'] ?? false) {
+                    Log::info('Skipped router metrics computation - provisioning service busy', [
+                        'tenant_id' => $this->tenantId,
+                        'router_count' => count($routerPayload),
+                        'time_ranges' => $timeRanges,
+                    ]);
+                    return;
+                }
+
                 Log::info('Submitted router metrics computation command', [
                     'tenant_id' => $this->tenantId,
                     'router_count' => count($routerPayload),

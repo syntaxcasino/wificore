@@ -251,6 +251,13 @@ Schedule::job(new \App\Jobs\SendTenantExpiryWarningJob())
 // PPPOE PAYMENT CHECKING AND ENFORCEMENT
 // =============================================================================
 
+// Reconcile stale pending payments using TransactionStatus API - every 5 minutes
+Schedule::command('payments:check-pending')
+    ->everyFiveMinutes()
+    ->name('check-pending-payments')
+    ->withoutOverlapping()
+    ->onOneServer();
+
 // Check PPPoE payments and disconnect overdue users - every 5 minutes
 Schedule::job(new \App\Jobs\CheckPppoePaymentsJob())
     ->everyFiveMinutes()
