@@ -205,6 +205,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { scheduleAfterPaint } from '@/modules/common/composables/performance/useViewCache'
 import { FileText, Plus, Download, Trash2, CheckCircle } from 'lucide-vue-next'
 import DataViewContainer from '@/modules/common/components/base/DataViewContainer.vue'
 import DataSkeleton from '@/modules/common/components/base/DataSkeleton.vue'
@@ -263,6 +264,7 @@ const getInvoiceActions = (invoice) => [
 const openCreateOverlay = () => {
   resetForm()
   showCreateOverlay.value = true
+  if (!customers.value.length) scheduleAfterPaint(fetchCustomers)
 }
 
 const closeCreateOverlay = () => {
@@ -274,7 +276,6 @@ const handleSubmitInvoice = () => submitInvoice(closeCreateOverlay)
 
 onMounted(() => {
   fetchInvoices()
-  fetchCustomers()
 })
 </script>
 

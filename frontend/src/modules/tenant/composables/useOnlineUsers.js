@@ -2,12 +2,24 @@ import { ref, computed } from 'vue'
 import axios from 'axios'
 import { useToast } from '@/modules/common/composables/useToast.js'
 import { useConfirmStore } from '@/stores/confirm'
+import { readSnapshot, scheduleAfterPaint, writeSnapshot } from '@/modules/common/composables/performance/useViewCache'
 
 export function useOnlineUsers() {
   const { error: showError } = useToast()
   const confirmStore = useConfirmStore()
 
   const loading = ref(false)
+  const cacheKey = () => `tenant:online-users:${localStorage.getItem('tenantId') || 'default'}:v1`
+
+  const hydrateUsers = () => {
+    const snapshot = readSnapshot(cacheKey(), 30 * 1000)
+    if (!snapshot || typeof snapshot !== 'object') return false
+    users.value = Array.isArray(snapshot.users) ? snapshot.users : []
+    return true
+  }
+
+  const persistUsers = () => writeSnapshot(cacheKey(), { users: users.value })
+
   const error = ref(null)
   const users = ref([])
   const selectedUser = ref(null)
@@ -42,7 +54,14 @@ export function useOnlineUsers() {
 
   const fetchUsers = async () => {
     const isInitial = users.value.length === 0
-    if (isInitial) { loading.value = true; error.value = null }
+    if (isInitial) {
+      if (!hydrateUsers()) {
+        scheduleAfterPaint(() => {
+          if (users.value.length === 0) loading.value = true
+        })
+      }
+      error.value = null
+    }
     try {
       const [hotspotRes, pppoeRes] = await Promise.all([
         axios.get('/hotspot/sessions'),
@@ -72,6 +91,7 @@ export function useOnlineUsers() {
         ...hotspotSessions.map(mapHotspot),
         ...pppoeSessions.map(mapPppoe)
       ]
+      persistUsers()
     } catch (err) {
       if (isInitial) error.value = err.response?.data?.message || 'Failed to load online users'
       console.error('fetchUsers error:', err)
@@ -105,6 +125,7 @@ export function useOnlineUsers() {
         await axios.post(`/pppoe/users/${userId}/disconnect`)
       }
       users.value = users.value.filter(u => u.id !== user.id)
+      persistUsers()
       showDetailsOverlay.value = false
     } catch (err) {
       showError(err.response?.data?.message || 'Failed to disconnect user')

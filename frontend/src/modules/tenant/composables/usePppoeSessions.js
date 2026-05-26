@@ -3,11 +3,20 @@ import axios from '@/modules/common/services/api/axios'
 import { useBroadcasting } from '@/modules/common/composables/websocket/useBroadcasting'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/modules/common/composables/useToast'
+import { readSnapshot, scheduleAfterPaint, writeSnapshot } from '@/modules/common/composables/performance/useViewCache'
 
 export function usePppoeSessions() {
   const { subscribeToPrivateChannel, unsubscribeFromChannel } = useBroadcasting()
   const authStore = useAuthStore()
   const toast = useToast()
+  const cacheKey = () => `tenant:pppoe-sessions:${authStore.user?.tenant_id || authStore.tenantId || 'default'}:v1`
+  const hydrateSessions = () => {
+    const snapshot = readSnapshot(cacheKey(), 30 * 1000)
+    if (!snapshot || typeof snapshot !== 'object') return false
+    sessions.value = Array.isArray(snapshot.sessions) ? snapshot.sessions : []
+    return true
+  }
+  const persistSessions = () => writeSnapshot(cacheKey(), { sessions: sessions.value })
 
   // State
   const sessions = ref([])
@@ -41,12 +50,21 @@ export function usePppoeSessions() {
 
   // Actions
   const fetchSessions = async () => {
-    loading.value = true
+    if (sessions.value.length === 0) {
+      if (!hydrateSessions()) {
+        scheduleAfterPaint(() => {
+          if (sessions.value.length === 0) loading.value = true
+        })
+      }
+    } else {
+      loading.value = true
+    }
     error.value = null
     try {
       const response = await axios.get('pppoe/sessions')
       const payload = response.data?.data ?? response.data
       sessions.value = Array.isArray(payload) ? payload : (payload?.data ?? [])
+      persistSessions()
       return sessions.value
     } catch (err) {
       // Guard against undefined or non-axios errors
@@ -65,6 +83,7 @@ export function usePppoeSessions() {
       const response = await axios.get('pppoe/sessions')
       const payload = response.data?.data ?? response.data
       sessions.value = Array.isArray(payload) ? payload : (payload?.data ?? [])
+      persistSessions()
       return sessions.value
     } catch (err) {
       // Guard against undefined or non-axios errors
@@ -83,6 +102,7 @@ export function usePppoeSessions() {
         toast.success(`Successfully disconnected ${session.username}`)
         // Optimistically remove from local state immediately for better UX
         sessions.value = sessions.value.filter(s => s.username !== session.username)
+        persistSessions()
         return true
       } else {
         toast.error(response.data?.message || 'Failed to disconnect session')

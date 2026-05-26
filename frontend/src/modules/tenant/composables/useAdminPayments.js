@@ -3,10 +3,12 @@ import axios from 'axios'
 import { useToast } from '@/modules/common/composables/useToast.js'
 import { useConfirmStore } from '@/stores/confirm'
 import { CreditCard, Smartphone, Banknote, Building } from 'lucide-vue-next'
+import { readSnapshot, scheduleAfterPaint, writeSnapshot } from '@/modules/common/composables/performance/useViewCache'
 
 export function useAdminPayments() {
   const { error: showError, info: showInfo } = useToast()
   const confirmStore = useConfirmStore()
+  const cacheKey = () => `tenant:admin-payments:${localStorage.getItem('tenantId') || 'default'}:v1`
 
   const loading = ref(false)
   const refreshing = ref(false)
@@ -20,6 +22,15 @@ export function useAdminPayments() {
   const recordForm = ref({
     phone_number: '', amount: 0, payment_method: 'cash', transaction_id: ''
   })
+
+  const hydratePayments = () => {
+    const snapshot = readSnapshot(cacheKey(), 30 * 1000)
+    if (!Array.isArray(snapshot)) return false
+    payments.value = snapshot
+    return true
+  }
+
+  const persistPayments = () => writeSnapshot(cacheKey(), payments.value)
 
   const stats = computed(() => {
     const total = payments.value.reduce((sum, p) => sum + p.amount, 0)
@@ -47,8 +58,16 @@ export function useAdminPayments() {
 
   const fetchPayments = async (filters = {}) => {
     const isInitial = payments.value.length === 0
-    if (isInitial) { loading.value = true; error.value = null }
-    else refreshing.value = true
+    if (isInitial) {
+      if (!hydratePayments()) {
+        scheduleAfterPaint(() => {
+          if (payments.value.length === 0) loading.value = true
+        })
+      }
+    } else {
+      refreshing.value = true
+    }
+    error.value = null
     try {
       const params = { per_page: 100, ...filters }
       const response = await axios.get('/payments', { params })
@@ -69,6 +88,7 @@ export function useAdminPayments() {
         user: p.user || null,
         _raw: p
       }))
+      persistPayments()
     } catch (err) {
       if (isInitial) error.value = err.response?.data?.message || 'Failed to load payments.'
       console.error('fetchPayments error:', err)

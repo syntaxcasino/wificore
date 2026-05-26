@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import axios from 'axios'
+import { readSnapshot, scheduleAfterPaint, writeSnapshot } from '@/modules/common/composables/performance/useViewCache'
 
 /**
  * Shared composable for reports that pull from both hotspot and pppoe sessions.
@@ -10,6 +11,7 @@ export function useSessionReports(endpoint = null) {
   const refreshing = ref(false)
   const sessions = ref([])
   const users = ref([])
+  const cacheKey = endpoint ? `tenant:session-reports:${endpoint}` : 'tenant:session-reports:combined'
 
   const formatDateTime = (date) => {
     if (!date) return '—'
@@ -36,10 +38,26 @@ export function useSessionReports(endpoint = null) {
     return `${mins}m`
   }
 
+  const hydrateSessions = () => {
+    const snapshot = readSnapshot(`${cacheKey}:sessions`, 30 * 1000)
+    if (snapshot && Array.isArray(snapshot)) {
+      sessions.value = snapshot
+      return true
+    }
+    return false
+  }
+
+  const persistSessions = () => writeSnapshot(`${cacheKey}:sessions`, sessions.value)
+
   const fetchSessions = async () => {
     const isInitial = sessions.value.length === 0
-    if (isInitial) loading.value = true
-    else refreshing.value = true
+    if (isInitial && !hydrateSessions()) {
+      scheduleAfterPaint(() => {
+        if (sessions.value.length === 0) loading.value = true
+      })
+    } else if (sessions.value.length > 0) {
+      refreshing.value = true
+    }
     try {
       if (endpoint) {
         const res = await axios.get(endpoint)
@@ -61,10 +79,26 @@ export function useSessionReports(endpoint = null) {
     }
   }
 
+  const hydrateExpired = () => {
+    const snapshot = readSnapshot(`${cacheKey}:expired`, 30 * 1000)
+    if (snapshot && Array.isArray(snapshot)) {
+      users.value = snapshot
+      return true
+    }
+    return false
+  }
+
+  const persistExpired = () => writeSnapshot(`${cacheKey}:expired`, users.value)
+
   const fetchExpired = async () => {
     const isInitial = users.value.length === 0
-    if (isInitial) loading.value = true
-    else refreshing.value = true
+    if (isInitial && !hydrateExpired()) {
+      scheduleAfterPaint(() => {
+        if (users.value.length === 0) loading.value = true
+      })
+    } else if (users.value.length > 0) {
+      refreshing.value = true
+    }
     try {
       const [hotspotRes, pppoeRes] = await Promise.all([
         axios.get('/hotspot/users', { params: { status: 'expired' } }).catch(() => ({ data: {} })),
@@ -73,6 +107,7 @@ export function useSessionReports(endpoint = null) {
       const hotspotUsers = (hotspotRes.data?.users?.data || hotspotRes.data?.users || []).map(u => ({ ...u, _type: 'hotspot' }))
       const pppoeUsers = (pppoeRes.data?.users?.data || pppoeRes.data?.users || []).map(u => ({ ...u, _type: 'pppoe' }))
       users.value = [...hotspotUsers, ...pppoeUsers]
+      persistExpired()
     } catch (err) {
       console.error('fetchExpired error:', err)
     } finally {

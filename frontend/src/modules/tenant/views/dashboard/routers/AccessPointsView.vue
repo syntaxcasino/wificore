@@ -510,9 +510,8 @@ const closeDetails = () => {
 }
 
 // Lifecycle
-onMounted(async () => {
-  await fetchAccessPoints()
-  await fetchStatistics()
+onMounted(() => {
+  Promise.all([fetchAccessPoints(), fetchStatistics()])
   setupWebSocketListeners()
   document.addEventListener('click', handleClickOutside)
   document.addEventListener('keydown', handleKeydown)

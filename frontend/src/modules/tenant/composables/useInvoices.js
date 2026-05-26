@@ -1,6 +1,7 @@
 import { ref, computed } from 'vue'
 import axios from 'axios'
 import { useToast } from '@/modules/common/composables/useToast.js'
+import { readSnapshot, scheduleAfterPaint, writeSnapshot } from '@/modules/common/composables/performance/useViewCache'
 
 export function useInvoices() {
   const { error: showError } = useToast()
@@ -10,6 +11,18 @@ export function useInvoices() {
   const customers = ref([])
   const formSubmitting = ref(false)
   const formMessage = ref({ type: '', text: '' })
+
+  const cacheKey = 'tenant:invoices:v1'
+
+  const hydrateInvoices = () => {
+    const snapshot = readSnapshot(cacheKey, 30 * 1000)
+    if (!snapshot || typeof snapshot !== 'object') return false
+    invoices.value = Array.isArray(snapshot.invoices) ? snapshot.invoices : []
+    customers.value = Array.isArray(snapshot.customers) ? snapshot.customers : []
+    return true
+  }
+
+  const persistInvoices = () => writeSnapshot(cacheKey, { invoices: invoices.value, customers: customers.value })
 
   const defaultFormData = () => ({
     customer_id: '',
@@ -38,7 +51,15 @@ export function useInvoices() {
     date ? new Date(date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/A'
 
   const fetchInvoices = async () => {
-    loading.value = true
+    if (invoices.value.length === 0) {
+      if (!hydrateInvoices()) {
+        scheduleAfterPaint(() => {
+          if (invoices.value.length === 0) loading.value = true
+        })
+      }
+    } else {
+      loading.value = true
+    }
     try {
       // Billing invoices API is not available in this deployment; map completed/pending payments.
       const response = await axios.get('/payments', { params: { per_page: 200 } })
@@ -53,6 +74,7 @@ export function useInvoices() {
         total_amount: Number(i.total_amount ?? i.amount) || 0,
         status: i.status === 'completed' ? 'paid' : (i.status === 'pending' ? 'sent' : (i.status || 'draft'))
       }))
+      persistInvoices()
     } catch (err) {
       console.error('fetchInvoices error:', err)
     } finally {
@@ -64,6 +86,7 @@ export function useInvoices() {
     try {
       const response = await axios.get('/users/customers', { params: { per_page: 1000 } })
       customers.value = response.data?.customers?.data || response.data?.customers || []
+      persistInvoices()
     } catch (err) {
       console.error('fetchCustomers error:', err)
     }

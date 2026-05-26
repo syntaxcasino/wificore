@@ -92,7 +92,11 @@ class UnifiedAuthController extends Controller
         // Find user by username or email (without tenant scope for now)
         $user = User::withoutGlobalScope(\App\Models\Scopes\TenantScope::class)
             ->withoutGlobalScope(\App\Scopes\TenantScope::class)
-            ->with(['tenant:id,name,subdomain,custom_domain,schema_name,is_active,suspended_at,suspension_reason'])
+            ->select([
+                'id', 'name', 'username', 'email', 'role', 'tenant_id',
+                'is_active', 'suspended_until', 'suspension_reason',
+                'failed_login_attempts', 'last_login_at',
+            ])
             ->where(function ($q) use ($request) {
                 $q->where('username', $request->username)
                   ->orWhere('email', $request->username);
@@ -138,8 +142,14 @@ class UnifiedAuthController extends Controller
         // For tenant users, check if tenant is active
         // Allow login without subdomain, but will redirect to subdomain after auth
         if ($user->tenant_id) {
-            $tenant = $user->tenant;
-            
+            $tenant = Cache::remember(
+                "auth:tenant:{$user->tenant_id}",
+                300,
+                fn () => Tenant::select('id', 'name', 'slug', 'schema_name', 'subdomain', 'custom_domain', 'is_active', 'suspended_at', 'suspension_reason')
+                    ->find($user->tenant_id)
+            );
+            $user->setRelation('tenant', $tenant);
+
             if (!$tenant) {
                 return response()->json([
                     'success' => false,

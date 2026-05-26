@@ -316,8 +316,7 @@ const disconnectSessionHandler = async (session) => {
 }
 
 onMounted(() => {
-  fetchPackages()
-  fetchSessions()
+  Promise.all([fetchPackages(), fetchSessions()])
   setupWebSocketListeners()
   document.addEventListener('click', handleClickOutside)
   document.addEventListener('keydown', handleKeydown)

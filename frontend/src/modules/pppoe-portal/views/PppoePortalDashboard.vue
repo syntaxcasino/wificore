@@ -13,8 +13,8 @@
         </div>
       </div>
       <div class="flex items-center gap-3">
-        <button @click="toggleDarkMode" class="w-9 h-9 rounded-lg border border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100 flex items-center justify-center transition-colors" title="Toggle theme">
-          <i :class="['fas', isDark ? 'fa-sun' : 'fa-moon']"></i>
+        <button @click="toggleDarkMode" class="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-700 hover:bg-indigo-200 flex items-center justify-center transition-all shadow-sm hover:shadow" title="Toggle theme">
+          <i :class="['fas text-base', isDark ? 'fa-sun' : 'fa-moon']"></i>
         </button>
         <div class="hidden sm:flex items-center gap-2 rounded-lg px-3 py-1.5 bg-slate-100">
           <div class="w-5 h-5 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center">

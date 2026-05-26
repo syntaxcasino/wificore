@@ -150,6 +150,7 @@
 
 <script setup>
 import { onMounted } from 'vue'
+import { scheduleAfterPaint } from '@/modules/common/composables/performance/useViewCache'
 import { DollarSign, RefreshCw, Download, CreditCard, TrendingUp, Smartphone } from 'lucide-vue-next'
 import DataViewContainer from '@/modules/common/components/base/DataViewContainer.vue'
 import BaseButton from '@/modules/common/components/base/BaseButton.vue'
@@ -173,5 +174,7 @@ const {
 
 const handleExport = () => exportReport(dailyRevenue.value)
 
-onMounted(fetchPayments)
+onMounted(() => {
+  scheduleAfterPaint(fetchPayments)
+})
 </script>
