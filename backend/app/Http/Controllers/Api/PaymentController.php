@@ -326,6 +326,7 @@ class PaymentController extends Controller
                     }
 
                     $mpesaReceipt = $processed['data']['mpesa_receipt'] ?? null;
+                    $mpesaPhoneNumber = $processed['data']['phone_number'] ?? null;
 
                     // Resolve billing period from package duration (default 30 days)
                     $periodStart = now();
@@ -348,6 +349,7 @@ class PaymentController extends Controller
                         'metadata'           => array_merge((array) ($pppoePayment->metadata ?? []), [
                             'callback_response' => $callbackData,
                             'mpesa_receipt'     => $mpesaReceipt,
+                            'mpesa_phone_number' => $mpesaPhoneNumber,
                             'processing_trace'  => [
                                 'trace_id' => $traceId,
                                 'checkout_request_id' => $checkoutRequestId,
@@ -374,16 +376,16 @@ class PaymentController extends Controller
                         payment: $pppoePayment->fresh(),
                         user: isset($pppoeUser) && $pppoeUser ? $pppoeUser : PppoeUser::find($pppoePayment->pppoe_user_id),
                     ));
-                });
 
-                $this->logPaymentTrace('callback.pppoe.' . $status, [
-                    'trace_id' => $traceId,
-                    'transaction_id' => $checkoutRequestId,
-                    'tenant' => $tenant->slug,
-                    'result_code' => $resultCode,
-                    'status' => $status,
-                    'payment_id' => $pppoePayment->id,
-                ], $status === 'completed' ? 'info' : 'warning');
+                    $this->logPaymentTrace('callback.pppoe.' . $status, [
+                        'trace_id' => $traceId,
+                        'transaction_id' => $checkoutRequestId,
+                        'tenant' => $tenant->slug,
+                        'result_code' => $resultCode,
+                        'status' => $status,
+                        'payment_id' => $pppoePayment->id,
+                    ], $status === 'completed' ? 'info' : 'warning');
+                });
 
                 return response()->json(['success' => true, 'message' => 'Callback processed successfully']);
             }
