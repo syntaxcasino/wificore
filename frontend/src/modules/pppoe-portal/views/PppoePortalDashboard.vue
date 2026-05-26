@@ -2,27 +2,28 @@
   <div :class="['min-h-screen flex flex-col transition-colors duration-200', isDark ? 'bg-gray-950 text-white' : 'bg-slate-100 text-gray-900']">
 
     <!-- ── Top Bar ── -->
-    <header :class="['sticky top-0 z-40 flex items-center justify-between px-4 sm:px-6 h-14 backdrop-blur-md border-b transition-colors duration-200', isDark ? 'bg-gray-950/90 border-white/10' : 'bg-white/95 border-gray-200']">
+    <header :class="['sticky top-0 z-40 flex items-center justify-between px-4 sm:px-6 h-16 backdrop-blur-md border-b transition-colors duration-200', isDark ? 'bg-gray-950/90 border-white/10' : 'bg-white/95 border-gray-200']">
       <div class="flex items-center gap-3">
-        <div class="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center shadow-lg shadow-indigo-500/30 flex-shrink-0">
-          <i class="fas fa-wifi text-white text-sm"></i>
+        <div class="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/30 flex-shrink-0">
+          <i class="fas fa-wifi text-white text-lg"></i>
         </div>
         <div class="hidden sm:flex flex-col leading-tight">
           <span :class="['font-semibold text-sm leading-tight', isDark ? 'text-white' : 'text-gray-800']">{{ dashboardData?.user?.provider_name || 'My Account' }}</span>
           <span v-if="dashboardData?.user?.provider_name" :class="['text-[10px]', isDark ? 'text-white/40' : 'text-gray-400']">Customer Portal</span>
         </div>
       </div>
-      <div class="flex items-center gap-2">
+      <div class="flex items-center gap-3">
         <div :class="['hidden sm:flex items-center gap-2 rounded-lg px-3 py-1.5 border', isDark ? 'bg-white/5 border-white/10' : 'bg-gray-50 border-gray-200']">
           <div class="w-5 h-5 rounded-full bg-indigo-500/15 text-indigo-500 flex items-center justify-center">
             <i class="fas fa-user text-[10px]"></i>
           </div>
           <span :class="['text-sm font-medium', isDark ? 'text-white/90' : 'text-gray-700']">{{ user?.full_name || user?.username || 'Account' }}</span>
         </div>
-        <button @click="isDark = !isDark" :class="['w-8 h-8 flex items-center justify-center rounded-lg border transition-colors', isDark ? 'bg-white/10 border-white/20 text-white/80 hover:bg-white/20' : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-100']">
-          <i :class="['fas text-sm', isDark ? 'fa-sun' : 'fa-moon']"></i>
+        <!-- Theme Toggle - More Visible -->
+        <button @click="isDark = !isDark" :class="['w-10 h-10 flex items-center justify-center rounded-xl border-2 transition-all duration-200 shadow-sm', isDark ? 'bg-amber-500/20 border-amber-500/50 text-amber-400 hover:bg-amber-500/30 hover:shadow-amber-500/20' : 'bg-indigo-100 border-indigo-300 text-indigo-600 hover:bg-indigo-200 hover:shadow-indigo-500/20']" title="Toggle theme">
+          <i :class="['fas text-base', isDark ? 'fa-sun' : 'fa-moon']"></i>
         </button>
-        <button @click="handleLogout" :class="['flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg border border-transparent transition-colors', isDark ? 'text-white/50 hover:text-red-400 hover:bg-red-500/10 hover:border-red-500/20' : 'text-gray-400 hover:text-red-500 hover:bg-red-50 hover:border-red-200']">
+        <button @click="handleLogout" :class="['flex items-center gap-1.5 text-xs font-semibold px-4 py-2.5 rounded-xl border transition-colors', isDark ? 'bg-white/5 border-white/10 text-white/70 hover:text-red-400 hover:bg-red-500/10 hover:border-red-500/30' : 'bg-white border-gray-200 text-gray-600 hover:text-red-500 hover:bg-red-50 hover:border-red-200']">
           <i class="fas fa-arrow-right-from-bracket"></i>
           <span class="hidden sm:inline">Logout</span>
         </button>
@@ -42,7 +43,7 @@
       </button>
     </nav>
 
-    <main class="flex-1 px-4 sm:px-6 py-5 pb-28 sm:pb-10">
+    <main class="flex-1 px-4 sm:px-6 lg:px-8 py-5 pb-28 sm:pb-10 max-w-7xl mx-auto w-full">
 
       <!-- Loading -->
       <div v-if="isLoading && !dashboardData" class="flex items-center justify-center h-64">
@@ -341,14 +342,62 @@
             </div>
             <div>
               <p :class="['text-xs font-semibold uppercase tracking-wider mb-3', isDark ? 'text-white/40' : 'text-gray-400']">Payment History</p>
+              <!-- Duplicate Payment Warning -->
+              <div v-if="hasRecentCompletedPayment" :class="['mb-3 rounded-lg px-3 py-2 text-xs border', isDark ? 'bg-amber-500/10 border-amber-500/20 text-amber-400' : 'bg-amber-50 border-amber-200 text-amber-700']">
+                <i class="fas fa-exclamation-triangle mr-1"></i>
+                You have a recent completed payment. Duplicate payments may extend your expiry date but won't be refunded automatically.
+              </div>
               <div class="space-y-2">
-                <div v-for="payment in dashboardData?.recent_payments || []" :key="payment.id" :class="['rounded-xl p-3 flex items-center justify-between gap-3 border', isDark ? 'bg-white/5 border-white/8' : 'bg-gray-50 border-gray-100']">
-                  <div class="min-w-0">
-                    <p :class="['font-semibold text-sm', isDark ? 'text-white' : 'text-gray-800']">KES {{ formatNumber(payment.amount || 0) }}</p>
-                    <p :class="['text-xs', isDark ? 'text-white/40' : 'text-gray-400']">{{ formatDate(payment.created_at) }} · {{ formatPaymentMethod(payment.payment_method) }}</p>
-                    <p v-if="payment.payment_reference" :class="['text-xs font-mono truncate', isDark ? 'text-white/30' : 'text-gray-300']">{{ payment.payment_reference }}</p>
+                <div v-for="payment in dashboardData?.recent_payments || []" :key="payment.id">
+                  <!-- Payment Row (Clickable) -->
+                  <div @click="togglePaymentDetails(payment.id)" :class="['rounded-xl p-3 flex items-center justify-between gap-3 border cursor-pointer transition-colors', isDark ? 'bg-white/5 border-white/8 hover:bg-white/8' : 'bg-gray-50 border-gray-100 hover:bg-gray-100', expandedPaymentId === payment.id ? (isDark ? 'bg-white/8' : 'bg-gray-100') : '']">
+                    <div class="min-w-0 flex-1">
+                      <p :class="['font-semibold text-sm', isDark ? 'text-white' : 'text-gray-800']">KES {{ formatNumber(payment.amount || 0) }}</p>
+                      <p :class="['text-xs', isDark ? 'text-white/40' : 'text-gray-400']">{{ formatDate(payment.created_at) }} · {{ formatPaymentMethod(payment.payment_method) }}</p>
+                      <p v-if="payment.payment_reference" :class="['text-xs font-mono truncate', isDark ? 'text-white/30' : 'text-gray-300']">{{ payment.payment_reference }}</p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <span :class="['flex-shrink-0 text-[10px] px-2 py-1 rounded-full font-bold', payment.status==='completed' ? (isDark ? 'bg-emerald-500/15 text-emerald-400' : 'bg-emerald-100 text-emerald-700') : payment.status==='pending' ? (isDark ? 'bg-amber-500/15 text-amber-400' : 'bg-amber-100 text-amber-700') : (isDark ? 'bg-red-500/15 text-red-400' : 'bg-red-100 text-red-600')]">{{ payment.status || 'unknown' }}</span>
+                      <i :class="['fas text-xs transition-transform', expandedPaymentId === payment.id ? 'fa-chevron-up' : 'fa-chevron-down', isDark ? 'text-white/40' : 'text-gray-400']"></i>
+                    </div>
                   </div>
-                  <span :class="['flex-shrink-0 text-[10px] px-2 py-1 rounded-full font-bold', payment.status==='completed' ? (isDark ? 'bg-emerald-500/15 text-emerald-400' : 'bg-emerald-100 text-emerald-700') : payment.status==='pending' ? (isDark ? 'bg-amber-500/15 text-amber-400' : 'bg-amber-100 text-amber-700') : (isDark ? 'bg-red-500/15 text-red-400' : 'bg-red-100 text-red-600')]">{{ payment.status || 'unknown' }}</span>
+                  <!-- Expanded Details -->
+                  <div v-if="expandedPaymentId === payment.id" :class="['mx-2 px-3 py-3 rounded-b-xl border-t-0 border text-xs space-y-2', isDark ? 'bg-white/3 border-white/5 text-white/70' : 'bg-gray-50/50 border-gray-100 text-gray-600']">
+                    <div class="grid grid-cols-2 gap-2">
+                      <div>
+                        <p :class="['text-[10px] uppercase', isDark ? 'text-white/40' : 'text-gray-400']">Transaction ID</p>
+                        <p :class="['font-mono', isDark ? 'text-white/80' : 'text-gray-700']">{{ payment.transaction_id || '--' }}</p>
+                      </div>
+                      <div>
+                        <p :class="['text-[10px] uppercase', isDark ? 'text-white/40' : 'text-gray-400']">Receipt Number</p>
+                        <p :class="['font-mono', isDark ? 'text-white/80' : 'text-gray-700']">{{ payment.payment_reference || '--' }}</p>
+                      </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                      <div>
+                        <p :class="['text-[10px] uppercase', isDark ? 'text-white/40' : 'text-gray-400']">Phone Number</p>
+                        <p :class="[isDark ? 'text-white/80' : 'text-gray-700']">{{ formatPhoneNumber(payment.metadata?.mpesa_phone_number || payment.phone_number) }}</p>
+                      </div>
+                      <div>
+                        <p :class="['text-[10px] uppercase', isDark ? 'text-white/40' : 'text-gray-400']">Payment Method</p>
+                        <p :class="[isDark ? 'text-white/80' : 'text-gray-700']">{{ formatPaymentMethod(payment.payment_method) }}</p>
+                      </div>
+                    </div>
+                    <div v-if="payment.period_start || payment.period_end" class="grid grid-cols-2 gap-2 pt-1 border-t" :class="isDark ? 'border-white/5' : 'border-gray-200'">
+                      <div>
+                        <p :class="['text-[10px] uppercase', isDark ? 'text-white/40' : 'text-gray-400']">Period Start</p>
+                        <p :class="[isDark ? 'text-white/80' : 'text-gray-700']">{{ payment.period_start ? formatDate(payment.period_start) : '--' }}</p>
+                      </div>
+                      <div>
+                        <p :class="['text-[10px] uppercase', isDark ? 'text-white/40' : 'text-gray-400']">Period End</p>
+                        <p :class="[isDark ? 'text-white/80' : 'text-gray-700']">{{ payment.period_end ? formatDate(payment.period_end) : '--' }}</p>
+                      </div>
+                    </div>
+                    <div v-if="payment.notes" class="pt-1 border-t" :class="isDark ? 'border-white/5' : 'border-gray-200'">
+                      <p :class="['text-[10px] uppercase', isDark ? 'text-white/40' : 'text-gray-400']">Notes</p>
+                      <p :class="[isDark ? 'text-white/80' : 'text-gray-700']">{{ payment.notes }}</p>
+                    </div>
+                  </div>
                 </div>
                 <div v-if="!dashboardData?.recent_payments?.length" class="py-10 text-center">
                   <i :class="['fas fa-receipt text-3xl mb-3', isDark ? 'text-white/20' : 'text-gray-200']"></i>
@@ -647,6 +696,7 @@ const showPaymentModal = ref(false);
 const showVoucherModal = ref(false);
 const showPaymentsOverlay = ref(false);
 const showHistoryOverlay = ref(false);
+const expandedPaymentId = ref(null);
 const paymentLoading = ref(false);
 const voucherLoading = ref(false);
 const historyLoading = ref(false);
@@ -884,6 +934,32 @@ function openPaymentModal() {
 function openPaymentsOverlay() {
   showPaymentsOverlay.value = true;
 }
+
+function togglePaymentDetails(paymentId) {
+  expandedPaymentId.value = expandedPaymentId.value === paymentId ? null : paymentId;
+}
+
+function formatPhoneNumber(phone) {
+  if (!phone) return '--';
+  const str = String(phone);
+  if (str.startsWith('254') && str.length === 12) {
+    return '+254 ' + str.slice(3, 6) + ' ' + str.slice(6, 9) + ' ' + str.slice(9);
+  }
+  if (str.startsWith('0') && str.length === 10) {
+    return '+254 ' + str.slice(1, 4) + ' ' + str.slice(4, 7) + ' ' + str.slice(7);
+  }
+  return str;
+}
+
+const hasRecentCompletedPayment = computed(() => {
+  const payments = dashboardData.value?.recent_payments || [];
+  const now = new Date();
+  const fiveMinutesAgo = new Date(now.getTime() - 5 * 60 * 1000);
+  return payments.some(p =>
+    p.status === 'completed' &&
+    new Date(p.created_at) > fiveMinutesAgo
+  );
+});
 
 function openTimedVoucherOverlay() {
   timedVoucherMessage.value = '';
