@@ -94,6 +94,34 @@ class CreateHotspotUserJob implements ShouldQueue
                     return;
                 }
 
+                // If the job already completed for this payment, do not recreate radius rows or credentials.
+                $existingProvisioning = HotspotCredential::query()
+                    ->where('payment_id', $this->paymentId)
+                    ->first();
+                if (!$existingProvisioning) {
+                    $existingProvisioning = RadiusSession::query()
+                        ->where('payment_id', $this->paymentId)
+                        ->first();
+                }
+                if ($existingProvisioning) {
+                    DB::commit();
+                    Cache::put($this->jobCacheKey(), [
+                        'status' => 'completed',
+                        'tenant_id' => $this->tenantId,
+                        'payment_id' => $this->paymentId,
+                        'hotspot_user_id' => $existingProvisioning->hotspot_user_id ?? null,
+                        'completed_at' => now()->toIso8601String(),
+                        'queue' => 'hotspot-provisioning',
+                        'mode' => 'duplicate_skipped',
+                    ], now()->addHour());
+
+                    Log::info('Hotspot user provisioning skipped because payment was already processed', [
+                        'payment_id' => $this->paymentId,
+                        'tenant_id' => $this->tenantId,
+                    ]);
+                    return;
+                }
+
                 // Check for existing user with same phone number (reactivation scenario)
                 $existingUser = HotspotUser::where(function ($query) use ($payment) {
                     $query->where('phone_number', $payment->phone_number)
