@@ -38,7 +38,7 @@ class ProvisioningServiceClient implements ProvisioningCommandBus
         return $client;
     }
 
-    protected function requestJson(string $path, array $payload, string $errorPrefix): array
+    protected function requestJson(string $path, array $payload, string $errorPrefix, bool $throwOnBusy = true): array
     {
         $response = $this->getHttpClient()->post($this->baseUrl . $path, $payload);
 
@@ -55,7 +55,23 @@ class ProvisioningServiceClient implements ProvisioningCommandBus
             throw new \Exception($errorPrefix . ': invalid JSON response');
         }
         if (($data['success'] ?? false) !== true) {
-            throw new \Exception($errorPrefix . ': ' . ($data['error'] ?? 'Unknown provisioning service error'));
+            // Check if this is a "router busy" error - for monitoring commands, we can skip gracefully
+            $error = $data['error'] ?? '';
+            $status = $data['data']['status'] ?? '';
+            if (!$throwOnBusy && $status === 'router_busy') {
+                Log::warning('Provisioning service busy, skipping command', [
+                    'command_id' => $payload['command_id'] ?? 'unknown',
+                    'error' => $error,
+                    'active_idempotency_key' => $data['data']['active_idempotency_key'] ?? null,
+                ]);
+                // Return a synthetic success response with busy status
+                return [
+                    'success' => true,
+                    'message' => 'Skipped: provisioning service busy',
+                    'data' => array_merge($data['data'] ?? [], ['skipped' => true]),
+                ];
+            }
+            throw new \Exception($errorPrefix . ': ' . $error);
         }
 
         return $data;
@@ -225,7 +241,7 @@ class ProvisioningServiceClient implements ProvisioningCommandBus
                 'requested_at' => now()->toIso8601String(),
                 'payload' => $payload,
                 'callback' => $this->buildMonitoringCallbackPayload($tenantId, 'live-data', true),
-            ], 'Live data refresh command submission failed');
+            ], 'Live data refresh command submission failed', false);
         } catch (\Exception $e) {
             Log::error('Live data refresh command submission error', [
                 'tenant_id' => $tenantId,
@@ -251,7 +267,7 @@ class ProvisioningServiceClient implements ProvisioningCommandBus
                 'requested_at' => now()->toIso8601String(),
                 'payload' => $payload,
                 'callback' => $this->buildMonitoringCallbackPayload($tenantId, 'router-status', true),
-            ], 'Router status refresh command submission failed');
+            ], 'Router status refresh command submission failed', false);
         } catch (\Exception $e) {
             Log::error('Router status refresh command submission error', [
                 'tenant_id' => $tenantId,
@@ -278,7 +294,7 @@ class ProvisioningServiceClient implements ProvisioningCommandBus
                 'requested_at' => now()->toIso8601String(),
                 'payload' => $payload,
                 'callback' => $this->buildMonitoringCallbackPayload($tenantId, 'vpn-status', true),
-            ], 'VPN status refresh command submission failed');
+            ], 'VPN status refresh command submission failed', false);
         } catch (\Exception $e) {
             Log::error('VPN status refresh command submission error', [
                 'tenant_id' => $tenantId,
@@ -305,7 +321,7 @@ class ProvisioningServiceClient implements ProvisioningCommandBus
                 'requested_at' => now()->toIso8601String(),
                 'payload' => $payload,
                 'callback' => $this->buildMonitoringCallbackPayload($tenantId, 'router-metrics', true),
-            ], 'Router metrics computation command submission failed');
+            ], 'Router metrics computation command submission failed', false);
         } catch (\Exception $e) {
             Log::error('Router metrics computation command submission error', [
                 'tenant_id' => $tenantId,

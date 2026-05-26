@@ -50,3 +50,8 @@ Make payment failures traceable end to end, then use the new trace data to fix t
 - Persistent logs are intended for incident response and root-cause capture.
 - The switch back to `stdout` should be a normal landlord/sysadmin action, not a code change.
 - This plan should be executed before any broader dashboard optimization work.
+
+
+## Current Tracker
+
+- The live flow documentation and open-item tracker now lives in [docs/payment-flows-and-open-items.md](./payment-flows-and-open-items.md).

@@ -115,6 +115,56 @@ class LandlordBillingController extends Controller
         }
     }
 
+    public function getPaymentTraceEvents(Request $request): JsonResponse
+    {
+        $validated = Validator::make($request->all(), [
+            'limit' => 'nullable|integer|min:1|max:500',
+            'needle' => 'nullable|string|max:255',
+        ])->validate();
+
+        $limit = (int) ($validated['limit'] ?? 100);
+        $needle = trim((string) ($validated['needle'] ?? ''));
+
+        $files = [
+            'payment_trace' => storage_path('logs/payment_trace.log'),
+            'mpesa_raw_callback' => storage_path('logs/mpesa_raw_callback.log'),
+        ];
+
+        $data = [];
+        foreach ($files as $key => $path) {
+            $lines = $this->tailLogFile($path, $limit, $needle);
+            $data[$key] = [
+                'path' => $path,
+                'exists' => file_exists($path),
+                'lines' => $lines,
+            ];
+        }
+
+        return response()->json([
+            'success' => true,
+            'logging_mode' => SystemPaymentSetting::getActive()?->payment_trace_mode ?? 'stdout',
+            'data' => $data,
+        ]);
+    }
+
+    private function tailLogFile(string $path, int $limit, string $needle = ''): array
+    {
+        if (!file_exists($path) || !is_readable($path)) {
+            return [];
+        }
+
+        $lines = @file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [];
+        if ($needle !== '') {
+            $lines = array_values(array_filter($lines, static fn (string $line): bool => str_contains($line, $needle)));
+        }
+
+        if (count($lines) > $limit) {
+            $lines = array_slice($lines, -$limit);
+        }
+
+        return $lines;
+    }
+
     /**
      * Update default paybill configuration
      * Persists to system_payment_settings DB table (replaces .env approach)

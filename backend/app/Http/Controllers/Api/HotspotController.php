@@ -4,10 +4,12 @@ namespace App\Http\Controllers\Api;
 
 use App\Helpers\PackageExpiryHelper;
 use App\Http\Controllers\Controller;
+use App\Models\RouterTenantMap;
 use App\Models\HotspotUser;
 use App\Models\HotspotSession;
 use App\Models\Package;
 use App\Models\RadiusSession;
+use App\Models\Tenant;
 use App\Jobs\DisconnectHotspotUserJob;
 use App\Jobs\GrantHotspotAccessJob;
 use App\Events\HotspotAccessRevoked;
@@ -17,6 +19,7 @@ use App\Events\HotspotUserDeleted;
 use App\Services\Hotspot\HotspotRadiusService;
 use App\Services\MikroTik\BandwidthHelper;
 use App\Services\RadiusService;
+use App\Services\TenantContext;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -33,11 +36,13 @@ class HotspotController extends Controller
     private const STATS_CACHE_TTL_SECONDS = 30;
     private const CACHE_VERSION_PREFIX = 'hotspot_cache_version:';
 
-    protected $radiusService;
+    protected RadiusService $radiusService;
+    private readonly TenantContext $tenantContext;
 
-    public function __construct(RadiusService $radiusService)
+    public function __construct(RadiusService $radiusService, TenantContext $tenantContext)
     {
         $this->radiusService = $radiusService;
+        $this->tenantContext = $tenantContext;
     }
 
     public function debugPaymentState(Request $request)
@@ -167,121 +172,141 @@ class HotspotController extends Controller
             $username = $request->input('username');
             $password = $request->input('password');
             $macAddress = $request->input('mac_address');
+            $tenant = $this->resolveHotspotTenant($request);
 
-            // Find hotspot user by username
-            $hotspotUser = HotspotUser::where('username', $username)->first();
-
-            if (!$hotspotUser) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Invalid username or password',
-                ], 401);
-            }
-
-            // CENTRALIZED AUTHENTICATION: Use RADIUS for all hotspot authentication
-            try {
-                \Log::info('Hotspot: Verifying password via RADIUS', [
+            if (!$tenant) {
+                Log::warning('Hotspot: unable to resolve tenant context for login', [
                     'username' => $username,
+                    'ip_address' => $request->ip(),
+                    'gateway_ip' => $this->detectGatewayIp($request),
+                    'router_id' => $request->input('router_id'),
                 ]);
 
-                // Use RADIUS service for centralized authentication
-                $authenticated = $this->radiusService->authenticate(
-                    $username,
-                    $password
-                );
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unable to identify hotspot tenant. Please connect through the hotspot network.',
+                ], 400);
+            }
 
-                if (!$authenticated) {
-                    \Log::warning('Hotspot: RADIUS authentication failed', [
+            return $this->runHotspotTenantTransaction($tenant, function () use ($username, $password, $macAddress, $request, $tenant) {
+                // CENTRALIZED AUTHENTICATION: Use RADIUS for all hotspot authentication
+                try {
+                    \Log::info('Hotspot: Verifying password via RADIUS', [
                         'username' => $username,
+                        'tenant_id' => $tenant->id,
                     ]);
+
+                    $authenticated = $this->radiusService->authenticate(
+                        $username,
+                        $password
+                    );
+
+                    if (!$authenticated) {
+                        \Log::warning('Hotspot: RADIUS authentication failed', [
+                            'username' => $username,
+                            'tenant_id' => $tenant->id,
+                        ]);
+                        return response()->json([
+                            'success' => false,
+                            'message' => 'Invalid username or password',
+                        ], 401);
+                    }
+
+                    \Log::info('Hotspot: RADIUS authentication successful', [
+                        'username' => $username,
+                        'tenant_id' => $tenant->id,
+                    ]);
+                } catch (\Exception $e) {
+                    \Log::error('Hotspot: RADIUS authentication error', [
+                        'username' => $username,
+                        'tenant_id' => $tenant->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Authentication service unavailable',
+                    ], 503);
+                }
+
+                $hotspotUser = HotspotUser::query()->where('username', $username)->first();
+
+                if (!$hotspotUser) {
                     return response()->json([
                         'success' => false,
                         'message' => 'Invalid username or password',
                     ], 401);
                 }
 
-                \Log::info('Hotspot: RADIUS authentication successful', [
-                    'username' => $username,
+                // Check if user has an active subscription
+                if (!$hotspotUser->has_active_subscription) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'No active subscription. Please purchase a package first.',
+                    ], 403);
+                }
+
+                // Check if subscription is expired
+                if ($hotspotUser->subscription_expires_at &&
+                    Carbon::parse($hotspotUser->subscription_expires_at)->isPast()) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Your subscription has expired. Please renew your package.',
+                    ], 403);
+                }
+
+                // Create or update session
+                $session = HotspotSession::updateOrCreate(
+                    ['hotspot_user_id' => $hotspotUser->id],
+                    [
+                        'mac_address' => $macAddress,
+                        'ip_address' => $request->ip(),
+                        'session_start' => now(),
+                        'last_activity' => now(),
+                        'is_active' => true,
+                        'expires_at' => $hotspotUser->subscription_expires_at,
+                    ]
+                );
+
+                // Update last login
+                $hotspotUser->update([
+                    'last_login_at' => now(),
+                    'last_login_ip' => $request->ip(),
                 ]);
-            } catch (\Exception $e) {
-                \Log::error('Hotspot: RADIUS authentication error', [
+
+                // Log successful login
+                Log::info('Hotspot user logged in', [
+                    'user_id' => $hotspotUser->id,
                     'username' => $username,
-                    'error' => $e->getMessage(),
-                ]);
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Authentication service unavailable',
-                ], 503);
-            }
-
-            // Check if user has an active subscription
-            if (!$hotspotUser->has_active_subscription) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'No active subscription. Please purchase a package first.',
-                ], 403);
-            }
-
-            // Check if subscription is expired
-            if ($hotspotUser->subscription_expires_at && 
-                Carbon::parse($hotspotUser->subscription_expires_at)->isPast()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Your subscription has expired. Please renew your package.',
-                ], 403);
-            }
-
-            // Create or update session
-            $session = HotspotSession::updateOrCreate(
-                ['hotspot_user_id' => $hotspotUser->id],
-                [
+                    'tenant_id' => $tenant->id,
                     'mac_address' => $macAddress,
                     'ip_address' => $request->ip(),
-                    'session_start' => now(),
-                    'last_activity' => now(),
-                    'is_active' => true,
-                    'expires_at' => $hotspotUser->subscription_expires_at,
-                ]
-            );
+                ]);
 
-            // Update last login
-            $hotspotUser->update([
-                'last_login_at' => now(),
-                'last_login_ip' => $request->ip(),
-            ]);
+                $this->bustHotspotCache((string) ($hotspotUser->tenant_id ?? $tenant->id));
 
-            // Log successful login
-            Log::info('Hotspot user logged in', [
-                'user_id' => $hotspotUser->id,
-                'username' => $username,
-                'mac_address' => $macAddress,
-                'ip_address' => $request->ip(),
-            ]);
-
-            $this->bustHotspotCache((string) ($hotspotUser->tenant_id ?? auth()->user()->tenant_id ?? ''));
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Login successful. You are now connected to the internet.',
-                'data' => [
-                    'user' => [
-                        'id' => $hotspotUser->id,
-                        'username' => $hotspotUser->username,
-                        'phone_number' => $hotspotUser->phone_number,
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Login successful. You are now connected to the internet.',
+                    'data' => [
+                        'user' => [
+                            'id' => $hotspotUser->id,
+                            'username' => $hotspotUser->username,
+                            'phone_number' => $hotspotUser->phone_number,
+                        ],
+                        'session' => [
+                            'id' => $session->id,
+                            'session_start' => $session->session_start,
+                            'expires_at' => $session->expires_at,
+                        ],
+                        'subscription' => [
+                            'package_name' => $hotspotUser->package_name ?? 'N/A',
+                            'expires_at' => $hotspotUser->subscription_expires_at,
+                            'data_limit' => $hotspotUser->data_limit,
+                            'data_used' => $hotspotUser->data_used,
+                        ],
                     ],
-                    'session' => [
-                        'id' => $session->id,
-                        'session_start' => $session->session_start,
-                        'expires_at' => $session->expires_at,
-                    ],
-                    'subscription' => [
-                        'package_name' => $hotspotUser->package_name ?? 'N/A',
-                        'expires_at' => $hotspotUser->subscription_expires_at,
-                        'data_limit' => $hotspotUser->data_limit,
-                        'data_used' => $hotspotUser->data_used,
-                    ],
-                ],
-            ], 200);
+                ], 200);
+            });
 
         } catch (\Exception $e) {
             Log::error('Hotspot login error', [
@@ -307,40 +332,51 @@ class HotspotController extends Controller
         try {
             $username = $request->input('username');
             $macAddress = $request->input('mac_address');
+            $tenant = $this->resolveHotspotTenant($request);
 
-            // Find user
-            $hotspotUser = HotspotUser::where('username', $username)->first();
-
-            if (!$hotspotUser) {
+            if (!$tenant) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'User not found',
-                ], 404);
+                    'message' => 'Unable to identify hotspot tenant. Please connect through the hotspot network.',
+                ], 400);
             }
 
-            // End session
-            $session = HotspotSession::where('hotspot_user_id', $hotspotUser->id)
-                ->where('is_active', true)
-                ->first();
+            return $this->runHotspotTenantTransaction($tenant, function () use ($username, $macAddress, $request, $tenant) {
+                // Find user
+                $hotspotUser = HotspotUser::where('username', $username)->first();
 
-            if ($session) {
-                $session->update([
-                    'is_active' => false,
-                    'session_end' => now(),
+                if (!$hotspotUser) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'User not found',
+                    ], 404);
+                }
+
+                // End session
+                $session = HotspotSession::where('hotspot_user_id', $hotspotUser->id)
+                    ->where('is_active', true)
+                    ->first();
+
+                if ($session) {
+                    $session->update([
+                        'is_active' => false,
+                        'session_end' => now(),
+                    ]);
+                }
+
+                Log::info('Hotspot user logged out', [
+                    'user_id' => $hotspotUser->id,
+                    'username' => $username,
+                    'tenant_id' => $tenant->id,
                 ]);
-            }
 
-            Log::info('Hotspot user logged out', [
-                'user_id' => $hotspotUser->id,
-                'username' => $username,
-            ]);
+                $this->bustHotspotCache((string) ($hotspotUser->tenant_id ?? $tenant->id));
 
-            $this->bustHotspotCache((string) ($hotspotUser->tenant_id ?? auth()->user()->tenant_id ?? ''));
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Logged out successfully',
-            ], 200);
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Logged out successfully',
+                ], 200);
+            });
 
         } catch (\Exception $e) {
             Log::error('Hotspot logout error', [
@@ -365,52 +401,63 @@ class HotspotController extends Controller
         try {
             $username = $request->input('username');
             $macAddress = $request->input('mac_address');
+            $tenant = $this->resolveHotspotTenant($request);
 
-            $hotspotUser = HotspotUser::where('username', $username)->first();
-
-            if (!$hotspotUser) {
+            if (!$tenant) {
                 return response()->json([
                     'success' => false,
                     'is_active' => false,
-                    'message' => 'User not found',
-                ], 404);
+                    'message' => 'Unable to identify hotspot tenant. Please connect through the hotspot network.',
+                ], 400);
             }
 
-            $session = HotspotSession::where('hotspot_user_id', $hotspotUser->id)
-                ->where('is_active', true)
-                ->first();
+            return $this->runHotspotTenantTransaction($tenant, function () use ($username, $macAddress, $tenant) {
+                $hotspotUser = HotspotUser::where('username', $username)->first();
 
-            if (!$session) {
+                if (!$hotspotUser) {
+                    return response()->json([
+                        'success' => false,
+                        'is_active' => false,
+                        'message' => 'User not found',
+                    ], 404);
+                }
+
+                $session = HotspotSession::where('hotspot_user_id', $hotspotUser->id)
+                    ->where('is_active', true)
+                    ->first();
+
+                if (!$session) {
+                    return response()->json([
+                        'success' => true,
+                        'is_active' => false,
+                        'message' => 'No active session',
+                    ], 200);
+                }
+
+                // Check if session expired
+                if ($session->expires_at && Carbon::parse($session->expires_at)->isPast()) {
+                    $session->update(['is_active' => false, 'session_end' => now()]);
+
+                    return response()->json([
+                        'success' => true,
+                        'is_active' => false,
+                        'message' => 'Session expired',
+                    ], 200);
+                }
+
+                // Update last activity
+                $session->update(['last_activity' => now()]);
+
                 return response()->json([
                     'success' => true,
-                    'is_active' => false,
-                    'message' => 'No active session',
+                    'is_active' => true,
+                    'session' => [
+                        'session_start' => $session->session_start,
+                        'expires_at' => $session->expires_at,
+                        'last_activity' => $session->last_activity,
+                    ],
                 ], 200);
-            }
-
-            // Check if session expired
-            if ($session->expires_at && Carbon::parse($session->expires_at)->isPast()) {
-                $session->update(['is_active' => false, 'session_end' => now()]);
-                
-                return response()->json([
-                    'success' => true,
-                    'is_active' => false,
-                    'message' => 'Session expired',
-                ], 200);
-            }
-
-            // Update last activity
-            $session->update(['last_activity' => now()]);
-
-            return response()->json([
-                'success' => true,
-                'is_active' => true,
-                'session' => [
-                    'session_start' => $session->session_start,
-                    'expires_at' => $session->expires_at,
-                    'last_activity' => $session->last_activity,
-                ],
-            ], 200);
+            });
 
         } catch (\Exception $e) {
             Log::error('Check session error', [
@@ -419,14 +466,144 @@ class HotspotController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'An error occurred',
+                'message' => 'An error occurred while checking session',
             ], 500);
         }
     }
 
-    // =========================================================================
-    // ADMIN METHODS - Authenticated tenant admin endpoints
-    // =========================================================================
+    private function resolveHotspotTenant(Request $request): ?Tenant
+    {
+        if ($tenant = $request->attributes->get('tenant')) {
+            return $tenant instanceof Tenant ? $tenant : null;
+        }
+
+        $tenantId = $request->attributes->get('tenant_id');
+        if ($tenantId) {
+            return Tenant::query()
+                ->select(['id', 'name', 'schema_name', 'schema_created', 'is_active'])
+                ->whereKey((string) $tenantId)
+                ->where('is_active', true)
+                ->where('schema_created', true)
+                ->first();
+        }
+
+        $routerId = trim((string) $request->input('router_id', ''));
+        if ($routerId !== '') {
+            $tenantId = RouterTenantMap::findTenantByRouterId($routerId);
+            if ($tenantId) {
+                return Tenant::query()
+                    ->select(['id', 'name', 'schema_name', 'schema_created', 'is_active'])
+                    ->whereKey($tenantId)
+                    ->where('is_active', true)
+                    ->where('schema_created', true)
+                    ->first();
+            }
+        }
+
+        $clientIp = $this->getClientIp($request);
+        if ($clientIp !== '') {
+            $tenantId = RouterTenantMap::findTenantByIp($clientIp);
+            if ($tenantId) {
+                return Tenant::query()
+                    ->select(['id', 'name', 'schema_name', 'schema_created', 'is_active'])
+                    ->whereKey($tenantId)
+                    ->where('is_active', true)
+                    ->where('schema_created', true)
+                    ->first();
+            }
+        }
+
+        $gatewayIp = $this->detectGatewayIp($request);
+        if ($gatewayIp !== null) {
+            $tenantId = RouterTenantMap::findTenantByIp($gatewayIp);
+            if ($tenantId) {
+                return Tenant::query()
+                    ->select(['id', 'name', 'schema_name', 'schema_created', 'is_active'])
+                    ->whereKey($tenantId)
+                    ->where('is_active', true)
+                    ->where('schema_created', true)
+                    ->first();
+            }
+        }
+
+        $subdomain = $this->extractSubdomain($request->getHost());
+        if ($subdomain) {
+            return Tenant::query()
+                ->select(['id', 'name', 'schema_name', 'schema_created', 'is_active'])
+                ->where(function ($query) use ($subdomain) {
+                    $query->where('subdomain', $subdomain)
+                        ->orWhere('custom_domain', $subdomain);
+                })
+                ->where('is_active', true)
+                ->where('schema_created', true)
+                ->first();
+        }
+
+        if ($request->hasSession() && $request->session()->has('tenant_id')) {
+            return Tenant::query()
+                ->select(['id', 'name', 'schema_name', 'schema_created', 'is_active'])
+                ->whereKey((string) $request->session()->get('tenant_id'))
+                ->where('is_active', true)
+                ->where('schema_created', true)
+                ->first();
+        }
+
+        return null;
+    }
+
+    private function runHotspotTenantTransaction(Tenant $tenant, \Closure $callback)
+    {
+        return DB::transaction(function () use ($tenant, $callback) {
+            DB::connection()->recordsHaveBeenModified();
+            $this->tenantContext->setTenant($tenant);
+
+            try {
+                return $callback();
+            } finally {
+                $this->tenantContext->clearTenant();
+            }
+        });
+    }
+
+    private function getClientIp(Request $request): string
+    {
+        if ($request->header('X-Forwarded-For')) {
+            $ips = explode(',', (string) $request->header('X-Forwarded-For'));
+            return trim($ips[0]);
+        }
+
+        if ($request->header('X-Real-IP')) {
+            return trim((string) $request->header('X-Real-IP'));
+        }
+
+        return (string) $request->ip();
+    }
+
+    private function detectGatewayIp(Request $request): ?string
+    {
+        foreach (['X-Gateway-IP', 'X-Router-IP'] as $header) {
+            $value = trim((string) $request->header($header, ''));
+            if ($value !== '') {
+                return $value;
+            }
+        }
+
+        return null;
+    }
+
+    private function extractSubdomain(string $host): ?string
+    {
+        if ($host === '' || filter_var($host, FILTER_VALIDATE_IP)) {
+            return null;
+        }
+
+        $parts = explode('.', $host);
+        if (count($parts) < 3) {
+            return null;
+        }
+
+        return $parts[0] ?: null;
+    }
 
     /**
      * List hotspot users with optimized query
@@ -782,6 +959,63 @@ class HotspotController extends Controller
             $payload = Cache::remember($cacheKey, self::LIVE_LIST_CACHE_TTL_SECONDS, function () {
                 $source = 'none';
 
+                $radiusSessions = RadiusSession::query()
+                    ->select([
+                        'id', 'hotspot_user_id', 'payment_id', 'package_id', 'radacct_id', 'username',
+                        'mac_address', 'ip_address', 'nas_ip_address', 'session_start', 'session_end',
+                        'expected_end', 'duration_seconds', 'bytes_in', 'bytes_out', 'total_bytes', 'status',
+                    ])
+                    ->with(['hotspotUser.package:id,name,data_limit'])
+                    ->where('status', 'active')
+                    ->latest('session_start')
+                    ->limit(500)
+                    ->get();
+
+                if ($radiusSessions->isNotEmpty()) {
+                    $source = 'radius_session_cache';
+
+                    $data = $radiusSessions->map(function ($session) {
+                        $hotspotUser = $session->hotspotUser;
+                        $start = $session->session_start ? \Carbon\Carbon::parse($session->session_start) : null;
+                        $duration = $start ? max(0, $start->diffInSeconds(now(), false)) : (int) ($session->duration_seconds ?? 0);
+                        $pkg = $hotspotUser?->package;
+
+                        return [
+                            'id' => (string) $session->id,
+                            'acct_session_id' => $session->radacct_id ?? null,
+                            'acct_unique_id' => $session->radacct_id ?? null,
+                            'username' => (string) ($session->username ?? $hotspotUser?->username ?? ''),
+                            'type' => 'hotspot',
+                            'hotspot_user_id' => $hotspotUser?->id,
+                            'framed_ip' => $session->ip_address ?? null,
+                            'ip_address' => $session->ip_address ?? null,
+                            'calling_station_id' => $session->mac_address ?? null,
+                            'mac_address' => $session->mac_address ?? null,
+                            'nas_ip_address' => $session->nas_ip_address ?? null,
+                            'nas_port_id' => null,
+                            'start_time' => $session->session_start ?? null,
+                            'connected_at' => $session->session_start ?? null,
+                            'duration' => $duration,
+                            'uptime' => $duration,
+                            'input_octets' => (int) ($session->bytes_in ?? 0),
+                            'output_octets' => (int) ($session->bytes_out ?? 0),
+                            'package' => $pkg ? [
+                                'id' => (string) $pkg->id,
+                                'name' => $pkg->name,
+                                'data_limit' => $pkg->data_limit,
+                            ] : null,
+                            'subscription_expires_at' => $hotspotUser?->subscription_expires_at,
+                            'status' => 'active',
+                        ];
+                    })->values();
+
+                    return [
+                        'data' => $data,
+                        'source' => $source,
+                        'total' => $data->count(),
+                    ];
+                }
+
                 $rows = collect();
                 if (\Illuminate\Support\Facades\Schema::hasTable('radacct')) {
                     $rows = DB::table('radacct')
@@ -918,9 +1152,7 @@ class HotspotController extends Controller
                     COUNT(*) FILTER (WHERE session_start::date = ?) as today_logins
                 ", [$today])->first();
 
-                $dataUsage = DB::table('radacct')
-                    ->selectRaw('COALESCE(SUM(acctinputoctets + acctoutputoctets), 0) as total')
-                    ->value('total') ?? 0;
+                $dataUsage = RadiusSession::query()->selectRaw('COALESCE(SUM(total_bytes), 0) as total')->value('total') ?? 0;
 
                 return [
                     'total_users'      => (int) ($userCounts->total ?? 0),

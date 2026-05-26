@@ -81,78 +81,81 @@ class CheckHotspotExpirationsJob implements ShouldQueue
         $disconnectedCount = 0;
         
         // Find expired hotspot users with active subscriptions
-        $expiredUsers = HotspotUser::where('has_active_subscription', true)
+        HotspotUser::query()
+            ->select(['id', 'username', 'package_name', 'subscription_expires_at', 'has_active_subscription', 'status'])
+            ->where('has_active_subscription', true)
             ->where('subscription_expires_at', '<', now())
-            ->get();
-        
-        foreach ($expiredUsers as $user) {
-            DB::beginTransaction();
-            
-            try {
-                // Mark subscription as expired
-                $user->update([
-                    'has_active_subscription' => false,
-                    'status' => 'expired',
-                ]);
-                $expiredCount++;
-                
-                // Block in RADIUS - add Auth-Type := Reject
-                DB::table('radcheck')
-                    ->where('username', $user->username)
-                    ->where('attribute', 'Auth-Type')
-                    ->delete();
-                
-                DB::table('radcheck')->insert([
-                    'username' => $user->username,
-                    'attribute' => 'Auth-Type',
-                    'op' => ':=',
-                    'value' => 'Reject',
-                ]);
-                
-                // Find active sessions and disconnect
-                $activeSessions = RadiusSession::where('hotspot_user_id', $user->id)
-                    ->where('status', 'active')
-                    ->get();
-                
-                foreach ($activeSessions as $session) {
-                    DisconnectHotspotUserJob::dispatch(
-                        $session->id,
+            ->orderBy('subscription_expires_at')
+            ->cursor()
+            ->each(function (HotspotUser $user) use ($tenantId, &$expiredCount, &$disconnectedCount) {
+                DB::beginTransaction();
+
+                try {
+                    // Mark subscription as expired
+                    $user->update([
+                        'has_active_subscription' => false,
+                        'status' => 'expired',
+                    ]);
+                    $expiredCount++;
+
+                    // Block in RADIUS - add Auth-Type := Reject
+                    DB::table('radcheck')
+                        ->where('username', $user->username)
+                        ->where('attribute', 'Auth-Type')
+                        ->delete();
+
+                    DB::table('radcheck')->insert([
+                        'username' => $user->username,
+                        'attribute' => 'Auth-Type',
+                        'op' => ':=',
+                        'value' => 'Reject',
+                    ]);
+
+                    // Find active sessions and disconnect
+                    $activeSessions = RadiusSession::query()
+                        ->select(['id', 'hotspot_user_id', 'status'])
+                        ->where('hotspot_user_id', $user->id)
+                        ->where('status', 'active')
+                        ->get();
+
+                    foreach ($activeSessions as $session) {
+                        DisconnectHotspotUserJob::dispatch(
+                            $session->id,
+                            $tenantId,
+                            'Package expired',
+                            null
+                        )->onQueue('hotspot-sessions');
+                        $disconnectedCount++;
+                    }
+
+                    DB::commit();
+
+                    // Broadcast expiration event
+                    broadcast(new HotspotPackageExpired(
+                        $user->id,
                         $tenantId,
-                        'Package expired',
-                        null
-                    )->onQueue('hotspot-sessions');
-                    $disconnectedCount++;
+                        $user->username,
+                        $user->package_name,
+                        $user->subscription_expires_at?->toIso8601String(),
+                        $activeSessions->count() > 0
+                    ))->toOthers();
+
+                    Log::info('Hotspot user expired and blocked', [
+                        'user_id' => $user->id,
+                        'username' => $user->username,
+                        'expired_at' => $user->subscription_expires_at,
+                        'sessions_disconnected' => $activeSessions->count(),
+                        'tenant_id' => $tenantId,
+                    ]);
+                } catch (\Exception $e) {
+                    DB::rollBack();
+                    Log::error('Failed to expire hotspot user', [
+                        'user_id' => $user->id,
+                        'error' => $e->getMessage(),
+                        'tenant_id' => $tenantId,
+                    ]);
                 }
-                
-                DB::commit();
-                
-                // Broadcast expiration event
-                broadcast(new HotspotPackageExpired(
-                    $user->id,
-                    $tenantId,
-                    $user->username,
-                    $user->package_name,
-                    $user->subscription_expires_at?->toIso8601String(),
-                    $activeSessions->count() > 0
-                ))->toOthers();
-                
-                Log::info('Hotspot user expired and blocked', [
-                    'user_id' => $user->id,
-                    'username' => $user->username,
-                    'expired_at' => $user->subscription_expires_at,
-                    'sessions_disconnected' => $activeSessions->count(),
-                    'tenant_id' => $tenantId,
-                ]);
-                
-            } catch (\Exception $e) {
-                DB::rollBack();
-                Log::error('Failed to expire hotspot user', [
-                    'user_id' => $user->id,
-                    'error' => $e->getMessage(),
-                    'tenant_id' => $tenantId,
-                ]);
-            }
-        }
+            });
         
         if ($expiredCount > 0) {
             Log::info('CheckHotspotExpirationsJob: Tenant processed', [

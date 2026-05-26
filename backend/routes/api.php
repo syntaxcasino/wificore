@@ -521,6 +521,8 @@ Route::middleware(['auth:sanctum', 'system.admin'])->prefix('system')->name('api
             ->name('configuration');
         Route::get('/logging', [\App\Http\Controllers\Api\LandlordBillingController::class, 'getLoggingConfiguration'])
             ->name('logging');
+        Route::get('/logs/payment-traces', [\App\Http\Controllers\Api\LandlordBillingController::class, 'getPaymentTraceEvents'])
+            ->name('logs.payment-traces');
         Route::put('/logging', [\App\Http\Controllers\Api\LandlordBillingController::class, 'updateLoggingConfiguration'])
             ->name('logging.update');
         Route::put('/paybill', [\App\Http\Controllers\Api\LandlordBillingController::class, 'updateDefaultPaybill'])

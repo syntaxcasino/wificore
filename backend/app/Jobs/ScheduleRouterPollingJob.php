@@ -66,7 +66,15 @@ class ScheduleRouterPollingJob implements ShouldQueue
                     ],
                 ];
 
-                $provisioningClient->submitLiveDataRefreshCommand((string) $this->tenantId, $payload);
+                $response = $provisioningClient->submitLiveDataRefreshCommand((string) $this->tenantId, $payload);
+
+                if ($response['data']['skipped'] ?? false) {
+                    Log::info('Skipped live data refresh - provisioning service busy', [
+                        'tenant_id' => $this->tenantId,
+                        'router_count' => $routers->count(),
+                    ]);
+                    return;
+                }
 
                 Log::debug('Submitted live data refresh command', [
                     'tenant_id' => $this->tenantId,
