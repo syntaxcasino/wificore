@@ -307,7 +307,6 @@
                   <div v-if="paymentConfirmation.nextDue" class="flex justify-between"><span :class="isDark ? 'text-white/40' : 'text-gray-500'">Next Due</span><span class="font-semibold text-emerald-500">{{ formatDate(paymentConfirmation.nextDue) }}</span></div>
                 </div>
               </div>
-              <button @click="closePaymentModal" class="w-full py-3.5 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-xl transition-colors">Done</button>
             </template>
             <template v-else-if="paymentStep === 'failed'">
               <div class="flex flex-col items-center py-3 text-center">
@@ -1184,6 +1183,10 @@ function applySuccessfulPaymentUpdate(data) {
   paymentStatusMessage.value = 'Payment confirmed successfully.';
   paymentForm.value = { phone: '' };
   pendingPaymentTransactionId.value = '';
+  showSuccess('Payment Confirmed! Account renewed successfully.');
+  setTimeout(() => {
+    closePaymentModal();
+  }, 2500);
   loadDashboard({ force: true });
 }
 
