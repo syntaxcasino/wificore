@@ -73,7 +73,7 @@ printf 'PING\r\n' | nc -w 2 localhost 6379
 ```
 That fails with `NOAUTH Authentication required.` whenever `REDIS_PASSWORD` is set, which causes `wificore-redis` to go unhealthy or restart even when the backend Redis nodes are fine.
 
-The health check now authenticates first when `REDIS_PASSWORD` is present.
+The health check now authenticates first when `REDIS_PASSWORD` is present, and it reads the password from the container runtime environment instead of embedding the secret through Compose-time interpolation. This avoids breakage when the password contains shell-sensitive characters and keeps `.env.production` authoritative.
 
 ## Deployment Order
 1. Build and deploy the updated Redis image and Redis proxy image.
@@ -83,18 +83,18 @@ The health check now authenticates first when `REDIS_PASSWORD` is present.
 5. Restart Laravel web, SSE, scheduler, and queue containers so they reconnect cleanly.
 
 ## Correct Validation Commands
-Run these from `/opt/wificore`.
+Run these from `/opt/wificore` and include `--env-file .env.production` whenever you invoke `docker compose` manually.
 
 ### Compose status
 ```bash
-docker compose -f docker-compose.production.yml ps
+docker compose --env-file .env.production -f docker-compose.production.yml ps
 ```
 
 ### Primary replication status
 Use the password from `.env.production`, not the current host shell unless it is exported there.
 ```bash
 REDIS_PASSWORD="$(grep '^REDIS_PASSWORD=' .env.production | cut -d= -f2-)"
-docker compose -f docker-compose.production.yml exec -T wificore-redis-primary \
+docker compose --env-file .env.production -f docker-compose.production.yml exec -T wificore-redis-primary \
   redis-cli --no-auth-warning -a "$REDIS_PASSWORD" INFO replication
 ```
 Expected: `role:master`
@@ -102,14 +102,14 @@ Expected: `role:master`
 ### Replica replication status
 ```bash
 REDIS_PASSWORD="$(grep '^REDIS_PASSWORD=' .env.production | cut -d= -f2-)"
-docker compose -f docker-compose.production.yml exec -T wificore-redis-replica \
+docker compose --env-file .env.production -f docker-compose.production.yml exec -T wificore-redis-replica \
   redis-cli --no-auth-warning -a "$REDIS_PASSWORD" INFO replication
 ```
 Expected: `role:slave` or `role:replica`
 
 ### Sentinel view of the master
 ```bash
-docker compose -f docker-compose.production.yml exec -T wificore-redis-sentinel-1 \
+docker compose --env-file .env.production -f docker-compose.production.yml exec -T wificore-redis-sentinel-1 \
   redis-cli -p 26379 SENTINEL master wificore-redis
 ```
 Expected:
@@ -120,7 +120,7 @@ Expected:
 ### Proxy liveness
 ```bash
 REDIS_PASSWORD="$(grep '^REDIS_PASSWORD=' .env.production | cut -d= -f2-)"
-docker compose -f docker-compose.production.yml exec -T wificore-redis sh -lc '
+docker compose --env-file .env.production -f docker-compose.production.yml exec -T wificore-redis sh -lc '
 if [ -n "$REDIS_PASSWORD" ]; then
   printf "AUTH %s\r\nPING\r\n" "$REDIS_PASSWORD" | nc -w 2 localhost 6379
 else
@@ -137,18 +137,18 @@ Expected output includes `+PONG`.
 
 ## Safe Failover Test
 ```bash
-docker compose -f docker-compose.production.yml stop wificore-redis-primary
-watch -n 2 'docker compose -f docker-compose.production.yml exec -T wificore-redis-sentinel-1 redis-cli -p 26379 SENTINEL master wificore-redis'
+docker compose --env-file .env.production -f docker-compose.production.yml stop wificore-redis-primary
+watch -n 2 'docker compose --env-file .env.production -f docker-compose.production.yml exec -T wificore-redis-sentinel-1 redis-cli -p 26379 SENTINEL master wificore-redis'
 ```
 Wait until Sentinel reports the new master on the replica IP, then verify:
 ```bash
 REDIS_PASSWORD="$(grep '^REDIS_PASSWORD=' .env.production | cut -d= -f2-)"
-docker compose -f docker-compose.production.yml exec -T wificore-redis \
+docker compose --env-file .env.production -f docker-compose.production.yml exec -T wificore-redis \
   sh -lc 'printf "AUTH %s\r\nPING\r\n" "$REDIS_PASSWORD" | nc -w 2 localhost 6379'
 ```
 Bring the old primary back afterward:
 ```bash
-docker compose -f docker-compose.production.yml start wificore-redis-primary
+docker compose --env-file .env.production -f docker-compose.production.yml start wificore-redis-primary
 ```
 
 ## Recommended Follow-up
