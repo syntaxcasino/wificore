@@ -25,6 +25,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Carbon\Carbon;
 use App\Models\Tenant;
+use App\Helpers\PackageExpiryHelper;
 use InvalidArgumentException;
 
 /**
@@ -1243,7 +1244,7 @@ SQL;
                 return $this->tenantContext->runInTenantContext($tenant, function () use ($pppoeUser, $voucherCode) {
                     // OPTIMIZATION: Select only needed fields with lockForUpdate for concurrency
                     $voucher = Voucher::query()
-                        ->select(['id', 'code', 'value', 'status', 'used_at', 'used_by', 'expires_at', 'package_duration_days'])
+                        ->select(['id', 'code', 'value', 'package_id', 'status', 'used_at', 'used_by', 'expires_at', 'package_duration_days'])
                         ->where('code', $voucherCode)
                         ->where('status', 'unused')
                         ->where(function ($q) {
@@ -1265,6 +1266,11 @@ SQL;
                     // Validate voucher has a monetary value
                     if ($voucher->value === null || $voucher->value <= 0) {
                         return ['error' => 'This voucher has no redeemable value', 'status' => 400];
+                    }
+
+                    // Validate voucher package matches user's current package
+                    if ($pppoeUser->package_id && $pppoeUser->package_id !== $voucher->package_id) {
+                        return ['error' => 'This voucher is for a different package than your current plan', 'status' => 400];
                     }
 
                     // Update voucher efficiently
@@ -1298,12 +1304,22 @@ SQL;
                     // Update user balance and expiry in single save
                     $newBalance = ($pppoeUser->balance ?? 0) + $voucher->value;
                     $updateData = ['balance' => $newBalance];
-                    
-                    if ($voucher->package_duration_days) {
-                        $currentExpiry = $pppoeUser->expires_at ? Carbon::parse($pppoeUser->expires_at) : Carbon::now();
-                        $updateData['expires_at'] = $currentExpiry->addDays($voucher->package_duration_days);
+
+                    // Extend plan expiry if voucher has a duration
+                    if ($voucher->package_duration_days && $voucher->package_id) {
+                        $package = Package::find($voucher->package_id);
+                        if ($package) {
+                            $updateData['expires_at'] = PackageExpiryHelper::calculateRenewalExpiresAt(
+                                $package,
+                                Carbon::now(),
+                                $pppoeUser->expires_at ? Carbon::parse($pppoeUser->expires_at) : null
+                            );
+                        } else {
+                            $currentExpiry = $pppoeUser->expires_at ? Carbon::parse($pppoeUser->expires_at) : Carbon::now();
+                            $updateData['expires_at'] = $currentExpiry->addDays($voucher->package_duration_days);
+                        }
                     }
-                    
+
                     $pppoeUser->update($updateData);
 
                     return [
