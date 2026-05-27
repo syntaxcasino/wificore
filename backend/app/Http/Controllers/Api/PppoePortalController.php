@@ -906,6 +906,11 @@ SQL;
             'paused_at'                  => $pppoeUser->paused_at?->toIso8601String(),
             'pause_ends_at'              => $pppoeUser->pause_ends_at?->toIso8601String(),
             'is_paused'                  => $pppoeUser->isPaused(),
+            'can_pause'                  => $pppoeUser->canPause(),
+            'days_until_unpause'         => $pppoeUser->daysUntilUnpause(),
+            'days_paused'                => $pppoeUser->daysPaused(),
+            'pause_duration_days'        => $pppoeUser->pause_duration_days,
+            'pause_count'                => $pppoeUser->pause_count,
             'pending_package_id'         => $pppoeUser->pending_package_id,
             'plan_switch_effective_date' => $pppoeUser->plan_switch_effective_date?->toIso8601String(),
         ];
@@ -1768,6 +1773,11 @@ SQL;
             return response()->json(['success' => false, 'message' => 'Unauthorized'], 401);
         }
 
+        $validated = $request->validate([
+            'duration_days' => 'required|integer|min:14|max:30',
+        ]);
+        $durationDays = (int) $validated['duration_days'];
+
         if ($pppoeUser->payment_status !== 'paid') {
             return response()->json(['success' => false, 'message' => 'Account must be fully paid before it can be paused.'], 422);
         }
@@ -1777,13 +1787,19 @@ SQL;
         if ($pppoeUser->isSuspended()) {
             return response()->json(['success' => false, 'message' => 'Suspended accounts cannot be paused.'], 422);
         }
+        if (!$pppoeUser->canPause()) {
+            return response()->json(['success' => false, 'message' => 'You can only pause your account once per billing cycle (1 month).'], 422);
+        }
 
-        $pauseEndsAt = $pppoeUser->expires_at ?? now()->addDays(30);
+        $pauseEndsAt = now()->addDays($durationDays);
 
         $pppoeUser->update([
-            'paused_at'     => now(),
-            'pause_ends_at' => $pauseEndsAt,
-            'pause_reason'  => 'User-requested pause',
+            'paused_at'                 => now(),
+            'pause_ends_at'             => $pauseEndsAt,
+            'pause_reason'              => 'User-requested pause',
+            'pause_count'               => $pppoeUser->pause_count + 1,
+            'pause_billing_cycle_start' => now()->toDateString(),
+            'pause_duration_days'       => $durationDays,
         ]);
 
         DB::table('radcheck')->updateOrInsert(
@@ -1796,14 +1812,16 @@ SQL;
         Log::info('PPPoE portal: account paused', [
             'account_number' => $pppoeUser->account_number,
             'pause_ends_at'  => $pauseEndsAt,
+            'duration_days'  => $durationDays,
         ]);
 
         return response()->json([
             'success' => true,
-            'message' => 'Account paused. Internet access is suspended until you resume or the pause expires.',
+            'message' => "Account paused for {$durationDays} days. Internet access is suspended. Your account will automatically resume on " . $pauseEndsAt->format('M j, Y') . ".",
             'data'    => [
-                'paused_at'     => $pppoeUser->paused_at?->toIso8601String(),
-                'pause_ends_at' => $pppoeUser->pause_ends_at?->toIso8601String(),
+                'paused_at'           => $pppoeUser->paused_at?->toIso8601String(),
+                'pause_ends_at'       => $pppoeUser->pause_ends_at?->toIso8601String(),
+                'duration_days'     => $durationDays,
             ],
         ]);
     }
@@ -1815,47 +1833,10 @@ SQL;
             return response()->json(['success' => false, 'message' => 'Unauthorized'], 401);
         }
 
-        if (!$pppoeUser->isPaused()) {
-            return response()->json(['success' => false, 'message' => 'Account is not currently paused.'], 422);
-        }
-
-        $pausedAt       = $pppoeUser->paused_at ?? now();
-        $daysElapsed    = (int) $pausedAt->diffInDays(now(), true);
-        $pauseEndsAt    = $pppoeUser->pause_ends_at;
-        $totalPauseDays = $pauseEndsAt ? (int) $pausedAt->diffInDays($pauseEndsAt, true) : 0;
-        $remainingDays  = max(0, $totalPauseDays - $daysElapsed);
-
-        $newExpiry = ($pppoeUser->expires_at ?? now())->addDays($remainingDays);
-
-        $pppoeUser->update([
-            'paused_at'     => null,
-            'pause_ends_at' => null,
-            'pause_reason'  => null,
-            'expires_at'    => $newExpiry,
-        ]);
-
-        DB::table('radcheck')
-            ->where('username', $pppoeUser->username)
-            ->where('attribute', 'Auth-Type')
-            ->where('value', 'Reject')
-            ->delete();
-
-        $this->invalidateDashboardCache($pppoeUser);
-
-        Log::info('PPPoE portal: account resumed early', [
-            'account_number' => $pppoeUser->account_number,
-            'days_credited'  => $remainingDays,
-            'new_expiry'     => $newExpiry,
-        ]);
-
         return response()->json([
-            'success' => true,
-            'message' => "Account resumed. {$remainingDays} day(s) credited back to your subscription.",
-            'data'    => [
-                'new_expiry'    => $newExpiry->toIso8601String(),
-                'days_credited' => $remainingDays,
-            ],
-        ]);
+            'success' => false,
+            'message' => 'Manual unpause is not allowed. Your account will automatically resume when the pause period ends.',
+        ], 422);
     }
 
     // ============== Feature: Plan Switch ==============

@@ -49,6 +49,9 @@ class PppoeUser extends Model
         'paused_at',
         'pause_ends_at',
         'pause_reason',
+        'pause_count',
+        'pause_billing_cycle_start',
+        'pause_duration_days',
         'pending_package_id',
         'plan_switch_effective_date',
     ];
@@ -72,6 +75,9 @@ class PppoeUser extends Model
         'suspended_at' => 'datetime',
         'paused_at' => 'datetime',
         'pause_ends_at' => 'datetime',
+        'pause_count' => 'integer',
+        'pause_billing_cycle_start' => 'date',
+        'pause_duration_days' => 'integer',
         'plan_switch_effective_date' => 'datetime',
         'last_reminder_sent_at' => 'datetime',
         'last_invoice_sent_at' => 'datetime',
@@ -287,6 +293,38 @@ class PppoeUser extends Model
     {
         return $this->paused_at !== null
             && ($this->pause_ends_at === null || $this->pause_ends_at->isFuture());
+    }
+
+    public function canPause(): bool
+    {
+        if ($this->isPaused()) {
+            return false;
+        }
+        if (!$this->pause_billing_cycle_start) {
+            return true;
+        }
+        $cycleStart = $this->pause_billing_cycle_start;
+        $nextCycleStart = $cycleStart->copy()->addMonth();
+        if (now()->lessThan($nextCycleStart)) {
+            return false;
+        }
+        return true;
+    }
+
+    public function daysUntilUnpause(): ?int
+    {
+        if (!$this->isPaused() || !$this->pause_ends_at) {
+            return null;
+        }
+        return max(0, (int) now()->diffInDays($this->pause_ends_at, false));
+    }
+
+    public function daysPaused(): ?int
+    {
+        if (!$this->paused_at) {
+            return null;
+        }
+        return max(0, (int) $this->paused_at->diffInDays(now(), false));
     }
 
     public function hasPendingPlanSwitch(): bool

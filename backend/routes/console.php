@@ -308,3 +308,14 @@ Schedule::job(new CheckHotspotExpirationsJob())
     ->name('check-hotspot-expirations')
     ->onOneServer()
     ->withoutOverlapping();
+
+// =============================================================================
+// PPPOE PAUSE AUTO-RESUME
+// =============================================================================
+
+// Auto-unpause PPPoE accounts where pause period has expired - every 5 minutes
+Schedule::job(new \App\Jobs\UnpauseExpiredAccountsJob())
+    ->everyFiveMinutes()
+    ->name('unpause-expired-accounts')
+    ->onOneServer()
+    ->withoutOverlapping();
