@@ -662,7 +662,7 @@
     <!-- Success Toast -->
     <Teleport to="body">
       <Transition enter-active-class="transition duration-300 ease-out" enter-from-class="translate-y-2 opacity-0" enter-to-class="translate-y-0 opacity-100" leave-active-class="transition duration-200 ease-in" leave-from-class="translate-y-0 opacity-100" leave-to-class="translate-y-2 opacity-0">
-        <div v-if="successMessage" class="fixed bottom-6 right-4 z-[60] sm:bottom-4">
+        <div v-if="successMessage" class="fixed top-4 right-4 z-[60]">
           <div class="bg-emerald-500 text-white px-5 py-3 rounded-xl shadow-2xl shadow-emerald-500/30 flex items-center gap-3 text-sm font-semibold">
             <i class="fas fa-circle-check"></i><span>{{ successMessage }}</span>
           </div>
@@ -794,6 +794,7 @@ const closeVoucherModal = () => {
   showVoucherModal.value = false;
   voucherErrorMessage.value = '';
   voucherStatusMessage.value = '';
+  voucherForm.value = { code: '' };
 };
 
 const emptyDashboard = () => ({
@@ -1055,8 +1056,9 @@ async function handleVoucherRedeem() {
     
     voucherStatusMessage.value = result.message || 'Voucher redeemed successfully.';
     showSuccess(voucherStatusMessage.value);
+    showVoucherModal.value = false;
     voucherForm.value = { code: '' };
-    
+
     // Refresh dashboard
     loadDashboard({ force: true });
   } catch (err) {
