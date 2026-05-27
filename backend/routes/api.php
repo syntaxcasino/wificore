@@ -151,10 +151,18 @@ Route::post('/soketi/webhook', function (Request $request) {
     // Fast idempotency guard for duplicate webhook deliveries during reconnect bursts.
     $fingerprint = hash('sha256', (string) $request->getContent());
     $cacheKey = "soketi:webhook:{$fingerprint}";
-    if (Cache::has($cacheKey)) {
-        return response()->noContent();
+
+    try {
+        if (Cache::has($cacheKey)) {
+            return response()->noContent();
+        }
+
+        Cache::put($cacheKey, 1, now()->addSeconds(10));
+    } catch (\Throwable $e) {
+        Log::warning('Soketi webhook dedupe cache unavailable, continuing without dedupe', [
+            'error' => $e->getMessage(),
+        ]);
     }
-    Cache::put($cacheKey, 1, now()->addSeconds(10));
 
     return response()->noContent();
 })->name('api.soketi.webhook');
