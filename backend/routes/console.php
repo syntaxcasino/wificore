@@ -23,7 +23,13 @@ use App\Jobs\UnsuspendExpiredAccountsJob;
 // Hotspot Jobs
 use App\Jobs\CheckHotspotExpirationsJob;
 
+$consoleCommand = $_SERVER["argv"][1] ?? null;
 
+if (in_array($consoleCommand, ["schedule:run", "schedule:interrupt"], true)) {
+    config(["cache.default" => "database"]);
+}
+
+Schedule::useCache("database");
 
 Schedule::job(new CheckRoutersJob)->everyMinute();
 
