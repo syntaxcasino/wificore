@@ -35,12 +35,14 @@ return new class extends Migration
                 $table->uuid('package_id')->nullable();
                 $table->uuid('router_id')->nullable();
                 $table->decimal('amount', 10, 2);
-                $table->string('transaction_id', 255)->unique();
+                $table->string('transaction_id', 255);
                 $table->string('mpesa_receipt', 255)->nullable();
                 $table->string('status', 20)->default('pending');
                 $table->string('payment_method', 50)->default('mpesa');
                 $table->json('callback_response')->nullable();
                 $table->timestamps();
+
+                $table->unique('transaction_id', 'payments_transaction_idx');
                 
                 // Foreign keys
                 // Users are in public schema
@@ -60,11 +62,16 @@ return new class extends Migration
                     ->references('id')
                     ->on('routers')
                     ->onDelete('set null');
-                
-                $table->index('user_id');
-                $table->index('status');
-                $table->index('phone_number');
-                $table->index('created_at');
+
+                // Match the final index names so later index-only migrations
+                // become no-ops on fresh tenant bootstrap.
+                $table->index(['user_id', 'status'], 'payments_user_status_idx');
+                $table->index('created_at', 'payments_created_idx');
+                $table->index('router_id', 'payments_router_id_idx');
+                $table->index('mac_address', 'payments_mac_address_idx');
+                $table->index('package_id', 'payments_package_id_idx');
+                $table->index(['status', 'created_at'], 'payments_status_created_idx');
+                $table->index('phone_number', 'payments_phone_number_idx');
             });
 
             try {
