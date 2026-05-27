@@ -31,6 +31,7 @@ class DDoSProtection
         // ── Exempt system inter-communication and streaming ─────────────────────
         $exemptPatterns = [
             'api/webhooks/*',       // Webhooks from system services
+            'api/soketi/*',         // Soketi webhooks and internal callbacks
             'api/routers/stream/*', // Server-sent events for router status
             '*/sse/*',              // Server-sent events
             'api/broadcasting/*',   // WebSocket/SSE broadcasting
@@ -49,24 +50,29 @@ class DDoSProtection
         }
 
         // ── Check existing block ────────────────────────────────────────────
-        if (Cache::has($blockKey)) {
-            $blockedUntil = Cache::get($blockKey);
-            $retryAfter = is_numeric($blockedUntil)
-                ? max(0, $blockedUntil - now()->timestamp)
-                : 30;
+        try {
+            if (Cache::has($blockKey)) {
+                $blockedUntil = Cache::get($blockKey);
+                $retryAfter = is_numeric($blockedUntil)
+                    ? max(0, $blockedUntil - now()->timestamp)
+                    : 30;
 
-            Log::warning('DDoS: Blocked IP attempted access', [
-                'ip' => $ip,
-                'path' => $path,
-                'user_agent' => $request->userAgent(),
-                'retry_after' => $retryAfter,
-            ]);
+                Log::warning('DDoS: Blocked IP attempted access', [
+                    'ip' => $ip,
+                    'path' => $path,
+                    'user_agent' => $request->userAgent(),
+                    'retry_after' => $retryAfter,
+                ]);
 
-            return response()->json([
-                'message' => 'Access denied. Your IP has been temporarily blocked due to suspicious activity.',
-                'retry_after' => $retryAfter,
-                'blocked_until' => date('Y-m-d H:i:s', $blockedUntil ?: now()->addSeconds(30)->timestamp),
-            ], 403);
+                return response()->json([
+                    'message' => 'Access denied. Your IP has been temporarily blocked due to suspicious activity.',
+                    'retry_after' => $retryAfter,
+                    'blocked_until' => date('Y-m-d H:i:s', $blockedUntil ?: now()->addSeconds(30)->timestamp),
+                ], 403);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('DDoS: Cache block lookup unavailable, skipping check', ['error' => $e->getMessage()]);
+            return $next($request);
         }
 
         // ── Atomic sliding-window counter (GAP-09) ──────────────────────────
@@ -87,7 +93,13 @@ class DDoSProtection
         // ── Enforce threshold ───────────────────────────────────────────────
         if ($count > 120) {
             $blockedUntil = now()->addSeconds(30)->timestamp;
-            Cache::put($blockKey, $blockedUntil, 30);
+
+            try {
+                Cache::put($blockKey, $blockedUntil, 30);
+            } catch (\Throwable $e) {
+                Log::warning('DDoS: Cache block write unavailable, skipping block write', ['error' => $e->getMessage()]);
+                return $next($request);
+            }
 
             Log::alert('DDoS: IP blocked for excessive requests', [
                 'ip' => $ip,
