@@ -951,7 +951,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "${DB_USERNAME:-admin}", "-d", "${DB_DATABASE:-wms_770_ts}"]
+      test: ["CMD", "pg_isready", "-U", "${DB_USERNAME:-admin}"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -997,7 +997,7 @@ services:
     volumes:
       - postgres_replica_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "${DB_USERNAME:-admin}", "-d", "${DB_DATABASE:-wms_770_ts}"]
+      test: ["CMD", "pg_isready", "-U", "${DB_USERNAME:-admin}"]
       interval: 10s
       timeout: 5s
       retries: 10
