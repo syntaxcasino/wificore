@@ -135,6 +135,9 @@ return new class extends Migration
                 $table->uuid('router_id')->nullable();
                 $table->string('status', 20)->default('unused');
                 $table->uuid('used_by')->nullable();
+                $table->string('used_by_type', 30)->nullable();
+                $table->decimal('value', 10, 2)->nullable();
+                $table->unsignedSmallInteger('package_duration_days')->nullable();
                 $table->timestamp('used_at')->nullable();
                 $table->timestamp('expires_at')->nullable();
                 $table->string('prefix', 20)->nullable();
@@ -145,19 +148,21 @@ return new class extends Migration
                 
                 // Foreign keys to public tables
                 $table->foreign('package_id')->references('id')->on('packages')->onDelete('cascade');
-                $table->foreign('used_by')->references('id')->on(new \Illuminate\Database\Query\Expression('public.users'))->onDelete('set null');
                 
                 // Foreign keys to tenant tables
                 $table->foreign('router_id')->references('id')->on('routers')->onDelete('set null');
-                
-                $table->index('code');
-                $table->index('status');
-                $table->index('package_id');
+
+                // Match the final index names so later index-only migrations
+                // become no-ops on fresh tenant bootstrap.
                 $table->index('batch_id');
-                $table->index('used_at');
-                $table->index('expires_at');
-                $table->index('created_at');
+                $table->index('router_id', 'vouchers_router_id_idx');
+                $table->index('used_at', 'vouchers_used_at_idx');
+                $table->index('expires_at', 'vouchers_expires_at_idx');
+                $table->index('created_at', 'vouchers_created_at_idx');
+                $table->index(['status', 'package_id'], 'vouchers_status_package_idx');
             });
+
+            DB::statement('CREATE INDEX IF NOT EXISTS vouchers_deleted_at_idx ON vouchers (deleted_at) WHERE deleted_at IS NULL');
             try {
                 $this->migrateFromPublic('vouchers');
             } catch (\Exception $e) {
