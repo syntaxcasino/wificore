@@ -75,6 +75,7 @@ That fails with `NOAUTH Authentication required.` whenever `REDIS_PASSWORD` is s
 
 The health check now authenticates first when `REDIS_PASSWORD` is present, and it reads the password from the container runtime environment instead of embedding the secret through Compose-time interpolation. This avoids breakage when the password contains shell-sensitive characters and keeps `.env.production` authoritative.
 The proxy AUTH probe is emitted as a binary Redis command instead of a plain `tcp-check send AUTH ...` string, because HAProxy treats the password as separate tokens otherwise and rejects the config when a real password is present.
+That binary AUTH command is now generated from a real CRLF-terminated Redis inline command. Encoding the literal characters `\r\n` causes Redis to wait for a terminator and makes HAProxy fail with a Layer7 timeout while expecting `+OK`.
 
 ## Deployment Order
 1. Build and deploy the updated Redis image and Redis proxy image.
