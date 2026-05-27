@@ -1,4 +1,5 @@
 FROM haproxy:2.9-alpine
+USER root
 RUN apk add --no-cache busybox-extras
 COPY haproxy.cfg.template /usr/local/etc/haproxy/haproxy.cfg.template
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
