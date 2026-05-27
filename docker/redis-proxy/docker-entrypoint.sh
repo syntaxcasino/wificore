@@ -5,14 +5,6 @@ set -eu
 PASSWORD="${REDIS_PASSWORD:-}"
 PASSWORD=$(printf '%s' "$PASSWORD" | tr -d '\r' | sed 's/[[:space:]]*$//')
 
-# Generate the AUTH check lines
-if [ -n "$PASSWORD" ]; then
-  AUTH_LINES="    tcp-check send AUTH ${PASSWORD}\\r\\n
-    tcp-check expect string +OK"
-else
-  AUTH_LINES="    # no auth configured"
-fi
-
 # Generate HAProxy config
 {
   echo "global"
@@ -34,12 +26,18 @@ fi
   echo ""
   echo "backend redis_master"
   echo "    option tcp-check"
-  printf '%s\n' "$AUTH_LINES"
-  echo "    tcp-check send PING\\r\\n"
+  # Print AUTH lines with actual CRLF bytes
+  if [ -n "$PASSWORD" ]; then
+    printf '    tcp-check send AUTH %s\r\n\n' "$PASSWORD"
+    printf '    tcp-check expect string +OK\n'
+  else
+    echo "    # no auth configured"
+  fi
+  printf '    tcp-check send PING\r\n\n'
   echo "    tcp-check expect string +PONG"
-  echo "    tcp-check send INFO\\ replication\\r\\n"
+  printf '    tcp-check send INFO replication\r\n\n'
   echo "    tcp-check expect string role:master"
-  echo "    tcp-check send QUIT\\r\\n"
+  printf '    tcp-check send QUIT\r\n\n'
   echo "    tcp-check expect string +OK"
   echo "    server redis-primary wificore-redis-primary:6379 check"
   echo "    server redis-replica wificore-redis-replica:6379 check"
