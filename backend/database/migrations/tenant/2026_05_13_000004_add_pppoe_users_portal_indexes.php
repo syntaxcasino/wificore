@@ -46,41 +46,11 @@ return new class extends Migration
 
     public function up(): void
     {
-        // OPTIMIZATION: Index for account number lookups (login)
-        DB::statement('
-            CREATE INDEX IF NOT EXISTS idx_pppoe_users_account_number 
-            ON pppoe_users(account_number)
-        ');
-
-        // OPTIMIZATION: Composite index for username + status (login by username)
-        DB::statement('
-            CREATE INDEX IF NOT EXISTS idx_pppoe_users_username_status 
-            ON pppoe_users(username, status)
-        ');
-
-        // OPTIMIZATION: Index for status filtering (active users)
-        DB::statement('
-            CREATE INDEX IF NOT EXISTS idx_pppoe_users_status_active 
-            ON pppoe_users(status) 
-            WHERE status = \'active\'
-        ');
-
-        // OPTIMIZATION: Covering index for portal queries
-        // NOTE: pppoe_users is schema-isolated in tenant schemas, so it does NOT have tenant_id column.
-        // The tenant_id is implicit via the schema name (search_path).
-        $columns = ['id', 'username', 'account_number', 'status'];
-
-        DB::statement(sprintf(
-            'CREATE INDEX IF NOT EXISTS idx_pppoe_users_portal_lookup ON pppoe_users(%s)',
-            implode(', ', $columns)
-        ));
+        // Merged into 2026_01_20_000001_create_tenant_pppoe_users_table.php
     }
 
     public function down(): void
     {
-        DB::statement('DROP INDEX IF EXISTS idx_pppoe_users_account_number');
-        DB::statement('DROP INDEX IF EXISTS idx_pppoe_users_username_status');
-        DB::statement('DROP INDEX IF EXISTS idx_pppoe_users_status_active');
-        DB::statement('DROP INDEX IF EXISTS idx_pppoe_users_portal_lookup');
+        // Merged into 2026_01_20_000001_create_tenant_pppoe_users_table.php
     }
 };
