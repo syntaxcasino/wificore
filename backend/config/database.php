@@ -20,6 +20,8 @@ $redisUsername = $normalizeEnvNullable(env('REDIS_USERNAME'));
 $redisPassword = $normalizeEnvNullable(env('REDIS_PASSWORD'));
 $pgbouncerEmulatePrepares = env('DB_EMULATE_PREPARES', true);
 $radiusPgbouncerEmulatePrepares = env('RADIUS_DB_EMULATE_PREPARES', $pgbouncerEmulatePrepares);
+$redisQueueBlockFor = max(0, (int) env('REDIS_QUEUE_BLOCK_FOR', 5));
+$redisReadTimeout = max($redisQueueBlockFor + 5, (int) env('REDIS_READ_TIMEOUT', 10));
 
 return [
 
@@ -269,7 +271,7 @@ return [
             'prefix' => env('REDIS_PREFIX', Str::slug(env('APP_NAME', 'laravel'), '_').'_database_'),
             'persistent' => env('REDIS_PERSISTENT', false),
             'timeout' => env('REDIS_TIMEOUT', 2),
-            'read_timeout' => env('REDIS_READ_TIMEOUT', 2),
+            'read_timeout' => $redisReadTimeout,
             'retry_interval' => env('REDIS_RETRY_INTERVAL', 100),
         ],
 
@@ -280,7 +282,7 @@ return [
             'password' => $redisPassword,
             'port' => env('REDIS_PORT', '6379'),
             'database' => env('REDIS_DB', '0'),
-            'read_timeout' => env('REDIS_READ_TIMEOUT', 2),
+            'read_timeout' => $redisReadTimeout,
             'timeout' => env('REDIS_TIMEOUT', 2),
             'retry_interval' => env('REDIS_RETRY_INTERVAL', 100),
         ],
@@ -306,7 +308,7 @@ return [
             'password' => $redisPassword,
             'port' => env('REDIS_PORT', '6379'),
             'database' => env('REDIS_CACHE_DB', '1'),
-            'read_timeout' => env('REDIS_CACHE_TIMEOUT', env('REDIS_READ_TIMEOUT', 2)),
+            'read_timeout' => env('REDIS_CACHE_TIMEOUT', $redisReadTimeout),
             'timeout' => env('REDIS_CACHE_TIMEOUT', env('REDIS_TIMEOUT', 2)),
             'retry_interval' => env('REDIS_RETRY_INTERVAL', 100),
         ],

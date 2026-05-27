@@ -7,9 +7,9 @@ defaults
     mode tcp
     option tcplog
     timeout connect 5s
-    timeout client  2m
-    timeout server  2m
-    default-server inter 2s fall 3 rise 2 on-marked-down shutdown-sessions
+    timeout client  5m
+    timeout server  5m
+    default-server inter 2s fall 3 rise 2
 
 frontend redis_frontend
     bind *:6379
