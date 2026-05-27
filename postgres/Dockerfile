@@ -43,6 +43,6 @@ ENTRYPOINT ["/usr/local/bin/replication-entrypoint.sh"]
 # Expose PostgreSQL port
 EXPOSE 5432
 
-# Health check
+# Health check - check if PostgreSQL is accepting connections (no database required)
 HEALTHCHECK --interval=10s --timeout=5s --retries=5 --start-period=60s \
-    CMD pg_isready -U ${POSTGRES_USER:-admin} -d ${POSTGRES_DB:-wms_770_ts} || exit 1
+    CMD pg_isready -U ${POSTGRES_USER:-admin} || exit 1
