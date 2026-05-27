@@ -8,6 +8,7 @@ use App\Models\Package;
 use App\Events\VoucherCreated;
 use App\Events\VoucherUpdated;
 use App\Events\VoucherDeleted;
+use App\Helpers\PackageExpiryHelper;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
@@ -110,7 +111,7 @@ class VoucherController extends Controller
                 'code' => $code,
                 'package_id' => $validated['package_id'],
                 'value' => $package?->price,
-                'package_duration_days' => $package?->validity,
+                'package_duration_days' => $package ? PackageExpiryHelper::durationInDays($package) : null,
                 'router_id' => $validated['router_id'] ?? null,
                 'status' => 'unused',
                 'expires_at' => $validated['expires_at'] ?? null,
