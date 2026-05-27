@@ -258,9 +258,11 @@
 import { ref, computed, onMounted } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { usePppoePortal } from '../composables/usePppoePortal.js';
+import { useNotificationStore } from '@/stores/notifications';
 
 const router = useRouter();
 const route = useRoute();
+const notifications = useNotificationStore();
 const {
   user,
   isLoading,
@@ -315,10 +317,22 @@ async function handleMpesaPayment() {
 
 async function handleVoucherRedeem() {
   try {
-    await redeemVoucher(voucherForm.value.code);
-    showSuccess.value = true;
+    const result = await redeemVoucher(voucherForm.value.code);
+    // Close success modal (if open) and show toast instead
+    showSuccess.value = false;
+    voucherForm.value.code = '';
+    notifications.success(
+      'Voucher Redeemed',
+      result?.message || 'Your voucher has been redeemed successfully!'
+    );
   } catch (err) {
     console.error('Voucher redemption failed:', err);
+    showSuccess.value = false;
+    voucherForm.value.code = '';
+    notifications.error(
+      'Redemption Failed',
+      err?.response?.data?.message || 'Voucher redemption failed. Please try again.'
+    );
   }
 }
 
@@ -349,6 +363,7 @@ async function pollPaymentStatus(transactionId) {
 
 function continueToDashboard() {
   showSuccess.value = false;
+  voucherForm.value.code = '';
   router.push('/portal/dashboard');
 }
 
