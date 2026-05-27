@@ -38,11 +38,11 @@ redis_inline_hex() {
   else
     echo "    # no auth configured"
   fi
-  printf '    tcp-check send PING\r\n\n'
+  printf '    tcp-check send-binary %s\n' "$(printf 'PING\r\n' | redis_inline_hex)"
   echo "    tcp-check expect string +PONG"
-  printf '    tcp-check send INFO\\ replication\r\n\n'
+  printf '    tcp-check send-binary %s\n' "$(printf 'INFO replication\r\n' | redis_inline_hex)"
   echo "    tcp-check expect string role:master"
-  printf '    tcp-check send QUIT\r\n\n'
+  printf '    tcp-check send-binary %s\n' "$(printf 'QUIT\r\n' | redis_inline_hex)"
   echo "    tcp-check expect string +OK"
   echo "    server redis-primary wificore-redis-primary:6379 check"
   echo "    server redis-replica wificore-redis-replica:6379 check"
