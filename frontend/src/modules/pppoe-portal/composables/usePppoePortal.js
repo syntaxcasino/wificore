@@ -231,10 +231,10 @@ export function usePppoePortal() {
     }
   }
 
-  async function pauseAccount(durationDays) {
+  async function pauseAccount() {
     isLoading.value = true;
     try {
-      const response = await api.post('/account/pause', { duration_days: durationDays });
+      const response = await api.post('/account/pause');
       invalidateDashboardCache();
       return response.data;
     } catch (err) {
