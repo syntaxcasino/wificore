@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Events\AccountUnpaused;
 use App\Models\Tenant;
 use App\Models\PppoeUser;
 use App\Traits\TenantAwareJob;
@@ -18,17 +19,33 @@ class UnpauseExpiredAccountsJob implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
     use TenantAwareJob;
 
+    /**
+     * The number of times the job may be attempted.
+     */
     public $tries = 3;
-    public $timeout = 120;
 
+    /**
+     * The number of seconds the job can run before timing out.
+     */
+    public $timeout = 60;
+
+    /**
+     * Create a new job instance.
+     */
     public function __construct($tenantId = null)
     {
         $this->setTenantContext($tenantId);
         $this->onQueue('security');
     }
 
+    /**
+     * Execute the job.
+     * Auto-unpause PPPoE accounts where pause period has expired.
+     */
     public function handle(): void
     {
+        // If no tenant ID is set, this is the main scheduler job.
+        // We need to dispatch a job for each active tenant.
         if (!$this->tenantId) {
             $tenants = Tenant::active()->get();
 
@@ -40,10 +57,11 @@ class UnpauseExpiredAccountsJob implements ShouldQueue
             return;
         }
 
-        $this->executeInTenantContext(function() {
+        $this->executeInTenantContext(function () {
             Log::info('UnpauseExpiredAccountsJob started', ['tenant_id' => $this->tenantId]);
 
             try {
+                // Find all paused accounts where pause period has expired for this tenant
                 $expiredPauses = PppoeUser::query()
                     ->whereNotNull('paused_at')
                     ->whereNotNull('pause_ends_at')
@@ -58,23 +76,29 @@ class UnpauseExpiredAccountsJob implements ShouldQueue
                 $unpausedCount = 0;
 
                 foreach ($expiredPauses as $pppoeUser) {
-                    $pausedAt = $pppoeUser->paused_at;
-                    $pauseEndsAt = $pppoeUser->pause_ends_at;
-                    $totalPauseDays = $pausedAt && $pauseEndsAt ? (int) $pausedAt->diffInDays($pauseEndsAt, true) : 0;
-                    $daysElapsed = $pausedAt ? (int) $pausedAt->diffInDays(now(), true) : 0;
-                    $remainingDays = max(0, $totalPauseDays - $daysElapsed);
+                    // Store pause info before clearing
+                    $wasPausedAt = $pppoeUser->paused_at?->toIso8601String();
+                    $wasPauseEndsAt = $pppoeUser->pause_ends_at?->toIso8601String();
+                    $pauseReason = $pppoeUser->pause_reason;
+                    $pauseDuration = $pppoeUser->pause_duration_days
+                        ?? (int) ($pppoeUser->paused_at?->diffInDays($pppoeUser->pause_ends_at, true) ?? 0);
 
-                    $newExpiry = ($pppoeUser->expires_at ?? now())->addDays($remainingDays);
+                    // Extend subscription expiry by the pause duration (user paid for unused time)
+                    $newExpiry = $pppoeUser->expires_at
+                        ? $pppoeUser->expires_at->addDays($pauseDuration)
+                        : null;
 
+                    // Clear pause fields and restore active status
                     $pppoeUser->update([
-                        'paused_at'                 => null,
-                        'pause_ends_at'             => null,
-                        'pause_reason'              => null,
-                        'pause_duration_days'       => null,
-                        'expires_at'                => $newExpiry,
-                        'status'                    => 'active',
+                        'paused_at'           => null,
+                        'pause_ends_at'       => null,
+                        'pause_reason'        => null,
+                        'pause_duration_days' => null,
+                        'expires_at'          => $newExpiry,
+                        'status'              => 'active',
                     ]);
 
+                    // Remove RADIUS Auth-Type Reject to allow reconnection
                     DB::table('radcheck')
                         ->where('username', $pppoeUser->username)
                         ->where('attribute', 'Auth-Type')
@@ -84,19 +108,29 @@ class UnpauseExpiredAccountsJob implements ShouldQueue
                     $unpausedCount++;
 
                     Log::info('PPPoE account auto-unpaused', [
-                        'tenant_id'      => $this->tenantId,
-                        'user_id'        => $pppoeUser->id,
-                        'username'       => $pppoeUser->username,
-                        'paused_at'      => $pausedAt?->toIso8601String(),
-                        'pause_ends_at'  => $pauseEndsAt?->toIso8601String(),
-                        'days_credited'  => $remainingDays,
-                        'new_expiry'     => $newExpiry->toIso8601String(),
+                        'tenant_id'           => $this->tenantId,
+                        'user_id'             => $pppoeUser->id,
+                        'username'            => $pppoeUser->username,
+                        'was_paused_at'       => $wasPausedAt,
+                        'was_pause_ends_at'   => $wasPauseEndsAt,
+                        'pause_reason'        => $pauseReason,
+                        'pause_duration_days' => $pauseDuration,
+                        'new_expiry'          => $newExpiry?->toIso8601String(),
                     ]);
+
+                    // Broadcast unpause event to tenant/system admin
+                    broadcast(new AccountUnpaused(
+                        $pppoeUser,
+                        $wasPausedAt,
+                        $wasPauseEndsAt,
+                        $pauseReason,
+                        $pauseDuration
+                    ))->toOthers();
                 }
 
                 Log::info('UnpauseExpiredAccountsJob completed', [
-                    'tenant_id'       => $this->tenantId,
-                    'unpaused_count'  => $unpausedCount,
+                    'tenant_id'      => $this->tenantId,
+                    'unpaused_count' => $unpausedCount,
                 ]);
 
             } catch (\Exception $e) {
