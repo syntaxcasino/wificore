@@ -1,6 +1,11 @@
 package api
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -15,6 +20,7 @@ type persistedWorkflowStore struct {
 	path            string
 	completedTTL    time.Duration
 	outboxRetryBase time.Duration
+	callbackSecret  string
 	state           workflowStoreState
 }
 
@@ -43,7 +49,9 @@ type workflowOutboxEntry struct {
 	WorkflowKey   string                 `json:"workflow_key"`
 	RouterID      string                 `json:"router_id"`
 	URL           string                 `json:"url"`
-	APIKey        string                 `json:"api_key"`
+	AuthToken     string                 `json:"auth_token,omitempty"`
+	LegacyAPIKey  string                 `json:"api_key,omitempty"`
+	APIKey        string                 `json:"-"`
 	Payload       map[string]interface{} `json:"payload"`
 	AttemptCount  int                    `json:"attempt_count"`
 	LastError     string                 `json:"last_error,omitempty"`
@@ -52,7 +60,7 @@ type workflowOutboxEntry struct {
 	UpdatedAt     time.Time              `json:"updated_at"`
 }
 
-func newPersistedWorkflowStore(path string, completedTTL time.Duration, outboxRetryBase time.Duration) (*persistedWorkflowStore, error) {
+func newPersistedWorkflowStore(path string, completedTTL time.Duration, outboxRetryBase time.Duration, callbackSecret string) (*persistedWorkflowStore, error) {
 	if strings.TrimSpace(path) == "" {
 		path = filepath.Join("data", "provisioning-workflows.json")
 	}
@@ -60,6 +68,7 @@ func newPersistedWorkflowStore(path string, completedTTL time.Duration, outboxRe
 		path:            path,
 		completedTTL:    completedTTL,
 		outboxRetryBase: outboxRetryBase,
+		callbackSecret:  strings.TrimSpace(callbackSecret),
 		state: workflowStoreState{
 			Workflows:     make(map[string]workflowRecord),
 			PendingOutbox: []workflowOutboxEntry{},
@@ -174,7 +183,7 @@ func (s *persistedWorkflowStore) EnqueueCallback(idempotencyKey, routerID, url, 
 		WorkflowKey:   idempotencyKey,
 		RouterID:      routerID,
 		URL:           url,
-		APIKey:        apiKey,
+		AuthToken:     s.encodeAPIKey(strings.TrimSpace(apiKey)),
 		Payload:       payload,
 		AttemptCount:  0,
 		LastError:     errorMessage,
@@ -194,11 +203,14 @@ func (s *persistedWorkflowStore) DueOutboxEntries(limit int) []workflowOutboxEnt
 	now := time.Now()
 	entries := make([]workflowOutboxEntry, 0, limit)
 	for _, entry := range s.state.PendingOutbox {
-		if !entry.NextAttemptAt.After(now) {
-			entries = append(entries, entry)
-			if len(entries) >= limit {
-				break
-			}
+		if entry.NextAttemptAt.After(now) {
+			continue
+		}
+		decoded := entry
+		decoded.APIKey = s.decodeAPIKey(decoded.AuthToken, decoded.LegacyAPIKey)
+		entries = append(entries, decoded)
+		if len(entries) >= limit {
+			break
 		}
 	}
 	return entries
@@ -277,7 +289,12 @@ func (s *persistedWorkflowStore) load() error {
 	}
 	var state workflowStoreState
 	if err := json.Unmarshal(data, &state); err != nil {
-		return err
+		corruptPath := fmt.Sprintf("%s.corrupt-%d", s.path, time.Now().Unix())
+		if renameErr := os.Rename(s.path, corruptPath); renameErr != nil {
+			return fmt.Errorf("workflow store corrupt (%w) and could not quarantine file: %v", err, renameErr)
+		}
+		s.state = workflowStoreState{Workflows: make(map[string]workflowRecord), PendingOutbox: []workflowOutboxEntry{}}
+		return s.persistLocked()
 	}
 	if state.Workflows == nil {
 		state.Workflows = make(map[string]workflowRecord)
@@ -286,8 +303,26 @@ func (s *persistedWorkflowStore) load() error {
 		state.PendingOutbox = []workflowOutboxEntry{}
 	}
 	s.state = state
+	changed := s.sanitizeOutboxLocked()
 	s.cleanupLocked()
+	if changed {
+		return s.persistLocked()
+	}
 	return nil
+}
+
+func (s *persistedWorkflowStore) sanitizeOutboxLocked() bool {
+	changed := false
+	for i, entry := range s.state.PendingOutbox {
+		if entry.AuthToken == "" && entry.LegacyAPIKey != "" {
+			entry.AuthToken = s.encodeAPIKey(strings.TrimSpace(entry.LegacyAPIKey))
+			entry.LegacyAPIKey = ""
+			changed = true
+		}
+		entry.APIKey = s.decodeAPIKey(entry.AuthToken, entry.LegacyAPIKey)
+		s.state.PendingOutbox[i] = entry
+	}
+	return changed
 }
 
 func (s *persistedWorkflowStore) cleanupLocked() {
@@ -309,5 +344,90 @@ func (s *persistedWorkflowStore) persistLocked() error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(s.path, payload, 0o644)
+	tmpPath := s.path + ".tmp"
+	file, err := os.OpenFile(tmpPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+	if err != nil {
+		return err
+	}
+	if _, err := file.Write(payload); err != nil {
+		_ = file.Close()
+		return err
+	}
+	if err := file.Sync(); err != nil {
+		_ = file.Close()
+		return err
+	}
+	if err := file.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmpPath, s.path)
+}
+
+func (s *persistedWorkflowStore) encodeAPIKey(apiKey string) string {
+	apiKey = strings.TrimSpace(apiKey)
+	if apiKey == "" {
+		return ""
+	}
+	if s.callbackSecret != "" && apiKey == s.callbackSecret {
+		return "default"
+	}
+	if s.callbackSecret == "" {
+		return ""
+	}
+	key := sha256.Sum256([]byte(s.callbackSecret))
+	block, err := aes.NewCipher(key[:])
+	if err != nil {
+		return ""
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return ""
+	}
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := rand.Read(nonce); err != nil {
+		return ""
+	}
+	ciphertext := gcm.Seal(nil, nonce, []byte(apiKey), nil)
+	return "enc:" + base64.StdEncoding.EncodeToString(append(nonce, ciphertext...))
+}
+
+func (s *persistedWorkflowStore) decodeAPIKey(authToken string, legacyAPIKey string) string {
+	authToken = strings.TrimSpace(authToken)
+	legacyAPIKey = strings.TrimSpace(legacyAPIKey)
+	if authToken == "" {
+		return legacyAPIKey
+	}
+	if authToken == "default" {
+		return s.callbackSecret
+	}
+	if !strings.HasPrefix(authToken, "enc:") {
+		return authToken
+	}
+	if s.callbackSecret == "" {
+		return ""
+	}
+	raw, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(authToken, "enc:"))
+	if err != nil {
+		return ""
+	}
+	key := sha256.Sum256([]byte(s.callbackSecret))
+	block, err := aes.NewCipher(key[:])
+	if err != nil {
+		return ""
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return ""
+	}
+	nonceSize := gcm.NonceSize()
+	if len(raw) < nonceSize {
+		return ""
+	}
+	nonce := raw[:nonceSize]
+	ciphertext := raw[nonceSize:]
+	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		return ""
+	}
+	return string(plaintext)
 }

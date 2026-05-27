@@ -46,7 +46,16 @@ class PppoePortalAuthOptimized
         // OPTIMIZATION: Check token-to-user cache first
         $tokenHash = md5($token);
         $cacheKey = 'portal_token_user:' . $tokenHash;
-        $cachedUser = Cache::get($cacheKey);
+        $cachedUser = null;
+
+        try {
+            $cachedUser = Cache::get($cacheKey);
+        } catch (Throwable $e) {
+            Log::warning('PPPoE portal token cache read failed; continuing without cache', [
+                'cache_key' => $cacheKey,
+                'error' => $e->getMessage(),
+            ]);
+        }
 
         $pppoeUser = null;
         if ($cachedUser) {
@@ -56,7 +65,7 @@ class PppoePortalAuthOptimized
         // Cache miss: Validate token fully
         if (!$pppoeUser) {
             $pppoeUser = $this->validateTokenOptimized($token);
-            
+
             if ($pppoeUser) {
                 // Cache the user lookup
                 $cacheData = [
@@ -65,7 +74,16 @@ class PppoePortalAuthOptimized
                     'username' => $pppoeUser->username,
                     'account_number' => $pppoeUser->account_number,
                 ];
-                Cache::put($cacheKey, $cacheData, self::USER_CACHE_TTL);
+
+                try {
+                    Cache::put($cacheKey, $cacheData, self::USER_CACHE_TTL);
+                } catch (Throwable $e) {
+                    Log::warning('PPPoE portal token cache write failed; continuing without cache', [
+                        'cache_key' => $cacheKey,
+                        'user_id' => $pppoeUser->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
             }
         }
 
