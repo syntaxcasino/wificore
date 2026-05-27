@@ -1,11 +1,9 @@
 #!/bin/sh
 set -eu
 
-PASSWORD="${REDIS_PASSWORD:-}"
-PASSWORD=$(printf '%s' "$PASSWORD" | tr -d '\r' | sed 's/[[:space:]]*$//')
+STATS_RESPONSE=$(printf 'GET /stats;csv HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' | nc -w 2 localhost 8404 || true)
 
-if [ -n "$PASSWORD" ]; then
-  printf 'AUTH %s\r\nPING\r\n' "$PASSWORD" | nc -w 2 localhost 6379 | grep -q PONG
-else
-  printf 'PING\r\n' | nc -w 2 localhost 6379 | grep -q PONG
-fi
+printf '%s\n' "$STATS_RESPONSE" | awk -F, '
+  $1 == "redis_master" && $2 ~ /^redis-/ && $18 == "UP" { found = 1 }
+  END { exit(found ? 0 : 1) }
+'

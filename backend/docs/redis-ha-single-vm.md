@@ -161,3 +161,5 @@ docker compose --env-file .env.production -f docker-compose.production.yml start
 - If budget allows later, move Redis primary and replica to separate VMs for real host-level HA.
 
 The Docker container healthcheck for `wificore-redis` now uses a dedicated script inside the proxy image rather than an inline Compose shell probe. This avoids Docker marking the container unhealthy because of shell quoting drift or a probe that outlives the configured healthcheck timeout.
+
+The authoritative container healthcheck for `wificore-redis` now reads HAProxy stats on `:8404` and requires at least one `redis_master` backend server to be `UP`. This avoids false negatives from probing Redis through the proxy while still failing correctly if HAProxy has no writable backend available.
