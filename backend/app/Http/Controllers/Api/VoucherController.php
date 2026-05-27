@@ -96,6 +96,9 @@ class VoucherController extends Controller
         $generatedCodes = [];
         $timestamp = now();
 
+        // Fetch package details for value and duration
+        $package = Package::select(['id', 'price', 'validity'])->find($validated['package_id']);
+
         // Optimized batch insert for better performance
         $voucherData = [];
         for ($i = 0; $i < $validated['quantity']; $i++) {
@@ -106,6 +109,8 @@ class VoucherController extends Controller
                 'id' => Str::uuid()->toString(),
                 'code' => $code,
                 'package_id' => $validated['package_id'],
+                'value' => $package?->price,
+                'package_duration_days' => $package?->validity,
                 'router_id' => $validated['router_id'] ?? null,
                 'status' => 'unused',
                 'expires_at' => $validated['expires_at'] ?? null,
