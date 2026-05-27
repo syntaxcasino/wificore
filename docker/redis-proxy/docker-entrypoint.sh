@@ -30,6 +30,7 @@ redis_inline_hex() {
   echo "    bind *:6379"
   echo "    default_backend redis_master"
   echo ""
+  # Backend for master (primary) - expects role:master
   echo "backend redis_master"
   echo "    option tcp-check"
   if [ -n "$PASSWORD" ]; then
@@ -45,6 +46,22 @@ redis_inline_hex() {
   printf '    tcp-check send-binary %s\n' "$(printf 'QUIT\r\n' | redis_inline_hex)"
   echo "    tcp-check expect string +OK"
   echo "    server redis-primary wificore-redis-primary:6379 check"
+  echo ""
+  # Backend for replica - expects role:slave
+  echo "backend redis_replica"
+  echo "    option tcp-check"
+  if [ -n "$PASSWORD" ]; then
+    printf '    tcp-check send-binary %s\n' "$(printf 'AUTH %s\r\n' "$PASSWORD" | redis_inline_hex)"
+    printf '    tcp-check expect string +OK\n'
+  else
+    echo "    # no auth configured"
+  fi
+  printf '    tcp-check send-binary %s\n' "$(printf 'PING\r\n' | redis_inline_hex)"
+  echo "    tcp-check expect string +PONG"
+  printf '    tcp-check send-binary %s\n' "$(printf 'INFO replication\r\n' | redis_inline_hex)"
+  echo "    tcp-check expect string role:slave"
+  printf '    tcp-check send-binary %s\n' "$(printf 'QUIT\r\n' | redis_inline_hex)"
+  echo "    tcp-check expect string +OK"
   echo "    server redis-replica wificore-redis-replica:6379 check"
   echo ""
   echo "listen stats"
