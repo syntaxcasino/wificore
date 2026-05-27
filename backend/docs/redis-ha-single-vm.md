@@ -159,3 +159,5 @@ docker compose --env-file .env.production -f docker-compose.production.yml start
 - Keep noncritical Laravel cache paths fail-open.
 - If load grows, split queues, cache, and pubsub onto separate Redis instances or roles.
 - If budget allows later, move Redis primary and replica to separate VMs for real host-level HA.
+
+The Docker container healthcheck for `wificore-redis` now uses a dedicated script inside the proxy image rather than an inline Compose shell probe. This avoids Docker marking the container unhealthy because of shell quoting drift or a probe that outlives the configured healthcheck timeout.
