@@ -120,7 +120,7 @@ class EnvironmentHealthController extends Controller
                 'keyspace_misses' => $info['keyspace_misses'] ?? 0,
                 'hit_rate' => $this->calculateHitRate($info),
             ];
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             $stats = [
                 'status' => 'error',
                 'message' => $e->getMessage()
@@ -154,7 +154,7 @@ class EnvironmentHealthController extends Controller
                 'max_connections' => $maxConnections,
                 'connection_usage' => round(($activeConnections / $maxConnections) * 100, 2) . '%',
             ];
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             return [
                 'status' => 'critical',
                 'error' => $e->getMessage()
@@ -173,7 +173,7 @@ class EnvironmentHealthController extends Controller
                 'status' => $latency < 50 ? 'healthy' : 'degraded',
                 'latency_ms' => round($latency, 2),
             ];
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             return [
                 'status' => 'critical',
                 'error' => $e->getMessage()
@@ -196,7 +196,7 @@ class EnvironmentHealthController extends Controller
                 'used_gb' => round($usedSpace / 1024 / 1024 / 1024, 2),
                 'usage_percent' => round($usagePercent, 2),
             ];
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             return [
                 'status' => 'critical',
                 'error' => $e->getMessage()
@@ -219,7 +219,7 @@ class EnvironmentHealthController extends Controller
                 'active_workers' => $metrics['active_workers'],
                 'oldest_pending_job_age_seconds' => $metrics['oldest_pending_job_age_seconds'],
             ];
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             return [
                 'status' => 'critical',
                 'error' => $e->getMessage()
@@ -230,18 +230,22 @@ class EnvironmentHealthController extends Controller
     private function checkCache(): array
     {
         try {
+            $store = Cache::store('database');
             $key = 'health_check_' . time();
-            Cache::put($key, 'test', 10);
-            $value = Cache::get($key);
-            Cache::forget($key);
+            $store->put($key, 'test', 10);
+            $value = $store->get($key);
+            $store->forget($key);
 
             return [
                 'status' => $value === 'test' ? 'healthy' : 'degraded',
-                'driver' => config('cache.default'),
+                'driver' => 'database',
+                'default_driver' => config('cache.default'),
             ];
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             return [
                 'status' => 'critical',
+                'driver' => 'database',
+                'default_driver' => config('cache.default'),
                 'error' => $e->getMessage()
             ];
         }
@@ -275,7 +279,7 @@ class EnvironmentHealthController extends Controller
                 'active' => $connections->active,
                 'idle' => $connections->idle,
             ];
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             return ['error' => $e->getMessage()];
         }
     }
@@ -288,7 +292,7 @@ class EnvironmentHealthController extends Controller
             ")[0]->size;
 
             return ['size' => $size];
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             return ['error' => $e->getMessage()];
         }
     }
@@ -314,7 +318,7 @@ class EnvironmentHealthController extends Controller
                     'size' => $table->size,
                 ];
             }, $tables);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             return ['error' => $e->getMessage()];
         }
     }
@@ -343,7 +347,7 @@ class EnvironmentHealthController extends Controller
                     'max_time_ms' => round($query->max_exec_time, 2),
                 ];
             }, $queries);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             return [];
         }
     }
@@ -370,7 +374,7 @@ class EnvironmentHealthController extends Controller
                     'size' => $partition->size,
                 ];
             }, $partitions);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             return [];
         }
     }
@@ -387,7 +391,7 @@ class EnvironmentHealthController extends Controller
                     '15min' => $load[2],
                 ];
             }
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             // Ignore
         }
 
