@@ -51,17 +51,19 @@ type trafficPoint struct {
 type Handler struct {
 	logger             *logrus.Logger
 	workflowStore      *persistedWorkflowStore
+	callbackAPIKey     string
 	connectRouter      func(models.ConnectionConfig) (routerSSHClient, error)
 	runCommandWorkflow func(models.CommandRequest)
 }
 
 // NewHandler creates a new API handler
 func NewHandler(logger *logrus.Logger) *Handler {
-	store, err := newPersistedWorkflowStore(filepath.Join("data", "provisioning-workflows.json"), 30*time.Minute, 30*time.Second)
+	callbackAPIKey := strings.TrimSpace(os.Getenv("PROVISIONING_SERVICE_API_KEY"))
+	store, err := newPersistedWorkflowStore(filepath.Join("data", "provisioning-workflows.json"), 30*time.Minute, 30*time.Second, callbackAPIKey)
 	if err != nil {
 		logger.WithError(err).Fatal("Failed to initialize provisioning workflow store")
 	}
-	handler := &Handler{logger: logger, workflowStore: store}
+	handler := &Handler{logger: logger, workflowStore: store, callbackAPIKey: callbackAPIKey}
 	handler.connectRouter = handler.connectSSH
 	handler.runCommandWorkflow = handler.executeCommandWorkflow
 	go handler.startOutboxWorker()
@@ -2130,6 +2132,9 @@ func (h *Handler) reportProvisioningWorkflowEvent(callback *models.TaskCallbackC
 }
 
 func (h *Handler) notifyTaskCallback(callback *models.TaskCallbackConfig, status string, progress int, message string, result map[string]interface{}, errorMessage string) {
+	if callback == nil {
+		return
+	}
 	h.notifyTaskCallbackWithOptions(callback, status, progress, message, result, errorMessage, callback.Stage, callback.Terminal)
 }
 
@@ -2139,7 +2144,8 @@ func (h *Handler) notifyTaskCallbackWithOptions(callback *models.TaskCallbackCon
 	}
 	payload := h.buildCallbackPayload(status, progress, message, result, errorMessage, stage, terminal)
 	if err := h.sendCallbackPayload(callback.URL, callback.APIKey, payload); err != nil {
-		h.logger.WithError(err).Warn("Task callback request failed")
+		h.logger.WithError(err).Warn("Task callback request failed, queued for retry")
+		_ = h.workflowStore.EnqueueCallback(h.callbackRetryKey(callback, stage), "", callback.URL, h.callbackRetryAPIKey(callback), payload, err.Error())
 	}
 }
 
@@ -2160,6 +2166,40 @@ func (h *Handler) buildCallbackPayload(status string, progress int, message stri
 		body["error"] = errorMessage
 	}
 	return body
+}
+
+func (h *Handler) callbackRetryKey(callback *models.TaskCallbackConfig, stage string) string {
+	if callback == nil {
+		return "callback"
+	}
+	trimmedURL := strings.TrimSpace(callback.URL)
+	if trimmedURL == "" {
+		return "callback"
+	}
+
+	if matches := regexp.MustCompile(`/api/internal/provisioning/(router-tasks|router-services)/([^/]+)/status$`).FindStringSubmatch(trimmedURL); len(matches) == 3 {
+		if stage != "" {
+			return matches[1] + ":" + matches[2] + ":" + stage
+		}
+		return matches[1] + ":" + matches[2]
+	}
+
+	if stage != "" {
+		return trimmedURL + ":" + stage
+	}
+
+	return trimmedURL
+}
+
+func (h *Handler) callbackRetryAPIKey(callback *models.TaskCallbackConfig) string {
+	if callback == nil {
+		return h.callbackAPIKey
+	}
+	apiKey := strings.TrimSpace(callback.APIKey)
+	if apiKey != "" {
+		return apiKey
+	}
+	return h.callbackAPIKey
 }
 
 func (h *Handler) sendCallbackPayload(url string, apiKey string, body map[string]interface{}) error {
