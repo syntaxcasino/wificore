@@ -629,7 +629,7 @@
 
     <!-- Voucher Modal -->
     <Teleport to="body">
-      <div v-if="showVoucherModal" :class="['fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4', isDark ? 'bg-black/80' : 'bg-black/50']">
+      <div v-if="showVoucherModal" :class="['fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4', isDark ? 'bg-black/80' : 'bg-black/50']" @click.self="closeVoucherModal">
         <div :class="['w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl overflow-hidden border shadow-2xl', isDark ? 'bg-gray-900 border-white/10' : 'bg-white border-gray-200']">
           <div :class="['flex items-center justify-between px-5 pt-5 pb-4 border-b', isDark ? 'border-white/10' : 'border-gray-100']">
             <div class="flex items-center gap-2">
