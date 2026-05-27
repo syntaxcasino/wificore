@@ -1262,6 +1262,11 @@ SQL;
                         return ['error' => 'This voucher has already been redeemed', 'status' => 400];
                     }
 
+                    // Validate voucher has a monetary value
+                    if ($voucher->value === null || $voucher->value <= 0) {
+                        return ['error' => 'This voucher has no redeemable value', 'status' => 400];
+                    }
+
                     // Update voucher efficiently
                     $voucher->update([
                         'status' => 'used',
