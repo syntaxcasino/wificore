@@ -36,6 +36,8 @@ func SetupRouter(logger *logrus.Logger) *gin.Engine {
 		v1.POST("/provision", handler.ProvisionRouter)
 		v1.POST("/commands", handler.SubmitCommand)
 		v1.POST("/provision-service", handler.ProvisionService)
+		v1.GET("/workflows/:idempotencyKey", handler.GetWorkflowStatus)
+		v1.GET("/routers/:routerId/workflows/active", handler.GetActiveWorkflow)
 		v1.POST("/deploy-script", handler.DeployScript)
 		v1.POST("/verify", handler.VerifyConnectivity)
 

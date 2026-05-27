@@ -1110,7 +1110,7 @@ class RouterController extends Controller
                 : null;
 
             if ($task) {
-                return response()->json([
+                $responsePayload = [
                     'success' => true,
                     'status' => $task->status,
                     'router_status' => $router->status,
@@ -1123,7 +1123,25 @@ class RouterController extends Controller
                     'result' => $task->result_payload,
                     'started_at' => $task->started_at,
                     'completed_at' => $task->completed_at,
-                ]);
+                ];
+
+                if ($task->type === RouterTask::TYPE_DEPLOY_SERVICE_CONFIG) {
+                    $workflow = app(ProvisioningServiceClient::class)->getWorkflowStatus((string) $task->id);
+                    if (is_array($workflow)) {
+                        $responsePayload['status'] = $workflow['status'] ?? $responsePayload['status'];
+                        $responsePayload['progress'] = $workflow['progress'] ?? $responsePayload['progress'];
+                        $responsePayload['message'] = $workflow['message'] ?? $responsePayload['message'];
+                        $responsePayload['error'] = $workflow['error'] ?? $responsePayload['error'];
+                        $responsePayload['result'] = $workflow['result'] ?? $responsePayload['result'];
+                        $responsePayload['started_at'] = $workflow['started_at'] ?? $responsePayload['started_at'];
+                        $responsePayload['completed_at'] = $workflow['completed_at'] ?? $responsePayload['completed_at'];
+                        $responsePayload['authoritative_source'] = 'provisioning_service';
+                        $responsePayload['workflow_stage'] = $workflow['stage'] ?? null;
+                        $responsePayload['workflow_idempotency_key'] = $workflow['idempotency_key'] ?? (string) $task->id;
+                    }
+                }
+
+                return response()->json($responsePayload);
             }
 
             $status = $router->status;
@@ -1133,6 +1151,27 @@ class RouterController extends Controller
                 'failed', 'connection_failed' => 'failed',
                 default => 'pending',
             };
+
+            $activeWorkflow = app(ProvisioningServiceClient::class)->getActiveWorkflow((string) $router->id);
+            if (is_array($activeWorkflow)) {
+                return response()->json([
+                    'success' => true,
+                    'status' => $activeWorkflow['status'] ?? $provisioningStatus,
+                    'router_status' => $status,
+                    'router_id' => $router->id,
+                    'task_id' => null,
+                    'task_type' => RouterTask::TYPE_DEPLOY_SERVICE_CONFIG,
+                    'progress' => $activeWorkflow['progress'] ?? null,
+                    'message' => $activeWorkflow['message'] ?? null,
+                    'error' => $activeWorkflow['error'] ?? null,
+                    'result' => $activeWorkflow['result'] ?? null,
+                    'started_at' => $activeWorkflow['started_at'] ?? null,
+                    'completed_at' => $activeWorkflow['completed_at'] ?? null,
+                    'authoritative_source' => 'provisioning_service',
+                    'workflow_stage' => $activeWorkflow['stage'] ?? null,
+                    'workflow_idempotency_key' => $activeWorkflow['idempotency_key'] ?? null,
+                ]);
+            }
 
             return response()->json([
                 'success' => true,
@@ -1797,21 +1836,39 @@ EOT;
             ], 404);
         }
 
+        $taskPayload = [
+            'id' => $task->id,
+            'type' => $task->type,
+            'status' => $task->status,
+            'progress' => $task->progress,
+            'message' => $task->message,
+            'error' => $task->error_message,
+            'result' => $task->result_payload,
+            'started_at' => $task->started_at,
+            'completed_at' => $task->completed_at,
+            'created_at' => $task->created_at,
+            'router_id' => $task->router_id,
+        ];
+
+        if ($task->type === RouterTask::TYPE_DEPLOY_SERVICE_CONFIG) {
+            $workflow = app(ProvisioningServiceClient::class)->getWorkflowStatus((string) $task->id);
+            if (is_array($workflow)) {
+                $taskPayload['status'] = $workflow['status'] ?? $taskPayload['status'];
+                $taskPayload['progress'] = $workflow['progress'] ?? $taskPayload['progress'];
+                $taskPayload['message'] = $workflow['message'] ?? $taskPayload['message'];
+                $taskPayload['error'] = $workflow['error'] ?? $taskPayload['error'];
+                $taskPayload['result'] = $workflow['result'] ?? $taskPayload['result'];
+                $taskPayload['started_at'] = $workflow['started_at'] ?? $taskPayload['started_at'];
+                $taskPayload['completed_at'] = $workflow['completed_at'] ?? $taskPayload['completed_at'];
+                $taskPayload['authoritative_source'] = 'provisioning_service';
+                $taskPayload['workflow_stage'] = $workflow['stage'] ?? null;
+                $taskPayload['workflow_idempotency_key'] = $workflow['idempotency_key'] ?? (string) $task->id;
+            }
+        }
+
         return response()->json([
             'success' => true,
-            'task' => [
-                'id' => $task->id,
-                'type' => $task->type,
-                'status' => $task->status,
-                'progress' => $task->progress,
-                'message' => $task->message,
-                'error' => $task->error_message,
-                'result' => $task->result_payload,
-                'started_at' => $task->started_at,
-                'completed_at' => $task->completed_at,
-                'created_at' => $task->created_at,
-                'router_id' => $task->router_id,
-            ],
+            'task' => $taskPayload,
         ]);
     }
 
