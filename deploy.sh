@@ -13,6 +13,11 @@ CORE_SERVICES=(
   wificore-postgres-replica
   wificore-pgbouncer
   wificore-pgbouncer-read
+  wificore-redis-primary
+  wificore-redis-replica
+  wificore-redis-sentinel-1
+  wificore-redis-sentinel-2
+  wificore-redis-sentinel-3
   wificore-redis
   wificore-victoriametrics
   wificore-soketi
@@ -52,6 +57,7 @@ BUILD_SERVICES=(
   wificore-nginx
   wificore-provisioning
   wificore-wireguard
+  wificore-redis-primary
   wificore-redis
   wificore-pgbouncer
 )
@@ -62,6 +68,7 @@ BUILD_CONTEXTS=(
   ./provisioning-service
   ./wireguard-controller
   ./docker/redis
+  ./docker/redis-proxy
   ./pgbouncer
 )
 
@@ -248,6 +255,7 @@ for service in "${EFFECTIVE_PULL_SERVICES[@]}"; do
 done
 
 log "Starting core dependency services..."
+log "Redis HA services are started in dependency order: primary, replica, sentinels, then stable proxy endpoint."
 "${COMPOSE[@]}" up -d --remove-orphans "${CORE_SERVICES[@]}"
 
 log "Running one-shot migrator..."
