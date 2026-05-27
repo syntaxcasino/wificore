@@ -3,12 +3,13 @@
 # ============================================================================
 
 # Documentation — keep project docs, exclude only common root noise files
-README.md
+/README.md
 CHANGELOG.md
 LICENSE.md
 CONTRIBUTING.md
 !docs/
 !docs/**
+!README.md
 
 # Text files and notes
 *.txt
