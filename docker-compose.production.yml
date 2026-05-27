@@ -1097,8 +1097,8 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  wificore-redis:
-    container_name: wificore-redis
+  wificore-redis-primary:
+    container_name: wificore-redis-primary
     build:
       context: ./docker/redis
       dockerfile: Dockerfile
@@ -1108,18 +1108,224 @@ services:
       - .env.production
     environment:
       TZ: Africa/Nairobi
-      REDIS_MAXMEMORY: 4gb
+      REDIS_ROLE: primary
+      REDIS_PORT: 6379
+      REDIS_MAXMEMORY: ${REDIS_PRIMARY_MAXMEMORY:-2gb}
+      REDIS_SENTINEL_MASTER_NAME: ${REDIS_SENTINEL_MASTER_NAME:-wificore-redis}
     networks:
       wificore-network:
-        ipv4_address: 172.70.0.7
+        ipv4_address: 172.70.0.25
     healthcheck:
       test: ["CMD", "/usr/local/bin/redis-healthcheck.sh"]
       interval: 10s
       timeout: 5s
-      retries: 3
+      retries: 5
       start_period: 10s
     volumes:
-      - redis_data:/data
+      - redis_primary_data:/data
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  wificore-redis-replica:
+    container_name: wificore-redis-replica
+    build:
+      context: ./docker/redis
+      dockerfile: Dockerfile
+    image: kja2aro/wificore:wificore-redis
+    restart: always
+    env_file:
+      - .env.production
+    depends_on:
+      wificore-redis-primary:
+        condition: service_healthy
+    environment:
+      TZ: Africa/Nairobi
+      REDIS_ROLE: replica
+      REDIS_PORT: 6379
+      REDIS_MASTER_HOST: wificore-redis-primary
+      REDIS_MASTER_PORT: 6379
+      REDIS_MAXMEMORY: ${REDIS_REPLICA_MAXMEMORY:-2gb}
+      REDIS_SENTINEL_MASTER_NAME: ${REDIS_SENTINEL_MASTER_NAME:-wificore-redis}
+    networks:
+      wificore-network:
+        ipv4_address: 172.70.0.26
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/redis-healthcheck.sh"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    volumes:
+      - redis_replica_data:/data
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  wificore-redis-sentinel-1:
+    container_name: wificore-redis-sentinel-1
+    build:
+      context: ./docker/redis
+      dockerfile: Dockerfile
+    image: kja2aro/wificore:wificore-redis
+    restart: always
+    env_file:
+      - .env.production
+    depends_on:
+      wificore-redis-primary:
+        condition: service_healthy
+      wificore-redis-replica:
+        condition: service_healthy
+    environment:
+      TZ: Africa/Nairobi
+      REDIS_ROLE: sentinel
+      REDIS_MASTER_HOST: wificore-redis-primary
+      REDIS_MASTER_PORT: 6379
+      REDIS_SENTINEL_PORT: 26379
+      REDIS_SENTINEL_MASTER_NAME: ${REDIS_SENTINEL_MASTER_NAME:-wificore-redis}
+      REDIS_SENTINEL_QUORUM: ${REDIS_SENTINEL_QUORUM:-2}
+      REDIS_SENTINEL_DOWN_AFTER: ${REDIS_SENTINEL_DOWN_AFTER:-5000}
+      REDIS_SENTINEL_FAILOVER_TIMEOUT: ${REDIS_SENTINEL_FAILOVER_TIMEOUT:-60000}
+      REDIS_SENTINEL_PARALLEL_SYNCS: ${REDIS_SENTINEL_PARALLEL_SYNCS:-1}
+    networks:
+      wificore-network:
+        ipv4_address: 172.70.0.27
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/redis-healthcheck.sh"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    volumes:
+      - redis_sentinel_1_data:/data
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  wificore-redis-sentinel-2:
+    container_name: wificore-redis-sentinel-2
+    build:
+      context: ./docker/redis
+      dockerfile: Dockerfile
+    image: kja2aro/wificore:wificore-redis
+    restart: always
+    env_file:
+      - .env.production
+    depends_on:
+      wificore-redis-primary:
+        condition: service_healthy
+      wificore-redis-replica:
+        condition: service_healthy
+    environment:
+      TZ: Africa/Nairobi
+      REDIS_ROLE: sentinel
+      REDIS_MASTER_HOST: wificore-redis-primary
+      REDIS_MASTER_PORT: 6379
+      REDIS_SENTINEL_PORT: 26379
+      REDIS_SENTINEL_MASTER_NAME: ${REDIS_SENTINEL_MASTER_NAME:-wificore-redis}
+      REDIS_SENTINEL_QUORUM: ${REDIS_SENTINEL_QUORUM:-2}
+      REDIS_SENTINEL_DOWN_AFTER: ${REDIS_SENTINEL_DOWN_AFTER:-5000}
+      REDIS_SENTINEL_FAILOVER_TIMEOUT: ${REDIS_SENTINEL_FAILOVER_TIMEOUT:-60000}
+      REDIS_SENTINEL_PARALLEL_SYNCS: ${REDIS_SENTINEL_PARALLEL_SYNCS:-1}
+    networks:
+      wificore-network:
+        ipv4_address: 172.70.0.28
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/redis-healthcheck.sh"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    volumes:
+      - redis_sentinel_2_data:/data
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  wificore-redis-sentinel-3:
+    container_name: wificore-redis-sentinel-3
+    build:
+      context: ./docker/redis
+      dockerfile: Dockerfile
+    image: kja2aro/wificore:wificore-redis
+    restart: always
+    env_file:
+      - .env.production
+    depends_on:
+      wificore-redis-primary:
+        condition: service_healthy
+      wificore-redis-replica:
+        condition: service_healthy
+    environment:
+      TZ: Africa/Nairobi
+      REDIS_ROLE: sentinel
+      REDIS_MASTER_HOST: wificore-redis-primary
+      REDIS_MASTER_PORT: 6379
+      REDIS_SENTINEL_PORT: 26379
+      REDIS_SENTINEL_MASTER_NAME: ${REDIS_SENTINEL_MASTER_NAME:-wificore-redis}
+      REDIS_SENTINEL_QUORUM: ${REDIS_SENTINEL_QUORUM:-2}
+      REDIS_SENTINEL_DOWN_AFTER: ${REDIS_SENTINEL_DOWN_AFTER:-5000}
+      REDIS_SENTINEL_FAILOVER_TIMEOUT: ${REDIS_SENTINEL_FAILOVER_TIMEOUT:-60000}
+      REDIS_SENTINEL_PARALLEL_SYNCS: ${REDIS_SENTINEL_PARALLEL_SYNCS:-1}
+    networks:
+      wificore-network:
+        ipv4_address: 172.70.0.29
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/redis-healthcheck.sh"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    volumes:
+      - redis_sentinel_3_data:/data
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  wificore-redis:
+    container_name: wificore-redis
+    build:
+      context: ./docker/redis-proxy
+      dockerfile: Dockerfile
+    image: kja2aro/wificore:wificore-redis-proxy
+    restart: always
+    env_file:
+      - .env.production
+    depends_on:
+      wificore-redis-primary:
+        condition: service_healthy
+      wificore-redis-replica:
+        condition: service_healthy
+      wificore-redis-sentinel-1:
+        condition: service_healthy
+      wificore-redis-sentinel-2:
+        condition: service_healthy
+      wificore-redis-sentinel-3:
+        condition: service_healthy
+    environment:
+      TZ: Africa/Nairobi
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+    networks:
+      wificore-network:
+        ipv4_address: 172.70.0.7
+    healthcheck:
+      test: ["CMD-SHELL", "printf 'PING\r\n' | nc -w 2 localhost 6379 | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    ports:
+      - "${REDIS_PROXY_PORT:-6379}:6379"
     logging:
       driver: "json-file"
       options:
@@ -1344,8 +1550,16 @@ volumes:
     name: wificore-postgres-data
   postgres_replica_data:
     name: wificore-postgres-replica-data
-  redis_data:
-    name: wificore-redis-data
+  redis_primary_data:
+    name: wificore-redis-primary-data
+  redis_replica_data:
+    name: wificore-redis-replica-data
+  redis_sentinel_1_data:
+    name: wificore-redis-sentinel-1-data
+  redis_sentinel_2_data:
+    name: wificore-redis-sentinel-2-data
+  redis_sentinel_3_data:
+    name: wificore-redis-sentinel-3-data
   victoriametrics_data:
     name: wificore-victoriametrics-data
   mongo_data:

@@ -1,0 +1,35 @@
+global
+    log stdout format raw local0
+    maxconn 20000
+
+defaults
+    log global
+    mode tcp
+    option tcplog
+    timeout connect 5s
+    timeout client  2m
+    timeout server  2m
+    default-server inter 2s fall 3 rise 2 on-marked-down shutdown-sessions
+
+frontend redis_frontend
+    bind *:6379
+    default_backend redis_master
+
+backend redis_master
+    option tcp-check
+@@REDIS_AUTH_CHECK@@
+    tcp-check send PING\r\n
+    tcp-check expect string +PONG
+    tcp-check send INFO\ replication\r\n
+    tcp-check expect string role:master
+    tcp-check send QUIT\r\n
+    tcp-check expect string +OK
+    server redis-primary wificore-redis-primary:6379 check
+    server redis-replica wificore-redis-replica:6379 check
+
+listen stats
+    bind *:8404
+    mode http
+    stats enable
+    stats uri /stats
+    stats refresh 10s
