@@ -100,6 +100,9 @@ return new class extends Migration
             $table->index(['username', 'status'], 'idx_pppoe_users_username_status');
             $table->index(['id', 'username', 'account_number', 'status'], 'idx_pppoe_users_portal_lookup');
         });
+
+        // Partial index for active status (PostgreSQL-only optimization)
+        DB::statement("CREATE INDEX IF NOT EXISTS idx_pppoe_users_status_active ON pppoe_users(status) WHERE status = 'active'");
     }
 
     public function down(): void
