@@ -35,7 +35,7 @@ PASSWORD=$(printf '%s' "$PASSWORD" | tr -d '\r' | sed 's/[[:space:]]*$//')
   fi
   printf '    tcp-check send PING\r\n\n'
   echo "    tcp-check expect string +PONG"
-  printf '    tcp-check send INFO replication\r\n\n'
+  printf '    tcp-check send INFO\\ replication\r\n\n'
   echo "    tcp-check expect string role:master"
   printf '    tcp-check send QUIT\r\n\n'
   echo "    tcp-check expect string +OK"
