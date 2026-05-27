@@ -9,6 +9,7 @@ use App\Models\Tenant;
 use App\Services\MpesaService;
 use App\Services\TenantContext;
 use Illuminate\Console\Command;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Log;
 
 class CheckPendingPayments extends Command
@@ -28,10 +29,22 @@ class CheckPendingPayments extends Command
 
         foreach ($tenants as $tenant) {
             $tenantContext->runInTenantContext($tenant, function () use ($mpesaService, $tenant): void {
-                $pendingPayments = Payment::query()
-                    ->where('status', 'pending')
-                    ->where('created_at', '<', now()->subMinutes(2))
-                    ->get();
+                try {
+                    $pendingPayments = Payment::query()
+                        ->where('status', 'pending')
+                        ->where('created_at', '<', now()->subMinutes(2))
+                        ->get();
+                } catch (QueryException $e) {
+                    // Table doesn't exist yet - migrations incomplete, skip this tenant
+                    if (str_contains($e->getMessage(), 'relation "payments" does not exist')) {
+                        Log::warning('Skipping tenant - payments table not ready', [
+                            'tenant_id' => $tenant->id,
+                            'schema_name' => $tenant->schema_name,
+                        ]);
+                        return;
+                    }
+                    throw $e;
+                }
 
                 if ($pendingPayments->isEmpty()) {
                     return;

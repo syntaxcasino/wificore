@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -13,6 +14,23 @@ return new class extends Migration
      */
     public function up(): void
     {
+        // Set shorter statement timeout to fail fast on lock contention
+        DB::statement('SET LOCAL statement_timeout = \'5000\'');
+
+        // Check if constraint exists before attempting to drop
+        $constraintExists = DB::selectOne("
+            SELECT EXISTS (
+                SELECT 1 FROM information_schema.table_constraints
+                WHERE table_name = 'vouchers'
+                AND constraint_type = 'FOREIGN KEY'
+                AND constraint_name LIKE '%used_by%'
+            ) as exists
+        ")->exists;
+
+        if (!$constraintExists) {
+            return;
+        }
+
         Schema::table('vouchers', function (Blueprint $table) {
             // Drop the foreign key if it exists
             // The constraint name follows Laravel's convention: {table}_{column}_foreign
@@ -26,7 +44,7 @@ return new class extends Migration
                     'vouchers_used_by_fk',
                     'used_by_foreign',
                 ];
-                
+
                 foreach ($alternatives as $name) {
                     try {
                         $table->dropForeign($name);
