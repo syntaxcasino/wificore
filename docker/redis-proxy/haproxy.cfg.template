@@ -17,7 +17,7 @@ frontend redis_frontend
 
 backend redis_master
     option tcp-check
-@@REDIS_AUTH_CHECK@@
+${AUTH_CHECK}
     tcp-check send PING\r\n
     tcp-check expect string +PONG
     tcp-check send INFO\ replication\r\n

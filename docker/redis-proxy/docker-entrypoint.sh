@@ -9,5 +9,6 @@ else
   AUTH_CHECK="    # no auth configured"
 fi
 
-sed "s|@@REDIS_AUTH_CHECK@@|${AUTH_CHECK}|g" /usr/local/etc/haproxy/haproxy.cfg.template > /usr/local/etc/haproxy/haproxy.cfg
+export AUTH_CHECK
+envsubst '\${AUTH_CHECK}' < /usr/local/etc/haproxy/haproxy.cfg.template > /usr/local/etc/haproxy/haproxy.cfg
 exec haproxy -W -db -f /usr/local/etc/haproxy/haproxy.cfg
