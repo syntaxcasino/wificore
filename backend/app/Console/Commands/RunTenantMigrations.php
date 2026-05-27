@@ -71,10 +71,6 @@ class RunTenantMigrations extends Command
             $result = $migrationManager->runMigrationsForTenant($tenant);
 
             if ($result) {
-                // Ensure the schema_created flag is set after a successful migration run
-                if (!$tenant->schema_created) {
-                    $tenant->update(['schema_created' => true]);
-                }
                 $this->info("  Migrations completed successfully.");
                 $success++;
             } else {

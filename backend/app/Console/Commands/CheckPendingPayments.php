@@ -8,6 +8,7 @@ use App\Models\Payment;
 use App\Models\Tenant;
 use App\Services\MpesaService;
 use App\Services\TenantContext;
+use App\Services\TenantMigrationManager;
 use Illuminate\Console\Command;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Log;
@@ -18,7 +19,7 @@ class CheckPendingPayments extends Command
 
     protected $description = 'Check pending M-Pesa payments using TransactionStatus API';
 
-    public function handle(MpesaService $mpesaService, TenantContext $tenantContext): int
+    public function handle(MpesaService $mpesaService, TenantContext $tenantContext, TenantMigrationManager $migrationManager): int
     {
         $tenants = Tenant::query()
             ->useWritePdo()
@@ -28,6 +29,14 @@ class CheckPendingPayments extends Command
             ->get(['id', 'name', 'schema_name', 'schema_created']);
 
         foreach ($tenants as $tenant) {
+            if ($migrationManager->hasPendingMigrations($tenant)) {
+                Log::info('Skipping tenant pending payment check until tenant migrations complete', [
+                    'tenant_id' => $tenant->id,
+                    'schema_name' => $tenant->schema_name,
+                ]);
+                continue;
+            }
+
             $tenantContext->runInTenantContext($tenant, function () use ($mpesaService, $tenant): void {
                 try {
                     $pendingPayments = Payment::query()

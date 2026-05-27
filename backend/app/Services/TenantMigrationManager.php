@@ -81,15 +81,27 @@ class TenantMigrationManager
                 }
             }
 
+            $allMigrationsApplied = !$this->hasPendingMigrations($tenant);
+
+            if ($allMigrationsApplied) {
+                $tenant->forceFill([
+                    'schema_created' => true,
+                    'schema_created_at' => $tenant->schema_created_at ?: now(),
+                ])->saveQuietly();
+            } else {
+                $tenant->forceFill([
+                    'schema_created' => false,
+                ])->saveQuietly();
+            }
+
             Log::info("Migration batch completed for tenant: {$tenant->name}", [
                 'success' => $successCount,
                 'failed' => $failedCount,
                 'skipped' => $skippedCount,
+                'all_migrations_applied' => $allMigrationsApplied,
             ]);
 
-            // Return true if we processed at least one migration successfully or skipped already executed ones
-            // Return false only if there were failures and no successes
-            return $failedCount === 0 || $successCount > 0;
+            return $failedCount === 0 && $allMigrationsApplied;
 
         } catch (\Exception $e) {
             Log::error("Failed to run tenant migrations for {$tenant->name}: " . $e->getMessage());
@@ -320,7 +332,6 @@ class TenantMigrationManager
             DB::statement("GRANT ALL ON SCHEMA {$tenant->schema_name} TO {$dbUser}");
             DB::statement("GRANT ALL ON ALL TABLES IN SCHEMA {$tenant->schema_name} TO {$dbUser}");
             DB::statement("GRANT ALL ON ALL SEQUENCES IN SCHEMA {$tenant->schema_name} TO {$dbUser}");
-            
             // Set default privileges for future objects
             DB::statement("ALTER DEFAULT PRIVILEGES IN SCHEMA {$tenant->schema_name} GRANT ALL ON TABLES TO {$dbUser}");
             DB::statement("ALTER DEFAULT PRIVILEGES IN SCHEMA {$tenant->schema_name} GRANT ALL ON SEQUENCES TO {$dbUser}");
@@ -334,12 +345,6 @@ class TenantMigrationManager
             $success = $this->runMigrationsForTenant($tenant);
             
             if ($success) {
-                // Update tenant record
-                $tenant->update([
-                    'schema_created' => true,
-                    'schema_created_at' => now()
-                ]);
-                
                 Log::info("Successfully set up schema for tenant: {$tenant->name}", [
                     'tenant_id' => $tenant->id,
                     'schema_name' => $tenant->schema_name

@@ -70,10 +70,11 @@ class TenantSchemaManager
             DB::statement("ALTER DEFAULT PRIVILEGES IN SCHEMA {$schemaName} GRANT ALL ON TABLES TO {$dbUser}");
             DB::statement("ALTER DEFAULT PRIVILEGES IN SCHEMA {$schemaName} GRANT ALL ON SEQUENCES TO {$dbUser}");
             
-            // Update tenant record
+            // The schema exists now, but it is not considered ready until all
+            // tenant migrations complete successfully.
             $tenant->update([
-                'schema_created' => true,
-                'schema_created_at' => now()
+                'schema_created' => false,
+                'schema_created_at' => null,
             ]);
             
             Log::info("Schema created successfully: {$schemaName}");
