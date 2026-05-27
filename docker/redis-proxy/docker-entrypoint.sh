@@ -3,10 +3,10 @@ set -eu
 
 PASSWORD="${REDIS_PASSWORD:-}"
 if [ -n "$PASSWORD" ]; then
-  AUTH_CHECK="tcp-check send AUTH\ ${PASSWORD}\\r\\n
+  AUTH_CHECK="    tcp-check send AUTH ${PASSWORD}\\r\\n
     tcp-check expect string +OK"
 else
-  AUTH_CHECK=""
+  AUTH_CHECK="    # no auth configured"
 fi
 
 sed "s|@@REDIS_AUTH_CHECK@@|${AUTH_CHECK}|g" /usr/local/etc/haproxy/haproxy.cfg.template > /usr/local/etc/haproxy/haproxy.cfg
