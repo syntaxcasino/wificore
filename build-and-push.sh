@@ -34,6 +34,7 @@ COMPOSE_BUILD_SERVICES=(
   wificore-wireguard
   wificore-provisioning
   wificore-pgbouncer
+  wificore-redis-primary
   wificore-redis
 )
 
@@ -47,6 +48,7 @@ COMPOSE_PUSH_SERVICES=(
   wificore-wireguard
   wificore-provisioning
   wificore-pgbouncer
+  wificore-redis-primary
   wificore-redis
 )
 
@@ -95,6 +97,7 @@ docker push "$DOCKERHUB_USERNAME/$REPO_NAME:wificore-nginx-$GIT_SHA"
 
 echo "Deployment target images updated successfully."
 echo "Runtime note: backend image now serves web, sse, scheduler, migrator and queue roles."
+echo "Runtime note: Redis HA now uses a shared redis image for primary/replica/sentinels and a separate redis proxy image for the stable app endpoint."
 echo
 echo "Starting remote deployment..."
 ssh 144.91.71.208 -l kja2aro "cd /opt/wificore && ./deploy.sh --preserve"
