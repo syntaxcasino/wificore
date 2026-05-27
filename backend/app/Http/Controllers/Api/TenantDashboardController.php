@@ -52,14 +52,14 @@ class TenantDashboardController extends Controller
         // Fast path: return cached data immediately if available.
         // Wrapped in try/catch so a Redis outage degrades gracefully to a DB query.
         try {
-            $cached = Cache::get($cacheKey);
+            $cached = $this->cacheGet($cacheKey);
             if ($cached !== null) {
                 return response()->json(['success' => true, 'data' => $cached, 'cached' => true]);
             }
 
-            $precomputed = Cache::get($this->getPrecomputedCacheKey($tenantId));
+            $precomputed = $this->cacheGet($this->getPrecomputedCacheKey($tenantId));
             if (is_array($precomputed) && !empty($precomputed)) {
-                Cache::put($cacheKey, $precomputed, self::CACHE_TTL_SECONDS);
+                $this->cachePut($cacheKey, $precomputed, self::CACHE_TTL_SECONDS);
                 $this->dispatchDashboardRefresh($tenantId);
 
                 return response()->json([
@@ -71,14 +71,16 @@ class TenantDashboardController extends Controller
             }
 
             // Cache stampede protection: only one process regenerates
-            $lock  = Cache::lock($lockKey, self::CACHE_LOCK_SECONDS);
-            $stats = $lock->get(function () use ($tenantId, $cacheKey) {
-                $cached = Cache::get($cacheKey);
-                if ($cached !== null) {
-                    return $cached;
-                }
-                return $this->computeDashboardStats($tenantId, $cacheKey);
-            });
+            $lock = $this->cacheLock($lockKey, self::CACHE_LOCK_SECONDS);
+            $stats = $lock
+                ? $lock->get(function () use ($tenantId, $cacheKey) {
+                    $cached = $this->cacheGet($cacheKey);
+                    if ($cached !== null) {
+                        return $cached;
+                    }
+                    return $this->computeDashboardStats($tenantId, $cacheKey);
+                })
+                : null;
 
             // $lock->get() returns null if the lock could not be acquired
             if ($stats === null) {
@@ -105,7 +107,7 @@ class TenantDashboardController extends Controller
     private function dispatchDashboardRefresh(string $tenantId): void
     {
         $lockKey = "dashboard:request-refresh-lock:{$tenantId}";
-        if (Cache::add($lockKey, 1, self::REFRESH_DISPATCH_LOCK_SECONDS)) {
+        if ($this->cacheAdd($lockKey, 1, self::REFRESH_DISPATCH_LOCK_SECONDS)) {
             UpdateDashboardStatsJob::dispatch($tenantId)->onQueue('dashboard');
         }
     }
@@ -327,8 +329,8 @@ class TenantDashboardController extends Controller
             }
         }
 
-        $smsBalance        = (int) Cache::get('sms_balance', 0);
-        $smsTotalPurchased = (int) Cache::get('sms_total_purchased', 0);
+        $smsBalance        = (int) $this->cacheGet('sms_balance', 0);
+        $smsTotalPurchased = (int) $this->cacheGet('sms_total_purchased', 0);
         $smsUsed           = $smsTotalPurchased - $smsBalance;
 
         $weeklyDailyBreakdown = [];
@@ -436,8 +438,8 @@ class TenantDashboardController extends Controller
 
         if ($cacheKey) {
             try {
-                Cache::put($cacheKey, $stats, self::CACHE_TTL_SECONDS);
-                Cache::put($this->getPrecomputedCacheKey($tenantId), $stats, self::CACHE_TTL_SECONDS);
+                $this->cachePut($cacheKey, $stats, self::CACHE_TTL_SECONDS);
+                $this->cachePut($this->getPrecomputedCacheKey($tenantId), $stats, self::CACHE_TTL_SECONDS);
             } catch (\Exception $e) {
                 // Redis unavailable — stats are still returned, just not cached
             }
@@ -509,7 +511,7 @@ class TenantDashboardController extends Controller
         $cacheKey = $this->getListCacheKey(self::KEY_USERS, $tenantId, $request);
         $perPage = $request->per_page ?? 15;
 
-        $users = Cache::remember($cacheKey, self::LIST_CACHE_TTL_SECONDS, function () use ($tenantId, $perPage) {
+        $users = $this->cacheRemember($cacheKey, self::LIST_CACHE_TTL_SECONDS, function () use ($tenantId, $perPage) {
             return $this->tenantUsersQuery($tenantId)
                 ->select('id', 'name', 'email', 'username', 'role', 'is_active', 'created_at')
                 ->orderBy('created_at', 'desc')
@@ -519,7 +521,7 @@ class TenantDashboardController extends Controller
         return response()->json([
             'success' => true,
             'data' => $users,
-            'cached' => Cache::has($cacheKey),
+            'cached' => $this->cacheHas($cacheKey),
         ]);
     }
 
@@ -543,7 +545,7 @@ class TenantDashboardController extends Controller
         $activeOnly = $request->boolean('active_only', false);
         $cacheKey = $this->getListCacheKey(self::KEY_PACKAGES, $tenantId, $request) . ($activeOnly ? ':active' : ':all');
 
-        $packages = Cache::remember($cacheKey, self::LIST_CACHE_TTL_SECONDS, function () use ($activeOnly) {
+        $packages = $this->cacheRemember($cacheKey, self::LIST_CACHE_TTL_SECONDS, function () use ($activeOnly) {
             $query = Package::select('id', 'name', 'description', 'price', 'type', 'duration', 'is_active', 'download_speed', 'upload_speed')
                 ->orderBy('created_at', 'desc');
 
@@ -557,7 +559,7 @@ class TenantDashboardController extends Controller
         return response()->json([
             'success' => true,
             'data' => $packages,
-            'cached' => Cache::has($cacheKey),
+            'cached' => $this->cacheHas($cacheKey),
         ]);
     }
 
@@ -589,7 +591,7 @@ class TenantDashboardController extends Controller
             ]);
         }
 
-        $routers = Cache::remember($cacheKey, self::LIST_CACHE_TTL_SECONDS, function () {
+        $routers = $this->cacheRemember($cacheKey, self::LIST_CACHE_TTL_SECONDS, function () {
             return Router::select('id', 'name', 'ip_address', 'model', 'status', 'last_seen', 'location')
                 ->orderByRaw("CASE WHEN status='online' THEN 0 ELSE 1 END")
                 ->orderBy('last_seen', 'desc')
@@ -599,7 +601,7 @@ class TenantDashboardController extends Controller
         return response()->json([
             'success' => true,
             'data' => $routers,
-            'cached' => Cache::has($cacheKey),
+            'cached' => $this->cacheHas($cacheKey),
         ]);
     }
 
@@ -637,7 +639,7 @@ class TenantDashboardController extends Controller
             return response()->json(['success' => true, 'data' => $payments, 'cached' => false]);
         }
 
-        $payments = Cache::remember($cacheKey, self::LIST_CACHE_TTL_SECONDS, function () use ($perPage) {
+        $payments = $this->cacheRemember($cacheKey, self::LIST_CACHE_TTL_SECONDS, function () use ($perPage) {
             return Payment::with(['user:id,name,email', 'package:id,name'])
                 ->select('id', 'user_id', 'package_id', 'amount', 'status', 'payment_method', 'created_at', 'verified_at')
                 ->orderBy('created_at', 'desc')
@@ -647,7 +649,7 @@ class TenantDashboardController extends Controller
         return response()->json([
             'success' => true,
             'data' => $payments,
-            'cached' => Cache::has($cacheKey),
+            'cached' => $this->cacheHas($cacheKey),
         ]);
     }
 
@@ -701,7 +703,7 @@ class TenantDashboardController extends Controller
             ]);
         }
 
-        $sessions = Cache::remember($cacheKey, 3, function () use ($perPage) {
+        $sessions = $this->cacheRemember($cacheKey, 3, function () use ($perPage) {
             return UserSession::with(['user:id,name,username', 'router:id,name'])
                 ->where('status', 'active')
                 ->select('id', 'user_id', 'router_id', 'ip_address', 'mac_address', 'upload_bytes', 'download_bytes', 'started_at')
@@ -712,7 +714,7 @@ class TenantDashboardController extends Controller
         return response()->json([
             'success' => true,
             'data' => $sessions,
-            'cached' => Cache::has($cacheKey),
+            'cached' => $this->cacheHas($cacheKey),
         ]);
     }
 
@@ -726,6 +728,65 @@ class TenantDashboardController extends Controller
         $version = self::getVersion(self::entityVersionKey($tenantId, $type));
 
         return "{$type}:{$tenantId}:v{$version}:p{$page}:pp{$perPage}";
+    }
+
+    private function cacheGet(string $key, mixed $default = null): mixed
+    {
+        try {
+            return Cache::get($key, $default);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('TenantDashboardController cache get failed', ['key' => $key, 'error' => $e->getMessage()]);
+            return $default;
+        }
+    }
+
+    private function cachePut(string $key, mixed $value, mixed $ttl = null): void
+    {
+        try {
+            Cache::put($key, $value, $ttl);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('TenantDashboardController cache put failed', ['key' => $key, 'error' => $e->getMessage()]);
+        }
+    }
+
+    private function cacheHas(string $key): bool
+    {
+        try {
+            return Cache::has($key);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('TenantDashboardController cache has failed', ['key' => $key, 'error' => $e->getMessage()]);
+            return false;
+        }
+    }
+
+    private function cacheRemember(string $key, mixed $ttl, callable $callback): mixed
+    {
+        try {
+            return Cache::remember($key, $ttl, $callback);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('TenantDashboardController cache remember failed', ['key' => $key, 'error' => $e->getMessage()]);
+            return $callback();
+        }
+    }
+
+    private function cacheAdd(string $key, mixed $value, mixed $ttl = null): bool
+    {
+        try {
+            return Cache::add($key, $value, $ttl);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('TenantDashboardController cache add failed', ['key' => $key, 'error' => $e->getMessage()]);
+            return false;
+        }
+    }
+
+    private function cacheLock(string $key, int $seconds): mixed
+    {
+        try {
+            return Cache::lock($key, $seconds);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('TenantDashboardController cache lock failed', ['key' => $key, 'error' => $e->getMessage()]);
+            return null;
+        }
     }
 
     /**
@@ -809,13 +870,23 @@ class TenantDashboardController extends Controller
 
     private static function getVersion(string $versionKey): int
     {
-        return (int) Cache::rememberForever($versionKey, static fn (): int => 1);
+        try {
+            return (int) Cache::rememberForever($versionKey, static fn (): int => 1);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('TenantDashboardController cache rememberForever failed', ['key' => $versionKey, 'error' => $e->getMessage()]);
+            return 1;
+        }
     }
 
     private static function bumpVersion(string $versionKey): int
     {
         $nextVersion = self::getVersion($versionKey) + 1;
-        Cache::forever($versionKey, $nextVersion);
+
+        try {
+            Cache::forever($versionKey, $nextVersion);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('TenantDashboardController cache forever failed', ['key' => $versionKey, 'error' => $e->getMessage()]);
+        }
 
         return $nextVersion;
     }

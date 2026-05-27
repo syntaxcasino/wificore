@@ -69,7 +69,7 @@ class PppoePortalController extends Controller
 
         // OPTIMIZATION: Rate limit failed login attempts by identifier
         $rateLimitKey = 'portal_login_attempts:' . md5($identifier);
-        $attempts = (int) Cache::get($rateLimitKey, 0);
+        $attempts = (int) $this->cacheGet($rateLimitKey, 0);
         if ($attempts > 5) {
             return response()->json([
                 'success' => false,
@@ -79,7 +79,7 @@ class PppoePortalController extends Controller
 
         // OPTIMIZATION: Check user lookup cache first (aggressive 5min cache for valid users)
         $userCacheKey = 'portal_login_user:' . md5($identifier);
-        $cachedUserId = Cache::get($userCacheKey);
+        $cachedUserId = $this->cacheGet($userCacheKey);
         
         $pppoeUser = null;
         if ($cachedUserId) {
@@ -87,7 +87,7 @@ class PppoePortalController extends Controller
                 // Fast path: Load user directly by ID with tenant context
                 $pppoeUser = $this->findPppoeUserByCachedId($cachedUserId);
             } catch (\Throwable $e) {
-                Cache::forget($userCacheKey);
+                $this->cacheForget($userCacheKey);
                 Log::warning('PPPoE portal cached login lookup failed; cache entry invalidated', [
                     'account_number' => $identifier,
                     'cached_user' => $cachedUserId,
@@ -102,13 +102,13 @@ class PppoePortalController extends Controller
             
             if ($pppoeUser) {
                 // Cache the user lookup for 5 minutes
-                Cache::put($userCacheKey, $pppoeUser->id . '|' . ($pppoeUser->tenant_id ?? ''), now()->addSeconds(self::LOGIN_USER_CACHE_TTL_SECONDS));
+                $this->cachePut($userCacheKey, $pppoeUser->id . '|' . ($pppoeUser->tenant_id ?? ''), now()->addSeconds(self::LOGIN_USER_CACHE_TTL_SECONDS));
             }
         }
 
         if (!$pppoeUser) {
             // Increment rate limit counter
-            Cache::put($rateLimitKey, $attempts + 1, now()->addMinutes(15));
+            $this->cachePut($rateLimitKey, $attempts + 1, now()->addMinutes(15));
             
             Log::warning('PPPoE portal login failed: User not found', [
                 'account_number' => $validated['account_number'],
@@ -123,7 +123,7 @@ class PppoePortalController extends Controller
         // Verify portal password.
         if (!$this->verifyPortalPassword($pppoeUser, (string) $validated['portal_password'])) {
             // Increment rate limit counter on failed password
-            Cache::put($rateLimitKey, $attempts + 1, now()->addMinutes(15));
+            $this->cachePut($rateLimitKey, $attempts + 1, now()->addMinutes(15));
             
             Log::warning('PPPoE portal login failed: Invalid password', [
                 'account_number' => $validated['account_number'],
@@ -136,7 +136,7 @@ class PppoePortalController extends Controller
         }
 
         // Clear rate limit on successful login
-        Cache::forget($rateLimitKey);
+        $this->cacheForget($rateLimitKey);
 
         // Check if account is active
         if ($pppoeUser->status !== 'active') {
@@ -296,11 +296,11 @@ class PppoePortalController extends Controller
             // Fire and forget - don't block login response
             dispatch(function () use ($pppoeUser) {
                 $radiusData = $this->getOptimizedRadiusData($pppoeUser);
-                Cache::put($this->radiusCacheKey($pppoeUser), $radiusData, now()->addSeconds(self::RADIUS_CACHE_TTL_SECONDS));
+                $this->cachePut($this->radiusCacheKey($pppoeUser), $radiusData, now()->addSeconds(self::RADIUS_CACHE_TTL_SECONDS));
 
                 $dashboardData = $this->buildDashboardData($pppoeUser);
-                Cache::put($this->dashboardCacheKey($pppoeUser), $dashboardData, now()->addSeconds(self::DASHBOARD_CACHE_TTL_SECONDS));
-                Cache::put($this->paymentsCacheKey($pppoeUser), $dashboardData['recent_payments'] ?? [], now()->addSeconds(self::PAYMENTS_CACHE_TTL_SECONDS));
+                $this->cachePut($this->dashboardCacheKey($pppoeUser), $dashboardData, now()->addSeconds(self::DASHBOARD_CACHE_TTL_SECONDS));
+                $this->cachePut($this->paymentsCacheKey($pppoeUser), $dashboardData['recent_payments'] ?? [], now()->addSeconds(self::PAYMENTS_CACHE_TTL_SECONDS));
             })->onQueue('low');
         } catch (\Throwable $e) {
             // Silent fail - cache warming is optional
@@ -470,7 +470,7 @@ class PppoePortalController extends Controller
         // CRITICAL OPTIMIZATION: Cache tenant lookup by account prefix
         // This is called frequently during login - cache for 10 minutes
         $cacheKey = 'tenant_lookup:' . md5($normalized);
-        $cachedTenantId = Cache::get($cacheKey);
+        $cachedTenantId = $this->cacheGet($cacheKey);
         
         if ($cachedTenantId) {
             // Try to load tenant from cache hit
@@ -494,7 +494,7 @@ class PppoePortalController extends Controller
 
         if ($tenant) {
             // Cache the tenant ID for 10 minutes
-            Cache::put($cacheKey, $tenant->id, now()->addMinutes(10));
+            $this->cachePut($cacheKey, $tenant->id, now()->addMinutes(10));
         }
 
         return $tenant;
@@ -620,7 +620,7 @@ class PppoePortalController extends Controller
         $dashboardCacheKey = $this->dashboardCacheKey($pppoeUser);
 
         try {
-            $cachedDashboard = Cache::get($dashboardCacheKey);
+            $cachedDashboard = $this->cacheGet($dashboardCacheKey);
             if ($cachedDashboard !== null) {
                 return response()->json([
                     'success' => true,
@@ -629,22 +629,24 @@ class PppoePortalController extends Controller
                 ]);
             }
 
-            $lock = Cache::lock($this->dashboardLockKey($pppoeUser), self::DASHBOARD_CACHE_LOCK_SECONDS);
-            $lockResult = $lock->get(function () use ($dashboardCacheKey, $pppoeUser) {
-                $cached = Cache::get($dashboardCacheKey);
-                if ($cached !== null) {
-                    return ['data' => $cached, 'cached' => true];
-                }
+            $lock = $this->cacheLock($this->dashboardLockKey($pppoeUser), self::DASHBOARD_CACHE_LOCK_SECONDS);
+            $lockResult = $lock
+                ? $lock->get(function () use ($dashboardCacheKey, $pppoeUser) {
+                    $cached = $this->cacheGet($dashboardCacheKey);
+                    if ($cached !== null) {
+                        return ['data' => $cached, 'cached' => true];
+                    }
 
-                $dashboardData = $this->buildDashboardData($pppoeUser);
-                Cache::put($dashboardCacheKey, $dashboardData, now()->addSeconds(self::DASHBOARD_CACHE_TTL_SECONDS));
+                    $dashboardData = $this->buildDashboardData($pppoeUser);
+                    $this->cachePut($dashboardCacheKey, $dashboardData, now()->addSeconds(self::DASHBOARD_CACHE_TTL_SECONDS));
 
-                return ['data' => $dashboardData, 'cached' => false];
-            });
+                    return ['data' => $dashboardData, 'cached' => false];
+                })
+                : null;
 
             if ($lockResult === null) {
                 $dashboardData = $this->buildDashboardData($pppoeUser);
-                Cache::put($dashboardCacheKey, $dashboardData, now()->addSeconds(self::DASHBOARD_CACHE_TTL_SECONDS));
+                $this->cachePut($dashboardCacheKey, $dashboardData, now()->addSeconds(self::DASHBOARD_CACHE_TTL_SECONDS));
 
                 return response()->json([
                     'success' => true,
@@ -661,7 +663,7 @@ class PppoePortalController extends Controller
             ]);
         } catch (\Illuminate\Contracts\Cache\LockTimeoutException $e) {
             $dashboardData = $this->buildDashboardData($pppoeUser);
-            Cache::put($dashboardCacheKey, $dashboardData, now()->addSeconds(self::DASHBOARD_CACHE_TTL_SECONDS));
+            $this->cachePut($dashboardCacheKey, $dashboardData, now()->addSeconds(self::DASHBOARD_CACHE_TTL_SECONDS));
 
             return response()->json([
                 'success' => true,
@@ -689,12 +691,12 @@ class PppoePortalController extends Controller
     {
         // OPTIMIZATION 1: Aggressive RADIUS caching (60s TTL)
         $radiusCacheKey = $this->radiusCacheKey($pppoeUser);
-        $radiusData = Cache::get($radiusCacheKey);
+        $radiusData = $this->cacheGet($radiusCacheKey);
 
         if (!$radiusData) {
             try {
                 $radiusData = $this->getOptimizedRadiusData($pppoeUser);
-                Cache::put($radiusCacheKey, $radiusData, now()->addSeconds(self::RADIUS_CACHE_TTL_SECONDS));
+                $this->cachePut($radiusCacheKey, $radiusData, now()->addSeconds(self::RADIUS_CACHE_TTL_SECONDS));
             } catch (\Throwable $e) {
                 Log::warning('PPPoE portal RADIUS data fetch failed', [
                     'account_number' => $pppoeUser->account_number,
@@ -712,7 +714,7 @@ class PppoePortalController extends Controller
 
         // OPTIMIZATION 3: Cache payments separately (they change frequently)
         $paymentsCacheKey = $this->paymentsCacheKey($pppoeUser);
-        $recentPayments = Cache::get($paymentsCacheKey);
+        $recentPayments = $this->cacheGet($paymentsCacheKey);
 
         if ($recentPayments === null) {
             $recentPayments = PppoePayment::query()
@@ -743,7 +745,7 @@ class PppoePortalController extends Controller
                 ])
                 ->all();
 
-            Cache::put($paymentsCacheKey, $recentPayments, now()->addSeconds(self::PAYMENTS_CACHE_TTL_SECONDS));
+            $this->cachePut($paymentsCacheKey, $recentPayments, now()->addSeconds(self::PAYMENTS_CACHE_TTL_SECONDS));
         }
 
         return [
@@ -872,7 +874,7 @@ SQL;
 
         $providerName = null;
         if ($pppoeUser->tenant_id) {
-            $providerName = Cache::remember(
+            $providerName = $this->cacheRemember(
                 'tenant_name:' . $pppoeUser->tenant_id,
                 now()->addMinutes(60),
                 fn () => Tenant::query()->whereKey($pppoeUser->tenant_id)->value('name')
@@ -931,9 +933,9 @@ SQL;
         $startDate = Carbon::now()->subDays($days);
 
         // Version key allows atomic invalidation of all session cache pages on user data change
-        $sessionVersion = Cache::get('pppoe_sessions_v:' . $pppoeUser->id, 0);
+        $sessionVersion = $this->cacheGet('pppoe_sessions_v:' . $pppoeUser->id, 0);
         $cacheKey = 'pppoe_sessions:' . $pppoeUser->id . ':' . $days . ':' . ($validated['cursor'] ?? 'init') . ':v' . $sessionVersion;
-        $cached = Cache::get($cacheKey);
+        $cached = $this->cacheGet($cacheKey);
 
         if ($cached) {
             return response()->json([
@@ -1012,7 +1014,7 @@ SQL;
         ];
 
         // Cache for 30 seconds (shorter than dashboard since history changes less frequently)
-        Cache::put($cacheKey, $result, now()->addSeconds(30));
+        $this->cachePut($cacheKey, $result, now()->addSeconds(30));
 
         return response()->json([
             'success' => true,
@@ -1041,8 +1043,8 @@ SQL;
         // OPTIMIZATION: Rate limit check via cache (prevents hammering the DB)
         $rateLimitKey = 'mpesa_stk_limit:' . $pppoeUser->id;
         $traceId = 'mpesa:' . Str::uuid()->toString();
-        if (Cache::has($rateLimitKey)) {
-            $recentTx = Cache::get($rateLimitKey);
+        if ($this->cacheHas($rateLimitKey)) {
+            $recentTx = $this->cacheGet($rateLimitKey);
             $this->logPaymentTrace('pppoe.stk.rate_limited', [
                 'trace_id' => $traceId,
                 'account_number' => $pppoeUser->account_number,
@@ -1067,7 +1069,7 @@ SQL;
 
             if ($recentPending) {
                 // Cache the pending transaction for 2 minutes to reduce DB hits
-                Cache::put($rateLimitKey, ['transaction_id' => $recentPending->transaction_id], now()->addMinutes(2));
+                $this->cachePut($rateLimitKey, ['transaction_id' => $recentPending->transaction_id], now()->addMinutes(2));
                 $this->logPaymentTrace('pppoe.stk.recent_pending', [
                     'trace_id' => $traceId,
                     'account_number' => $pppoeUser->account_number,
@@ -1156,7 +1158,7 @@ SQL;
             ]);
 
             // Cache the pending transaction to prevent duplicate STK pushes
-            Cache::put($rateLimitKey, ['transaction_id' => $checkoutRequestId], now()->addMinutes(2));
+            $this->cachePut($rateLimitKey, ['transaction_id' => $checkoutRequestId], now()->addMinutes(2));
 
             // Invalidate dashboard and payments cache to show new pending payment
             $this->invalidateDashboardCache($pppoeUser);
@@ -1218,7 +1220,7 @@ SQL;
 
         // OPTIMIZATION: Rate limit voucher redemption attempts
         $rateLimitKey = 'voucher_redeem_limit:' . $pppoeUser->id;
-        if (Cache::has($rateLimitKey)) {
+        if ($this->cacheHas($rateLimitKey)) {
             return response()->json([
                 'success' => false,
                 'message' => 'Please wait a moment before redeeming another voucher.',
@@ -1323,11 +1325,11 @@ SQL;
             }
 
             // Set rate limit for 5 seconds to prevent spam
-            Cache::put($rateLimitKey, 1, now()->addSeconds(5));
+            $this->cachePut($rateLimitKey, 1, now()->addSeconds(5));
 
             // Invalidate all user caches to show updated balance
             $this->invalidateDashboardCache($pppoeUser);
-            Cache::forget($this->radiusCacheKey($pppoeUser));
+            $this->cacheForget($this->radiusCacheKey($pppoeUser));
 
             Log::info('Voucher redeemed successfully', [
                 'account_number' => $pppoeUser->account_number,
@@ -1381,7 +1383,7 @@ SQL;
 
         // OPTIMIZATION: Cache pending payments for 10 seconds (they're checked frequently)
         // Completed/failed payments can be cached longer
-        $cached = Cache::get($cacheKey);
+        $cached = $this->cacheGet($cacheKey);
         if ($cached) {
             return response()->json([
                 'success' => true,
@@ -1438,7 +1440,7 @@ SQL;
 
         // Cache pending payments briefly (they may change soon), completed for longer
         $ttl = $payment->status === 'pending' ? 10 : 300;
-        Cache::put($cacheKey, $result, now()->addSeconds($ttl));
+        $this->cachePut($cacheKey, $result, now()->addSeconds($ttl));
 
         return response()->json([
             'success' => true,
@@ -1495,7 +1497,7 @@ SQL;
 
         $reconnectJobCacheKey = 'pppoe_reconnect_job:' . $tenantId . ':' . $pppoeUser->id;
 
-        $reconnectJobState = Cache::get($reconnectJobCacheKey);
+        $reconnectJobState = $this->cacheGet($reconnectJobCacheKey);
         if (!$reconnectJobState) {
             $reconnectJobState = [
                 'status' => $pppoeUser->status === 'active' ? 'idle' : 'not_queued',
@@ -1508,8 +1510,8 @@ SQL;
         if ($paymentStatusCacheKey) {
             $paymentStatusCache = [
                 'key' => $paymentStatusCacheKey,
-                'exists' => Cache::has($paymentStatusCacheKey),
-                'value' => Cache::get($paymentStatusCacheKey),
+                'exists' => $this->cacheHas($paymentStatusCacheKey),
+                'value' => $this->cacheGet($paymentStatusCacheKey),
             ];
         }
 
@@ -1551,14 +1553,14 @@ SQL;
                 'source' => data_get($latestPayment->metadata, 'source'),
             ] : null,
             'cache' => [
-                'dashboard_version' => Cache::get($this->dashboardVersionKey($pppoeUser), 1),
-                'payments_version' => Cache::get($this->paymentsVersionKey($pppoeUser), 1),
-                'radius_cache_present' => Cache::has($this->radiusCacheKey($pppoeUser)),
+                'dashboard_version' => $this->cacheGet($this->dashboardVersionKey($pppoeUser), 1),
+                'payments_version' => $this->cacheGet($this->paymentsVersionKey($pppoeUser), 1),
+                'radius_cache_present' => $this->cacheHas($this->radiusCacheKey($pppoeUser)),
                 'payment_status' => $paymentStatusCache,
                 'mpesa_stk_limit' => [
                     'key' => 'mpesa_stk_limit:' . $pppoeUser->id,
-                    'exists' => Cache::has('mpesa_stk_limit:' . $pppoeUser->id),
-                    'value' => Cache::get('mpesa_stk_limit:' . $pppoeUser->id),
+                    'exists' => $this->cacheHas('mpesa_stk_limit:' . $pppoeUser->id),
+                    'value' => $this->cacheGet('mpesa_stk_limit:' . $pppoeUser->id),
                 ],
             ],
             'reconnect_job' => $reconnectJobState,
@@ -1585,7 +1587,7 @@ SQL;
 
         // OPTIMIZATION: Cache payment instructions per tenant (rarely change)
         $cacheKey = 'payment_instructions:' . $tenantId;
-        $cached = Cache::get($cacheKey);
+        $cached = $this->cacheGet($cacheKey);
 
         if ($cached) {
             // Add user-specific account number to cached template
@@ -1631,7 +1633,7 @@ SQL;
             ];
 
             // Cache for 5 minutes (paybill settings rarely change)
-            Cache::put($cacheKey, $cacheData, now()->addMinutes(5));
+            $this->cachePut($cacheKey, $cacheData, now()->addMinutes(5));
 
             return response()->json([
                 'success' => true,
@@ -1721,7 +1723,7 @@ SQL;
         }
 
         $tenant->setSetting('timed_voucher_markup_pct', (float) $validated['markup_pct']);
-        Cache::forget('pppoe_portal_timed_voucher_options:' . $tenant->id);
+        $this->cacheForget('pppoe_portal_timed_voucher_options:' . $tenant->id);
 
         Log::info('PPPoE timed voucher markup updated', [
             'tenant_id'  => $tenant->id,
@@ -1846,7 +1848,7 @@ SQL;
 
         $tenantId = $request->attributes->get('tenant_id');
         $cacheKey = 'pppoe_portal_plans:' . $tenantId;
-        $plans    = Cache::get($cacheKey);
+        $plans    = $this->cacheGet($cacheKey);
 
         if (!$plans) {
             $plans = Package::query()
@@ -1867,7 +1869,7 @@ SQL;
                 ])
                 ->all();
 
-            Cache::put($cacheKey, $plans, now()->addMinutes(5));
+            $this->cachePut($cacheKey, $plans, now()->addMinutes(5));
         }
 
         return response()->json([
@@ -1972,7 +1974,7 @@ SQL;
         // Resolve tenant to read markup setting
         $tenantId = $request->attributes->get('tenant_id') ?? $pppoeUser->getAttribute('tenant_id');
         $cacheKey = 'pppoe_portal_timed_voucher_options:' . $tenantId;
-        $cached = Cache::get($cacheKey);
+        $cached = $this->cacheGet($cacheKey);
         if (is_array($cached)) {
             return response()->json($cached);
         }
@@ -2027,7 +2029,7 @@ SQL;
             ],
         ];
 
-        Cache::put($cacheKey, $response, now()->addMinutes(5));
+        $this->cachePut($cacheKey, $response, now()->addMinutes(5));
 
         return response()->json($response);
     }
@@ -2069,7 +2071,7 @@ SQL;
         ];
 
         $rateLimitKey = 'timed_voucher_limit:' . $pppoeUser->id;
-        if (Cache::has($rateLimitKey)) {
+        if ($this->cacheHas($rateLimitKey)) {
             return response()->json(['success' => false, 'message' => 'A voucher purchase is already pending.'], 429);
         }
 
@@ -2120,7 +2122,7 @@ SQL;
                 ]);
             }
 
-            Cache::put($rateLimitKey, true, now()->addMinutes(2));
+            $this->cachePut($rateLimitKey, true, now()->addMinutes(2));
 
             Log::info('PPPoE timed voucher STK push initiated', [
                 'account_number' => $pppoeUser->account_number,
@@ -2342,10 +2344,10 @@ SQL;
     {
         $this->bumpPortalCacheVersion($this->dashboardVersionKey($pppoeUser));
         $this->bumpPortalCacheVersion($this->paymentsVersionKey($pppoeUser));
-        Cache::forget($this->radiusCacheKey($pppoeUser));
+        $this->cacheForget($this->radiusCacheKey($pppoeUser));
 
         $sessionVersionKey = 'pppoe_sessions_v:' . $pppoeUser->id;
-        Cache::forever($sessionVersionKey, ((int) Cache::get($sessionVersionKey, 0)) + 1);
+        $this->cacheForever($sessionVersionKey, ((int) $this->cacheGet($sessionVersionKey, 0)) + 1);
 
         $this->warmDashboardCache($pppoeUser);
     }
@@ -2383,15 +2385,112 @@ SQL;
 
     private function getPortalCacheVersion(string $key): int
     {
-        return (int) Cache::rememberForever($key, static fn (): int => 1);
+        return (int) $this->cacheRememberForever($key, static fn (): int => 1);
     }
 
     private function bumpPortalCacheVersion(string $key): int
     {
         $nextVersion = $this->getPortalCacheVersion($key) + 1;
-        Cache::forever($key, $nextVersion);
+        $this->cacheForever($key, $nextVersion);
 
         return $nextVersion;
+    }
+
+    private function cacheGet(string $key, mixed $default = null): mixed
+    {
+        try {
+            return Cache::get($key, $default);
+        } catch (\Throwable $e) {
+            Log::warning('PppoePortalController cache get failed', ['key' => $key, 'error' => $e->getMessage()]);
+            return $default;
+        }
+    }
+
+    private function cachePut(string $key, mixed $value, mixed $ttl = null): void
+    {
+        try {
+            Cache::put($key, $value, $ttl);
+        } catch (\Throwable $e) {
+            Log::warning('PppoePortalController cache put failed', ['key' => $key, 'error' => $e->getMessage()]);
+        }
+    }
+
+    private function cacheHas(string $key): bool
+    {
+        try {
+            return Cache::has($key);
+        } catch (\Throwable $e) {
+            Log::warning('PppoePortalController cache has failed', ['key' => $key, 'error' => $e->getMessage()]);
+            return false;
+        }
+    }
+
+    private function cacheForget(string $key): void
+    {
+        try {
+            Cache::forget($key);
+        } catch (\Throwable $e) {
+            Log::warning('PppoePortalController cache forget failed', ['key' => $key, 'error' => $e->getMessage()]);
+        }
+    }
+
+    private function cacheRemember(string $key, mixed $ttl, callable $callback): mixed
+    {
+        try {
+            return Cache::remember($key, $ttl, $callback);
+        } catch (\Throwable $e) {
+            Log::warning('PppoePortalController cache remember failed', ['key' => $key, 'error' => $e->getMessage()]);
+            return $callback();
+        }
+    }
+
+    private function cacheRememberForever(string $key, callable $callback): mixed
+    {
+        try {
+            return Cache::rememberForever($key, $callback);
+        } catch (\Throwable $e) {
+            Log::warning('PppoePortalController cache rememberForever failed', ['key' => $key, 'error' => $e->getMessage()]);
+            return $callback();
+        }
+    }
+
+    private function cacheForever(string $key, mixed $value): void
+    {
+        try {
+            Cache::forever($key, $value);
+        } catch (\Throwable $e) {
+            Log::warning('PppoePortalController cache forever failed', ['key' => $key, 'error' => $e->getMessage()]);
+        }
+    }
+
+    private function cacheIncrement(string $key, mixed $value = 1): mixed
+    {
+        try {
+            return Cache::increment($key, $value);
+        } catch (\Throwable $e) {
+            Log::warning('PppoePortalController cache increment failed', ['key' => $key, 'error' => $e->getMessage()]);
+            return null;
+        }
+    }
+
+    private function cacheAdd(string $key, mixed $value, mixed $ttl = null): bool
+    {
+        try {
+            return Cache::add($key, $value, $ttl);
+        } catch (\Throwable $e) {
+            Log::warning('PppoePortalController cache add failed', ['key' => $key, 'error' => $e->getMessage()]);
+            return false;
+        }
+    }
+
+    private function cacheLock(string $key, int $seconds): mixed
+    {
+        try {
+            return Cache::lock($key, $seconds);
+        } catch (\Throwable $e) {
+            Log::warning('PppoePortalController cache lock failed', ['key' => $key, 'error' => $e->getMessage()]);
+            return null;
+        }
     }
 
     /**
@@ -2407,7 +2506,7 @@ SQL;
     private function radiusConnectionAvailable(): bool
     {
         // Check cache first
-        $cached = Cache::get(self::RADIUS_STATUS_CACHE_KEY);
+        $cached = $this->cacheGet(self::RADIUS_STATUS_CACHE_KEY);
         if ($cached !== null) {
             return (bool) $cached;
         }
@@ -2415,14 +2514,14 @@ SQL;
         try {
             // Use a fast query with short timeout
             DB::connection('radius')->selectOne('SELECT 1');
-            Cache::put(self::RADIUS_STATUS_CACHE_KEY, true, self::RADIUS_STATUS_CACHE_TTL);
+            $this->cachePut(self::RADIUS_STATUS_CACHE_KEY, true, self::RADIUS_STATUS_CACHE_TTL);
             return true;
         } catch (InvalidArgumentException $e) {
             if (!$this->radiusUnavailableLogged) {
                 Log::warning('Radius connection not configured for PPPoE portal; returning degraded dashboard data');
                 $this->radiusUnavailableLogged = true;
             }
-            Cache::put(self::RADIUS_STATUS_CACHE_KEY, false, self::RADIUS_STATUS_CACHE_TTL);
+            $this->cachePut(self::RADIUS_STATUS_CACHE_KEY, false, self::RADIUS_STATUS_CACHE_TTL);
             return false;
         } catch (\Throwable $e) {
             if (!$this->radiusUnavailableLogged) {
@@ -2431,7 +2530,7 @@ SQL;
                 ]);
                 $this->radiusUnavailableLogged = true;
             }
-            Cache::put(self::RADIUS_STATUS_CACHE_KEY, false, self::RADIUS_STATUS_CACHE_TTL);
+            $this->cachePut(self::RADIUS_STATUS_CACHE_KEY, false, self::RADIUS_STATUS_CACHE_TTL);
             return false;
         }
     }
