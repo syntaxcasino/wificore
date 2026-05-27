@@ -5,6 +5,12 @@ set -eu
 PASSWORD="${REDIS_PASSWORD:-}"
 PASSWORD=$(printf '%s' "$PASSWORD" | tr -d '\r' | sed 's/[[:space:]]*$//')
 
+redis_inline_hex() {
+  # Encode an inline Redis command as hex so HAProxy tcp-check parsing
+  # is not broken by spaces or shell-sensitive password characters.
+  printf '%s' "$1" | od -An -tx1 -v | tr -d ' \n'
+}
+
 # Generate HAProxy config
 {
   echo "global"
@@ -26,9 +32,8 @@ PASSWORD=$(printf '%s' "$PASSWORD" | tr -d '\r' | sed 's/[[:space:]]*$//')
   echo ""
   echo "backend redis_master"
   echo "    option tcp-check"
-  # Print AUTH lines with actual CRLF bytes
   if [ -n "$PASSWORD" ]; then
-    printf '    tcp-check send AUTH %s\r\n\n' "$PASSWORD"
+    printf '    tcp-check send-binary %s\n' "$(redis_inline_hex "AUTH $PASSWORD\r\n")"
     printf '    tcp-check expect string +OK\n'
   else
     echo "    # no auth configured"
