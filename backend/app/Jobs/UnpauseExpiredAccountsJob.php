@@ -27,7 +27,7 @@ class UnpauseExpiredAccountsJob implements ShouldQueue
     /**
      * The number of seconds the job can run before timing out.
      */
-    public $timeout = 60;
+    public $timeout = 120;
 
     /**
      * Create a new job instance.
@@ -80,22 +80,23 @@ class UnpauseExpiredAccountsJob implements ShouldQueue
                     $wasPausedAt = $pppoeUser->paused_at?->toIso8601String();
                     $wasPauseEndsAt = $pppoeUser->pause_ends_at?->toIso8601String();
                     $pauseReason = $pppoeUser->pause_reason;
-                    $pauseDuration = $pppoeUser->pause_duration_days
-                        ?? (int) ($pppoeUser->paused_at?->diffInDays($pppoeUser->pause_ends_at, true) ?? 0);
 
-                    // Extend subscription expiry by the pause duration (user paid for unused time)
-                    $newExpiry = $pppoeUser->expires_at
-                        ? $pppoeUser->expires_at->addDays($pauseDuration)
-                        : null;
+                    $pausedAt = $pppoeUser->paused_at;
+                    $pauseEndsAt = $pppoeUser->pause_ends_at;
+                    $totalPauseDays = $pausedAt && $pauseEndsAt ? (int) $pausedAt->diffInDays($pauseEndsAt, true) : 0;
+                    $daysElapsed = $pausedAt ? (int) $pausedAt->diffInDays(now(), true) : 0;
+                    $remainingDays = max(0, $totalPauseDays - $daysElapsed);
+
+                    $newExpiry = ($pppoeUser->expires_at ?? now())->addDays($remainingDays);
 
                     // Clear pause fields and restore active status
                     $pppoeUser->update([
-                        'paused_at'           => null,
-                        'pause_ends_at'       => null,
-                        'pause_reason'        => null,
-                        'pause_duration_days' => null,
-                        'expires_at'          => $newExpiry,
-                        'status'              => 'active',
+                        'paused_at'                 => null,
+                        'pause_ends_at'             => null,
+                        'pause_reason'              => null,
+                        'pause_duration_days'       => null,
+                        'expires_at'                => $newExpiry,
+                        'status'                    => 'active',
                     ]);
 
                     // Remove RADIUS Auth-Type Reject to allow reconnection
@@ -114,8 +115,8 @@ class UnpauseExpiredAccountsJob implements ShouldQueue
                         'was_paused_at'       => $wasPausedAt,
                         'was_pause_ends_at'   => $wasPauseEndsAt,
                         'pause_reason'        => $pauseReason,
-                        'pause_duration_days' => $pauseDuration,
-                        'new_expiry'          => $newExpiry?->toIso8601String(),
+                        'days_credited'       => $remainingDays,
+                        'new_expiry'          => $newExpiry->toIso8601String(),
                     ]);
 
                     // Broadcast unpause event to tenant/system admin
@@ -124,7 +125,7 @@ class UnpauseExpiredAccountsJob implements ShouldQueue
                         $wasPausedAt,
                         $wasPauseEndsAt,
                         $pauseReason,
-                        $pauseDuration
+                        $remainingDays
                     ))->toOthers();
                 }
 
