@@ -239,6 +239,8 @@ class PppoePortalAuthOptimized
             return null;
         }
 
+        $this->ensureRadiusSchemaMapping($pppoeUser);
+
         return $pppoeUser;
     }
 
@@ -266,7 +268,7 @@ class PppoePortalAuthOptimized
         $tenant = Tenant::query()
             ->whereKey($tenantId)
             ->where('is_active', true)
-            ->where('schema_created', true)
+            ->whereNotNull('schema_name')
             ->first(['id', 'schema_name', 'schema_created']);
 
         if (!$tenant || !$tenant->schema_name) {
@@ -307,7 +309,7 @@ class PppoePortalAuthOptimized
 
         $tenant = Tenant::query()
             ->where('is_active', true)
-            ->where('schema_created', true)
+            ->whereNotNull('schema_name')
             ->where(function ($query) use ($mapping) {
                 if (!empty($mapping->tenant_id)) {
                     $query->whereKey((string) $mapping->tenant_id);
@@ -388,6 +390,47 @@ class PppoePortalAuthOptimized
         $user->syncOriginalAttribute('tenant_id');
 
         return $user;
+    }
+
+    private function ensureRadiusSchemaMapping(PppoeUser $pppoeUser): void
+    {
+        $tenantId = (string) ($pppoeUser->tenant_id ?? '');
+        if ($tenantId === '') {
+            return;
+        }
+
+        $tenant = Tenant::query()
+            ->whereKey($tenantId)
+            ->where('is_active', true)
+            ->whereNotNull('schema_name')
+            ->first(['id', 'schema_name']);
+
+        if (!$tenant || !$tenant->schema_name) {
+            return;
+        }
+
+        try {
+            DB::statement(
+                "
+                INSERT INTO public.radius_user_schema_mapping (username, pppoe_user_id, schema_name, tenant_id, user_role, is_active, created_at, updated_at)
+                VALUES (?, ?::uuid, ?, ?::uuid, 'pppoe', true, NOW(), NOW())
+                ON CONFLICT (username) DO UPDATE SET
+                    pppoe_user_id = EXCLUDED.pppoe_user_id,
+                    schema_name = EXCLUDED.schema_name,
+                    tenant_id = EXCLUDED.tenant_id,
+                    user_role = EXCLUDED.user_role,
+                    is_active = true,
+                    updated_at = NOW()
+                ",
+                [strtolower(trim((string) $pppoeUser->username)), $pppoeUser->id, $tenant->schema_name, $tenant->id]
+            );
+        } catch (Throwable $e) {
+            Log::warning('Failed to self-heal PPPoE portal schema mapping', [
+                'username' => $pppoeUser->username,
+                'tenant_id' => $tenantId,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**

@@ -258,7 +258,7 @@ Schedule::job(new \App\Jobs\SendTenantExpiryWarningJob())
 // =============================================================================
 
 // Reconcile stale pending payments using TransactionStatus API - every 5 minutes
-Schedule::command('payments:check-pending')
+Schedule::command(\App\Console\Commands\CheckPendingPayments::class)
     ->everyFiveMinutes()
     ->name('check-pending-payments')
     ->withoutOverlapping()
