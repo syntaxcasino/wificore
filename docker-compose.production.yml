@@ -170,7 +170,6 @@ services:
       - RADIUS_SERVER_PORT=1812
       - REDIS_HOST=wificore-redis
       - REDIS_PORT=6379
-      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
       - REDIS_CLIENT=phpredis
       - CACHE_DRIVER=redis
       - CACHE_STORE=redis
@@ -277,7 +276,6 @@ services:
       - RADIUS_SERVER_PORT=1812
       - REDIS_HOST=wificore-redis
       - REDIS_PORT=6379
-      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
       - REDIS_CLIENT=phpredis
       - CACHE_DRIVER=redis
       - CACHE_STORE=redis
@@ -365,7 +363,6 @@ services:
       - DB_PASSWORD=${DB_PASSWORD}
       - REDIS_HOST=${REDIS_HOST:-wificore-redis}
       - REDIS_PORT=${REDIS_PORT:-6379}
-      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
       - REDIS_CLIENT=phpredis
       - CACHE_DRIVER=redis
       - CACHE_STORE=redis
@@ -452,7 +449,6 @@ services:
       - REDIS_CLIENT=phpredis
       - REDIS_HOST=${REDIS_HOST:-wificore-redis}
       - REDIS_PORT=${REDIS_PORT:-6379}
-      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
       - VICTORIA_METRICS_WRITE_URL=${VICTORIA_METRICS_WRITE_URL:-http://wificore-victoriametrics:8428}
       - PROVISIONING_SERVICE_URL=http://wificore-provisioning:8080
       - PROVISIONING_SERVICE_API_KEY=${PROVISIONING_SERVICE_API_KEY:-}
@@ -510,7 +506,6 @@ services:
       - APP_URL=${APP_URL}
       - REDIS_HOST=${REDIS_HOST:-wificore-redis}
       - REDIS_PORT=${REDIS_PORT:-6379}
-      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
       - REDIS_CLIENT=phpredis
       - CACHE_DRIVER=redis
       - CACHE_STORE=redis
@@ -583,7 +578,6 @@ services:
       - APP_URL=${APP_URL}
       - REDIS_HOST=${REDIS_HOST:-wificore-redis}
       - REDIS_PORT=${REDIS_PORT:-6379}
-      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
       - REDIS_CLIENT=phpredis
       - CACHE_DRIVER=redis
       - CACHE_STORE=redis
@@ -655,7 +649,6 @@ services:
       - APP_URL=${APP_URL}
       - REDIS_HOST=${REDIS_HOST:-wificore-redis}
       - REDIS_PORT=${REDIS_PORT:-6379}
-      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
       - REDIS_CLIENT=phpredis
       - CACHE_DRIVER=redis
       - CACHE_STORE=redis
@@ -727,7 +720,6 @@ services:
       - APP_URL=${APP_URL}
       - REDIS_HOST=${REDIS_HOST:-wificore-redis}
       - REDIS_PORT=${REDIS_PORT:-6379}
-      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
       - REDIS_CLIENT=phpredis
       - CACHE_DRIVER=redis
       - CACHE_STORE=redis
@@ -1314,7 +1306,6 @@ services:
         condition: service_healthy
     environment:
       TZ: Africa/Nairobi
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
     networks:
       wificore-network:
         ipv4_address: 172.70.0.7
@@ -1322,7 +1313,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "if [ -n \"${REDIS_PASSWORD:-}\" ]; then printf 'AUTH %s\\r\\nPING\\r\\n' \"$REDIS_PASSWORD\" | nc -w 2 localhost 6379 | grep -q PONG; else printf 'PING\\r\\n' | nc -w 2 localhost 6379 | grep -q PONG; fi",
+          "if [ -n \"$$REDIS_PASSWORD\" ]; then printf 'AUTH %s\\r\\nPING\\r\\n' \"$$REDIS_PASSWORD\" | nc -w 2 localhost 6379 | grep -q PONG; else printf 'PING\\r\\n' | nc -w 2 localhost 6379 | grep -q PONG; fi",
         ]
       interval: 10s
       timeout: 5s
