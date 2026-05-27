@@ -1,7 +1,9 @@
 #!/bin/sh
 set -eu
 
+# Trim trailing carriage returns and whitespace from password
 PASSWORD="${REDIS_PASSWORD:-}"
+PASSWORD=$(printf '%s' "$PASSWORD" | tr -d '\r' | sed 's/[[:space:]]*$//')
 
 # Generate the AUTH check lines
 if [ -n "$PASSWORD" ]; then
