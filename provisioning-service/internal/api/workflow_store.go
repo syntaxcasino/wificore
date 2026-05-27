@@ -239,6 +239,26 @@ func (s *persistedWorkflowStore) MarkOutboxRetry(id string, errorMessage string)
 	return s.persistLocked()
 }
 
+func (s *persistedWorkflowStore) GetByKey(idempotencyKey string) (workflowRecord, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.cleanupLocked()
+	record, ok := s.state.Workflows[idempotencyKey]
+	return record, ok
+}
+
+func (s *persistedWorkflowStore) GetActiveByRouter(routerID string) (workflowRecord, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.cleanupLocked()
+	for _, record := range s.state.Workflows {
+		if record.RouterID == routerID && record.Status == "running" {
+			return record, true
+		}
+	}
+	return workflowRecord{}, false
+}
+
 func (s *persistedWorkflowStore) load() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

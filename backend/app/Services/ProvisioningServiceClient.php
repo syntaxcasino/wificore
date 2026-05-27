@@ -568,6 +568,74 @@ class ProvisioningServiceClient implements ProvisioningCommandBus
         }
     }
 
+    public function getWorkflowStatus(string $idempotencyKey): ?array
+    {
+        $idempotencyKey = trim($idempotencyKey);
+        if ($idempotencyKey === '') {
+            return null;
+        }
+
+        try {
+            $response = $this->getHttpClient()->get($this->baseUrl . '/api/v1/workflows/' . rawurlencode($idempotencyKey));
+
+            if ($response->status() === 404) {
+                return null;
+            }
+
+            if ($response->failed()) {
+                throw new \Exception('Workflow status request failed: ' . $response->body());
+            }
+
+            $data = $response->json();
+            if (!($data['success'] ?? false)) {
+                throw new \Exception($data['error'] ?? 'Unknown workflow status error');
+            }
+
+            return $data['data'] ?? null;
+        } catch (\Exception $e) {
+            Log::warning('Workflow status lookup failed', [
+                'idempotency_key' => $idempotencyKey,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+    }
+
+    public function getActiveWorkflow(string $routerId): ?array
+    {
+        $routerId = trim($routerId);
+        if ($routerId === '') {
+            return null;
+        }
+
+        try {
+            $response = $this->getHttpClient()->get($this->baseUrl . '/api/v1/routers/' . rawurlencode($routerId) . '/workflows/active');
+
+            if ($response->status() === 404) {
+                return null;
+            }
+
+            if ($response->failed()) {
+                throw new \Exception('Active workflow request failed: ' . $response->body());
+            }
+
+            $data = $response->json();
+            if (!($data['success'] ?? false)) {
+                throw new \Exception($data['error'] ?? 'Unknown active workflow status error');
+            }
+
+            return $data['data'] ?? null;
+        } catch (\Exception $e) {
+            Log::warning('Active workflow lookup failed', [
+                'router_id' => $routerId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+    }
+
     public function provisionServiceWorkflow(Router $router, string $script, string $tenantId, ?RouterTask $task = null): array
     {
         try {
@@ -583,6 +651,7 @@ class ProvisioningServiceClient implements ProvisioningCommandBus
                 'script' => $script,
                 'connection' => $this->buildRouterConnectionPayload($router),
                 'callback' => $this->buildTaskCallbackPayload($task),
+                'idempotency_key' => $this->buildIdempotencyKey($router, RouterTask::TYPE_DEPLOY_SERVICE_CONFIG, $task),
             ], 'Service provisioning workflow failed');
         } catch (\Exception $e) {
             Log::error('Service provisioning workflow error', [

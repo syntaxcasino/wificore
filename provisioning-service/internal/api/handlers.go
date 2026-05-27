@@ -84,6 +84,46 @@ func (h *Handler) startOutboxWorker() {
 	}
 }
 
+// GetWorkflowStatus returns durable workflow state by idempotency key.
+func (h *Handler) GetWorkflowStatus(c *gin.Context) {
+	idempotencyKey := strings.TrimSpace(c.Param("idempotencyKey"))
+	if idempotencyKey == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "Missing idempotency key"})
+		return
+	}
+
+	record, ok := h.workflowStore.GetByKey(idempotencyKey)
+	if !ok {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "error": "Workflow not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    record,
+	})
+}
+
+// GetActiveWorkflow returns the active running workflow for a router, if any.
+func (h *Handler) GetActiveWorkflow(c *gin.Context) {
+	routerID := strings.TrimSpace(c.Param("routerId"))
+	if routerID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "Missing router ID"})
+		return
+	}
+
+	record, ok := h.workflowStore.GetActiveByRouter(routerID)
+	if !ok {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "error": "No active workflow found for router"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    record,
+	})
+}
+
 // HealthCheck handles health check requests
 func (h *Handler) HealthCheck(c *gin.Context) {
 	uptime := time.Since(startTime).Seconds()
