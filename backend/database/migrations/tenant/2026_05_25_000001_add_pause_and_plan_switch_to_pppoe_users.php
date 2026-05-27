@@ -31,6 +31,15 @@ return new class extends Migration
             if (!$columnExists('pppoe_users', 'pause_reason')) {
                 $table->string('pause_reason', 100)->nullable()->after('pause_ends_at');
             }
+            if (!$columnExists('pppoe_users', 'pause_count')) {
+                $table->unsignedSmallInteger('pause_count')->default(0)->after('pause_reason');
+            }
+            if (!$columnExists('pppoe_users', 'pause_billing_cycle_start')) {
+                $table->date('pause_billing_cycle_start')->nullable()->after('pause_count');
+            }
+            if (!$columnExists('pppoe_users', 'pause_duration_days')) {
+                $table->unsignedSmallInteger('pause_duration_days')->nullable()->after('pause_billing_cycle_start');
+            }
             if (!$columnExists('pppoe_users', 'pending_package_id')) {
                 $table->uuid('pending_package_id')->nullable()->after('package_id');
             }
@@ -50,6 +59,9 @@ return new class extends Migration
                 'paused_at',
                 'pause_ends_at',
                 'pause_reason',
+                'pause_count',
+                'pause_billing_cycle_start',
+                'pause_duration_days',
                 'pending_package_id',
                 'plan_switch_effective_date',
             ]);
