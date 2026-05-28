@@ -636,14 +636,14 @@
                 </div>
               </div>
               <p v-if="!plansLoading && !availablePlans.length" :class="['text-center py-8 text-sm', isDark ? 'text-white/30' : 'text-gray-400']">No plans available.</p>
-              <button @click="handlePlanSwitch" :disabled="!selectedPlanId || selectedPlanId == dashboardData.user?.package_id || planSwitchLoading" class="w-full py-3.5 bg-indigo-500 hover:bg-indigo-600 text-white font-bold rounded-xl transition-colors flex items-center justify-center gap-2 disabled:opacity-40">
-                <i v-if="planSwitchLoading" class="fas fa-spinner fa-spin"></i>
-                <span>{{ planSwitchLoading ? 'Scheduling…' : 'Schedule Plan Switch' }}</span>
-              </button>
             </div>
           </div>
-          <div :class="['p-4 flex-shrink-0 border-t', isDark ? 'border-white/10' : 'border-gray-100']">
-            <button @click="showPlanSwitchOverlay = false" :class="['w-full py-2.5 rounded-xl font-semibold text-sm border transition-colors', isDark ? 'border-white/10 text-white/50 hover:bg-white/5' : 'border-gray-200 text-gray-500 hover:bg-gray-50']">Close</button>
+          <div :class="['p-4 flex-shrink-0 border-t flex gap-3', isDark ? 'border-white/10' : 'border-gray-100']">
+            <button @click="showPlanSwitchOverlay = false" :class="['flex-1 py-2.5 rounded-xl font-semibold text-sm border transition-colors', isDark ? 'border-white/10 text-white/50 hover:bg-white/5' : 'border-gray-200 text-gray-500 hover:bg-gray-50']">Close</button>
+            <button v-if="!dashboardData.user?.pending_package_id" @click="handlePlanSwitch" :disabled="!selectedPlanId || selectedPlanId == dashboardData.user?.package_id || planSwitchLoading" :class="['flex-1 py-2.5 bg-indigo-500 hover:bg-indigo-600 text-white font-bold rounded-xl text-sm transition-colors flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed']">
+              <i v-if="planSwitchLoading" class="fas fa-spinner fa-spin"></i>
+              <span>{{ planSwitchLoading ? 'Scheduling…' : 'Schedule Plan Switch' }}</span>
+            </button>
           </div>
         </aside>
       </div>
