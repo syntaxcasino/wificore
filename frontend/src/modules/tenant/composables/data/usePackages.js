@@ -148,9 +148,11 @@ export function usePackages() {
       formMessage.value = { text: msg, type: 'success' }
       formSubmitted.value = true
 
-      // Purely event-driven - no manual list manipulation needed
-      // WebSocket events will handle the UI update automatically
-      
+      // Trigger immediate UI update via the event-driven path
+      if (newPackage?.id && typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('package-created', { detail: { package: newPackage } }))
+      }
+
       setTimeout(() => {
         showFormOverlay.value = false
         formSubmitted.value = false
