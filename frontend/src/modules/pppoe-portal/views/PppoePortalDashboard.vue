@@ -73,7 +73,7 @@
           </div>
           <div class="flex-1 min-w-0">
             <p class="font-semibold text-lg leading-tight">{{ accountStatus.title }}</p>
-            <template v-if="dashboardData.user?.status === 'paused'">
+            <template v-if="dashboardData.user?.is_paused">
               <p class="text-xs text-white/80 mt-1">
                 <i class="fas fa-calendar-day mr-1"></i>Paused {{ formatDate(dashboardData.user.paused_at) }}
                 <span class="mx-1.5">|</span>
@@ -86,7 +86,7 @@
               <p class="text-sm text-white/90 mt-1 truncate">{{ accountStatus.message }}</p>
             </template>
           </div>
-          <button v-if="dashboardData.user?.status !== 'paused'" @click="openPaymentModal"
+          <button v-if="!dashboardData.user?.is_paused" @click="openPaymentModal"
             class="flex-shrink-0 bg-white hover:bg-slate-100 text-slate-900 text-sm font-semibold px-5 py-2.5 rounded-lg whitespace-nowrap transition-all shadow-md hover:shadow-lg">
             Pay Now
           </button>
@@ -102,7 +102,7 @@
               <span class="mx-2">|</span>
               <i class="fas fa-calendar-check mr-1"></i>Unpauses {{ formatDate(dashboardData.user.pause_ends_at) }}
               <span class="mx-2">|</span>
-              <i class="fas fa-hourglass-half mr-1"></i>{{ dashboardData.user?.days_until_unpause ?? 0 }} days remaining
+              <i class="fas fa-hourglass-half mr-1"></i>{{ Math.max(0, Math.ceil((new Date(dashboardData.user.pause_ends_at) - new Date()) / (1000 * 60 * 60 * 24))) }} days remaining
             </p>
           </div>
         </div>
@@ -870,6 +870,14 @@ const emptyDashboard = () => ({
 });
 
 const accountStatus = computed(() => {
+  if (dashboardData.value?.user?.is_paused) {
+    return {
+      heroClass: 'hero-paused',
+      icon: 'fa-circle-pause',
+      title: 'Account Paused',
+      message: 'Your account is paused. Internet access is suspended.',
+    };
+  }
   const status = dashboardData.value?.user?.status;
   switch (status) {
     case 'active':
@@ -878,13 +886,6 @@ const accountStatus = computed(() => {
         icon: 'fa-circle-check',
         title: 'Account Active',
         message: 'Your internet service is active and running',
-      };
-    case 'paused':
-      return {
-        heroClass: 'hero-paused',
-        icon: 'fa-circle-pause',
-        title: 'Account Paused',
-        message: 'Your account is paused. Internet access is suspended.',
       };
     case 'suspended':
       return {
