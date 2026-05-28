@@ -79,7 +79,7 @@
                 <span class="mx-1.5">|</span>
                 <i class="fas fa-hourglass-half mr-1"></i>{{ dashboardData.user?.pause_duration_days ?? 0 }} days
                 <span class="mx-1.5">|</span>
-                <i class="fas fa-calendar-check mr-1"></i>Unpauses {{ formatDate(dashboardData.user.pause_ends_at) }}
+                <i class="fas fa-calendar-check mr-1"></i>Unpauses {{ formatDate(computedPauseEndsAt) }}
               </p>
             </template>
             <template v-else>
@@ -100,9 +100,9 @@
             <p class="text-xs mt-1 opacity-90">
               <i class="fas fa-calendar-day mr-1"></i>Paused {{ formatDate(dashboardData.user.paused_at) }}
               <span class="mx-2">|</span>
-              <i class="fas fa-calendar-check mr-1"></i>Unpauses {{ formatDate(dashboardData.user.pause_ends_at) }}
+              <i class="fas fa-calendar-check mr-1"></i>Unpauses {{ formatDate(computedPauseEndsAt) }}
               <span class="mx-2">|</span>
-              <i class="fas fa-hourglass-half mr-1"></i>{{ Math.max(0, Math.ceil((new Date(dashboardData.user.pause_ends_at) - new Date()) / (1000 * 60 * 60 * 24))) }} days remaining
+              <i class="fas fa-hourglass-half mr-1"></i>{{ pauseDaysRemaining }} days remaining
             </p>
           </div>
         </div>
@@ -584,11 +584,11 @@
                   </div>
                   <div class="flex justify-between">
                     <span :class="isDark ? 'text-white/50' : 'text-gray-500'">Auto-Resumes On</span>
-                    <span :class="isDark ? 'text-white font-semibold' : 'text-gray-800 font-semibold'">{{ formatDate(dashboardData.user.pause_ends_at) }}</span>
+                    <span :class="isDark ? 'text-white font-semibold' : 'text-gray-800 font-semibold'">{{ formatDate(computedPauseEndsAt) }}</span>
                   </div>
                   <div class="flex justify-between">
                     <span :class="isDark ? 'text-white/50' : 'text-gray-500'">Days Remaining</span>
-                    <span class="font-bold text-amber-500">{{ dashboardData.user?.days_until_unpause ?? 0 }} days</span>
+                    <span class="font-bold text-amber-500">{{ pauseDaysRemaining }} days</span>
                   </div>
                   <div class="flex justify-between">
                     <span :class="isDark ? 'text-white/50' : 'text-gray-500'">Duration Chosen</span>
@@ -909,6 +909,18 @@ const accountStatus = computed(() => {
         message: 'Please contact support',
       };
   }
+});
+
+const computedPauseEndsAt = computed(() => {
+  if (!dashboardData.value?.user?.paused_at || !dashboardData.value?.user?.pause_duration_days) return null;
+  const d = new Date(dashboardData.value.user.paused_at);
+  d.setDate(d.getDate() + dashboardData.value.user.pause_duration_days);
+  return d;
+});
+
+const pauseDaysRemaining = computed(() => {
+  if (!computedPauseEndsAt.value) return 0;
+  return Math.max(0, Math.ceil((computedPauseEndsAt.value - new Date()) / (1000 * 60 * 60 * 24)));
 });
 
 const paymentStatusLabel = computed(() => {
