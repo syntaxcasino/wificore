@@ -73,20 +73,20 @@
           </div>
           <div class="flex-1 min-w-0">
             <p class="font-semibold text-lg leading-tight">{{ accountStatus.title }}</p>
-            <template v-if="dashboardData.user?.status === 'paused'">
+            <template v-if="dashboardData.user?.is_paused">
               <p class="text-xs text-white/80 mt-1">
                 <i class="fas fa-calendar-day mr-1"></i>Paused {{ formatDate(dashboardData.user.paused_at) }}
                 <span class="mx-1.5">|</span>
                 <i class="fas fa-hourglass-half mr-1"></i>{{ dashboardData.user?.pause_duration_days ?? 0 }} days
                 <span class="mx-1.5">|</span>
-                <i class="fas fa-calendar-check mr-1"></i>Unpauses {{ formatDate(dashboardData.user.pause_ends_at) }}
+                <i class="fas fa-calendar-check mr-1"></i>Unpauses {{ formatDate(computedPauseEndsAt) }}
               </p>
             </template>
             <template v-else>
               <p class="text-sm text-white/90 mt-1 truncate">{{ accountStatus.message }}</p>
             </template>
           </div>
-          <button v-if="dashboardData.user?.status !== 'paused' && !dashboardData.user?.pending_package_id" @click="openPaymentModal"
+          <button v-if="!dashboardData.user?.is_paused && !dashboardData.user?.pending_package_id" @click="openPaymentModal"
             class="flex-shrink-0 bg-white hover:bg-slate-100 text-slate-900 text-sm font-semibold px-5 py-2.5 rounded-lg whitespace-nowrap transition-all shadow-md hover:shadow-lg">
             Pay Now
           </button>
@@ -100,9 +100,9 @@
             <p class="text-xs mt-1 opacity-90">
               <i class="fas fa-calendar-day mr-1"></i>Paused {{ formatDate(dashboardData.user.paused_at) }}
               <span class="mx-2">|</span>
-              <i class="fas fa-calendar-check mr-1"></i>Unpauses {{ formatDate(dashboardData.user.pause_ends_at) }}
+              <i class="fas fa-calendar-check mr-1"></i>Unpauses {{ formatDate(computedPauseEndsAt) }}
               <span class="mx-2">|</span>
-              <i class="fas fa-hourglass-half mr-1"></i>{{ dashboardData.user?.days_until_unpause ?? 0 }} days remaining
+              <i class="fas fa-hourglass-half mr-1"></i>{{ pauseDaysRemaining }} days remaining
             </p>
           </div>
         </div>
@@ -590,14 +590,28 @@
           </div>
           <div class="flex-1 overflow-y-auto p-4 space-y-4">
             <template v-if="dashboardData?.user?.is_paused">
-              <div :class="['rounded-xl p-4 border border-amber-500/25', isDark ? 'bg-amber-500/10' : 'bg-amber-50']">
-                <p :class="['font-semibold text-sm flex items-center gap-2', isDark ? 'text-amber-400' : 'text-amber-700']"><i class="fas fa-circle-pause"></i>Account is Paused</p>
-                <p :class="['text-xs mt-2', isDark ? 'text-white/50' : 'text-gray-500']">Pause expires <strong :class="isDark ? 'text-white' : 'text-gray-700'">{{ formatDate(dashboardData.user.pause_ends_at) }}</strong>.</p>
-                <p :class="['text-xs mt-1', isDark ? 'text-white/50' : 'text-gray-500']">Resuming early credits unused days back.</p>
+              <div :class="['rounded-xl p-5 border border-amber-500/25 space-y-3', isDark ? 'bg-amber-500/10' : 'bg-amber-50']">
+                <p :class="['font-semibold text-base flex items-center gap-2', isDark ? 'text-amber-400' : 'text-amber-700']"><i class="fas fa-circle-pause"></i>Account is Paused</p>
+                <div class="space-y-2 text-sm">
+                  <div class="flex justify-between">
+                    <span :class="isDark ? 'text-white/50' : 'text-gray-500'">Paused On</span>
+                    <span :class="isDark ? 'text-white font-semibold' : 'text-gray-800 font-semibold'">{{ formatDate(dashboardData.user.paused_at) }}</span>
+                  </div>
+                  <div class="flex justify-between">
+                    <span :class="isDark ? 'text-white/50' : 'text-gray-500'">Auto-Resumes On</span>
+                    <span :class="isDark ? 'text-white font-semibold' : 'text-gray-800 font-semibold'">{{ formatDate(computedPauseEndsAt) }}</span>
+                  </div>
+                  <div class="flex justify-between">
+                    <span :class="isDark ? 'text-white/50' : 'text-gray-500'">Days Remaining</span>
+                    <span class="font-bold text-amber-500">{{ pauseDaysRemaining }} days</span>
+                  </div>
+                  <div class="flex justify-between">
+                    <span :class="isDark ? 'text-white/50' : 'text-gray-500'">Duration Chosen</span>
+                    <span :class="isDark ? 'text-white font-semibold' : 'text-gray-800 font-semibold'">{{ dashboardData.user?.pause_duration_days ?? '-' }} days</span>
+                  </div>
+                </div>
+                <p :class="['text-xs mt-2', isDark ? 'text-white/40' : 'text-gray-400']"><i class="fas fa-lock mr-1"></i>Your account will automatically resume on the scheduled date. Manual unpause is not available.</p>
               </div>
-              <button @click="handleResumeAccount" :disabled="pauseLoading" class="w-full py-3.5 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl transition-colors flex items-center justify-center gap-2 disabled:opacity-50">
-                <i v-if="pauseLoading" class="fas fa-spinner fa-spin"></i><span>{{ pauseLoading ? 'Resuming…' : 'Resume Now' }}</span>
-              </button>
             </template>
             <template v-else>
               <div :class="['rounded-xl p-4 border border-teal-500/25 space-y-1.5', isDark ? 'bg-teal-500/10' : 'bg-teal-50']">
@@ -609,9 +623,20 @@
               <div v-if="dashboardData?.user?.payment_status !== 'paid'" class="rounded-xl bg-red-500/10 border border-red-500/20 p-3 text-xs text-red-500">
                 <i class="fas fa-circle-exclamation mr-1"></i>Account must be fully paid to enable pause.
               </div>
-              <button @click="handlePauseAccount" :disabled="pauseLoading || dashboardData?.user?.payment_status !== 'paid'" class="w-full py-3.5 bg-teal-500 hover:bg-teal-600 text-white font-bold rounded-xl transition-colors flex items-center justify-center gap-2 disabled:opacity-40">
-                <i v-if="pauseLoading" class="fas fa-spinner fa-spin"></i><span>{{ pauseLoading ? 'Pausing…' : 'Pause My Account' }}</span>
-              </button>
+              <div v-if="dashboardData?.user?.can_pause && dashboardData?.user?.payment_status === 'paid'" class="space-y-3">
+                <div>
+                  <label :class="['block text-xs font-semibold uppercase tracking-wider mb-2', isDark ? 'text-white/50' : 'text-gray-500']">Pause Duration</label>
+                  <div class="flex items-center gap-3">
+                    <input v-model.number="selectedPauseDays" type="range" min="14" max="30" class="flex-1 h-2 rounded-lg appearance-none cursor-pointer accent-teal-500" :class="isDark ? 'bg-white/10' : 'bg-gray-200'" />
+                    <input v-model.number="selectedPauseDays" type="number" min="14" max="30" class="w-16 px-2 py-1.5 rounded-lg text-sm font-bold text-center border outline-none transition-colors accent-teal-500" :class="isDark ? 'bg-white/8 border-white/15 text-white focus:border-teal-500/60' : 'bg-gray-50 border-gray-200 text-gray-900 focus:border-teal-400'" />
+                    <span :class="['font-bold text-sm', isDark ? 'text-teal-400' : 'text-teal-600']">days</span>
+                  </div>
+                  <p :class="['text-[10px] mt-1', isDark ? 'text-white/30' : 'text-gray-400']">Enter or slide to choose between 14 and 30 days</p>
+                </div>
+                <button @click="handlePauseAccount" :disabled="pauseLoading" class="w-full py-3.5 bg-teal-500 hover:bg-teal-600 text-white font-bold rounded-xl transition-colors flex items-center justify-center gap-2 disabled:opacity-40">
+                  <i v-if="pauseLoading" class="fas fa-spinner fa-spin"></i><span>{{ pauseLoading ? 'Pausing…' : 'Pause My Account' }}</span>
+                </button>
+              </div>
             </template>
           </div>
           <div :class="['p-4 flex-shrink-0 border-t', isDark ? 'border-white/10' : 'border-gray-100']">
@@ -722,7 +747,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import { usePppoePortal } from '../composables/usePppoePortal.js';
 
 const { 
@@ -767,6 +792,11 @@ const historyData = ref(null);
 
 // Pause/Resume
 const pauseLoading = ref(false);
+const selectedPauseDays = ref(14);
+watch(selectedPauseDays, (val) => {
+  if (val < 14) selectedPauseDays.value = 14;
+  if (val > 30) selectedPauseDays.value = 30;
+});
 
 // Plan Switch
 const availablePlans = ref([]);
@@ -866,6 +896,14 @@ const emptyDashboard = () => ({
 });
 
 const accountStatus = computed(() => {
+  if (dashboardData.value?.user?.is_paused) {
+    return {
+      heroClass: 'hero-paused',
+      icon: 'fa-circle-pause',
+      title: 'Account Paused',
+      message: 'Your account is paused. Internet access is suspended.',
+    };
+  }
   const status = dashboardData.value?.user?.status;
   switch (status) {
     case 'active':
@@ -874,13 +912,6 @@ const accountStatus = computed(() => {
         icon: 'fa-circle-check',
         title: 'Account Active',
         message: 'Your internet service is active and running',
-      };
-    case 'paused':
-      return {
-        heroClass: 'hero-paused',
-        icon: 'fa-circle-pause',
-        title: 'Account Paused',
-        message: 'Your account is paused. Internet access is suspended.',
       };
     case 'suspended':
       return {
@@ -904,6 +935,18 @@ const accountStatus = computed(() => {
         message: 'Please contact support',
       };
   }
+});
+
+const computedPauseEndsAt = computed(() => {
+  if (!dashboardData.value?.user?.paused_at || !dashboardData.value?.user?.pause_duration_days) return null;
+  const d = new Date(dashboardData.value.user.paused_at);
+  d.setDate(d.getDate() + dashboardData.value.user.pause_duration_days);
+  return d;
+});
+
+const pauseDaysRemaining = computed(() => {
+  if (!computedPauseEndsAt.value) return 0;
+  return Math.max(0, Math.ceil((computedPauseEndsAt.value - new Date()) / (1000 * 60 * 60 * 24)));
 });
 
 const paymentStatusLabel = computed(() => {
