@@ -73,7 +73,18 @@
           </div>
           <div class="flex-1 min-w-0">
             <p class="font-semibold text-lg leading-tight">{{ accountStatus.title }}</p>
-            <p class="text-sm text-white/90 mt-1 truncate">{{ accountStatus.message }}</p>
+            <template v-if="dashboardData.user?.status === 'paused'">
+              <p class="text-xs text-white/80 mt-1">
+                <i class="fas fa-calendar-day mr-1"></i>Paused {{ formatDate(dashboardData.user.paused_at) }}
+                <span class="mx-1.5">|</span>
+                <i class="fas fa-hourglass-half mr-1"></i>{{ dashboardData.user?.pause_duration_days ?? 0 }} days
+                <span class="mx-1.5">|</span>
+                <i class="fas fa-calendar-check mr-1"></i>Unpauses {{ formatDate(dashboardData.user.pause_ends_at) }}
+              </p>
+            </template>
+            <template v-else>
+              <p class="text-sm text-white/90 mt-1 truncate">{{ accountStatus.message }}</p>
+            </template>
           </div>
           <button v-if="dashboardData.user?.status !== 'paused'" @click="openPaymentModal"
             class="flex-shrink-0 bg-white hover:bg-slate-100 text-slate-900 text-sm font-semibold px-5 py-2.5 rounded-lg whitespace-nowrap transition-all shadow-md hover:shadow-lg">
@@ -173,9 +184,9 @@
                   <i class="fas fa-arrows-rotate"></i>Switch Plan
                   <span v-if="dashboardData.user?.pending_package_id" :class="['ml-auto text-xs px-1.5 py-0.5 rounded-full font-medium', isDark ? 'bg-amber-500/20 text-amber-400' : 'bg-amber-100 text-amber-700']">Pending</span>
                 </button>
-                <button @click="openPauseOverlay" class="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium border transition-colors" :class="dashboardData.user?.is_paused ? (isDark ? 'bg-amber-500/20 text-amber-400 border-amber-500/30 hover:bg-amber-500/30' : 'bg-amber-100 text-amber-700 border-amber-200 hover:bg-amber-200') : (isDark ? 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700' : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200')">
-                  <i :class="['fas', dashboardData.user?.is_paused ? 'fa-circle-pause' : 'fa-circle-pause']"></i>
-                  {{ dashboardData.user?.is_paused ? 'View Pause Status' : 'Pause Account' }}
+                <button v-if="!dashboardData.user?.is_paused" @click="openPauseOverlay" :class="['w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium border transition-colors', isDark ? 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700' : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200']">
+                  <i class="fas fa-circle-pause"></i>
+                  Pause Account
                 </button>
               </div>
             </div>
