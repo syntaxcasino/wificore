@@ -11,20 +11,7 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('pppoe_users', function (Blueprint $table) {
-            // Portal password for customer self-service (different from PPPoE client password)
-            $table->string('portal_password', 255)->nullable()->after('account_number')
-                ->comment('Hashed portal password for customer self-service portal');
-            
-            // Account balance for prepaid/flexi accounts
-            $table->decimal('balance', 12, 2)->default(0)->after('payment_status')
-                ->comment('Account balance for payments/vouchers');
-        });
-
-        // Add index for faster account number lookups (important for portal login)
-        Schema::table('pppoe_users', function (Blueprint $table) {
-            $table->index('account_number', 'idx_pppoe_account_number');
-        });
+        // Merged into 2026_01_20_000001_create_tenant_pppoe_users_table.php
     }
 
     /**
@@ -32,9 +19,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('pppoe_users', function (Blueprint $table) {
-            $table->dropColumn(['portal_password', 'balance']);
-            $table->dropIndex('idx_pppoe_account_number');
-        });
+        // Merged into 2026_01_20_000001_create_tenant_pppoe_users_table.php
     }
 };
