@@ -142,6 +142,10 @@ export function usePackages() {
     formSubmitting.value = true
     formMessage.value = { text: '', type: '' }
     try {
+      // Ensure validity is populated from duration if empty
+      if (!formData.value.validity && formData.value.duration) {
+        formData.value.validity = formData.value.duration
+      }
       const response = await axios.post('/packages', formData.value)
       const msg = response.data?.message || 'Package created successfully'
       const newPackage = response.data?.data
