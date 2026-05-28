@@ -114,7 +114,7 @@ class PackageController extends Controller
             'price' => $request->price,
             'devices' => $request->devices,
             'data_limit' => $request->data_limit,
-            'validity' => $request->validity ?? $request->duration,
+            'validity' => !empty($request->validity) ? $request->validity : $request->duration,
             'enable_burst' => $request->enable_burst ?? false,
             'enable_schedule' => $request->enable_schedule ?? false,
             'scheduled_activation_time' => $request->scheduled_activation_time,
