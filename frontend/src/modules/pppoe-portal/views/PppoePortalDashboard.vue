@@ -618,7 +618,7 @@
                   dashboardData.user?.package_id === plan.id ? 'border-indigo-400/50 bg-indigo-500/10 cursor-default' :
                   selectedPlanId === plan.id ? 'border-indigo-500/60 bg-indigo-500/10' :
                   (isDark ? 'bg-white/5 border-white/8 hover:border-indigo-500/30' : 'bg-gray-50 border-gray-100 hover:border-indigo-300')]"
-                @click="dashboardData.user?.package_id !== plan.id && (selectedPlanId = plan.id)">
+                @click="selectedPlanId = plan.id">
                 <div>
                   <div class="flex items-center gap-2">
                     <p :class="['font-semibold text-sm', isDark ? 'text-white' : 'text-gray-800']">{{ plan.name }}</p>
