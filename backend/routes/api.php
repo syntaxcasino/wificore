@@ -369,6 +369,9 @@ Route::prefix('pppoe-portal')->group(function () {
         Route::post('/plans/switch', [PppoePortalController::class, 'requestPlanSwitch'])
             ->middleware('throttle:5,1')
             ->name('api.pppoe-portal.plans.switch');
+        Route::post('/plans/switch/cancel', [PppoePortalController::class, 'cancelPlanSwitch'])
+            ->middleware('throttle:5,1')
+            ->name('api.pppoe-portal.plans.switch.cancel');
 
         // Timed Vouchers
         Route::get('/vouchers/timed/options', [PppoePortalController::class, 'timedVoucherOptions'])

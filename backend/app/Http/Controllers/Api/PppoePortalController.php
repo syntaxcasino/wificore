@@ -1036,6 +1036,14 @@ SQL;
             return response()->json(['success' => false, 'message' => 'Unauthorized'], 401);
         }
 
+        // Block payments while a plan switch is pending
+        if ($pppoeUser->hasPendingPlanSwitch()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'A plan switch is pending. Payments are disabled until the switch is completed or cancelled.',
+            ], 422);
+        }
+
         $validated = $request->validate([
             'phone_number' => 'required|string|regex:/^254[0-9]{9}$/',
             'amount' => 'required|numeric|min:10|max:100000',
@@ -1211,6 +1219,14 @@ SQL;
 
         if (!$pppoeUser) {
             return response()->json(['success' => false, 'message' => 'Unauthorized'], 401);
+        }
+
+        // Block voucher redemption while a plan switch is pending
+        if ($pppoeUser->hasPendingPlanSwitch()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'A plan switch is pending. Voucher redemption is disabled until the switch is completed or cancelled.',
+            ], 422);
         }
 
         $validated = $request->validate([
@@ -1942,12 +1958,46 @@ SQL;
 
         return response()->json([
             'success' => true,
-            'message' => "Plan switch to \"{$package->name}\" scheduled for " . $effectiveDate->toDateString() . '. It takes effect at your next renewal.',
+            'message' => "Plan switch to \"{$package->name}\" scheduled for " . $effectiveDate->toDateString() . '. It takes effect when your current subscription expires.',
             'data'    => [
                 'pending_package_id'         => $package->id,
                 'pending_package_name'       => $package->name,
                 'plan_switch_effective_date' => $effectiveDate->toIso8601String(),
             ],
+        ]);
+    }
+
+    public function cancelPlanSwitch(Request $request): JsonResponse
+    {
+        $pppoeUser = $request->attributes->get('pppoe_user');
+        if (!$pppoeUser) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized'], 401);
+        }
+
+        if (!$pppoeUser->hasPendingPlanSwitch()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No pending plan switch to cancel.',
+            ], 422);
+        }
+
+        $pendingPackageId = $pppoeUser->pending_package_id;
+
+        $pppoeUser->update([
+            'pending_package_id'         => null,
+            'plan_switch_effective_date' => null,
+        ]);
+
+        $this->invalidateDashboardCache($pppoeUser);
+
+        Log::info('PPPoE portal: plan switch cancelled', [
+            'account_number'     => $pppoeUser->account_number,
+            'pending_package_id' => $pendingPackageId,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Plan switch cancelled successfully.',
         ]);
     }
 
