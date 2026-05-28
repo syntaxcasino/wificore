@@ -92,6 +92,21 @@
           </button>
         </div>
 
+        <!-- Pause Notification -->
+        <div v-if="dashboardData.user?.is_paused" :class="['rounded-xl p-4 border mb-6 flex items-start gap-3 shadow-sm', isDark ? 'bg-amber-500/10 border-amber-500/30 text-amber-400' : 'bg-amber-50 border-amber-200 text-amber-800']">
+          <div class="flex-shrink-0 mt-0.5"><i class="fas fa-circle-pause text-lg"></i></div>
+          <div class="flex-1 min-w-0">
+            <p class="font-semibold text-sm">Account Paused</p>
+            <p class="text-xs mt-1 opacity-90">
+              <i class="fas fa-calendar-day mr-1"></i>Paused {{ formatDate(dashboardData.user.paused_at) }}
+              <span class="mx-2">|</span>
+              <i class="fas fa-calendar-check mr-1"></i>Unpauses {{ formatDate(dashboardData.user.pause_ends_at) }}
+              <span class="mx-2">|</span>
+              <i class="fas fa-hourglass-half mr-1"></i>{{ dashboardData.user?.days_until_unpause ?? 0 }} days remaining
+            </p>
+          </div>
+        </div>
+
         <!-- ── Stats ── -->
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <!-- Session -->
