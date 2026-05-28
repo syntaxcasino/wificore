@@ -611,29 +611,31 @@
                 {{ planSwitchLoading ? 'Cancelling…' : 'Cancel Switch' }}
               </button>
             </div>
-            <div v-if="plansLoading" class="flex justify-center py-8"><div class="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div></div>
-            <div v-else class="space-y-2">
-              <div v-for="plan in availablePlans" :key="plan.id"
-                :class="['flex items-center justify-between rounded-xl border p-3 transition-all cursor-pointer',
-                  dashboardData.user?.package_id === plan.id ? 'border-indigo-400/50 bg-indigo-500/10 cursor-default' :
-                  selectedPlanId === plan.id ? 'border-indigo-500/60 bg-indigo-500/10' :
-                  (isDark ? 'bg-white/5 border-white/8 hover:border-indigo-500/30' : 'bg-gray-50 border-gray-100 hover:border-indigo-300')]"
-                @click="selectedPlanId = plan.id">
-                <div>
-                  <div class="flex items-center gap-2">
-                    <p :class="['font-semibold text-sm', isDark ? 'text-white' : 'text-gray-800']">{{ plan.name }}</p>
-                    <span v-if="dashboardData.user?.package_id === plan.id" :class="['text-[10px] px-1.5 py-0.5 rounded-full font-semibold', isDark ? 'bg-indigo-500/20 text-indigo-400' : 'bg-indigo-100 text-indigo-700']">Current</span>
+            <div v-if="!dashboardData.user?.pending_package_id">
+              <div v-if="plansLoading" class="flex justify-center py-8"><div class="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div></div>
+              <div v-else class="space-y-2">
+                <div v-for="plan in availablePlans" :key="plan.id"
+                  :class="['flex items-center justify-between rounded-xl border p-3 transition-all cursor-pointer',
+                    dashboardData.user?.package_id === plan.id ? 'border-indigo-400/50 bg-indigo-500/10 cursor-default' :
+                    selectedPlanId === plan.id ? 'border-indigo-500/60 bg-indigo-500/10' :
+                    (isDark ? 'bg-white/5 border-white/8 hover:border-indigo-500/30' : 'bg-gray-50 border-gray-100 hover:border-indigo-300')]"
+                  @click="selectedPlanId = plan.id">
+                  <div>
+                    <div class="flex items-center gap-2">
+                      <p :class="['font-semibold text-sm', isDark ? 'text-white' : 'text-gray-800']">{{ plan.name }}</p>
+                      <span v-if="dashboardData.user?.package_id === plan.id" :class="['text-[10px] px-1.5 py-0.5 rounded-full font-semibold', isDark ? 'bg-indigo-500/20 text-indigo-400' : 'bg-indigo-100 text-indigo-700']">Current</span>
+                    </div>
+                    <p :class="['text-xs mt-0.5', isDark ? 'text-white/40' : 'text-gray-400']">{{ plan.download_speed }}↓ / {{ plan.upload_speed }}↑</p>
                   </div>
-                  <p :class="['text-xs mt-0.5', isDark ? 'text-white/40' : 'text-gray-400']">{{ plan.download_speed }}↓ / {{ plan.upload_speed }}↑</p>
+                  <p :class="['font-bold text-sm', isDark ? 'text-white' : 'text-gray-800']">KES {{ formatNumber(plan.price) }}<span :class="['text-xs font-normal', isDark ? 'text-white/30' : 'text-gray-400']">/mo</span></p>
                 </div>
-                <p :class="['font-bold text-sm', isDark ? 'text-white' : 'text-gray-800']">KES {{ formatNumber(plan.price) }}<span :class="['text-xs font-normal', isDark ? 'text-white/30' : 'text-gray-400']">/mo</span></p>
               </div>
+              <p v-if="!plansLoading && !availablePlans.length" :class="['text-center py-8 text-sm', isDark ? 'text-white/30' : 'text-gray-400']">No plans available.</p>
+              <button @click="handlePlanSwitch" :disabled="!selectedPlanId || selectedPlanId === dashboardData.user?.package_id || planSwitchLoading" class="w-full py-3.5 bg-indigo-500 hover:bg-indigo-600 text-white font-bold rounded-xl transition-colors flex items-center justify-center gap-2 disabled:opacity-40">
+                <i v-if="planSwitchLoading" class="fas fa-spinner fa-spin"></i>
+                <span>{{ planSwitchLoading ? 'Scheduling…' : 'Schedule Plan Switch' }}</span>
+              </button>
             </div>
-            <p v-if="!plansLoading && !availablePlans.length" :class="['text-center py-8 text-sm', isDark ? 'text-white/30' : 'text-gray-400']">No plans available.</p>
-            <button @click="handlePlanSwitch" :disabled="!selectedPlanId || selectedPlanId === dashboardData.user?.package_id || planSwitchLoading" class="w-full py-3.5 bg-indigo-500 hover:bg-indigo-600 text-white font-bold rounded-xl transition-colors flex items-center justify-center gap-2 disabled:opacity-40">
-              <i v-if="planSwitchLoading" class="fas fa-spinner fa-spin"></i>
-              <span>{{ planSwitchLoading ? 'Scheduling…' : 'Schedule Plan Switch' }}</span>
-            </button>
           </div>
           <div :class="['p-4 flex-shrink-0 border-t', isDark ? 'border-white/10' : 'border-gray-100']">
             <button @click="showPlanSwitchOverlay = false" :class="['w-full py-2.5 rounded-xl font-semibold text-sm border transition-colors', isDark ? 'border-white/10 text-white/50 hover:bg-white/5' : 'border-gray-200 text-gray-500 hover:bg-gray-50']">Close</button>
