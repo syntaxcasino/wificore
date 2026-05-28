@@ -616,9 +616,10 @@
                   <label :class="['block text-xs font-semibold uppercase tracking-wider mb-2', isDark ? 'text-white/50' : 'text-gray-500']">Pause Duration</label>
                   <div class="flex items-center gap-3">
                     <input v-model.number="selectedPauseDays" type="range" min="14" max="30" class="flex-1 h-2 rounded-lg appearance-none cursor-pointer accent-teal-500" :class="isDark ? 'bg-white/10' : 'bg-gray-200'" />
-                    <span :class="['min-w-[4rem] text-center font-bold text-sm', isDark ? 'text-teal-400' : 'text-teal-600']">{{ selectedPauseDays }} days</span>
+                    <input v-model.number="selectedPauseDays" type="number" min="14" max="30" class="w-16 px-2 py-1.5 rounded-lg text-sm font-bold text-center border outline-none transition-colors accent-teal-500" :class="isDark ? 'bg-white/8 border-white/15 text-white focus:border-teal-500/60' : 'bg-gray-50 border-gray-200 text-gray-900 focus:border-teal-400'" />
+                    <span :class="['font-bold text-sm', isDark ? 'text-teal-400' : 'text-teal-600']">days</span>
                   </div>
-                  <p :class="['text-[10px] mt-1', isDark ? 'text-white/30' : 'text-gray-400']">Slide to choose between 14 and 30 days</p>
+                  <p :class="['text-[10px] mt-1', isDark ? 'text-white/30' : 'text-gray-400']">Enter or slide to choose between 14 and 30 days</p>
                 </div>
                 <button @click="handlePauseAccount" :disabled="pauseLoading" class="w-full py-3.5 bg-teal-500 hover:bg-teal-600 text-white font-bold rounded-xl transition-colors flex items-center justify-center gap-2 disabled:opacity-40">
                   <i v-if="pauseLoading" class="fas fa-spinner fa-spin"></i><span>{{ pauseLoading ? 'Pausing…' : 'Pause My Account' }}</span>
@@ -726,7 +727,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import { usePppoePortal } from '../composables/usePppoePortal.js';
 
 const { 
@@ -771,6 +772,10 @@ const historyData = ref(null);
 // Pause/Resume
 const pauseLoading = ref(false);
 const selectedPauseDays = ref(14);
+watch(selectedPauseDays, (val) => {
+  if (val < 14) selectedPauseDays.value = 14;
+  if (val > 30) selectedPauseDays.value = 30;
+});
 
 // Plan Switch
 const availablePlans = ref([]);
