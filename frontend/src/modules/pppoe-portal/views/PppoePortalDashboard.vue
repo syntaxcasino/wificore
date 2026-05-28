@@ -169,7 +169,7 @@
                 <i class="fas fa-hourglass-half"></i>Buy Timed Voucher
               </button>
               <div :class="['pt-2 space-y-2 border-t', isDark ? 'border-slate-800' : 'border-slate-100']">
-                <button @click="openPlanSwitchOverlay" :class="['w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium border transition-colors', isDark ? 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700' : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200']">
+                <button v-if="availablePlans.length > 1" @click="openPlanSwitchOverlay" :class="['w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium border transition-colors', isDark ? 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700' : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200']">
                   <i class="fas fa-arrows-rotate"></i>Switch Plan
                   <span v-if="dashboardData.user?.pending_package_id" :class="['ml-auto text-xs px-1.5 py-0.5 rounded-full font-medium', isDark ? 'bg-amber-500/20 text-amber-400' : 'bg-amber-100 text-amber-700']">Pending</span>
                 </button>
@@ -1363,6 +1363,9 @@ onMounted(() => {
   }
 
   loadDashboard({ force: !seed });
+
+  // Pre-load plans so we can decide whether to show the Switch Plan button
+  loadPlans().catch(() => {});
 });
 
 onBeforeUnmount(() => {
