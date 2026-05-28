@@ -534,7 +534,7 @@
       </div>
     </Teleport>
 
-    <!-- Pause/Resume Overlay -->
+    <!-- Pause Overlay -->
     <Teleport to="body">
       <div v-if="showPauseOverlay" class="fixed inset-0 z-50">
         <div class="absolute inset-0 bg-black/60" @click="showPauseOverlay = false"></div>
@@ -713,7 +713,6 @@ const {
   checkPaymentStatus,
   getDashboardSeed,
   pauseAccount,
-  resumeAccount,
   fetchPlans,
   requestPlanSwitch,
   fetchTimedVoucherOptions,
@@ -1298,21 +1297,6 @@ async function handlePauseAccount() {
   } catch (err) {
     console.error('Pause failed:', err);
     showSuccess(err?.response?.data?.message || 'Failed to pause account.');
-  } finally {
-    pauseLoading.value = false;
-  }
-}
-
-async function handleResumeAccount() {
-  pauseLoading.value = true;
-  try {
-    const result = await resumeAccount();
-    showSuccess(result.message || 'Account resumed.');
-    showPauseOverlay.value = false;
-    await loadDashboard({ force: true });
-  } catch (err) {
-    console.error('Resume failed:', err);
-    showSuccess(err?.response?.data?.message || 'Failed to resume account.');
   } finally {
     pauseLoading.value = false;
   }
