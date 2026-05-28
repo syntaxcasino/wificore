@@ -2112,6 +2112,14 @@ SQL;
             return response()->json(['success' => false, 'message' => 'Unauthorized'], 401);
         }
 
+        // Block timed voucher purchase while a plan switch is pending
+        if ($pppoeUser->hasPendingPlanSwitch()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'A plan switch is pending. Timed voucher purchase is disabled until the switch is completed or cancelled.',
+            ], 422);
+        }
+
         $validHours = array_column(self::TIMED_VOUCHER_DURATIONS, 'hours');
         $validated  = $request->validate([
             'phone_number'   => 'required|string|regex:/^254[0-9]{9}$/',

@@ -175,7 +175,12 @@
               >
                 <i class="fas fa-ticket"></i>Redeem Voucher
               </button>
-              <button @click="openTimedVoucherOverlay" class="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium border transition-colors bg-slate-800 text-white border-slate-800 hover:bg-slate-900">
+              <button
+                :disabled="dashboardData.user?.pending_package_id"
+                @click="openTimedVoucherOverlay"
+                :class="['w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium border transition-colors', dashboardData.user?.pending_package_id ? 'opacity-50 cursor-not-allowed bg-gray-400 text-white border-gray-400' : 'bg-slate-800 text-white border-slate-800 hover:bg-slate-900']"
+                :title="dashboardData.user?.pending_package_id ? 'Timed voucher purchase disabled while plan switch is pending' : ''"
+              >
                 <i class="fas fa-hourglass-half"></i>Buy Timed Voucher
               </button>
               <div :class="['pt-2 space-y-2 border-t', isDark ? 'border-slate-800' : 'border-slate-100']">
