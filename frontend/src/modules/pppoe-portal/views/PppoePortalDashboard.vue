@@ -186,26 +186,26 @@
             </div>
             <div class="p-4 space-y-2">
               <button
-                :disabled="dashboardData.user?.pending_package_id"
+                :disabled="dashboardData.user?.pending_package_id || dashboardData.user?.is_paused"
                 @click="openPaymentModal"
-                :class="['w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium border transition-colors', dashboardData.user?.pending_package_id ? 'opacity-50 cursor-not-allowed bg-gray-400 text-white border-gray-400' : 'bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700']"
-                :title="dashboardData.user?.pending_package_id ? 'Payments disabled while plan switch is pending' : ''"
+                :class="['w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium border transition-colors', (dashboardData.user?.pending_package_id || dashboardData.user?.is_paused) ? 'opacity-50 cursor-not-allowed bg-gray-400 text-white border-gray-400' : 'bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700']"
+                :title="dashboardData.user?.pending_package_id ? 'Payments disabled while plan switch is pending' : (dashboardData.user?.is_paused ? 'Payments disabled while account is paused' : '')"
               >
                 <i class="fas fa-mobile-screen-button"></i>Pay via M-Pesa
               </button>
               <button
-                :disabled="dashboardData.user?.pending_package_id"
+                :disabled="dashboardData.user?.pending_package_id || dashboardData.user?.is_paused"
                 @click="showVoucherModal = true"
-                :class="['w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium border transition-colors', dashboardData.user?.pending_package_id ? 'opacity-50 cursor-not-allowed bg-gray-400 text-white border-gray-400' : 'bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700']"
-                :title="dashboardData.user?.pending_package_id ? 'Voucher redemption disabled while plan switch is pending' : ''"
+                :class="['w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium border transition-colors', (dashboardData.user?.pending_package_id || dashboardData.user?.is_paused) ? 'opacity-50 cursor-not-allowed bg-gray-400 text-white border-gray-400' : 'bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700']"
+                :title="dashboardData.user?.pending_package_id ? 'Voucher redemption disabled while plan switch is pending' : (dashboardData.user?.is_paused ? 'Voucher redemption disabled while account is paused' : '')"
               >
                 <i class="fas fa-ticket"></i>Redeem Voucher
               </button>
               <button
-                :disabled="dashboardData.user?.pending_package_id"
+                :disabled="dashboardData.user?.pending_package_id || dashboardData.user?.is_paused"
                 @click="openTimedVoucherOverlay"
-                :class="['w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium border transition-colors', dashboardData.user?.pending_package_id ? 'opacity-50 cursor-not-allowed bg-gray-400 text-white border-gray-400' : 'bg-slate-800 text-white border-slate-800 hover:bg-slate-900']"
-                :title="dashboardData.user?.pending_package_id ? 'Timed voucher purchase disabled while plan switch is pending' : ''"
+                :class="['w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium border transition-colors', (dashboardData.user?.pending_package_id || dashboardData.user?.is_paused) ? 'opacity-50 cursor-not-allowed bg-gray-400 text-white border-gray-400' : 'bg-slate-800 text-white border-slate-800 hover:bg-slate-900']"
+                :title="dashboardData.user?.pending_package_id ? 'Timed voucher purchase disabled while plan switch is pending' : (dashboardData.user?.is_paused ? 'Timed voucher purchase disabled while account is paused' : '')"
               >
                 <i class="fas fa-hourglass-half"></i>Buy Timed Voucher
               </button>
@@ -275,8 +275,9 @@
     <!-- ── Mobile bottom nav ── -->
     <nav :class="['fixed bottom-0 left-0 right-0 sm:hidden flex items-center justify-around px-2 pt-2 pb-3 z-40 border-t transition-colors', isDark ? 'border-slate-800 bg-slate-950' : 'border-slate-200 bg-white']">
       <button :class="['flex flex-col items-center gap-1 flex-1 py-1 text-[10px] font-semibold rounded-lg', isDark ? 'text-indigo-400' : 'text-indigo-600']"><i class="fas fa-gauge-high text-lg"></i>Home</button>
-      <button @click="openPaymentsOverlay" :class="['flex flex-col items-center gap-1 flex-1 py-1 text-[10px] font-semibold', isDark ? 'text-slate-400 hover:text-slate-300' : 'text-slate-400 hover:text-slate-700']"><i class="fas fa-credit-card text-lg"></i>Pay</button>
-      <button :disabled="dashboardData.user?.pending_package_id" @click="openPaymentModal" :class="['w-12 h-12 rounded-full flex items-center justify-center text-white shadow-lg flex-shrink-0', dashboardData.user?.pending_package_id ? 'bg-gray-400 cursor-not-allowed' : 'bg-indigo-600']"><i class="fas fa-bolt text-xl"></i></button>
+      <button v-if="!dashboardData.user?.is_paused" @click="openPaymentsOverlay" :class="['flex flex-col items-center gap-1 flex-1 py-1 text-[10px] font-semibold', isDark ? 'text-slate-400 hover:text-slate-300' : 'text-slate-400 hover:text-slate-700']"><i class="fas fa-credit-card text-lg"></i>Pay</button>
+      <button v-if="!dashboardData.user?.is_paused" :disabled="dashboardData.user?.pending_package_id" @click="openPaymentModal" :class="['w-12 h-12 rounded-full flex items-center justify-center text-white shadow-lg flex-shrink-0', dashboardData.user?.pending_package_id ? 'bg-gray-400 cursor-not-allowed' : 'bg-indigo-600']"><i class="fas fa-bolt text-xl"></i></button>
+      <div v-else class="flex-1"></div>
       <button @click="openHistoryOverlay" :class="['flex flex-col items-center gap-1 flex-1 py-1 text-[10px] font-semibold', isDark ? 'text-slate-400 hover:text-slate-300' : 'text-slate-400 hover:text-slate-700']"><i class="fas fa-chart-bar text-lg"></i>Usage</button>
       <button @click="handleLogout" :class="['flex flex-col items-center gap-1 flex-1 py-1 text-[10px] font-semibold', isDark ? 'text-slate-400 hover:text-red-400' : 'text-slate-400 hover:text-red-500']"><i class="fas fa-arrow-right-from-bracket text-lg"></i>Logout</button>
     </nav>
@@ -384,7 +385,7 @@
                 <div><p :class="['text-xs', isDark ? 'text-white/40' : 'text-gray-400']">Plan Amount</p><p :class="['font-semibold text-sm', isDark ? 'text-white' : 'text-gray-800']">KES {{ formatNumber(planAmount) }}</p></div>
                 <div><p :class="['text-xs', isDark ? 'text-white/40' : 'text-gray-400']">Amount Due</p><p :class="['font-bold text-sm', isDark ? 'text-amber-400' : 'text-amber-600']">KES {{ formatNumber(paymentAmount) }}</p></div>
               </div>
-              <button :disabled="dashboardData.user?.pending_package_id" @click="openPaymentModal" :class="['mt-4 w-full py-3 font-bold rounded-xl text-sm transition-colors', dashboardData.user?.pending_package_id ? 'bg-gray-400 text-white cursor-not-allowed' : 'bg-emerald-500 hover:bg-emerald-600 text-white']"><i class="fas fa-mobile-screen-button mr-2"></i>Pay KES {{ formatNumber(paymentAmount) }}</button>
+              <button :disabled="dashboardData.user?.pending_package_id || dashboardData?.user?.is_paused" @click="openPaymentModal" :class="['mt-4 w-full py-3 font-bold rounded-xl text-sm transition-colors', (dashboardData.user?.pending_package_id || dashboardData?.user?.is_paused) ? 'opacity-50 cursor-not-allowed bg-gray-400 text-white' : 'bg-emerald-500 hover:bg-emerald-600 text-white']"><i class="fas fa-mobile-screen-button mr-2"></i>Pay KES {{ formatNumber(paymentAmount) }}</button>
             </div>
             <div>
               <p :class="['text-xs font-semibold uppercase tracking-wider mb-3', isDark ? 'text-white/40' : 'text-gray-400']">Payment History</p>
