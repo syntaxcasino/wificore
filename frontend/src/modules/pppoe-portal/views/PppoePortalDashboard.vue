@@ -185,13 +185,13 @@
               <h3 :class="['font-semibold text-sm', isDark ? 'text-slate-200' : 'text-slate-800']">Quick Actions</h3>
             </div>
             <div class="p-4 space-y-2">
-              <button @click="openPaymentModal" class="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium border transition-colors bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700">
+              <button @click="openPaymentModal" :disabled="dashboardData.user?.is_paused" :class="['w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium border transition-colors', dashboardData.user?.is_paused ? 'opacity-50 cursor-not-allowed bg-gray-400 text-white border-gray-400' : 'bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700']">
                 <i class="fas fa-mobile-screen-button"></i>Pay via M-Pesa
               </button>
-              <button @click="showVoucherModal = true" class="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium border transition-colors bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700">
+              <button @click="showVoucherModal = true" :disabled="dashboardData.user?.is_paused" :class="['w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium border transition-colors', dashboardData.user?.is_paused ? 'opacity-50 cursor-not-allowed bg-gray-400 text-white border-gray-400' : 'bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700']">
                 <i class="fas fa-ticket"></i>Redeem Voucher
               </button>
-              <button @click="openTimedVoucherOverlay" class="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium border transition-colors bg-slate-800 text-white border-slate-800 hover:bg-slate-900">
+              <button @click="openTimedVoucherOverlay" :disabled="dashboardData.user?.is_paused" :class="['w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium border transition-colors', dashboardData.user?.is_paused ? 'opacity-50 cursor-not-allowed bg-gray-400 text-white border-gray-400' : 'bg-slate-800 text-white border-slate-800 hover:bg-slate-900']">
                 <i class="fas fa-hourglass-half"></i>Buy Timed Voucher
               </button>
               <div :class="['pt-2 space-y-2 border-t', isDark ? 'border-slate-800' : 'border-slate-100']">
@@ -260,8 +260,9 @@
     <!-- ── Mobile bottom nav ── -->
     <nav :class="['fixed bottom-0 left-0 right-0 sm:hidden flex items-center justify-around px-2 pt-2 pb-3 z-40 border-t transition-colors', isDark ? 'border-slate-800 bg-slate-950' : 'border-slate-200 bg-white']">
       <button :class="['flex flex-col items-center gap-1 flex-1 py-1 text-[10px] font-semibold rounded-lg', isDark ? 'text-indigo-400' : 'text-indigo-600']"><i class="fas fa-gauge-high text-lg"></i>Home</button>
-      <button @click="openPaymentsOverlay" :class="['flex flex-col items-center gap-1 flex-1 py-1 text-[10px] font-semibold', isDark ? 'text-slate-400 hover:text-slate-300' : 'text-slate-400 hover:text-slate-700']"><i class="fas fa-credit-card text-lg"></i>Pay</button>
-      <button @click="openPaymentModal" class="w-12 h-12 bg-indigo-600 rounded-full flex items-center justify-center text-white shadow-lg flex-shrink-0"><i class="fas fa-bolt text-xl"></i></button>
+      <button v-if="!dashboardData.user?.is_paused" @click="openPaymentsOverlay" :class="['flex flex-col items-center gap-1 flex-1 py-1 text-[10px] font-semibold', isDark ? 'text-slate-400 hover:text-slate-300' : 'text-slate-400 hover:text-slate-700']"><i class="fas fa-credit-card text-lg"></i>Pay</button>
+      <button v-if="!dashboardData.user?.is_paused" @click="openPaymentModal" class="w-12 h-12 bg-indigo-600 rounded-full flex items-center justify-center text-white shadow-lg flex-shrink-0"><i class="fas fa-bolt text-xl"></i></button>
+      <div v-else class="flex-1"></div>
       <button @click="openHistoryOverlay" :class="['flex flex-col items-center gap-1 flex-1 py-1 text-[10px] font-semibold', isDark ? 'text-slate-400 hover:text-slate-300' : 'text-slate-400 hover:text-slate-700']"><i class="fas fa-chart-bar text-lg"></i>Usage</button>
       <button @click="handleLogout" :class="['flex flex-col items-center gap-1 flex-1 py-1 text-[10px] font-semibold', isDark ? 'text-slate-400 hover:text-red-400' : 'text-slate-400 hover:text-red-500']"><i class="fas fa-arrow-right-from-bracket text-lg"></i>Logout</button>
     </nav>
@@ -369,7 +370,7 @@
                 <div><p :class="['text-xs', isDark ? 'text-white/40' : 'text-gray-400']">Plan Amount</p><p :class="['font-semibold text-sm', isDark ? 'text-white' : 'text-gray-800']">KES {{ formatNumber(planAmount) }}</p></div>
                 <div><p :class="['text-xs', isDark ? 'text-white/40' : 'text-gray-400']">Amount Due</p><p :class="['font-bold text-sm', isDark ? 'text-amber-400' : 'text-amber-600']">KES {{ formatNumber(paymentAmount) }}</p></div>
               </div>
-              <button @click="openPaymentModal" class="mt-4 w-full py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-xl text-sm transition-colors"><i class="fas fa-mobile-screen-button mr-2"></i>Pay KES {{ formatNumber(paymentAmount) }}</button>
+              <button @click="openPaymentModal" :disabled="dashboardData?.user?.is_paused" :class="['mt-4 w-full py-3 font-bold rounded-xl text-sm transition-colors', dashboardData?.user?.is_paused ? 'opacity-50 cursor-not-allowed bg-gray-400 text-white' : 'bg-emerald-500 hover:bg-emerald-600 text-white']"><i class="fas fa-mobile-screen-button mr-2"></i>Pay KES {{ formatNumber(paymentAmount) }}</button>
             </div>
             <div>
               <p :class="['text-xs font-semibold uppercase tracking-wider mb-3', isDark ? 'text-white/40' : 'text-gray-400']">Payment History</p>
