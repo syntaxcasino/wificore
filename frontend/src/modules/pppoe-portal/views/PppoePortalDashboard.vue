@@ -75,7 +75,7 @@
             <p class="font-semibold text-lg leading-tight">{{ accountStatus.title }}</p>
             <p class="text-sm text-white/90 mt-1 truncate">{{ accountStatus.message }}</p>
           </div>
-          <button v-if="dashboardData.user?.status !== 'paused'" @click="openPaymentModal"
+          <button v-if="dashboardData.user?.status !== 'paused' && !dashboardData.user?.pending_package_id" @click="openPaymentModal"
             class="flex-shrink-0 bg-white hover:bg-slate-100 text-slate-900 text-sm font-semibold px-5 py-2.5 rounded-lg whitespace-nowrap transition-all shadow-md hover:shadow-lg">
             Pay Now
           </button>
@@ -159,10 +159,20 @@
               <h3 :class="['font-semibold text-sm', isDark ? 'text-slate-200' : 'text-slate-800']">Quick Actions</h3>
             </div>
             <div class="p-4 space-y-2">
-              <button @click="openPaymentModal" class="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium border transition-colors bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700">
+              <button
+                :disabled="dashboardData.user?.pending_package_id"
+                @click="openPaymentModal"
+                :class="['w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium border transition-colors', dashboardData.user?.pending_package_id ? 'opacity-50 cursor-not-allowed bg-gray-400 text-white border-gray-400' : 'bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700']"
+                :title="dashboardData.user?.pending_package_id ? 'Payments disabled while plan switch is pending' : ''"
+              >
                 <i class="fas fa-mobile-screen-button"></i>Pay via M-Pesa
               </button>
-              <button @click="showVoucherModal = true" class="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium border transition-colors bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700">
+              <button
+                :disabled="dashboardData.user?.pending_package_id"
+                @click="showVoucherModal = true"
+                :class="['w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium border transition-colors', dashboardData.user?.pending_package_id ? 'opacity-50 cursor-not-allowed bg-gray-400 text-white border-gray-400' : 'bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700']"
+                :title="dashboardData.user?.pending_package_id ? 'Voucher redemption disabled while plan switch is pending' : ''"
+              >
                 <i class="fas fa-ticket"></i>Redeem Voucher
               </button>
               <button @click="openTimedVoucherOverlay" class="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium border transition-colors bg-slate-800 text-white border-slate-800 hover:bg-slate-900">
@@ -235,7 +245,7 @@
     <nav :class="['fixed bottom-0 left-0 right-0 sm:hidden flex items-center justify-around px-2 pt-2 pb-3 z-40 border-t transition-colors', isDark ? 'border-slate-800 bg-slate-950' : 'border-slate-200 bg-white']">
       <button :class="['flex flex-col items-center gap-1 flex-1 py-1 text-[10px] font-semibold rounded-lg', isDark ? 'text-indigo-400' : 'text-indigo-600']"><i class="fas fa-gauge-high text-lg"></i>Home</button>
       <button @click="openPaymentsOverlay" :class="['flex flex-col items-center gap-1 flex-1 py-1 text-[10px] font-semibold', isDark ? 'text-slate-400 hover:text-slate-300' : 'text-slate-400 hover:text-slate-700']"><i class="fas fa-credit-card text-lg"></i>Pay</button>
-      <button @click="openPaymentModal" class="w-12 h-12 bg-indigo-600 rounded-full flex items-center justify-center text-white shadow-lg flex-shrink-0"><i class="fas fa-bolt text-xl"></i></button>
+      <button :disabled="dashboardData.user?.pending_package_id" @click="openPaymentModal" :class="['w-12 h-12 rounded-full flex items-center justify-center text-white shadow-lg flex-shrink-0', dashboardData.user?.pending_package_id ? 'bg-gray-400 cursor-not-allowed' : 'bg-indigo-600']"><i class="fas fa-bolt text-xl"></i></button>
       <button @click="openHistoryOverlay" :class="['flex flex-col items-center gap-1 flex-1 py-1 text-[10px] font-semibold', isDark ? 'text-slate-400 hover:text-slate-300' : 'text-slate-400 hover:text-slate-700']"><i class="fas fa-chart-bar text-lg"></i>Usage</button>
       <button @click="handleLogout" :class="['flex flex-col items-center gap-1 flex-1 py-1 text-[10px] font-semibold', isDark ? 'text-slate-400 hover:text-red-400' : 'text-slate-400 hover:text-red-500']"><i class="fas fa-arrow-right-from-bracket text-lg"></i>Logout</button>
     </nav>
@@ -343,7 +353,7 @@
                 <div><p :class="['text-xs', isDark ? 'text-white/40' : 'text-gray-400']">Plan Amount</p><p :class="['font-semibold text-sm', isDark ? 'text-white' : 'text-gray-800']">KES {{ formatNumber(planAmount) }}</p></div>
                 <div><p :class="['text-xs', isDark ? 'text-white/40' : 'text-gray-400']">Amount Due</p><p :class="['font-bold text-sm', isDark ? 'text-amber-400' : 'text-amber-600']">KES {{ formatNumber(paymentAmount) }}</p></div>
               </div>
-              <button @click="openPaymentModal" class="mt-4 w-full py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-xl text-sm transition-colors"><i class="fas fa-mobile-screen-button mr-2"></i>Pay KES {{ formatNumber(paymentAmount) }}</button>
+              <button :disabled="dashboardData.user?.pending_package_id" @click="openPaymentModal" :class="['mt-4 w-full py-3 font-bold rounded-xl text-sm transition-colors', dashboardData.user?.pending_package_id ? 'bg-gray-400 text-white cursor-not-allowed' : 'bg-emerald-500 hover:bg-emerald-600 text-white']"><i class="fas fa-mobile-screen-button mr-2"></i>Pay KES {{ formatNumber(paymentAmount) }}</button>
             </div>
             <div>
               <p :class="['text-xs font-semibold uppercase tracking-wider mb-3', isDark ? 'text-white/40' : 'text-gray-400']">Payment History</p>
@@ -587,13 +597,19 @@
           <div :class="['flex items-center justify-between px-5 py-4 border-b flex-shrink-0', isDark ? 'border-white/10' : 'border-gray-100']">
             <div>
               <p :class="['font-bold flex items-center gap-2', isDark ? 'text-white' : 'text-gray-800']"><i class="fas fa-arrows-rotate text-indigo-500"></i>Switch Plan</p>
-              <p :class="['text-xs mt-0.5', isDark ? 'text-white/40' : 'text-gray-400']">Effective at next renewal</p>
+              <p :class="['text-xs mt-0.5', isDark ? 'text-white/40' : 'text-gray-400']">Effective when current subscription expires</p>
             </div>
             <button @click="showPlanSwitchOverlay = false" :class="['w-8 h-8 flex items-center justify-center rounded-lg transition-colors', isDark ? 'text-white/40 hover:bg-white/10 hover:text-white' : 'text-gray-400 hover:bg-gray-100']"><i class="fas fa-xmark"></i></button>
           </div>
           <div class="flex-1 overflow-y-auto p-4 space-y-3">
-            <div v-if="dashboardData.user?.pending_package_id" :class="['rounded-xl p-3 border border-amber-500/25 text-xs', isDark ? 'bg-amber-500/10 text-amber-400' : 'bg-amber-50 text-amber-700']">
-              <i class="fas fa-circle-info mr-1"></i>Switch scheduled for <strong>{{ formatDate(dashboardData.user?.plan_switch_effective_date) }}</strong>.
+            <div v-if="dashboardData.user?.pending_package_id" :class="['rounded-xl p-3 border border-amber-500/25 text-xs space-y-1', isDark ? 'bg-amber-500/10 text-amber-400' : 'bg-amber-50 text-amber-700']">
+              <p><i class="fas fa-circle-info mr-1"></i>Switch scheduled for <strong>{{ formatDate(dashboardData.user?.plan_switch_effective_date) }}</strong>.</p>
+              <p v-if="planSwitchCountdown !== null"><i class="fas fa-hourglass-half mr-1"></i><strong>{{ planSwitchCountdown }}</strong> day(s) remaining.</p>
+              <button @click="handleCancelPlanSwitch" :disabled="planSwitchLoading" :class="['mt-2 w-full py-2 rounded-lg text-xs font-semibold border transition-colors', isDark ? 'border-amber-500/30 text-amber-400 hover:bg-amber-500/20' : 'border-amber-300 text-amber-700 hover:bg-amber-100']">
+                <i v-if="planSwitchLoading" class="fas fa-spinner fa-spin mr-1"></i>
+                <i v-else class="fas fa-xmark mr-1"></i>
+                {{ planSwitchLoading ? 'Cancelling…' : 'Cancel Switch' }}
+              </button>
             </div>
             <div v-if="plansLoading" class="flex justify-center py-8"><div class="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div></div>
             <div v-else class="space-y-2">
@@ -614,7 +630,7 @@
               </div>
             </div>
             <p v-if="!plansLoading && !availablePlans.length" :class="['text-center py-8 text-sm', isDark ? 'text-white/30' : 'text-gray-400']">No plans available.</p>
-            <button @click="handlePlanSwitch" :disabled="!selectedPlanId || planSwitchLoading" class="w-full py-3.5 bg-indigo-500 hover:bg-indigo-600 text-white font-bold rounded-xl transition-colors flex items-center justify-center gap-2 disabled:opacity-40">
+            <button @click="handlePlanSwitch" :disabled="!selectedPlanId || selectedPlanId === dashboardData.user?.package_id || planSwitchLoading" class="w-full py-3.5 bg-indigo-500 hover:bg-indigo-600 text-white font-bold rounded-xl transition-colors flex items-center justify-center gap-2 disabled:opacity-40">
               <i v-if="planSwitchLoading" class="fas fa-spinner fa-spin"></i>
               <span>{{ planSwitchLoading ? 'Scheduling…' : 'Schedule Plan Switch' }}</span>
             </button>
@@ -689,6 +705,7 @@ const {
   resumeAccount,
   fetchPlans,
   requestPlanSwitch,
+  cancelPlanSwitch,
   fetchTimedVoucherOptions,
   buyTimedVoucher,
 } = usePppoePortal();
@@ -893,6 +910,13 @@ const overlayTotalDuration = computed(() => {
   const sessions = historyData.value?.sessions || [];
   const total = sessions.reduce((sum, session) => sum + (Number(session.duration_seconds) || 0), 0);
   return formatDuration(total);
+});
+
+const planSwitchCountdown = computed(() => {
+  const effectiveDate = dashboardData.value?.user?.plan_switch_effective_date;
+  if (!effectiveDate) return null;
+  const days = Math.ceil((new Date(effectiveDate) - new Date()) / (1000 * 60 * 60 * 24));
+  return days > 0 ? days : 0;
 });
 
 const overlayTotalData = computed(() => {
@@ -1313,6 +1337,20 @@ async function handlePlanSwitch() {
   } catch (err) {
     console.error('Plan switch failed:', err);
     showSuccess(err?.response?.data?.message || 'Plan switch failed.');
+  } finally {
+    planSwitchLoading.value = false;
+  }
+}
+
+async function handleCancelPlanSwitch() {
+  planSwitchLoading.value = true;
+  try {
+    const result = await cancelPlanSwitch();
+    showSuccess(result.message || 'Plan switch cancelled.');
+    await loadDashboard({ force: true });
+  } catch (err) {
+    console.error('Cancel plan switch failed:', err);
+    showSuccess(err?.response?.data?.message || 'Failed to cancel plan switch.');
   } finally {
     planSwitchLoading.value = false;
   }

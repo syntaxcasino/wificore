@@ -283,6 +283,20 @@ export function usePppoePortal() {
     }
   }
 
+  async function cancelPlanSwitch() {
+    isLoading.value = true;
+    try {
+      const response = await api.post('/plans/switch/cancel');
+      invalidateDashboardCache();
+      return response.data;
+    } catch (err) {
+      error.value = err.response?.data?.message || 'Failed to cancel plan switch';
+      throw err;
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
   async function fetchTimedVoucherOptions() {
     try {
       const response = await api.get('/vouchers/timed/options');
@@ -364,6 +378,7 @@ export function usePppoePortal() {
     resumeAccount,
     fetchPlans,
     requestPlanSwitch,
+    cancelPlanSwitch,
     fetchTimedVoucherOptions,
     buyTimedVoucher,
   };
