@@ -133,7 +133,7 @@
       <template #footer>
         <div class="flex gap-3">
           <button type="button" @click="closeDetailOverlay" class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/40 transition-colors">Close</button>
-          <button v-if="selectedVoucher?.status === 'unused'" @click="handleRevoke(selectedVoucher)" class="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors">
+          <button v-if="selectedVoucher?.status === 'unused' && !selectedVoucher?.used_by" @click="handleRevoke(selectedVoucher)" class="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors">
             <Ban class="w-4 h-4" />Revoke
           </button>
         </div>
@@ -228,7 +228,7 @@
                     <button @click="openDetailOverlay(voucher)" class="p-1.5 text-cyan-600 hover:bg-cyan-50 rounded-md transition-colors" title="View Details">
                       <Eye class="w-4 h-4" />
                     </button>
-                    <button v-if="voucher.status === 'unused'" @click="handleRevoke(voucher)" class="p-1.5 text-red-500 hover:bg-red-50 rounded-md transition-colors" title="Revoke Voucher">
+                    <button v-if="voucher.status === 'unused' && !voucher.used_by" @click="handleRevoke(voucher)" class="p-1.5 text-red-500 hover:bg-red-50 rounded-md transition-colors" title="Revoke Voucher">
                       <Ban class="w-4 h-4" />
                     </button>
                   </div>
@@ -272,8 +272,10 @@ import BaseSelect from '@/modules/common/components/base/BaseSelect.vue'
 import SlideOverlay from '@/modules/common/components/base/SlideOverlay.vue'
 import { useVouchers } from '@/modules/tenant/composables/useVouchers'
 import { useConfirmStore } from '@/stores/confirm'
+import { useToast } from '@/modules/common/composables/useToast.js'
 
 const confirmStore = useConfirmStore()
+const { error: showError } = useToast()
 
 const {
   vouchers,
@@ -408,7 +410,13 @@ const handleGenerate = async () => {
   }
 }
 
+const isVoucherFree = (v) => v.status === 'unused' && !v.used_by
+
 const handleRevoke = async (voucher) => {
+  if (!isVoucherFree(voucher)) {
+    showError('This voucher is associated with a user and cannot be revoked')
+    return
+  }
   const confirmed = await confirmStore.open({
     title: 'Revoke Voucher',
     message: `Are you sure you want to revoke voucher ${voucher.code}? This action cannot be undone.`,
@@ -416,9 +424,9 @@ const handleRevoke = async (voucher) => {
     cancelText: 'Cancel',
     variant: 'danger'
   })
-  
+
   if (!confirmed) return
-  
+
   const success = await revokeVoucher(voucher)
   if (success) {
     closeDetailOverlay()
@@ -429,7 +437,7 @@ const getVoucherActions = (voucher) => {
   const actions = [
     { label: 'View', onClick: () => openDetailOverlay(voucher), class: 'text-cyan-700 bg-cyan-50 hover:bg-cyan-100' }
   ]
-  if (voucher.status === 'unused') {
+  if (isVoucherFree(voucher)) {
     actions.push({ label: 'Revoke', onClick: () => handleRevoke(voucher), class: 'text-red-600 bg-red-50 hover:bg-red-100' })
   }
   return actions
