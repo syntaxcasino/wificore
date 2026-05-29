@@ -39,7 +39,7 @@ class PackageController extends Controller
                 'speed', 'download_speed', 'upload_speed', 'data_limit',
                 'devices', 'users_count', 'status', 'is_active',
                 'hide_from_client', 'enable_burst', 'enable_schedule',
-                'scheduled_activation_time', 'is_global', 'is_public',
+                'scheduled_activation_time', 'scheduled_deactivation_time', 'is_global', 'is_public',
                 'created_at', 'updated_at'
             ])
             ->orderBy('created_at', 'desc')
