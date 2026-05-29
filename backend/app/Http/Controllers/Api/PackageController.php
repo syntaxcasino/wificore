@@ -195,6 +195,17 @@ class PackageController extends Controller
         // Schema isolation ensures only tenant's packages are visible
         $package = Package::where('id', $id)->firstOrFail();
 
+        // Check if package has associated users
+        $userCount = $package->type === 'pppoe'
+            ? PppoeUser::where('package_id', $id)->count()
+            : HotspotUser::where('package_id', $id)->count();
+
+        if ($userCount > 0) {
+            return response()->json([
+                'error' => 'Cannot edit package assigned to ' . $userCount . ' user' . ($userCount > 1 ? 's' : '') . '.'
+            ], 422);
+        }
+
         $validator = Validator::make($request->all(), [
             'type' => 'sometimes|required|string|in:hotspot,pppoe',
             'name' => 'sometimes|required|string|max:255',
@@ -298,9 +309,20 @@ class PackageController extends Controller
         // Schema isolation ensures only tenant's packages are visible
         $package = Package::where('id', $id)->firstOrFail();
         
+        // Check if package has associated users
+        $userCount = $package->type === 'pppoe'
+            ? PppoeUser::where('package_id', $id)->count()
+            : HotspotUser::where('package_id', $id)->count();
+
+        if ($userCount > 0) {
+            return response()->json([
+                'error' => 'Cannot delete package assigned to ' . $userCount . ' user' . ($userCount > 1 ? 's' : '') . '.'
+            ], 422);
+        }
+
         // Check if package has active payments or sessions
         $hasActivePayments = $package->payments()->where('status', 'completed')->exists();
-        
+
         if ($hasActivePayments) {
             return response()->json([
                 'error' => 'Cannot delete package with active payments. Please deactivate it instead.'
