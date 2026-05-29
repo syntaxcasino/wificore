@@ -28,7 +28,7 @@
       <div class="bg-gradient-to-br p-6 rounded-xl text-white" :class="currentPackage?.type === 'hotspot' ? 'from-purple-500 to-indigo-600' : 'from-cyan-500 to-blue-600'">
         <div class="text-sm opacity-90 mb-1">Package Price</div>
         <div class="text-4xl font-bold mb-1">KES {{ formatMoney(currentPackage?.price || 0) }}</div>
-        <div class="text-sm opacity-90">per {{ currentPackage?.validity }}</div>
+        <div class="text-sm opacity-90">per {{ currentPackage?.validity || currentPackage?.duration || '—' }}</div>
       </div>
 
       <!-- Description -->
@@ -88,7 +88,7 @@
               <Calendar class="w-4 h-4 text-indigo-600" />
               <span class="text-sm text-gray-600">Validity</span>
             </div>
-            <span class="text-sm font-semibold text-gray-900">{{ currentPackage?.validity }}</span>
+            <span class="text-sm font-semibold text-gray-900">{{ currentPackage?.validity || currentPackage?.duration || '—' }}</span>
           </div>
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-2">

@@ -142,6 +142,7 @@
 
                 <td class="px-6 py-4 hidden xl:table-cell w-[12%]">
                   <span v-if="pkg.validity" class="text-xs text-slate-500 truncate">{{ pkg.validity }}</span>
+                  <span v-else-if="pkg.duration" class="text-xs text-slate-500 truncate">{{ pkg.duration }}</span>
                   <span v-else class="text-xs text-slate-400">—</span>
                 </td>
 

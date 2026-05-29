@@ -32,7 +32,7 @@
             <option v-for="pkg in packages" :key="pkg.id" :value="pkg.id">{{ pkg.name }}</option>
           </select>
           <p v-if="selectedPackage" class="mt-1.5 text-xs text-gray-500 dark:text-slate-400">
-            Price: KES {{ selectedPackage.price }} | Speed: {{ selectedPackage.download_speed || '-' }} | Validity: {{ selectedPackage.validity || '-' }}
+            Price: KES {{ selectedPackage.price }} | Speed: {{ selectedPackage.download_speed || '-' }} | Validity: {{ selectedPackage.validity || selectedPackage.duration || '-' }}
           </p>
         </div>
 
