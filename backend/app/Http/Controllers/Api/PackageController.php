@@ -237,12 +237,14 @@ class PackageController extends Controller
         if ($request->has('price')) $updateData['price'] = $request->price;
         if ($request->has('devices')) $updateData['devices'] = $request->devices;
         if ($request->has('data_limit')) $updateData['data_limit'] = $request->data_limit;
-        if ($request->has('validity')) $updateData['validity'] = $request->validity;
+        if ($request->has('validity')) $updateData['validity'] = !empty($request->validity) ? $request->validity : ($request->has('duration') ? $request->duration : $package->validity);
         if ($request->has('enable_burst')) $updateData['enable_burst'] = $request->enable_burst;
         if ($request->has('enable_schedule')) $updateData['enable_schedule'] = $request->enable_schedule;
         if ($request->has('scheduled_activation_time')) $updateData['scheduled_activation_time'] = $request->scheduled_activation_time;
+        if ($request->has('scheduled_deactivation_time')) $updateData['scheduled_deactivation_time'] = $request->scheduled_deactivation_time;
         if ($request->has('hide_from_client')) $updateData['hide_from_client'] = $request->hide_from_client;
         if ($request->has('is_global')) $updateData['is_global'] = $request->is_global;
+        if ($request->has('is_public')) $updateData['is_public'] = $request->is_public;
         if ($request->has('status')) $updateData['status'] = $request->status;
         if ($request->has('is_active')) $updateData['is_active'] = $request->is_active;
 
