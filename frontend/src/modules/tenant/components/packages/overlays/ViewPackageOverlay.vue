@@ -169,6 +169,37 @@
           </div>
         </div>
 
+        <!-- Schedule -->
+        <div v-if="currentPackage?.enable_schedule && (currentPackage?.scheduled_activation_time || currentPackage?.scheduled_deactivation_time)" class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm mb-6">
+          <h4 class="text-sm font-semibold text-slate-700 mb-4 flex items-center">
+            <svg class="h-4 w-4 mr-2 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+            Schedule
+          </h4>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div v-if="currentPackage?.scheduled_activation_time">
+              <label class="block text-xs font-medium text-slate-500 mb-1">Activation Time</label>
+              <p class="text-slate-900 font-medium">{{ formatTimestamp(currentPackage?.scheduled_activation_time) }}</p>
+            </div>
+            <div v-if="currentPackage?.scheduled_deactivation_time">
+              <label class="block text-xs font-medium text-slate-500 mb-1">Deactivation Time</label>
+              <p class="text-slate-900 font-medium">{{ formatTimestamp(currentPackage?.scheduled_deactivation_time) }}</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Assigned Routers -->
+        <div v-if="!currentPackage?.is_global && currentPackage?.routers?.length" class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm mb-6">
+          <h4 class="text-sm font-semibold text-slate-700 mb-4 flex items-center">
+            <svg class="h-4 w-4 mr-2 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904 3.905 10.236 3.905 14.142 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0" /></svg>
+            Assigned Routers
+          </h4>
+          <div class="flex flex-wrap gap-2">
+            <span v-for="router in currentPackage.routers" :key="router.id" class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+              {{ router.name }}
+            </span>
+          </div>
+        </div>
+
         <!-- Statistics -->
         <div v-if="currentPackage?.users_count !== undefined" class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm mb-6">
           <h4 class="text-sm font-semibold text-slate-700 mb-4 flex items-center">
@@ -195,8 +226,24 @@
               <p class="text-slate-900 font-mono text-sm">{{ currentPackage?.id || 'N/A' }}</p>
             </div>
             <div>
+              <label class="block text-xs font-medium text-slate-500 mb-1">Global Package</label>
+              <p class="text-slate-900 font-medium">{{ currentPackage?.is_global ? 'Yes (all routers)' : 'Router-specific' }}</p>
+            </div>
+            <div>
               <label class="block text-xs font-medium text-slate-500 mb-1">Visibility</label>
               <p class="text-slate-900 font-medium">{{ currentPackage?.hide_from_client ? 'Hidden from clients' : 'Visible to clients' }}</p>
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-slate-500 mb-1">Public</label>
+              <p class="text-slate-900 font-medium">{{ currentPackage?.is_public ? 'Yes' : 'No' }}</p>
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-slate-500 mb-1">Active Flag</label>
+              <p class="text-slate-900 font-medium">{{ currentPackage?.is_active ? 'Yes' : 'No' }}</p>
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-slate-500 mb-1">Status</label>
+              <p class="text-slate-900 font-medium capitalize">{{ currentPackage?.status || 'N/A' }}</p>
             </div>
             <div>
               <label class="block text-xs font-medium text-slate-500 mb-1">Created</label>
