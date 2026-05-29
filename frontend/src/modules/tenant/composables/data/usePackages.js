@@ -251,13 +251,14 @@ export function usePackages() {
   }
 
   const openDetails = async (pkg) => {
+    showDetailsOverlay.value = true
+    currentPackage.value = JSON.parse(JSON.stringify(pkg))
     try {
-      currentPackage.value = JSON.parse(JSON.stringify(pkg))
-      showDetailsOverlay.value = true
-    } catch (error) {
-      console.error('Error in openDetails:', error)
-      currentPackage.value = pkg
-      showDetailsOverlay.value = true
+      const { data } = await axios.get(`/packages/${pkg.id}`)
+      currentPackage.value = data
+    } catch (err) {
+      console.error('openDetails fetch error:', err.message)
+      // Keep the list data as fallback
     }
   }
 

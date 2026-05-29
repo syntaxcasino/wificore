@@ -35,9 +35,12 @@ class PackageController extends Controller
         // Optimized cache with shorter TTL for real-time updates
         return Cache::remember("packages_list_tenant_{$tenantId}", 15, function () {
             return Package::select([
-                'id', 'name', 'description', 'type', 'price', 'duration', 
-                'download_speed', 'upload_speed', 'status', 'is_active', 
-                'hide_from_client', 'is_public', 'created_at', 'updated_at'
+                'id', 'name', 'description', 'type', 'price', 'duration', 'validity',
+                'speed', 'download_speed', 'upload_speed', 'data_limit',
+                'devices', 'users_count', 'status', 'is_active',
+                'hide_from_client', 'enable_burst', 'enable_schedule',
+                'scheduled_activation_time', 'is_global', 'is_public',
+                'created_at', 'updated_at'
             ])
             ->orderBy('created_at', 'desc')
             ->get();
