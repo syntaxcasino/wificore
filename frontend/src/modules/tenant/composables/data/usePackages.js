@@ -40,6 +40,7 @@ export function usePackages() {
   const formMessage = ref({ text: '', type: '' })
   const formSubmitted = ref(false)
   const showMenu = ref(null)
+  const selectedPackageIds = ref([])
   let websocketListenersInitialized = false
 
   const packageCacheKey = () => {
@@ -219,10 +220,56 @@ export function usePackages() {
   const deletePackage = async (id) => {
     try {
       await axios.delete(`/packages/${id}`)
-      // Purely event-driven - WebSocket events will handle the UI update automatically
+      // Trigger immediate UI update via the event-driven path
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('package-deleted', { detail: { packageId: String(id) } }))
+      }
     } catch (err) {
       console.error('deletePackage error:', err.message, err.response?.data)
       throw err
+    }
+  }
+
+  const togglePackageSelection = (id) => {
+    const ids = selectedPackageIds.value
+    const idx = ids.indexOf(id)
+    if (idx === -1) {
+      selectedPackageIds.value = [...ids, id]
+    } else {
+      selectedPackageIds.value = ids.filter((i) => i !== id)
+    }
+  }
+
+  const toggleSelectAll = (allIds) => {
+    const current = selectedPackageIds.value
+    const allSelected = allIds.length > 0 && allIds.every((id) => current.includes(id))
+    if (allSelected) {
+      selectedPackageIds.value = current.filter((id) => !allIds.includes(id))
+    } else {
+      const merged = new Set([...current, ...allIds])
+      selectedPackageIds.value = Array.from(merged)
+    }
+  }
+
+  const clearSelection = () => {
+    selectedPackageIds.value = []
+  }
+
+  const batchDeletePackages = async () => {
+    const ids = [...selectedPackageIds.value]
+    if (!ids.length) return
+    clearSelection()
+    const errors = []
+    for (const id of ids) {
+      try {
+        await deletePackage(id)
+      } catch (err) {
+        errors.push(id)
+        console.error('batchDeletePackages error for id:', id, err.message)
+      }
+    }
+    if (errors.length) {
+      throw new Error(`Failed to delete ${errors.length} of ${ids.length} packages`)
     }
   }
 
@@ -433,6 +480,7 @@ export function usePackages() {
     formMessage,
     formSubmitted,
     showMenu,
+    selectedPackageIds,
     toggleMenu,
     closeMenuOnOutsideClick,
     fetchPackages,
@@ -440,6 +488,10 @@ export function usePackages() {
     editPackage,
     updatePackage,
     deletePackage,
+    batchDeletePackages,
+    togglePackageSelection,
+    toggleSelectAll,
+    clearSelection,
     duplicatePackage,
     toggleStatus,
     openCreateOverlay,

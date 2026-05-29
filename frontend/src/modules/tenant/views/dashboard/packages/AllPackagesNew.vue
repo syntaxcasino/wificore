@@ -92,6 +92,23 @@
         />
       </div>
 
+      <!-- Batch Action Bar -->
+      <div v-if="selectedPackageIds.length" class="hidden md:flex items-center gap-3 mb-2 px-4 py-2 bg-red-50 border border-red-200 rounded-lg">
+        <span class="text-sm text-red-700 font-medium">{{ selectedPackageIds.length }} selected</span>
+        <button
+          @click="handleBatchDelete"
+          class="ml-auto px-3 py-1.5 text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded-md transition-colors"
+        >
+          Delete Selected
+        </button>
+        <button
+          @click="clearSelectionLocal"
+          class="px-3 py-1.5 text-xs font-medium text-red-600 bg-white border border-red-200 hover:bg-red-50 rounded-md transition-colors"
+        >
+          Clear
+        </button>
+      </div>
+
       <!-- Desktop Table -->
       <div class="hidden md:flex bg-white border-x border-t border-slate-200 flex-col min-h-0 flex-1">
         <!-- Fixed Header -->
@@ -99,7 +116,15 @@
           <table class="w-full">
             <thead>
               <tr>
-                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[22%]">Package</th>
+                <th class="px-4 py-3 w-[3%]">
+                  <input
+                    type="checkbox"
+                    :checked="paginatedData.length > 0 && paginatedData.every((p) => selectedPackageIds.includes(p.id))"
+                    @change="toggleSelectAll(paginatedData.map((p) => p.id))"
+                    class="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500"
+                  />
+                </th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[21%]">Package</th>
                 <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider hidden lg:table-cell w-[11%]">Type</th>
                 <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[11%]">Price</th>
                 <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider hidden xl:table-cell w-[14%]">Speed</th>
@@ -119,9 +144,18 @@
                 v-for="pkg in paginatedData"
                 :key="pkg.id"
                 @click="openDetails(pkg)"
-                class="group cursor-pointer hover:bg-blue-50/50 transition-colors"
+                :class="selectedPackageIds.includes(pkg.id) ? 'bg-blue-50/70' : 'hover:bg-blue-50/50'"
+                class="group cursor-pointer transition-colors"
               >
-                <td class="px-6 py-4 w-[22%]">
+                <td class="px-4 py-4 w-[3%]" @click.stop>
+                  <input
+                    type="checkbox"
+                    :checked="selectedPackageIds.includes(pkg.id)"
+                    @change="togglePackageSelection(pkg.id)"
+                    class="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500"
+                  />
+                </td>
+                <td class="px-6 py-4 w-[21%]">
                   <div class="flex items-center gap-2">
                     <span class="w-1.5 h-1.5 rounded-full flex-shrink-0" :class="pkg.status === 'active' ? 'bg-emerald-500' : 'bg-slate-400'"></span>
                     <span class="text-sm font-medium text-slate-900 truncate">{{ pkg.name }}</span>
@@ -283,7 +317,7 @@ import BaseSelect from '@/modules/common/components/base/BaseSelect.vue'
 import CreatePackageOverlay from '@/modules/tenant/components/packages/overlays/CreatePackageOverlay.vue'
 import ViewPackageOverlay from '@/modules/tenant/components/packages/overlays/ViewPackageOverlay.vue'
 
-const { error: showError } = useToast()
+const { error: showError, success: showSuccess } = useToast()
 
 const {
   packages,
@@ -300,8 +334,12 @@ const {
   addPackage,
   updatePackage,
   deletePackage,
+  batchDeletePackages,
   duplicatePackage,
   toggleStatus,
+  togglePackageSelection,
+  toggleSelectAll,
+  selectedPackageIds,
   openCreateOverlay,
   openEditOverlay,
   openDetails,
@@ -322,10 +360,10 @@ const activeCount = computed(() => packages.value?.filter(p => p.status === 'act
 const inactiveCount = computed(() => packages.value?.filter(p => p.status === 'inactive').length || 0)
 
 // Reset page on search/filter changes (matching TodosView pattern)
-watch(searchQuery, () => { currentPage.value = 1 })
-watch(itemsPerPage, () => { currentPage.value = 1 })
-watch(() => filters.value.type, () => { currentPage.value = 1 })
-watch(() => filters.value.status, () => { currentPage.value = 1 })
+watch(searchQuery, () => { currentPage.value = 1; clearSelectionLocal() })
+watch(itemsPerPage, () => { currentPage.value = 1; clearSelectionLocal() })
+watch(() => filters.value.type, () => { currentPage.value = 1; clearSelectionLocal() })
+watch(() => filters.value.status, () => { currentPage.value = 1; clearSelectionLocal() })
 
 // Menu state
 const activeMenu = ref(null)
@@ -481,6 +519,32 @@ const handleDeleteMenu = async () => {
     } catch (err) {
       showError('Failed to delete package')
     }
+  }
+}
+
+const clearSelectionLocal = () => {
+  selectedPackageIds.value = []
+}
+
+const handleBatchDelete = async () => {
+  const count = selectedPackageIds.value.length
+  if (!count) return
+
+  const confirmed = await confirmStore.open({
+    title: 'Confirm Batch Delete',
+    message: `Are you sure you want to delete ${count} selected package${count > 1 ? 's' : ''}? This action cannot be undone.`,
+    confirmText: 'Delete All',
+    cancelText: 'Cancel',
+    variant: 'danger'
+  })
+
+  if (!confirmed) return
+
+  try {
+    await batchDeletePackages()
+    showSuccess(`${count} package${count > 1 ? 's' : ''} deleted successfully`)
+  } catch (err) {
+    showError(`Failed to delete some packages`)
   }
 }
 
