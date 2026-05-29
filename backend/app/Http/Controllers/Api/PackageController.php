@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\Package;
+use App\Models\PppoeUser;
+use App\Models\HotspotUser;
 use App\Events\PackageCreated;
 use App\Events\PackageUpdated;
 use App\Events\PackageDeleted;
@@ -34,7 +36,7 @@ class PackageController extends Controller
         
         // Optimized cache with shorter TTL for real-time updates
         return Cache::remember("packages_list_tenant_{$tenantId}", 15, function () {
-            return Package::select([
+            $packages = Package::select([
                 'id', 'name', 'description', 'type', 'price', 'duration', 'validity',
                 'speed', 'download_speed', 'upload_speed', 'data_limit',
                 'devices', 'users_count', 'status', 'is_active',
@@ -44,6 +46,27 @@ class PackageController extends Controller
             ])
             ->orderBy('created_at', 'desc')
             ->get();
+
+            $packageIds = $packages->pluck('id');
+
+            $pppoeCounts = PppoeUser::whereIn('package_id', $packageIds)
+                ->groupBy('package_id')
+                ->selectRaw('package_id, COUNT(*) as count')
+                ->pluck('count', 'package_id');
+
+            $hotspotCounts = HotspotUser::whereIn('package_id', $packageIds)
+                ->groupBy('package_id')
+                ->selectRaw('package_id, COUNT(*) as count')
+                ->pluck('count', 'package_id');
+
+            $packages->transform(function ($pkg) use ($pppoeCounts, $hotspotCounts) {
+                $pkg->users_count = $pkg->type === 'pppoe'
+                    ? (int) ($pppoeCounts[$pkg->id] ?? 0)
+                    : (int) ($hotspotCounts[$pkg->id] ?? 0);
+                return $pkg;
+            });
+
+            return $packages;
         });
     }
 
@@ -51,16 +74,21 @@ class PackageController extends Controller
     {
         // Optimized query with specific column selection
         $package = Package::select([
-            'id', 'name', 'description', 'type', 'price', 'duration', 
-            'upload_speed', 'download_speed', 'speed', 'devices', 'data_limit', 
+            'id', 'name', 'description', 'type', 'price', 'duration',
+            'upload_speed', 'download_speed', 'speed', 'devices', 'data_limit',
             'validity', 'enable_burst', 'enable_schedule', 'scheduled_activation_time',
-            'scheduled_deactivation_time', 'hide_from_client', 'is_global', 
+            'scheduled_deactivation_time', 'hide_from_client', 'is_global',
             'status', 'is_active', 'is_public', 'users_count', 'created_at', 'updated_at'
         ])
         ->where('id', $id)
         ->with(['routers:id,name']) // Only select needed columns
         ->firstOrFail();
-        
+
+        // Compute actual user count dynamically from related users
+        $package->users_count = $package->type === 'pppoe'
+            ? (int) PppoeUser::where('package_id', $id)->count()
+            : (int) HotspotUser::where('package_id', $id)->count();
+
         return response()->json($package, 200);
     }
 
