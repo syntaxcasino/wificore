@@ -272,7 +272,7 @@
           {{ getMenuPackage()?.status === 'active' ? 'Deactivate' : 'Activate' }}
         </button>
         <div class="border-t border-slate-200 my-1"></div>
-        <button @click="handleEditMenu()"
+        <button v-if="getMenuPackage() && !hasUsers(getMenuPackage())" @click="handleEditMenu()"
           class="flex items-center w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-700 transition-colors">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -286,8 +286,8 @@
           </svg>
           Duplicate
         </button>
-        <div class="border-t border-slate-200 my-1"></div>
-        <button @click="handleDeleteMenu()"
+        <div v-if="getMenuPackage() && !hasUsers(getMenuPackage())" class="border-t border-slate-200 my-1"></div>
+        <button v-if="getMenuPackage() && !hasUsers(getMenuPackage())" @click="handleDeleteMenu()"
           class="flex items-center w-full px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -440,10 +440,14 @@ const getPackageMetaLines = (pkg) => {
   return lines
 }
 
+const hasUsers = (pkg) => (pkg.users_count ?? 0) > 0
+
 const getPackageActions = (pkg) => {
   const actions = []
   actions.push({ label: 'View', onClick: () => openDetails(pkg), class: 'text-blue-700 bg-blue-50 hover:bg-blue-100' })
-  actions.push({ label: 'Edit', onClick: () => openEditOverlay(pkg), class: 'text-slate-700 bg-slate-100 hover:bg-slate-200' })
+  if (!hasUsers(pkg)) {
+    actions.push({ label: 'Edit', onClick: () => openEditOverlay(pkg), class: 'text-slate-700 bg-slate-100 hover:bg-slate-200' })
+  }
   actions.push({ label: 'Duplicate', onClick: () => duplicatePackage(pkg), class: 'text-indigo-700 bg-indigo-50 hover:bg-indigo-100' })
   actions.push({
     label: pkg.status === 'active' ? 'Deactivate' : 'Activate',
@@ -454,6 +458,10 @@ const getPackageActions = (pkg) => {
 }
 
 const handleDelete = async (pkg) => {
+  if (hasUsers(pkg)) {
+    showError('This package is assigned to users and cannot be deleted')
+    return
+  }
   const confirmed = await confirmStore.open({
     title: 'Confirm Delete',
     message: `Are you sure you want to delete ${pkg.name}? This action cannot be undone.`,
@@ -506,7 +514,12 @@ const handleToggleStatusMenu = () => {
 const handleEditMenu = () => {
   const pkg = packages.value.find(p => p.id === activeMenu.value)
   closeMenu()
-  if (pkg) openEditOverlay(pkg)
+  if (!pkg) return
+  if (hasUsers(pkg)) {
+    showError('This package is assigned to users and cannot be edited')
+    return
+  }
+  openEditOverlay(pkg)
 }
 
 const handleDuplicateMenu = () => {
@@ -519,6 +532,10 @@ const handleDeleteMenu = async () => {
   const pkg = packages.value.find(p => p.id === activeMenu.value)
   closeMenu()
   if (!pkg) return
+  if (hasUsers(pkg)) {
+    showError('This package is assigned to users and cannot be deleted')
+    return
+  }
 
   const confirmed = await confirmStore.open({
     title: 'Confirm Delete',
@@ -542,12 +559,20 @@ const clearSelectionLocal = () => {
 }
 
 const handleBatchDelete = async () => {
-  const count = selectedPackageIds.value.length
-  if (!count) return
+  const pkgMap = new Map((packages.value || []).map(p => [p.id, p]))
+  const ids = [...selectedPackageIds.value]
+  const deletable = ids.filter(id => !hasUsers(pkgMap.get(id)))
+  const skipped = ids.filter(id => hasUsers(pkgMap.get(id)))
+
+  if (!deletable.length) {
+    showError('All selected packages are assigned to users and cannot be deleted')
+    clearSelectionLocal()
+    return
+  }
 
   const confirmed = await confirmStore.open({
     title: 'Confirm Batch Delete',
-    message: `Are you sure you want to delete ${count} selected package${count > 1 ? 's' : ''}? This action cannot be undone.`,
+    message: `Delete ${deletable.length} package${deletable.length > 1 ? 's' : ''}${skipped.length ? ` (${skipped.length} skipped — assigned to users)` : ''}. This action cannot be undone.`,
     confirmText: 'Delete All',
     cancelText: 'Cancel',
     variant: 'danger'
@@ -555,9 +580,12 @@ const handleBatchDelete = async () => {
 
   if (!confirmed) return
 
+  // Replace selection with only deletable items before calling batch
+  selectedPackageIds.value = deletable
+
   try {
     await batchDeletePackages()
-    showSuccess(`${count} package${count > 1 ? 's' : ''} deleted successfully`)
+    showSuccess(`${deletable.length} package${deletable.length > 1 ? 's' : ''} deleted successfully${skipped.length ? ` (${skipped.length} skipped)` : ''}`)
   } catch (err) {
     showError(`Failed to delete some packages`)
   }
