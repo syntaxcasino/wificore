@@ -175,7 +175,12 @@ export function usePackages() {
 
   const editPackage = (pkg) => {
     selectedPackage.value = pkg
-    formData.value = { ...pkg }
+    // Clean copy: strip read-only/computed fields that shouldn't be sent
+    const {
+      users_count, created_at, updated_at, routers,
+      ...editableFields
+    } = pkg
+    formData.value = editableFields
     isEditing.value = true
     showUpdateOverlay.value = true
   }
@@ -187,10 +192,19 @@ export function usePackages() {
       const response = await axios.put(`/packages/${selectedPackage.value.id}`, formData.value)
       const msg = response.data?.message || 'Package updated successfully'
       formMessage.value = { text: msg, type: 'success' }
-      showUpdateOverlay.value = false
 
-      // Purely event-driven - WebSocket events will handle the UI update automatically
-      
+      // Trigger immediate UI update via the event-driven path
+      const updatedPkg = response.data?.data
+      if (updatedPkg?.id && typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('package-updated', { detail: { package: updatedPkg } }))
+      }
+
+      // Close overlay and reset state after a short delay so user sees success
+      setTimeout(() => {
+        showUpdateOverlay.value = false
+        selectedPackage.value = null
+        resetFormData()
+      }, 1000)
     } catch (err) {
       formMessage.value = {
         text: err.response?.data?.error || err.response?.data?.message || 'Failed to update package',
