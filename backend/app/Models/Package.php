@@ -72,6 +72,22 @@ class Package extends Model
     }
 
     /**
+     * PPPoE users subscribed to this package
+     */
+    public function pppoeUsers()
+    {
+        return $this->hasMany(PppoeUser::class, 'package_id');
+    }
+
+    /**
+     * Hotspot users subscribed to this package
+     */
+    public function hotspotUsers()
+    {
+        return $this->hasMany(HotspotUser::class, 'package_id');
+    }
+
+    /**
      * Payments made for this package
      */
     public function payments()
