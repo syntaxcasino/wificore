@@ -303,7 +303,6 @@
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { usePackages } from '@/modules/tenant/composables/data/usePackages'
 import { useFilters } from '@/modules/common/composables/utils/useFilters'
-import { usePagination } from '@/modules/common/composables/utils/usePagination'
 import { useConfirmStore } from '@/stores/confirm'
 import { useToast } from '@/modules/common/composables/useToast.js'
 import DataViewContainer from '@/modules/common/components/base/DataViewContainer.vue'
@@ -353,7 +352,16 @@ const confirmStore = useConfirmStore()
 
 // Filtering and Pagination
 const { filters, searchQuery, filteredData, hasActiveFilters } = useFilters(packages, { type: '', status: '' })
-const { currentPage, itemsPerPage, paginatedData, totalPages } = usePagination(filteredData, 10)
+const currentPage = ref(1)
+const itemsPerPage = ref(10)
+
+const paginatedData = computed(() => {
+  const data = filteredData.value || []
+  const start = (currentPage.value - 1) * itemsPerPage.value
+  return data.slice(start, start + itemsPerPage.value)
+})
+
+const totalPages = computed(() => Math.ceil((filteredData.value?.length || 0) / itemsPerPage.value))
 
 // Stats
 const activeCount = computed(() => packages.value?.filter(p => p.status === 'active').length || 0)
@@ -364,6 +372,13 @@ watch(searchQuery, () => { currentPage.value = 1; clearSelectionLocal() })
 watch(itemsPerPage, () => { currentPage.value = 1; clearSelectionLocal() })
 watch(() => filters.value.type, () => { currentPage.value = 1; clearSelectionLocal() })
 watch(() => filters.value.status, () => { currentPage.value = 1; clearSelectionLocal() })
+
+// Reset page if data shrinks and current page is now out of bounds
+watch(() => filteredData.value?.length, () => {
+  if (currentPage.value > totalPages.value) {
+    currentPage.value = Math.max(1, totalPages.value)
+  }
+})
 
 // Menu state
 const activeMenu = ref(null)
@@ -585,15 +600,6 @@ const handlePackageDeletedEvent = (event) => {
   packages.value = packages.value.filter(p => p.id !== id)
   console.log('[Packages] Deleted via event:', id)
 }
-
-watch([filteredData, itemsPerPage], () => {
-  if (currentPage.value > totalPages.value) {
-    currentPage.value = Math.max(1, totalPages.value)
-  }
-  if (currentPage.value < 1) {
-    currentPage.value = 1
-  }
-})
 
 onMounted(() => {
   fetchPackages()
