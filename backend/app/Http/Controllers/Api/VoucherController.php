@@ -159,6 +159,13 @@ class VoucherController extends Controller
      */
     public function revoke(Voucher $voucher)
     {
+        if ($voucher->used_by) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Cannot revoke a voucher associated with a user.',
+            ], 422);
+        }
+
         if ($voucher->status === 'used') {
             return response()->json([
                 'success' => false,
@@ -187,6 +194,13 @@ class VoucherController extends Controller
      */
     public function destroy(Voucher $voucher)
     {
+        if ($voucher->used_by) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Cannot delete a voucher associated with a user.',
+            ], 422);
+        }
+
         if ($voucher->status === 'used') {
             return response()->json([
                 'success' => false,
