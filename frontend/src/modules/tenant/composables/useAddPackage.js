@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import axios from 'axios'
+import { useNotificationStore } from '@/stores/notifications'
 
 const defaultForm = () => ({
   name: '', description: '',
@@ -13,6 +14,8 @@ const defaultForm = () => ({
 })
 
 export function useAddPackage() {
+  const notify = useNotificationStore()
+
   const saving = ref(false)
   const errorMessage = ref('')
   const formData = ref(defaultForm())
@@ -52,9 +55,12 @@ export function useAddPackage() {
     errorMessage.value = ''
     try {
       await axios.post('/packages', buildPayload())
+      notify.success('Package Created', 'Package created successfully')
       return { success: true }
     } catch (err) {
-      errorMessage.value = err.response?.data?.error || err.response?.data?.message || 'Failed to create package'
+      const msg = err.response?.data?.error || err.response?.data?.message || 'Failed to create package'
+      errorMessage.value = msg
+      notify.error('Package Creation Failed', msg)
       return { success: false }
     } finally {
       saving.value = false
