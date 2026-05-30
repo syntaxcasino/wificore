@@ -177,7 +177,7 @@ class ZeroConfigPPPoEGenerator
         $s[] = "# 2. RADIUS Configuration";
         $s[] = "# ============================";
         $s[] = ':do { /radius remove [/radius find service="ppp" comment~"WiFiCore PPPoE"]; } on-error={}';
-        $s[] = ":do { /radius add service=\"ppp\" address=\"{$rs}\" secret=\"{$rsec}\" authentication-port=\"1812\" accounting-port=\"1813\" timeout=\"3s\" comment=\"WiFiCore PPPoE ({$id})\"; } on-error={ :error \"PPPoE: RADIUS configure failed\" }";
+        $s[] = ":do { /radius add service=\"ppp\" address=\"{$rs}\" secret=\"{$rsec}\" authentication-port=\"1812\" accounting-port=\"1813\" timeout=\"3s\" comment=\"WiFiCore PPPoE ({$id})\"; } on-error={ /log error \"PPPoE: RADIUS configure failed (non-fatal)\" }";
         if ($radiusSrcAddress) {
             $s[] = ":do { /radius set [/radius find service=\"ppp\"] src-address=\"{$radiusSrcAddress}\"; } on-error={ /log info \"PPPoE-$id: WARN - Failed to set RADIUS src-address\" }";
         }
