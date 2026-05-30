@@ -503,6 +503,52 @@ const selectedPackage = computed(() => getPackageById(formData.value.package_id)
 const totalValue = computed(() => calculateTotalValue(selectedPackage.value, formData.value.quantity))
 const minDate = computed(() => new Date().toISOString().split('T')[0])
 
+// Calculate expiry date from package validity string (e.g., "30 days", "1 hour", "7 days", "1 month")
+const calculateExpiryFromPackage = (pkg) => {
+  if (!pkg) return ''
+  const validity = (pkg.validity || pkg.duration || '').trim()
+  if (!validity) return ''
+
+  const match = validity.match(/^\s*(\d+)\s*(minute|minutes|hour|hours|day|days|week|weeks|month|months|year|years)\s*$/i)
+  if (!match) return ''
+
+  const value = parseInt(match[1], 10)
+  const unit = match[2].toLowerCase()
+  if (value <= 0) return ''
+
+  const date = new Date()
+  switch (unit) {
+    case 'minute':
+    case 'minutes':
+      date.setMinutes(date.getMinutes() + value)
+      break
+    case 'hour':
+    case 'hours':
+      date.setHours(date.getHours() + value)
+      break
+    case 'day':
+    case 'days':
+      date.setDate(date.getDate() + value)
+      break
+    case 'week':
+    case 'weeks':
+      date.setDate(date.getDate() + value * 7)
+      break
+    case 'month':
+    case 'months':
+      date.setMonth(date.getMonth() + value)
+      break
+    case 'year':
+    case 'years':
+      date.setFullYear(date.getFullYear() + value)
+      break
+    default:
+      return ''
+  }
+
+  return date.toISOString().split('T')[0]
+}
+
 // Form
 const formData = ref({
   package_id: '',
@@ -510,6 +556,16 @@ const formData = ref({
   prefix: '',
   expires_at: '',
   notes: ''
+})
+
+// Watch package selection to auto-calculate expiry date
+watch(() => formData.value.package_id, (newPackageId) => {
+  const pkg = getPackageById(newPackageId)
+  if (pkg) {
+    formData.value.expires_at = calculateExpiryFromPackage(pkg)
+  } else {
+    formData.value.expires_at = ''
+  }
 })
 
 // Reset page on search/filter change

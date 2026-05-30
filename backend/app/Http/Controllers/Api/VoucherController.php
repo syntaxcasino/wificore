@@ -98,7 +98,13 @@ class VoucherController extends Controller
         $timestamp = now();
 
         // Fetch package details for value and duration
-        $package = Package::select(['id', 'price', 'validity'])->find($validated['package_id']);
+        $package = Package::select(['id', 'price', 'validity', 'duration'])->find($validated['package_id']);
+
+        // Auto-calculate expiry from package if not explicitly provided
+        $expiresAt = $validated['expires_at'] ?? null;
+        if (!$expiresAt && $package) {
+            $expiresAt = PackageExpiryHelper::calculateExpiresAt($package, now())->toDateTimeString();
+        }
 
         // Optimized batch insert for better performance
         $voucherData = [];
@@ -114,7 +120,7 @@ class VoucherController extends Controller
                 'package_duration_days' => $package ? PackageExpiryHelper::durationInDays($package) : null,
                 'router_id' => $validated['router_id'] ?? null,
                 'status' => 'unused',
-                'expires_at' => $validated['expires_at'] ?? null,
+                'expires_at' => $expiresAt,
                 'prefix' => $prefix,
                 'notes' => $validated['notes'] ?? null,
                 'batch_id' => $batchId,
