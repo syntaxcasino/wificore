@@ -371,7 +371,7 @@ const downloadSpeedUnit = ref('Mbps')
 const dataLimitValue = ref('')
 const dataLimitUnit = ref('GB')
 const durationValue = ref('')
-const durationUnit = ref('Months')
+const durationUnit = ref('Hours')
 
 const parseValueUnit = (input, allowedUnits, defaultUnit) => {
   const raw = String(input || '').trim()
@@ -386,9 +386,9 @@ const parseValueUnit = (input, allowedUnits, defaultUnit) => {
 
 const parseDurationValueUnit = (input) => {
   const raw = String(input || '').trim()
-  if (!raw) return { value: '', unit: 'Months' }
+  if (!raw) return { value: '', unit: 'Hours' }
   const m = raw.match(/^\s*(\d+)\s*([a-zA-Z]+)\s*$/)
-  if (!m) return { value: raw, unit: 'Months' }
+  if (!m) return { value: raw, unit: 'Hours' }
   const value = m[1]
   const unitRaw = m[2].toLowerCase()
   const unitMap = {
@@ -401,7 +401,7 @@ const parseDurationValueUnit = (input) => {
     year: 'Years',
     years: 'Years',
   }
-  return { value, unit: unitMap[unitRaw] || 'Months' }
+  return { value, unit: unitMap[unitRaw] || 'Hours' }
 }
 
 const toDurationString = (value, unit) => {
@@ -441,6 +441,11 @@ const syncFromFormData = () => {
   const durationParsed = parseDurationValueUnit(props.formData?.duration)
   durationValue.value = durationParsed.value
   durationUnit.value = durationParsed.unit
+
+  // Apply type-based default when creating a new package
+  if (!durationValue.value && !props.isEditing) {
+    durationUnit.value = props.formData?.type === 'pppoe' ? 'Months' : 'Hours'
+  }
 }
 
 watch(
@@ -469,6 +474,15 @@ watch([dataLimitValue, dataLimitUnit], () => {
 watch([durationValue, durationUnit], () => {
   props.formData.duration = toDurationString(durationValue.value, durationUnit.value)
 })
+
+watch(
+  () => props.formData?.type,
+  (newType) => {
+    if (!props.isEditing && !durationValue.value) {
+      durationUnit.value = newType === 'pppoe' ? 'Months' : 'Hours'
+    }
+  }
+)
 
 // Minimum datetime (current time)
 const minDateTime = computed(() => {
