@@ -10,7 +10,7 @@ set -euo pipefail
 # =============================================================================
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BACKUP_DIR="${BACKUP_DIR:-${SCRIPT_DIR}/backups}"
+BACKUP_DIR="${BACKUP_DIR:-${SCRIPT_DIR}/db_backups}"
 COMPOSE_FILE="${SCRIPT_DIR}/docker-compose.production.yml"
 POSTGRES_SERVICE="wificore-postgres"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
