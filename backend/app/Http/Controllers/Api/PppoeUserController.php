@@ -1062,6 +1062,11 @@ class PppoeUserController extends Controller
                 // OPTIMIZED: Batch delete radcheck and radreply in single query each
                 DB::table('radcheck')->where('username', $username)->delete();
                 DB::table('radreply')->where('username', $username)->delete();
+
+                // Clear package association so the package becomes deletable
+                $pppoeUser->package_id = null;
+                $pppoeUser->saveQuietly();
+
                 $pppoeUser->delete();
             });
 
