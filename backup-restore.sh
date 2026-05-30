@@ -4,11 +4,10 @@ set -euo pipefail
 # =============================================================================
 # WiFiCore Database Backup & Restore Script
 # Supports three backup levels: data, full, schema
-# Auto-detects backup type on restore and handles full restores cleanly.
 # Usage:
-#   ./backup-restore.sh backup [data|full|schema]     # Create backup (default: data)
-#   ./backup-restore.sh restore [FILE]                # Restore latest or specific file
-#   ./backup-restore.sh list                          # List all backups
+#   ./backup-restore.sh backup [data|full|schema]
+#   ./backup-restore.sh restore [FILE]
+#   ./backup-restore.sh list
 # =============================================================================
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -24,18 +23,31 @@ C_RED='\033[1;31m'
 C_CYAN='\033[1;36m'
 C_RESET='\033[0m'
 
-# Check for pv (pipe viewer)
 HAS_PV=0
 if command -v pv &>/dev/null; then
   HAS_PV=1
 fi
 
 # ---------------------------------------------------------------------------
-# Progress bar helper
+# Extract only data lines (COPY blocks + INSERT) from a pg_dump SQL file
+# Uses awk state machine to properly handle multi-line blocks
+# ---------------------------------------------------------------------------
+extract_data_only() {
+  awk '
+  /^COPY / { in_copy=1; print; next }
+  /^\\\.$/ { in_copy=0; print; next }
+  in_copy { print; next }
+  /^INSERT INTO / { print; next }
+  { next }
+  '
+}
+
+# ---------------------------------------------------------------------------
+# Progress bar (stdin -> stdout, progress to stderr)
 # ---------------------------------------------------------------------------
 show_progress() {
   local total="$1"
-  local label="${2:-Restoring...}"
+  local label="${2:-Restoring}"
   awk -v total="$total" -v label="$label" '
   {
     print
@@ -59,23 +71,19 @@ show_progress() {
 # ---------------------------------------------------------------------------
 do_backup() {
   local mode="${1:-data}"
-  local suffix="sql"
   local pgdump_opts=""
   local desc=""
 
   case "$mode" in
     data)
-      suffix="sql"
       pgdump_opts="--data-only --inserts --no-owner --no-acl"
       desc="DATA-ONLY (INSERTs, safe for overlay restore)"
       ;;
     full)
-      suffix="sql"
       pgdump_opts="--clean --if-exists --no-owner --no-acl"
-      desc="FULL (DROP + CREATE + data — requires fresh DB or full restore)"
+      desc="FULL (DROP + CREATE + data — for fresh restore)"
       ;;
     schema)
-      suffix="sql"
       pgdump_opts="--schema-only --no-owner --no-acl"
       desc="SCHEMA-ONLY (CREATE tables/functions, no data)"
       ;;
@@ -85,7 +93,7 @@ do_backup() {
       ;;
   esac
 
-  local backup_file="${BACKUP_DIR}/backup_${mode}_${TIMESTAMP}.${suffix}"
+  local backup_file="${BACKUP_DIR}/backup_${mode}_${TIMESTAMP}.sql"
 
   echo -e "${C_CYAN}=== WiFiCore Backup ===${C_RESET}"
   echo "  Backup dir : $BACKUP_DIR"
@@ -151,7 +159,7 @@ do_restore() {
   local filename=$(basename "$target_file")
   local detected_mode="unknown"
 
-  # Detect backup type from filename or content
+  # Detect backup type
   if [[ "$filename" == *"_data_"* ]]; then
     detected_mode="data"
   elif [[ "$filename" == *"_schema_"* ]]; then
@@ -172,39 +180,39 @@ do_restore() {
   echo "  Backup file : $filename"
   echo "  Target DB   : ${POSTGRES_SERVICE}"
   echo "  Detected    : ${detected_mode} backup"
+  echo ""
 
   # -------------------------------------------------------------------------
-  # FULL backup restore: drop DB + recreate + restore everything
+  # FULL backup: offer two restore modes
   # -------------------------------------------------------------------------
   if [[ "$detected_mode" == "full" ]]; then
+    echo "  This is a FULL backup. Two restore options:"
     echo ""
-    echo "  ${C_YELLOW}This is a FULL backup. You have two options:${C_RESET}"
-    echo "    1) Full restore  — drops entire DB, recreates, restores everything (CLEAN)"
-    echo "    2) Data restore  — keeps existing schema, inserts data only (may fail if"
-    echo "                       schemas/tables are missing or data already exists)"
+    echo "    1) Full restore  — DESTROYS entire DB, recreates fresh, restores all"
+    echo "    2) Data-only     — Keeps existing schema, inserts data (skips errors)"
     echo ""
-    read -rp "  Choose restore mode [1/2]: " restore_choice
+    read -rp "  Choose [1/2]: " restore_choice
 
     if [[ "$restore_choice" == "1" ]]; then
       echo ""
-      read -rp "  ⚠️  This will DESTROY the entire database and rebuild it. Continue? [y/N]: " confirm
+      read -rp "  ⚠️  DESTROY database and rebuild from scratch? [y/N]: " confirm
       if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
-        echo "  Restore cancelled."
+        echo "  Cancelled."
         exit 0
       fi
 
       echo ""
-      echo -e "  ${C_YELLOW}[1/3] Dropping database (force-closing connections)...${C_RESET}"
+      echo -e "  ${C_YELLOW}[1/3] Dropping database...${C_RESET}"
       docker compose -f "$COMPOSE_FILE" exec "$POSTGRES_SERVICE" \
         bash -c 'psql -U "$POSTGRES_USER" -d template1 -c "DROP DATABASE IF EXISTS \""$POSTGRES_DB"\" WITH (FORCE);"' \
-        >/dev/null 2>&1 || true
+        2>/dev/null || true
 
       echo -e "  ${C_YELLOW}[2/3] Creating database...${C_RESET}"
       docker compose -f "$COMPOSE_FILE" exec "$POSTGRES_SERVICE" \
         bash -c 'psql -U "$POSTGRES_USER" -d template1 -c "CREATE DATABASE \""$POSTGRES_DB"\";"' \
-        >/dev/null 2>&1
+        2>/dev/null
 
-      echo -e "  ${C_YELLOW}[3/3] Restoring into fresh database...${C_RESET}"
+      echo -e "  ${C_YELLOW}[3/3] Restoring...${C_RESET}"
       local total_lines
       total_lines=$(wc -l < "$target_file")
 
@@ -224,43 +232,41 @@ do_restore() {
     else
       # Data-only from full backup
       echo ""
-      read -rp "  ⚠️  This will attempt to insert data into existing tables. Continue? [y/N]: " confirm
+      read -rp "  ⚠️  Insert data into existing tables (ignoring duplicates)? [y/N]: " confirm
       if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
-        echo "  Restore cancelled."
+        echo "  Cancelled."
         exit 0
       fi
 
       echo ""
-      echo -e "  ${C_YELLOW}Stripping schema statements, restoring data only...${C_RESET}"
+      echo -e "  ${C_YELLOW}Extracting data blocks only...${C_RESET}"
       local total_lines
       total_lines=$(wc -l < "$target_file")
 
-      # Strip DROP, CREATE, ALTER, SET, etc. Keep COPY, INSERT, and \. (end of COPY)
       if [[ "$HAS_PV" -eq 1 ]]; then
         pv -lpte -s "$total_lines" "$target_file" | \
-          sed '/^DROP /d; /^CREATE /d; /^ALTER /d; /^SET /d; /^SELECT pg_catalog/d; /^COMMENT /d; /^REVOKE /d; /^GRANT /d; /^--/d; /^$/d' | \
+          extract_data_only | \
           docker compose -f "$COMPOSE_FILE" exec -T "$POSTGRES_SERVICE" \
           bash -c 'psql -q -U "$POSTGRES_USER" -d "$POSTGRES_DB" > /dev/null'
       else
-        sed '/^DROP /d; /^CREATE /d; /^ALTER /d; /^SET /d; /^SELECT pg_catalog/d; /^COMMENT /d; /^REVOKE /d; /^GRANT /d; /^--/d; /^$/d' "$target_file" | \
-          show_progress "$total_lines" "Restoring data" | \
+        show_progress "$total_lines" "Extracting" < "$target_file" | \
+          extract_data_only | \
           docker compose -f "$COMPOSE_FILE" exec -T "$POSTGRES_SERVICE" \
           bash -c 'psql -q -U "$POSTGRES_USER" -d "$POSTGRES_DB" > /dev/null'
       fi
 
       echo ""
-      echo -e "  ${C_GREEN}Data restore attempted.${C_RESET}"
-      echo -e "  ${C_YELLOW}Note: Errors about missing schemas or duplicate keys may appear above.${C_RESET}"
+      echo -e "  ${C_GREEN}Data insert attempted.${C_RESET}"
+      echo -e "  ${C_YELLOW}Note: Duplicate rows were skipped. New rows were inserted.${C_RESET}"
     fi
 
   # -------------------------------------------------------------------------
-  # DATA backup restore: straightforward
+  # DATA backup: straightforward
   # -------------------------------------------------------------------------
   elif [[ "$detected_mode" == "data" ]]; then
-    echo ""
-    read -rp "  ⚠️  This will insert data into existing tables. Continue? [y/N]: " confirm
+    read -rp "  ⚠️  Insert data into existing tables? [y/N]: " confirm
     if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
-      echo "  Restore cancelled."
+      echo "  Cancelled."
       exit 0
     fi
 
@@ -282,13 +288,12 @@ do_restore() {
     echo -e "  ${C_GREEN}Data restore completed.${C_RESET}"
 
   # -------------------------------------------------------------------------
-  # SCHEMA backup restore: create objects, skip if they exist
+  # SCHEMA backup
   # -------------------------------------------------------------------------
   else
-    echo ""
-    read -rp "  ⚠️  This will create schema objects (tables, indexes, etc.). Continue? [y/N]: " confirm
+    read -rp "  ⚠️  Create/update schema objects? [y/N]: " confirm
     if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
-      echo "  Restore cancelled."
+      echo "  Cancelled."
       exit 0
     fi
 
@@ -308,12 +313,12 @@ do_restore() {
 
     echo ""
     echo -e "  ${C_GREEN}Schema restore completed.${C_RESET}"
-    echo -e "  ${C_YELLOW}Note: 'already exists' messages above are expected for existing objects.${C_RESET}"
+    echo -e "  ${C_YELLOW}Note: 'already exists' messages are expected for existing objects.${C_RESET}"
   fi
 }
 
 # ---------------------------------------------------------------------------
-# LIST BACKUPS
+# LIST
 # ---------------------------------------------------------------------------
 do_list() {
   echo -e "${C_CYAN}=== Available Backups ===${C_RESET}"
@@ -342,30 +347,23 @@ do_help() {
 Usage: $(basename "$0") <command> [options]
 
 Commands:
-  backup [type]        Create a new backup (default: data)
-                       Types:
-                         data   = Data only (INSERTs, safe for overlay)
-                         full   = Full DB (DROP + CREATE + INSERTs, for fresh restore)
-                         schema = Schema only (CREATE tables, no data)
+  backup [type]        Create backup (default: data)
+                       Types: data, full, schema
 
-  restore [file]       Restore from latest backup, or a specific file.
-                       Auto-detects backup type and guides you through the process.
+  restore [file]       Restore latest or specific file
+                       Auto-detects backup type and guides you
 
-  list                 List all available backups
-  help                 Show this help message
+  list                 List all backups
+  help                 Show this help
 
 Examples:
-  $(basename "$0") backup data       # Create data-only backup
-  $(basename "$0") backup full       # Create full destructive backup
-  $(basename "$0") backup schema     # Create schema-only backup
-  $(basename "$0") restore           # Auto-restore latest backup
+  $(basename "$0") backup data
+  $(basename "$0") backup full
+  $(basename "$0") restore
   $(basename "$0") restore backup_full_20260530_143022.sql
 
 Environment:
-  BACKUP_DIR           Directory to store backups (default: ./db_backups)
-
-Tip: Install 'pv' (pipe viewer) for smooth progress bars:
-     sudo apt-get install pv
+  BACKUP_DIR           Directory for backups (default: ./db_backups)
 EOF
 }
 
