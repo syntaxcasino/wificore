@@ -388,7 +388,8 @@
 </template>
 
 <script setup>
-import { useRouter, watch } from 'vue-router'
+import { useRouter } from 'vue-router'
+import { watch } from 'vue'
 import {
   Package, ArrowLeft, Save, Wifi, Network, CheckCircle,
   Zap, HardDrive, Clock
