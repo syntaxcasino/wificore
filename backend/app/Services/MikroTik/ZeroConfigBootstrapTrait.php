@@ -317,6 +317,9 @@ trait ZeroConfigBootstrapTrait
             // PPPoE/PPP session events (connect, disconnect, auth) forwarded to remote syslog
             $rules[] = ":do { /system logging add action=\"remote_syslog\" topics=\"ppp\" comment=\"WifiCore-SYSLOG-PPP\" } on-error={}";
             $rules[] = ":do { /system logging add action=\"remote_syslog\" topics=\"pppoe\" comment=\"WifiCore-SYSLOG-PPPOE\" } on-error={}";
+            $rules[] = ":do { /system logging add action=\"remote_syslog\" topics=\"radius\" comment=\"WifiCore-SYSLOG-RADIUS\" } on-error={}";
+            $rules[] = ":do { /system logging add action=\"remote_syslog\" topics=\"account\" comment=\"WifiCore-SYSLOG-ACCOUNT\" } on-error={}";
+            $rules[] = ":do { /system logging add action=\"remote_syslog\" topics=\"hotspot\" comment=\"WifiCore-SYSLOG-HOTSPOT\" } on-error={}";
         }
         $rules[] = "";
         return $rules;
