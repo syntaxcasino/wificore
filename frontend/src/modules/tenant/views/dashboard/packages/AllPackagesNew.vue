@@ -304,7 +304,7 @@ import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { usePackages } from '@/modules/tenant/composables/data/usePackages'
 import { useFilters } from '@/modules/common/composables/utils/useFilters'
 import { useConfirmStore } from '@/stores/confirm'
-import { useToast } from '@/modules/common/composables/useToast.js'
+import { useNotificationStore } from '@/stores/notifications'
 import DataViewContainer from '@/modules/common/components/base/DataViewContainer.vue'
 
 import DataSkeleton from '@/modules/common/components/base/DataSkeleton.vue'
@@ -316,7 +316,7 @@ import BaseSelect from '@/modules/common/components/base/BaseSelect.vue'
 import CreatePackageOverlay from '@/modules/tenant/components/packages/overlays/CreatePackageOverlay.vue'
 import ViewPackageOverlay from '@/modules/tenant/components/packages/overlays/ViewPackageOverlay.vue'
 
-const { error: showError, success: showSuccess } = useToast()
+const notify = useNotificationStore()
 
 const {
   packages,
@@ -427,7 +427,7 @@ const handleToggleStatus = async (pkg) => {
   try {
     await toggleStatus(pkg)
   } catch (err) {
-    showError(`Failed to ${action} package`)
+    notify.error('Action Failed', `Failed to ${action} package`)
   }
 }
 
@@ -478,7 +478,7 @@ const handleDelete = async (pkg) => {
   try {
     await deletePackage(pkg.id)
   } catch (err) {
-    showError('Failed to delete package')
+    notify.error('Delete Failed', 'Failed to delete package')
   }
 }
 
@@ -519,7 +519,7 @@ const handleEditMenu = () => {
   closeMenu()
   if (!pkg) return
   if (hasUsers(pkg)) {
-    showError('This package is assigned to users and cannot be edited')
+    notify.error('Cannot Edit', 'This package is assigned to users and cannot be edited')
     return
   }
   openEditOverlay(pkg)
@@ -553,7 +553,7 @@ const handleDeleteMenu = async () => {
       await deletePackage(pkg.id)
     } catch (err) {
       const msg = err.response?.data?.error || err.response?.data?.message || 'Failed to delete package'
-      showError(msg)
+      notify.error('Delete Failed', msg)
     }
   }
 }
@@ -569,7 +569,7 @@ const handleBatchDelete = async () => {
   const skipped = ids.filter(id => hasUsers(pkgMap.get(id)))
 
   if (!deletable.length) {
-    showError('All selected packages are assigned to users and cannot be deleted')
+    notify.error('Cannot Delete', 'All selected packages are assigned to users and cannot be deleted')
     clearSelectionLocal()
     return
   }
@@ -589,10 +589,10 @@ const handleBatchDelete = async () => {
 
   try {
     await batchDeletePackages()
-    showSuccess(`${deletable.length} package${deletable.length > 1 ? 's' : ''} deleted successfully${skipped.length ? ` (${skipped.length} skipped)` : ''}`)
+    notify.success('Deleted', `${deletable.length} package${deletable.length > 1 ? 's' : ''} deleted successfully${skipped.length ? ` (${skipped.length} skipped)` : ''}`)
   } catch (err) {
     const msg = err.response?.data?.error || err.response?.data?.message || err.message || 'Failed to delete some packages'
-    showError(msg)
+    notify.error('Batch Delete Failed', msg)
   }
 }
 

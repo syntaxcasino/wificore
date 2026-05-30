@@ -1,10 +1,13 @@
 import { ref, onUnmounted } from 'vue'
 import axios from 'axios'
+import { useNotificationStore } from '@/stores/notifications'
 import { scheduleAfterPaint } from '@/modules/common/composables/performance/useViewCache'
 
 const PACKAGE_CACHE_TTL_MS = 15 * 1000
 
 export function usePackages() {
+  const notify = useNotificationStore()
+
   const packages = ref([])
   const loading = ref(false)
   const refreshing = ref(false)
@@ -152,6 +155,7 @@ export function usePackages() {
       const newPackage = response.data?.data
       formMessage.value = { text: msg, type: 'success' }
       formSubmitted.value = true
+      notify.success('Package Created', msg)
 
       // Trigger immediate UI update via the event-driven path
       if (newPackage?.id && typeof window !== 'undefined') {
@@ -164,10 +168,9 @@ export function usePackages() {
         resetFormData()
       }, 1500)
     } catch (err) {
-      formMessage.value = {
-        text: err.response?.data?.error || err.response?.data?.message || 'Failed to create package',
-        type: 'error'
-      }
+      const errMsg = err.response?.data?.error || err.response?.data?.message || 'Failed to create package'
+      formMessage.value = { text: errMsg, type: 'error' }
+      notify.error('Package Creation Failed', errMsg)
       console.error('addPackage error:', err.message, err.response?.data)
     } finally {
       formSubmitting.value = false
@@ -193,6 +196,7 @@ export function usePackages() {
       const response = await axios.put(`/packages/${selectedPackage.value.id}`, formData.value)
       const msg = response.data?.message || 'Package updated successfully'
       formMessage.value = { text: msg, type: 'success' }
+      notify.success('Package Updated', msg)
 
       // Trigger immediate UI update via the event-driven path
       const updatedPkg = response.data?.data
@@ -207,10 +211,9 @@ export function usePackages() {
         resetFormData()
       }, 1000)
     } catch (err) {
-      formMessage.value = {
-        text: err.response?.data?.error || err.response?.data?.message || 'Failed to update package',
-        type: 'error'
-      }
+      const errMsg = err.response?.data?.error || err.response?.data?.message || 'Failed to update package'
+      formMessage.value = { text: errMsg, type: 'error' }
+      notify.error('Package Update Failed', errMsg)
       console.error('updatePackage error:', err.message, err.response?.data)
     } finally {
       formSubmitting.value = false
