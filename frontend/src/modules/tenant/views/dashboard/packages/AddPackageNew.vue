@@ -388,7 +388,7 @@
 </template>
 
 <script setup>
-import { useRouter } from 'vue-router'
+import { useRouter, watch } from 'vue-router'
 import {
   Package, ArrowLeft, Save, Wifi, Network, CheckCircle,
   Zap, HardDrive, Clock
@@ -414,6 +414,13 @@ const {
   saving, errorMessage, formData,
   getDataLimitDisplay, formatMoney, resetForm, submitPackage
 } = useAddPackage()
+
+watch(() => formData.value.type, (newType, oldType) => {
+  if (!oldType) return // skip initial set
+  if (!formData.value.validity) {
+    formData.value.validity = newType === 'hotspot' ? '1 hour' : '30 days'
+  }
+})
 
 const handleSubmit = async () => {
   const result = await submitPackage()

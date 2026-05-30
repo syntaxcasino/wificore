@@ -4,7 +4,7 @@ import axios from 'axios'
 const defaultForm = () => ({
   name: '', description: '',
   type: 'hotspot',
-  price: null, validity: '',
+  price: null, validity: '1 hour',
   download_speed: null, upload_speed: null,
   data_limit_value: null, data_limit_unit: 'GB',
   unlimited_data: false,
