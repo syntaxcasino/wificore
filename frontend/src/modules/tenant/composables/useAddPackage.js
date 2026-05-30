@@ -58,7 +58,14 @@ export function useAddPackage() {
       notify.success('Package Created', 'Package created successfully')
       return { success: true }
     } catch (err) {
-      const msg = err.response?.data?.error || err.response?.data?.message || 'Failed to create package'
+      const errors = err.response?.data?.errors
+      let msg
+      if (errors && typeof errors === 'object') {
+        const fields = Object.keys(errors).map(k => k.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()))
+        msg = `Please fill in: ${fields.join(', ')}`
+      } else {
+        msg = err.response?.data?.error || err.response?.data?.message || 'Failed to create package'
+      }
       errorMessage.value = msg
       notify.error('Package Creation Failed', msg)
       return { success: false }

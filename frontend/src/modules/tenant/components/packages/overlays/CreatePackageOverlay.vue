@@ -339,6 +339,7 @@
 
 <script setup>
 import { computed, ref, watch } from 'vue'
+import { useNotificationStore } from '@/stores/notifications'
 import SlideOverlay from '@/modules/common/components/base/SlideOverlay.vue'
 
 const props = defineProps({
@@ -350,6 +351,8 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['close-form', 'submit'])
+
+const notify = useNotificationStore()
 
 const isOpen = computed({
   get: () => props.showFormOverlay,
@@ -495,7 +498,23 @@ const minDateTime = computed(() => {
   return `${year}-${month}-${day}T${hours}:${minutes}`
 })
 
+const validateForm = () => {
+  const missing = []
+  if (!props.formData?.name?.trim()) missing.push('Package Name')
+  if (props.formData?.price == null || props.formData?.price === '' || Number(props.formData?.price) < 0) missing.push('Price')
+  if (!downloadSpeedValue.value || Number(downloadSpeedValue.value) <= 0) missing.push('Download Speed')
+  if (!uploadSpeedValue.value || Number(uploadSpeedValue.value) <= 0) missing.push('Upload Speed')
+  if (!durationValue.value || Number(durationValue.value) <= 0) missing.push('Duration')
+  if (props.formData?.devices == null || props.formData?.devices === '' || Number(props.formData?.devices) < 1) missing.push('Max Devices')
+  return missing
+}
+
 const handleSubmit = () => {
+  const missing = validateForm()
+  if (missing.length) {
+    notify.error('Missing Required Fields', `Please fill in: ${missing.join(', ')}`)
+    return
+  }
   if (props.formData?.download_speed) {
     props.formData.speed = props.formData.download_speed
   }
