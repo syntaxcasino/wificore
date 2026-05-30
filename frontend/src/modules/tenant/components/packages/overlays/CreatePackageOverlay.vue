@@ -256,7 +256,7 @@
               <svg class="h-4 w-4 mr-2 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
               Advanced Options
             </h4>
-            <div class="space-y-3">
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <label class="flex items-center gap-3 cursor-pointer">
                 <input
                   v-model="formData.enable_burst"
@@ -266,29 +266,30 @@
                 <span class="text-sm text-slate-700">Enable Burst</span>
               </label>
 
-              <label class="flex items-center gap-3 cursor-pointer">
-                <input
-                  v-model="formData.enable_schedule"
-                  type="checkbox"
-                  class="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500"
-                />
-                <span class="text-sm text-slate-700">Enable Schedule</span>
-              </label>
-
-              <!-- Schedule Time Picker -->
-              <div v-if="formData.enable_schedule" class="ml-7 mt-2 space-y-2">
-                <label class="block text-xs font-medium text-slate-500 mb-1">
-                  Activation Time <span class="text-red-500">*</span>
+              <div>
+                <label class="flex items-center gap-3 cursor-pointer">
+                  <input
+                    v-model="formData.enable_schedule"
+                    type="checkbox"
+                    class="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500"
+                  />
+                  <span class="text-sm text-slate-700">Enable Schedule</span>
                 </label>
-                <input
-                  v-model="formData.scheduled_activation_time"
-                  type="datetime-local"
-                  class="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  :min="minDateTime"
-                />
-                <p class="text-xs text-slate-500">
-                  Package will be activated at the specified time
-                </p>
+                <!-- Schedule Time Picker -->
+                <div v-if="formData.enable_schedule" class="mt-2 space-y-1">
+                  <label class="block text-xs font-medium text-slate-500">
+                    Activation Time <span class="text-red-500">*</span>
+                  </label>
+                  <input
+                    v-model="formData.scheduled_activation_time"
+                    type="datetime-local"
+                    class="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    :min="minDateTime"
+                  />
+                  <p class="text-xs text-slate-500">
+                    Package activated at specified time
+                  </p>
+                </div>
               </div>
 
               <label class="flex items-center gap-3 cursor-pointer">
