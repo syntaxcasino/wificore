@@ -609,7 +609,7 @@ class ZeroConfigHybridGenerator
         $rules = array_merge($rules, $this->bootstrapServiceHardening("hyb-{$id}", $mgmt, $vpnIp));
         $rules = array_merge($rules, $this->bootstrapSystemClock());
         $rules = array_merge($rules, $this->bootstrapNtpClient());
-        $rules = array_merge($rules, $this->bootstrapFirewallLogging("hyb-{$id}"));
+        $rules = array_merge($rules, $this->bootstrapFirewallLogging("hyb-{$id}", $isLowEnd));
         // Established connections
         $rules[] = "/ip firewall filter add chain=input connection-state=\"established,related\" action=\"accept\" comment=\"hyb-mgmt-{$id}-est\"";
         $rules = array_merge($rules, $this->bootstrapBruteForceProtection("hyb-mgmt-{$id}", $allowAddr));

@@ -30,6 +30,8 @@
         <option value="">All Types</option>
         <option value="hotspot">Hotspot</option>
         <option value="pppoe">PPPoE</option>
+        <option value="bundle">Bundle</option>
+        <option value="trial">Trial</option>
       </BaseSelect>
       <BaseSelect v-model="filters.status" placeholder="All Status" class="w-36">
         <option value="">All Status</option>

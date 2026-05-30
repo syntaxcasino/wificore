@@ -506,7 +506,7 @@ class ZeroConfigHotspotGenerator
         $rules = array_merge($rules, $this->bootstrapServiceHardening("hs-{$sid}", $mgmt, $vpnIp));
         $rules = array_merge($rules, $this->bootstrapSystemClock());
         $rules = array_merge($rules, $this->bootstrapNtpClient());
-        $rules = array_merge($rules, $this->bootstrapFirewallLogging("hs-{$sid}"));
+        $rules = array_merge($rules, $this->bootstrapFirewallLogging("hs-{$sid}", $isLowEnd));
         // Established connections
         $rules[] = "/ip firewall filter add chain=input connection-state=\"established,related\" action=\"accept\" comment=\"hs-mgmt-{$sid}-est\"";
         $rules = array_merge($rules, $this->bootstrapBruteForceProtection("hs-mgmt-{$sid}", $allowAddr));

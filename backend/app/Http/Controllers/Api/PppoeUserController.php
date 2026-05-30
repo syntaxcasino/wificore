@@ -665,15 +665,14 @@ class PppoeUserController extends Controller
 
         // OPTIMIZED: Select only needed columns for package and router
         $package = Package::query()
-            ->select(['id', 'name', 'download_speed', 'upload_speed', 'duration', 'price'])
+            ->select(['id', 'name', 'type', 'download_speed', 'upload_speed', 'duration', 'price'])
             ->where('id', $request->package_id)
-            ->where('type', 'pppoe')
             ->first();
 
         if (!$package) {
             return response()->json([
                 'success' => false,
-                'message' => 'Invalid package: must belong to tenant and be type pppoe',
+                'message' => 'Invalid package: must belong to tenant',
             ], 422);
         }
 
@@ -778,6 +777,11 @@ class PppoeUserController extends Controller
             event(new PppoeUserCreated($pppoeUser, (string) $tenantId));
             $this->bustUserCache((string) $tenantId);
 
+            // TRIAL PACKAGE TRACKING: Mark this user as having used a trial package
+            if ($package->type === 'trial') {
+                Cache::forever("pppoe_trial_used:{$tenantId}:{$pppoeUser->id}", true);
+            }
+
             return response()->json([
                 'success' => true,
                 'message' => 'PPPoE user created',
@@ -877,16 +881,26 @@ class PppoeUserController extends Controller
         $package = null;
         if ($request->has('package_id')) {
             $package = Package::query()
-                ->select(['id', 'name', 'download_speed', 'upload_speed', 'duration', 'price'])
+                ->select(['id', 'name', 'type', 'download_speed', 'upload_speed', 'duration', 'price'])
                 ->where('id', $request->package_id)
-                ->where('type', 'pppoe')
                 ->first();
 
             if (!$package) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Invalid package: must belong to tenant and be type pppoe',
+                    'message' => 'Invalid package: must belong to tenant',
                 ], 422);
+            }
+
+            // TRIAL PACKAGE CHECK: A user can only use a trial package once forever.
+            if ($package->type === 'trial') {
+                $hasUsedTrial = Cache::get("pppoe_trial_used:{$tenant->id}:{$pppoeUser->id}", false);
+                if ($hasUsedTrial) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'This user has already used a trial package. Trial packages can only be used once.',
+                    ], 422);
+                }
             }
         }
 
@@ -996,6 +1010,11 @@ class PppoeUserController extends Controller
             $rateLimitChanged = (string) ($previousRateLimit ?? '') !== (string) ($pppoeUser->rate_limit ?? '');
             $packageChanged = (string) ($previousPackageId ?? '') !== (string) ($pppoeUser->package_id ?? '');
             $isNowBlockedOrInactive = !$pppoeUser->is_active || $pppoeUser->status === 'blocked' || $pppoeUser->status === 'expired' || $pppoeUser->status === 'inactive' || $pppoeUser->status === 'suspended';
+
+            // TRIAL PACKAGE TRACKING: Mark this user as having used a trial package
+            if ($package && $package->type === 'trial' && $packageChanged) {
+                Cache::forever("pppoe_trial_used:{$tenant->id}:{$pppoeUser->id}", true);
+            }
 
             // IMPORTANT: MikroTik does not reliably apply new Mikrotik-Rate-Limit mid-session.
             // Force re-auth by disconnecting the active PPP session when rate limit/package changes,

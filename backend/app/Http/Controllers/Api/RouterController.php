@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Jobs\ExecuteProvisioningServiceRouterTaskJob;
 use App\Jobs\RouterProbingJob;
 use App\Jobs\RouterProvisioningJob;
+use App\Events\ProvisioningFailed;
+use App\Events\RouterProvisioningProgress;
 use App\Models\Router;
 use App\Models\RouterConfig;
 use App\Models\RouterTask;
@@ -30,6 +32,7 @@ use Illuminate\Support\Facades\Crypt;
 class RouterController extends Controller
 {
     private const ROUTER_LIST_CACHE_TTL_SECONDS = 15;
+    private const PROVISIONING_TASK_STALE_TIMEOUT_MINUTES = 8;
 
     public function index(Request $request)
     {
@@ -1110,6 +1113,8 @@ class RouterController extends Controller
                 : null;
 
             if ($task) {
+                $task = $this->failStaleProvisioningTaskIfNeeded($router, $task);
+
                 $responsePayload = [
                     'success' => true,
                     'status' => $task->status,
@@ -1128,6 +1133,8 @@ class RouterController extends Controller
                 if ($task->type === RouterTask::TYPE_DEPLOY_SERVICE_CONFIG) {
                     $workflow = app(ProvisioningServiceClient::class)->getWorkflowStatus((string) $task->id);
                     if (is_array($workflow)) {
+                        $task = $this->syncTaskFromWorkflowSnapshot($router, $task, $workflow);
+
                         $responsePayload['status'] = $workflow['status'] ?? $responsePayload['status'];
                         $responsePayload['progress'] = $workflow['progress'] ?? $responsePayload['progress'];
                         $responsePayload['message'] = $workflow['message'] ?? $responsePayload['message'];
@@ -1192,6 +1199,88 @@ class RouterController extends Controller
                 'error' => 'Failed to get provisioning status: ' . $e->getMessage(),
             ], 500);
         }
+    }
+
+    private function failStaleProvisioningTaskIfNeeded(Router $router, RouterTask $task): RouterTask
+    {
+        if ($task->status !== RouterTask::STATUS_RUNNING || !$task->updated_at) {
+            return $task;
+        }
+
+        $staleAt = now()->subMinutes(self::PROVISIONING_TASK_STALE_TIMEOUT_MINUTES);
+        if ($task->updated_at->greaterThan($staleAt)) {
+            return $task;
+        }
+
+        $error = sprintf(
+            'Provisioning timeout: no callback update for %d minutes. Please retry provisioning.',
+            self::PROVISIONING_TASK_STALE_TIMEOUT_MINUTES
+        );
+
+        $task->markFailed($error, (int) $task->progress, $task->message ?: 'Provisioning stalled waiting for callback');
+        $router->update([
+            'status' => 'failed',
+            'provisioning_stage' => 'failed',
+            'last_checked' => now(),
+        ]);
+
+        Log::error('Provisioning task marked failed after callback timeout', [
+            'task_id' => $task->id,
+            'router_id' => $router->id,
+            'tenant_id' => $task->tenant_id,
+            'last_task_update_at' => optional($task->updated_at)->toIso8601String(),
+        ]);
+
+        broadcast(new RouterProvisioningProgress(
+            (string) $router->id,
+            'failed',
+            (float) ($task->progress ?: 40),
+            $error,
+            ['task_id' => $task->id, 'tenant_id' => $task->tenant_id, 'reason' => 'callback_timeout']
+        ));
+
+        broadcast(new ProvisioningFailed(
+            (string) $router->id,
+            'failed',
+            $error,
+            ['task_id' => $task->id, 'tenant_id' => $task->tenant_id, 'reason' => 'callback_timeout']
+        ));
+
+        return $task->fresh() ?? $task;
+    }
+
+    private function syncTaskFromWorkflowSnapshot(Router $router, RouterTask $task, array $workflow): RouterTask
+    {
+        $workflowStatus = (string) ($workflow['status'] ?? '');
+        if ($workflowStatus === '') {
+            return $task;
+        }
+
+        if ($workflowStatus === RouterTask::STATUS_FAILED && $task->status !== RouterTask::STATUS_FAILED) {
+            $error = (string) ($workflow['error'] ?? $workflow['message'] ?? 'Provisioning failed');
+            $task->markFailed(
+                $error,
+                (int) ($workflow['progress'] ?? $task->progress ?? 0),
+                (string) ($workflow['message'] ?? $task->message ?? 'Provisioning failed'),
+                (array) ($workflow['result'] ?? [])
+            );
+
+            $router->update([
+                'status' => 'failed',
+                'provisioning_stage' => 'failed',
+                'last_checked' => now(),
+            ]);
+
+            Log::error('Provisioning workflow reported terminal failure', [
+                'task_id' => $task->id,
+                'router_id' => $router->id,
+                'tenant_id' => $task->tenant_id,
+                'workflow_stage' => $workflow['stage'] ?? null,
+                'error' => $error,
+            ]);
+        }
+
+        return $task->fresh() ?? $task;
     }
 
     public function verifyConnectivity(Router $router)
@@ -1836,6 +1925,8 @@ EOT;
             ], 404);
         }
 
+        $task = $this->failStaleProvisioningTaskIfNeeded($router, $task);
+
         $taskPayload = [
             'id' => $task->id,
             'type' => $task->type,
@@ -1853,6 +1944,8 @@ EOT;
         if ($task->type === RouterTask::TYPE_DEPLOY_SERVICE_CONFIG) {
             $workflow = app(ProvisioningServiceClient::class)->getWorkflowStatus((string) $task->id);
             if (is_array($workflow)) {
+                $task = $this->syncTaskFromWorkflowSnapshot($router, $task, $workflow);
+
                 $taskPayload['status'] = $workflow['status'] ?? $taskPayload['status'];
                 $taskPayload['progress'] = $workflow['progress'] ?? $taskPayload['progress'];
                 $taskPayload['message'] = $workflow['message'] ?? $taskPayload['message'];

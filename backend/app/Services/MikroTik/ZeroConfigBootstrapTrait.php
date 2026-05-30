@@ -309,14 +309,14 @@ trait ZeroConfigBootstrapTrait
             ":do { /snmp set enabled=\"yes\" contact=\"noc@wificore\" location=\"WifiCore\" trap-community=\"{$snmpCommunity}\" trap-version=2 } on-error={ /log warning \"SNMP: enable failed\" }",
         ];
         if ($enableSyslog) {
-            $rules[] = ":do { /system logging action remove [/system logging action find name=\"remote-syslog\"] } on-error={}";
+            $rules[] = ":do { /system logging action remove [/system logging action find name=\"remote_syslog\"] } on-error={}";
             $rules[] = ":do { /system logging action add name=\"remote_syslog\" target=\"remote\" remote=\"{$syslogHost}\" remote-port=\"514\" remote-log-format=\"bsd\" comment=\"WifiCore Syslog\" } on-error={ :log warning \"Syslog: action add failed\" }";
-            $rules[] = ":do { /system logging add action=\"remote-syslog\" topics=\"critical\" comment=\"WifiCore-SYSLOG-CRIT\" } on-error={}";
-            $rules[] = ":do { /system logging add action=\"remote-syslog\" topics=\"error\" comment=\"WifiCore-SYSLOG-ERR\" } on-error={}";
-            $rules[] = ":do { /system logging add action=\"remote-syslog\" topics=\"warning\" comment=\"WifiCore-SYSLOG-WARN\" } on-error={}";
+            $rules[] = ":do { /system logging add action=\"remote_syslog\" topics=\"critical\" comment=\"WifiCore-SYSLOG-CRIT\" } on-error={}";
+            $rules[] = ":do { /system logging add action=\"remote_syslog\" topics=\"error\" comment=\"WifiCore-SYSLOG-ERR\" } on-error={}";
+            $rules[] = ":do { /system logging add action=\"remote_syslog\" topics=\"warning\" comment=\"WifiCore-SYSLOG-WARN\" } on-error={}";
             // PPPoE/PPP session events (connect, disconnect, auth) forwarded to remote syslog
-            $rules[] = ":do { /system logging add action=\"remote-syslog\" topics=\"ppp\" comment=\"WifiCore-SYSLOG-PPP\" } on-error={}";
-            $rules[] = ":do { /system logging add action=\"remote-syslog\" topics=\"pppoe\" comment=\"WifiCore-SYSLOG-PPPOE\" } on-error={}";
+            $rules[] = ":do { /system logging add action=\"remote_syslog\" topics=\"ppp\" comment=\"WifiCore-SYSLOG-PPP\" } on-error={}";
+            $rules[] = ":do { /system logging add action=\"remote_syslog\" topics=\"pppoe\" comment=\"WifiCore-SYSLOG-PPPOE\" } on-error={}";
         }
         $rules[] = "";
         return $rules;
