@@ -371,7 +371,7 @@ const downloadSpeedUnit = ref('Mbps')
 const dataLimitValue = ref('')
 const dataLimitUnit = ref('GB')
 const durationValue = ref('')
-const durationUnit = ref('Hours')
+const durationUnit = ref('Months')
 
 const parseValueUnit = (input, allowedUnits, defaultUnit) => {
   const raw = String(input || '').trim()
@@ -386,9 +386,9 @@ const parseValueUnit = (input, allowedUnits, defaultUnit) => {
 
 const parseDurationValueUnit = (input) => {
   const raw = String(input || '').trim()
-  if (!raw) return { value: '', unit: 'Hours' }
+  if (!raw) return { value: '', unit: 'Months' }
   const m = raw.match(/^\s*(\d+)\s*([a-zA-Z]+)\s*$/)
-  if (!m) return { value: raw, unit: 'Hours' }
+  if (!m) return { value: raw, unit: 'Months' }
   const value = m[1]
   const unitRaw = m[2].toLowerCase()
   const unitMap = {
@@ -401,7 +401,7 @@ const parseDurationValueUnit = (input) => {
     year: 'Years',
     years: 'Years',
   }
-  return { value, unit: unitMap[unitRaw] || 'Hours' }
+  return { value, unit: unitMap[unitRaw] || 'Months' }
 }
 
 const toDurationString = (value, unit) => {
@@ -416,7 +416,7 @@ const toDurationString = (value, unit) => {
     Months: isOne ? 'month' : 'months',
     Years: isOne ? 'year' : 'years',
   }
-  return `${v} ${map[u] || (isOne ? 'hour' : 'hours')}`
+  return `${v} ${map[u] || (isOne ? 'month' : 'months')}`
 }
 
 const toValueUnitString = (value, unit) => {
