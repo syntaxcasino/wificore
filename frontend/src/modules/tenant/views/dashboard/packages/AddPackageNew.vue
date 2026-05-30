@@ -402,8 +402,10 @@ import BaseCard from '@/modules/common/components/base/BaseCard.vue'
 import BaseBadge from '@/modules/common/components/base/BaseBadge.vue'
 import BaseSelect from '@/modules/common/components/base/BaseSelect.vue'
 import { useAddPackage } from '@/modules/tenant/composables/useAddPackage.js'
+import { useNotificationStore } from '@/stores/notifications'
 
 const router = useRouter()
+const notify = useNotificationStore()
 
 const breadcrumbs = [
   { label: 'Dashboard', to: '/dashboard' },
@@ -423,12 +425,32 @@ watch(() => formData.value.type, (newType, oldType) => {
   }
 })
 
+const validateForm = () => {
+  const missing = []
+  if (!formData.value.name?.trim()) missing.push('Package Name')
+  if (formData.value.price == null || formData.value.price === '' || Number(formData.value.price) < 0) missing.push('Price')
+  if (!formData.value.validity?.trim()) missing.push('Validity Period')
+  if (!formData.value.download_speed || Number(formData.value.download_speed) <= 0) missing.push('Download Speed')
+  if (!formData.value.upload_speed || Number(formData.value.upload_speed) <= 0) missing.push('Upload Speed')
+  return missing
+}
+
 const handleSubmit = async () => {
+  const missing = validateForm()
+  if (missing.length) {
+    notify.error('Missing Required Fields', `Please fill in: ${missing.join(', ')}`)
+    return
+  }
   const result = await submitPackage()
   if (result.success) router.push('/dashboard/packages/all')
 }
 
 const handleSaveAndNew = async () => {
+  const missing = validateForm()
+  if (missing.length) {
+    notify.error('Missing Required Fields', `Please fill in: ${missing.join(', ')}`)
+    return
+  }
   const result = await submitPackage()
   if (result.success) resetForm()
 }

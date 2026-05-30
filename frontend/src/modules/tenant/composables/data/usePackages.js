@@ -168,7 +168,14 @@ export function usePackages() {
         resetFormData()
       }, 1500)
     } catch (err) {
-      const errMsg = err.response?.data?.error || err.response?.data?.message || 'Failed to create package'
+      const errors = err.response?.data?.errors
+      let errMsg
+      if (errors && typeof errors === 'object') {
+        const fields = Object.keys(errors).map(k => k.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()))
+        errMsg = `Please fill in: ${fields.join(', ')}`
+      } else {
+        errMsg = err.response?.data?.error || err.response?.data?.message || 'Failed to create package'
+      }
       formMessage.value = { text: errMsg, type: 'error' }
       notify.error('Package Creation Failed', errMsg)
       console.error('addPackage error:', err.message, err.response?.data)
@@ -211,7 +218,14 @@ export function usePackages() {
         resetFormData()
       }, 1000)
     } catch (err) {
-      const errMsg = err.response?.data?.error || err.response?.data?.message || 'Failed to update package'
+      const errors = err.response?.data?.errors
+      let errMsg
+      if (errors && typeof errors === 'object') {
+        const fields = Object.keys(errors).map(k => k.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()))
+        errMsg = `Please fill in: ${fields.join(', ')}`
+      } else {
+        errMsg = err.response?.data?.error || err.response?.data?.message || 'Failed to update package'
+      }
       formMessage.value = { text: errMsg, type: 'error' }
       notify.error('Package Update Failed', errMsg)
       console.error('updatePackage error:', err.message, err.response?.data)
