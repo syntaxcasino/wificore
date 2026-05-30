@@ -3,12 +3,11 @@ set -euo pipefail
 
 # =============================================================================
 # WiFiCore Database Backup & Restore Script
-# Uses DATA-ONLY dumps (no schema/DROPs) to avoid FK conflicts during restore.
-# Also handles old --clean backups by stripping DROP statements.
+# Supports three backup levels: data, full, schema
 # Usage:
-#   ./backup-restore.sh backup               # Create a new data-only backup
-#   ./backup-restore.sh restore              # Restore latest backup
-#   ./backup-restore.sh restore FILE.sql     # Restore a specific file
+#   ./backup-restore.sh backup [data|full|schema]     # Create backup (default: data)
+#   ./backup-restore.sh restore [FILE]                # Restore latest or specific file
+#   ./backup-restore.sh list                          # List all backups
 # =============================================================================
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -34,11 +33,39 @@ fi
 # BACKUP
 # ---------------------------------------------------------------------------
 do_backup() {
-  local backup_file="${BACKUP_DIR}/backup_${TIMESTAMP}.sql"
+  local mode="${1:-data}"
+  local suffix="sql"
+  local pgdump_opts=""
+  local desc=""
+
+  case "$mode" in
+    data)
+      suffix="sql"
+      pgdump_opts="--data-only --inserts --no-owner --no-acl"
+      desc="DATA-ONLY (no schema/DROPs)"
+      ;;
+    full)
+      suffix="sql"
+      pgdump_opts="--clean --if-exists --no-owner --no-acl"
+      desc="FULL (schema + data + DROP/CREATE)"
+      ;;
+    schema)
+      suffix="sql"
+      pgdump_opts="--schema-only --no-owner --no-acl"
+      desc="SCHEMA-ONLY (no data)"
+      ;;
+    *)
+      echo -e "${C_RED}Error: Unknown backup type '$mode'. Use: data, full, or schema.${C_RESET}" >&2
+      exit 1
+      ;;
+  esac
+
+  local backup_file="${BACKUP_DIR}/backup_${mode}_${TIMESTAMP}.${suffix}"
+
   echo -e "${C_CYAN}=== WiFiCore Backup ===${C_RESET}"
   echo "  Backup dir : $BACKUP_DIR"
   echo "  Output file: $(basename "$backup_file")"
-  echo "  Mode       : DATA-ONLY (no schema/DROPs)"
+  echo "  Mode       : $desc"
   echo ""
 
   mkdir -p "$BACKUP_DIR"
@@ -46,12 +73,12 @@ do_backup() {
   if [[ "$HAS_PV" -eq 1 ]]; then
     echo -e "  ${C_YELLOW}Dumping database...${C_RESET}"
     docker compose -f "$COMPOSE_FILE" exec "$POSTGRES_SERVICE" \
-      bash -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" --data-only --inserts --no-owner --no-acl' \
+      bash -c "pg_dump -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" ${pgdump_opts}" \
       | pv -pte > "$backup_file"
   else
     echo -e "  ${C_YELLOW}Dumping database...${C_RESET} (install 'pv' for progress bar: apt install pv)"
     docker compose -f "$COMPOSE_FILE" exec "$POSTGRES_SERVICE" \
-      bash -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" --data-only --inserts --no-owner --no-acl' \
+      bash -c "pg_dump -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" ${pgdump_opts}" \
       > "$backup_file" &
     local pid=$!
     local spin='-\|/'
@@ -100,20 +127,55 @@ do_restore() {
   echo "  Backup file : $(basename "$target_file")"
   echo "  Target DB   : ${POSTGRES_SERVICE}"
 
-  # Detect if this is an old --clean dump (contains DROP statements)
-  local is_clean_dump=0
-  if [[ "${target_file##*.}" == "sql" ]]; then
+  # Detect backup type from filename or content
+  local detected_mode="unknown"
+  local filename=$(basename "$target_file")
+
+  if [[ "$filename" == *"_data_"* ]]; then
+    detected_mode="data"
+  elif [[ "$filename" == *"_schema_"* ]]; then
+    detected_mode="schema"
+  elif [[ "$filename" == *"_full_"* ]]; then
+    detected_mode="full"
+  elif [[ "${filename##*.}" == "sql" ]]; then
     if grep -q '^DROP ' "$target_file" 2>/dev/null; then
-      is_clean_dump=1
-      echo "  Detected    : Old full-schema backup (with DROPs)"
-      echo "  Action      : Removing DROP statements, creating missing schemas/tables"
+      detected_mode="full"
+    elif grep -q '^COPY ' "$target_file" 2>/dev/null || grep -q '^INSERT ' "$target_file" 2>/dev/null; then
+      detected_mode="data"
     else
-      echo "  Detected    : Data-only backup"
+      detected_mode="schema"
     fi
   fi
 
+  echo "  Detected    : ${detected_mode} backup"
+
+  # Set restore behavior based on detected mode
+  local on_error_stop=1
+  local strip_drops=0
+  local restore_desc=""
+
+  case "$detected_mode" in
+    full)
+      restore_desc="DROP + CREATE + INSERT (destructive)"
+      ;;
+    schema)
+      restore_desc="CREATE schema only (no data)"
+      on_error_stop=0
+      ;;
+    data|*)
+      restore_desc="INSERT data only"
+      ;;
+  esac
+
+  echo "  Action      : $restore_desc"
   echo ""
-  read -rp "  ⚠️  This will OVERWRITE/INSERT data into existing tables. Continue? [y/N]: " confirm
+
+  if [[ "$detected_mode" == "full" ]]; then
+    read -rp "  ⚠️  This will DROP and RECREATE the entire database. Continue? [y/N]: " confirm
+  else
+    read -rp "  ⚠️  This will modify existing database objects. Continue? [y/N]: " confirm
+  fi
+
   if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
     echo "  Restore cancelled."
     exit 0
@@ -124,13 +186,13 @@ do_restore() {
 
   if [[ "$ext" == "dump" || "$ext" == "backup" ]]; then
     # Custom-format dump
-    echo -e "  ${C_YELLOW}Restoring data (custom format)...${C_RESET}"
+    echo -e "  ${C_YELLOW}Restoring (custom format)...${C_RESET}"
     if [[ "$HAS_PV" -eq 1 ]]; then
       pv -pte "$target_file" | docker compose -f "$COMPOSE_FILE" exec -T "$POSTGRES_SERVICE" \
-        bash -c 'pg_restore --data-only --no-owner --no-acl -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
+        bash -c 'pg_restore --clean --if-exists --no-owner --no-acl -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
     else
       docker compose -f "$COMPOSE_FILE" exec -T "$POSTGRES_SERVICE" \
-        bash -c 'pg_restore --data-only --no-owner --no-acl -U "$POSTGRES_USER" -d "$POSTGRES_DB"' \
+        bash -c 'pg_restore --clean --if-exists --no-owner --no-acl -U "$POSTGRES_USER" -d "$POSTGRES_DB"' \
         < "$target_file"
     fi
   else
@@ -138,64 +200,48 @@ do_restore() {
     local total_lines
     total_lines=$(wc -l < "$target_file")
 
-    if [[ "$is_clean_dump" -eq 1 ]]; then
-      # Old --clean dump: strip DROP lines, let psql continue on errors
-      echo -e "  ${C_YELLOW}Restoring data (stripping DROPs, errors on existing objects are OK)...${C_RESET}"
-      if [[ "$HAS_PV" -eq 1 ]]; then
-        pv -lpte -s "$total_lines" "$target_file" | sed '/^DROP /d' | docker compose -f "$COMPOSE_FILE" exec -T "$POSTGRES_SERVICE" \
-          bash -c 'psql -q -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
-      else
-        awk '
-        /^DROP / { next }
-        { print }
-        {
-          if (NR % 200 == 0 || NR == total) {
-            pct = (total > 0) ? int(NR * 100 / total) : 0
-            filled = int(pct * 50 / 100)
-            empty = 50 - filled
-            bar = ""
-            for (j = 1; j <= filled; j++) bar = bar "="
-            for (j = 1; j <= empty; j++) bar = bar " "
-            printf "\r  [%s] %3d%%  (%d/%d lines)", bar, pct, NR, total > "/dev/stderr"
-          }
-        }
-        END {
-          printf "\r  [%s] %3d%%  (%d/%d lines)  Done!\n", "==================================================", 100, NR, total > "/dev/stderr"
-        }' total="$total_lines" "$target_file" | sed '/^DROP /d' | docker compose -f "$COMPOSE_FILE" exec -T "$POSTGRES_SERVICE" \
-          bash -c 'psql -q -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
-      fi
+    if [[ "$detected_mode" == "full" ]]; then
+      echo -e "  ${C_YELLOW}Restoring full backup...${C_RESET}"
+    elif [[ "$detected_mode" == "schema" ]]; then
+      echo -e "  ${C_YELLOW}Restoring schema...${C_RESET}"
+      on_error_stop=0
     else
-      # New data-only dump
       echo -e "  ${C_YELLOW}Restoring data...${C_RESET}"
-      if [[ "$HAS_PV" -eq 1 ]]; then
-        pv -lpte -s "$total_lines" "$target_file" | docker compose -f "$COMPOSE_FILE" exec -T "$POSTGRES_SERVICE" \
-          bash -c 'psql -v ON_ERROR_STOP=1 -q -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
-      else
-        awk '
-        {
-          print
-          if (NR % 200 == 0 || NR == total) {
-            pct = (total > 0) ? int(NR * 100 / total) : 0
-            filled = int(pct * 50 / 100)
-            empty = 50 - filled
-            bar = ""
-            for (j = 1; j <= filled; j++) bar = bar "="
-            for (j = 1; j <= empty; j++) bar = bar " "
-            printf "\r  [%s] %3d%%  (%d/%d lines)", bar, pct, NR, total > "/dev/stderr"
-          }
+    fi
+
+    local psql_cmd="psql -q -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\""
+    if [[ "$on_error_stop" -eq 1 ]]; then
+      psql_cmd="psql -v ON_ERROR_STOP=1 -q -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\""
+    fi
+
+    if [[ "$HAS_PV" -eq 1 ]]; then
+      pv -lpte -s "$total_lines" "$target_file" | docker compose -f "$COMPOSE_FILE" exec -T "$POSTGRES_SERVICE" \
+        bash -c "$psql_cmd"
+    else
+      awk -v total="$total_lines" '
+      {
+        print
+        if (NR % 200 == 0 || NR == total) {
+          pct = (total > 0) ? int(NR * 100 / total) : 0
+          filled = int(pct * 50 / 100)
+          empty = 50 - filled
+          bar = ""
+          for (j = 1; j <= filled; j++) bar = bar "="
+          for (j = 1; j <= empty; j++) bar = bar " "
+          printf "\r  [%s] %3d%%  (%d/%d lines)", bar, pct, NR, total > "/dev/stderr"
         }
-        END {
-          printf "\r  [%s] %3d%%  (%d/%d lines)  Done!\n", "==================================================", 100, NR, total > "/dev/stderr"
-        }' total="$total_lines" "$target_file" | docker compose -f "$COMPOSE_FILE" exec -T "$POSTGRES_SERVICE" \
-          bash -c 'psql -v ON_ERROR_STOP=1 -q -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
-      fi
+      }
+      END {
+        printf "\r  [%s] %3d%%  (%d/%d lines)  Done!\n", "==================================================", 100, NR, total > "/dev/stderr"
+      }' "$target_file" | docker compose -f "$COMPOSE_FILE" exec -T "$POSTGRES_SERVICE" \
+        bash -c "$psql_cmd"
     fi
   fi
 
   echo ""
   echo -e "  ${C_GREEN}Restore completed from: $(basename "$target_file")${C_RESET}"
-  if [[ "$is_clean_dump" -eq 1 ]]; then
-    echo -e "  ${C_YELLOW}Note: Some errors above (e.g. 'relation already exists') are expected and safe.${C_RESET}"
+  if [[ "$detected_mode" == "full" ]]; then
+    echo -e "  ${C_YELLOW}Note: Some errors above (e.g. 'relation already exists') are expected for full restores.${C_RESET}"
   fi
 }
 
@@ -226,18 +272,30 @@ do_list() {
 # ---------------------------------------------------------------------------
 do_help() {
   cat <<EOF
-Usage: $(basename "$0") <command> [file]
+Usage: $(basename "$0") <command> [options]
 
 Commands:
-  backup               Create a new data-only SQL backup
+  backup [type]        Create a new backup (default: data)
+                       Types: data, full, schema
+                         data   = Data only (INSERTs, safe to restore over existing DB)
+                         full   = Full DB (DROP + CREATE + INSERTs, destructive)
+                         schema = Schema only (CREATE tables, no data)
+
   restore [file]       Restore from latest backup, or a specific file
   list                 List all available backups
   help                 Show this help message
 
+Examples:
+  $(basename "$0") backup data       # Data-only backup
+  $(basename "$0") backup full       # Full destructive backup
+  $(basename "$0") backup schema     # Schema-only backup
+  $(basename "$0") restore           # Auto-restore latest backup
+  $(basename "$0") restore backup_data_20260530_143022.sql
+
 Environment:
   BACKUP_DIR           Directory to store backups (default: ./db_backups)
 
-Tip: Install 'pv' (pipe viewer) for smooth byte/line progress bars:
+Tip: Install 'pv' (pipe viewer) for smooth progress bars:
      sudo apt-get install pv
 EOF
 }
@@ -247,7 +305,8 @@ EOF
 # ---------------------------------------------------------------------------
 case "${1:-help}" in
   backup)
-    do_backup
+    shift
+    do_backup "${1:-data}"
     ;;
   restore)
     shift
