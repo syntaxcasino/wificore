@@ -440,7 +440,10 @@ const getPackageMetaLines = (pkg) => {
   return lines
 }
 
-const hasUsers = (pkg) => (pkg.users_count ?? 0) > 0
+const hasUsers = (pkg) => {
+  const count = Number(pkg?.users_count ?? 0)
+  return Number.isFinite(count) && count > 0
+}
 
 const getPackageActions = (pkg) => {
   const actions = []
@@ -549,7 +552,8 @@ const handleDeleteMenu = async () => {
     try {
       await deletePackage(pkg.id)
     } catch (err) {
-      showError('Failed to delete package')
+      const msg = err.response?.data?.error || err.response?.data?.message || 'Failed to delete package'
+      showError(msg)
     }
   }
 }
@@ -587,7 +591,8 @@ const handleBatchDelete = async () => {
     await batchDeletePackages()
     showSuccess(`${deletable.length} package${deletable.length > 1 ? 's' : ''} deleted successfully${skipped.length ? ` (${skipped.length} skipped)` : ''}`)
   } catch (err) {
-    showError(`Failed to delete some packages`)
+    const msg = err.response?.data?.error || err.response?.data?.message || err.message || 'Failed to delete some packages'
+    showError(msg)
   }
 }
 
