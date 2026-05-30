@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Events\RouterProvisioningProgress;
+use App\Events\ProvisioningFailed;
 use App\Models\Router;
 use App\Models\RouterTask;
 use App\Services\RouterTaskExecutionService;
@@ -134,7 +135,40 @@ class RouterProvisioningJob implements ShouldQueue
         Log::error('Router provisioning job failed permanently', [
             'router_id' => $this->routerId,
             'tenant_id' => $this->tenantId,
+            'task_id' => $this->routerTaskId,
             'error' => $exception->getMessage(),
         ]);
+
+        $router = Router::find($this->routerId);
+        if ($router) {
+            $router->update([
+                'status' => 'failed',
+                'provisioning_stage' => 'failed',
+                'last_checked' => now(),
+            ]);
+        }
+
+        if ($this->routerTaskId && ($task = RouterTask::find($this->routerTaskId))) {
+            if (!in_array($task->status, [RouterTask::STATUS_COMPLETED, RouterTask::STATUS_FAILED], true)) {
+                $task->markFailed($exception->getMessage(), (int) $task->progress, 'Provisioning job failed permanently');
+            }
+        }
+
+        if ($router) {
+            broadcast(new RouterProvisioningProgress(
+                (string) $router->id,
+                'failed',
+                100,
+                'Provisioning failed: ' . $exception->getMessage(),
+                ['task_id' => $this->routerTaskId, 'tenant_id' => $this->tenantId]
+            ));
+
+            broadcast(new ProvisioningFailed(
+                (string) $router->id,
+                'failed',
+                'Provisioning failed: ' . $exception->getMessage(),
+                ['task_id' => $this->routerTaskId, 'tenant_id' => $this->tenantId]
+            ));
+        }
     }
 }

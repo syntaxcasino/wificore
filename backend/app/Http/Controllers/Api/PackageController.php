@@ -85,9 +85,15 @@ class PackageController extends Controller
         ->firstOrFail();
 
         // Compute actual user count dynamically from related users
-        $package->users_count = $package->type === 'pppoe'
-            ? (int) PppoeUser::where('package_id', $id)->count()
-            : (int) HotspotUser::where('package_id', $id)->count();
+        // For bundle and trial types, count both PPPoE and Hotspot users
+        if ($package->type === 'pppoe') {
+            $package->users_count = (int) PppoeUser::where('package_id', $id)->count();
+        } elseif ($package->type === 'hotspot') {
+            $package->users_count = (int) HotspotUser::where('package_id', $id)->count();
+        } else {
+            $package->users_count = (int) PppoeUser::where('package_id', $id)->count()
+                + (int) HotspotUser::where('package_id', $id)->count();
+        }
 
         return response()->json($package, 200);
     }
@@ -95,7 +101,7 @@ class PackageController extends Controller
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'type' => 'required|string|in:hotspot,pppoe',
+            'type' => 'required|string|in:hotspot,pppoe,bundle,trial',
             'name' => 'required|string|max:255',
             'description' => 'nullable|string',
             'duration' => 'required|string|max:50',
@@ -196,9 +202,15 @@ class PackageController extends Controller
         $package = Package::where('id', $id)->firstOrFail();
 
         // Check if package has associated users
-        $userCount = $package->type === 'pppoe'
-            ? PppoeUser::where('package_id', $id)->count()
-            : HotspotUser::where('package_id', $id)->count();
+        // For bundle and trial types, count both PPPoE and Hotspot users
+        if ($package->type === 'pppoe') {
+            $userCount = PppoeUser::where('package_id', $id)->count();
+        } elseif ($package->type === 'hotspot') {
+            $userCount = HotspotUser::where('package_id', $id)->count();
+        } else {
+            $userCount = PppoeUser::where('package_id', $id)->count()
+                + HotspotUser::where('package_id', $id)->count();
+        }
 
         if ($userCount > 0) {
             return response()->json([
@@ -207,7 +219,7 @@ class PackageController extends Controller
         }
 
         $validator = Validator::make($request->all(), [
-            'type' => 'sometimes|required|string|in:hotspot,pppoe',
+            'type' => 'sometimes|required|string|in:hotspot,pppoe,bundle,trial',
             'name' => 'sometimes|required|string|max:255',
             'description' => 'nullable|string',
             'duration' => 'sometimes|required|string|max:50',

@@ -14,7 +14,7 @@
     <div class="flex flex-col h-full overflow-hidden bg-slate-50">
       <!-- Header strip -->
       <div class="flex-shrink-0 bg-gradient-to-r px-6 py-4"
-        :class="formData?.type === 'hotspot' ? 'from-purple-700 to-indigo-700' : 'from-cyan-600 to-teal-600'"
+        :class="headerGradientClass"
       >
         <div class="flex items-center gap-4">
           <div class="w-14 h-14 rounded-2xl bg-white/20 backdrop-blur flex items-center justify-center text-white text-xl font-bold shadow-lg flex-shrink-0">
@@ -39,39 +39,73 @@
               <svg class="h-4 w-4 mr-2 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" /></svg>
               Package Type
             </h4>
-            <div class="grid grid-cols-2 gap-3">
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <button
                 type="button"
                 @click="formData.type = 'hotspot'"
                 :class="[
-                  'p-4 rounded-xl border-2 transition-all',
+                  'p-3 rounded-xl border-2 transition-all',
                   formData.type === 'hotspot'
                     ? 'border-purple-500 bg-purple-50'
                     : 'border-slate-200 bg-white hover:border-slate-300'
                 ]"
               >
-                <div class="flex flex-col items-center gap-2">
-                  <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" :class="formData.type === 'hotspot' ? 'text-purple-600' : 'text-slate-400'" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <div class="flex flex-col items-center gap-1.5">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" :class="formData.type === 'hotspot' ? 'text-purple-600' : 'text-slate-400'" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904 3.905 10.236 3.905 14.142 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0" />
                   </svg>
-                  <span class="text-sm font-medium" :class="formData.type === 'hotspot' ? 'text-purple-700' : 'text-slate-600'">Hotspot</span>
+                  <span class="text-xs font-medium" :class="formData.type === 'hotspot' ? 'text-purple-700' : 'text-slate-600'">Hotspot</span>
                 </div>
               </button>
               <button
                 type="button"
                 @click="formData.type = 'pppoe'"
                 :class="[
-                  'p-4 rounded-xl border-2 transition-all',
+                  'p-3 rounded-xl border-2 transition-all',
                   formData.type === 'pppoe'
                     ? 'border-cyan-500 bg-cyan-50'
                     : 'border-slate-200 bg-white hover:border-slate-300'
                 ]"
               >
-                <div class="flex flex-col items-center gap-2">
-                  <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" :class="formData.type === 'pppoe' ? 'text-cyan-600' : 'text-slate-400'" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <div class="flex flex-col items-center gap-1.5">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" :class="formData.type === 'pppoe' ? 'text-cyan-600' : 'text-slate-400'" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
                   </svg>
-                  <span class="text-sm font-medium" :class="formData.type === 'pppoe' ? 'text-cyan-700' : 'text-slate-600'">PPPoE</span>
+                  <span class="text-xs font-medium" :class="formData.type === 'pppoe' ? 'text-cyan-700' : 'text-slate-600'">PPPoE</span>
+                </div>
+              </button>
+              <button
+                type="button"
+                @click="formData.type = 'bundle'"
+                :class="[
+                  'p-3 rounded-xl border-2 transition-all',
+                  formData.type === 'bundle'
+                    ? 'border-emerald-500 bg-emerald-50'
+                    : 'border-slate-200 bg-white hover:border-slate-300'
+                ]"
+              >
+                <div class="flex flex-col items-center gap-1.5">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" :class="formData.type === 'bundle' ? 'text-emerald-600' : 'text-slate-400'" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                  </svg>
+                  <span class="text-xs font-medium" :class="formData.type === 'bundle' ? 'text-emerald-700' : 'text-slate-600'">Bundle</span>
+                </div>
+              </button>
+              <button
+                type="button"
+                @click="formData.type = 'trial'"
+                :class="[
+                  'p-3 rounded-xl border-2 transition-all',
+                  formData.type === 'trial'
+                    ? 'border-amber-500 bg-amber-50'
+                    : 'border-slate-200 bg-white hover:border-slate-300'
+                ]"
+              >
+                <div class="flex flex-col items-center gap-1.5">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" :class="formData.type === 'trial' ? 'text-amber-600' : 'text-slate-400'" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span class="text-xs font-medium" :class="formData.type === 'trial' ? 'text-amber-700' : 'text-slate-600'">Trial</span>
                 </div>
               </button>
             </div>
@@ -140,52 +174,48 @@
               <svg class="h-4 w-4 mr-2 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
               Speed & Data Limits
             </h4>
-            <div class="space-y-4">
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label class="block text-xs font-medium text-slate-500 mb-1">Download Speed <span class="text-red-500">*</span></label>
-                  <div class="flex items-center gap-2">
-                    <input
-                      v-model="downloadSpeedValue"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      required
-                      class="flex-1 px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="e.g., 10"
-                    />
-                    <select
-                      v-model="downloadSpeedUnit"
-                      class="w-24 px-2 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    >
-                      <option v-for="unit in speedUnits" :key="unit" :value="unit">{{ unit }}</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div>
-                  <label class="block text-xs font-medium text-slate-500 mb-1">Upload Speed <span class="text-red-500">*</span></label>
-                  <div class="flex items-center gap-2">
-                    <input
-                      v-model="uploadSpeedValue"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      required
-                      class="flex-1 px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="e.g., 5"
-                    />
-                    <select
-                      v-model="uploadSpeedUnit"
-                      class="w-24 px-2 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    >
-                      <option v-for="unit in speedUnits" :key="unit" :value="unit">{{ unit }}</option>
-                    </select>
-                  </div>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div>
+                <label class="block text-xs font-medium text-slate-500 mb-1">Download Speed <span class="text-red-500">*</span></label>
+                <div class="flex items-center gap-2">
+                  <input
+                    v-model="downloadSpeedValue"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    required
+                    class="flex-1 px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="e.g., 10"
+                  />
+                  <select
+                    v-model="downloadSpeedUnit"
+                    class="w-20 px-2 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option v-for="unit in speedUnits" :key="unit" :value="unit">{{ unit }}</option>
+                  </select>
                 </div>
               </div>
 
-              <p class="text-xs text-slate-500">Download speed is used as the package speed label.</p>
+              <div>
+                <label class="block text-xs font-medium text-slate-500 mb-1">Upload Speed <span class="text-red-500">*</span></label>
+                <div class="flex items-center gap-2">
+                  <input
+                    v-model="uploadSpeedValue"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    required
+                    class="flex-1 px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="e.g., 5"
+                  />
+                  <select
+                    v-model="uploadSpeedUnit"
+                    class="w-20 px-2 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option v-for="unit in speedUnits" :key="unit" :value="unit">{{ unit }}</option>
+                  </select>
+                </div>
+              </div>
 
               <div>
                 <label class="block text-xs font-medium text-slate-500 mb-1">Data Limit</label>
@@ -196,15 +226,16 @@
                     min="0"
                     step="0.01"
                     class="flex-1 px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="e.g., 50 (leave empty for unlimited)"
+                    placeholder="e.g., 50"
                   />
                   <select
                     v-model="dataLimitUnit"
-                    class="w-24 px-2 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    class="w-20 px-2 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   >
                     <option v-for="unit in dataUnits" :key="unit" :value="unit">{{ unit }}</option>
                   </select>
                 </div>
+                <p class="text-[10px] text-slate-500 mt-1">Leave empty for unlimited</p>
               </div>
             </div>
           </div>
@@ -215,7 +246,7 @@
               <svg class="h-4 w-4 mr-2 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
               Duration & Validity
             </h4>
-            <div class="space-y-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label class="block text-xs font-medium text-slate-500 mb-1">Duration <span class="text-red-500">*</span></label>
                 <div class="flex items-center gap-2">
@@ -245,7 +276,7 @@
                   class="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   placeholder="Defaults to duration if left empty"
                 />
-                <p class="text-xs text-slate-500 mt-1">Leave empty to use duration as validity.</p>
+                <p class="text-[10px] text-slate-500 mt-1">Leave empty to use duration as validity.</p>
               </div>
             </div>
           </div>
@@ -329,7 +360,7 @@
           @click="handleSubmit"
           :disabled="formSubmitting"
           class="flex-1 px-4 py-2.5 text-sm font-medium text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          :class="formData?.type === 'hotspot' ? 'bg-purple-600 hover:bg-purple-700' : 'bg-cyan-600 hover:bg-cyan-700'"
+          :class="submitButtonClass"
         >
           {{ formSubmitting ? 'Saving...' : (isEditing ? 'Save Changes' : 'Create Package') }}
         </button>
@@ -363,6 +394,26 @@ const isOpen = computed({
 const formatMoney = (amount) => {
   return new Intl.NumberFormat('en-KE').format(amount)
 }
+
+const headerGradientClass = computed(() => {
+  switch (props.formData?.type) {
+    case 'hotspot': return 'from-purple-700 to-indigo-700'
+    case 'pppoe': return 'from-cyan-600 to-teal-600'
+    case 'bundle': return 'from-emerald-600 to-green-600'
+    case 'trial': return 'from-amber-600 to-orange-600'
+    default: return 'from-slate-600 to-slate-700'
+  }
+})
+
+const submitButtonClass = computed(() => {
+  switch (props.formData?.type) {
+    case 'hotspot': return 'bg-purple-600 hover:bg-purple-700'
+    case 'pppoe': return 'bg-cyan-600 hover:bg-cyan-700'
+    case 'bundle': return 'bg-emerald-600 hover:bg-emerald-700'
+    case 'trial': return 'bg-amber-600 hover:bg-amber-700'
+    default: return 'bg-slate-600 hover:bg-slate-700'
+  }
+})
 
 const speedUnits = ['Mbps', 'Gbps']
 const dataUnits = ['MB', 'GB', 'TB']
@@ -446,8 +497,8 @@ const syncFromFormData = () => {
   durationValue.value = durationParsed.value
   durationUnit.value = durationParsed.unit
 
-  // Apply type-based default when creating a new package
-  if (!durationValue.value && !props.isEditing) {
+  // Apply type-based default when creating a new package or editing with empty duration
+  if (!durationValue.value) {
     durationUnit.value = props.formData?.type === 'pppoe' ? 'Months' : 'Hours'
   }
 }
@@ -482,7 +533,7 @@ watch([durationValue, durationUnit], () => {
 watch(
   () => props.formData?.type,
   (newType) => {
-    if (!props.isEditing && !durationValue.value) {
+    if (!durationValue.value) {
       durationUnit.value = newType === 'pppoe' ? 'Months' : 'Hours'
     }
   }

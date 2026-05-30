@@ -12,7 +12,7 @@ class PackageFactory extends Factory
     public function definition(): array
     {
         return [
-            'type'           => $this->faker->randomElement(['pppoe', 'hotspot']),
+            'type'           => $this->faker->randomElement(['pppoe', 'hotspot', 'bundle', 'trial']),
             'name'           => $this->faker->words(2, true),
             'description'    => $this->faker->sentence(),
             'price'          => $this->faker->randomFloat(2, 10, 200),

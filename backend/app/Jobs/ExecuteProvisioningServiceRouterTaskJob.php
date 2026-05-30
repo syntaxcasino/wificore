@@ -2,6 +2,8 @@
 
 namespace App\Jobs;
 
+use App\Events\ProvisioningFailed;
+use App\Events\RouterProvisioningProgress;
 use App\Models\Router;
 use App\Models\RouterTask;
 use App\Services\RouterTaskExecutionService;
@@ -111,7 +113,30 @@ class ExecuteProvisioningServiceRouterTaskJob implements ShouldQueue
                 return;
             }
 
-            $task->markFailed($exception->getMessage(), $task->progress, 'Router task command submission failed');
+            $task->markFailed($exception->getMessage(), (int) $task->progress, 'Router task command submission failed');
+
+            if ($router = Router::find($this->routerId)) {
+                $router->update([
+                    'status' => 'failed',
+                    'provisioning_stage' => 'failed',
+                    'last_checked' => now(),
+                ]);
+
+                broadcast(new RouterProvisioningProgress(
+                    (string) $router->id,
+                    'failed',
+                    (float) ($task->progress ?: 100),
+                    'Provisioning task failed: ' . $exception->getMessage(),
+                    ['task_id' => $task->id, 'tenant_id' => $this->tenantId, 'task_type' => $task->type]
+                ));
+
+                broadcast(new ProvisioningFailed(
+                    (string) $router->id,
+                    'failed',
+                    'Provisioning task failed: ' . $exception->getMessage(),
+                    ['task_id' => $task->id, 'tenant_id' => $this->tenantId, 'task_type' => $task->type]
+                ));
+            }
         }
     }
 }
