@@ -194,13 +194,33 @@ export function useVouchers() {
       if (formData.prefix) payload.prefix = formData.prefix
       if (formData.expires_at) payload.expires_at = formData.expires_at
       if (formData.notes) payload.notes = formData.notes
-      
-      await axios.post('/vouchers/generate', payload)
-      toast.success(`Generated ${formData.quantity} voucher(s)`)
-      
-      // Purely event-driven - WebSocket events will handle the UI update automatically
-      // No manual fetch needed - events will update the list and stats
-      
+
+      const response = await axios.post('/vouchers/generate', payload)
+      const generated = response.data?.data?.vouchers || []
+      toast.success(`Generated ${generated.length || formData.quantity} voucher(s)`)
+
+      // IMMEDIATE UI UPDATE: Inject vouchers locally so they appear right away.
+      // Also dispatch events so any listening components pick them up instantly.
+      generated.forEach((voucher, idx) => {
+        if (!voucher?.id) return
+        // Add to list if not already present
+        const exists = vouchers.value.some(v => v.id === voucher.id)
+        if (!exists) {
+          vouchers.value.unshift(voucher)
+        }
+        // Dispatch local event for redundancy (WebSocket may be delayed)
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('voucher-created', {
+            detail: { voucher, timestamp: new Date().toISOString() }
+          }))
+        }
+      })
+
+      // Update stats immediately
+      stats.value.unused = (stats.value.unused || 0) + generated.length
+      stats.value.total = (stats.value.total || 0) + generated.length
+      persistSnapshot()
+
       return true
     } catch (err) {
       generateError.value = err.response?.data?.message || 'Failed to generate vouchers'
