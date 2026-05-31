@@ -59,11 +59,18 @@ class InternalProvisioningTaskController extends Controller
 
         $identityCheck = $this->validateCallbackIdentity($task, $validated);
         if ($identityCheck !== null) {
+            $this->recordCallbackGuardOutcome($task, 'identity_validation_failed', 'failed', [
+                'incoming_tenant_id' => $validated['tenant_id'] ?? null,
+                'incoming_router_id' => $validated['router_id'] ?? null,
+            ], $identityCheck->getStatusCode(), true);
             return $identityCheck;
         }
 
         $freshnessCheck = $this->validateCallbackFreshness($task, $validated);
         if ($freshnessCheck !== null) {
+            $this->recordCallbackGuardOutcome($task, 'freshness_validation_failed', 'failed', [
+                'callback_at' => $validated['callback_at'] ?? null,
+            ], $freshnessCheck->getStatusCode(), true);
             return $freshnessCheck;
         }
 
@@ -73,6 +80,11 @@ class InternalProvisioningTaskController extends Controller
                 'stored_status' => $task->status,
                 'incoming_status' => $validated['status'] ?? null,
             ]);
+
+            $this->recordCallbackGuardOutcome($task, 'terminal_status_mutation_ignored', 'skipped', [
+                'stored_status' => $task->status,
+                'incoming_status' => $validated['status'] ?? null,
+            ], 200, false);
 
             return response()->json([
                 'success' => true,
@@ -102,6 +114,10 @@ class InternalProvisioningTaskController extends Controller
                 'stored_stage' => is_array($task->result_payload) ? ($task->result_payload['stage'] ?? null) : null,
             ]);
 
+            $this->recordCallbackGuardOutcome($task, 'regressive_stage_ignored', 'skipped', [
+                'incoming_stage' => $stage,
+                'stored_stage' => is_array($task->result_payload) ? ($task->result_payload['stage'] ?? null) : null,
+            ], 200, false);
             return response()->json([
                 'success' => true,
                 'ignored' => true,
@@ -273,6 +289,37 @@ class InternalProvisioningTaskController extends Controller
         return null;
     }
 
+    private function recordCallbackGuardOutcome(
+        RouterTask $task,
+        string $action,
+        string $status,
+        array $payload,
+        int $httpCode,
+        bool $isTerminal,
+    ): void {
+        $runId = $this->resolveRunIdFromTask($task);
+        if (! $runId) {
+            return;
+        }
+
+        $run = ProvisioningRun::find($runId);
+        if (! $run) {
+            return;
+        }
+
+        $this->auditService->logStep($run, [
+            'stage' => 'callback_guard',
+            'action' => $action,
+            'status' => $status,
+            'response_payload' => array_merge($payload, [
+                'task_status' => $task->status,
+                'task_type' => $task->type,
+                'http_status' => $httpCode,
+            ]),
+            'is_terminal' => $isTerminal,
+            'completed_at' => now(),
+        ]);
+    }
     private function applyVerificationPolicy(
         RouterTask $task,
         string $status,

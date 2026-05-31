@@ -12,6 +12,7 @@ Recent Laravel and provisioning-service changes around router task workflows, PP
 | Non-workflow callback-first task paths did not use durable retry/outbox delivery | Medium | Fixed | Routed generic task callbacks through the workflow store outbox on delivery failure in `provisioning-service/internal/api/handlers.go`. |
 | Callback API key was persisted in plaintext in provisioning-service outbox state | Medium | Fixed | Replaced plaintext persistence with encoded callback auth tokens in `provisioning-service/internal/api/workflow_store.go`; default callback key is no longer written to disk in cleartext. |
 | Generic callback helper could panic on nil callback config | Medium | Fixed | Added nil guard in `notifyTaskCallback(...)` in `provisioning-service/internal/api/handlers.go`. |
+| Callback guard rejections/ignores lacked durable provisioning audit trail, making 40% stalls hard to diagnose | Medium | Fixed | Added callback-guard audit step persistence in `backend/app/Http/Controllers/Api/InternalProvisioningTaskController.php` for identity/freshness rejects and ignored regressive or terminal-mutation callbacks. |
 
 ## Validation
 - `php -l backend/app/Http/Middleware/PppoePortalAuthOptimized.php`
