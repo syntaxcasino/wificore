@@ -51,11 +51,11 @@
           <router-link
             to="/dashboard/hotspot/users"
             class="w-full flex items-center justify-between py-2 px-3 rounded-md hover:bg-gray-800/60 transition-all duration-150"
-            :class="route.path.includes('/hotspot') ? 'bg-gray-800/80 text-white font-medium' : 'text-gray-400'"
+            :class="(route.path.includes('/hotspot') && !route.path.includes('/hotspot/vouchers')) ? 'bg-gray-800/80 text-white font-medium' : 'text-gray-400'"
             @click="isMobile && $emit('close-sidebar')"
           >
             <span class="flex items-center gap-2.5">
-              <Radio class="w-4 h-4 flex-shrink-0" :class="route.path.includes('/hotspot') ? 'text-green-400' : ''" />
+              <Radio class="w-4 h-4 flex-shrink-0" :class="(route.path.includes('/hotspot') && !route.path.includes('/hotspot/vouchers')) ? 'text-green-400' : ''" />
               <span class="text-sm">Hotspot</span>
             </span>
             <span v-if="hotspotUsersCount > 0" class="px-1.5 py-0.5 text-[9px] font-bold rounded-full bg-blue-500 text-white min-w-[16px] text-center">{{ hotspotUsersCount }}</span>
@@ -89,10 +89,10 @@
           <button
             @click="toggleMenu('packages')"
             class="w-full flex items-center justify-between py-2 px-3 rounded-md hover:bg-gray-800/60 transition-all duration-150"
-            :class="route.path.includes('/packages') ? 'bg-gray-800/80 text-white font-medium' : 'text-gray-400'"
+            :class="(route.path.includes('/packages') || route.path.includes('/hotspot/vouchers')) ? 'bg-gray-800/80 text-white font-medium' : 'text-gray-400'"
           >
             <span class="flex items-center gap-2.5">
-              <Box class="w-4 h-4 flex-shrink-0" :class="route.path.includes('/packages') ? 'text-green-400' : ''" />
+              <Box class="w-4 h-4 flex-shrink-0" :class="(route.path.includes('/packages') || route.path.includes('/hotspot/vouchers')) ? 'text-green-400' : ''" />
               <span class="text-sm">Plans</span>
             </span>
             <ChevronDown class="w-3 h-3 transition-transform" :class="activeMenu === 'packages' ? 'rotate-180' : ''" />
@@ -101,7 +101,7 @@
             <router-link
               to="/dashboard/packages/all"
               class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
-              :class="route.path === '/dashboard/packages/all' ? 'text-white font-medium' : 'text-gray-500'"
+              :class="route.path === '/dashboard/packages/all' ? 'text-white font-medium bg-gray-800/40' : 'text-gray-500'"
               @click="isMobile && $emit('close-sidebar')"
             >
               Packages
@@ -109,7 +109,7 @@
 <!--             <router-link
               to="/dashboard/packages/groups"
               class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
-              :class="route.path === '/dashboard/packages/groups' ? 'text-white font-medium' : 'text-gray-500'"
+              :class="route.path === '/dashboard/packages/groups' ? 'text-white font-medium bg-gray-800/40' : 'text-gray-500'"
               @click="isMobile && $emit('close-sidebar')"
             >
               Package Groups
@@ -117,7 +117,7 @@
             <router-link
               to="/dashboard/hotspot/vouchers"
               class="block py-1.5 px-3 text-xs rounded hover:bg-gray-800/40 transition-all"
-              :class="route.path === '/dashboard/hotspot/vouchers' ? 'text-white font-medium' : 'text-gray-500'"
+              :class="route.path === '/dashboard/hotspot/vouchers' ? 'text-white font-medium bg-gray-800/40' : 'text-gray-500'"
               @click="isMobile && $emit('close-sidebar')"
             >
               Vouchers
@@ -537,9 +537,9 @@ const pppoeSessionsCount = ref(0)
 
 const resolveMenuFromRoute = (path) => {
   const matchers = [
-    { key: 'hotspot', match: (value) => value.includes('/hotspot') },
+    { key: 'hotspot', match: (value) => value.includes('/hotspot') && !value.includes('/hotspot/vouchers') },
     { key: 'pppoe', match: (value) => value.includes('/pppoe') },
-    { key: 'packages', match: (value) => value.includes('/packages') },
+    { key: 'packages', match: (value) => value.includes('/packages') || value.includes('/hotspot/vouchers') },
     { key: 'network', match: (value) => value.includes('/routers') || value.includes('/monitoring') },
     { key: 'billing', match: (value) => value.includes('/billing') || value.includes('/finance') },
     { key: 'reports', match: (value) => value.includes('/reports') },
