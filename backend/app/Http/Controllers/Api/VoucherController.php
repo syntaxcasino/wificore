@@ -48,7 +48,10 @@ class VoucherController extends Controller
             $search = $request->search;
             $query->where(function ($q) use ($search) {
                 $q->where('code', 'ilike', $search . '%')
-                  ->orWhere('status', 'ilike', $search);
+                  ->orWhere('status', 'ilike', $search)
+                  ->orWhereHas('package', function ($pkg) use ($search) {
+                      $pkg->where('name', 'ilike', $search . '%');
+                  });
             });
         }
 
