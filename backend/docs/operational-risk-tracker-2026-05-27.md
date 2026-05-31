@@ -26,3 +26,6 @@ Recent Laravel and provisioning-service changes around router task workflows, PP
 3. Verify PPPoE portal requests during a Redis outage no longer 500 in auth middleware.
 4. Verify router workflow callbacks continue updating Laravel if the callback endpoint is temporarily unavailable.
 5. If an old `data/provisioning-workflows.json` exists, inspect any `.corrupt-*` quarantine file after deploy and discard it once confirmed stale.
+
+## Rollout Reference
+- Strict callback guard activation playbook: `backend/docs/provisioning-callback-identity-rollout.md`

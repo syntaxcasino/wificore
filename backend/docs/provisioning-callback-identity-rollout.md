@@ -1,0 +1,82 @@
+# Provisioning Callback Identity Rollout
+
+## Goal
+Enable strict provisioning callback trust checks without breaking active router workflows.
+
+## Guardrails
+Laravel callback controller now supports:
+- `tenant_id` + `router_id` callback identity validation
+- callback freshness window (`callback_at` vs server time)
+- stale/replay rejection (optional)
+- audit trail for ignored/rejected callback guards
+
+Provisioning-service now sends:
+- `callback_at`
+- `tenant_id`
+- `router_id`
+
+## Phased Activation
+
+### Phase 0: Deploy code only
+Set:
+- `PROVISIONING_REQUIRE_CALLBACK_IDENTITY=false`
+- `PROVISIONING_REJECT_STALE_CALLBACKS=false`
+- keep warnings enabled
+
+Validate logs for 24h:
+- no sustained `Provisioning callback missing identity fields`
+- no unexpected `Provisioning callback tenant mismatch`
+- monitor `Provisioning callback outside freshness window`
+
+### Phase 1: Enforce identity
+Set:
+- `PROVISIONING_REQUIRE_CALLBACK_IDENTITY=true`
+- keep stale rejection disabled
+
+Success criteria:
+- callback success rate unchanged
+- no spike in task failures at router provisioning stages
+- no increase in stuck tasks
+
+Rollback:
+- flip `PROVISIONING_REQUIRE_CALLBACK_IDENTITY=false`
+- restart backend workers
+
+### Phase 2: Enforce stale rejection
+Prerequisite:
+- NTP verified for backend + provisioning-service hosts
+- clock drift < 2s
+
+Set:
+- `PROVISIONING_REJECT_STALE_CALLBACKS=true`
+- optionally tighten `PROVISIONING_MAX_CALLBACK_SKEW_SECONDS` from `900` to `120`
+
+Success criteria:
+- no false stale rejects in steady state
+- stale rejects correspond to real retry/replay or delayed network events
+
+Rollback:
+- set `PROVISIONING_REJECT_STALE_CALLBACKS=false`
+
+## Operational Checks
+
+1. Backend log checks:
+- `Ignoring regressive provisioning stage callback`
+- `Ignoring callback status mutation for terminal task`
+- `Provisioning callback identity mismatch`
+- `Provisioning callback outside freshness window`
+
+2. Functional checks:
+- create router + provision end-to-end
+- re-run provisioning idempotently
+- verify progress updates go past 40% and complete
+
+3. Audit checks:
+- confirm callback guard outcomes are written as provisioning run audit steps (`callback_guard` stage)
+
+## Deployment Order
+1. Deploy provisioning-service
+2. Deploy backend
+3. Restart backend queue workers
+4. Monitor logs + task completion metrics
+5. Enable phase toggles incrementally
