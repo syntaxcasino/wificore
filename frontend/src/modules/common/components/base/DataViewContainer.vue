@@ -72,7 +72,6 @@
 
     <!-- Main Content Slot -->
     <div class="flex-1 min-h-0 overflow-hidden flex flex-col dark:bg-slate-800/50 p-4 md:p-6">
-      <slot name="filters" />
       <slot />
     </div>
   </div>
