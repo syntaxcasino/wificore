@@ -31,7 +31,6 @@ use Illuminate\Support\Facades\Crypt;
 
 class RouterController extends Controller
 {
-    private const ROUTER_LIST_CACHE_TTL_SECONDS = 15;
     private const PROVISIONING_TASK_STALE_TIMEOUT_MINUTES = 8;
 
     public function index(Request $request)
@@ -49,24 +48,21 @@ class RouterController extends Controller
                 ], 403);
             }
 
-            $basePayload = Cache::remember(
-                $this->routerListCacheKey($tenantId, $perPage),
-                self::ROUTER_LIST_CACHE_TTL_SECONDS,
-                function () use ($perPage) {
-                    $routers = Router::select(['id', 'name', 'ip_address', 'status', 'vpn_status', 'last_seen', 'model', 'os_version', 'location', 'created_at'])
-                        ->orderBy('created_at', 'desc')
-                        ->paginate($perPage);
+            $routers = Router::select(['id', 'name', 'ip_address', 'status', 'vpn_status', 'last_seen', 'model', 'os_version', 'location', 'created_at'])
+                ->orderBy('created_at', 'desc')
+                ->paginate($perPage);
 
-                    return [
-                        'data' => $routers,
-                        'has_live_data' => false,
-                        'message' => 'Router information loaded successfully',
-                    ];
-                }
-            );
+            $basePayload = [
+                'data' => $routers,
+                'has_live_data' => false,
+                'message' => 'Router information loaded successfully',
+            ];
 
             if (!$withLive) {
-                return response()->json($basePayload);
+                return response()->json($basePayload)
+                    ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+                    ->header('Pragma', 'no-cache')
+                    ->header('Expires', '0');
             }
 
             /** @var \Illuminate\Pagination\LengthAwarePaginator $routers */
@@ -110,7 +106,10 @@ class RouterController extends Controller
                     'text' => 'loading-text',
                     'overlay' => 'loading-overlay'
                 ]
-            ]);
+            ])
+            ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+            ->header('Pragma', 'no-cache')
+            ->header('Expires', '0');
             
         } catch (\Exception $e) {
             Log::error('Failed to fetch routers: ' . $e->getMessage());
