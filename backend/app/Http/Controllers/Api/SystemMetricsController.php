@@ -160,6 +160,43 @@ class SystemMetricsController extends Controller
         }
     }
 
+
+    /**
+     * Reset provisioning callback guard counters
+     */
+    public function resetProvisioningCallbackGuardMetrics(): JsonResponse
+    {
+        try {
+            $actions = [
+                'identity_validation_failed',
+                'freshness_validation_failed',
+                'terminal_status_mutation_ignored',
+                'regressive_stage_ignored',
+            ];
+
+            foreach ($actions as $action) {
+                Cache::forget('metrics:provisioning:callback_guard:' . $action);
+            }
+
+            Cache::forget('metrics:provisioning:callback_guard:last_updated_at');
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Provisioning callback guard counters reset successfully.',
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Failed to reset provisioning callback guard metrics', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'error' => 'Failed to reset provisioning callback guard metrics',
+                'message' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
     /**
      * Retry all failed jobs
      */
