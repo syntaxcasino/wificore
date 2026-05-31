@@ -18,6 +18,26 @@
       </div>
     </div>
 
+    <div
+      v-if="callbackGuardTrendAlert.visible"
+      class="rounded-xl border px-4 py-3"
+      :class="callbackGuardTrendAlert.level === 'critical'
+        ? 'bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800/40 dark:text-red-200'
+        : 'bg-amber-50 border-amber-200 text-amber-800 dark:bg-amber-900/20 dark:border-amber-800/40 dark:text-amber-200'"
+    >
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <p class="text-sm font-semibold">
+            Provisioning callback guard {{ callbackGuardTrendAlert.level === 'critical' ? 'critical' : 'warning' }} trend detected
+          </p>
+          <p class="text-xs mt-1">
+            Last 10 minutes: {{ callbackGuard.last_10m_total_delta || 0 }} outcomes
+            (warn ≥ {{ callbackGuardDeltaWarnThreshold }}, critical ≥ {{ callbackGuardDeltaCriticalThreshold }}).
+          </p>
+        </div>
+      </div>
+    </div>
+
     <div v-if="loading && !metrics" class="bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 p-8 text-center text-gray-500">
       <div class="animate-spin w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full mx-auto mb-3"></div>
       Loading metrics...
@@ -236,6 +256,9 @@ const selectedMetricKey = ref('')
 const selectedMetricRawKey = ref('')
 const selectedMetricValue = ref(null)
 
+const callbackGuardDeltaWarnThreshold = Number(import.meta.env.VITE_CALLBACK_GUARD_DELTA_WARN || 5)
+const callbackGuardDeltaCriticalThreshold = Number(import.meta.env.VITE_CALLBACK_GUARD_DELTA_CRITICAL || 20)
+
 const openMetricDetail = (key, value) => {
   selectedMetricRawKey.value = key
   selectedMetricKey.value = key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
@@ -291,6 +314,20 @@ const callbackGuardStatus = computed(() => {
 
 const callbackGuardStatusLabel = computed(() => callbackGuardStatus.value.label)
 const callbackGuardStatusClass = computed(() => callbackGuardStatus.value.className)
+
+const callbackGuardTrendAlert = computed(() => {
+  const delta = Number(callbackGuard.value?.last_10m_total_delta || 0)
+
+  if (delta >= callbackGuardDeltaCriticalThreshold) {
+    return { visible: true, level: 'critical' }
+  }
+
+  if (delta >= callbackGuardDeltaWarnThreshold) {
+    return { visible: true, level: 'warning' }
+  }
+
+  return { visible: false, level: 'normal' }
+})
 
 const formatMetric = (val) => {
   if (typeof val === 'number') return val.toLocaleString(undefined, { maximumFractionDigits: 2 })
