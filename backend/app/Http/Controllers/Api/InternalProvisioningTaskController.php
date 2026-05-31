@@ -19,6 +19,15 @@ use Illuminate\Support\Facades\Log;
 
 class InternalProvisioningTaskController extends Controller
 {
+    private const CANONICAL_STAGE_ORDER = [
+        'submitted',
+        'precheck_connectivity',
+        'deploying_config',
+        'verifying_deployment',
+        'verifying_connectivity',
+        'discovering_interfaces',
+    ];
+
     public function __construct(
         private readonly TenantContext $tenantContext,
         private readonly ProvisioningRunAuditService $auditService,
@@ -64,6 +73,26 @@ class InternalProvisioningTaskController extends Controller
         $callbackStatus = $validated['status'];
         $callbackError = $validated['error'] ?? null;
 
+        if ($this->shouldIgnoreRegressiveStageUpdate($task, $stage, $terminal)) {
+            Log::warning('Ignoring regressive provisioning stage callback', [
+                'task_id' => $task->id,
+                'status' => $task->status,
+                'incoming_stage' => $stage,
+                'stored_stage' => is_array($task->result_payload) ? ($task->result_payload['stage'] ?? null) : null,
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'ignored' => true,
+                'task' => [
+                    'id' => $task->id,
+                    'status' => $task->status,
+                    'progress' => $task->progress,
+                    'message' => $task->message,
+                ],
+            ]);
+        }
+
         [$callbackStatus, $message, $callbackError, $result, $progress] = $this->applyVerificationPolicy(
             $task,
             $callbackStatus,
@@ -76,6 +105,14 @@ class InternalProvisioningTaskController extends Controller
 
         if ($callbackStatus === RouterTask::STATUS_RUNNING) {
             $task->markRunning($progress, $message);
+            if ($stage) {
+                $existingResult = is_array($task->result_payload) ? $task->result_payload : [];
+                $task->forceFill([
+                    'result_payload' => array_merge($existingResult, [
+                        'stage' => $stage,
+                    ]),
+                ])->save();
+            }
         } elseif ($callbackStatus === RouterTask::STATUS_COMPLETED && ! $terminal) {
             $existingResult = is_array($task->result_payload) ? $task->result_payload : [];
             $stageResults = is_array($existingResult['stage_results'] ?? null)
@@ -190,6 +227,29 @@ class InternalProvisioningTaskController extends Controller
             'valid' => empty($missing),
             'missing' => $missing,
         ];
+    }
+
+    private function shouldIgnoreRegressiveStageUpdate(
+        RouterTask $task,
+        ?string $incomingStage,
+        bool $terminal
+    ): bool {
+        if ($terminal || !is_string($incomingStage) || $incomingStage === '') {
+            return false;
+        }
+
+        $order = array_flip(self::CANONICAL_STAGE_ORDER);
+        if (!isset($order[$incomingStage])) {
+            return false;
+        }
+
+        $payload = is_array($task->result_payload) ? $task->result_payload : [];
+        $storedStage = $payload['stage'] ?? null;
+        if (!is_string($storedStage) || !isset($order[$storedStage])) {
+            return false;
+        }
+
+        return $order[$incomingStage] < $order[$storedStage];
     }
 
     private function syncProvisioningRunAudit(

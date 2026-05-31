@@ -46,6 +46,23 @@ class InternalProvisioningTaskControllerVerificationTest extends TestCase
         return $invoker($task, $status, $terminal, $result, $message, $error, $progress);
     }
 
+    private function invokeShouldIgnoreRegressiveStageUpdate(
+        InternalProvisioningTaskController $controller,
+        RouterTask $task,
+        ?string $incomingStage,
+        bool $terminal,
+    ): bool {
+        $invoker = \Closure::bind(function (
+            RouterTask $task,
+            ?string $incomingStage,
+            bool $terminal,
+        ): bool {
+            return $this->shouldIgnoreRegressiveStageUpdate($task, $incomingStage, $terminal);
+        }, $controller, $controller);
+
+        return $invoker($task, $incomingStage, $terminal);
+    }
+
     #[Test]
     public function it_downgrades_terminal_completed_status_when_verification_bundle_is_missing(): void
     {
@@ -134,5 +151,47 @@ class InternalProvisioningTaskControllerVerificationTest extends TestCase
         $this->assertNull($result[2]);
         $this->assertSame([], $result[3]);
         $this->assertSame(77, $result[4]);
+    }
+
+    #[Test]
+    public function it_flags_known_regressive_stage_updates_for_ignore(): void
+    {
+        $controller = $this->makeController();
+        $task = new RouterTask();
+        $task->result_payload = ['stage' => 'verifying_deployment'];
+
+        $ignored = $this->invokeShouldIgnoreRegressiveStageUpdate(
+            $controller,
+            $task,
+            'precheck_connectivity',
+            false,
+        );
+
+        $this->assertTrue($ignored);
+    }
+
+    #[Test]
+    public function it_does_not_ignore_unknown_or_forward_stage_updates(): void
+    {
+        $controller = $this->makeController();
+        $task = new RouterTask();
+        $task->result_payload = ['stage' => 'precheck_connectivity'];
+
+        $forward = $this->invokeShouldIgnoreRegressiveStageUpdate(
+            $controller,
+            $task,
+            'deploying_config',
+            false,
+        );
+
+        $unknown = $this->invokeShouldIgnoreRegressiveStageUpdate(
+            $controller,
+            $task,
+            'custom_stage_from_adapter',
+            false,
+        );
+
+        $this->assertFalse($forward);
+        $this->assertFalse($unknown);
     }
 }
