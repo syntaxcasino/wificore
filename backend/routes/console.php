@@ -22,6 +22,7 @@ use App\Jobs\ProcessScheduledPackages;
 use App\Jobs\UnsuspendExpiredAccountsJob;
 // Hotspot Jobs
 use App\Jobs\CheckHotspotExpirationsJob;
+use App\Jobs\ExpireUnusedVouchersJob;
 
 $consoleCommand = $_SERVER["argv"][1] ?? null;
 
@@ -306,5 +307,12 @@ Schedule::call(function () {
 Schedule::job(new CheckHotspotExpirationsJob())
     ->everyMinute()
     ->name('check-hotspot-expirations')
+    ->onOneServer()
+    ->withoutOverlapping();
+
+// Check for unused vouchers past their expiry date and mark as expired - every minute
+Schedule::job(new ExpireUnusedVouchersJob())
+    ->everyMinute()
+    ->name('expire-unused-vouchers')
     ->onOneServer()
     ->withoutOverlapping();

@@ -100,7 +100,7 @@
               </h4>
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label class="block text-sm font-medium text-slate-700 mb-2">Expiry Date (Optional)</label>
+                  <label class="block text-sm font-medium text-slate-700 mb-2">Unused Voucher Expiry (Optional)</label>
                   <input v-model="formData.expires_at" type="date" :min="minDate" class="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500" />
                 </div>
                 <div>
@@ -249,7 +249,7 @@
             </h4>
             <div class="grid grid-cols-2 gap-3">
               <div class="bg-slate-50 rounded-lg p-3">
-                <div class="text-xs text-slate-500 mb-0.5">Expires</div>
+                <div class="text-xs text-slate-500 mb-0.5">Unused Expiry</div>
                 <div class="text-sm font-semibold text-slate-900">{{ selectedVoucher.expires_at ? formatDate(selectedVoucher.expires_at) : 'No expiry' }}</div>
               </div>
               <div class="bg-slate-50 rounded-lg p-3">
@@ -319,7 +319,7 @@
           :subtitle="voucher.package?.name || 'No package'"
           :meta-lines="[
             { text: `Status: ${voucher.status}`, class: statusClass(voucher.status) },
-            { text: `Expires: ${voucher.expires_at ? formatDate(voucher.expires_at) : 'No expiry'}` },
+            { text: `Unused Expiry: ${voucher.expires_at ? formatDate(voucher.expires_at) : 'No expiry'}` },
             { text: `Created: ${formatDate(voucher.created_at)}` }
           ]"
           :status="voucher.status"
@@ -338,7 +338,7 @@
                 <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[20%]">Code</th>
                 <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[25%]">Package</th>
                 <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[12%]">Status</th>
-                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[18%]">Expires</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[18%]">Unused Expiry</th>
                 <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[15%]">Created</th>
                 <th class="px-6 py-3 text-right text-xs font-semibold text-slate-700 uppercase tracking-wider w-[10%]">Actions</th>
               </tr>
