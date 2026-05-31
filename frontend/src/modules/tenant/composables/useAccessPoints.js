@@ -5,7 +5,6 @@
 
 import { ref, computed } from 'vue'
 import axios from '@/modules/common/services/api/axios'
-import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/modules/common/composables/useToast'
 
 export function useAccessPoints() {
@@ -21,7 +20,6 @@ export function useAccessPoints() {
   })
   
   const { toast } = useToast()
-  const authStore = useAuthStore()
   let fetchDebounceTimer = null
   let isFetchingAccessPoints = false
 
