@@ -30,7 +30,7 @@ class RouterMetricsController extends Controller
             $liveData['source'] = $liveData['source'] ?? 'projection';
         }
 
-        return response()->json([
+        return $this->noCacheJson([
             'success' => true,
             'router_id' => $routerId,
             'live_data' => $liveData,
@@ -58,7 +58,7 @@ class RouterMetricsController extends Controller
 
         $routerIds = array_values(array_filter(array_map('strval', $routerIds), fn ($id) => $id !== ''));
         if (count($routerIds) === 0) {
-            return response()->json([
+            return $this->noCacheJson([
                 'success' => true,
                 'live_data' => [],
             ]);
@@ -72,7 +72,7 @@ class RouterMetricsController extends Controller
             ->all();
 
         if (count($allowedIds) === 0) {
-            return response()->json([
+            return $this->noCacheJson([
                 'success' => true,
                 'live_data' => [],
             ]);
@@ -80,7 +80,7 @@ class RouterMetricsController extends Controller
 
         $live = $metricsService->getLatestRouterMetrics($vm, (string) $tenantId, $allowedIds);
 
-        return response()->json([
+        return $this->noCacheJson([
             'success' => true,
             'live_data' => $live,
             'source' => 'projection',
@@ -111,7 +111,7 @@ class RouterMetricsController extends Controller
             'v' => (float) ($point['download'] ?? 0),
         ], $traffic);
 
-        return response()->json([
+        return $this->noCacheJson([
             'success' => true,
             'router_id' => $routerId,
             'range' => $range,
@@ -138,7 +138,7 @@ class RouterMetricsController extends Controller
         $range = (string) $request->query('range', '1h');
         $projection = $metricsService->getProjectedTenantTrafficBatch((string) $tenantId, $range);
 
-        return response()->json($projection);
+        return $this->noCacheJson($projection);
     }
 
     public function resourcesRange(Request $request, Router $router, VictoriaMetricsClient $vm, TenantContext $tenantContext, RouterMetricsService $metricsService): JsonResponse
@@ -155,6 +155,14 @@ class RouterMetricsController extends Controller
         $range = (string) $request->query('range', '1h');
         $projection = $metricsService->getProjectedRouterResources((string) $tenantId, $routerId, $range);
 
-        return response()->json($projection);
+        return $this->noCacheJson($projection);
+    }
+
+    private function noCacheJson(mixed $payload, int $status = 200): JsonResponse
+    {
+        return response()->json($payload, $status)
+            ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+            ->header('Pragma', 'no-cache')
+            ->header('Expires', '0');
     }
 }

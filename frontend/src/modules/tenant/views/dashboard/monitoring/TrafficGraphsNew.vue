@@ -311,6 +311,7 @@ const formatSpeed = (bps) => {
 
 let lastFreshFetchAt = 0
 const FRESH_FETCH_MIN_INTERVAL_MS = 5000
+let trafficReloadDebounceTimer = null
 
 const refreshAllData = async () => {
   refreshing.value = true
@@ -388,6 +389,10 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  if (trafficReloadDebounceTimer) {
+    clearTimeout(trafficReloadDebounceTimer)
+    trafficReloadDebounceTimer = null
+  }
   cleanupWebSocketListeners()
   window.removeEventListener('focus', handleWindowFocus)
   document.removeEventListener('visibilitychange', handleVisibilityChange)
@@ -395,8 +400,14 @@ onUnmounted(() => {
 
 watch(
   () => [filters.value.timeRange, filters.value.router],
-  async () => {
-    await loadTraffic()
+  () => {
+    if (trafficReloadDebounceTimer) {
+      clearTimeout(trafficReloadDebounceTimer)
+    }
+
+    trafficReloadDebounceTimer = setTimeout(() => {
+      void loadTraffic()
+    }, 250)
   }
 )
 </script>
