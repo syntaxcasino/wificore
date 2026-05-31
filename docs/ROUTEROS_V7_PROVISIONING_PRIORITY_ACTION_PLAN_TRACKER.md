@@ -212,3 +212,23 @@ Build and ship:
 
 These four deliverables should be treated as the minimum safe baseline before fresh production rollout.
 
+
+## Track Update - 2026-05-31 (Tenant Isolation + Performance Safety)
+
+Status: `in_progress`
+
+Implemented now:
+1. Removed unsafe default-tenant fallback from `BelongsToTenant` create hook.
+2. Added fail-fast behavior when tenant context is missing (`RuntimeException`).
+3. Added unit test coverage for fail-fast tenant enforcement:
+   - `backend/tests/Unit/Traits/BelongsToTenantTest.php`
+
+Why this matters:
+1. Prevents silent cross-tenant misrouting to a default tenant.
+2. Removes per-create fallback tenant lookup query (small but direct write-path performance gain).
+3. Forces explicit tenant context in event/queue flows, which is required for safe event-based provisioning.
+
+Remaining hardening tasks (must complete before rollout sign-off):
+1. Add static guardrails for `withoutGlobalScope(s)` and raw `DB::table(...)` usage in tenant domains.
+2. Add two-tenant integration leak tests for routers, PPPoE, hotspot, payments, and sessions.
+3. Add runtime alerting when tenant context is null inside tenant-write paths.

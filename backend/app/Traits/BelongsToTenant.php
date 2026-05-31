@@ -2,9 +2,10 @@
 
 namespace App\Traits;
 
-use App\Models\Tenant;
+use AppModelsTenant;
 use App\Scopes\TenantScope;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use RuntimeException;
 
 trait BelongsToTenant
 {
@@ -27,12 +28,13 @@ trait BelongsToTenant
                 $model->tenant_id = auth()->user()->tenant_id;
             }
 
-            // Fallback to default tenant if no tenant_id is set
             if (!$model->tenant_id) {
-                $defaultTenant = Tenant::where('slug', 'default')->first();
-                if ($defaultTenant) {
-                    $model->tenant_id = $defaultTenant->id;
-                }
+                throw new RuntimeException(
+                    sprintf(
+                        'Tenant context is required for %s creation. Missing tenant_id and authenticated tenant user.',
+                        get_class($model)
+                    )
+                );
             }
         });
     }
