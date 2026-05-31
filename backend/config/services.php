@@ -105,6 +105,9 @@ return [
         'api_key' => env('PROVISIONING_SERVICE_API_KEY'),
         'require_callback_identity' => env('PROVISIONING_REQUIRE_CALLBACK_IDENTITY', false),
         'warn_on_missing_callback_identity' => env('PROVISIONING_WARN_MISSING_CALLBACK_IDENTITY', true),
+        'max_callback_skew_seconds' => env('PROVISIONING_MAX_CALLBACK_SKEW_SECONDS', 900),
+        'reject_stale_callbacks' => env('PROVISIONING_REJECT_STALE_CALLBACKS', false),
+        'warn_on_stale_callbacks' => env('PROVISIONING_WARN_STALE_CALLBACKS', true),
     ],
 
     'wireguard' => [
