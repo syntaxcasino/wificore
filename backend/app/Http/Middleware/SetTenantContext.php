@@ -41,6 +41,21 @@ class SetTenantContext
                 return $next($request);
             }
             
+            // Fail closed: authenticated non-system users must have tenant context.
+            if (!$user->tenant_id) {
+                Log::critical("Authenticated user missing tenant context", [
+                    "user_id" => $user->id,
+                    "role" => $user->role,
+                    "path" => $request->path(),
+                    "method" => $request->method(),
+                ]);
+
+                return response()->json([
+                    "success" => false,
+                    "message" => "Tenant context is required for this account"
+                ], 403);
+            }
+
             // Regular users: set tenant context
             if ($user->tenant_id) {
                 $tenant = $this->resolveTenant((string) $user->tenant_id);
