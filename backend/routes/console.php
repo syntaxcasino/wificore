@@ -32,6 +32,7 @@ if (in_array($consoleCommand, ["schedule:run", "schedule:interrupt"], true)) {
 
 Schedule::useCache("database");
 
+
 Schedule::job(new CheckRoutersJob)->everyMinute();
 
 // REMOVED: RouterHandshakeMonitorJob was conflicting with UpdateVpnStatusJob
