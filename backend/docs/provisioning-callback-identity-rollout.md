@@ -123,3 +123,17 @@ Examples:
 # skip provisioning Date-header probe
 ./scripts/preflight-provisioning-callback-guard.sh --no-probe
 ```
+
+## Callback Guard Counters
+New counters are stored in cache for rollout visibility:
+- `metrics:provisioning:callback_guard:identity_validation_failed`
+- `metrics:provisioning:callback_guard:freshness_validation_failed`
+- `metrics:provisioning:callback_guard:terminal_status_mutation_ignored`
+- `metrics:provisioning:callback_guard:regressive_stage_ignored`
+
+Inspect/reset via artisan:
+
+```bash
+php artisan provisioning:callback-guard-metrics
+php artisan provisioning:callback-guard-metrics --reset
+```
