@@ -415,17 +415,7 @@
                   />
                 </td>
                 <td class="px-6 py-4 w-[18%]">
-                  <div class="flex items-center gap-2">
-                    <span class="font-mono text-sm font-semibold" :class="voucher.archived_at ? 'text-gray-500' : 'text-cyan-700'">{{ voucher.code }}</span>
-                    <button
-                      @click.stop="copyToClipboard(voucher.code, voucher.id)"
-                      class="p-1 text-cyan-500 hover:text-cyan-700 hover:bg-cyan-50 rounded transition-colors"
-                      :title="copiedId === voucher.id ? 'Copied!' : 'Copy code'"
-                    >
-                      <Check v-if="copiedId === voucher.id" class="w-3.5 h-3.5" />
-                      <Copy v-else class="w-3.5 h-3.5" />
-                    </button>
-                  </div>
+                  <span class="font-mono text-sm font-semibold" :class="voucher.archived_at ? 'text-gray-500' : 'text-cyan-700'">{{ voucher.code }}</span>
                 </td>
                 <td class="px-6 py-4 w-[23%]">
                   <span class="text-sm" :class="voucher.archived_at ? 'text-gray-400' : 'text-slate-900'">{{ voucher.package?.name || '-' }}</span>
@@ -443,6 +433,10 @@
                 </td>
                 <td class="px-6 py-4 text-right w-[13%]">
                   <div class="flex items-center justify-end gap-1">
+                    <button @click.stop="copyToClipboard(voucher.code, voucher.id)" class="p-1.5 text-cyan-600 hover:bg-cyan-50 rounded-md transition-colors" :title="copiedId === voucher.id ? 'Copied!' : 'Copy code'">
+                      <Check v-if="copiedId === voucher.id" class="w-4 h-4" />
+                      <Copy v-else class="w-4 h-4" />
+                    </button>
                     <button @click.stop="openDetailOverlay(voucher)" class="p-1.5 text-cyan-600 hover:bg-cyan-50 rounded-md transition-colors" title="View Details">
                       <Eye class="w-4 h-4" />
                     </button>
