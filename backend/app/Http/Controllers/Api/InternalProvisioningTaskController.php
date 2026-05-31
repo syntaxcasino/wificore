@@ -5,9 +5,13 @@ namespace App\Http\Controllers\Api;
 use App\Events\RouterInterfacesDiscovered;
 use App\Events\RouterProvisioningProgress;
 use App\Http\Controllers\Controller;
+use App\Models\ProvisioningRun;
 use App\Models\Router;
 use App\Models\RouterTask;
 use App\Models\Tenant;
+use App\Services\ProvisioningRunAuditService;
+use App\Services\Deployment\ConfigDriftDetector;
+use App\Jobs\RollbackRouterConfigJob;
 use App\Services\TenantContext;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -15,8 +19,11 @@ use Illuminate\Support\Facades\Log;
 
 class InternalProvisioningTaskController extends Controller
 {
-    public function __construct(private readonly TenantContext $tenantContext)
-    {
+    public function __construct(
+        private readonly TenantContext $tenantContext,
+        private readonly ProvisioningRunAuditService $auditService,
+        private readonly ConfigDriftDetector $driftDetector,
+    ) {
     }
 
     public function updateStatus(Request $request, string $taskId)
@@ -38,7 +45,7 @@ class InternalProvisioningTaskController extends Controller
         $task = RouterTask::findOrFail($taskId);
 
         if (in_array($task->status, [RouterTask::STATUS_COMPLETED, RouterTask::STATUS_FAILED], true)
-            && $validated['status'] === RouterTask::STATUS_RUNNING) {
+            && ($validated['status'] ?? null) === RouterTask::STATUS_RUNNING) {
             return response()->json([
                 'success' => true,
                 'task' => [
@@ -49,15 +56,27 @@ class InternalProvisioningTaskController extends Controller
             ]);
         }
 
-        $progress = $validated['progress'] ?? $task->progress;
+        $progress = (int) ($validated['progress'] ?? $task->progress);
         $message = $validated['message'] ?? $task->message;
         $result = $validated['result'] ?? [];
-        $terminal = $validated['terminal'] ?? true;
+        $terminal = (bool) ($validated['terminal'] ?? true);
         $stage = $validated['stage'] ?? null;
+        $callbackStatus = $validated['status'];
+        $callbackError = $validated['error'] ?? null;
 
-        if ($validated['status'] === RouterTask::STATUS_RUNNING) {
+        [$callbackStatus, $message, $callbackError, $result, $progress] = $this->applyVerificationPolicy(
+            $task,
+            $callbackStatus,
+            $terminal,
+            $result,
+            $message,
+            $callbackError,
+            $progress
+        );
+
+        if ($callbackStatus === RouterTask::STATUS_RUNNING) {
             $task->markRunning($progress, $message);
-        } elseif ($validated['status'] === RouterTask::STATUS_COMPLETED && ! $terminal) {
+        } elseif ($callbackStatus === RouterTask::STATUS_COMPLETED && ! $terminal) {
             $existingResult = is_array($task->result_payload) ? $task->result_payload : [];
             $stageResults = is_array($existingResult['stage_results'] ?? null)
                 ? $existingResult['stage_results']
@@ -79,13 +98,15 @@ class InternalProvisioningTaskController extends Controller
                 'started_at' => $task->started_at ?? now(),
                 'error_message' => null,
             ])->save();
-        } elseif ($validated['status'] === RouterTask::STATUS_COMPLETED) {
+        } elseif ($callbackStatus === RouterTask::STATUS_COMPLETED) {
             $task->markCompleted($result, $progress ?: 100, $message);
         } else {
-            $task->markFailed($validated['error'] ?? 'Provisioning task failed', $progress, $message, $result);
+            $task->markFailed($callbackError ?? 'Provisioning task failed', $progress, $message, $result);
         }
 
-        $this->syncRouterProvisioningState($task->fresh() ?? $task, $validated['status'], (int) $progress, $message, $result, $stage, $terminal);
+        $freshTask = $task->fresh() ?? $task;
+        $this->syncRouterProvisioningState($freshTask, $callbackStatus, $progress, $message, $result, $stage, $terminal);
+        $this->syncProvisioningRunAudit($freshTask, $callbackStatus, $progress, $message, $result, $stage, $terminal, $callbackError);
 
         return response()->json([
             'success' => true,
@@ -96,6 +117,245 @@ class InternalProvisioningTaskController extends Controller
                 'message' => $task->message,
             ],
         ]);
+    }
+
+    private function applyVerificationPolicy(
+        RouterTask $task,
+        string $status,
+        bool $terminal,
+        array $result,
+        ?string $message,
+        ?string $error,
+        int $progress,
+    ): array {
+        $isProvisioningTask = in_array($task->type, [
+            RouterTask::TYPE_DEPLOY_SERVICE_CONFIG,
+            RouterTask::TYPE_APPLY_SERVICE_CONFIGS,
+        ], true);
+
+        if (! $isProvisioningTask || $status !== RouterTask::STATUS_COMPLETED || ! $terminal) {
+            return [$status, $message, $error, $result, $progress];
+        }
+
+        $verification = $this->evaluateVerificationBundle($result);
+        if ($verification['valid']) {
+            return [$status, $message, $error, $result, $progress];
+        }
+
+        $errorMessage = 'Post-provision verification failed: ' . implode(', ', $verification['missing']);
+        $result['verification_status'] = 'failed';
+        $result['verification_missing'] = $verification['missing'];
+
+        return [
+            RouterTask::STATUS_FAILED,
+            $errorMessage,
+            $errorMessage,
+            $result,
+            min($progress, 99),
+        ];
+    }
+
+    private function evaluateVerificationBundle(array $result): array
+    {
+        $required = [
+            'interface_bridge',
+            'ip_pool',
+            'ppp_profile',
+            'pppoe_server',
+            'ip_firewall',
+            'queue',
+            'wireguard',
+        ];
+
+        $resources = [];
+
+        if (isset($result['verification']['resources']) && is_array($result['verification']['resources'])) {
+            $resources = $result['verification']['resources'];
+        } elseif (isset($result['verification_results']) && is_array($result['verification_results'])) {
+            $resources = $result['verification_results'];
+        }
+
+        if ($resources === []) {
+            return ['valid' => false, 'missing' => $required];
+        }
+
+        $missing = [];
+        foreach ($required as $key) {
+            if (! array_key_exists($key, $resources) || $resources[$key] !== true) {
+                $missing[] = $key;
+            }
+        }
+
+        return [
+            'valid' => empty($missing),
+            'missing' => $missing,
+        ];
+    }
+
+    private function syncProvisioningRunAudit(
+        RouterTask $task,
+        string $taskStatus,
+        int $progress,
+        ?string $message,
+        array $result,
+        ?string $stage,
+        bool $terminal,
+        ?string $error,
+    ): void {
+        $runId = $this->resolveRunIdFromTask($task);
+        if (! $runId) {
+            return;
+        }
+
+        $run = ProvisioningRun::find($runId);
+        if (! $run) {
+            return;
+        }
+
+        $stageName = $stage ?: match ($taskStatus) {
+            RouterTask::STATUS_FAILED => 'failed',
+            RouterTask::STATUS_COMPLETED => 'completed',
+            default => 'running',
+        };
+
+        $this->auditService->logStep($run, [
+            'stage' => $stageName,
+            'action' => 'task_callback_' . $task->type,
+            'status' => $this->mapStepStatus($taskStatus),
+            'response_payload' => [
+                'message' => $message,
+                'result' => $result,
+                'task_status' => $taskStatus,
+                'terminal' => $terminal,
+            ],
+            'error_message' => $error,
+            'is_terminal' => $terminal,
+            'completed_at' => now(),
+        ]);
+
+        $runStatus = $this->mapRunStatus($taskStatus, $terminal);
+        $this->auditService->updateRun(
+            $run,
+            $runStatus,
+            $progress,
+            $stageName,
+            $error
+        );
+
+        $this->triggerRollbackForVerificationFailure($task, $run, $taskStatus, $terminal, $result, $error);
+    }
+
+    private function triggerRollbackForVerificationFailure(
+        RouterTask $task,
+        ProvisioningRun $run,
+        string $taskStatus,
+        bool $terminal,
+        array $result,
+        ?string $error
+    ): void
+    {
+        if ($taskStatus !== RouterTask::STATUS_FAILED || ! $terminal) {
+            return;
+        }
+
+        if (($result['verification_status'] ?? null) !== 'failed') {
+            return;
+        }
+
+        $meta = is_array($run->metadata) ? $run->metadata : [];
+        if (($meta['rollback_dispatched'] ?? false) === true) {
+            return;
+        }
+
+        $tenant = Tenant::find($task->tenant_id);
+        if (! $tenant || ! $tenant->schema_created || ! $tenant->schema_name) {
+            $this->auditService->logStep($run, [
+                'stage' => 'rollback',
+                'action' => 'dispatch_rollback',
+                'status' => 'failed',
+                'error_message' => 'Tenant schema unavailable for rollback dispatch',
+                'is_terminal' => true,
+                'completed_at' => now(),
+            ]);
+            return;
+        }
+
+        $this->tenantContext->runInTenantContext($tenant, function () use ($task, $run, $meta, $error): void {
+            $router = Router::find($task->router_id);
+            if (! $router) {
+                $this->auditService->logStep($run, [
+                    'stage' => 'rollback',
+                    'action' => 'dispatch_rollback',
+                    'status' => 'failed',
+                    'error_message' => 'Router not found for rollback dispatch',
+                    'is_terminal' => true,
+                    'completed_at' => now(),
+                ]);
+                return;
+            }
+
+            $snapshot = $this->driftDetector->getLatestSnapshot($router);
+            if (! $snapshot) {
+                $this->auditService->logStep($run, [
+                    'stage' => 'rollback',
+                    'action' => 'dispatch_rollback',
+                    'status' => 'failed',
+                    'error_message' => 'No config snapshot available for rollback',
+                    'response_payload' => ['reason' => 'snapshot_missing'],
+                    'is_terminal' => true,
+                    'completed_at' => now(),
+                ]);
+                return;
+            }
+
+            dispatch((new RollbackRouterConfigJob($router, $snapshot->config_text, $run->id))->onQueue('router-provisioning'));
+
+            $this->auditService->logStep($run, [
+                'stage' => 'rollback',
+                'action' => 'dispatch_rollback',
+                'status' => 'completed',
+                'response_payload' => [
+                    'snapshot_id' => $snapshot->id,
+                    'router_id' => $router->id,
+                    'source_error' => $error,
+                ],
+                'is_terminal' => false,
+                'completed_at' => now(),
+            ]);
+
+            $meta['rollback_dispatched'] = true;
+            $meta['rollback_dispatched_at'] = now()->toIso8601String();
+            $this->auditService->updateRun($run, ProvisioningRun::STATUS_FAILED, (int) $run->progress, 'rollback_dispatched', null, $meta);
+        });
+    }
+
+    private function resolveRunIdFromTask(RouterTask $task): ?string
+    {
+        $payload = is_array($task->result_payload) ? $task->result_payload : [];
+        $runId = $payload['provisioning_run_id'] ?? null;
+        return is_string($runId) && $runId !== '' ? $runId : null;
+    }
+
+    private function mapRunStatus(string $taskStatus, bool $terminal): string
+    {
+        if ($taskStatus === RouterTask::STATUS_FAILED) {
+            return ProvisioningRun::STATUS_FAILED;
+        }
+
+        if ($taskStatus === RouterTask::STATUS_COMPLETED && $terminal) {
+            return ProvisioningRun::STATUS_COMPLETED;
+        }
+
+        return ProvisioningRun::STATUS_RUNNING;
+    }
+
+    private function mapStepStatus(string $taskStatus): string
+    {
+        return match ($taskStatus) {
+            RouterTask::STATUS_FAILED => 'failed',
+            RouterTask::STATUS_COMPLETED => 'completed',
+            default => 'running',
+        };
     }
 
     private function syncRouterProvisioningState(
@@ -176,6 +436,8 @@ class InternalProvisioningTaskController extends Controller
                 'provisioning_stage' => 'completed',
                 'model' => $result['model'] ?? $router->model,
                 'os_version' => $result['os_version'] ?? $router->os_version,
+                'architecture_name' => $result['architecture_name'] ?? $result['architecture'] ?? $router->architecture_name,
+                'board_name' => $result['board_name'] ?? $result['model'] ?? $router->board_name,
                 'last_seen' => $result['last_seen'] ?? now(),
                 'last_checked' => now(),
             ]);
@@ -247,6 +509,8 @@ class InternalProvisioningTaskController extends Controller
                 'provisioning_stage' => 'connectivity_verified',
                 'model' => $result['model'] ?? $router->model,
                 'os_version' => $result['os_version'] ?? $router->os_version,
+                'architecture_name' => $result['architecture_name'] ?? $result['architecture'] ?? $router->architecture_name,
+                'board_name' => $result['board_name'] ?? $result['model'] ?? $router->board_name,
                 'last_seen' => $result['last_seen'] ?? now(),
                 'last_checked' => now(),
             ]);
@@ -275,6 +539,8 @@ class InternalProvisioningTaskController extends Controller
             $router->update([
                 'model' => $result['model'] ?? $result['board_name'] ?? $router->model,
                 'os_version' => $result['os_version'] ?? $result['version'] ?? $router->os_version,
+                'architecture_name' => $result['architecture_name'] ?? $result['architecture'] ?? $router->architecture_name,
+                'board_name' => $result['board_name'] ?? $result['model'] ?? $router->board_name,
                 'last_seen' => $result['last_seen'] ?? now(),
                 'last_checked' => now(),
                 'provisioning_stage' => 'interfaces_discovered',
