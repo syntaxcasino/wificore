@@ -62,10 +62,14 @@
         "test": [
             "@php artisan config:clear --ansi",
             "@composer tenant-isolation-guard",
+            "@composer callback-guard-preflight",
             "@php artisan test"
         ],
         "tenant-isolation-guard": [
             "@php artisan tenant:isolation-guard --strict --fail-on-findings"
+        ],
+        "callback-guard-preflight": [
+            "@php artisan provisioning:callback-guard-preflight --strict"
         ]
     },
     "extra": {
