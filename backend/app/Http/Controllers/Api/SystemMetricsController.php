@@ -120,6 +120,46 @@ class SystemMetricsController extends Controller
         }
     }
     
+
+    /**
+     * Get provisioning callback guard counters for rollout monitoring
+     */
+    public function getProvisioningCallbackGuardMetrics(): JsonResponse
+    {
+        try {
+            $actions = [
+                'identity_validation_failed',
+                'freshness_validation_failed',
+                'terminal_status_mutation_ignored',
+                'regressive_stage_ignored',
+            ];
+
+            $counters = [];
+            $total = 0;
+
+            foreach ($actions as $action) {
+                $value = (int) Cache::get('metrics:provisioning:callback_guard:' . $action, 0);
+                $counters[$action] = $value;
+                $total += $value;
+            }
+
+            return response()->json([
+                'counters' => $counters,
+                'total' => $total,
+                'last_updated_at' => Cache::get('metrics:provisioning:callback_guard:last_updated_at'),
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Failed to get provisioning callback guard metrics', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'error' => 'Failed to retrieve provisioning callback guard metrics',
+                'message' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
     /**
      * Retry all failed jobs
      */
