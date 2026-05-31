@@ -720,3 +720,35 @@ Mandatory stop conditions:
 2. Add progressive panels for drift/compliance/health/reconciliation details in existing UX flows.
 3. Standardize realtime freshness contract (single subscription facade + explicit last-updated markers).
 4. Keep high-frequency panels event-driven with bounded refresh fallback to avoid stale views and polling overload.
+
+## Track Update - 2026-06-01 (Callback Guard + Freshness Observability)
+
+Status: `in_progress`
+
+Implemented now:
+1. Callback identity enforcement for provisioning callbacks (`tenant_id` + `router_id`) with strict/soft policy flags.
+2. Callback freshness guard window to reject stale/replayed callback mutations.
+3. Terminal-stage mutation guard to block regressive stage/status rewrites after completion/failure.
+4. Provisioning callback payload propagation now includes `callback_at`, `tenant_id`, `router_id`.
+5. Callback guard outcomes persisted into provisioning run audit trail.
+6. Preflight and rollout tooling:
+   - artisan preflight command
+   - production helper script
+   - CI strict-mode gate
+7. Callback guard counters and metrics visibility:
+   - backend counters endpoint
+   - System Metrics UI panel
+   - warning/critical thresholds
+   - 10-minute delta trend and secure reset flow
+   - trend alert banner for rapid incident visibility
+
+Why this matters:
+1. Prevents cross-tenant and cross-router callback contamination.
+2. Prevents stale event replay from regressing provisioning state.
+3. Gives operators actionable visibility before silent stalls impact users.
+4. Strengthens event-based correctness without changing the provisioning domain workflow.
+
+Remaining to close this lane:
+1. Wire alert thresholds to deployment env docs/runbooks for consistent production tuning.
+2. Add alerting hooks (notification/webhook) when critical callback guard trend is sustained.
+3. Extend integration tests to assert guard behavior across mixed stage races under queue concurrency.
