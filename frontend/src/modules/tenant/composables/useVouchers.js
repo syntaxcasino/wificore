@@ -49,6 +49,13 @@ export function useVouchers() {
     to: 0,
     total: 0
   })
+
+  // Active filters for server-side filtering
+  const activeFilters = ref({
+    search: '',
+    status: '',
+    package_id: ''
+  })
   
   // Stats
   const stats = ref({
@@ -123,8 +130,15 @@ export function useVouchers() {
       const queryParams = {
         page: params.page || pagination.value.currentPage,
         per_page: params.per_page || pagination.value.perPage,
-        ...params
       }
+
+      const search = params.search !== undefined ? params.search : activeFilters.value.search
+      const status = params.status !== undefined ? params.status : activeFilters.value.status
+      const package_id = params.package_id !== undefined ? params.package_id : activeFilters.value.package_id
+
+      if (search) queryParams.search = search
+      if (status) queryParams.status = status
+      if (package_id) queryParams.package_id = package_id
       
       const res = await axios.get('/vouchers', { params: queryParams })
       const data = res.data.data || res.data
@@ -169,6 +183,10 @@ export function useVouchers() {
 
   const refreshVouchers = async () => {
     return fetchVouchers({ page: pagination.value.currentPage })
+  }
+
+  const setFilters = (filters) => {
+    activeFilters.value = { ...activeFilters.value, ...filters }
   }
 
   const goToPage = async (page) => {
@@ -498,6 +516,7 @@ export function useVouchers() {
     stats,
     lastSyncTimestamp,
     pendingUpdates,
+    activeFilters,
 
     // Computed
     statsForView,
@@ -512,6 +531,7 @@ export function useVouchers() {
     generateVouchers,
     revokeVoucher,
     filterVouchers,
+    setFilters,
 
     // Helpers
     statusClass,
