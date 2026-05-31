@@ -309,7 +309,7 @@
     <DataSkeleton v-else-if="loading && !vouchers.length" :count="5" />
 
     <!-- Data Content -->
-    <div v-else-if="filteredVouchers.length" class="flex flex-col h-full pt-2 pb-2 min-h-0">
+    <div v-else-if="vouchers.length" class="flex flex-col h-full pt-2 pb-2 min-h-0">
       <!-- Mobile Cards -->
       <div class="md:hidden space-y-3 overflow-y-auto flex-1 min-h-0">
         <MobileDataCard
@@ -454,12 +454,11 @@ const {
   fetchPackages,
   fetchVouchers,
   refreshVouchers,
+  setFilters,
   fetchStats,
   fetchVoucherDetails,
-  goToPage,
   generateVouchers,
   revokeVoucher,
-  filterVouchers,
   statusClass,
   formatDate,
   getPackageById,
@@ -478,26 +477,10 @@ const selectedVoucher = ref(null)
 const filterStatus = ref('')
 const filterPackage = ref('')
 
-const filters = computed(() => ({
-  status: filterStatus.value,
-  package_id: filterPackage.value
-}))
-
-const hasActiveFilters = computed(() => filterStatus.value || filterPackage.value)
+const hasActiveFilters = computed(() => !!(filterStatus.value || filterPackage.value || searchQuery.value))
 
 // Computed
-const filteredVouchers = computed(() => filterVouchers(searchQuery.value, filters.value))
-
-const paginatedVouchers = computed(() => {
-  // Use server-side pagination if no local filters
-  if (!searchQuery.value && !filterStatus.value && !filterPackage.value) {
-    return vouchers.value
-  }
-  // Use client-side filtering with pagination
-  const start = (currentPage.value - 1) * itemsPerPage.value
-  const end = start + itemsPerPage.value
-  return filteredVouchers.value.slice(start, end)
-})
+const paginatedVouchers = computed(() => vouchers.value)
 
 const selectedPackage = computed(() => getPackageById(formData.value.package_id))
 const totalValue = computed(() => calculateTotalValue(selectedPackage.value, formData.value.quantity))
@@ -568,19 +551,18 @@ watch(() => formData.value.package_id, (newPackageId) => {
   }
 })
 
-// Reset page on search/filter change
-watch([searchQuery, itemsPerPage], () => {
+// Reset page and fetch on search change
+watch(searchQuery, () => {
   currentPage.value = 1
+  setFilters({ search: searchQuery.value })
+  fetchVouchers({ page: 1, per_page: itemsPerPage.value })
 })
 
 // Watch filter changes to trigger API call
 watch([filterStatus, filterPackage], () => {
   currentPage.value = 1
-  fetchVouchers({
-    page: 1,
-    status: filterStatus.value || undefined,
-    package_id: filterPackage.value || undefined
-  })
+  setFilters({ status: filterStatus.value, package_id: filterPackage.value })
+  fetchVouchers({ page: 1, per_page: itemsPerPage.value })
 })
 
 // Actions
@@ -589,7 +571,8 @@ const clearFilters = () => {
   filterPackage.value = ''
   searchQuery.value = ''
   currentPage.value = 1
-  fetchVouchers({ page: 1 })
+  setFilters({ search: '', status: '', package_id: '' })
+  fetchVouchers({ page: 1, per_page: itemsPerPage.value })
 }
 
 const handleFilterChange = () => {
@@ -647,7 +630,7 @@ const isVoucherFree = (v) => v.status === 'unused' && !v.used_by
 
 const handlePageChange = async (page) => {
   currentPage.value = page
-  await fetchVouchers({ page })
+  await fetchVouchers({ page, per_page: itemsPerPage.value })
 }
 
 const handleRevoke = async (voucher) => {
