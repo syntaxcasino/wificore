@@ -329,12 +329,37 @@ class InternalProvisioningTaskController extends Controller
         try {
             Cache::increment('metrics:provisioning:callback_guard:' . $action);
             Cache::put('metrics:provisioning:callback_guard:last_updated_at', now()->toIso8601String(), now()->addDay());
+
+            $this->incrementCallbackGuardTrendBucket($action);
         } catch (\Throwable $e) {
             Log::warning('Failed to increment provisioning callback guard counter', [
                 'action' => $action,
                 'error' => $e->getMessage(),
             ]);
         }
+    }
+
+    private function incrementCallbackGuardTrendBucket(string $action): void
+    {
+        $bucketKey = 'metrics:provisioning:callback_guard:trend:' . $action;
+        $currentBucket = now()->format('Y-m-d\TH:i');
+        $cutoff = now()->subMinutes(60)->format('Y-m-d\TH:i');
+
+        $buckets = Cache::get($bucketKey, []);
+        if (! is_array($buckets)) {
+            $buckets = [];
+        }
+
+        $buckets[$currentBucket] = (int) ($buckets[$currentBucket] ?? 0) + 1;
+
+        foreach (array_keys($buckets) as $bucket) {
+            if (! is_string($bucket) || $bucket < $cutoff) {
+                unset($buckets[$bucket]);
+            }
+        }
+
+        ksort($buckets);
+        Cache::put($bucketKey, $buckets, now()->addDay());
     }
     private function applyVerificationPolicy(
         RouterTask $task,

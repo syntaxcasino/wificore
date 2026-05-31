@@ -155,3 +155,10 @@ System-admin reset endpoint:
 `POST /api/system/metrics/provisioning/callback-guard/reset`
 
 UI action available in **System Admin -> Monitoring -> Metrics** via the **Reset Counters** button in the Provisioning Callback Guard panel.
+
+### Trend Signals
+Callback guard API now includes recent trend fields:
+- `last_10m_delta` (per outcome)
+- `last_10m_total_delta`
+
+This is backed by minute-level cache buckets (rolling ~60 minutes) updated on each guard outcome.

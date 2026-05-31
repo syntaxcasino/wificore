@@ -150,7 +150,10 @@
           <tbody class="divide-y divide-gray-100 dark:divide-slate-700">
             <tr v-for="item in callbackGuardRows" :key="item.key" class="hover:bg-gray-50 dark:hover:bg-slate-700/40 transition-colors">
               <td class="px-6 py-4 text-sm font-medium text-gray-900 dark:text-slate-100">{{ item.label }}</td>
-              <td class="px-6 py-4 text-sm font-semibold text-right font-mono" :class="item.count > 0 ? 'text-amber-600' : 'text-gray-900 dark:text-slate-100'">{{ item.count }}</td>
+              <td class="px-6 py-4 text-sm font-semibold text-right font-mono" :class="item.count > 0 ? 'text-amber-600' : 'text-gray-900 dark:text-slate-100'">
+                {{ item.count }}
+                <span v-if="item.delta10m > 0" class="ml-1 text-[11px] text-blue-600 dark:text-blue-300">(+{{ item.delta10m }}/10m)</span>
+              </td>
               <td class="px-6 py-4">
                 <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium" :class="item.statusClass">{{ item.statusLabel }}</span>
               </td>
@@ -158,7 +161,7 @@
           </tbody>
         </table>
         <div class="px-6 py-3 border-t border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-700/30 text-xs text-gray-600 dark:text-slate-300 flex items-center justify-between">
-          <span>Total outcomes: <strong>{{ callbackGuard.total || 0 }}</strong></span>
+          <span>Total outcomes: <strong>{{ callbackGuard.total || 0 }}</strong> <span v-if="(callbackGuard.last_10m_total_delta || 0) > 0" class="text-blue-600 dark:text-blue-300">(+{{ callbackGuard.last_10m_total_delta }}/10m)</span></span>
           <span>Last updated: {{ callbackGuard.last_updated_at || 'N/A' }}</span>
         </div>
       </div>
@@ -222,7 +225,7 @@ const { error: showError } = useToast()
 
 const metrics = ref(null)
 const queueStats = ref({})
-const callbackGuard = ref({ counters: {}, total: 0, last_updated_at: null })
+const callbackGuard = ref({ counters: {}, total: 0, last_updated_at: null, last_10m_delta: {}, last_10m_total_delta: 0 })
 const loading = ref(true)
 const error = ref(null)
 const retrying = ref(false)
@@ -263,11 +266,12 @@ const getCallbackCounterStatus = (count) => {
 
 const callbackGuardRows = computed(() => {
   const counters = callbackGuard.value?.counters || {}
+  const deltas = callbackGuard.value?.last_10m_delta || {}
   const items = [
-    { key: 'identity_validation_failed', label: 'Identity validation failed', count: Number(counters.identity_validation_failed || 0) },
-    { key: 'freshness_validation_failed', label: 'Freshness validation failed', count: Number(counters.freshness_validation_failed || 0) },
-    { key: 'terminal_status_mutation_ignored', label: 'Terminal status mutation ignored', count: Number(counters.terminal_status_mutation_ignored || 0) },
-    { key: 'regressive_stage_ignored', label: 'Regressive stage ignored', count: Number(counters.regressive_stage_ignored || 0) },
+    { key: 'identity_validation_failed', label: 'Identity validation failed', count: Number(counters.identity_validation_failed || 0), delta10m: Number(deltas.identity_validation_failed || 0) },
+    { key: 'freshness_validation_failed', label: 'Freshness validation failed', count: Number(counters.freshness_validation_failed || 0), delta10m: Number(deltas.freshness_validation_failed || 0) },
+    { key: 'terminal_status_mutation_ignored', label: 'Terminal status mutation ignored', count: Number(counters.terminal_status_mutation_ignored || 0), delta10m: Number(deltas.terminal_status_mutation_ignored || 0) },
+    { key: 'regressive_stage_ignored', label: 'Regressive stage ignored', count: Number(counters.regressive_stage_ignored || 0), delta10m: Number(deltas.regressive_stage_ignored || 0) },
   ]
 
   return items.map((item) => {
@@ -305,8 +309,8 @@ const fetchAll = async () => {
     metrics.value = metricsRes.status === 'fulfilled' ? (metricsRes.value.data.data || metricsRes.value.data) : null
     queueStats.value = queueRes.status === 'fulfilled' ? (queueRes.value.data.data || queueRes.value.data) : {}
     callbackGuard.value = callbackGuardRes.status === 'fulfilled'
-      ? (callbackGuardRes.value.data.data || callbackGuardRes.value.data || { counters: {}, total: 0, last_updated_at: null })
-      : { counters: {}, total: 0, last_updated_at: null }
+      ? (callbackGuardRes.value.data.data || callbackGuardRes.value.data || { counters: {}, total: 0, last_updated_at: null, last_10m_delta: {}, last_10m_total_delta: 0 })
+      : { counters: {}, total: 0, last_updated_at: null, last_10m_delta: {}, last_10m_total_delta: 0 }
   } catch (err) {
     if (err.response?.status === 401) return
     error.value = err.response?.data?.message || 'Failed to load metrics'

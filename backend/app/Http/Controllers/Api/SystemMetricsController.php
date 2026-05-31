@@ -135,17 +135,25 @@ class SystemMetricsController extends Controller
             ];
 
             $counters = [];
+            $deltas10m = [];
             $total = 0;
+            $totalDelta10m = 0;
 
             foreach ($actions as $action) {
                 $value = (int) Cache::get('metrics:provisioning:callback_guard:' . $action, 0);
                 $counters[$action] = $value;
                 $total += $value;
+
+                $delta = $this->computeCallbackGuardDelta($action, 10);
+                $deltas10m[$action] = $delta;
+                $totalDelta10m += $delta;
             }
 
             return response()->json([
                 'counters' => $counters,
                 'total' => $total,
+                'last_10m_delta' => $deltas10m,
+                'last_10m_total_delta' => $totalDelta10m,
                 'last_updated_at' => Cache::get('metrics:provisioning:callback_guard:last_updated_at'),
             ]);
         } catch (\Exception $e) {
@@ -158,6 +166,29 @@ class SystemMetricsController extends Controller
                 'message' => $e->getMessage(),
             ], 500);
         }
+    }
+
+
+    private function computeCallbackGuardDelta(string $action, int $minutes): int
+    {
+        $minutes = max(1, $minutes);
+        $bucketKey = 'metrics:provisioning:callback_guard:trend:' . $action;
+        $buckets = Cache::get($bucketKey, []);
+
+        if (! is_array($buckets) || empty($buckets)) {
+            return 0;
+        }
+
+        $cutoff = now()->subMinutes($minutes)->format('Y-m-d\TH:i');
+        $delta = 0;
+
+        foreach ($buckets as $bucket => $count) {
+            if (is_string($bucket) && $bucket >= $cutoff) {
+                $delta += (int) $count;
+            }
+        }
+
+        return $delta;
     }
 
 
@@ -176,6 +207,7 @@ class SystemMetricsController extends Controller
 
             foreach ($actions as $action) {
                 Cache::forget('metrics:provisioning:callback_guard:' . $action);
+                Cache::forget('metrics:provisioning:callback_guard:trend:' . $action);
             }
 
             Cache::forget('metrics:provisioning:callback_guard:last_updated_at');
