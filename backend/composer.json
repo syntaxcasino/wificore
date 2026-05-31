@@ -65,7 +65,7 @@
             "@php artisan test"
         ],
         "tenant-isolation-guard": [
-            "@php artisan tenant:isolation-guard --fail-on-findings"
+            "@php artisan tenant:isolation-guard --strict --fail-on-findings"
         ]
     },
     "extra": {

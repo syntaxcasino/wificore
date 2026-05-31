@@ -6,7 +6,9 @@ use Illuminate\Console\Command;
 
 class TenantIsolationGuard extends Command
 {
-    protected $signature = 'tenant:isolation-guard {--fail-on-findings : Exit with non-zero code when findings are detected}';
+    protected $signature = 'tenant:isolation-guard
+                            {--fail-on-findings : Exit with non-zero code when findings are detected}
+                            {--strict : Fail when a configured critical file is missing or unreadable}';
 
     protected $description = 'Scan provisioning-critical files for high-risk tenant isolation bypass patterns.';
 
@@ -15,6 +17,7 @@ class TenantIsolationGuard extends Command
         $criticalFiles = (array) config('tenant_isolation.critical_files', []);
         $patterns = (array) config('tenant_isolation.forbidden_patterns', []);
         $allowlist = array_flip((array) config('tenant_isolation.allowlist', []));
+        $strict = (bool) $this->option('strict');
 
         if (empty($criticalFiles) || empty($patterns)) {
             $this->warn('Tenant isolation guard is not configured.');
@@ -22,11 +25,13 @@ class TenantIsolationGuard extends Command
         }
 
         $findings = [];
+        $missingFiles = [];
 
         foreach ($criticalFiles as $relativePath) {
             $absolutePath = base_path($relativePath);
 
             if (!is_file($absolutePath)) {
+                $missingFiles[] = $relativePath;
                 continue;
             }
 
@@ -36,6 +41,7 @@ class TenantIsolationGuard extends Command
 
             $lines = file($absolutePath, FILE_IGNORE_NEW_LINES);
             if ($lines === false) {
+                $missingFiles[] = $relativePath;
                 continue;
             }
 
@@ -49,6 +55,18 @@ class TenantIsolationGuard extends Command
                         ];
                     }
                 }
+            }
+        }
+
+        if (!empty($missingFiles)) {
+            $this->warn('Tenant isolation guard could not read some configured critical files:');
+            foreach ($missingFiles as $missingFile) {
+                $this->line('- ' . $missingFile);
+            }
+
+            if ($strict) {
+                $this->error('Strict mode enabled: missing/unreadable critical files are fatal.');
+                return 1;
             }
         }
 
