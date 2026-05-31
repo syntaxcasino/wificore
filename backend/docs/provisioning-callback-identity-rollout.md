@@ -93,3 +93,13 @@ php artisan provisioning:callback-guard-preflight --probe-provisioning-date --ma
 Use strict mode in CI/CD gates before flipping:
 - `PROVISIONING_REQUIRE_CALLBACK_IDENTITY=true`
 - `PROVISIONING_REJECT_STALE_CALLBACKS=true`
+
+## CI Gate
+`composer test` now runs callback guard preflight in strict mode before test execution:
+
+```bash
+composer callback-guard-preflight
+composer test
+```
+
+This prevents rollout toggles from drifting into unsafe combinations without detection.
