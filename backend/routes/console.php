@@ -188,6 +188,13 @@ Schedule::job(new \App\Jobs\CollectSystemMetricsJob)
     ->withoutOverlapping()
     ->onOneServer();
 
+// Monitor provisioning callback guard trend and emit operational alerts
+Schedule::command('provisioning:callback-guard-alert-check')
+    ->everyMinute()
+    ->name('provisioning-callback-guard-alert-check')
+    ->withoutOverlapping()
+    ->onOneServer();
+
 // Reset TPS counter every minute for accurate metrics
 Schedule::call(function () {
     \App\Services\MetricsService::resetTPSCounter();
