@@ -60,14 +60,21 @@ class InternalProvisioningTaskController extends Controller
             return $identityCheck;
         }
 
-        if (in_array($task->status, [RouterTask::STATUS_COMPLETED, RouterTask::STATUS_FAILED], true)
-            && ($validated['status'] ?? null) === RouterTask::STATUS_RUNNING) {
+        if ($this->shouldIgnoreTerminalStatusMutation($task, (string) ($validated['status'] ?? ''))) {
+            Log::warning('Ignoring callback status mutation for terminal task', [
+                'task_id' => $task->id,
+                'stored_status' => $task->status,
+                'incoming_status' => $validated['status'] ?? null,
+            ]);
+
             return response()->json([
                 'success' => true,
+                'ignored' => true,
                 'task' => [
                     'id' => $task->id,
                     'status' => $task->status,
                     'progress' => $task->progress,
+                    'message' => $task->message,
                 ],
             ]);
         }
@@ -291,6 +298,20 @@ class InternalProvisioningTaskController extends Controller
             'valid' => empty($missing),
             'missing' => $missing,
         ];
+    }
+
+    private function shouldIgnoreTerminalStatusMutation(RouterTask $task, string $incomingStatus): bool
+    {
+        if (!in_array($task->status, [RouterTask::STATUS_COMPLETED, RouterTask::STATUS_FAILED], true)) {
+            return false;
+        }
+
+        if ($incomingStatus === '') {
+            return false;
+        }
+
+        // Idempotent repeats are allowed; only conflicting mutations are ignored.
+        return $incomingStatus !== $task->status;
     }
 
     private function shouldIgnoreRegressiveStageUpdate(

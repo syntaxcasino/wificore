@@ -46,6 +46,18 @@ class InternalProvisioningTaskControllerVerificationTest extends TestCase
         return $invoker($task, $status, $terminal, $result, $message, $error, $progress);
     }
 
+    private function invokeShouldIgnoreTerminalStatusMutation(
+        InternalProvisioningTaskController $controller,
+        RouterTask $task,
+        string $incomingStatus,
+    ): bool {
+        $invoker = \Closure::bind(function (RouterTask $task, string $incomingStatus): bool {
+            return $this->shouldIgnoreTerminalStatusMutation($task, $incomingStatus);
+        }, $controller, $controller);
+
+        return $invoker($task, $incomingStatus);
+    }
+
     private function invokeShouldIgnoreRegressiveStageUpdate(
         InternalProvisioningTaskController $controller,
         RouterTask $task,
@@ -205,6 +217,38 @@ class InternalProvisioningTaskControllerVerificationTest extends TestCase
 
         $this->assertFalse($forward);
         $this->assertFalse($unknown);
+    }
+
+    #[Test]
+    public function it_ignores_conflicting_status_updates_for_terminal_tasks(): void
+    {
+        $controller = $this->makeController();
+        $task = new RouterTask();
+        $task->status = RouterTask::STATUS_COMPLETED;
+
+        $ignored = $this->invokeShouldIgnoreTerminalStatusMutation(
+            $controller,
+            $task,
+            RouterTask::STATUS_FAILED,
+        );
+
+        $this->assertTrue($ignored);
+    }
+
+    #[Test]
+    public function it_allows_idempotent_status_updates_for_terminal_tasks(): void
+    {
+        $controller = $this->makeController();
+        $task = new RouterTask();
+        $task->status = RouterTask::STATUS_FAILED;
+
+        $ignored = $this->invokeShouldIgnoreTerminalStatusMutation(
+            $controller,
+            $task,
+            RouterTask::STATUS_FAILED,
+        );
+
+        $this->assertFalse($ignored);
     }
 
     #[Test]
