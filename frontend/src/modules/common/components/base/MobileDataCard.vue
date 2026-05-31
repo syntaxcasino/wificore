@@ -3,8 +3,9 @@
     <!-- Main Content Row -->
     <div class="flex items-start justify-between gap-3">
       <div class="min-w-0 flex-1">
-        <!-- Header: Icon/Status + Title -->
+        <!-- Header: Prefix + Icon/Status + Title -->
         <div class="flex items-center gap-2 min-w-0">
+          <slot name="prefix" />
           <span v-if="status" :class="statusDotClass" class="w-2 h-2 rounded-full flex-shrink-0"></span>
           <div class="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">{{ title }}</div>
         </div>

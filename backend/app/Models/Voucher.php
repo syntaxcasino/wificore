@@ -26,11 +26,13 @@ class Voucher extends Model
         'prefix',
         'notes',
         'batch_id',
+        'archived_at',
     ];
 
     protected $casts = [
         'used_at' => 'datetime',
         'expires_at' => 'datetime',
+        'archived_at' => 'datetime',
     ];
 
     public function package()

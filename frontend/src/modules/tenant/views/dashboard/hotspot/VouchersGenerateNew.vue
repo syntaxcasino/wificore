@@ -198,7 +198,9 @@
                 <svg class="h-4 w-4 text-cyan-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" /></svg>
                 Voucher Code
               </h4>
-              <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium capitalize" :class="statusClass(selectedVoucher.status)">{{ selectedVoucher.status }}</span>
+              <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium capitalize" :class="statusClass(selectedVoucher.status, selectedVoucher.archived_at)">
+                {{ selectedVoucher.archived_at ? 'archived' : selectedVoucher.status }}
+              </span>
             </div>
             <div class="flex items-center gap-3">
               <div class="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 font-mono text-lg font-bold text-slate-800 tracking-wide">
@@ -273,10 +275,16 @@
         </div>
 
         <!-- Footer -->
-        <div class="flex-shrink-0 px-6 py-4 border-t border-slate-200 bg-white flex gap-3">
-          <button type="button" @click="closeDetailOverlay" class="flex-1 px-4 py-2.5 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors">Close</button>
-          <button v-if="selectedVoucher?.status === 'unused' && !selectedVoucher?.used_by" @click="handleRevoke(selectedVoucher)" class="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors shadow-sm">
-            <Ban class="w-4 h-4" />Revoke Voucher
+        <div class="flex-shrink-0 px-6 py-4 border-t border-slate-200 bg-white flex gap-3 flex-wrap">
+          <button type="button" @click="closeDetailOverlay" class="flex-1 min-w-[80px] px-4 py-2.5 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors">Close</button>
+          <button v-if="selectedVoucher?.archived_at" @click="handleRestore(selectedVoucher)" class="flex-1 min-w-[100px] inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 transition-colors shadow-sm">
+            <RotateCcw class="w-4 h-4" />Restore
+          </button>
+          <button v-if="selectedVoucher && isVoucherArchivable(selectedVoucher)" @click="handleArchive(selectedVoucher)" class="flex-1 min-w-[100px] inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium text-white bg-amber-600 rounded-lg hover:bg-amber-700 transition-colors shadow-sm">
+            <Archive class="w-4 h-4" />Archive
+          </button>
+          <button v-if="selectedVoucher?.status === 'unused' && !selectedVoucher?.used_by && !selectedVoucher?.archived_at" @click="handleRevoke(selectedVoucher)" class="flex-1 min-w-[100px] inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors shadow-sm">
+            <Ban class="w-4 h-4" />Revoke
           </button>
         </div>
       </div>
@@ -295,6 +303,15 @@
         <option value="">All Packages</option>
         <option v-for="pkg in packages" :key="pkg.id" :value="pkg.id">{{ pkg.name }}</option>
       </BaseSelect>
+      <label class="inline-flex items-center gap-2 text-sm text-slate-600 cursor-pointer select-none">
+        <input
+          v-model="showArchived"
+          type="checkbox"
+          class="w-4 h-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500"
+          @change="handleShowArchivedChange"
+        />
+        <span>Show Archived</span>
+      </label>
       <button v-if="hasActiveFilters" @click="clearFilters" class="text-xs text-cyan-600 hover:text-cyan-700 font-medium">Clear filters</button>
     </template>
 
@@ -310,6 +327,21 @@
 
     <!-- Data Content -->
     <div v-else-if="vouchers.length" class="flex flex-col h-full pt-2 pb-2 min-h-0">
+      <!-- Bulk Actions Toolbar -->
+      <div v-if="selectedCount > 0" class="flex items-center gap-3 px-4 py-2.5 bg-cyan-50 border border-cyan-200 rounded-lg mb-3 flex-shrink-0">
+        <span class="text-sm font-medium text-cyan-800">{{ selectedCount }} selected</span>
+        <div class="flex-1"></div>
+        <button @click="handleExportSelected" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-cyan-700 bg-white border border-cyan-300 rounded-md hover:bg-cyan-50 transition-colors">
+          <Download class="w-3.5 h-3.5" />
+          Export
+        </button>
+        <button @click="handleBulkArchive" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-amber-700 bg-white border border-amber-300 rounded-md hover:bg-amber-50 transition-colors">
+          <Archive class="w-3.5 h-3.5" />
+          Archive
+        </button>
+        <button @click="clearSelection" class="text-xs text-slate-500 hover:text-slate-700 font-medium px-2">Clear</button>
+      </div>
+
       <!-- Mobile Cards -->
       <div class="md:hidden space-y-3 overflow-y-auto flex-1 min-h-0">
         <MobileDataCard
@@ -318,14 +350,23 @@
           :title="voucher.code"
           :subtitle="voucher.package?.name || 'No package'"
           :meta-lines="[
-            { text: `Status: ${voucher.status}`, class: statusClass(voucher.status) },
+            { text: `Status: ${voucher.status}${voucher.archived_at ? ' (archived)' : ''}`, class: statusClass(voucher.status, voucher.archived_at) },
             { text: `Unused Expiry: ${voucher.expires_at ? formatDate(voucher.expires_at) : 'No expiry'}` },
             { text: `Created: ${formatDate(voucher.created_at)}` }
           ]"
           :status="voucher.status"
           :actions="getVoucherActions(voucher)"
           hoverable
-        />
+        >
+          <template #prefix>
+            <input
+              type="checkbox"
+              :checked="selectedIds.has(voucher.id)"
+              @click.stop="toggleSelect(voucher)"
+              class="w-4 h-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500 flex-shrink-0"
+            />
+          </template>
+        </MobileDataCard>
       </div>
 
       <!-- Desktop Table -->
@@ -335,12 +376,21 @@
           <table class="w-full">
             <thead>
               <tr>
-                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[20%]">Code</th>
-                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[25%]">Package</th>
+                <th class="px-3 py-3 w-[3%]">
+                  <input
+                    type="checkbox"
+                    :checked="isAllSelected"
+                    :indeterminate="isIndeterminate"
+                    @change="toggleSelectAll"
+                    class="w-4 h-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500"
+                  />
+                </th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[18%]">Code</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[23%]">Package</th>
                 <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[12%]">Status</th>
-                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[18%]">Unused Expiry</th>
-                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[15%]">Created</th>
-                <th class="px-6 py-3 text-right text-xs font-semibold text-slate-700 uppercase tracking-wider w-[10%]">Actions</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[17%]">Unused Expiry</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[14%]">Created</th>
+                <th class="px-6 py-3 text-right text-xs font-semibold text-slate-700 uppercase tracking-wider w-[13%]">Actions</th>
               </tr>
             </thead>
           </table>
@@ -354,10 +404,19 @@
                 :key="voucher.id"
                 @click="openDetailOverlay(voucher)"
                 class="hover:bg-cyan-50/50 transition-colors cursor-pointer"
+                :class="voucher.archived_at ? 'opacity-60' : ''"
               >
-                <td class="px-6 py-4 w-[20%]">
+                <td class="px-3 py-4 w-[3%]" @click.stop>
+                  <input
+                    type="checkbox"
+                    :checked="selectedIds.has(voucher.id)"
+                    @change="toggleSelect(voucher)"
+                    class="w-4 h-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500"
+                  />
+                </td>
+                <td class="px-6 py-4 w-[18%]">
                   <div class="flex items-center gap-2">
-                    <span class="font-mono text-sm font-semibold text-cyan-700">{{ voucher.code }}</span>
+                    <span class="font-mono text-sm font-semibold" :class="voucher.archived_at ? 'text-gray-500' : 'text-cyan-700'">{{ voucher.code }}</span>
                     <button
                       @click.stop="copyToClipboard(voucher.code, voucher.id)"
                       class="p-1 text-cyan-500 hover:text-cyan-700 hover:bg-cyan-50 rounded transition-colors"
@@ -368,24 +427,32 @@
                     </button>
                   </div>
                 </td>
-                <td class="px-6 py-4 w-[25%]">
-                  <span class="text-sm text-slate-900">{{ voucher.package?.name || '-' }}</span>
+                <td class="px-6 py-4 w-[23%]">
+                  <span class="text-sm" :class="voucher.archived_at ? 'text-gray-400' : 'text-slate-900'">{{ voucher.package?.name || '-' }}</span>
                 </td>
                 <td class="px-6 py-4 w-[12%]">
-                  <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium capitalize" :class="statusClass(voucher.status)">{{ voucher.status }}</span>
+                  <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium capitalize" :class="statusClass(voucher.status, voucher.archived_at)">
+                    {{ voucher.archived_at ? 'archived' : voucher.status }}
+                  </span>
                 </td>
-                <td class="px-6 py-4 w-[18%]">
+                <td class="px-6 py-4 w-[17%]">
                   <span class="text-xs text-slate-500 dark:text-slate-400">{{ voucher.expires_at ? formatDate(voucher.expires_at) : 'No expiry' }}</span>
                 </td>
-                <td class="px-6 py-4 w-[15%]">
+                <td class="px-6 py-4 w-[14%]">
                   <span class="text-xs text-slate-500 dark:text-slate-400">{{ formatDate(voucher.created_at) }}</span>
                 </td>
-                <td class="px-6 py-4 text-right w-[10%]">
+                <td class="px-6 py-4 text-right w-[13%]">
                   <div class="flex items-center justify-end gap-1">
                     <button @click.stop="openDetailOverlay(voucher)" class="p-1.5 text-cyan-600 hover:bg-cyan-50 rounded-md transition-colors" title="View Details">
                       <Eye class="w-4 h-4" />
                     </button>
-                    <button v-if="voucher.status === 'unused' && !voucher.used_by" @click.stop="handleRevoke(voucher)" class="p-1.5 text-red-500 hover:bg-red-50 rounded-md transition-colors" title="Revoke Voucher">
+                    <button v-if="isVoucherArchivable(voucher)" @click.stop="handleArchive(voucher)" class="p-1.5 text-amber-500 hover:bg-amber-50 rounded-md transition-colors" title="Archive Voucher">
+                      <Archive class="w-4 h-4" />
+                    </button>
+                    <button v-if="voucher.archived_at" @click.stop="handleRestore(voucher)" class="p-1.5 text-emerald-500 hover:bg-emerald-50 rounded-md transition-colors" title="Restore Voucher">
+                      <RotateCcw class="w-4 h-4" />
+                    </button>
+                    <button v-if="voucher.status === 'unused' && !voucher.used_by && !voucher.archived_at" @click.stop="handleRevoke(voucher)" class="p-1.5 text-red-500 hover:bg-red-50 rounded-md transition-colors" title="Revoke Voucher">
                       <Ban class="w-4 h-4" />
                     </button>
                   </div>
@@ -427,7 +494,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
-import { Ticket, Eye, Ban, Copy, Check } from 'lucide-vue-next'
+import { Ticket, Eye, Ban, Copy, Check, Archive, Download, RotateCcw } from 'lucide-vue-next'
 import DataViewContainer from '@/modules/common/components/base/DataViewContainer.vue'
 import DataSkeleton from '@/modules/common/components/base/DataSkeleton.vue'
 import MobileDataCard from '@/modules/common/components/base/MobileDataCard.vue'
@@ -459,6 +526,10 @@ const {
   fetchVoucherDetails,
   generateVouchers,
   revokeVoucher,
+  archiveVoucher,
+  restoreVoucher,
+  bulkArchiveVouchers,
+  exportVouchers,
   statusClass,
   formatDate,
   getPackageById,
@@ -476,8 +547,41 @@ const showDetailOverlay = ref(false)
 const selectedVoucher = ref(null)
 const filterStatus = ref('')
 const filterPackage = ref('')
+const showArchived = ref(false)
 
-const hasActiveFilters = computed(() => !!(filterStatus.value || filterPackage.value || searchQuery.value))
+// Selection state
+const selectedIds = ref(new Set())
+
+const hasActiveFilters = computed(() => !!(filterStatus.value || filterPackage.value || searchQuery.value || showArchived.value))
+
+const selectedCount = computed(() => selectedIds.value.size)
+const isAllSelected = computed(() => {
+  const visible = paginatedVouchers.value.filter(v => !v.archived_at || showArchived.value)
+  return visible.length > 0 && visible.every(v => selectedIds.value.has(v.id))
+})
+const isIndeterminate = computed(() => selectedCount.value > 0 && !isAllSelected.value)
+
+const toggleSelectAll = () => {
+  if (isAllSelected.value) {
+    paginatedVouchers.value.forEach(v => selectedIds.value.delete(v.id))
+  } else {
+    paginatedVouchers.value.forEach(v => selectedIds.value.add(v.id))
+  }
+  selectedIds.value = new Set(selectedIds.value)
+}
+
+const toggleSelect = (voucher) => {
+  if (selectedIds.value.has(voucher.id)) {
+    selectedIds.value.delete(voucher.id)
+  } else {
+    selectedIds.value.add(voucher.id)
+  }
+  selectedIds.value = new Set(selectedIds.value)
+}
+
+const clearSelection = () => {
+  selectedIds.value = new Set()
+}
 
 // Computed
 const paginatedVouchers = computed(() => vouchers.value)
@@ -570,13 +674,22 @@ const clearFilters = () => {
   filterStatus.value = ''
   filterPackage.value = ''
   searchQuery.value = ''
+  showArchived.value = false
   currentPage.value = 1
-  setFilters({ search: '', status: '', package_id: '' })
+  clearSelection()
+  setFilters({ search: '', status: '', package_id: '', include_archived: false })
   fetchVouchers({ page: 1, per_page: itemsPerPage.value })
 }
 
 const handleFilterChange = () => {
   // Handled by watcher
+}
+
+const handleShowArchivedChange = () => {
+  currentPage.value = 1
+  clearSelection()
+  setFilters({ include_archived: showArchived.value })
+  fetchVouchers({ page: 1, per_page: itemsPerPage.value })
 }
 
 const openCreateOverlay = () => {
@@ -629,9 +742,11 @@ const copyToClipboard = async (text, id) => {
 }
 
 const isVoucherFree = (v) => v.status === 'unused' && !v.used_by
+const isVoucherArchivable = (v) => !v.archived_at && v.status !== 'used' && !v.used_by
 
 const handlePageChange = async (page) => {
   currentPage.value = page
+  clearSelection()
   await fetchVouchers({ page, per_page: itemsPerPage.value })
 }
 
@@ -656,13 +771,92 @@ const handleRevoke = async (voucher) => {
   }
 }
 
+const handleArchive = async (voucher) => {
+  if (!isVoucherArchivable(voucher)) {
+    showError('This voucher cannot be archived')
+    return
+  }
+  const confirmed = await confirmStore.open({
+    title: 'Archive Voucher',
+    message: `Archive voucher ${voucher.code}? It will be hidden from the main list.`,
+    confirmText: 'Archive',
+    cancelText: 'Cancel',
+    variant: 'warning'
+  })
+
+  if (!confirmed) return
+
+  const success = await archiveVoucher(voucher)
+  if (success) {
+    closeDetailOverlay()
+    clearSelection()
+    await fetchVouchers({ page: currentPage.value, per_page: itemsPerPage.value })
+  }
+}
+
+const handleRestore = async (voucher) => {
+  const confirmed = await confirmStore.open({
+    title: 'Restore Voucher',
+    message: `Restore voucher ${voucher.code} to the main list?`,
+    confirmText: 'Restore',
+    cancelText: 'Cancel',
+    variant: 'default'
+  })
+
+  if (!confirmed) return
+
+  const success = await restoreVoucher(voucher)
+  if (success) {
+    closeDetailOverlay()
+    await fetchVouchers({ page: currentPage.value, per_page: itemsPerPage.value })
+  }
+}
+
+const handleBulkArchive = async () => {
+  const ids = Array.from(selectedIds.value)
+  if (ids.length === 0) {
+    showError('Please select vouchers to archive')
+    return
+  }
+  const confirmed = await confirmStore.open({
+    title: 'Archive Selected Vouchers',
+    message: `Archive ${ids.length} selected voucher(s)? They will be hidden from the main list.`,
+    confirmText: 'Archive',
+    cancelText: 'Cancel',
+    variant: 'warning'
+  })
+
+  if (!confirmed) return
+
+  const success = await bulkArchiveVouchers(ids)
+  if (success) {
+    clearSelection()
+    await fetchVouchers({ page: currentPage.value, per_page: itemsPerPage.value })
+  }
+}
+
+const handleExportSelected = async () => {
+  const ids = Array.from(selectedIds.value)
+  if (ids.length === 0) {
+    await exportVouchers()
+  } else {
+    await exportVouchers(ids)
+  }
+}
+
 const getVoucherActions = (voucher) => {
   const actions = [
     { label: 'Copy', onClick: () => copyToClipboard(voucher.code, voucher.id), class: 'text-cyan-700 bg-cyan-50 hover:bg-cyan-100' },
     { label: 'View', onClick: () => openDetailOverlay(voucher), class: 'text-slate-700 bg-slate-50 hover:bg-slate-100' }
   ]
+  if (isVoucherArchivable(voucher)) {
+    actions.push({ label: 'Archive', onClick: () => handleArchive(voucher), class: 'text-amber-600 bg-amber-50 hover:bg-amber-100' })
+  }
   if (isVoucherFree(voucher)) {
     actions.push({ label: 'Revoke', onClick: () => handleRevoke(voucher), class: 'text-red-600 bg-red-50 hover:bg-red-100' })
+  }
+  if (voucher.archived_at) {
+    actions.push({ label: 'Restore', onClick: () => handleRestore(voucher), class: 'text-emerald-600 bg-emerald-50 hover:bg-emerald-100' })
   }
   return actions
 }
