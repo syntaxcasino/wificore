@@ -49,9 +49,16 @@ class InternalProvisioningTaskController extends Controller
             'error' => 'nullable|string|max:2000',
             'terminal' => 'nullable|boolean',
             'stage' => 'nullable|string|max:255',
+            'tenant_id' => 'nullable|string',
+            'router_id' => 'nullable|string',
         ]);
 
         $task = RouterTask::findOrFail($taskId);
+
+        $identityCheck = $this->validateCallbackIdentity($task, $validated);
+        if ($identityCheck !== null) {
+            return $identityCheck;
+        }
 
         if (in_array($task->status, [RouterTask::STATUS_COMPLETED, RouterTask::STATUS_FAILED], true)
             && ($validated['status'] ?? null) === RouterTask::STATUS_RUNNING) {
@@ -154,6 +161,40 @@ class InternalProvisioningTaskController extends Controller
                 'message' => $task->message,
             ],
         ]);
+    }
+
+    private function validateCallbackIdentity(RouterTask $task, array $validated): ?\Illuminate\Http\JsonResponse
+    {
+        $incomingTenantId = isset($validated['tenant_id']) ? (string) $validated['tenant_id'] : null;
+        $incomingRouterId = isset($validated['router_id']) ? (string) $validated['router_id'] : null;
+
+        if ($incomingTenantId !== null && $incomingTenantId !== '' && $incomingTenantId !== (string) $task->tenant_id) {
+            Log::critical('Provisioning callback tenant mismatch', [
+                'task_id' => $task->id,
+                'task_tenant_id' => (string) $task->tenant_id,
+                'incoming_tenant_id' => $incomingTenantId,
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Provisioning callback identity mismatch',
+            ], 403);
+        }
+
+        if ($incomingRouterId !== null && $incomingRouterId !== '' && $incomingRouterId !== (string) $task->router_id) {
+            Log::critical('Provisioning callback router mismatch', [
+                'task_id' => $task->id,
+                'task_router_id' => (string) $task->router_id,
+                'incoming_router_id' => $incomingRouterId,
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Provisioning callback identity mismatch',
+            ], 403);
+        }
+
+        return null;
     }
 
     private function applyVerificationPolicy(
