@@ -121,21 +121,30 @@
 
       <!-- Provisioning Callback Guard -->
       <div class="bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 overflow-hidden">
-        <div class="px-6 py-4 border-b border-gray-200 dark:border-slate-700">
-          <h2 class="text-lg font-semibold text-gray-900 dark:text-slate-100">Provisioning Callback Guard</h2>
-          <p class="text-xs text-gray-500 dark:text-slate-400 mt-1">Rollout counters for callback validation and guard outcomes</p>
+        <div class="px-6 py-4 border-b border-gray-200 dark:border-slate-700 flex items-start justify-between gap-3">
+          <div>
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-slate-100">Provisioning Callback Guard</h2>
+            <p class="text-xs text-gray-500 dark:text-slate-400 mt-1">Rollout counters for callback validation and guard outcomes</p>
+          </div>
+          <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold" :class="callbackGuardStatusClass">
+            {{ callbackGuardStatusLabel }}
+          </span>
         </div>
         <table class="w-full">
           <thead class="bg-gray-50 dark:bg-slate-700/50 border-b border-gray-200 dark:border-slate-700">
             <tr>
               <th class="text-left px-6 py-3 text-xs font-medium text-gray-500 dark:text-slate-400 uppercase">Outcome</th>
               <th class="text-right px-6 py-3 text-xs font-medium text-gray-500 dark:text-slate-400 uppercase">Count</th>
+              <th class="text-left px-6 py-3 text-xs font-medium text-gray-500 dark:text-slate-400 uppercase">Status</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-gray-100 dark:divide-slate-700">
             <tr v-for="item in callbackGuardRows" :key="item.key" class="hover:bg-gray-50 dark:hover:bg-slate-700/40 transition-colors">
               <td class="px-6 py-4 text-sm font-medium text-gray-900 dark:text-slate-100">{{ item.label }}</td>
               <td class="px-6 py-4 text-sm font-semibold text-right font-mono" :class="item.count > 0 ? 'text-amber-600' : 'text-gray-900 dark:text-slate-100'">{{ item.count }}</td>
+              <td class="px-6 py-4">
+                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium" :class="item.statusClass">{{ item.statusLabel }}</span>
+              </td>
             </tr>
           </tbody>
         </table>
@@ -236,15 +245,38 @@ const flatMetrics = computed(() => {
 })
 
 
+const getCallbackCounterStatus = (count) => {
+  if (count >= 20) return { label: 'Critical', className: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300' }
+  if (count >= 5) return { label: 'Warning', className: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' }
+  return { label: 'Normal', className: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' }
+}
+
 const callbackGuardRows = computed(() => {
   const counters = callbackGuard.value?.counters || {}
-  return [
+  const items = [
     { key: 'identity_validation_failed', label: 'Identity validation failed', count: Number(counters.identity_validation_failed || 0) },
     { key: 'freshness_validation_failed', label: 'Freshness validation failed', count: Number(counters.freshness_validation_failed || 0) },
     { key: 'terminal_status_mutation_ignored', label: 'Terminal status mutation ignored', count: Number(counters.terminal_status_mutation_ignored || 0) },
     { key: 'regressive_stage_ignored', label: 'Regressive stage ignored', count: Number(counters.regressive_stage_ignored || 0) },
   ]
+
+  return items.map((item) => {
+    const status = getCallbackCounterStatus(item.count)
+    return {
+      ...item,
+      statusLabel: status.label,
+      statusClass: status.className,
+    }
+  })
 })
+
+const callbackGuardStatus = computed(() => {
+  const maxCount = Math.max(0, ...callbackGuardRows.value.map((item) => item.count || 0))
+  return getCallbackCounterStatus(maxCount)
+})
+
+const callbackGuardStatusLabel = computed(() => callbackGuardStatus.value.label)
+const callbackGuardStatusClass = computed(() => callbackGuardStatus.value.className)
 
 const formatMetric = (val) => {
   if (typeof val === 'number') return val.toLocaleString(undefined, { maximumFractionDigits: 2 })
