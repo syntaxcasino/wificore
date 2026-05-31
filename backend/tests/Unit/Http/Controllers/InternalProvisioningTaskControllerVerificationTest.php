@@ -63,6 +63,18 @@ class InternalProvisioningTaskControllerVerificationTest extends TestCase
         return $invoker($task, $incomingStage, $terminal);
     }
 
+    private function invokeValidateCallbackIdentity(
+        InternalProvisioningTaskController $controller,
+        RouterTask $task,
+        array $validated,
+    ): ?\Illuminate\Http\JsonResponse {
+        $invoker = \Closure::bind(function (RouterTask $task, array $validated): ?\Illuminate\Http\JsonResponse {
+            return $this->validateCallbackIdentity($task, $validated);
+        }, $controller, $controller);
+
+        return $invoker($task, $validated);
+    }
+
     #[Test]
     public function it_downgrades_terminal_completed_status_when_verification_bundle_is_missing(): void
     {
@@ -193,5 +205,58 @@ class InternalProvisioningTaskControllerVerificationTest extends TestCase
 
         $this->assertFalse($forward);
         $this->assertFalse($unknown);
+    }
+
+    #[Test]
+    public function it_rejects_callback_when_incoming_tenant_does_not_match_task(): void
+    {
+        $controller = $this->makeController();
+        $task = new RouterTask();
+        $task->tenant_id = 'tenant-a';
+        $task->router_id = 'router-a';
+
+        $response = $this->invokeValidateCallbackIdentity($controller, $task, [
+            'tenant_id' => 'tenant-b',
+            'router_id' => 'router-a',
+        ]);
+
+        $this->assertNotNull($response);
+        $this->assertSame(403, $response->getStatusCode());
+    }
+
+    #[Test]
+    public function it_rejects_callback_when_incoming_router_does_not_match_task(): void
+    {
+        $controller = $this->makeController();
+        $task = new RouterTask();
+        $task->tenant_id = 'tenant-a';
+        $task->router_id = 'router-a';
+
+        $response = $this->invokeValidateCallbackIdentity($controller, $task, [
+            'tenant_id' => 'tenant-a',
+            'router_id' => 'router-b',
+        ]);
+
+        $this->assertNotNull($response);
+        $this->assertSame(403, $response->getStatusCode());
+    }
+
+    #[Test]
+    public function it_allows_callback_when_identity_matches_or_is_omitted(): void
+    {
+        $controller = $this->makeController();
+        $task = new RouterTask();
+        $task->tenant_id = 'tenant-a';
+        $task->router_id = 'router-a';
+
+        $match = $this->invokeValidateCallbackIdentity($controller, $task, [
+            'tenant_id' => 'tenant-a',
+            'router_id' => 'router-a',
+        ]);
+
+        $omitted = $this->invokeValidateCallbackIdentity($controller, $task, []);
+
+        $this->assertNull($match);
+        $this->assertNull($omitted);
     }
 }
