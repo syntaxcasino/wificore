@@ -244,6 +244,8 @@ class InternalProvisioningTaskControllerVerificationTest extends TestCase
     #[Test]
     public function it_allows_callback_when_identity_matches_or_is_omitted(): void
     {
+        config()->set('services.provisioning.require_callback_identity', false);
+
         $controller = $this->makeController();
         $task = new RouterTask();
         $task->tenant_id = 'tenant-a';
@@ -258,5 +260,22 @@ class InternalProvisioningTaskControllerVerificationTest extends TestCase
 
         $this->assertNull($match);
         $this->assertNull($omitted);
+    }
+
+    #[Test]
+    public function it_rejects_callback_when_identity_is_required_but_missing(): void
+    {
+        config()->set('services.provisioning.require_callback_identity', true);
+
+        $controller = $this->makeController();
+        $task = new RouterTask();
+        $task->tenant_id = 'tenant-a';
+        $task->router_id = 'router-a';
+
+        $response = $this->invokeValidateCallbackIdentity($controller, $task, []);
+
+        $this->assertNotNull($response);
+        $this->assertSame(403, $response->getStatusCode());
+        $this->assertSame('Provisioning callback identity required', $response->getData(true)['message'] ?? null);
     }
 }

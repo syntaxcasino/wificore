@@ -168,7 +168,30 @@ class InternalProvisioningTaskController extends Controller
         $incomingTenantId = isset($validated['tenant_id']) ? (string) $validated['tenant_id'] : null;
         $incomingRouterId = isset($validated['router_id']) ? (string) $validated['router_id'] : null;
 
-        if ($incomingTenantId !== null && $incomingTenantId !== '' && $incomingTenantId !== (string) $task->tenant_id) {
+        $requireIdentity = (bool) config('services.provisioning.require_callback_identity', false);
+        $warnOnMissingIdentity = (bool) config('services.provisioning.warn_on_missing_callback_identity', true);
+
+        if ($incomingTenantId === null || $incomingTenantId === '' || $incomingRouterId === null || $incomingRouterId === '') {
+            if ($warnOnMissingIdentity) {
+                Log::warning('Provisioning callback missing identity fields', [
+                    'task_id' => $task->id,
+                    'incoming_tenant_id' => $incomingTenantId,
+                    'incoming_router_id' => $incomingRouterId,
+                    'require_identity' => $requireIdentity,
+                ]);
+            }
+
+            if ($requireIdentity) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Provisioning callback identity required',
+                ], 403);
+            }
+
+            return null;
+        }
+
+        if ($incomingTenantId !== (string) $task->tenant_id) {
             Log::critical('Provisioning callback tenant mismatch', [
                 'task_id' => $task->id,
                 'task_tenant_id' => (string) $task->tenant_id,
@@ -181,7 +204,7 @@ class InternalProvisioningTaskController extends Controller
             ], 403);
         }
 
-        if ($incomingRouterId !== null && $incomingRouterId !== '' && $incomingRouterId !== (string) $task->router_id) {
+        if ($incomingRouterId !== (string) $task->router_id) {
             Log::critical('Provisioning callback router mismatch', [
                 'task_id' => $task->id,
                 'task_router_id' => (string) $task->router_id,
