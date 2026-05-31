@@ -144,6 +144,8 @@ class Router extends Model
         'model',
         'router_type',
         'os_version',
+        'architecture_name',
+        'board_name',
         'serial_number',
         'firmware',
         'last_seen',

@@ -6,11 +6,15 @@ use App\Contracts\ProvisioningCommandBus;
 use App\Models\Router;
 use App\Models\RouterConfig;
 use App\Models\RouterTask;
+use App\Services\MikroTik\RouterOsCapabilityRegistry;
+use App\Services\MikroTik\RouterOsV7ProvisioningValidator;
 
 class RouterTaskExecutionService
 {
     public function __construct(
         protected ProvisioningCommandBus $provisioningClient,
+        protected RouterOsCapabilityRegistry $capabilityRegistry,
+        protected RouterOsV7ProvisioningValidator $routerOsValidator,
     ) {
     }
 
@@ -34,6 +38,8 @@ class RouterTaskExecutionService
         if ($serviceScript === '') {
             throw new \RuntimeException('No valid service configuration found. Please generate the configuration first.');
         }
+
+        $this->validateRouterOsCompatibility($router, $serviceScript);
 
         return $serviceScript;
     }
@@ -121,5 +127,19 @@ class RouterTaskExecutionService
     public function discoverInterfaces(Router $router, string $tenantId, ?RouterTask $task = null): array
     {
         return $this->provisioningClient->fetchLiveData($router, 'provisioning', $tenantId, $task);
+    }
+
+    private function validateRouterOsCompatibility(Router $router, string $script): void
+    {
+        $versionProfile = $this->capabilityRegistry->resolveProfile($router->os_version);
+        if (! ($versionProfile['supported'] ?? false)) {
+            throw new \RuntimeException($versionProfile['error'] ?? 'Unsupported RouterOS version for provisioning.');
+        }
+
+        $validation = $this->routerOsValidator->validateScript($router, $script);
+        if (! ($validation['valid'] ?? false)) {
+            $message = implode(' | ', array_slice($validation['errors'] ?? ['RouterOS validation failed'], 0, 6));
+            throw new \RuntimeException('RouterOS validation failed: ' . $message);
+        }
     }
 }
