@@ -141,19 +141,8 @@ class PppoeUserController extends Controller
     public function index(Request $request)
     {
         $tenantId = $request->user()->tenant_id;
-        $cacheKey = "pppoe_users_list_{$tenantId}";
-
-        $cached = Cache::get($cacheKey);
-        if ($cached !== null) {
-            return response()->json($cached);
-        }
-
         try {
-            $hasPppoeUsers = Cache::remember(
-                "tenant_schema_has_pppoe_{$tenantId}",
-                300,
-                fn() => Schema::hasTable('pppoe_users')
-            );
+            $hasPppoeUsers = Schema::hasTable('pppoe_users');
 
             if (!$hasPppoeUsers) {
                 $emptyPaginator = new LengthAwarePaginator(
@@ -202,9 +191,6 @@ class PppoeUserController extends Controller
                 'data'      => $users,
                 'tenant_id' => $tenantId,
             ];
-
-            Cache::put($cacheKey, $payload, 30);
-
             return response()->json($payload);
         } catch (QueryException $e) {
             Log::error('Failed to fetch PPPoE users', [
