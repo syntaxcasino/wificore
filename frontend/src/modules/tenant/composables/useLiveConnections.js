@@ -7,7 +7,6 @@ import { ref, computed } from 'vue'
 import axios from '@/modules/common/services/api/axios'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/modules/common/composables/useToast'
-import { readSnapshot, scheduleAfterPaint, writeSnapshot } from '@/modules/common/composables/performance/useViewCache'
 
 export function useLiveConnections() {
   const loading = ref(false)
@@ -32,12 +31,13 @@ export function useLiveConnections() {
 
   const { toast } = useToast()
   const authStore = useAuthStore()
-  const cacheKey = () => `tenant:live-connections:${authStore.tenantId || localStorage.getItem('tenantId') || 'default'}`
 
   // Throttling controls
   let lastStatsFetch = 0
   const STATS_THROTTLE_MS = 5000 // 5 seconds minimum between fetches
   let statsFetchPromise = null
+  let connectionsFetchPromise = null
+  let fetchDebounceTimer = null
 
   // Filters
   const filters = ref({
@@ -73,102 +73,100 @@ export function useLiveConnections() {
   )
 
   // API Functions
-  const hydrateConnections = () => {
-    const snapshot = readSnapshot(cacheKey(), 20 * 1000)
-    if (snapshot && Array.isArray(snapshot.connections)) {
-      connections.value = snapshot.connections
-      routers.value = Array.isArray(snapshot.routers) ? snapshot.routers : routers.value
-      if (snapshot.stats) stats.value = snapshot.stats
-      return true
-    }
-    return false
-  }
-
-  const persistConnections = () => writeSnapshot(cacheKey(), { connections: connections.value, routers: routers.value, stats: stats.value })
-
   const fetchConnections = async () => {
+    if (fetchDebounceTimer) {
+      clearTimeout(fetchDebounceTimer)
+    }
+
+    if (connectionsFetchPromise) {
+      fetchDebounceTimer = setTimeout(() => {
+        void fetchConnections()
+      }, 400)
+      return connectionsFetchPromise
+    }
+
     const isInitial = connections.value.length === 0
     if (isInitial) {
-      if (!hydrateConnections()) {
-        scheduleAfterPaint(() => {
-          if (connections.value.length === 0) loading.value = true
-        })
-      }
+      loading.value = true
     }
 
-    try {
-      const [pppoeRes, hotspotRes] = await Promise.allSettled([
-        axios.get('/pppoe/sessions/live'),
-        axios.get('/hotspot/sessions')
-      ])
+    connectionsFetchPromise = (async () => {
+      try {
+        const [pppoeRes, hotspotRes] = await Promise.allSettled([
+          axios.get('/pppoe/sessions/live'),
+          axios.get('/hotspot/sessions')
+        ])
 
-      const merged = []
+        const merged = []
 
-      if (pppoeRes.status === 'fulfilled') {
-        const pppoeData = pppoeRes.value.data?.sessions || pppoeRes.value.data?.data || []
-        pppoeData.forEach((s, i) => {
-          merged.push({
-            id: `pppoe-${s.id || i}`,
-            username: s.username || s.name || 'Unknown',
-            user_name: s.caller_id || s.name || '',
-            ip_address: s.address || s.ip_address || '',
-            mac_address: s.caller_id || s.mac_address || '',
-            type: 'pppoe',
-            router_name: s.router?.name || s.router_name || 'Unknown',
-            router_id: s.router?.id || s.router_id || null,
-            download_rate: s.tx_byte ? Number(s.tx_byte) : (s.download_rate || 0),
-            upload_rate: s.rx_byte ? Number(s.rx_byte) : (s.upload_rate || 0),
-            uptime: s.uptime_seconds || s.uptime || 0,
-            connected_at: s.started_at || s.created_at || new Date().toISOString(),
-            service: s.service || '',
-            _raw: s
+        if (pppoeRes.status === 'fulfilled') {
+          const pppoeData = pppoeRes.value.data?.sessions || pppoeRes.value.data?.data || []
+          pppoeData.forEach((s, i) => {
+            merged.push({
+              id: `pppoe-${s.id || i}`,
+              username: s.username || s.name || 'Unknown',
+              user_name: s.caller_id || s.name || '',
+              ip_address: s.address || s.ip_address || '',
+              mac_address: s.caller_id || s.mac_address || '',
+              type: 'pppoe',
+              router_name: s.router?.name || s.router_name || 'Unknown',
+              router_id: s.router?.id || s.router_id || null,
+              download_rate: s.tx_byte ? Number(s.tx_byte) : (s.download_rate || 0),
+              upload_rate: s.rx_byte ? Number(s.rx_byte) : (s.upload_rate || 0),
+              uptime: s.uptime_seconds || s.uptime || 0,
+              connected_at: s.started_at || s.created_at || new Date().toISOString(),
+              service: s.service || '',
+              _raw: s
+            })
           })
-        })
-      }
+        }
 
-      if (hotspotRes.status === 'fulfilled') {
-        const hotspotData = hotspotRes.value.data?.sessions || hotspotRes.value.data?.data || []
-        hotspotData.forEach((s, i) => {
-          merged.push({
-            id: `hotspot-${s.id || i}`,
-            username: s.username || s.user || 'Unknown',
-            user_name: s.name || s.user_name || '',
-            ip_address: s.address || s.ip_address || '',
-            mac_address: s.mac_address || '',
-            type: 'hotspot',
-            router_name: s.router?.name || s.router_name || 'Unknown',
-            router_id: s.router?.id || s.router_id || null,
-            download_rate: s.bytes_out ? Number(s.bytes_out) : (s.download_rate || 0),
-            upload_rate: s.bytes_in ? Number(s.bytes_in) : (s.upload_rate || 0),
-            uptime: s.uptime_seconds || s.uptime || 0,
-            connected_at: s.started_at || s.created_at || new Date().toISOString(),
-            _raw: s
+        if (hotspotRes.status === 'fulfilled') {
+          const hotspotData = hotspotRes.value.data?.sessions || hotspotRes.value.data?.data || []
+          hotspotData.forEach((s, i) => {
+            merged.push({
+              id: `hotspot-${s.id || i}`,
+              username: s.username || s.user || 'Unknown',
+              user_name: s.name || s.user_name || '',
+              ip_address: s.address || s.ip_address || '',
+              mac_address: s.mac_address || '',
+              type: 'hotspot',
+              router_name: s.router?.name || s.router_name || 'Unknown',
+              router_id: s.router?.id || s.router_id || null,
+              download_rate: s.bytes_out ? Number(s.bytes_out) : (s.download_rate || 0),
+              upload_rate: s.bytes_in ? Number(s.bytes_in) : (s.upload_rate || 0),
+              uptime: s.uptime_seconds || s.uptime || 0,
+              connected_at: s.started_at || s.created_at || new Date().toISOString(),
+              _raw: s
+            })
           })
-        })
-      }
+        }
 
-      connections.value = merged
-      updateStats()
-      persistConnections()
+        connections.value = merged
+        updateStats()
 
-      if (pppoeRes.status === 'rejected' && hotspotRes.status === 'rejected') {
+        if (pppoeRes.status === 'rejected' && hotspotRes.status === 'rejected') {
+          if (isInitial) {
+            error.value = 'Failed to load live connections. Please check your network.'
+            toast.error(error.value)
+          }
+        }
+
+        return merged
+      } catch (err) {
         if (isInitial) {
-          error.value = 'Failed to load live connections. Please check your network.'
+          error.value = err.response?.data?.message || 'Failed to load connections.'
           toast.error(error.value)
         }
+        console.error('fetchConnections error:', err)
+        throw err
+      } finally {
+        loading.value = false
+        connectionsFetchPromise = null
       }
+    })()
 
-      return merged
-    } catch (err) {
-      if (isInitial) {
-        error.value = err.response?.data?.message || 'Failed to load connections.'
-        toast.error(error.value)
-      }
-      console.error('fetchConnections error:', err)
-      throw err
-    } finally {
-      loading.value = false
-    }
+    return connectionsFetchPromise
   }
 
   const fetchRouters = async () => {
@@ -176,7 +174,6 @@ export function useLiveConnections() {
       const response = await axios.get('/routers')
       const data = Array.isArray(response.data) ? response.data : (response.data?.data || [])
       routers.value = data.map(r => ({ id: r.id, name: r.name }))
-      persistConnections()
       return routers.value
     } catch (err) {
       console.warn('Failed to fetch routers for filter:', err.message)
@@ -198,7 +195,6 @@ export function useLiveConnections() {
       // Remove from local state
       connections.value = connections.value.filter(c => c.id !== conn.id)
       updateStats()
-      persistConnections()
 
       toast.success(`${conn.username} disconnected successfully`)
       return true
