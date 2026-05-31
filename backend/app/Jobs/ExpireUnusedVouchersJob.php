@@ -68,11 +68,14 @@ class ExpireUnusedVouchersJob implements ShouldQueue
 
             foreach ($expiredVouchers as $voucher) {
                 try {
-                    $voucher->update(['status' => 'expired']);
+                    $voucher->update([
+                        'status' => 'expired',
+                        'archived_at' => now(),
+                    ]);
 
                     broadcast(new VoucherUpdated($voucher->fresh(), $this->tenantId))->toOthers();
 
-                    Log::info('Voucher auto-expired', [
+                    Log::info('Voucher auto-expired and archived', [
                         'voucher_id' => $voucher->id,
                         'code' => $voucher->code,
                         'expires_at' => $voucher->expires_at,

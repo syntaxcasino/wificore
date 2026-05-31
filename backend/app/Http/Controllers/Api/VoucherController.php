@@ -375,7 +375,7 @@ class VoucherController extends Controller
 
         $headers = [
             'Code', 'Package', 'Price', 'Speed', 'Status',
-            'Unused Expiry', 'Used At', 'Created At', 'Notes',
+            'Unused Expiry', 'Used At', 'Created At', 'Archived At', 'Notes',
         ];
 
         $csv = implode(',', array_map(function ($h) {
@@ -383,15 +383,17 @@ class VoucherController extends Controller
         }, $headers)) . "\n";
 
         foreach ($vouchers as $v) {
+            $status = $v->archived_at ? "{$v->status} (archived)" : $v->status;
             $row = [
                 $v->code,
                 $v->package?->name ?? '',
                 $v->package?->price ?? '',
                 $v->package?->download_speed ?? '',
-                $v->status,
+                $status,
                 $v->expires_at ? $v->expires_at->format('Y-m-d H:i:s') : '',
                 $v->used_at ? $v->used_at->format('Y-m-d H:i:s') : '',
                 $v->created_at ? $v->created_at->format('Y-m-d H:i:s') : '',
+                $v->archived_at ? $v->archived_at->format('Y-m-d H:i:s') : '',
                 $v->notes ?? '',
             ];
             $csv .= implode(',', array_map(function ($cell) {
