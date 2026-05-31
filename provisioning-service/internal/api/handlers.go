@@ -2151,10 +2151,11 @@ func (h *Handler) notifyTaskCallbackWithOptions(callback *models.TaskCallbackCon
 
 func (h *Handler) buildCallbackPayload(status string, progress int, message string, result map[string]interface{}, errorMessage string, stage string, terminal bool) map[string]interface{} {
 	body := map[string]interface{}{
-		"status":   status,
-		"progress": progress,
-		"message":  message,
-		"terminal": terminal,
+		"status":      status,
+		"progress":    progress,
+		"message":     message,
+		"terminal":    terminal,
+		"callback_at": time.Now().UTC().Format(time.RFC3339Nano),
 	}
 	if stage != "" {
 		body["stage"] = stage
