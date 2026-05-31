@@ -210,7 +210,7 @@ export function useVouchers() {
         quantity: formData.quantity,
       }
       if (formData.prefix) payload.prefix = formData.prefix
-      if (formData.expires_at) payload.expires_at = formData.expires_at
+      payload.expires_at = formData.expires_at || null
       if (formData.notes) payload.notes = formData.notes
 
       const response = await axios.post('/vouchers/generate', payload)
