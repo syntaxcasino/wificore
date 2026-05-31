@@ -611,6 +611,8 @@ const handleGenerate = async () => {
   const success = await generateVouchers(formData.value)
   if (success) {
     closeCreateOverlay()
+    currentPage.value = 1
+    await fetchVouchers({ page: 1, per_page: itemsPerPage.value })
   }
 }
 
