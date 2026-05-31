@@ -103,3 +103,23 @@ composer test
 ```
 
 This prevents rollout toggles from drifting into unsafe combinations without detection.
+
+## Production Ops Script
+Use the helper script from repo root:
+
+```bash
+./scripts/preflight-provisioning-callback-guard.sh
+```
+
+Examples:
+
+```bash
+# custom compose file
+./scripts/preflight-provisioning-callback-guard.sh --compose-file docker-compose.production.yml
+
+# run without strict failure (diagnostic mode)
+./scripts/preflight-provisioning-callback-guard.sh --no-strict
+
+# skip provisioning Date-header probe
+./scripts/preflight-provisioning-callback-guard.sh --no-probe
+```
