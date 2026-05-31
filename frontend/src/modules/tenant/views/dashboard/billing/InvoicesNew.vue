@@ -204,8 +204,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
-import { scheduleAfterPaint } from '@/modules/common/composables/performance/useViewCache'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { FileText, Plus, Download, Trash2, CheckCircle } from 'lucide-vue-next'
 import DataViewContainer from '@/modules/common/components/base/DataViewContainer.vue'
 import DataSkeleton from '@/modules/common/components/base/DataSkeleton.vue'
@@ -233,6 +232,8 @@ const currentPage = ref(1)
 const itemsPerPage = ref(10)
 const showCreateOverlay = ref(false)
 const filters = ref({ status: '', dateRange: '' })
+let lastFreshFetchAt = 0
+const FRESH_FETCH_MIN_INTERVAL_MS = 5000
 
 const filteredData = computed(() => {
   let data = invoices.value
@@ -264,7 +265,7 @@ const getInvoiceActions = (invoice) => [
 const openCreateOverlay = () => {
   resetForm()
   showCreateOverlay.value = true
-  if (!customers.value.length) scheduleAfterPaint(fetchCustomers)
+  if (!customers.value.length) void fetchCustomers()
 }
 
 const closeCreateOverlay = () => {
@@ -274,8 +275,32 @@ const closeCreateOverlay = () => {
 
 const handleSubmitInvoice = () => submitInvoice(closeCreateOverlay)
 
+const refreshIfStale = () => {
+  const nowTs = Date.now()
+  if (nowTs - lastFreshFetchAt < FRESH_FETCH_MIN_INTERVAL_MS) return
+  lastFreshFetchAt = nowTs
+  void fetchInvoices()
+}
+
+const handleWindowFocus = () => {
+  refreshIfStale()
+}
+
+const handleVisibilityChange = () => {
+  if (document.visibilityState === 'visible') {
+    refreshIfStale()
+  }
+}
+
 onMounted(() => {
-  fetchInvoices()
+  refreshIfStale()
+  window.addEventListener('focus', handleWindowFocus)
+  document.addEventListener('visibilitychange', handleVisibilityChange)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('focus', handleWindowFocus)
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
 })
 </script>
 

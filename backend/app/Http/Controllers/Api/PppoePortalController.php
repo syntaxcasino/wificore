@@ -11,6 +11,7 @@ use App\Models\PppoePayment;
 use App\Models\PppoeTimedVoucher;
 use App\Models\PppoeUser;
 use App\Models\SystemLog;
+use App\Events\VoucherUpdated;
 use App\Models\Voucher;
 use App\Services\MpesaService;
 use App\Services\RadiusService;
@@ -1257,7 +1258,7 @@ SQL;
             $result = DB::transaction(function () use ($tenant, $pppoeUser, $voucherCode) {
                 DB::connection()->recordsHaveBeenModified();
 
-                return $this->tenantContext->runInTenantContext($tenant, function () use ($pppoeUser, $voucherCode) {
+                return $this->tenantContext->runInTenantContext($tenant, function () use ($tenant, $pppoeUser, $voucherCode) {
                     // OPTIMIZATION: Select only needed fields with lockForUpdate for concurrency
                     $voucher = Voucher::query()
                         ->select(['id', 'code', 'value', 'package_id', 'status', 'used_at', 'used_by', 'expires_at', 'package_duration_days'])
@@ -1337,6 +1338,9 @@ SQL;
                     }
 
                     $pppoeUser->update($updateData);
+
+                    // Broadcast voucher status update to tenant dashboard in real time
+                    broadcast(new VoucherUpdated($voucher->fresh(), $tenant->id))->toOthers();
 
                     return [
                         'voucher' => [
