@@ -16,6 +16,7 @@ use App\Services\TenantContext;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Carbon;
 
 class InternalProvisioningTaskController extends Controller
 {
@@ -51,6 +52,7 @@ class InternalProvisioningTaskController extends Controller
             'stage' => 'nullable|string|max:255',
             'tenant_id' => 'nullable|string',
             'router_id' => 'nullable|string',
+            'callback_at' => 'nullable|date',
         ]);
 
         $task = RouterTask::findOrFail($taskId);
@@ -58,6 +60,11 @@ class InternalProvisioningTaskController extends Controller
         $identityCheck = $this->validateCallbackIdentity($task, $validated);
         if ($identityCheck !== null) {
             return $identityCheck;
+        }
+
+        $freshnessCheck = $this->validateCallbackFreshness($task, $validated);
+        if ($freshnessCheck !== null) {
+            return $freshnessCheck;
         }
 
         if ($this->shouldIgnoreTerminalStatusMutation($task, (string) ($validated['status'] ?? ''))) {
@@ -222,6 +229,45 @@ class InternalProvisioningTaskController extends Controller
                 'success' => false,
                 'message' => 'Provisioning callback identity mismatch',
             ], 403);
+        }
+
+        return null;
+    }
+
+    private function validateCallbackFreshness(RouterTask $task, array $validated): ?\Illuminate\Http\JsonResponse
+    {
+        if (!isset($validated['callback_at']) || !is_string($validated['callback_at']) || trim($validated['callback_at']) === '') {
+            return null;
+        }
+
+        $callbackAt = Carbon::parse($validated['callback_at']);
+        $now = now();
+        $skewSeconds = (int) abs($callbackAt->diffInSeconds($now, false));
+
+        $maxSkew = max(0, (int) config('services.provisioning.max_callback_skew_seconds', 900));
+        $warnOnStale = (bool) config('services.provisioning.warn_on_stale_callbacks', true);
+        $rejectStale = (bool) config('services.provisioning.reject_stale_callbacks', false);
+
+        if ($skewSeconds <= $maxSkew) {
+            return null;
+        }
+
+        if ($warnOnStale) {
+            Log::warning('Provisioning callback outside freshness window', [
+                'task_id' => $task->id,
+                'callback_at' => $callbackAt->toIso8601String(),
+                'now' => $now->toIso8601String(),
+                'skew_seconds' => $skewSeconds,
+                'max_skew_seconds' => $maxSkew,
+                'reject_stale' => $rejectStale,
+            ]);
+        }
+
+        if ($rejectStale) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Provisioning callback is stale',
+            ], 409);
         }
 
         return null;

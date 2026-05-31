@@ -87,6 +87,18 @@ class InternalProvisioningTaskControllerVerificationTest extends TestCase
         return $invoker($task, $validated);
     }
 
+    private function invokeValidateCallbackFreshness(
+        InternalProvisioningTaskController $controller,
+        RouterTask $task,
+        array $validated,
+    ): ?\Illuminate\Http\JsonResponse {
+        $invoker = \Closure::bind(function (RouterTask $task, array $validated): ?\Illuminate\Http\JsonResponse {
+            return $this->validateCallbackFreshness($task, $validated);
+        }, $controller, $controller);
+
+        return $invoker($task, $validated);
+    }
+
     #[Test]
     public function it_downgrades_terminal_completed_status_when_verification_bundle_is_missing(): void
     {
@@ -321,5 +333,38 @@ class InternalProvisioningTaskControllerVerificationTest extends TestCase
         $this->assertNotNull($response);
         $this->assertSame(403, $response->getStatusCode());
         $this->assertSame('Provisioning callback identity required', $response->getData(true)['message'] ?? null);
+    }
+    #[Test]
+    public function it_allows_stale_callbacks_when_reject_policy_is_disabled(): void
+    {
+        config()->set('services.provisioning.max_callback_skew_seconds', 1);
+        config()->set('services.provisioning.reject_stale_callbacks', false);
+
+        $controller = $this->makeController();
+        $task = new RouterTask();
+
+        $response = $this->invokeValidateCallbackFreshness($controller, $task, [
+            'callback_at' => now()->subMinutes(10)->toIso8601String(),
+        ]);
+
+        $this->assertNull($response);
+    }
+
+    #[Test]
+    public function it_rejects_stale_callbacks_when_reject_policy_is_enabled(): void
+    {
+        config()->set('services.provisioning.max_callback_skew_seconds', 1);
+        config()->set('services.provisioning.reject_stale_callbacks', true);
+
+        $controller = $this->makeController();
+        $task = new RouterTask();
+
+        $response = $this->invokeValidateCallbackFreshness($controller, $task, [
+            'callback_at' => now()->subMinutes(10)->toIso8601String(),
+        ]);
+
+        $this->assertNotNull($response);
+        $this->assertSame(409, $response->getStatusCode());
+        $this->assertSame('Provisioning callback is stale', $response->getData(true)['message'] ?? null);
     }
 }
