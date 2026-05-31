@@ -52,7 +52,7 @@
         :form-message="formMessage"
         :is-editing="false"
         @close-form="closeFormOverlay"
-        @submit="addPackage"
+        @submit="handleCreatePackage"
       />
       <CreatePackageOverlay
         :show-form-overlay="showUpdateOverlay"
@@ -531,6 +531,14 @@ const handleDuplicateMenu = () => {
   const pkg = packages.value.find(p => p.id === activeMenu.value)
   closeMenu()
   if (pkg) duplicatePackage(pkg)
+}
+
+const handleCreatePackage = async () => {
+  const success = await addPackage()
+  if (success) {
+    currentPage.value = 1
+    await fetchPackages()
+  }
 }
 
 const handleDeleteMenu = async () => {
