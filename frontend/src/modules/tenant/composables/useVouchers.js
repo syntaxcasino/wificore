@@ -256,15 +256,24 @@ export function useVouchers() {
       return false
     }
 
-    // No optimistic updates - let WebSocket events handle everything
-    
+    const originalStatus = vouchers.value[index].status
+    // Optimistically update UI immediately
+    vouchers.value[index].status = 'revoked'
+
+    // Dispatch local event so any listeners pick it up right away
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('voucher-updated', {
+        detail: { voucher: vouchers.value[index], timestamp: new Date().toISOString() }
+      }))
+    }
+
     try {
       await axios.post(`/vouchers/${voucher.id}/revoke`)
       notify.success('Voucher Revoked', `Voucher ${voucher.code} revoked`)
-
-      // Purely event-driven - WebSocket events will handle the UI update automatically
       return true
     } catch (err) {
+      // Revert optimistic update on failure
+      vouchers.value[index].status = originalStatus
       const message = err.response?.data?.message || 'Failed to revoke voucher'
       notify.error('Revoke Failed', message)
       console.error('Error revoking voucher:', err)

@@ -11,6 +11,7 @@ export function useTrafficMonitoring() {
   const loading = ref(false)
   const error = ref(null)
   const { toast } = useToast()
+  let fetchAllMetricsPromise = null
 
   // Time range filter
   const timeRange = ref('1h') // 1h, 6h, 24h, 7d, 30d
@@ -255,26 +256,41 @@ export function useTrafficMonitoring() {
   }
 
   // Combined fetch all metrics
-  const fetchAllMetrics = async () => {
+  const fetchAllMetrics = async (options = {}) => {
+    const { showToast = false, force = false } = options
+
+    if (!force && fetchAllMetricsPromise) {
+      return fetchAllMetricsPromise
+    }
+
     loading.value = true
     error.value = null
-    try {
-      await Promise.allSettled([
-        fetchTrafficOverview(),
-        fetchPerformanceMetrics(),
-        fetchSystemHealth(),
-        fetchRevenueMetrics(),
-        fetchCapacityMetrics(),
-        fetchUserBehavior(),
-        fetchAlerts()
-      ])
-      toast.success('Traffic monitoring data refreshed')
-    } catch (err) {
-      error.value = 'Failed to load some metrics'
-      console.error('Fetch all metrics error:', err)
-    } finally {
-      loading.value = false
-    }
+
+    fetchAllMetricsPromise = (async () => {
+      try {
+        await Promise.allSettled([
+          fetchTrafficOverview(),
+          fetchPerformanceMetrics(),
+          fetchSystemHealth(),
+          fetchRevenueMetrics(),
+          fetchCapacityMetrics(),
+          fetchUserBehavior(),
+          fetchAlerts()
+        ])
+
+        if (showToast) {
+          toast.success('Traffic monitoring data refreshed')
+        }
+      } catch (err) {
+        error.value = 'Failed to load some metrics'
+        console.error('Fetch all metrics error:', err)
+      } finally {
+        loading.value = false
+        fetchAllMetricsPromise = null
+      }
+    })()
+
+    return fetchAllMetricsPromise
   }
 
   // Acknowledge alert
@@ -372,7 +388,7 @@ export function useTrafficMonitoring() {
   // Watch time range changes
   const setTimeRange = (range) => {
     timeRange.value = range
-    fetchAllMetrics()
+    fetchAllMetrics({ force: true })
   }
 
   // Router list for dropdown filters

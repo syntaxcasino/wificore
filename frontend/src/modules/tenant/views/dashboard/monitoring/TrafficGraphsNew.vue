@@ -309,12 +309,15 @@ const formatSpeed = (bps) => {
   return formatSpeedUtil(bps)
 }
 
+let lastFreshFetchAt = 0
+const FRESH_FETCH_MIN_INTERVAL_MS = 5000
+
 const refreshAllData = async () => {
   refreshing.value = true
   await Promise.allSettled([
     loadTraffic(),
     fetchRouters(),
-    fetchAllMetrics()
+    fetchAllMetrics({ showToast: true, force: true })
   ])
   refreshing.value = false
 }
@@ -358,17 +361,36 @@ const loadTraffic = async () => {
   }
 }
 
+const refreshIfStale = () => {
+  const nowTs = Date.now()
+  if (nowTs - lastFreshFetchAt < FRESH_FETCH_MIN_INTERVAL_MS) return
+  lastFreshFetchAt = nowTs
+  void loadTraffic()
+  fetchAllMetrics({ force: true }).catch(() => {})
+}
+
+const handleWindowFocus = () => {
+  refreshIfStale()
+}
+
+const handleVisibilityChange = () => {
+  if (document.visibilityState === 'visible') {
+    refreshIfStale()
+  }
+}
+
 onMounted(() => {
   void fetchRouters()
-  void loadTraffic()
-  window.requestAnimationFrame(() => {
-    fetchAllMetrics().catch(() => {})
-  })
+  refreshIfStale()
   setupWebSocketListeners()
+  window.addEventListener('focus', handleWindowFocus)
+  document.addEventListener('visibilitychange', handleVisibilityChange)
 })
 
 onUnmounted(() => {
   cleanupWebSocketListeners()
+  window.removeEventListener('focus', handleWindowFocus)
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
 })
 
 watch(
