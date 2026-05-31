@@ -29,3 +29,4 @@ Recent Laravel and provisioning-service changes around router task workflows, PP
 
 ## Rollout Reference
 - Strict callback guard activation playbook: `backend/docs/provisioning-callback-identity-rollout.md`
+- Added preflight guard command: `php artisan provisioning:callback-guard-preflight` (supports `--strict` and optional provisioning Date-header clock-skew probe).

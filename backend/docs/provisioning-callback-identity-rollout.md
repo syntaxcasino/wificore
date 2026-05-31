@@ -80,3 +80,16 @@ Rollback:
 3. Restart backend queue workers
 4. Monitor logs + task completion metrics
 5. Enable phase toggles incrementally
+
+## Preflight Command
+Run before enabling strict phases:
+
+```bash
+php artisan provisioning:callback-guard-preflight
+php artisan provisioning:callback-guard-preflight --strict
+php artisan provisioning:callback-guard-preflight --probe-provisioning-date --max-probe-skew-seconds=5
+```
+
+Use strict mode in CI/CD gates before flipping:
+- `PROVISIONING_REQUIRE_CALLBACK_IDENTITY=true`
+- `PROVISIONING_REJECT_STALE_CALLBACKS=true`
