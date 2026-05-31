@@ -499,6 +499,8 @@ Route::middleware(['auth:sanctum', 'system.admin'])->prefix('system')->name('api
         ->name('metrics');
     Route::get('/metrics/provisioning/callback-guard', [\App\Http\Controllers\Api\SystemMetricsController::class, 'getProvisioningCallbackGuardMetrics'])
         ->name('metrics.provisioning.callback-guard');
+    Route::post('/metrics/provisioning/callback-guard/reset', [\App\Http\Controllers\Api\SystemMetricsController::class, 'resetProvisioningCallbackGuardMetrics'])
+        ->name('metrics.provisioning.callback-guard.reset');
     Route::get('/queue/stats', [\App\Http\Controllers\Api\SystemMetricsController::class, 'getQueueStats'])
         ->name('queue.stats');
     Route::get('/queue/historical', [\App\Http\Controllers\Api\SystemMetricsController::class, 'getHistoricalQueueMetrics'])

@@ -148,3 +148,10 @@ Response shape:
 - `total`
 - `last_updated_at`
 - Frontend visibility: System Admin -> Monitoring -> Metrics now includes a "Provisioning Callback Guard" panel backed by `/api/system/metrics/provisioning/callback-guard`.
+
+### Reset Counters
+System-admin reset endpoint:
+
+`POST /api/system/metrics/provisioning/callback-guard/reset`
+
+UI action available in **System Admin -> Monitoring -> Metrics** via the **Reset Counters** button in the Provisioning Callback Guard panel.

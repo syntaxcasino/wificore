@@ -126,9 +126,18 @@
             <h2 class="text-lg font-semibold text-gray-900 dark:text-slate-100">Provisioning Callback Guard</h2>
             <p class="text-xs text-gray-500 dark:text-slate-400 mt-1">Rollout counters for callback validation and guard outcomes</p>
           </div>
-          <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold" :class="callbackGuardStatusClass">
-            {{ callbackGuardStatusLabel }}
-          </span>
+          <div class="flex items-center gap-2">
+            <button
+              @click="resetCallbackGuardCounters"
+              :disabled="resettingCallbackGuard"
+              class="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors disabled:opacity-50"
+            >
+              {{ resettingCallbackGuard ? 'Resetting...' : 'Reset Counters' }}
+            </button>
+            <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold" :class="callbackGuardStatusClass">
+              {{ callbackGuardStatusLabel }}
+            </span>
+          </div>
         </div>
         <table class="w-full">
           <thead class="bg-gray-50 dark:bg-slate-700/50 border-b border-gray-200 dark:border-slate-700">
@@ -217,6 +226,7 @@ const callbackGuard = ref({ counters: {}, total: 0, last_updated_at: null })
 const loading = ref(true)
 const error = ref(null)
 const retrying = ref(false)
+const resettingCallbackGuard = ref(false)
 const showMetricOverlay = ref(false)
 const showRawOverlay = ref(false)
 const selectedMetricKey = ref('')
@@ -314,6 +324,22 @@ const retryFailed = async () => {
     showError(err.response?.data?.message || 'Failed to retry jobs')
   } finally {
     retrying.value = false
+  }
+}
+
+
+const resetCallbackGuardCounters = async () => {
+  const confirmed = window.confirm('Reset provisioning callback guard counters? This clears rollout diagnostics counters.')
+  if (!confirmed) return
+
+  try {
+    resettingCallbackGuard.value = true
+    await axios.post('/system/metrics/provisioning/callback-guard/reset')
+    await fetchAll()
+  } catch (err) {
+    showError(err.response?.data?.message || 'Failed to reset callback guard counters')
+  } finally {
+    resettingCallbackGuard.value = false
   }
 }
 
