@@ -147,3 +147,4 @@ Response shape:
 - `counters` (per-guard outcome)
 - `total`
 - `last_updated_at`
+- Frontend visibility: System Admin -> Monitoring -> Metrics now includes a "Provisioning Callback Guard" panel backed by `/api/system/metrics/provisioning/callback-guard`.

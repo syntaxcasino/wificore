@@ -119,6 +119,32 @@
         </table>
       </div>
 
+      <!-- Provisioning Callback Guard -->
+      <div class="bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-200 dark:border-slate-700">
+          <h2 class="text-lg font-semibold text-gray-900 dark:text-slate-100">Provisioning Callback Guard</h2>
+          <p class="text-xs text-gray-500 dark:text-slate-400 mt-1">Rollout counters for callback validation and guard outcomes</p>
+        </div>
+        <table class="w-full">
+          <thead class="bg-gray-50 dark:bg-slate-700/50 border-b border-gray-200 dark:border-slate-700">
+            <tr>
+              <th class="text-left px-6 py-3 text-xs font-medium text-gray-500 dark:text-slate-400 uppercase">Outcome</th>
+              <th class="text-right px-6 py-3 text-xs font-medium text-gray-500 dark:text-slate-400 uppercase">Count</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100 dark:divide-slate-700">
+            <tr v-for="item in callbackGuardRows" :key="item.key" class="hover:bg-gray-50 dark:hover:bg-slate-700/40 transition-colors">
+              <td class="px-6 py-4 text-sm font-medium text-gray-900 dark:text-slate-100">{{ item.label }}</td>
+              <td class="px-6 py-4 text-sm font-semibold text-right font-mono" :class="item.count > 0 ? 'text-amber-600' : 'text-gray-900 dark:text-slate-100'">{{ item.count }}</td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="px-6 py-3 border-t border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-700/30 text-xs text-gray-600 dark:text-slate-300 flex items-center justify-between">
+          <span>Total outcomes: <strong>{{ callbackGuard.total || 0 }}</strong></span>
+          <span>Last updated: {{ callbackGuard.last_updated_at || 'N/A' }}</span>
+        </div>
+      </div>
+
       <!-- Raw Data -->
       <div class="bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 overflow-hidden">
         <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-slate-700">
@@ -126,7 +152,7 @@
           <button @click="showRawOverlay = true" class="p-1.5 text-blue-500 hover:bg-blue-50 rounded-md transition-colors" title="Expand"><Eye class="w-4 h-4" /></button>
         </div>
         <div class="px-6 py-4">
-          <pre class="text-xs bg-gray-50 dark:bg-slate-700/50 p-4 rounded-lg overflow-auto max-h-48 text-gray-700 dark:text-slate-300">{{ JSON.stringify({ metrics, queueStats }, null, 2) }}</pre>
+          <pre class="text-xs bg-gray-50 dark:bg-slate-700/50 p-4 rounded-lg overflow-auto max-h-48 text-gray-700 dark:text-slate-300">{{ JSON.stringify({ metrics, queueStats, callbackGuard }, null, 2) }}</pre>
         </div>
       </div>
     </template>
@@ -156,7 +182,7 @@
 
     <!-- Raw Data Overlay -->
     <SlideOverlay v-model="showRawOverlay" title="Raw Metrics Data" subtitle="Complete metrics and queue statistics" icon="FileText" width="50%" @close="showRawOverlay = false">
-      <pre class="text-xs bg-gray-50 dark:bg-slate-700/50 p-4 rounded-lg overflow-auto text-gray-700 dark:text-slate-300 whitespace-pre-wrap">{{ JSON.stringify({ metrics, queueStats }, null, 2) }}</pre>
+      <pre class="text-xs bg-gray-50 dark:bg-slate-700/50 p-4 rounded-lg overflow-auto text-gray-700 dark:text-slate-300 whitespace-pre-wrap">{{ JSON.stringify({ metrics, queueStats, callbackGuard }, null, 2) }}</pre>
       <template #footer>
         <div class="flex justify-end">
           <button type="button" @click="showRawOverlay = false" class="px-4 py-2 text-sm font-medium text-gray-700 dark:text-slate-300 bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-600 transition-colors">Close</button>
@@ -178,6 +204,7 @@ const { error: showError } = useToast()
 
 const metrics = ref(null)
 const queueStats = ref({})
+const callbackGuard = ref({ counters: {}, total: 0, last_updated_at: null })
 const loading = ref(true)
 const error = ref(null)
 const retrying = ref(false)
@@ -208,6 +235,17 @@ const flatMetrics = computed(() => {
   return flat
 })
 
+
+const callbackGuardRows = computed(() => {
+  const counters = callbackGuard.value?.counters || {}
+  return [
+    { key: 'identity_validation_failed', label: 'Identity validation failed', count: Number(counters.identity_validation_failed || 0) },
+    { key: 'freshness_validation_failed', label: 'Freshness validation failed', count: Number(counters.freshness_validation_failed || 0) },
+    { key: 'terminal_status_mutation_ignored', label: 'Terminal status mutation ignored', count: Number(counters.terminal_status_mutation_ignored || 0) },
+    { key: 'regressive_stage_ignored', label: 'Regressive stage ignored', count: Number(counters.regressive_stage_ignored || 0) },
+  ]
+})
+
 const formatMetric = (val) => {
   if (typeof val === 'number') return val.toLocaleString(undefined, { maximumFractionDigits: 2 })
   return val
@@ -217,12 +255,16 @@ const fetchAll = async () => {
   try {
     loading.value = true
     error.value = null
-    const [metricsRes, queueRes] = await Promise.allSettled([
+    const [metricsRes, queueRes, callbackGuardRes] = await Promise.allSettled([
       axios.get('/system/metrics'),
       axios.get('/system/queue/stats'),
+      axios.get('/system/metrics/provisioning/callback-guard'),
     ])
     metrics.value = metricsRes.status === 'fulfilled' ? (metricsRes.value.data.data || metricsRes.value.data) : null
     queueStats.value = queueRes.status === 'fulfilled' ? (queueRes.value.data.data || queueRes.value.data) : {}
+    callbackGuard.value = callbackGuardRes.status === 'fulfilled'
+      ? (callbackGuardRes.value.data.data || callbackGuardRes.value.data || { counters: {}, total: 0, last_updated_at: null })
+      : { counters: {}, total: 0, last_updated_at: null }
   } catch (err) {
     if (err.response?.status === 401) return
     error.value = err.response?.data?.message || 'Failed to load metrics'
