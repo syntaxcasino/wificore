@@ -612,9 +612,7 @@ class HotspotController extends Controller
     {
         try {
             $tenantId = (string) (auth()->user()->tenant_id ?? '');
-            $cacheKey = $this->hotspotCacheKey('users', $tenantId, $request);
-
-            $payload = Cache::remember($cacheKey, self::LIST_CACHE_TTL_SECONDS, function () use ($request) {
+            $payload = (function () use ($request) {
                 $query = HotspotUser::query()
                     ->select([
                         'id', 'username', 'phone_number', 'mac_address', 'status', 'is_active',
@@ -904,9 +902,7 @@ class HotspotController extends Controller
     {
         try {
             $tenantId = (string) (auth()->user()->tenant_id ?? '');
-            $cacheKey = $this->hotspotCacheKey('sessions', $tenantId, $request);
-
-            $payload = Cache::remember($cacheKey, self::LIST_CACHE_TTL_SECONDS, function () use ($request) {
+            $payload = (function () use ($request) {
                 $query = RadiusSession::with(['hotspotUser'])
                     ->when($request->status, function ($q, $status) {
                         return $q->where('status', $status);
@@ -954,9 +950,7 @@ class HotspotController extends Controller
     {
         try {
             $tenantId = (string) (auth()->user()->tenant_id ?? '');
-            $cacheKey = $this->hotspotCacheKey('live_sessions', $tenantId, $request);
-
-            $payload = Cache::remember($cacheKey, self::LIVE_LIST_CACHE_TTL_SECONDS, function () {
+            $payload = (function () {
                 $source = 'none';
 
                 $radiusSessions = RadiusSession::query()
@@ -1137,9 +1131,7 @@ class HotspotController extends Controller
     {
         try {
             $tenantId = (string) (auth()->user()->tenant_id ?? '');
-            $cacheKey = $this->hotspotCacheKey('stats', $tenantId);
-
-            $stats = Cache::remember($cacheKey, self::STATS_CACHE_TTL_SECONDS, function () {
+            $stats = (function () {
                 $userCounts = HotspotUser::selectRaw("
                     COUNT(*) as total,
                     COUNT(*) FILTER (WHERE has_active_subscription = true) as active,
