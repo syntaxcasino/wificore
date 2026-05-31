@@ -260,6 +260,8 @@ const {
 const searchQuery = ref('')
 const currentPage = ref(1)
 const itemsPerPage = ref(10)
+let lastFreshFetchAt = 0
+const FRESH_FETCH_MIN_INTERVAL_MS = 5000
 
 // Form state
 const showFormOverlay = ref(false)
@@ -513,18 +515,39 @@ const closeDetails = () => {
   setTimeout(() => { selectedAP.value = null }, 300)
 }
 
+const refreshIfStale = () => {
+  const nowTs = Date.now()
+  if (nowTs - lastFreshFetchAt < FRESH_FETCH_MIN_INTERVAL_MS) return
+  lastFreshFetchAt = nowTs
+  void fetchAccessPoints()
+}
+
+const handleWindowFocus = () => {
+  refreshIfStale()
+}
+
+const handleVisibilityChange = () => {
+  if (document.visibilityState === 'visible') {
+    refreshIfStale()
+  }
+}
+
 // Lifecycle
 onMounted(() => {
-  void fetchAccessPoints()
+  refreshIfStale()
   setupWebSocketListeners()
   document.addEventListener('click', handleClickOutside)
   document.addEventListener('keydown', handleKeydown)
+  window.addEventListener('focus', handleWindowFocus)
+  document.addEventListener('visibilitychange', handleVisibilityChange)
 })
 
 onUnmounted(() => {
   cleanupWebSocketListeners()
   document.removeEventListener('click', handleClickOutside)
   document.removeEventListener('keydown', handleKeydown)
+  window.removeEventListener('focus', handleWindowFocus)
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
 })
 </script>
 

@@ -46,7 +46,10 @@ class VoucherController extends Controller
 
         if ($request->filled('search')) {
             $search = $request->search;
-            $query->where('code', 'ilike', $search . '%'); // More efficient prefix search
+            $query->where(function ($q) use ($search) {
+                $q->where('code', 'ilike', $search . '%')
+                  ->orWhere('status', 'ilike', $search);
+            });
         }
 
         // Optimized pagination with reasonable limits
