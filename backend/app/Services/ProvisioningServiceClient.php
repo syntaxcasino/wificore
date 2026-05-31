@@ -131,6 +131,8 @@ class ProvisioningServiceClient implements ProvisioningCommandBus
             'api_key' => $this->apiKey,
             'terminal' => $terminal,
             'stage' => $stage,
+            'tenant_id' => (string) $task->tenant_id,
+            'router_id' => (string) $task->router_id,
         ];
     }
 
