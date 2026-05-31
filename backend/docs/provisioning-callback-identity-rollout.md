@@ -137,3 +137,13 @@ Inspect/reset via artisan:
 php artisan provisioning:callback-guard-metrics
 php artisan provisioning:callback-guard-metrics --reset
 ```
+
+## API Exposure
+System-admin API now exposes callback guard counters:
+
+`GET /api/system/metrics/provisioning/callback-guard`
+
+Response shape:
+- `counters` (per-guard outcome)
+- `total`
+- `last_updated_at`
