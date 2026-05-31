@@ -162,3 +162,26 @@ Callback guard API now includes recent trend fields:
 - `last_10m_total_delta`
 
 This is backed by minute-level cache buckets (rolling ~60 minutes) updated on each guard outcome.
+
+## Automatic Alerting
+A scheduled command now checks callback-guard 10-minute trends and emits warning logs when thresholds are exceeded:
+
+```bash
+php artisan provisioning:callback-guard-alert-check
+```
+
+Scheduler hook:
+- runs every minute (`provisioning-callback-guard-alert-check`)
+- cooldown suppresses duplicate alerts during sustained incidents
+
+Environment controls:
+- `PROVISIONING_CALLBACK_GUARD_ALERT_WINDOW_MINUTES` (default: `10`)
+- `PROVISIONING_CALLBACK_GUARD_ALERT_WARN_DELTA` (default: `5`)
+- `PROVISIONING_CALLBACK_GUARD_ALERT_CRITICAL_DELTA` (default: `20`)
+- `PROVISIONING_CALLBACK_GUARD_ALERT_COOLDOWN_SECONDS` (default: `900`)
+
+Manual force emit (ignores cooldown):
+
+```bash
+php artisan provisioning:callback-guard-alert-check --force
+```
