@@ -316,6 +316,8 @@ const showDetailsOverlay = ref(false)
 const selectedConnection = ref(null)
 const activeMenu = ref(null)
 const menuPosition = ref({})
+let lastFreshFetchAt = 0
+const FRESH_FETCH_MIN_INTERVAL_MS = 5000
 
 // Computed (matching Todo pattern)
 const filteredData = computed(() => {
@@ -460,14 +462,33 @@ const getConnectionActions = (conn) => [
   { label: 'Disconnect', icon: 'Power', variant: 'danger', onClick: () => handleDisconnect(conn) }
 ]
 
+const refreshIfStale = () => {
+  const nowTs = Date.now()
+  if (nowTs - lastFreshFetchAt < FRESH_FETCH_MIN_INTERVAL_MS) return
+  lastFreshFetchAt = nowTs
+  void fetchConnections()
+}
+
+const handleWindowFocus = () => {
+  refreshIfStale()
+}
+
+const handleVisibilityChange = () => {
+  if (document.visibilityState === 'visible') {
+    refreshIfStale()
+  }
+}
+
 // Lifecycle (matching Todo pattern with SSE/WebSocket)
 onMounted(() => {
-  void fetchConnections()
+  refreshIfStale()
   // Try SSE first, fallback to WebSocket events
   setupSSEListeners()
   setupWebSocketListeners()
   document.addEventListener('click', handleClickOutside)
   document.addEventListener('keydown', handleKeydown)
+  window.addEventListener('focus', handleWindowFocus)
+  document.addEventListener('visibilitychange', handleVisibilityChange)
 })
 
 onUnmounted(() => {
@@ -475,6 +496,8 @@ onUnmounted(() => {
   cleanupWebSocketListeners()
   document.removeEventListener('click', handleClickOutside)
   document.removeEventListener('keydown', handleKeydown)
+  window.removeEventListener('focus', handleWindowFocus)
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
 })
 </script>
 

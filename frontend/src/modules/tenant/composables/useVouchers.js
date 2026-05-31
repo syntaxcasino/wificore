@@ -1,12 +1,12 @@
 import { ref, computed } from 'vue'
 import axios from '@/modules/common/services/api/axios'
 import { useAuthStore } from '@/stores/auth'
-import { useToast } from '@/modules/common/composables/useToast'
+import { useNotificationStore } from '@/stores/notifications'
 import { readSnapshot, scheduleAfterPaint, writeSnapshot } from '@/modules/common/composables/performance/useViewCache'
 import { useEventDeduplicationStore } from '@/stores/eventDeduplication'
 
 export function useVouchers() {
-  const toast = useToast()
+  const notify = useNotificationStore()
   const dedupStore = useEventDeduplicationStore()
   const authStore = useAuthStore()
   const cacheKey = () => `tenant:vouchers:${authStore.user?.tenant_id || authStore.tenantId || 'default'}:v1`
@@ -215,7 +215,7 @@ export function useVouchers() {
 
       const response = await axios.post('/vouchers/generate', payload)
       const generated = response.data?.data?.vouchers || []
-      toast.success(`Generated ${generated.length || formData.quantity} voucher(s)`)
+      notify.success('Vouchers Generated', `Generated ${generated.length || formData.quantity} voucher(s)`)
 
       // IMMEDIATE UI UPDATE: Inject vouchers locally so they appear right away.
       // Also dispatch events so any listening components pick them up instantly.
@@ -242,7 +242,7 @@ export function useVouchers() {
       return true
     } catch (err) {
       generateError.value = err.response?.data?.message || 'Failed to generate vouchers'
-      toast.error(generateError.value)
+      notify.error('Voucher Generation Failed', generateError.value)
       return false
     } finally {
       generating.value = false
@@ -252,7 +252,7 @@ export function useVouchers() {
   const revokeVoucher = async (voucher) => {
     const index = vouchers.value.findIndex(v => v.id === voucher.id)
     if (index === -1) {
-      toast.error('Voucher not found')
+      notify.error('Not Found', 'Voucher not found')
       return false
     }
 
@@ -260,13 +260,13 @@ export function useVouchers() {
     
     try {
       await axios.post(`/vouchers/${voucher.id}/revoke`)
-      toast.success(`Voucher ${voucher.code} revoked`)
+      notify.success('Voucher Revoked', `Voucher ${voucher.code} revoked`)
 
       // Purely event-driven - WebSocket events will handle the UI update automatically
       return true
     } catch (err) {
       const message = err.response?.data?.message || 'Failed to revoke voucher'
-      toast.error(message)
+      notify.error('Revoke Failed', message)
       console.error('Error revoking voucher:', err)
       return false
     }

@@ -931,7 +931,10 @@ class HotspotController extends Controller
                 'success' => true,
                 'data' => $payload['data'],
                 'meta' => $payload['meta'],
-            ]);
+            ])
+            ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+            ->header('Pragma', 'no-cache')
+            ->header('Expires', '0');
         } catch (\Exception $e) {
             Log::error('Error listing hotspot sessions', ['error' => $e->getMessage()]);
             return response()->json([
@@ -1114,7 +1117,10 @@ class HotspotController extends Controller
                 'data'    => $payload['data'],
                 'source'  => $payload['source'],
                 'total'   => $payload['total'],
-            ]);
+            ])
+            ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+            ->header('Pragma', 'no-cache')
+            ->header('Expires', '0');
         } catch (\Exception $e) {
             Log::error('Error fetching live hotspot sessions', ['error' => $e->getMessage()]);
             return response()->json([
