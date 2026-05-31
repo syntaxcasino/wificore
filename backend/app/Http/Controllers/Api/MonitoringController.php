@@ -43,7 +43,10 @@ class MonitoringController extends Controller
                     'peak' => 0,
                     'historical' => [],
                 ],
-            ]);
+            ])
+            ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+            ->header('Pragma', 'no-cache')
+            ->header('Expires', '0');
         } catch (\Exception $e) {
             Log::error('Traffic overview error', ['tenant_id' => $tenantId, 'error' => $e->getMessage()]);
             return response()->json(['success' => false, 'error' => 'Failed to fetch traffic data'], 500);
@@ -72,7 +75,10 @@ class MonitoringController extends Controller
                     'jitter' => 0,
                     'rssi' => null,
                 ],
-            ]);
+            ])
+            ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+            ->header('Pragma', 'no-cache')
+            ->header('Expires', '0');
         } catch (\Exception $e) {
             Log::error('Network performance error', ['tenant_id' => $tenantId, 'error' => $e->getMessage()]);
             return response()->json(['success' => false, 'error' => 'Failed to fetch performance data'], 500);
@@ -107,7 +113,10 @@ class MonitoringController extends Controller
                     'avgCpuUsage' => 0,
                     'avgMemoryUsage' => 0,
                 ],
-            ]);
+            ])
+            ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+            ->header('Pragma', 'no-cache')
+            ->header('Expires', '0');
         } catch (\Exception $e) {
             Log::error('System health error', ['tenant_id' => $tenantId, 'error' => $e->getMessage()]);
             return response()->json(['success' => false, 'error' => 'Failed to fetch health data'], 500);
@@ -138,7 +147,10 @@ class MonitoringController extends Controller
                     'totalRevenue' => 0,
                     'dataRevenueCorrelation' => [],
                 ],
-            ]);
+            ])
+            ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+            ->header('Pragma', 'no-cache')
+            ->header('Expires', '0');
         } catch (\Exception $e) {
             Log::error('Revenue metrics error', ['tenant_id' => $tenantId, 'error' => $e->getMessage()]);
             return response()->json(['success' => false, 'error' => 'Failed to fetch revenue data'], 500);
@@ -166,7 +178,10 @@ class MonitoringController extends Controller
                     'loadDistribution' => [],
                     'congestedLinks' => [],
                 ],
-            ]);
+            ])
+            ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+            ->header('Pragma', 'no-cache')
+            ->header('Expires', '0');
         } catch (\Exception $e) {
             Log::error('Capacity status error', ['tenant_id' => $tenantId, 'error' => $e->getMessage()]);
             return response()->json(['success' => false, 'error' => 'Failed to fetch capacity data'], 500);
@@ -197,7 +212,10 @@ class MonitoringController extends Controller
                     'returningUsers' => 0,
                     'topConsumers' => [],
                 ],
-            ]);
+            ])
+            ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+            ->header('Pragma', 'no-cache')
+            ->header('Expires', '0');
         } catch (\Exception $e) {
             Log::error('User behavior error', ['tenant_id' => $tenantId, 'error' => $e->getMessage()]);
             return response()->json(['success' => false, 'error' => 'Failed to fetch user behavior data'], 500);
@@ -220,7 +238,10 @@ class MonitoringController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => [],
-            ]);
+            ])
+            ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+            ->header('Pragma', 'no-cache')
+            ->header('Expires', '0');
         } catch (\Exception $e) {
             Log::error('Active alerts error', ['tenant_id' => $tenantId, 'error' => $e->getMessage()]);
             return response()->json(['success' => false, 'error' => 'Failed to fetch alerts'], 500);
