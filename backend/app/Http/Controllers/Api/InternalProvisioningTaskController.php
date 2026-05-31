@@ -16,6 +16,7 @@ use App\Services\TenantContext;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Carbon;
 
 class InternalProvisioningTaskController extends Controller
@@ -319,6 +320,21 @@ class InternalProvisioningTaskController extends Controller
             'is_terminal' => $isTerminal,
             'completed_at' => now(),
         ]);
+
+        $this->incrementCallbackGuardCounter($action);
+    }
+
+    private function incrementCallbackGuardCounter(string $action): void
+    {
+        try {
+            Cache::increment('metrics:provisioning:callback_guard:' . $action);
+            Cache::put('metrics:provisioning:callback_guard:last_updated_at', now()->toIso8601String(), now()->addDay());
+        } catch (\Throwable $e) {
+            Log::warning('Failed to increment provisioning callback guard counter', [
+                'action' => $action,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
     private function applyVerificationPolicy(
         RouterTask $task,
