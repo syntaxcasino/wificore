@@ -7,37 +7,55 @@ return new class extends Migration
 {
     public function up(): void
     {
-        $tableExists = DB::selectOne(
-            "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'vouchers' AND table_schema = current_schema()) AS exists"
-        );
-
-        if (!$tableExists || !$tableExists->exists) {
-            return;
-        }
-
-        $columnExists = DB::selectOne(
-            "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'vouchers' AND column_name = 'archived_at' AND table_schema = current_schema()) AS exists"
-        );
-
-        if ($columnExists && $columnExists->exists) {
-            return;
-        }
-
-        DB::statement('ALTER TABLE vouchers ADD COLUMN archived_at TIMESTAMP NULL');
-        DB::statement('CREATE INDEX IF NOT EXISTS vouchers_archived_at_index ON vouchers (archived_at)');
+        // Use a DO block so the entire conditional ADD COLUMN runs atomically
+        // within the existing transaction on the write PDO. This avoids any
+        // read-replica routing for the existence check.
+        DB::statement("
+            DO \$\$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1 FROM pg_catalog.pg_class c
+                    JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                    WHERE c.relname = 'vouchers'
+                    AND n.nspname = current_schema()
+                ) AND NOT EXISTS (
+                    SELECT 1 FROM pg_catalog.pg_attribute a
+                    JOIN pg_catalog.pg_class c ON c.oid = a.attrelid
+                    JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                    WHERE c.relname = 'vouchers'
+                    AND a.attname = 'archived_at'
+                    AND a.attnum > 0
+                    AND NOT a.attisdropped
+                    AND n.nspname = current_schema()
+                ) THEN
+                    ALTER TABLE vouchers ADD COLUMN archived_at TIMESTAMP NULL;
+                    CREATE INDEX vouchers_archived_at_index ON vouchers (archived_at);
+                END IF;
+            END
+            \$\$
+        ");
     }
 
     public function down(): void
     {
-        $columnExists = DB::selectOne(
-            "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'vouchers' AND column_name = 'archived_at' AND table_schema = current_schema()) AS exists"
-        );
-
-        if (!$columnExists || !$columnExists->exists) {
-            return;
-        }
-
-        DB::statement('DROP INDEX IF EXISTS vouchers_archived_at_index');
-        DB::statement('ALTER TABLE vouchers DROP COLUMN IF EXISTS archived_at');
+        DB::statement("
+            DO \$\$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1 FROM pg_catalog.pg_attribute a
+                    JOIN pg_catalog.pg_class c ON c.oid = a.attrelid
+                    JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                    WHERE c.relname = 'vouchers'
+                    AND a.attname = 'archived_at'
+                    AND a.attnum > 0
+                    AND NOT a.attisdropped
+                    AND n.nspname = current_schema()
+                ) THEN
+                    DROP INDEX IF EXISTS vouchers_archived_at_index;
+                    ALTER TABLE vouchers DROP COLUMN IF EXISTS archived_at;
+                END IF;
+            END
+            \$\$
+        ");
     }
 };
