@@ -2,7 +2,6 @@ import { ref, reactive, watch, onUnmounted } from 'vue'
 import axios from 'axios'
 import { useBroadcasting } from '@/modules/common/composables/websocket/useBroadcasting'
 import { useAuthStore } from '@/stores/auth'
-import { readSnapshot, scheduleAfterPaint, writeSnapshot } from '@/modules/common/composables/performance/useViewCache'
 
 export function useRouters() {
   const routers = ref([]) // Initialize as empty array
@@ -42,7 +41,6 @@ export function useRouters() {
   const configurationProgress = reactive({ status: 'Idle', percentage: 0, message: '' })
   const formMessage = ref({ text: '', type: '' })
   const formSubmitted = ref(false)
-  const routerCacheKey = () => `tenant:routers:${authStore.tenantId || localStorage.getItem('tenantId') || 'default'}`
   const showMenu = ref(null) // Track which router's menu is open (null or router ID)
   let latestMetricsRequestToken = 0
   let fetchDebounceTimer = null
@@ -258,18 +256,6 @@ export function useRouters() {
       return {}
     }
   }
-
-  const hydrateRouters = () => {
-    const snapshot = readSnapshot(routerCacheKey(), 30 * 1000)
-    if (snapshot && Array.isArray(snapshot.routers)) {
-      routers.value = snapshot.routers
-      return true
-    }
-    return false
-  }
-
-  const persistRouters = () => writeSnapshot(routerCacheKey(), { routers: routers.value })
-
   const fetchRouters = async () => {
     // Debounce rapid calls - clear any pending debounce timer
     if (fetchDebounceTimer) {
@@ -288,11 +274,7 @@ export function useRouters() {
     const isInitialLoad = routers.value.length === 0
 
     if (isInitialLoad) {
-      if (!hydrateRouters()) {
-        scheduleAfterPaint(() => {
-          if (routers.value.length === 0) loading.value = true
-        })
-      }
+      loading.value = true
     } else {
       refreshing.value = true
     }
@@ -317,7 +299,6 @@ export function useRouters() {
       // Note: Sorting is handled in the computed property (filteredRouters) in the component
       // This avoids double-sorting and allows the UI to control sort order
       routers.value = validRouters
-      persistRouters()
 
       const routerIds = validRouters.map((r) => String(r?.id ?? '')).filter((id) => id !== '')
       const requestToken = ++latestMetricsRequestToken

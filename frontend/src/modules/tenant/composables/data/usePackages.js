@@ -1,10 +1,13 @@
 import { ref, onUnmounted } from 'vue'
 import axios from 'axios'
+import { useNotificationStore } from '@/stores/notifications'
 import { scheduleAfterPaint } from '@/modules/common/composables/performance/useViewCache'
 
 const PACKAGE_CACHE_TTL_MS = 15 * 1000
 
 export function usePackages() {
+  const notify = useNotificationStore()
+
   const packages = ref([])
   const loading = ref(false)
   const refreshing = ref(false)
@@ -40,6 +43,7 @@ export function usePackages() {
   const formMessage = ref({ text: '', type: '' })
   const formSubmitted = ref(false)
   const showMenu = ref(null)
+  const selectedPackageIds = ref([])
   let websocketListenersInitialized = false
 
   const packageCacheKey = () => {
@@ -142,26 +146,42 @@ export function usePackages() {
     formSubmitting.value = true
     formMessage.value = { text: '', type: '' }
     try {
+      // Ensure validity is populated from duration if empty
+      if (!formData.value.validity && formData.value.duration) {
+        formData.value.validity = formData.value.duration
+      }
       const response = await axios.post('/packages', formData.value)
       const msg = response.data?.message || 'Package created successfully'
       const newPackage = response.data?.data
       formMessage.value = { text: msg, type: 'success' }
       formSubmitted.value = true
+      notify.success('Package Created', msg)
 
-      // Purely event-driven - no manual list manipulation needed
-      // WebSocket events will handle the UI update automatically
-      
+      // Trigger immediate UI update via the event-driven path
+      if (newPackage?.id && typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('package-created', { detail: { package: newPackage } }))
+      }
+
       setTimeout(() => {
         showFormOverlay.value = false
         formSubmitted.value = false
         resetFormData()
       }, 1500)
+
+      return true
     } catch (err) {
-      formMessage.value = {
-        text: err.response?.data?.error || err.response?.data?.message || 'Failed to create package',
-        type: 'error'
+      const errors = err.response?.data?.errors
+      let errMsg
+      if (errors && typeof errors === 'object') {
+        const fields = Object.keys(errors).map(k => k.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()))
+        errMsg = `Please fill in: ${fields.join(', ')}`
+      } else {
+        errMsg = err.response?.data?.error || err.response?.data?.message || 'Failed to create package'
       }
+      formMessage.value = { text: errMsg, type: 'error' }
+      notify.error('Package Creation Failed', errMsg)
       console.error('addPackage error:', err.message, err.response?.data)
+      return false
     } finally {
       formSubmitting.value = false
     }
@@ -169,7 +189,12 @@ export function usePackages() {
 
   const editPackage = (pkg) => {
     selectedPackage.value = pkg
-    formData.value = { ...pkg }
+    // Clean copy: strip read-only/computed fields that shouldn't be sent
+    const {
+      users_count, created_at, updated_at, routers,
+      ...editableFields
+    } = pkg
+    formData.value = editableFields
     isEditing.value = true
     showUpdateOverlay.value = true
   }
@@ -181,15 +206,31 @@ export function usePackages() {
       const response = await axios.put(`/packages/${selectedPackage.value.id}`, formData.value)
       const msg = response.data?.message || 'Package updated successfully'
       formMessage.value = { text: msg, type: 'success' }
-      showUpdateOverlay.value = false
+      notify.success('Package Updated', msg)
 
-      // Purely event-driven - WebSocket events will handle the UI update automatically
-      
-    } catch (err) {
-      formMessage.value = {
-        text: err.response?.data?.error || err.response?.data?.message || 'Failed to update package',
-        type: 'error'
+      // Trigger immediate UI update via the event-driven path
+      const updatedPkg = response.data?.data
+      if (updatedPkg?.id && typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('package-updated', { detail: { package: updatedPkg } }))
       }
+
+      // Close overlay and reset state after a short delay so user sees success
+      setTimeout(() => {
+        showUpdateOverlay.value = false
+        selectedPackage.value = null
+        resetFormData()
+      }, 1000)
+    } catch (err) {
+      const errors = err.response?.data?.errors
+      let errMsg
+      if (errors && typeof errors === 'object') {
+        const fields = Object.keys(errors).map(k => k.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()))
+        errMsg = `Please fill in: ${fields.join(', ')}`
+      } else {
+        errMsg = err.response?.data?.error || err.response?.data?.message || 'Failed to update package'
+      }
+      formMessage.value = { text: errMsg, type: 'error' }
+      notify.error('Package Update Failed', errMsg)
       console.error('updatePackage error:', err.message, err.response?.data)
     } finally {
       formSubmitting.value = false
@@ -199,10 +240,56 @@ export function usePackages() {
   const deletePackage = async (id) => {
     try {
       await axios.delete(`/packages/${id}`)
-      // Purely event-driven - WebSocket events will handle the UI update automatically
+      // Trigger immediate UI update via the event-driven path
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('package-deleted', { detail: { packageId: String(id) } }))
+      }
     } catch (err) {
       console.error('deletePackage error:', err.message, err.response?.data)
       throw err
+    }
+  }
+
+  const togglePackageSelection = (id) => {
+    const ids = selectedPackageIds.value
+    const idx = ids.indexOf(id)
+    if (idx === -1) {
+      selectedPackageIds.value = [...ids, id]
+    } else {
+      selectedPackageIds.value = ids.filter((i) => i !== id)
+    }
+  }
+
+  const toggleSelectAll = (allIds) => {
+    const current = selectedPackageIds.value
+    const allSelected = allIds.length > 0 && allIds.every((id) => current.includes(id))
+    if (allSelected) {
+      selectedPackageIds.value = current.filter((id) => !allIds.includes(id))
+    } else {
+      const merged = new Set([...current, ...allIds])
+      selectedPackageIds.value = Array.from(merged)
+    }
+  }
+
+  const clearSelection = () => {
+    selectedPackageIds.value = []
+  }
+
+  const batchDeletePackages = async () => {
+    const ids = [...selectedPackageIds.value]
+    if (!ids.length) return
+    clearSelection()
+    const errors = []
+    for (const id of ids) {
+      try {
+        await deletePackage(id)
+      } catch (err) {
+        errors.push(id)
+        console.error('batchDeletePackages error for id:', id, err.message)
+      }
+    }
+    if (errors.length) {
+      throw new Error(`Failed to delete ${errors.length} of ${ids.length} packages`)
     }
   }
 
@@ -245,13 +332,14 @@ export function usePackages() {
   }
 
   const openDetails = async (pkg) => {
+    showDetailsOverlay.value = true
+    currentPackage.value = JSON.parse(JSON.stringify(pkg))
     try {
-      currentPackage.value = JSON.parse(JSON.stringify(pkg))
-      showDetailsOverlay.value = true
-    } catch (error) {
-      console.error('Error in openDetails:', error)
-      currentPackage.value = pkg
-      showDetailsOverlay.value = true
+      const { data } = await axios.get(`/packages/${pkg.id}`)
+      currentPackage.value = data
+    } catch (err) {
+      console.error('openDetails fetch error:', err.message)
+      // Keep the list data as fallback
     }
   }
 
@@ -412,6 +500,7 @@ export function usePackages() {
     formMessage,
     formSubmitted,
     showMenu,
+    selectedPackageIds,
     toggleMenu,
     closeMenuOnOutsideClick,
     fetchPackages,
@@ -419,6 +508,10 @@ export function usePackages() {
     editPackage,
     updatePackage,
     deletePackage,
+    batchDeletePackages,
+    togglePackageSelection,
+    toggleSelectAll,
+    clearSelection,
     duplicatePackage,
     toggleStatus,
     openCreateOverlay,

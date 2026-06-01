@@ -24,12 +24,19 @@ class VoucherController extends Controller
         $query = Voucher::select([
             'id', 'code', 'package_id', 'router_id', 'status', 'used_by',
             'used_at', 'expires_at', 'prefix', 'notes', 'batch_id',
-            'created_at', 'updated_at'
+            'archived_at', 'created_at', 'updated_at'
         ])
         ->with([
             'package:id,name,price,download_speed,validity'
         ])
         ->orderBy('created_at', 'desc');
+
+        // Exclude archived vouchers unless explicitly requested
+        if ($request->boolean('include_archived')) {
+            $query->whereNotNull('archived_at');
+        } else {
+            $query->whereNull('archived_at');
+        }
 
         // Apply filters efficiently
         if ($request->filled('status')) {
@@ -46,7 +53,13 @@ class VoucherController extends Controller
 
         if ($request->filled('search')) {
             $search = $request->search;
-            $query->where('code', 'ilike', $search . '%'); // More efficient prefix search
+            $query->where(function ($q) use ($search) {
+                $q->where('code', 'ilike', $search . '%')
+                  ->orWhere('status', 'ilike', $search)
+                  ->orWhereHas('package', function ($pkg) use ($search) {
+                      $pkg->where('name', 'ilike', $search . '%');
+                  });
+            });
         }
 
         // Optimized pagination with reasonable limits
@@ -98,7 +111,14 @@ class VoucherController extends Controller
         $timestamp = now();
 
         // Fetch package details for value and duration
-        $package = Package::select(['id', 'price', 'validity'])->find($validated['package_id']);
+        $package = Package::select(['id', 'price', 'validity', 'duration'])->find($validated['package_id']);
+
+        // Auto-calculate expiry from package only if not explicitly provided in request.
+        // If user clears the field (sends null/empty), leave as null so voucher never expires.
+        $expiresAt = $validated['expires_at'] ?? null;
+        if (!$expiresAt && $package && !$request->has('expires_at')) {
+            $expiresAt = PackageExpiryHelper::calculateExpiresAt($package, now())->toDateTimeString();
+        }
 
         // Optimized batch insert for better performance
         $voucherData = [];
@@ -114,7 +134,7 @@ class VoucherController extends Controller
                 'package_duration_days' => $package ? PackageExpiryHelper::durationInDays($package) : null,
                 'router_id' => $validated['router_id'] ?? null,
                 'status' => 'unused',
-                'expires_at' => $validated['expires_at'] ?? null,
+                'expires_at' => $expiresAt,
                 'prefix' => $prefix,
                 'notes' => $validated['notes'] ?? null,
                 'batch_id' => $batchId,
@@ -159,6 +179,13 @@ class VoucherController extends Controller
      */
     public function revoke(Voucher $voucher)
     {
+        if ($voucher->used_by) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Cannot revoke a voucher associated with a user.',
+            ], 422);
+        }
+
         if ($voucher->status === 'used') {
             return response()->json([
                 'success' => false,
@@ -187,6 +214,13 @@ class VoucherController extends Controller
      */
     public function destroy(Voucher $voucher)
     {
+        if ($voucher->used_by) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Cannot delete a voucher associated with a user.',
+            ], 422);
+        }
+
         if ($voucher->status === 'used') {
             return response()->json([
                 'success' => false,
@@ -222,17 +256,156 @@ class VoucherController extends Controller
 
         $stats = Cache::remember($cacheKey, now()->addSeconds(15), function () {
             return [
-                'total' => Voucher::count(),
-                'unused' => Voucher::where('status', 'unused')->count(),
-                'used' => Voucher::where('status', 'used')->count(),
-                'expired' => Voucher::where('status', 'expired')->count(),
-                'revoked' => Voucher::where('status', 'revoked')->count(),
+                'total' => Voucher::whereNull('archived_at')->count(),
+                'unused' => Voucher::where('status', 'unused')->whereNull('archived_at')->count(),
+                'used' => Voucher::where('status', 'used')->whereNull('archived_at')->count(),
+                'expired' => Voucher::where('status', 'expired')->whereNull('archived_at')->count(),
+                'revoked' => Voucher::where('status', 'revoked')->whereNull('archived_at')->count(),
+                'archived' => Voucher::whereNotNull('archived_at')->count(),
             ];
         });
 
         return response()->json([
             'success' => true,
             'data' => $stats,
+        ]);
+    }
+
+    /**
+     * Archive a voucher (soft-hide from main list).
+     */
+    public function archive(Voucher $voucher)
+    {
+        if ($voucher->archived_at) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Voucher is already archived.',
+            ], 422);
+        }
+
+        $voucher->update(['archived_at' => now()]);
+
+        $tenantId = auth()->user()?->tenant_id;
+        $this->bustVoucherCache((string) $tenantId);
+        broadcast(new VoucherUpdated($voucher->fresh(), $tenantId))->toOthers();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Voucher archived successfully.',
+            'data' => $voucher->fresh(['package', 'router']),
+        ]);
+    }
+
+    /**
+     * Restore (unarchive) a voucher.
+     */
+    public function restore(Voucher $voucher)
+    {
+        if (!$voucher->archived_at) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Voucher is not archived.',
+            ], 422);
+        }
+
+        $voucher->update(['archived_at' => null]);
+
+        $tenantId = auth()->user()?->tenant_id;
+        $this->bustVoucherCache((string) $tenantId);
+        broadcast(new VoucherUpdated($voucher->fresh(), $tenantId))->toOthers();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Voucher restored successfully.',
+            'data' => $voucher->fresh(['package', 'router']),
+        ]);
+    }
+
+    /**
+     * Bulk archive vouchers.
+     */
+    public function bulkArchive(Request $request)
+    {
+        $validated = $request->validate([
+            'ids' => 'required|array',
+            'ids.*' => 'required|string',
+        ]);
+
+        $ids = $validated['ids'];
+        $tenantId = auth()->user()?->tenant_id;
+
+        $archivedCount = 0;
+        foreach ($ids as $id) {
+            $voucher = Voucher::whereNull('archived_at')->find($id);
+            if ($voucher) {
+                $voucher->update(['archived_at' => now()]);
+                broadcast(new VoucherUpdated($voucher->fresh(), $tenantId))->toOthers();
+                $archivedCount++;
+            }
+        }
+
+        $this->bustVoucherCache((string) $tenantId);
+
+        return response()->json([
+            'success' => true,
+            'message' => "Archived {$archivedCount} voucher(s).",
+            'data' => ['archived_count' => $archivedCount],
+        ]);
+    }
+
+    /**
+     * Export vouchers to CSV.
+     */
+    public function export(Request $request)
+    {
+        $validated = $request->validate([
+            'ids' => 'nullable|array',
+            'ids.*' => 'required|string',
+            'format' => 'nullable|string|in:csv',
+        ]);
+
+        $query = Voucher::with(['package:id,name,price,download_speed,validity'])
+            ->orderBy('created_at', 'desc');
+
+        if (!empty($validated['ids'])) {
+            $query->whereIn('id', $validated['ids']);
+        }
+
+        $vouchers = $query->get();
+
+        $headers = [
+            'Code', 'Package', 'Price', 'Speed', 'Status',
+            'Unused Expiry', 'Used At', 'Created At', 'Archived At', 'Notes',
+        ];
+
+        $csv = implode(',', array_map(function ($h) {
+            return '"' . str_replace('"', '""', $h) . '"';
+        }, $headers)) . "\n";
+
+        foreach ($vouchers as $v) {
+            $status = $v->archived_at ? "{$v->status} (archived)" : $v->status;
+            $row = [
+                $v->code,
+                $v->package?->name ?? '',
+                $v->package?->price ?? '',
+                $v->package?->download_speed ?? '',
+                $status,
+                $v->expires_at ? $v->expires_at->format('Y-m-d H:i:s') : '',
+                $v->used_at ? $v->used_at->format('Y-m-d H:i:s') : '',
+                $v->created_at ? $v->created_at->format('Y-m-d H:i:s') : '',
+                $v->archived_at ? $v->archived_at->format('Y-m-d H:i:s') : '',
+                $v->notes ?? '',
+            ];
+            $csv .= implode(',', array_map(function ($cell) {
+                return '"' . str_replace('"', '""', $cell) . '"';
+            }, $row)) . "\n";
+        }
+
+        $filename = 'vouchers_' . now()->format('Y-m-d_His') . '.csv';
+
+        return response($csv, 200, [
+            'Content-Type' => 'text/csv; charset=utf-8',
+            'Content-Disposition' => "attachment; filename=\"{$filename}\"",
         ]);
     }
 

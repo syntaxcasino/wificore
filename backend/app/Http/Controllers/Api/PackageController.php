@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\Package;
+use App\Models\PppoeUser;
+use App\Models\HotspotUser;
 use App\Events\PackageCreated;
 use App\Events\PackageUpdated;
 use App\Events\PackageDeleted;
@@ -34,13 +36,37 @@ class PackageController extends Controller
         
         // Optimized cache with shorter TTL for real-time updates
         return Cache::remember("packages_list_tenant_{$tenantId}", 15, function () {
-            return Package::select([
-                'id', 'name', 'description', 'type', 'price', 'duration', 
-                'download_speed', 'upload_speed', 'status', 'is_active', 
-                'hide_from_client', 'is_public', 'created_at', 'updated_at'
+            $packages = Package::select([
+                'id', 'name', 'description', 'type', 'price', 'duration', 'validity',
+                'speed', 'download_speed', 'upload_speed', 'data_limit',
+                'devices', 'users_count', 'status', 'is_active',
+                'hide_from_client', 'enable_burst', 'enable_schedule',
+                'scheduled_activation_time', 'scheduled_deactivation_time', 'is_global', 'is_public',
+                'created_at', 'updated_at'
             ])
             ->orderBy('created_at', 'desc')
             ->get();
+
+            $packageIds = $packages->pluck('id');
+
+            $pppoeCounts = PppoeUser::whereIn('package_id', $packageIds)
+                ->groupBy('package_id')
+                ->selectRaw('package_id, COUNT(*) as count')
+                ->pluck('count', 'package_id');
+
+            $hotspotCounts = HotspotUser::whereIn('package_id', $packageIds)
+                ->groupBy('package_id')
+                ->selectRaw('package_id, COUNT(*) as count')
+                ->pluck('count', 'package_id');
+
+            $packages->transform(function ($pkg) use ($pppoeCounts, $hotspotCounts) {
+                $pkg->users_count = $pkg->type === 'pppoe'
+                    ? (int) ($pppoeCounts[$pkg->id] ?? 0)
+                    : (int) ($hotspotCounts[$pkg->id] ?? 0);
+                return $pkg;
+            });
+
+            return $packages;
         });
     }
 
@@ -48,23 +74,34 @@ class PackageController extends Controller
     {
         // Optimized query with specific column selection
         $package = Package::select([
-            'id', 'name', 'description', 'type', 'price', 'duration', 
-            'upload_speed', 'download_speed', 'speed', 'devices', 'data_limit', 
+            'id', 'name', 'description', 'type', 'price', 'duration',
+            'upload_speed', 'download_speed', 'speed', 'devices', 'data_limit',
             'validity', 'enable_burst', 'enable_schedule', 'scheduled_activation_time',
-            'scheduled_deactivation_time', 'hide_from_client', 'is_global', 
+            'scheduled_deactivation_time', 'hide_from_client', 'is_global',
             'status', 'is_active', 'is_public', 'users_count', 'created_at', 'updated_at'
         ])
         ->where('id', $id)
         ->with(['routers:id,name']) // Only select needed columns
         ->firstOrFail();
-        
+
+        // Compute actual user count dynamically from related users
+        // For bundle and trial types, count both PPPoE and Hotspot users
+        if ($package->type === 'pppoe') {
+            $package->users_count = (int) PppoeUser::where('package_id', $id)->count();
+        } elseif ($package->type === 'hotspot') {
+            $package->users_count = (int) HotspotUser::where('package_id', $id)->count();
+        } else {
+            $package->users_count = (int) PppoeUser::where('package_id', $id)->count()
+                + (int) HotspotUser::where('package_id', $id)->count();
+        }
+
         return response()->json($package, 200);
     }
 
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'type' => 'required|string|in:hotspot,pppoe',
+            'type' => 'required|string|in:hotspot,pppoe,bundle,trial',
             'name' => 'required|string|max:255',
             'description' => 'nullable|string',
             'duration' => 'required|string|max:50',
@@ -114,7 +151,7 @@ class PackageController extends Controller
             'price' => $request->price,
             'devices' => $request->devices,
             'data_limit' => $request->data_limit,
-            'validity' => $request->validity ?? $request->duration,
+            'validity' => !empty($request->validity) ? $request->validity : $request->duration,
             'enable_burst' => $request->enable_burst ?? false,
             'enable_schedule' => $request->enable_schedule ?? false,
             'scheduled_activation_time' => $request->scheduled_activation_time,
@@ -164,8 +201,25 @@ class PackageController extends Controller
         // Schema isolation ensures only tenant's packages are visible
         $package = Package::where('id', $id)->firstOrFail();
 
+        // Check if package has associated users
+        // For bundle and trial types, count both PPPoE and Hotspot users
+        if ($package->type === 'pppoe') {
+            $userCount = PppoeUser::where('package_id', $id)->count();
+        } elseif ($package->type === 'hotspot') {
+            $userCount = HotspotUser::where('package_id', $id)->count();
+        } else {
+            $userCount = PppoeUser::where('package_id', $id)->count()
+                + HotspotUser::where('package_id', $id)->count();
+        }
+
+        if ($userCount > 0) {
+            return response()->json([
+                'error' => 'Cannot edit package assigned to ' . $userCount . ' user' . ($userCount > 1 ? 's' : '') . '.'
+            ], 422);
+        }
+
         $validator = Validator::make($request->all(), [
-            'type' => 'sometimes|required|string|in:hotspot,pppoe',
+            'type' => 'sometimes|required|string|in:hotspot,pppoe,bundle,trial',
             'name' => 'sometimes|required|string|max:255',
             'description' => 'nullable|string',
             'duration' => 'sometimes|required|string|max:50',
@@ -206,12 +260,14 @@ class PackageController extends Controller
         if ($request->has('price')) $updateData['price'] = $request->price;
         if ($request->has('devices')) $updateData['devices'] = $request->devices;
         if ($request->has('data_limit')) $updateData['data_limit'] = $request->data_limit;
-        if ($request->has('validity')) $updateData['validity'] = $request->validity;
+        if ($request->has('validity')) $updateData['validity'] = !empty($request->validity) ? $request->validity : ($request->has('duration') ? $request->duration : $package->validity);
         if ($request->has('enable_burst')) $updateData['enable_burst'] = $request->enable_burst;
         if ($request->has('enable_schedule')) $updateData['enable_schedule'] = $request->enable_schedule;
         if ($request->has('scheduled_activation_time')) $updateData['scheduled_activation_time'] = $request->scheduled_activation_time;
+        if ($request->has('scheduled_deactivation_time')) $updateData['scheduled_deactivation_time'] = $request->scheduled_deactivation_time;
         if ($request->has('hide_from_client')) $updateData['hide_from_client'] = $request->hide_from_client;
         if ($request->has('is_global')) $updateData['is_global'] = $request->is_global;
+        if ($request->has('is_public')) $updateData['is_public'] = $request->is_public;
         if ($request->has('status')) $updateData['status'] = $request->status;
         if ($request->has('is_active')) $updateData['is_active'] = $request->is_active;
 
@@ -265,9 +321,20 @@ class PackageController extends Controller
         // Schema isolation ensures only tenant's packages are visible
         $package = Package::where('id', $id)->firstOrFail();
         
+        // Check if package has associated users
+        $userCount = $package->type === 'pppoe'
+            ? PppoeUser::where('package_id', $id)->count()
+            : HotspotUser::where('package_id', $id)->count();
+
+        if ($userCount > 0) {
+            return response()->json([
+                'error' => 'Cannot delete package assigned to ' . $userCount . ' user' . ($userCount > 1 ? 's' : '') . '.'
+            ], 422);
+        }
+
         // Check if package has active payments or sessions
         $hasActivePayments = $package->payments()->where('status', 'completed')->exists();
-        
+
         if ($hasActivePayments) {
             return response()->json([
                 'error' => 'Cannot delete package with active payments. Please deactivate it instead.'

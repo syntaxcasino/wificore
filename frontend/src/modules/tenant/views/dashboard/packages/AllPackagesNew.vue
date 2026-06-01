@@ -30,6 +30,8 @@
         <option value="">All Types</option>
         <option value="hotspot">Hotspot</option>
         <option value="pppoe">PPPoE</option>
+        <option value="bundle">Bundle</option>
+        <option value="trial">Trial</option>
       </BaseSelect>
       <BaseSelect v-model="filters.status" placeholder="All Status" class="w-36">
         <option value="">All Status</option>
@@ -50,7 +52,7 @@
         :form-message="formMessage"
         :is-editing="false"
         @close-form="closeFormOverlay"
-        @submit="addPackage"
+        @submit="handleCreatePackage"
       />
       <CreatePackageOverlay
         :show-form-overlay="showUpdateOverlay"
@@ -92,6 +94,23 @@
         />
       </div>
 
+      <!-- Batch Action Bar -->
+      <div v-if="selectedPackageIds.length" class="hidden md:flex items-center gap-3 mb-2 px-4 py-2 bg-red-50 border border-red-200 rounded-lg">
+        <span class="text-sm text-red-700 font-medium">{{ selectedPackageIds.length }} selected</span>
+        <button
+          @click="handleBatchDelete"
+          class="ml-auto px-3 py-1.5 text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded-md transition-colors"
+        >
+          Delete Selected
+        </button>
+        <button
+          @click="clearSelectionLocal"
+          class="px-3 py-1.5 text-xs font-medium text-red-600 bg-white border border-red-200 hover:bg-red-50 rounded-md transition-colors"
+        >
+          Clear
+        </button>
+      </div>
+
       <!-- Desktop Table -->
       <div class="hidden md:flex bg-white border-x border-t border-slate-200 flex-col min-h-0 flex-1">
         <!-- Fixed Header -->
@@ -99,13 +118,22 @@
           <table class="w-full">
             <thead>
               <tr>
-                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[25%]">Package</th>
-                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider hidden lg:table-cell w-[12%]">Type</th>
-                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[12%]">Price</th>
-                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider hidden xl:table-cell w-[15%]">Speed</th>
-                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider hidden xl:table-cell w-[12%]">Validity</th>
-                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[10%]">Status</th>
-                <th class="px-6 py-3 text-right text-xs font-semibold text-slate-700 uppercase tracking-wider w-[14%]">Actions</th>
+                <th class="px-4 py-3 w-[3%]">
+                  <input
+                    type="checkbox"
+                    :checked="paginatedData.length > 0 && paginatedData.every((p) => selectedPackageIds.includes(p.id))"
+                    @change="toggleSelectAll(paginatedData.map((p) => p.id))"
+                    class="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500"
+                  />
+                </th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[21%]">Package</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider hidden lg:table-cell w-[11%]">Type</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[11%]">Price</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider hidden xl:table-cell w-[14%]">Speed</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider hidden xl:table-cell w-[11%]">Validity</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider hidden lg:table-cell w-[10%]">Users</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[9%]">Status</th>
+                <th class="px-6 py-3 text-right text-xs font-semibold text-slate-700 uppercase tracking-wider w-[12%]">Actions</th>
               </tr>
             </thead>
           </table>
@@ -118,34 +146,53 @@
                 v-for="pkg in paginatedData"
                 :key="pkg.id"
                 @click="openDetails(pkg)"
-                class="group cursor-pointer hover:bg-blue-50/50 transition-colors"
+                :class="selectedPackageIds.includes(pkg.id) ? 'bg-blue-50/70' : 'hover:bg-blue-50/50'"
+                class="group cursor-pointer transition-colors"
               >
-                <td class="px-6 py-4 w-[25%]">
+                <td class="px-4 py-4 w-[3%]" @click.stop>
+                  <input
+                    type="checkbox"
+                    :checked="selectedPackageIds.includes(pkg.id)"
+                    @change="togglePackageSelection(pkg.id)"
+                    class="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500"
+                  />
+                </td>
+                <td class="px-6 py-4 w-[21%]">
                   <div class="flex items-center gap-2">
                     <span class="w-1.5 h-1.5 rounded-full flex-shrink-0" :class="pkg.status === 'active' ? 'bg-emerald-500' : 'bg-slate-400'"></span>
                     <span class="text-sm font-medium text-slate-900 truncate">{{ pkg.name }}</span>
                   </div>
                 </td>
 
-                <td class="px-6 py-4 hidden lg:table-cell w-[12%]">
+                <td class="px-6 py-4 hidden lg:table-cell w-[11%]">
                   <span v-if="pkg.type" class="text-xs text-slate-500 truncate">{{ pkg.type }}</span>
                   <span v-else class="text-xs text-slate-400">—</span>
                 </td>
 
-                <td class="px-6 py-4 w-[12%]">
+                <td class="px-6 py-4 w-[11%]">
                   <span class="text-sm font-semibold text-slate-900 dark:text-slate-100">KES {{ formatMoney(pkg.price) }}</span>
                 </td>
 
-                <td class="px-6 py-4 hidden xl:table-cell w-[15%]">
+                <td class="px-6 py-4 hidden xl:table-cell w-[14%]">
                   <span class="text-xs text-slate-500 truncate">{{ formatPackageSpeed(pkg) }}</span>
                 </td>
 
-                <td class="px-6 py-4 hidden xl:table-cell w-[12%]">
+                <td class="px-6 py-4 hidden xl:table-cell w-[11%]">
                   <span v-if="pkg.validity" class="text-xs text-slate-500 truncate">{{ pkg.validity }}</span>
+                  <span v-else-if="pkg.duration" class="text-xs text-slate-500 truncate">{{ pkg.duration }}</span>
                   <span v-else class="text-xs text-slate-400">—</span>
                 </td>
 
-                <td class="px-6 py-4 w-[10%]">
+                <td class="px-6 py-4 hidden lg:table-cell w-[10%]">
+                  <span class="inline-flex items-center gap-1 text-xs text-slate-600">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                    </svg>
+                    {{ pkg.users_count ?? 0 }}
+                  </span>
+                </td>
+
+                <td class="px-6 py-4 w-[9%]">
                   <EntityStatusBadge :status="pkg.status" size="sm" />
                 </td>
 
@@ -227,7 +274,7 @@
           {{ getMenuPackage()?.status === 'active' ? 'Deactivate' : 'Activate' }}
         </button>
         <div class="border-t border-slate-200 my-1"></div>
-        <button @click="handleEditMenu()"
+        <button v-if="getMenuPackage() && !hasUsers(getMenuPackage())" @click="handleEditMenu()"
           class="flex items-center w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-700 transition-colors">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -241,8 +288,8 @@
           </svg>
           Duplicate
         </button>
-        <div class="border-t border-slate-200 my-1"></div>
-        <button @click="handleDeleteMenu()"
+        <div v-if="getMenuPackage() && !hasUsers(getMenuPackage())" class="border-t border-slate-200 my-1"></div>
+        <button v-if="getMenuPackage() && !hasUsers(getMenuPackage())" @click="handleDeleteMenu()"
           class="flex items-center w-full px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -258,9 +305,8 @@
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { usePackages } from '@/modules/tenant/composables/data/usePackages'
 import { useFilters } from '@/modules/common/composables/utils/useFilters'
-import { usePagination } from '@/modules/common/composables/utils/usePagination'
 import { useConfirmStore } from '@/stores/confirm'
-import { useToast } from '@/modules/common/composables/useToast.js'
+import { useNotificationStore } from '@/stores/notifications'
 import DataViewContainer from '@/modules/common/components/base/DataViewContainer.vue'
 
 import DataSkeleton from '@/modules/common/components/base/DataSkeleton.vue'
@@ -272,7 +318,7 @@ import BaseSelect from '@/modules/common/components/base/BaseSelect.vue'
 import CreatePackageOverlay from '@/modules/tenant/components/packages/overlays/CreatePackageOverlay.vue'
 import ViewPackageOverlay from '@/modules/tenant/components/packages/overlays/ViewPackageOverlay.vue'
 
-const { error: showError } = useToast()
+const notify = useNotificationStore()
 
 const {
   packages,
@@ -289,8 +335,12 @@ const {
   addPackage,
   updatePackage,
   deletePackage,
+  batchDeletePackages,
   duplicatePackage,
   toggleStatus,
+  togglePackageSelection,
+  toggleSelectAll,
+  selectedPackageIds,
   openCreateOverlay,
   openEditOverlay,
   openDetails,
@@ -304,17 +354,33 @@ const confirmStore = useConfirmStore()
 
 // Filtering and Pagination
 const { filters, searchQuery, filteredData, hasActiveFilters } = useFilters(packages, { type: '', status: '' })
-const { currentPage, itemsPerPage, paginatedData, totalPages } = usePagination(filteredData, 10)
+const currentPage = ref(1)
+const itemsPerPage = ref(10)
+
+const paginatedData = computed(() => {
+  const data = filteredData.value || []
+  const start = (currentPage.value - 1) * itemsPerPage.value
+  return data.slice(start, start + itemsPerPage.value)
+})
+
+const totalPages = computed(() => Math.ceil((filteredData.value?.length || 0) / itemsPerPage.value))
 
 // Stats
 const activeCount = computed(() => packages.value?.filter(p => p.status === 'active').length || 0)
 const inactiveCount = computed(() => packages.value?.filter(p => p.status === 'inactive').length || 0)
 
 // Reset page on search/filter changes (matching TodosView pattern)
-watch(searchQuery, () => { currentPage.value = 1 })
-watch(itemsPerPage, () => { currentPage.value = 1 })
-watch(() => filters.value.type, () => { currentPage.value = 1 })
-watch(() => filters.value.status, () => { currentPage.value = 1 })
+watch(searchQuery, () => { currentPage.value = 1; clearSelectionLocal() })
+watch(itemsPerPage, () => { currentPage.value = 1; clearSelectionLocal() })
+watch(() => filters.value.type, () => { currentPage.value = 1; clearSelectionLocal() })
+watch(() => filters.value.status, () => { currentPage.value = 1; clearSelectionLocal() })
+
+// Reset page if data shrinks and current page is now out of bounds
+watch(() => filteredData.value?.length, () => {
+  if (currentPage.value > totalPages.value) {
+    currentPage.value = Math.max(1, totalPages.value)
+  }
+})
 
 // Menu state
 const activeMenu = ref(null)
@@ -363,7 +429,7 @@ const handleToggleStatus = async (pkg) => {
   try {
     await toggleStatus(pkg)
   } catch (err) {
-    showError(`Failed to ${action} package`)
+    notify.error('Action Failed', `Failed to ${action} package`)
   }
 }
 
@@ -372,13 +438,21 @@ const getPackageMetaLines = (pkg) => {
   lines.push({ text: `KES ${formatMoney(pkg.price)}` })
   lines.push({ text: formatPackageSpeed(pkg) })
   if (pkg.type) lines.push({ text: pkg.type, class: 'capitalize' })
+  lines.push({ text: `${pkg.users_count ?? 0} users`, class: 'text-slate-500' })
   return lines
+}
+
+const hasUsers = (pkg) => {
+  const count = Number(pkg?.users_count ?? 0)
+  return Number.isFinite(count) && count > 0
 }
 
 const getPackageActions = (pkg) => {
   const actions = []
   actions.push({ label: 'View', onClick: () => openDetails(pkg), class: 'text-blue-700 bg-blue-50 hover:bg-blue-100' })
-  actions.push({ label: 'Edit', onClick: () => openEditOverlay(pkg), class: 'text-slate-700 bg-slate-100 hover:bg-slate-200' })
+  if (!hasUsers(pkg)) {
+    actions.push({ label: 'Edit', onClick: () => openEditOverlay(pkg), class: 'text-slate-700 bg-slate-100 hover:bg-slate-200' })
+  }
   actions.push({ label: 'Duplicate', onClick: () => duplicatePackage(pkg), class: 'text-indigo-700 bg-indigo-50 hover:bg-indigo-100' })
   actions.push({
     label: pkg.status === 'active' ? 'Deactivate' : 'Activate',
@@ -389,6 +463,10 @@ const getPackageActions = (pkg) => {
 }
 
 const handleDelete = async (pkg) => {
+  if (hasUsers(pkg)) {
+    showError('This package is assigned to users and cannot be deleted')
+    return
+  }
   const confirmed = await confirmStore.open({
     title: 'Confirm Delete',
     message: `Are you sure you want to delete ${pkg.name}? This action cannot be undone.`,
@@ -402,7 +480,7 @@ const handleDelete = async (pkg) => {
   try {
     await deletePackage(pkg.id)
   } catch (err) {
-    showError('Failed to delete package')
+    notify.error('Delete Failed', 'Failed to delete package')
   }
 }
 
@@ -441,7 +519,12 @@ const handleToggleStatusMenu = () => {
 const handleEditMenu = () => {
   const pkg = packages.value.find(p => p.id === activeMenu.value)
   closeMenu()
-  if (pkg) openEditOverlay(pkg)
+  if (!pkg) return
+  if (hasUsers(pkg)) {
+    notify.error('Cannot Edit', 'This package is assigned to users and cannot be edited')
+    return
+  }
+  openEditOverlay(pkg)
 }
 
 const handleDuplicateMenu = () => {
@@ -450,10 +533,22 @@ const handleDuplicateMenu = () => {
   if (pkg) duplicatePackage(pkg)
 }
 
+const handleCreatePackage = async () => {
+  const success = await addPackage()
+  if (success) {
+    currentPage.value = 1
+    await fetchPackages()
+  }
+}
+
 const handleDeleteMenu = async () => {
   const pkg = packages.value.find(p => p.id === activeMenu.value)
   closeMenu()
   if (!pkg) return
+  if (hasUsers(pkg)) {
+    showError('This package is assigned to users and cannot be deleted')
+    return
+  }
 
   const confirmed = await confirmStore.open({
     title: 'Confirm Delete',
@@ -467,8 +562,47 @@ const handleDeleteMenu = async () => {
     try {
       await deletePackage(pkg.id)
     } catch (err) {
-      showError('Failed to delete package')
+      const msg = err.response?.data?.error || err.response?.data?.message || 'Failed to delete package'
+      notify.error('Delete Failed', msg)
     }
+  }
+}
+
+const clearSelectionLocal = () => {
+  selectedPackageIds.value = []
+}
+
+const handleBatchDelete = async () => {
+  const pkgMap = new Map((packages.value || []).map(p => [p.id, p]))
+  const ids = [...selectedPackageIds.value]
+  const deletable = ids.filter(id => !hasUsers(pkgMap.get(id)))
+  const skipped = ids.filter(id => hasUsers(pkgMap.get(id)))
+
+  if (!deletable.length) {
+    notify.error('Cannot Delete', 'All selected packages are assigned to users and cannot be deleted')
+    clearSelectionLocal()
+    return
+  }
+
+  const confirmed = await confirmStore.open({
+    title: 'Confirm Batch Delete',
+    message: `Delete ${deletable.length} package${deletable.length > 1 ? 's' : ''}${skipped.length ? ` (${skipped.length} skipped — assigned to users)` : ''}. This action cannot be undone.`,
+    confirmText: 'Delete All',
+    cancelText: 'Cancel',
+    variant: 'danger'
+  })
+
+  if (!confirmed) return
+
+  // Replace selection with only deletable items before calling batch
+  selectedPackageIds.value = deletable
+
+  try {
+    await batchDeletePackages()
+    notify.success('Deleted', `${deletable.length} package${deletable.length > 1 ? 's' : ''} deleted successfully${skipped.length ? ` (${skipped.length} skipped)` : ''}`)
+  } catch (err) {
+    const msg = err.response?.data?.error || err.response?.data?.message || err.message || 'Failed to delete some packages'
+    notify.error('Batch Delete Failed', msg)
   }
 }
 
@@ -509,15 +643,6 @@ const handlePackageDeletedEvent = (event) => {
   packages.value = packages.value.filter(p => p.id !== id)
   console.log('[Packages] Deleted via event:', id)
 }
-
-watch([filteredData, itemsPerPage], () => {
-  if (currentPage.value > totalPages.value) {
-    currentPage.value = Math.max(1, totalPages.value)
-  }
-  if (currentPage.value < 1) {
-    currentPage.value = 1
-  }
-})
 
 onMounted(() => {
   fetchPackages()

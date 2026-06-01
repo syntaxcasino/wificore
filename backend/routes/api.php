@@ -778,6 +778,14 @@ Route::middleware(['auth:sanctum', 'role:admin', 'user.active', 'tenant.context'
         ->name('api.vouchers.generate');
     Route::post('/vouchers/{voucher}/revoke', [VoucherController::class, 'revoke'])
         ->name('api.vouchers.revoke');
+    Route::post('/vouchers/{voucher}/archive', [VoucherController::class, 'archive'])
+        ->name('api.vouchers.archive');
+    Route::post('/vouchers/{voucher}/restore', [VoucherController::class, 'restore'])
+        ->name('api.vouchers.restore');
+    Route::post('/vouchers/bulk-archive', [VoucherController::class, 'bulkArchive'])
+        ->name('api.vouchers.bulk-archive');
+    Route::post('/vouchers/export', [VoucherController::class, 'export'])
+        ->name('api.vouchers.export');
     Route::delete('/vouchers/{voucher}', [VoucherController::class, 'destroy'])
         ->name('api.vouchers.destroy');
 

@@ -622,7 +622,6 @@ class TenantDashboardController extends Controller
             ], 403);
         }
 
-        $cacheKey = $this->getListCacheKey(self::KEY_PAYMENTS, $tenantId, $request);
         $perPage = $request->per_page ?? 15;
 
         if (! $this->tenantTableExists('payments')) {
@@ -631,26 +630,22 @@ class TenantDashboardController extends Controller
                 'data' => $this->emptyPaginator($request, $perPage),
                 'cached' => false,
                 'schema_incomplete' => true,
-            ]);
+            ])
+            ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+            ->header('Pragma', 'no-cache')
+            ->header('Expires', '0');
         }
 
-        if ($request->has('status') || $request->has('date_from') || $request->has('date_to')) {
-            $payments = $this->fetchPaymentsQuery($request, $perPage);
-            return response()->json(['success' => true, 'data' => $payments, 'cached' => false]);
-        }
-
-        $payments = $this->cacheRemember($cacheKey, self::LIST_CACHE_TTL_SECONDS, function () use ($perPage) {
-            return Payment::with(['user:id,name,email', 'package:id,name'])
-                ->select('id', 'user_id', 'package_id', 'amount', 'status', 'payment_method', 'created_at', 'verified_at')
-                ->orderBy('created_at', 'desc')
-                ->paginate($perPage);
-        });
+        $payments = $this->fetchPaymentsQuery($request, $perPage);
 
         return response()->json([
             'success' => true,
             'data' => $payments,
-            'cached' => $this->cacheHas($cacheKey),
-        ]);
+            'cached' => false,
+        ])
+        ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+        ->header('Pragma', 'no-cache')
+        ->header('Expires', '0');
     }
 
     /**

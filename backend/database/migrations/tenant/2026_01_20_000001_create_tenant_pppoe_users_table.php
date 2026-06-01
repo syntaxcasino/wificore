@@ -36,7 +36,7 @@ return new class extends Migration
             $table->string('customer_email')->nullable();
             $table->string('customer_phone', 30)->nullable();
 
-            $table->uuid('package_id');
+            $table->uuid('package_id')->nullable();
             $table->uuid('router_id');
 
             $table->timestamp('expires_at')->nullable();
@@ -81,7 +81,7 @@ return new class extends Migration
             $table->foreign('package_id')
                 ->references('id')
                 ->on('packages')
-                ->onDelete('restrict');
+                ->onDelete('set null');
 
             $table->foreign('router_id')
                 ->references('id')

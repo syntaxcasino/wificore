@@ -315,6 +315,8 @@ const searchQuery = ref('')
 const filterStatus = ref('')
 const currentPage = ref(1)
 const itemsPerPage = ref(10)
+let lastFreshFetchAt = 0
+const FRESH_FETCH_MIN_INTERVAL_MS = 5000
 
 const normalizeName = (router) => String(router?.name ?? '').trim()
 const normalizeId = (router) => String(router?.id ?? '')
@@ -537,15 +539,36 @@ const loginToRouter = (router) => {
   window.open(winboxUrl, '_blank')
 }
 
-onMounted(() => {
+const refreshIfStale = () => {
+  const nowTs = Date.now()
+  if (nowTs - lastFreshFetchAt < FRESH_FETCH_MIN_INTERVAL_MS) return
+  lastFreshFetchAt = nowTs
   fetchRouters()
+}
+
+const handleWindowFocus = () => {
+  refreshIfStale()
+}
+
+const handleVisibilityChange = () => {
+  if (document.visibilityState === 'visible') {
+    refreshIfStale()
+  }
+}
+
+onMounted(() => {
+  refreshIfStale()
   setupRealtimeUpdates()
   document.addEventListener('click', handleClickOutside)
+  window.addEventListener('focus', handleWindowFocus)
+  document.addEventListener('visibilitychange', handleVisibilityChange)
 })
 
 onUnmounted(() => {
   cleanupRealtimeUpdates()
   document.removeEventListener('click', handleClickOutside)
+  window.removeEventListener('focus', handleWindowFocus)
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
 })
 
 const handleClickOutside = (event) => {

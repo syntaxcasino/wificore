@@ -97,6 +97,23 @@ class PaymentController extends Controller
             $tenantScoped = $this->runInTenantContext($tenant, function () use ($validated, $request) {
                 // 3. Fetch Package from tenant schema (now in tenant context)
                 $package = Package::findOrFail($validated['package_id']);
+
+                // TRIAL PACKAGE CHECK: A user can only use a trial package once forever
+                if ($package->type === 'trial') {
+                    $hasUsedTrial = Payment::where('phone_number', $validated['phone_number'])
+                        ->whereHas('package', function ($q) {
+                            $q->where('type', 'trial');
+                        })
+                        ->exists();
+
+                    if ($hasUsedTrial) {
+                        return [
+                            'error' => 'You have already used a trial package. Trial packages can only be used once.',
+                            'status' => 422,
+                        ];
+                    }
+                }
+
                 $amount = $package->price;
 
                 // Auto-detect router_id if not provided
@@ -126,6 +143,13 @@ class PaymentController extends Controller
                     'recent_pending_payment' => $recentPendingPayment,
                 ];
             });
+
+            if (isset($tenantScoped['error'])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $tenantScoped['error'],
+                ], $tenantScoped['status']);
+            }
 
             $amount = $tenantScoped['amount'];
             $routerId = $tenantScoped['router_id'];

@@ -30,51 +30,49 @@ class AccessPointController extends Controller
     public function list(Request $request): JsonResponse
     {
         try {
-            $tenantId = (string) ($request->user()?->tenant_id ?? '');
-            $cacheKey = 'ap_list_' . $tenantId . '_' . md5((string) $request->getQueryString());
+            // OPTIMIZATION: Use selective columns in eager loading
+            $query = AccessPoint::with([
+                'router:id,name,ip_address,status',
+                'activeSessions' => fn($q) => $q->select('id', 'access_point_id', 'status')->where('status', 'active')->limit(5)
+            ])
+            ->select([
+                'id', 'name', 'ip_address', 'mac_address', 'serial_number', 'status',
+                'router_id', 'model', 'firmware_version', 'active_users', 'last_seen_at', 'created_at'
+            ]);
 
-            $accessPoints = Cache::remember($cacheKey, now()->addSeconds(15), function () use ($request) {
-                // OPTIMIZATION: Use selective columns in eager loading
-                $query = AccessPoint::with([
-                    'router:id,name,ip_address,status',
-                    'activeSessions' => fn($q) => $q->select('id', 'access_point_id', 'status')->where('status', 'active')->limit(5)
-                ])
-                ->select([
-                    'id', 'name', 'ip_address', 'mac_address', 'serial_number', 'status',
-                    'router_id', 'model', 'firmware_version', 'active_users', 'last_seen_at', 'created_at'
-                ]);
+            // Search functionality
+            if ($request->has('search')) {
+                $search = $request->search;
+                $query->where(function($q) use ($search) {
+                    $q->where('name', 'like', "%{$search}%")
+                        ->orWhere('ip_address', 'like', "%{$search}%")
+                        ->orWhere('mac_address', 'like', "%{$search}%")
+                        ->orWhere('serial_number', 'like', "%{$search}%");
+                });
+            }
 
-                // Search functionality
-                if ($request->has('search')) {
-                    $search = $request->search;
-                    $query->where(function($q) use ($search) {
-                        $q->where('name', 'like', "%{$search}%")
-                          ->orWhere('ip_address', 'like', "%{$search}%")
-                          ->orWhere('mac_address', 'like', "%{$search}%")
-                          ->orWhere('serial_number', 'like', "%{$search}%");
-                    });
-                }
+            // Filter by status
+            if ($request->has('status')) {
+                $query->where('status', $request->status);
+            }
 
-                // Filter by status
-                if ($request->has('status')) {
-                    $query->where('status', $request->status);
-                }
+            // Filter by router
+            if ($request->has('router_id')) {
+                $query->where('router_id', $request->router_id);
+            }
 
-                // Filter by router
-                if ($request->has('router_id')) {
-                    $query->where('router_id', $request->router_id);
-                }
-
-                // OPTIMIZATION: Add pagination instead of loading all records
-                $perPage = min((int) $request->input('per_page', 50), 100);
-                return $query->paginate($perPage);
-            });
+            // OPTIMIZATION: Add pagination instead of loading all records
+            $perPage = min((int) $request->input('per_page', 50), 100);
+            $accessPoints = $query->paginate($perPage);
 
             return response()->json([
                 'success' => true,
                 'data' => $accessPoints,
                 'access_points' => $accessPoints, // For frontend compatibility
-            ]);
+            ])
+            ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+            ->header('Pragma', 'no-cache')
+            ->header('Expires', '0');
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -90,29 +88,30 @@ class AccessPointController extends Controller
     public function tenantStatistics(): JsonResponse
     {
         try {
-            $tenantId = (string) (auth()->user()?->tenant_id ?? 'default');
-            $stats = Cache::remember('ap_tenant_stats_' . $tenantId, 30, function () {
-                $row = AccessPoint::selectRaw("
-                    COUNT(*) as total,
-                    COUNT(*) FILTER (WHERE status = 'online') as online,
-                    COUNT(*) FILTER (WHERE status = 'offline') as offline,
-                    COUNT(*) FILTER (WHERE status = 'unknown' OR status IS NULL) as unknown,
-                    COALESCE(SUM(active_users), 0) as total_users
-                ")->first();
+            $row = AccessPoint::selectRaw("
+                COUNT(*) as total,
+                COUNT(*) FILTER (WHERE status = 'online') as online,
+                COUNT(*) FILTER (WHERE status = 'offline') as offline,
+                COUNT(*) FILTER (WHERE status = 'unknown' OR status IS NULL) as unknown,
+                COALESCE(SUM(active_users), 0) as total_users
+            ")->first();
 
-                return [
-                    'total'       => (int)   ($row->total       ?? 0),
-                    'online'      => (int)   ($row->online      ?? 0),
-                    'offline'     => (int)   ($row->offline     ?? 0),
-                    'unknown'     => (int)   ($row->unknown     ?? 0),
-                    'total_users' => (int)   ($row->total_users ?? 0),
-                ];
-            });
+            $stats = [
+                'total'       => (int)   ($row->total       ?? 0),
+                'online'      => (int)   ($row->online      ?? 0),
+                'offline'     => (int)   ($row->offline     ?? 0),
+                'unknown'     => (int)   ($row->unknown     ?? 0),
+                'total_users' => (int)   ($row->total_users ?? 0),
+            ];
 
             return response()->json([
                 'success' => true,
                 'stats' => $stats,
-            ]);
+            ])
+            ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+            ->header('Pragma', 'no-cache')
+            ->header('Expires', '0');
+
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,

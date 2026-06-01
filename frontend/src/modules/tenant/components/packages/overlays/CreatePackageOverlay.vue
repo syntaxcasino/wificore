@@ -4,113 +4,179 @@
     :title="isEditing ? 'Edit Package' : 'Create New Package'"
     :subtitle="isEditing ? 'Update package details' : 'Add a new internet package'"
     icon="Package"
-    width="50%"
+    width="70%"
+    gradient
+    no-padding
     :close-on-backdrop="!formSubmitting"
     @close="$emit('close-form')"
   >
-      <form @submit.prevent="handleSubmit" class="space-y-6">
-        <!-- Package Type -->
-        <div>
-          <label class="block text-sm font-semibold text-gray-700 mb-2">Package Type</label>
-          <div class="grid grid-cols-2 gap-3">
-            <button
-              type="button"
-              @click="formData.type = 'hotspot'"
-              :class="[
-                'p-4 rounded-lg border-2 transition-all',
-                formData.type === 'hotspot'
-                  ? 'border-purple-500 bg-purple-50'
-                  : 'border-gray-200 bg-white hover:border-gray-300'
-              ]"
-            >
-              <div class="flex flex-col items-center gap-2">
-                <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" :class="formData.type === 'hotspot' ? 'text-purple-600' : 'text-gray-400'" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904 3.905 10.236 3.905 14.142 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0" />
-                </svg>
-                <span class="text-sm font-medium" :class="formData.type === 'hotspot' ? 'text-purple-700' : 'text-gray-600'">Hotspot</span>
-              </div>
-            </button>
-            <button
-              type="button"
-              @click="formData.type = 'pppoe'"
-              :class="[
-                'p-4 rounded-lg border-2 transition-all',
-                formData.type === 'pppoe'
-                  ? 'border-cyan-500 bg-cyan-50'
-                  : 'border-gray-200 bg-white hover:border-gray-300'
-              ]"
-            >
-              <div class="flex flex-col items-center gap-2">
-                <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" :class="formData.type === 'pppoe' ? 'text-cyan-600' : 'text-gray-400'" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
-                </svg>
-                <span class="text-sm font-medium" :class="formData.type === 'pppoe' ? 'text-cyan-700' : 'text-gray-600'">PPPoE</span>
-              </div>
-            </button>
+    <!-- Main Content -->
+    <div class="flex flex-col h-full overflow-hidden bg-slate-50">
+      <!-- Header strip -->
+      <div class="flex-shrink-0 bg-gradient-to-r px-6 py-4"
+        :class="headerGradientClass"
+      >
+        <div class="flex items-center gap-4">
+          <div class="w-14 h-14 rounded-2xl bg-white/20 backdrop-blur flex items-center justify-center text-white text-xl font-bold shadow-lg flex-shrink-0">
+            {{ (formData?.name || 'P').charAt(0).toUpperCase() }}
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="text-lg font-bold text-white truncate">{{ formData?.name || (isEditing ? 'Edit Package' : 'New Package') }}</div>
+            <div class="text-sm text-white/70 font-mono mt-0.5">KES {{ formatMoney(formData?.price || 0) }} / {{ formData?.validity || formData?.duration || '—' }}</div>
+            <div class="flex items-center gap-2 mt-1.5">
+              <span class="text-xs text-white/70 bg-white/10 px-2 py-0.5 rounded-full capitalize">{{ formData?.type || 'hotspot' }}</span>
+            </div>
           </div>
         </div>
+      </div>
 
-        <!-- Basic Information -->
-        <div class="bg-white p-4 rounded-lg border border-gray-200">
-          <h4 class="text-sm font-semibold text-gray-800 mb-4">Basic Information</h4>
-          <div class="space-y-4">
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">Package Name *</label>
-              <input
-                v-model="formData.name"
-                type="text"
-                required
-                class="w-full px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="e.g., 1 Hour - 5GB"
-              />
+      <!-- Content -->
+      <div class="flex-1 overflow-y-auto min-h-0 p-6">
+        <form @submit.prevent="handleSubmit" class="space-y-6">
+          <!-- Package Type -->
+          <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+            <h4 class="text-sm font-semibold text-slate-700 mb-4 flex items-center">
+              <svg class="h-4 w-4 mr-2 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" /></svg>
+              Package Type
+            </h4>
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <button
+                type="button"
+                @click="formData.type = 'hotspot'"
+                :class="[
+                  'p-3 rounded-xl border-2 transition-all',
+                  formData.type === 'hotspot'
+                    ? 'border-purple-500 bg-purple-50'
+                    : 'border-slate-200 bg-white hover:border-slate-300'
+                ]"
+              >
+                <div class="flex flex-col items-center gap-1.5">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" :class="formData.type === 'hotspot' ? 'text-purple-600' : 'text-slate-400'" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904 3.905 10.236 3.905 14.142 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0" />
+                  </svg>
+                  <span class="text-xs font-medium" :class="formData.type === 'hotspot' ? 'text-purple-700' : 'text-slate-600'">Hotspot</span>
+                </div>
+              </button>
+              <button
+                type="button"
+                @click="formData.type = 'pppoe'"
+                :class="[
+                  'p-3 rounded-xl border-2 transition-all',
+                  formData.type === 'pppoe'
+                    ? 'border-cyan-500 bg-cyan-50'
+                    : 'border-slate-200 bg-white hover:border-slate-300'
+                ]"
+              >
+                <div class="flex flex-col items-center gap-1.5">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" :class="formData.type === 'pppoe' ? 'text-cyan-600' : 'text-slate-400'" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+                  </svg>
+                  <span class="text-xs font-medium" :class="formData.type === 'pppoe' ? 'text-cyan-700' : 'text-slate-600'">PPPoE</span>
+                </div>
+              </button>
+              <button
+                type="button"
+                @click="formData.type = 'bundle'"
+                :class="[
+                  'p-3 rounded-xl border-2 transition-all',
+                  formData.type === 'bundle'
+                    ? 'border-emerald-500 bg-emerald-50'
+                    : 'border-slate-200 bg-white hover:border-slate-300'
+                ]"
+              >
+                <div class="flex flex-col items-center gap-1.5">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" :class="formData.type === 'bundle' ? 'text-emerald-600' : 'text-slate-400'" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                  </svg>
+                  <span class="text-xs font-medium" :class="formData.type === 'bundle' ? 'text-emerald-700' : 'text-slate-600'">Bundle</span>
+                </div>
+              </button>
+              <button
+                type="button"
+                @click="formData.type = 'trial'"
+                :class="[
+                  'p-3 rounded-xl border-2 transition-all',
+                  formData.type === 'trial'
+                    ? 'border-amber-500 bg-amber-50'
+                    : 'border-slate-200 bg-white hover:border-slate-300'
+                ]"
+              >
+                <div class="flex flex-col items-center gap-1.5">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" :class="formData.type === 'trial' ? 'text-amber-600' : 'text-slate-400'" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span class="text-xs font-medium" :class="formData.type === 'trial' ? 'text-amber-700' : 'text-slate-600'">Trial</span>
+                </div>
+              </button>
             </div>
+          </div>
 
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">Description</label>
-              <textarea
-                v-model="formData.description"
-                rows="2"
-                class="w-full px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="Brief description of the package"
-              ></textarea>
-            </div>
-
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <!-- Basic Information -->
+          <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+            <h4 class="text-sm font-semibold text-slate-700 mb-4 flex items-center">
+              <svg class="h-4 w-4 mr-2 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+              Basic Information
+            </h4>
+            <div class="space-y-4">
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Price (KES) *</label>
+                <label class="block text-xs font-medium text-slate-500 mb-1">Package Name <span class="text-red-500">*</span></label>
                 <input
-                  v-model.number="formData.price"
-                  type="number"
+                  v-model="formData.name"
+                  type="text"
                   required
-                  min="0"
-                  step="0.01"
-                  class="w-full px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="0.00"
+                  class="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="e.g., 1 Hour - 5GB"
                 />
               </div>
 
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Devices *</label>
-                <input
-                  v-model.number="formData.devices"
-                  type="number"
-                  required
-                  min="1"
-                  class="w-full px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="1"
-                />
+                <label class="block text-xs font-medium text-slate-500 mb-1">Description</label>
+                <textarea
+                  v-model="formData.description"
+                  rows="2"
+                  class="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Brief description of the package"
+                ></textarea>
+              </div>
+
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-xs font-medium text-slate-500 mb-1">Price (KES) <span class="text-red-500">*</span></label>
+                  <input
+                    v-model.number="formData.price"
+                    type="number"
+                    required
+                    min="0"
+                    step="0.01"
+                    class="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="0.00"
+                  />
+                </div>
+
+                <div>
+                  <label class="block text-xs font-medium text-slate-500 mb-1">Max Devices <span class="text-red-500">*</span></label>
+                  <input
+                    v-model.number="formData.devices"
+                    type="number"
+                    required
+                    min="1"
+                    class="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="1"
+                  />
+                </div>
               </div>
             </div>
           </div>
-        </div>
 
-        <!-- Speed & Data -->
-        <div class="bg-white p-4 rounded-lg border border-gray-200">
-          <h4 class="text-sm font-semibold text-gray-800 mb-4">Speed & Data Limits</h4>
-          <div class="space-y-4">
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <!-- Speed & Data -->
+          <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+            <h4 class="text-sm font-semibold text-slate-700 mb-4 flex items-center">
+              <svg class="h-4 w-4 mr-2 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+              Speed & Data Limits
+            </h4>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Download Speed *</label>
+                <label class="block text-xs font-medium text-slate-500 mb-1">Download Speed <span class="text-red-500">*</span></label>
                 <div class="flex items-center gap-2">
                   <input
                     v-model="downloadSpeedValue"
@@ -118,12 +184,12 @@
                     min="0"
                     step="0.01"
                     required
-                    class="flex-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    class="flex-1 px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     placeholder="e.g., 10"
                   />
                   <select
                     v-model="downloadSpeedUnit"
-                    class="w-24 px-2 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    class="w-20 px-2 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   >
                     <option v-for="unit in speedUnits" :key="unit" :value="unit">{{ unit }}</option>
                   </select>
@@ -131,7 +197,7 @@
               </div>
 
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Upload Speed *</label>
+                <label class="block text-xs font-medium text-slate-500 mb-1">Upload Speed <span class="text-red-500">*</span></label>
                 <div class="flex items-center gap-2">
                   <input
                     v-model="uploadSpeedValue"
@@ -139,129 +205,145 @@
                     min="0"
                     step="0.01"
                     required
-                    class="flex-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    class="flex-1 px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     placeholder="e.g., 5"
                   />
                   <select
                     v-model="uploadSpeedUnit"
-                    class="w-24 px-2 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    class="w-20 px-2 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   >
                     <option v-for="unit in speedUnits" :key="unit" :value="unit">{{ unit }}</option>
                   </select>
                 </div>
               </div>
-            </div>
 
-            <p class="text-xs text-slate-500 dark:text-slate-400">Download speed is used as the package speed label.</p>
-
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">Data Limit</label>
-              <div class="flex items-center gap-2">
-                <input
-                  v-model="dataLimitValue"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  class="flex-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="e.g., 50 (leave empty for unlimited)"
-                />
-                <select
-                  v-model="dataLimitUnit"
-                  class="w-24 px-2 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                >
-                  <option v-for="unit in dataUnits" :key="unit" :value="unit">{{ unit }}</option>
-                </select>
+              <div>
+                <label class="block text-xs font-medium text-slate-500 mb-1">Data Limit</label>
+                <div class="flex items-center gap-2">
+                  <input
+                    v-model="dataLimitValue"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    class="flex-1 px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="e.g., 50"
+                  />
+                  <select
+                    v-model="dataLimitUnit"
+                    class="w-20 px-2 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option v-for="unit in dataUnits" :key="unit" :value="unit">{{ unit }}</option>
+                  </select>
+                </div>
+                <p class="text-[10px] text-slate-500 mt-1">Leave empty for unlimited</p>
               </div>
             </div>
           </div>
-        </div>
 
-        <!-- Duration & Validity -->
-        <div class="bg-white p-4 rounded-lg border border-gray-200">
-          <h4 class="text-sm font-semibold text-gray-800 mb-4">Duration</h4>
-          <div class="space-y-4">
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">Duration *</label>
-              <div class="flex items-center gap-2">
+          <!-- Duration & Validity -->
+          <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+            <h4 class="text-sm font-semibold text-slate-700 mb-4 flex items-center">
+              <svg class="h-4 w-4 mr-2 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+              Duration & Validity
+            </h4>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label class="block text-xs font-medium text-slate-500 mb-1">Duration <span class="text-red-500">*</span></label>
+                <div class="flex items-center gap-2">
+                  <input
+                    v-model="durationValue"
+                    type="number"
+                    min="0"
+                    step="1"
+                    required
+                    class="flex-1 px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="e.g., 1"
+                  />
+                  <select
+                    v-model="durationUnit"
+                    class="w-28 px-2 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option v-for="unit in durationUnits" :key="unit" :value="unit">{{ unit }}</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label class="block text-xs font-medium text-slate-500 mb-1">Validity</label>
                 <input
-                  v-model="durationValue"
-                  type="number"
-                  min="0"
-                  step="1"
-                  required
-                  class="flex-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="e.g., 1"
+                  v-model="formData.validity"
+                  type="text"
+                  class="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Defaults to duration if left empty"
                 />
-                <select
-                  v-model="durationUnit"
-                  class="w-28 px-2 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                >
-                  <option v-for="unit in durationUnits" :key="unit" :value="unit">{{ unit }}</option>
-                </select>
+                <p class="text-[10px] text-slate-500 mt-1">Leave empty to use duration as validity.</p>
               </div>
             </div>
-
-            <p class="text-xs text-slate-500 dark:text-slate-400">Validity defaults to the selected duration.</p>
           </div>
-        </div>
 
-        <!-- Advanced Options -->
-        <div class="bg-white p-4 rounded-lg border border-gray-200">
-          <h4 class="text-sm font-semibold text-gray-800 mb-4">Advanced Options</h4>
-          <div class="space-y-3">
-            <label class="flex items-center gap-3 cursor-pointer">
-              <input
-                v-model="formData.enable_burst"
-                type="checkbox"
-                class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-              />
-              <span class="text-sm text-gray-700">Enable Burst</span>
-            </label>
-
-            <label class="flex items-center gap-3 cursor-pointer">
-              <input
-                v-model="formData.enable_schedule"
-                type="checkbox"
-                class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-              />
-              <span class="text-sm text-gray-700">Enable Schedule</span>
-            </label>
-
-            <!-- Schedule Time Picker (shown when enable_schedule is checked) -->
-            <div v-if="formData.enable_schedule" class="ml-7 mt-2 space-y-2">
-              <label class="block text-xs font-medium text-gray-700">
-                Activation Time <span class="text-red-500">*</span>
+          <!-- Advanced Options -->
+          <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+            <h4 class="text-sm font-semibold text-slate-700 mb-4 flex items-center">
+              <svg class="h-4 w-4 mr-2 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+              Advanced Options
+            </h4>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <label class="flex items-center gap-3 cursor-pointer">
+                <input
+                  v-model="formData.enable_burst"
+                  type="checkbox"
+                  class="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500"
+                />
+                <span class="text-sm text-slate-700">Enable Burst</span>
               </label>
-              <input
-                v-model="formData.scheduled_activation_time"
-                type="datetime-local"
-                class="w-full px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                :min="minDateTime"
-              />
-              <p class="text-xs text-gray-500">
-                Package will be activated at the specified time
-              </p>
+
+              <div>
+                <label class="flex items-center gap-3 cursor-pointer">
+                  <input
+                    v-model="formData.enable_schedule"
+                    type="checkbox"
+                    class="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500"
+                  />
+                  <span class="text-sm text-slate-700">Enable Schedule</span>
+                </label>
+                <!-- Schedule Time Picker -->
+                <div v-if="formData.enable_schedule" class="mt-2 space-y-1">
+                  <label class="block text-xs font-medium text-slate-500">
+                    Activation Time <span class="text-red-500">*</span>
+                  </label>
+                  <input
+                    v-model="formData.scheduled_activation_time"
+                    type="datetime-local"
+                    class="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    :min="minDateTime"
+                  />
+                  <p class="text-xs text-slate-500">
+                    Package activated at specified time
+                  </p>
+                </div>
+              </div>
+
+              <label class="flex items-center gap-3 cursor-pointer">
+                <input
+                  v-model="formData.hide_from_client"
+                  type="checkbox"
+                  class="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500"
+                />
+                <span class="text-sm text-slate-700">Hide from Client</span>
+              </label>
             </div>
-
-            <label class="flex items-center gap-3 cursor-pointer">
-              <input
-                v-model="formData.hide_from_client"
-                type="checkbox"
-                class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-              />
-              <span class="text-sm text-gray-700">Hide from Client</span>
-            </label>
           </div>
-        </div>
 
-        <!-- Message Display -->
-        <div v-if="formMessage.text" :class="[
-          'p-4 rounded-lg text-sm',
-          formMessage.type === 'success' ? 'bg-green-50 text-green-800 border border-green-200' : 'bg-red-50 text-red-800 border border-red-200'
-        ]">
-          {{ formMessage.text }}
-        </div>
-      </form>
+          <!-- Message Display -->
+          <div v-if="formMessage.text" :class="[
+            'p-4 rounded-xl text-sm',
+            formMessage.type === 'success' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-red-50 text-red-800 border border-red-200'
+          ]">
+            {{ formMessage.text }}
+          </div>
+        </form>
+      </div>
+    </div>
 
     <template #footer>
       <div class="flex gap-3">
@@ -269,15 +351,16 @@
           type="button"
           @click="$emit('close-form')"
           :disabled="formSubmitting"
-          class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          class="flex-1 px-4 py-2.5 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           Cancel
         </button>
         <button
-          type="submit"
+          type="button"
           @click="handleSubmit"
           :disabled="formSubmitting"
-          class="flex-1 px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          class="flex-1 px-4 py-2.5 text-sm font-medium text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          :class="submitButtonClass"
         >
           {{ formSubmitting ? 'Saving...' : (isEditing ? 'Save Changes' : 'Create Package') }}
         </button>
@@ -288,6 +371,7 @@
 
 <script setup>
 import { computed, ref, watch } from 'vue'
+import { useNotificationStore } from '@/stores/notifications'
 import SlideOverlay from '@/modules/common/components/base/SlideOverlay.vue'
 
 const props = defineProps({
@@ -300,9 +384,35 @@ const props = defineProps({
 
 const emit = defineEmits(['close-form', 'submit'])
 
+const notify = useNotificationStore()
+
 const isOpen = computed({
   get: () => props.showFormOverlay,
   set: (val) => { if (!val) emit('close-form') }
+})
+
+const formatMoney = (amount) => {
+  return new Intl.NumberFormat('en-KE').format(amount)
+}
+
+const headerGradientClass = computed(() => {
+  switch (props.formData?.type) {
+    case 'hotspot': return 'from-purple-700 to-indigo-700'
+    case 'pppoe': return 'from-cyan-600 to-teal-600'
+    case 'bundle': return 'from-emerald-600 to-green-600'
+    case 'trial': return 'from-amber-600 to-orange-600'
+    default: return 'from-slate-600 to-slate-700'
+  }
+})
+
+const submitButtonClass = computed(() => {
+  switch (props.formData?.type) {
+    case 'hotspot': return 'bg-purple-600 hover:bg-purple-700'
+    case 'pppoe': return 'bg-cyan-600 hover:bg-cyan-700'
+    case 'bundle': return 'bg-emerald-600 hover:bg-emerald-700'
+    case 'trial': return 'bg-amber-600 hover:bg-amber-700'
+    default: return 'bg-slate-600 hover:bg-slate-700'
+  }
 })
 
 const speedUnits = ['Mbps', 'Gbps']
@@ -361,7 +471,7 @@ const toDurationString = (value, unit) => {
     Months: isOne ? 'month' : 'months',
     Years: isOne ? 'year' : 'years',
   }
-  return `${v} ${map[u] || (isOne ? 'hour' : 'hours')}`
+  return `${v} ${map[u] || (isOne ? 'month' : 'months')}`
 }
 
 const toValueUnitString = (value, unit) => {
@@ -386,6 +496,11 @@ const syncFromFormData = () => {
   const durationParsed = parseDurationValueUnit(props.formData?.duration)
   durationValue.value = durationParsed.value
   durationUnit.value = durationParsed.unit
+
+  // Apply type-based default when creating a new package or editing with empty duration
+  if (!durationValue.value) {
+    durationUnit.value = props.formData?.type === 'pppoe' ? 'Months' : 'Hours'
+  }
 }
 
 watch(
@@ -415,10 +530,18 @@ watch([durationValue, durationUnit], () => {
   props.formData.duration = toDurationString(durationValue.value, durationUnit.value)
 })
 
+watch(
+  () => props.formData?.type,
+  (newType) => {
+    if (!durationValue.value) {
+      durationUnit.value = newType === 'pppoe' ? 'Months' : 'Hours'
+    }
+  }
+)
+
 // Minimum datetime (current time)
 const minDateTime = computed(() => {
   const now = new Date()
-  // Format: YYYY-MM-DDTHH:MM
   const year = now.getFullYear()
   const month = String(now.getMonth() + 1).padStart(2, '0')
   const day = String(now.getDate()).padStart(2, '0')
@@ -427,7 +550,23 @@ const minDateTime = computed(() => {
   return `${year}-${month}-${day}T${hours}:${minutes}`
 })
 
+const validateForm = () => {
+  const missing = []
+  if (!props.formData?.name?.trim()) missing.push('Package Name')
+  if (props.formData?.price == null || props.formData?.price === '' || Number(props.formData?.price) < 0) missing.push('Price')
+  if (!downloadSpeedValue.value || Number(downloadSpeedValue.value) <= 0) missing.push('Download Speed')
+  if (!uploadSpeedValue.value || Number(uploadSpeedValue.value) <= 0) missing.push('Upload Speed')
+  if (!durationValue.value || Number(durationValue.value) <= 0) missing.push('Duration')
+  if (props.formData?.devices == null || props.formData?.devices === '' || Number(props.formData?.devices) < 1) missing.push('Max Devices')
+  return missing
+}
+
 const handleSubmit = () => {
+  const missing = validateForm()
+  if (missing.length) {
+    notify.error('Missing Required Fields', `Please fill in: ${missing.join(', ')}`)
+    return
+  }
   if (props.formData?.download_speed) {
     props.formData.speed = props.formData.download_speed
   }

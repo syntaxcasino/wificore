@@ -11,6 +11,9 @@ export function useTrafficMonitoring() {
   const loading = ref(false)
   const error = ref(null)
   const { toast } = useToast()
+  let fetchAllMetricsPromise = null
+  let fetchRouterTrafficPromise = null
+  let fetchRouterTrafficKey = ''
 
   // Time range filter
   const timeRange = ref('1h') // 1h, 6h, 24h, 7d, 30d
@@ -255,26 +258,41 @@ export function useTrafficMonitoring() {
   }
 
   // Combined fetch all metrics
-  const fetchAllMetrics = async () => {
+  const fetchAllMetrics = async (options = {}) => {
+    const { showToast = false, force = false } = options
+
+    if (!force && fetchAllMetricsPromise) {
+      return fetchAllMetricsPromise
+    }
+
     loading.value = true
     error.value = null
-    try {
-      await Promise.allSettled([
-        fetchTrafficOverview(),
-        fetchPerformanceMetrics(),
-        fetchSystemHealth(),
-        fetchRevenueMetrics(),
-        fetchCapacityMetrics(),
-        fetchUserBehavior(),
-        fetchAlerts()
-      ])
-      toast.success('Traffic monitoring data refreshed')
-    } catch (err) {
-      error.value = 'Failed to load some metrics'
-      console.error('Fetch all metrics error:', err)
-    } finally {
-      loading.value = false
-    }
+
+    fetchAllMetricsPromise = (async () => {
+      try {
+        await Promise.allSettled([
+          fetchTrafficOverview(),
+          fetchPerformanceMetrics(),
+          fetchSystemHealth(),
+          fetchRevenueMetrics(),
+          fetchCapacityMetrics(),
+          fetchUserBehavior(),
+          fetchAlerts()
+        ])
+
+        if (showToast) {
+          toast.success('Traffic monitoring data refreshed')
+        }
+      } catch (err) {
+        error.value = 'Failed to load some metrics'
+        console.error('Fetch all metrics error:', err)
+      } finally {
+        loading.value = false
+        fetchAllMetricsPromise = null
+      }
+    })()
+
+    return fetchAllMetricsPromise
   }
 
   // Acknowledge alert
@@ -372,7 +390,7 @@ export function useTrafficMonitoring() {
   // Watch time range changes
   const setTimeRange = (range) => {
     timeRange.value = range
-    fetchAllMetrics()
+    fetchAllMetrics({ force: true })
   }
 
   // Router list for dropdown filters
@@ -389,48 +407,62 @@ export function useTrafficMonitoring() {
 
   // Router-specific traffic metrics from VictoriaMetrics/Prometheus
   const fetchRouterTraffic = async (routerId = '', range = '1h') => {
+    const requestKey = `${String(routerId)}:${String(range)}`
+
+    if (fetchRouterTrafficPromise && fetchRouterTrafficKey === requestKey) {
+      return fetchRouterTrafficPromise
+    }
+
     const url = routerId ? `/routers/${routerId}/metrics/traffic` : '/routers/metrics/traffic'
-    try {
-      const response = await axios.get(url, { params: { range, step: '30s' } })
-      const data = response.data || {}
-      if (!data?.success) return null
 
-      const parseVmSeries = (series) => {
-        if (!series || !Array.isArray(series.values)) return []
-        return series.values.map((v, i) => ({
-          t: series.timestamps?.[i] || i,
-          v: typeof v === 'number' ? v : 0
-        }))
-      }
+    fetchRouterTrafficKey = requestKey
+    fetchRouterTrafficPromise = (async () => {
+      try {
+        const response = await axios.get(url, { params: { range, step: '30s' } })
+        const data = response.data || {}
+        if (!data?.success) return null
 
-      if (routerId) {
-        const inSeries = parseVmSeries(data.in)
-        const outSeries = parseVmSeries(data.out)
-        const maxLen = Math.max(inSeries.length, outSeries.length)
+        const parseVmSeries = (series) => {
+          if (!series || !Array.isArray(series.values)) return []
+          return series.values.map((v, i) => ({
+            t: series.timestamps?.[i] || i,
+            v: typeof v === 'number' ? v : 0
+          }))
+        }
+
+        if (routerId) {
+          const inSeries = parseVmSeries(data.in)
+          const outSeries = parseVmSeries(data.out)
+          const maxLen = Math.max(inSeries.length, outSeries.length)
+          const points = []
+          for (let i = 0; i < maxLen; i++) {
+            points.push({ download: inSeries[i]?.v ?? 0, upload: outSeries[i]?.v ?? 0 })
+          }
+          rawTrafficPoints.value = points.slice(-60)
+          const currentIn = inSeries.length ? inSeries[inSeries.length - 1].v : 0
+          const currentOut = outSeries.length ? outSeries[outSeries.length - 1].v : 0
+          routerTraffic.value = { [routerId]: currentIn + currentOut }
+          return { points: rawTrafficPoints.value, currentIn, currentOut }
+        }
+
+        const totalIn = parseVmSeries(data.total_in)
+        const totalOut = parseVmSeries(data.total_out)
+        const maxLen = Math.max(totalIn.length, totalOut.length)
         const points = []
         for (let i = 0; i < maxLen; i++) {
-          points.push({ download: inSeries[i]?.v ?? 0, upload: outSeries[i]?.v ?? 0 })
+          points.push({ download: totalIn[i]?.v ?? 0, upload: totalOut[i]?.v ?? 0 })
         }
         rawTrafficPoints.value = points.slice(-60)
-        const currentIn = inSeries.length ? inSeries[inSeries.length - 1].v : 0
-        const currentOut = outSeries.length ? outSeries[outSeries.length - 1].v : 0
-        routerTraffic.value = { [routerId]: currentIn + currentOut }
-        return { points: rawTrafficPoints.value, currentIn, currentOut }
+        return { points: rawTrafficPoints.value }
+      } catch (err) {
+        console.warn('Failed to load router traffic:', err.message)
+        return null
+      } finally {
+        fetchRouterTrafficPromise = null
       }
+    })()
 
-      const totalIn = parseVmSeries(data.total_in)
-      const totalOut = parseVmSeries(data.total_out)
-      const maxLen = Math.max(totalIn.length, totalOut.length)
-      const points = []
-      for (let i = 0; i < maxLen; i++) {
-        points.push({ download: totalIn[i]?.v ?? 0, upload: totalOut[i]?.v ?? 0 })
-      }
-      rawTrafficPoints.value = points.slice(-60)
-      return { points: rawTrafficPoints.value }
-    } catch (err) {
-      console.warn('Failed to load router traffic:', err.message)
-      return null
-    }
+    return fetchRouterTrafficPromise
   }
 
   return {

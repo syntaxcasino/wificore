@@ -435,7 +435,7 @@ class ZeroConfigHotspotGenerator
             [
                 "# RADIUS - RADIUS-only AAA: Mikrotik-Rate-Limit and session attrs enforced per-user",
                 ":do { /radius remove [/radius find service=hotspot comment=\"hs-radius-{$sid}\"]; } on-error={}",
-                ":do { /radius add service=hotspot address=\"{$rs}\" secret=\"{$sec}\" authentication-port=1812 accounting-port=1813 timeout=3s comment=\"hs-radius-{$sid}\"; } on-error={ :error \"hs-{$sid}: RADIUS add failed\" }",
+                ":do { /radius add service=hotspot address=\"{$rs}\" secret=\"{$sec}\" authentication-port=1812 accounting-port=1813 timeout=3s comment=\"hs-radius-{$sid}\"; } on-error={ /log error \"hs-{$sid}: RADIUS add failed (non-fatal)\" }",
                 ":do { /ip hotspot profile set [/ip hotspot profile find name=\"{$profile}\"] use-radius=yes } on-error={}",
             ],
             $this->bootstrapRadiusNetwatch("hs-{$sid}", $rs),
@@ -506,7 +506,7 @@ class ZeroConfigHotspotGenerator
         $rules = array_merge($rules, $this->bootstrapServiceHardening("hs-{$sid}", $mgmt, $vpnIp));
         $rules = array_merge($rules, $this->bootstrapSystemClock());
         $rules = array_merge($rules, $this->bootstrapNtpClient());
-        $rules = array_merge($rules, $this->bootstrapFirewallLogging("hs-{$sid}"));
+        $rules = array_merge($rules, $this->bootstrapFirewallLogging("hs-{$sid}", $isLowEnd));
         // Established connections
         $rules[] = "/ip firewall filter add chain=input connection-state=\"established,related\" action=\"accept\" comment=\"hs-mgmt-{$sid}-est\"";
         $rules = array_merge($rules, $this->bootstrapBruteForceProtection("hs-mgmt-{$sid}", $allowAddr));

@@ -66,8 +66,8 @@
                     <div
                       @click="formData.type = 'hotspot'"
                       class="relative border-2 rounded-lg p-4 cursor-pointer transition-all"
-                      :class="formData.type === 'hotspot' 
-                        ? 'border-purple-500 bg-purple-50' 
+                      :class="formData.type === 'hotspot'
+                        ? 'border-purple-500 bg-purple-50'
                         : 'border-slate-200 hover:border-purple-300'"
                     >
                       <div class="flex items-center gap-3">
@@ -87,8 +87,8 @@
                     <div
                       @click="formData.type = 'pppoe'"
                       class="relative border-2 rounded-lg p-4 cursor-pointer transition-all"
-                      :class="formData.type === 'pppoe' 
-                        ? 'border-cyan-500 bg-cyan-50' 
+                      :class="formData.type === 'pppoe'
+                        ? 'border-cyan-500 bg-cyan-50'
                         : 'border-slate-200 hover:border-cyan-300'"
                     >
                       <div class="flex items-center gap-3">
@@ -102,6 +102,48 @@
                       </div>
                       <div v-if="formData.type === 'pppoe'" class="absolute top-2 right-2">
                         <CheckCircle class="w-5 h-5 text-cyan-600" />
+                      </div>
+                    </div>
+
+                    <div
+                      @click="formData.type = 'bundle'"
+                      class="relative border-2 rounded-lg p-4 cursor-pointer transition-all"
+                      :class="formData.type === 'bundle'
+                        ? 'border-emerald-500 bg-emerald-50'
+                        : 'border-slate-200 hover:border-emerald-300'"
+                    >
+                      <div class="flex items-center gap-3">
+                        <div class="p-3 rounded-lg" :class="formData.type === 'bundle' ? 'bg-emerald-100' : 'bg-slate-100'">
+                          <Boxes class="w-6 h-6" :class="formData.type === 'bundle' ? 'text-emerald-600' : 'text-slate-600'" />
+                        </div>
+                        <div>
+                          <div class="font-semibold text-slate-900 dark:text-slate-100">Bundle</div>
+                          <div class="text-xs text-slate-500 dark:text-slate-400">Combined package</div>
+                        </div>
+                      </div>
+                      <div v-if="formData.type === 'bundle'" class="absolute top-2 right-2">
+                        <CheckCircle class="w-5 h-5 text-emerald-600" />
+                      </div>
+                    </div>
+
+                    <div
+                      @click="formData.type = 'trial'"
+                      class="relative border-2 rounded-lg p-4 cursor-pointer transition-all"
+                      :class="formData.type === 'trial'
+                        ? 'border-amber-500 bg-amber-50'
+                        : 'border-slate-200 hover:border-amber-300'"
+                    >
+                      <div class="flex items-center gap-3">
+                        <div class="p-3 rounded-lg" :class="formData.type === 'trial' ? 'bg-amber-100' : 'bg-slate-100'">
+                          <Timer class="w-6 h-6" :class="formData.type === 'trial' ? 'text-amber-600' : 'text-slate-600'" />
+                        </div>
+                        <div>
+                          <div class="font-semibold text-slate-900 dark:text-slate-100">Trial</div>
+                          <div class="text-xs text-slate-500 dark:text-slate-400">One-time trial</div>
+                        </div>
+                      </div>
+                      <div v-if="formData.type === 'trial'" class="absolute top-2 right-2">
+                        <CheckCircle class="w-5 h-5 text-amber-600" />
                       </div>
                     </div>
                   </div>
@@ -160,41 +202,37 @@
             <div class="p-6">
               <h3 class="text-lg font-semibold text-slate-900 mb-4">Speed & Data Limits</h3>
               
-              <div class="space-y-4">
-                <!-- Speed Configuration -->
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label class="block text-sm font-medium text-slate-700 mb-2">
-                      Download Speed (Mbps) *
-                    </label>
-                    <input
-                      v-model.number="formData.download_speed"
-                      type="number"
-                      min="1"
-                      step="1"
-                      required
-                      class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="e.g., 10"
-                    />
-                  </div>
-
-                  <div>
-                    <label class="block text-sm font-medium text-slate-700 mb-2">
-                      Upload Speed (Mbps) *
-                    </label>
-                    <input
-                      v-model.number="formData.upload_speed"
-                      type="number"
-                      min="1"
-                      step="1"
-                      required
-                      class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="e.g., 10"
-                    />
-                  </div>
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label class="block text-sm font-medium text-slate-700 mb-2">
+                    Download Speed (Mbps) *
+                  </label>
+                  <input
+                    v-model.number="formData.download_speed"
+                    type="number"
+                    min="1"
+                    step="1"
+                    required
+                    class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="e.g., 10"
+                  />
                 </div>
 
-                <!-- Data Limit -->
+                <div>
+                  <label class="block text-sm font-medium text-slate-700 mb-2">
+                    Upload Speed (Mbps) *
+                  </label>
+                  <input
+                    v-model.number="formData.upload_speed"
+                    type="number"
+                    min="1"
+                    step="1"
+                    required
+                    class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="e.g., 10"
+                  />
+                </div>
+
                 <div>
                   <div class="flex items-center justify-between mb-2">
                     <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">
@@ -228,32 +266,32 @@
                     No data limit will be applied
                   </div>
                 </div>
+              </div>
 
-                <!-- Burst Limit (Optional) -->
-                <div v-if="formData.type === 'pppoe'">
-                  <label class="block text-sm font-medium text-slate-700 mb-2">
-                    Burst Speed (Optional)
-                  </label>
-                  <div class="grid grid-cols-2 gap-4">
-                    <input
-                      v-model.number="formData.burst_download"
-                      type="number"
-                      min="0"
-                      step="1"
-                      class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="Download burst (Mbps)"
-                    />
-                    <input
-                      v-model.number="formData.burst_upload"
-                      type="number"
-                      min="0"
-                      step="1"
-                      class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="Upload burst (Mbps)"
-                    />
-                  </div>
-                  <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Temporary speed boost when bandwidth is available</p>
+              <!-- Burst Limit (Optional) -->
+              <div v-if="formData.type === 'pppoe'" class="mt-4">
+                <label class="block text-sm font-medium text-slate-700 mb-2">
+                  Burst Speed (Optional)
+                </label>
+                <div class="grid grid-cols-2 gap-4">
+                  <input
+                    v-model.number="formData.burst_download"
+                    type="number"
+                    min="0"
+                    step="1"
+                    class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Download burst (Mbps)"
+                  />
+                  <input
+                    v-model.number="formData.burst_upload"
+                    type="number"
+                    min="0"
+                    step="1"
+                    class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Upload burst (Mbps)"
+                  />
                 </div>
+                <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Temporary speed boost when bandwidth is available</p>
               </div>
             </div>
           </BaseCard>
@@ -323,10 +361,10 @@
               <div class="max-w-sm">
                 <div class="bg-white rounded-xl border-2 border-slate-200 overflow-hidden">
                   <!-- Header -->
-                  <div class="p-6 bg-gradient-to-br" :class="formData.type === 'hotspot' ? 'from-purple-500 to-indigo-600' : 'from-cyan-500 to-blue-600'">
+                  <div class="p-6 bg-gradient-to-br" :class="previewGradientClass">
                     <div class="flex items-start justify-between mb-4">
                       <div class="p-3 bg-white/90 rounded-lg">
-                        <component :is="formData.type === 'hotspot' ? Wifi : Network" class="w-6 h-6" :class="formData.type === 'hotspot' ? 'text-purple-600' : 'text-cyan-600'" />
+                        <component :is="previewIcon" class="w-6 h-6" :class="previewIconColor" />
                       </div>
                       <BaseBadge :variant="formData.is_active ? 'success' : 'secondary'" size="sm">
                         {{ formData.is_active ? 'Active' : 'Inactive' }}
@@ -389,9 +427,10 @@
 
 <script setup>
 import { useRouter } from 'vue-router'
+import { watch, computed } from 'vue'
 import {
   Package, ArrowLeft, Save, Wifi, Network, CheckCircle,
-  Zap, HardDrive, Clock
+  Zap, HardDrive, Clock, Boxes, Timer
 } from 'lucide-vue-next'
 import PageContainer from '@/modules/common/components/layout/templates/PageContainer.vue'
 import PageHeader from '@/modules/common/components/layout/templates/PageHeader.vue'
@@ -401,8 +440,10 @@ import BaseCard from '@/modules/common/components/base/BaseCard.vue'
 import BaseBadge from '@/modules/common/components/base/BaseBadge.vue'
 import BaseSelect from '@/modules/common/components/base/BaseSelect.vue'
 import { useAddPackage } from '@/modules/tenant/composables/useAddPackage.js'
+import { useNotificationStore } from '@/stores/notifications'
 
 const router = useRouter()
+const notify = useNotificationStore()
 
 const breadcrumbs = [
   { label: 'Dashboard', to: '/dashboard' },
@@ -410,17 +451,74 @@ const breadcrumbs = [
   { label: 'Add Package' }
 ]
 
+const previewGradientClass = computed(() => {
+  switch (formData.value.type) {
+    case 'hotspot': return 'from-purple-500 to-indigo-600'
+    case 'pppoe': return 'from-cyan-500 to-blue-600'
+    case 'bundle': return 'from-emerald-500 to-green-600'
+    case 'trial': return 'from-amber-500 to-orange-600'
+    default: return 'from-slate-500 to-slate-600'
+  }
+})
+
+const previewIcon = computed(() => {
+  switch (formData.value.type) {
+    case 'hotspot': return Wifi
+    case 'pppoe': return Network
+    case 'bundle': return Boxes
+    case 'trial': return Timer
+    default: return Wifi
+  }
+})
+
+const previewIconColor = computed(() => {
+  switch (formData.value.type) {
+    case 'hotspot': return 'text-purple-600'
+    case 'pppoe': return 'text-cyan-600'
+    case 'bundle': return 'text-emerald-600'
+    case 'trial': return 'text-amber-600'
+    default: return 'text-slate-600'
+  }
+})
+
 const {
   saving, errorMessage, formData,
   getDataLimitDisplay, formatMoney, resetForm, submitPackage
 } = useAddPackage()
 
+watch(() => formData.value.type, (newType, oldType) => {
+  if (!oldType) return // skip initial set
+  if (!formData.value.validity) {
+    formData.value.validity = newType === 'hotspot' ? '1 hour' : '30 days'
+  }
+})
+
+const validateForm = () => {
+  const missing = []
+  if (!formData.value.name?.trim()) missing.push('Package Name')
+  if (formData.value.price == null || formData.value.price === '' || Number(formData.value.price) < 0) missing.push('Price')
+  if (!formData.value.validity?.trim()) missing.push('Validity Period')
+  if (!formData.value.download_speed || Number(formData.value.download_speed) <= 0) missing.push('Download Speed')
+  if (!formData.value.upload_speed || Number(formData.value.upload_speed) <= 0) missing.push('Upload Speed')
+  return missing
+}
+
 const handleSubmit = async () => {
+  const missing = validateForm()
+  if (missing.length) {
+    notify.error('Missing Required Fields', `Please fill in: ${missing.join(', ')}`)
+    return
+  }
   const result = await submitPackage()
   if (result.success) router.push('/dashboard/packages/all')
 }
 
 const handleSaveAndNew = async () => {
+  const missing = validateForm()
+  if (missing.length) {
+    notify.error('Missing Required Fields', `Please fill in: ${missing.join(', ')}`)
+    return
+  }
   const result = await submitPackage()
   if (result.success) resetForm()
 }
