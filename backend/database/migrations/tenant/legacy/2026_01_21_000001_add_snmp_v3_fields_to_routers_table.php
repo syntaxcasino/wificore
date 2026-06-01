@@ -8,44 +8,11 @@ return new class extends Migration
 {
     public function up(): void
     {
-        // Skip if columns already exist (base table 2025_12_05_000000 includes them on fresh installs)
-        if (Schema::hasColumn('routers', 'snmp_enabled')) {
-            return;
-        }
-
-        Schema::table('routers', function (Blueprint $table) {
-            $table->boolean('snmp_enabled')->default(true)->after('reserved_interfaces');
-            $table->string('snmp_version', 10)->default('v3')->after('snmp_enabled');
-
-            $table->string('snmp_v3_user', 64)->nullable()->after('snmp_version');
-            $table->string('snmp_v3_auth_protocol', 16)->default('SHA1')->after('snmp_v3_user');
-            $table->text('snmp_v3_auth_password')->nullable()->after('snmp_v3_auth_protocol');
-            $table->string('snmp_v3_priv_protocol', 16)->default('AES')->after('snmp_v3_auth_password');
-            $table->text('snmp_v3_priv_password')->nullable()->after('snmp_v3_priv_protocol');
-
-            $table->boolean('snmp_trap_enabled')->default(true)->after('snmp_v3_priv_password');
-            $table->string('snmp_trap_version', 10)->default('v3')->after('snmp_trap_enabled');
-            $table->text('snmp_trap_community')->nullable()->after('snmp_trap_version');
-            $table->string('snmp_trap_target', 64)->nullable()->after('snmp_trap_community');
-        });
+        // Consolidated into 2025_12_05_000000_create_tenant_router_tables.php
     }
 
     public function down(): void
     {
-        Schema::table('routers', function (Blueprint $table) {
-            $table->dropColumn([
-                'snmp_enabled',
-                'snmp_version',
-                'snmp_v3_user',
-                'snmp_v3_auth_protocol',
-                'snmp_v3_auth_password',
-                'snmp_v3_priv_protocol',
-                'snmp_v3_priv_password',
-                'snmp_trap_enabled',
-                'snmp_trap_version',
-                'snmp_trap_community',
-                'snmp_trap_target',
-            ]);
-        });
+        // Consolidated into 2025_12_05_000000_create_tenant_router_tables.php
     }
 };

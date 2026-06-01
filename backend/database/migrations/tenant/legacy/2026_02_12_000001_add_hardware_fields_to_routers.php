@@ -8,16 +8,11 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::table('routers', function (Blueprint $table) {
-            $table->string('serial_number', 100)->nullable()->after('os_version');
-            $table->string('firmware', 100)->nullable()->after('serial_number');
-        });
+        // Consolidated into 2025_12_05_000000_create_tenant_router_tables.php
     }
 
     public function down(): void
     {
-        Schema::table('routers', function (Blueprint $table) {
-            $table->dropColumn(['serial_number', 'firmware']);
-        });
+        // Consolidated into 2025_12_05_000000_create_tenant_router_tables.php
     }
 };

@@ -8,19 +8,11 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (!Schema::hasColumn('routers', 'wan_interface')) {
-            Schema::table('routers', function (Blueprint $table) {
-                $table->string('wan_interface', 64)->nullable()->after('port');
-            });
-        }
+        // Consolidated into 2025_12_05_000000_create_tenant_router_tables.php
     }
 
     public function down(): void
     {
-        if (Schema::hasColumn('routers', 'wan_interface')) {
-            Schema::table('routers', function (Blueprint $table) {
-                $table->dropColumn('wan_interface');
-            });
-        }
+        // Consolidated into 2025_12_05_000000_create_tenant_router_tables.php
     }
 };

@@ -6,25 +6,13 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
     public function up(): void
     {
-        Schema::table('routers', function (Blueprint $table) {
-            $table->string('router_type', 20)->default('physical')->after('model');
-            $table->index('router_type');
-        });
+        // Consolidated into 2025_12_05_000000_create_tenant_router_tables.php
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
-        Schema::table('routers', function (Blueprint $table) {
-            $table->dropIndex(['router_type']);
-            $table->dropColumn('router_type');
-        });
+        // Consolidated into 2025_12_05_000000_create_tenant_router_tables.php
     }
 };

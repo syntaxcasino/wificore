@@ -8,49 +8,11 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (!Schema::hasTable('wireguard_peers')) {
-            return;
-        }
-
-        $hasTransferRx = Schema::hasColumn('wireguard_peers', 'transfer_rx');
-        $hasTransferTx = Schema::hasColumn('wireguard_peers', 'transfer_tx');
-
-        if ($hasTransferRx && $hasTransferTx) {
-            return;
-        }
-
-        Schema::table('wireguard_peers', function (Blueprint $table) use ($hasTransferRx, $hasTransferTx) {
-            if (!$hasTransferRx) {
-                $table->unsignedBigInteger('transfer_rx')->default(0)->after('allowed_ips');
-            }
-
-            if (!$hasTransferTx) {
-                $table->unsignedBigInteger('transfer_tx')->default(0)->after($hasTransferRx ? 'transfer_rx' : 'allowed_ips');
-            }
-        });
+        // Consolidated into 2025_12_05_000000_create_tenant_router_tables.php
     }
 
     public function down(): void
     {
-        if (!Schema::hasTable('wireguard_peers')) {
-            return;
-        }
-
-        $hasTransferRx = Schema::hasColumn('wireguard_peers', 'transfer_rx');
-        $hasTransferTx = Schema::hasColumn('wireguard_peers', 'transfer_tx');
-
-        if (!$hasTransferRx && !$hasTransferTx) {
-            return;
-        }
-
-        Schema::table('wireguard_peers', function (Blueprint $table) use ($hasTransferRx, $hasTransferTx) {
-            if ($hasTransferTx) {
-                $table->dropColumn('transfer_tx');
-            }
-
-            if ($hasTransferRx) {
-                $table->dropColumn('transfer_rx');
-            }
-        });
+        // Consolidated into 2025_12_05_000000_create_tenant_router_tables.php
     }
 };

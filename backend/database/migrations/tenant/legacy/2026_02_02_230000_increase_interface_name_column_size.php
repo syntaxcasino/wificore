@@ -8,20 +8,11 @@ return new class extends Migration
 {
     public function up(): void
     {
-        // Increase interface_name column from varchar(100) to TEXT to handle JSON arrays
-        // Guard: only alter if the column exists (it may not on very fresh schemas
-        // where the base migration already defines it correctly)
-        if (Schema::hasColumn('router_services', 'interface_name')) {
-            Schema::table('router_services', function (Blueprint $table) {
-                $table->text('interface_name')->nullable()->change();
-            });
-        }
+        // Consolidated into 2025_12_05_000000_create_tenant_router_tables.php
     }
 
     public function down(): void
     {
-        Schema::table('router_services', function (Blueprint $table) {
-            $table->string('interface_name', 100)->nullable()->change();
-        });
+        // Consolidated into 2025_12_05_000000_create_tenant_router_tables.php
     }
 };

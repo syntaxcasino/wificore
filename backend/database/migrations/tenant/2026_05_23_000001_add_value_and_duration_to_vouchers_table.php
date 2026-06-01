@@ -8,27 +8,11 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::table('vouchers', function (Blueprint $table) {
-            if (!Schema::hasColumn('vouchers', 'value')) {
-                $table->decimal('value', 10, 2)->nullable()->after('code');
-            }
-            if (!Schema::hasColumn('vouchers', 'package_duration_days')) {
-                $table->unsignedSmallInteger('package_duration_days')->nullable()->after('value');
-            }
-            if (!Schema::hasColumn('vouchers', 'used_by_type')) {
-                $table->string('used_by_type', 30)->nullable()->after('used_by');
-            }
-        });
+        // Consolidated into 2026_02_09_180000_create_vouchers_table.php
     }
 
     public function down(): void
     {
-        Schema::table('vouchers', function (Blueprint $table) {
-            $table->dropColumn(array_filter([
-                Schema::hasColumn('vouchers', 'value') ? 'value' : null,
-                Schema::hasColumn('vouchers', 'package_duration_days') ? 'package_duration_days' : null,
-                Schema::hasColumn('vouchers', 'used_by_type') ? 'used_by_type' : null,
-            ]));
-        });
+        // Consolidated into 2026_02_09_180000_create_vouchers_table.php
     }
 };

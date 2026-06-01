@@ -6,27 +6,13 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
     public function up(): void
     {
-        Schema::table('routers', function (Blueprint $table) {
-            if (!Schema::hasColumn('routers', 'last_checked')) {
-                $table->timestamp('last_checked')->nullable()->after('last_seen');
-            }
-        });
+        // Consolidated into 2025_12_05_000000_create_tenant_router_tables.php
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
-        Schema::table('routers', function (Blueprint $table) {
-            if (Schema::hasColumn('routers', 'last_checked')) {
-                $table->dropColumn('last_checked');
-            }
-        });
+        // Consolidated into 2025_12_05_000000_create_tenant_router_tables.php
     }
 };
