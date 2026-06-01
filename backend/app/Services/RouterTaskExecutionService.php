@@ -15,6 +15,7 @@ class RouterTaskExecutionService
         protected ProvisioningCommandBus $provisioningClient,
         protected RouterOsCapabilityRegistry $capabilityRegistry,
         protected RouterOsV7ProvisioningValidator $routerOsValidator,
+        protected RouterProvisioningPreflightService $preflightService,
     ) {
     }
 
@@ -46,6 +47,8 @@ class RouterTaskExecutionService
 
     public function submitTaskCommand(Router $router, string $tenantId, RouterTask $task, ?string $script = null): array
     {
+        $this->validateTaskPreflight($router, $task);
+
         $payload = match ($task->type) {
             RouterTask::TYPE_DEPLOY_SERVICE_CONFIG => [
                 'script' => $this->buildServiceScript($router, $script),
@@ -140,6 +143,17 @@ class RouterTaskExecutionService
         if (! ($validation['valid'] ?? false)) {
             $message = implode(' | ', array_slice($validation['errors'] ?? ['RouterOS validation failed'], 0, 6));
             throw new \RuntimeException('RouterOS validation failed: ' . $message);
+        }
+    }
+
+    private function validateTaskPreflight(Router $router, RouterTask $task): void
+    {
+        $payload = is_array($task->request_payload) ? $task->request_payload : [];
+        $preflight = $this->preflightService->preflight($router, $payload, $router->interface_list ?? []);
+
+        if (! ($preflight['valid'] ?? false)) {
+            $errors = array_slice($preflight['errors'] ?? ['Router interface preflight failed'], 0, 6);
+            throw new \RuntimeException('Router interface preflight failed: ' . implode(' | ', $errors));
         }
     }
 }

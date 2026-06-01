@@ -380,13 +380,26 @@ class InternalProvisioningTaskController extends Controller
         }
 
         $verification = $this->evaluateVerificationBundle($result);
+        $result['verification_expected'] = $verification['expected'];
+        $result['verification_actual'] = $verification['actual'];
+        $result['verification_missing'] = $verification['missing'];
+        $result['verification_unexpected'] = $verification['unexpected'];
+
         if ($verification['valid']) {
+            $result['verification_status'] = 'passed';
+            $result['verification_diff'] = [
+                'missing' => [],
+                'unexpected' => $verification['unexpected'],
+            ];
             return [$status, $message, $error, $result, $progress];
         }
 
         $errorMessage = 'Post-provision verification failed: ' . implode(', ', $verification['missing']);
         $result['verification_status'] = 'failed';
-        $result['verification_missing'] = $verification['missing'];
+        $result['verification_diff'] = [
+            'missing' => $verification['missing'],
+            'unexpected' => $verification['unexpected'],
+        ];
 
         return [
             RouterTask::STATUS_FAILED,
@@ -409,28 +422,46 @@ class InternalProvisioningTaskController extends Controller
             'wireguard',
         ];
 
-        $resources = [];
+        $actual = [];
 
         if (isset($result['verification']['resources']) && is_array($result['verification']['resources'])) {
-            $resources = $result['verification']['resources'];
+            $actual = $result['verification']['resources'];
         } elseif (isset($result['verification_results']) && is_array($result['verification_results'])) {
-            $resources = $result['verification_results'];
+            $actual = $result['verification_results'];
         }
 
-        if ($resources === []) {
-            return ['valid' => false, 'missing' => $required];
+        $expected = array_fill_keys($required, true);
+
+        if ($actual === []) {
+            return [
+                'valid' => false,
+                'expected' => $expected,
+                'actual' => [],
+                'missing' => $required,
+                'unexpected' => [],
+            ];
         }
 
         $missing = [];
+        $unexpected = [];
         foreach ($required as $key) {
-            if (! array_key_exists($key, $resources) || $resources[$key] !== true) {
+            if (! array_key_exists($key, $actual) || $actual[$key] !== true) {
                 $missing[] = $key;
+            }
+        }
+
+        foreach ($actual as $key => $value) {
+            if (! array_key_exists($key, $expected) && $value === true) {
+                $unexpected[] = $key;
             }
         }
 
         return [
             'valid' => empty($missing),
+            'expected' => $expected,
+            'actual' => $actual,
             'missing' => $missing,
+            'unexpected' => $unexpected,
         ];
     }
 
@@ -521,10 +552,11 @@ class InternalProvisioningTaskController extends Controller
             $error
         );
 
-        $this->triggerRollbackForVerificationFailure($task, $run, $taskStatus, $terminal, $result, $error);
+        $this->syncProvisioningCommandResults($run, $task, $result, $stageName, $terminal);
+        $this->triggerRollbackForFailedProvisioningTask($task, $run, $taskStatus, $terminal, $result, $error);
     }
 
-    private function triggerRollbackForVerificationFailure(
+    private function triggerRollbackForFailedProvisioningTask(
         RouterTask $task,
         ProvisioningRun $run,
         string $taskStatus,
@@ -533,11 +565,13 @@ class InternalProvisioningTaskController extends Controller
         ?string $error
     ): void
     {
-        if ($taskStatus !== RouterTask::STATUS_FAILED || ! $terminal) {
+        if (! $this->shouldAttemptRollbackForFailedProvisioningTask($task, $taskStatus, $terminal, $result, $error)) {
             return;
         }
 
-        if (($result['verification_status'] ?? null) !== 'failed') {
+        $verificationFailed = ($result['verification_status'] ?? null) === 'failed';
+        $hasFailureSignal = $verificationFailed || ($error !== null && trim($error) !== '') || ! empty($result['error']) || ! empty($result['trap_message']);
+        if (! $hasFailureSignal) {
             return;
         }
 
@@ -546,7 +580,7 @@ class InternalProvisioningTaskController extends Controller
             return;
         }
 
-        $tenant = Tenant::find($task->tenant_id);
+        $tenant = $this->findRollbackTenant((string) $task->tenant_id);
         if (! $tenant || ! $tenant->schema_created || ! $tenant->schema_name) {
             $this->auditService->logStep($run, [
                 'stage' => 'rollback',
@@ -560,7 +594,7 @@ class InternalProvisioningTaskController extends Controller
         }
 
         $this->tenantContext->runInTenantContext($tenant, function () use ($task, $run, $meta, $error): void {
-            $router = Router::find($task->router_id);
+            $router = $this->findRollbackRouter((string) $task->router_id);
             if (! $router) {
                 $this->auditService->logStep($run, [
                     'stage' => 'rollback',
@@ -606,6 +640,59 @@ class InternalProvisioningTaskController extends Controller
             $meta['rollback_dispatched_at'] = now()->toIso8601String();
             $this->auditService->updateRun($run, ProvisioningRun::STATUS_FAILED, (int) $run->progress, 'rollback_dispatched', null, $meta);
         });
+    }
+
+    private function shouldAttemptRollbackForFailedProvisioningTask(
+        RouterTask $task,
+        string $taskStatus,
+        bool $terminal,
+        array $result,
+        ?string $error
+    ): bool {
+        if ($taskStatus !== RouterTask::STATUS_FAILED || ! $terminal) {
+            return false;
+        }
+
+        if (! in_array($task->type, [RouterTask::TYPE_DEPLOY_SERVICE_CONFIG, RouterTask::TYPE_APPLY_SERVICE_CONFIGS], true)) {
+            return false;
+        }
+
+        return (
+            ($result['verification_status'] ?? null) === 'failed'
+            || ($error !== null && trim($error) !== '')
+            || ! empty($result['error'])
+            || ! empty($result['trap_message'])
+        );
+    }
+
+    protected function findRollbackTenant(string $tenantId): ?Tenant
+    {
+        return Tenant::find($tenantId);
+    }
+
+    protected function findRollbackRouter(string $routerId): ?Router
+    {
+        return Router::find($routerId);
+    }
+
+    private function syncProvisioningCommandResults(ProvisioningRun $run, RouterTask $task, array $result, string $stageName, bool $terminal): void
+    {
+        $commandResults = $result['command_results'] ?? $result['results'] ?? null;
+        if (! is_array($commandResults) || $commandResults === []) {
+            return;
+        }
+
+        $context = [
+            'tenant_id' => $task->tenant_id,
+            'router_id' => $task->router_id,
+            'router_task_id' => $task->id,
+            'stage' => $stageName,
+            'action' => 'command_result',
+            'status' => $terminal ? 'completed' : 'running',
+            'is_terminal' => $terminal,
+        ];
+
+        $this->auditService->logCommandResults($run, $commandResults, $context);
     }
 
     private function resolveRunIdFromTask(RouterTask $task): ?string
@@ -655,7 +742,7 @@ class InternalProvisioningTaskController extends Controller
             return;
         }
 
-        $tenant = Tenant::find($task->tenant_id);
+        $tenant = $this->findRollbackTenant((string) $task->tenant_id);
         if (! $tenant || ! $tenant->schema_created || ! $tenant->schema_name) {
             Log::warning('Provisioning callback skipped router sync because tenant schema is unavailable', [
                 'task_id' => $task->id,
@@ -667,7 +754,7 @@ class InternalProvisioningTaskController extends Controller
 
         DB::transaction(function () use ($tenant, $task, $status, $progress, $message, $result, $stage, $terminal) {
             $this->tenantContext->runInTenantContext($tenant, function () use ($task, $status, $progress, $message, $result, $stage, $terminal) {
-                $router = Router::find($task->router_id);
+                $router = $this->findRollbackRouter((string) $task->router_id);
                 if (! $router) {
                     Log::warning('Provisioning callback skipped router sync because router was not found', [
                         'task_id' => $task->id,

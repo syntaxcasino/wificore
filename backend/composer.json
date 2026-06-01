@@ -61,9 +61,13 @@
         ],
         "test": [
             "@php artisan config:clear --ansi",
+            "@composer pest-cache-cleanup",
             "@composer tenant-isolation-guard",
             "@composer callback-guard-preflight",
             "@php artisan test"
+        ],
+        "pest-cache-cleanup": [
+            "@php -r \"$cache = 'vendor/pestphp/pest/.temp/test-results'; if (is_file($cache)) { @unlink($cache); } if (! is_dir(dirname($cache))) { @mkdir(dirname($cache), 0775, true); }\""
         ],
         "tenant-isolation-guard": [
             "@php artisan tenant:isolation-guard --strict --fail-on-findings"

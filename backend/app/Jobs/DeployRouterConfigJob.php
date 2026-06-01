@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\Router;
+use App\Services\Deployment\DeploymentSafetyService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -12,7 +13,7 @@ use Illuminate\Support\Facades\Log;
 
 /**
  * Deploy Router Configuration Job
- * 
+ *
  * Deploys configuration to a single router.
  */
 class DeployRouterConfigJob implements ShouldQueue
@@ -22,15 +23,17 @@ class DeployRouterConfigJob implements ShouldQueue
     public Router $router;
     public string $config;
     public string $configVersion;
+    public bool $allowSnapshotExemption;
 
-    public function __construct(Router $router, string $config, string $configVersion)
+    public function __construct(Router $router, string $config, string $configVersion, bool $allowSnapshotExemption = false)
     {
         $this->router = $router;
         $this->config = $config;
         $this->configVersion = $configVersion;
+        $this->allowSnapshotExemption = $allowSnapshotExemption;
     }
 
-    public function handle(): void
+    public function handle(DeploymentSafetyService $deploymentSafetyService): void
     {
         try {
             Log::info('Starting router configuration deployment', [
@@ -38,22 +41,24 @@ class DeployRouterConfigJob implements ShouldQueue
                 'config_version' => $this->configVersion,
             ]);
 
-            $driver = app(\App\Services\RouterDriver\DriverRegistry::class)
-                ->getDriverForRouter($this->router);
-            
-            $success = $driver->applyConfig($this->router, $this->config);
+            $result = $deploymentSafetyService->deployWithSafety($this->router, $this->config, [
+                'allow_snapshot_exemption' => $this->allowSnapshotExemption,
+            ]);
 
-            if ($success) {
+            if ($result->success) {
                 Log::info('Router configuration deployed successfully', [
                     'router_id' => $this->router->id,
                     'config_version' => $this->configVersion,
+                    'deployment_safety' => $result->toArray(),
                 ]);
             } else {
                 Log::error('Router configuration deployment failed', [
                     'router_id' => $this->router->id,
                     'config_version' => $this->configVersion,
+                    'deployment_safety' => $result->toArray(),
                 ]);
-                $this->fail('Failed to apply configuration');
+
+                $this->fail($result->message ?? 'Failed to apply configuration safely');
             }
 
         } catch (\Exception $e) {

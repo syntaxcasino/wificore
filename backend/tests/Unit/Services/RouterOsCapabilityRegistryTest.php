@@ -56,4 +56,39 @@ class RouterOsCapabilityRegistryTest extends TestCase
         $this->assertContains('/interface/bridge/add', $caps['allowed_commands']);
         $this->assertArrayHasKey('/interface/bridge/add', $caps['required_params']);
     }
+
+
+    #[Test]
+    public function it_builds_a_router_fingerprint_and_update_payload_from_live_data(): void
+    {
+        $registry = new RouterOsCapabilityRegistry();
+
+        $fingerprint = $registry->buildFingerprint([
+            'version' => '7.18.1',
+            'architecture' => 'arm64',
+            'board_name' => 'RB5009UG+S+',
+            'vendor' => 'mikrotik',
+        ]);
+
+        $payload = $registry->buildRouterUpdatePayload([
+            'version' => '7.18.1',
+            'architecture' => 'arm64',
+            'board_name' => 'RB5009UG+S+',
+        ]);
+
+        $this->assertTrue($fingerprint['supported']);
+        $this->assertSame('ros7_18', $fingerprint['profile']);
+        $this->assertSame('7.18.1', $fingerprint['version']);
+        $this->assertSame('arm64', $fingerprint['architecture_name']);
+        $this->assertSame('RB5009UG+S+', $fingerprint['board_name']);
+        $this->assertSame('mikrotik', $fingerprint['vendor']);
+
+        $this->assertSame('RB5009UG+S+', $payload['model']);
+        $this->assertSame('7.18.1', $payload['os_version']);
+        $this->assertSame('arm64', $payload['architecture_name']);
+        $this->assertSame('RB5009UG+S+', $payload['board_name']);
+        $this->assertArrayHasKey('capabilities', $payload);
+        $this->assertArrayHasKey('allowed_commands', $payload['capabilities']);
+    }
+
 }

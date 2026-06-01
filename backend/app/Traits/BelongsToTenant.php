@@ -5,6 +5,7 @@ namespace App\Traits;
 use AppModelsTenant;
 use App\Scopes\TenantScope;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
 trait BelongsToTenant
@@ -29,6 +30,13 @@ trait BelongsToTenant
             }
 
             if (!$model->tenant_id) {
+                Log::critical('Tenant context missing during tenant-scoped model creation', [
+                    'model' => get_class($model),
+                    'authenticated' => auth()->check(),
+                    'authenticated_user_id' => auth()->id(),
+                    'authenticated_tenant_id' => auth()->user()?->tenant_id,
+                ]);
+
                 throw new RuntimeException(
                     sprintf(
                         'Tenant context is required for %s creation. Missing tenant_id and authenticated tenant user.',

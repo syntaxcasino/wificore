@@ -19,6 +19,7 @@ class RouterTaskExecutionServiceTest extends TestCase
             $bus,
             new RouterOsCapabilityRegistry(),
             new RouterOsV7ProvisioningValidator(new RouterOsCapabilityRegistry()),
+            new \App\Services\RouterProvisioningPreflightService(),
         );
     }
 
@@ -118,4 +119,36 @@ class RouterTaskExecutionServiceTest extends TestCase
         $this->assertTrue($response['success']);
         $this->assertTrue($response['data']['accepted']);
     }
+
+    #[Test]
+    public function it_blocks_submit_when_interface_preflight_fails(): void
+    {
+        $bus = $this->createMock(ProvisioningCommandBus::class);
+        $bus->expects($this->never())->method('submitTaskCommand');
+
+        $service = $this->makeService($bus);
+
+        $router = new Router();
+        $router->id = 'router-4';
+        $router->os_version = '7.18.0';
+        $router->interface_list = ['ether1', 'ether2'];
+
+        $task = new RouterTask();
+        $task->type = RouterTask::TYPE_APPLY_SERVICE_CONFIGS;
+        $task->request_payload = [
+            'enable_hotspot' => true,
+            'hotspot_interfaces' => ['ether9'],
+        ];
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('Router interface preflight failed');
+
+        $service->submitTaskCommand(
+            $router,
+            'tenant-1',
+            $task,
+            '/interface/bridge/add name=br-lan'
+        );
+    }
+
 }
