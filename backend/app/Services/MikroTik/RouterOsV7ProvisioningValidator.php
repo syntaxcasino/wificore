@@ -32,6 +32,7 @@ class RouterOsV7ProvisioningValidator
         $unsupportedParams = $capabilities['unsupported_params'];
 
         $knownInterfaces = $this->extractKnownInterfaces($router);
+        $virtualInterfaces = [];
         $lines = preg_split('/\r\n|\r|\n/', $script) ?: [];
 
         foreach ($lines as $index => $rawLine) {
@@ -42,7 +43,8 @@ class RouterOsV7ProvisioningValidator
                 continue;
             }
 
-            if (! str_starts_with($line, '/')) {
+            $line = $this->extractExecutableCommand($line);
+            if ($line === null) {
                 continue;
             }
 
@@ -65,26 +67,82 @@ class RouterOsV7ProvisioningValidator
                 }
             }
 
+            $availableInterfaces = array_values(array_unique(array_merge($knownInterfaces, $virtualInterfaces)));
             $interfaceRef = $params['interface'] ?? null;
-            if (is_string($interfaceRef) && $interfaceRef !== '' && ! empty($knownInterfaces)) {
-                if (! in_array($interfaceRef, $knownInterfaces, true)) {
+            if (is_string($interfaceRef) && $interfaceRef !== '') {
+                if (! in_array($interfaceRef, $availableInterfaces, true)) {
                     $errors[] = "Line {$lineNumber}: Interface '{$interfaceRef}' does not exist on router interface inventory";
                 }
             }
 
-            if ($command === '/interface/bridge/port/add') {
-                $bridge = $params['bridge'] ?? null;
-                if (! is_string($bridge) || $bridge === '') {
-                    $errors[] = "Line {$lineNumber}: bridge parameter is required for /interface/bridge/port/add";
-                }
+            switch ($command) {
+                case '/interface/bridge/add':
+                case '/interface/vlan/add':
+                case '/interface/wireguard/add':
+                    if (! isset($params['name']) || ! is_string($params['name']) || trim($params['name']) === '') {
+                        $errors[] = "Line {$lineNumber}: name parameter is required for {$command}";
+                    } elseif (is_string($params['name'])) {
+                        $virtualInterfaces[] = trim($params['name']);
+                    }
+                    break;
+                case '/interface/bridge/port/add':
+                    $bridge = $params['bridge'] ?? null;
+                    if (! is_string($bridge) || $bridge === '') {
+                        $errors[] = "Line {$lineNumber}: bridge parameter is required for /interface/bridge/port/add";
+                        break;
+                    }
+
+                    if (! in_array($bridge, $availableInterfaces, true)) {
+                        $errors[] = "Line {$lineNumber}: Bridge '{$bridge}' does not exist on router interface inventory";
+                    }
+                    break;
+                case '/ip/pool/add':
+                    if (! isset($params['name']) || ! is_string($params['name']) || trim($params['name']) === '') {
+                        $errors[] = "Line {$lineNumber}: name parameter is required for /ip/pool/add";
+                    }
+                    if (! isset($params['ranges']) || ! is_string($params['ranges']) || trim($params['ranges']) === '') {
+                        $errors[] = "Line {$lineNumber}: ranges parameter is required for /ip/pool/add";
+                    }
+                    break;
+                case '/ppp/profile/add':
+                    if (! isset($params['name']) || ! is_string($params['name']) || trim($params['name']) === '') {
+                        $errors[] = "Line {$lineNumber}: name parameter is required for /ppp/profile/add";
+                    }
+                    break;
+                case '/interface/pppoe-server/server/add':
+                    if (! isset($params['interface']) || ! is_string($params['interface']) || trim($params['interface']) === '') {
+                        $errors[] = "Line {$lineNumber}: interface parameter is required for /interface/pppoe-server/server/add";
+                    }
+                    if (! isset($params['service-name']) || ! is_string($params['service-name']) || trim($params['service-name']) === '') {
+                        $errors[] = "Line {$lineNumber}: service-name parameter is required for /interface/pppoe-server/server/add";
+                    }
+                    break;
+                case '/queue/simple/add':
+                    if (! isset($params['target']) || ! is_string($params['target']) || trim($params['target']) === '') {
+                        $warnings[] = "Line {$lineNumber}: Queue command missing target may not enforce expected limits";
+                    }
+                    if (! isset($params['max-limit'])) {
+                        $warnings[] = "Line {$lineNumber}: Queue command missing max-limit may not enforce expected throughput";
+                    }
+                    break;
+                case '/ip/firewall/filter/add':
+                case '/ip/firewall/nat/add':
+                    if (! isset($params['chain']) || ! is_string($params['chain']) || trim($params['chain']) === '') {
+                        $errors[] = "Line {$lineNumber}: chain parameter is required for {$command}";
+                    }
+                    if (! isset($params['action']) || ! is_string($params['action']) || trim($params['action']) === '') {
+                        $errors[] = "Line {$lineNumber}: action parameter is required for {$command}";
+                    }
+                    break;
+                case '/system/ntp/client/set':
+                    if (! isset($params['servers']) || ! is_string($params['servers']) || trim($params['servers']) === '') {
+                        $errors[] = "Line {$lineNumber}: servers parameter is required for /system/ntp/client/set";
+                    }
+                    break;
             }
 
             if (str_contains($line, '/system reset-configuration')) {
                 $errors[] = "Line {$lineNumber}: Dangerous command is blocked: /system reset-configuration";
-            }
-
-            if (str_contains($line, '/queue simple add') && ! isset($params['target'])) {
-                $warnings[] = "Line {$lineNumber}: Queue command missing target may not enforce expected limits";
             }
         }
 
@@ -121,24 +179,154 @@ class RouterOsV7ProvisioningValidator
         return array_values(array_filter(array_unique($names), static fn ($v) => $v !== ''));
     }
 
+    private function extractExecutableCommand(string $line): ?string
+    {
+        $trimmed = trim($line);
+        if ($trimmed === '' || str_starts_with($trimmed, '#') || str_starts_with($trimmed, '/log')) {
+            return null;
+        }
+
+        if (str_starts_with($trimmed, '/')) {
+            return $trimmed;
+        }
+
+        if (str_contains($trimmed, 'do={') || str_starts_with($trimmed, ':do')) {
+            $body = $trimmed;
+            $firstBrace = strpos($body, '{');
+            if ($firstBrace !== false) {
+                $body = substr($body, $firstBrace + 1);
+            }
+
+            $boundary = null;
+            foreach (['} else={', '} on-error={', '} on-error=', '}'] as $marker) {
+                $markerPos = strpos($body, $marker);
+                if ($markerPos === false) {
+                    continue;
+                }
+                $boundary = $boundary === null ? $markerPos : min($boundary, $markerPos);
+            }
+
+            if ($boundary !== null) {
+                $body = substr($body, 0, $boundary);
+            }
+
+            $body = trim($body);
+            if ($body === '' || str_starts_with($body, ':error') || str_starts_with($body, ':log') || str_starts_with($body, '/log')) {
+                return null;
+            }
+
+            $slashPos = strpos($body, '/');
+            if ($slashPos !== false) {
+                $body = substr($body, $slashPos);
+            }
+
+            $body = trim($body);
+            if ($body === '' || str_starts_with($body, ':error') || str_starts_with($body, ':log') || str_starts_with($body, '/log')) {
+                return null;
+            }
+
+            $body = preg_split('/\s*;\s*/', $body, 2)[0] ?? $body;
+            $body = trim($body);
+            return $body === '' ? null : $body;
+        }
+
+        return null;
+    }
+
     private function parseLine(string $line): array
     {
         $parts = preg_split('/\s+/', $line) ?: [];
-        $command = (string) array_shift($parts);
+        $commandParts = [];
         $params = [];
+        $numbersBuffer = null;
+        $collectingCommand = true;
 
         foreach ($parts as $part) {
-            if (! str_contains($part, '=')) {
+            $token = trim($part);
+            if ($token === '') {
                 continue;
             }
-            [$key, $value] = explode('=', $part, 2);
+
+            if ($collectingCommand) {
+                $lastCommandToken = strtolower((string) end($commandParts));
+                $selectorContext = in_array($lastCommandToken, ['add', 'remove', 'set', 'enable', 'disable', 'find', 'print'], true);
+
+                if (str_starts_with($token, '[') || ($selectorContext && ! str_contains($token, '=') && ! str_starts_with($token, '/'))) {
+                    $collectingCommand = false;
+                    $numbersBuffer = $token;
+                    if (str_contains($token, ']')) {
+                        $clean = trim($numbersBuffer);
+                        $clean = trim($clean, '[]');
+                        if ($clean !== '') {
+                            $params['numbers'] = $clean;
+                        }
+                        $numbersBuffer = null;
+                    }
+                    continue;
+                }
+
+                if (str_contains($token, '=')) {
+                    $collectingCommand = false;
+                } else {
+                    $commandParts[] = $token;
+                    continue;
+                }
+            }
+
+            if ($numbersBuffer !== null) {
+                $numbersBuffer .= ' ' . $token;
+                if (str_contains($token, ']')) {
+                    $clean = trim($numbersBuffer);
+                    $clean = trim($clean, '[]');
+                    if ($clean !== '') {
+                        $params['numbers'] = $clean;
+                    }
+                    $numbersBuffer = null;
+                }
+                continue;
+            }
+
+            if (str_starts_with($token, '[')) {
+                $numbersBuffer = $token;
+                if (str_contains($token, ']')) {
+                    $clean = trim($numbersBuffer);
+                    $clean = trim($clean, '[]');
+                    if ($clean !== '') {
+                        $params['numbers'] = $clean;
+                    }
+                    $numbersBuffer = null;
+                }
+                continue;
+            }
+
+            if (! str_contains($token, '=')) {
+                continue;
+            }
+
+            [$key, $value] = explode('=', $token, 2);
             $key = ltrim(trim($key), '=');
             if ($key === '') {
                 continue;
             }
-            $params[$key] = trim($value, "\"'");
+            $params[$key] = rtrim(trim($value, "\"'"), ']');
         }
 
-        return [$command, $params];
+        $normalizedParts = [];
+        foreach ($commandParts as $index => $part) {
+            $clean = trim($part);
+            if ($clean === '') {
+                continue;
+            }
+            $clean = trim($clean, '[]{}');
+            if ($clean === '') {
+                continue;
+            }
+            if ($index === 0) {
+                $clean = ltrim($clean, '/');
+            }
+            $normalizedParts[] = $clean;
+        }
+
+        return ['/' . implode('/', $normalizedParts), $params];
     }
 }

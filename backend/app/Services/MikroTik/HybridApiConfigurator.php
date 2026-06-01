@@ -173,23 +173,9 @@ class HybridApiConfigurator
             ?? $this->config['pal_list']
             ?? 'PPPOE-ACTIVE-HYB-' . $this->shortId();
 
-        try {
-            $this->api->executeCommand('/interface/list/add', ['name' => $wanList]);
-        } catch (\Exception $e) {
-            // list may already exist
-        }
-
-        try {
-            $this->api->addInterfaceListMember($wanList, $wanInterface);
-        } catch (\Exception $e) {
-            // member may already exist
-        }
-
-        try {
-            $this->api->executeCommand('/interface/list/add', ['name' => $pppoeActiveList]);
-        } catch (\Exception $e) {
-            // list may already exist
-        }
+        $this->api->upsertResource('/interface/list', ['name' => $wanList], ['name' => $wanList]);
+        $this->api->addInterfaceListMember($wanList, $wanInterface);
+        $this->api->upsertResource('/interface/list', ['name' => $pppoeActiveList], ['name' => $pppoeActiveList]);
 
         $this->results['interface_lists'] = 'success';
     }
@@ -231,8 +217,8 @@ class HybridApiConfigurator
                     }
                 }
             } else {
-                // No DHCP client exists - add new one
-                $this->api->executeCommand('/ip/dhcp-client/add', [
+                // No DHCP client exists - add or reuse one
+                $this->api->upsertResource('/ip/dhcp-client', ['interface' => $wanInterface], [
                     'interface' => $wanInterface,
                     'disabled' => 'no',
                 ]);
@@ -268,22 +254,19 @@ class HybridApiConfigurator
             $networkCidr = $this->calculateNetworkCidr($gatewayIp, $cidr);
         }
 
-        $this->removeByField('/ip/address', 'interface', $interface);
-        $this->api->executeCommand('/ip/address/add', [
+        $this->api->upsertResource('/ip/address', ['interface' => $interface], [
             'address' => "{$gatewayIp}/{$cidr}",
             'interface' => $interface,
             'comment' => 'hyb-hs-gw-' . $shortId,
         ]);
 
-        $this->removeByName('/ip/pool', 'name', $poolName);
-        $this->api->executeCommand('/ip/pool/add', [
+        $this->api->upsertResource('/ip/pool', ['name' => $poolName], [
             'name' => $poolName,
             'ranges' => "{$rangeStart}-{$rangeEnd}",
             'comment' => 'hyb-hs-' . $shortId,
         ]);
 
-        $this->removeByName('/ip/dhcp-server', 'name', $dhcpName);
-        $this->api->executeCommand('/ip/dhcp-server/add', [
+        $this->api->upsertResource('/ip/dhcp-server', ['name' => $dhcpName], [
             'name' => $dhcpName,
             'interface' => $interface,
             'address-pool' => $poolName,
@@ -292,7 +275,6 @@ class HybridApiConfigurator
         ]);
 
         if ($networkCidr) {
-            $this->removeByField('/ip/dhcp-server/network', 'comment', $networkComment);
             $networkParams = [
                 'address' => $networkCidr,
                 'gateway' => $gatewayIp,
@@ -301,11 +283,10 @@ class HybridApiConfigurator
             if ($dnsServers) {
                 $networkParams['dns-server'] = $dnsServers;
             }
-            $this->api->executeCommand('/ip/dhcp-server/network/add', $networkParams);
+            $this->api->upsertResource('/ip/dhcp-server/network', ['comment' => $networkComment], $networkParams);
         }
 
-        $this->removeByName('/ip/hotspot/profile', 'name', $profile);
-        $this->api->executeCommand('/ip/hotspot/profile/add', [
+        $this->api->upsertResource('/ip/hotspot/profile', ['name' => $profile], [
             'name' => $profile,
             'hotspot-address' => $gatewayIp,
             'login-by' => 'http-chap,http-pap',
@@ -315,8 +296,7 @@ class HybridApiConfigurator
             'http-cookie-lifetime' => '1d',
         ]);
 
-        $this->removeByName('/ip/hotspot', 'name', $server);
-        $this->api->executeCommand('/ip/hotspot/add', [
+        $this->api->upsertResource('/ip/hotspot', ['name' => $server], [
             'name' => $server,
             'interface' => $interface,
             'profile' => $profile,
@@ -329,8 +309,7 @@ class HybridApiConfigurator
 
         $portalHost = $this->config['portal_host'] ?? null;
         if ($portalHost) {
-            $this->removeByField('/ip/hotspot/walled-garden', 'comment', 'hyb-wg-' . $shortId);
-            $this->api->executeCommand('/ip/hotspot/walled-garden/add', [
+            $this->api->upsertResource('/ip/hotspot/walled-garden', ['comment' => 'hyb-wg-' . $shortId], [
                 'dst-host' => $portalHost,
                 'action' => 'allow',
                 'comment' => 'hyb-wg-' . $shortId,
@@ -366,14 +345,12 @@ class HybridApiConfigurator
             $remoteAddress = $poolName;
         }
 
-        $this->removeByName('/ip/pool', 'name', $poolName);
-        $this->api->executeCommand('/ip/pool/add', [
+        $this->api->upsertResource('/ip/pool', ['name' => $poolName], [
             'name' => $poolName,
             'ranges' => "{$rangeStart}-{$rangeEnd}",
             'comment' => 'hyb-pp-' . $shortId,
         ]);
 
-        $this->removeByName('/ppp/profile', 'name', $profile);
         $profileParams = [
             'name' => $profile,
             'local-address' => $gatewayIp,
@@ -392,7 +369,7 @@ class HybridApiConfigurator
         if ($dnsServers) {
             $profileParams['dns-server'] = $dnsServers;
         }
-        $this->api->executeCommand('/ppp/profile/add', $profileParams);
+        $this->api->upsertResource('/ppp/profile', ['name' => $profile], $profileParams);
 
         $this->api->createPppoeServer(
             $serviceName,

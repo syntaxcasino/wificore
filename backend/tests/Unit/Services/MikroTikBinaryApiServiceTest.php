@@ -256,6 +256,11 @@ class MikroTikBinaryApiServiceTest extends TestCase
         $this->assertSame(['*1', 'br-test', '1500'], [$record['.id'], $record['name'], $record['mtu']]);
     }
 
+    public function test_upsert_resource_contract_is_documented_for_binary_transport(): void
+    {
+        $this->assertTrue(method_exists(MikroTikBinaryApiService::class, 'upsertResource'));
+    }
+
     public function test_record_skips_non_attribute_words(): void
     {
         $svc    = $this->makeExposed();

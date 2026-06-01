@@ -126,6 +126,45 @@ class InternalProvisioningTaskControllerVerificationTest extends TestCase
     }
 
     #[Test]
+    public function it_attaches_verification_diff_details_when_resources_are_missing(): void
+    {
+        $controller = $this->makeController();
+        $task = new RouterTask();
+        $task->type = RouterTask::TYPE_DEPLOY_SERVICE_CONFIG;
+
+        $result = $this->invokeApplyVerificationPolicy(
+            $controller,
+            $task,
+            RouterTask::STATUS_COMPLETED,
+            true,
+            [
+                'verification' => [
+                    'resources' => [
+                        'interface_bridge' => true,
+                        'ip_pool' => true,
+                        'ppp_profile' => false,
+                        'pppoe_server' => true,
+                        'ip_firewall' => true,
+                        'queue' => true,
+                        'wireguard' => true,
+                        'extra_resource' => true,
+                    ],
+                ],
+            ],
+            'ok',
+            null,
+            100,
+        );
+
+        $this->assertSame(RouterTask::STATUS_FAILED, $result[0]);
+        $this->assertSame('failed', $result[3]['verification_status']);
+        $this->assertSame(['ppp_profile'], $result[3]['verification_missing']);
+        $this->assertSame(['extra_resource'], $result[3]['verification_unexpected']);
+        $this->assertArrayHasKey('verification_expected', $result[3]);
+        $this->assertArrayHasKey('verification_actual', $result[3]);
+        $this->assertSame(true, $result[3]['verification_expected']['ppp_profile']);
+    }
+
     public function it_keeps_terminal_completed_status_when_verification_bundle_passes(): void
     {
         $controller = $this->makeController();
@@ -367,4 +406,56 @@ class InternalProvisioningTaskControllerVerificationTest extends TestCase
         $this->assertSame(409, $response->getStatusCode());
         $this->assertSame('Provisioning callback is stale', $response->getData(true)['message'] ?? null);
     }
+
+
+    #[Test]
+    public function it_ignores_conflicting_terminal_status_mutations_after_completion(): void
+    {
+        $controller = $this->makeController();
+        $task = new RouterTask();
+        $task->status = RouterTask::STATUS_COMPLETED;
+
+        $ignored = $this->invokeShouldIgnoreTerminalStatusMutation(
+            $controller,
+            $task,
+            RouterTask::STATUS_FAILED,
+        );
+
+        $allowed = $this->invokeShouldIgnoreTerminalStatusMutation(
+            $controller,
+            $task,
+            RouterTask::STATUS_COMPLETED,
+        );
+
+        $this->assertTrue($ignored);
+        $this->assertFalse($allowed);
+    }
+
+    #[Test]
+    public function it_ignores_late_regressive_stage_after_a_newer_stage_wins_the_race(): void
+    {
+        $controller = $this->makeController();
+        $task = new RouterTask();
+        $task->result_payload = ['stage' => 'precheck_connectivity'];
+
+        $forwardStageAccepted = $this->invokeShouldIgnoreRegressiveStageUpdate(
+            $controller,
+            $task,
+            'deploying_config',
+            false,
+        );
+
+        $task->result_payload = ['stage' => 'deploying_config'];
+
+        $lateRegressiveStageIgnored = $this->invokeShouldIgnoreRegressiveStageUpdate(
+            $controller,
+            $task,
+            'precheck_connectivity',
+            false,
+        );
+
+        $this->assertFalse($forwardStageAccepted);
+        $this->assertTrue($lateRegressiveStageIgnored);
+    }
+
 }

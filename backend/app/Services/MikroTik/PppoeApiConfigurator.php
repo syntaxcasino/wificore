@@ -192,24 +192,11 @@ class PppoeApiConfigurator
         $palList = $this->config['pal_list'] ?? 'PA-' . $shortId;
         $pppoeList = $this->config['pppoe_list'] ?? 'PL-' . $shortId;
 
-        try {
-            $this->api->executeCommand('/interface/list/add', ['name' => $wanList]);
-        } catch (\Exception $e) {
-            // list may already exist
-        }
-
-        try {
-            $this->api->executeCommand('/interface/list/add', ['name' => $palList]);
-        } catch (\Exception $e) {
-            // list may already exist
-        }
+        $this->api->upsertResource('/interface/list', ['name' => $wanList], ['name' => $wanList]);
+        $this->api->upsertResource('/interface/list', ['name' => $palList], ['name' => $palList]);
 
         if ($pppoeList) {
-            try {
-                $this->api->executeCommand('/interface/list/add', ['name' => $pppoeList]);
-            } catch (\Exception $e) {
-                // list may already exist
-            }
+            $this->api->upsertResource('/interface/list', ['name' => $pppoeList], ['name' => $pppoeList]);
         }
 
         if ($pppoeList) {
@@ -265,8 +252,8 @@ class PppoeApiConfigurator
                     }
                 }
             } else {
-                // No DHCP client exists - add new one
-                $this->api->executeCommand('/ip/dhcp-client/add', [
+                // No DHCP client exists - add or reuse it
+                $this->api->upsertResource('/ip/dhcp-client', ['interface' => $wanInterface], [
                     'interface' => $wanInterface,
                     'disabled' => 'no',
                 ]);
@@ -289,8 +276,7 @@ class PppoeApiConfigurator
         $rangeEnd = $this->config['pppoe_range_end'] ?? $this->config['range_end'] ?? null;
 
         if ($poolName && $rangeStart && $rangeEnd) {
-            $this->removeByName('/ip/pool', 'name', $poolName);
-            $this->api->executeCommand('/ip/pool/add', [
+            $this->api->upsertResource('/ip/pool', ['name' => $poolName], [
                 'name' => $poolName,
                 'ranges' => "{$rangeStart}-{$rangeEnd}",
                 'comment' => 'PPPoE-' . $this->serviceId,
@@ -308,7 +294,6 @@ class PppoeApiConfigurator
         $palList = $this->config['pal_list'] ?? 'PA-' . $shortId;
 
         if ($profile) {
-            $this->removeByName('/ppp/profile', 'name', $profile);
             $params = [
                 'name' => $profile,
                 'comment' => 'PPPoE-' . $this->serviceId,
@@ -330,7 +315,7 @@ class PppoeApiConfigurator
                 $params['interface-list'] = $palList;
             }
 
-            $this->api->executeCommand('/ppp/profile/add', $params);
+            $this->api->upsertResource('/ppp/profile', ['name' => $profile], $params);
         }
 
         $this->results['ppp_profile'] = 'success';

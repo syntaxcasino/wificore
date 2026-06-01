@@ -29,6 +29,7 @@ export function useRouterProvisioning(props, emit) {
   const enableHotspot = ref(false)
   const enablePPPoE = ref(false)
   const serviceScript = ref('')
+  const lastDryRunSummary = ref(null)
   const availableInterfaces = ref([])
   const selectedHotspotInterfaces = ref([])
   const selectedPPPoEInterfaces = ref([])
@@ -374,12 +375,15 @@ export function useRouterProvisioning(props, emit) {
     }
   }
 
-  const generateServiceConfig = async () => {
+  const generateServiceConfig = async (options = {}) => {
     formSubmitting.value = true
     try {
+      const dryRun = Boolean(options.dryRun)
+
       const payload = {
         enable_hotspot: enableHotspot.value,
         enable_pppoe: enablePPPoE.value,
+        dry_run: dryRun,
       }
 
       // Add hotspot configuration if enabled
@@ -400,12 +404,38 @@ export function useRouterProvisioning(props, emit) {
 
       if (response.data?.success) {
         serviceScript.value = response.data?.service_script || response.data?.script
-        currentStage.value = 4
-        provisioningProgress.value = 90
-        provisioningStatus.value = 'Configuration generated - Ready to deploy'
-        addLog('success', 'Service configuration generated successfully')
-        addLog('info', `Script length: ${serviceScript.value?.length || 0} characters`)
+
+        const dryRunSummary = response.data?.dry_run_summary || {}
+        lastDryRunSummary.value = dryRunSummary
+        const preflightWarnings = Array.isArray(response.data?.preflight?.warnings)
+          ? response.data.preflight.warnings
+          : Array.isArray(dryRunSummary.warnings)
+            ? dryRunSummary.warnings
+            : []
+
+        if (dryRun) {
+          provisioningStatus.value = 'Dry-run completed successfully'
+          addLog('success', 'Service configuration dry-run completed successfully')
+          addLog('info', `Dry-run script length: ${serviceScript.value?.length || 0} characters`)
+          if (preflightWarnings.length > 0) {
+            addLog('warning', `Dry-run warnings: ${preflightWarnings.join(' | ')}`)
+          }
+          if (dryRunSummary.missing_interfaces?.length > 0) {
+            addLog('warning', `Missing interfaces: ${dryRunSummary.missing_interfaces.join(', ')}`)
+          }
+        } else {
+          currentStage.value = 4
+          provisioningProgress.value = 90
+          provisioningStatus.value = 'Configuration generated - Ready to deploy'
+          addLog('success', 'Service configuration generated successfully')
+          addLog('info', `Script length: ${serviceScript.value?.length || 0} characters`)
+          if (preflightWarnings.length > 0) {
+            addLog('warning', `Preflight warnings: ${preflightWarnings.join(' | ')}`)
+          }
+        }
       }
+
+      return response.data
     } catch (error) {
       console.error('Error generating config:', error)
       const errorMsg = error.response?.data?.error || 'Error generating configuration'
@@ -415,6 +445,8 @@ export function useRouterProvisioning(props, emit) {
       formSubmitting.value = false
     }
   }
+
+  const previewServiceConfig = async () => generateServiceConfig({ dryRun: true })
 
   const deployConfiguration = async () => {
     deploymentFailed.value = false
@@ -555,12 +587,12 @@ export function useRouterProvisioning(props, emit) {
 
   const getLogLevelClass = (level) => {
     const classes = {
-      info: 'text-blue-400',
-      success: 'text-emerald-400',
-      warning: 'text-amber-400',
-      error: 'text-red-400',
+      info: 'text-blue-600',
+      success: 'text-green-600',
+      warning: 'text-yellow-600',
+      error: 'text-red-600',
     }
-    return classes[level] || 'text-slate-400'
+    return classes[level] || 'text-gray-600'
   }
 
   const copyToClipboard = async (text) => {
@@ -873,6 +905,7 @@ export function useRouterProvisioning(props, emit) {
     enableHotspot.value = false
     enablePPPoE.value = false
     serviceScript.value = ''
+    lastDryRunSummary.value = null
     Object.assign(hotspotConfig, {
       ssid: '',
       password: '',
@@ -960,6 +993,7 @@ export function useRouterProvisioning(props, emit) {
     enableHotspot,
     enablePPPoE,
     serviceScript,
+    lastDryRunSummary,
     availableInterfaces,
     selectedHotspotInterfaces,
     selectedPPPoEInterfaces,
@@ -987,6 +1021,7 @@ export function useRouterProvisioning(props, emit) {
     continueToMonitoring,
     previousStage,
     generateServiceConfig,
+    previewServiceConfig,
     deployConfiguration,
     addLog,
     clearLogs,

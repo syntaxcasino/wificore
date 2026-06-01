@@ -161,17 +161,8 @@ class HotspotApiConfigurator
         $wanList = $this->config['wan_list'] ?? 'WAN';
         $wanInterface = $this->config['wan_interface'] ?? 'ether1';
 
-        try {
-            $this->api->executeCommand('/interface/list/add', ['name' => $wanList]);
-        } catch (\Exception $e) {
-            // list may already exist
-        }
-
-        try {
-            $this->api->addInterfaceListMember($wanList, $wanInterface);
-        } catch (\Exception $e) {
-            // member may already exist
-        }
+        $this->api->upsertResource('/interface/list', ['name' => $wanList], ['name' => $wanList]);
+        $this->api->addInterfaceListMember($wanList, $wanInterface);
 
         $this->results['interface_lists'] = 'success';
     }
@@ -204,22 +195,19 @@ class HotspotApiConfigurator
             $networkCidr = $this->calculateNetworkCidr($gatewayIp, $cidr);
         }
 
-        $this->removeByField('/ip/address', 'interface', $accessInterface);
-        $this->api->executeCommand('/ip/address/add', [
+        $this->api->upsertResource('/ip/address', ['interface' => $accessInterface], [
             'address' => "{$gatewayIp}/{$cidr}",
             'interface' => $accessInterface,
             'comment' => 'Hotspot Gateway',
         ]);
 
-        $this->removeByName('/ip/pool', 'name', $poolName);
-        $this->api->executeCommand('/ip/pool/add', [
+        $this->api->upsertResource('/ip/pool', ['name' => $poolName], [
             'name' => $poolName,
             'ranges' => "{$rangeStart}-{$rangeEnd}",
             'comment' => "hs-{$shortId}",
         ]);
 
-        $this->removeByName('/ip/dhcp-server', 'name', $dhcpName);
-        $this->api->executeCommand('/ip/dhcp-server/add', [
+        $this->api->upsertResource('/ip/dhcp-server', ['name' => $dhcpName], [
             'name' => $dhcpName,
             'interface' => $accessInterface,
             'address-pool' => $poolName,
@@ -229,8 +217,7 @@ class HotspotApiConfigurator
         ]);
 
         if ($networkCidr) {
-            $this->removeByField('/ip/dhcp-server/network', 'comment', $dhcpNetworkComment);
-            $this->api->executeCommand('/ip/dhcp-server/network/add', [
+            $this->api->upsertResource('/ip/dhcp-server/network', ['comment' => $dhcpNetworkComment], [
                 'address' => $networkCidr,
                 'gateway' => $gatewayIp,
                 'dns-server' => $dnsServers,
@@ -257,8 +244,7 @@ class HotspotApiConfigurator
             throw new \Exception('Hotspot profile parameters missing');
         }
 
-        $this->removeByName('/ip/hotspot/profile', 'name', $profile);
-        $this->api->executeCommand('/ip/hotspot/profile/add', [
+        $this->api->upsertResource('/ip/hotspot/profile', ['name' => $profile], [
             'name' => $profile,
             'hotspot-address' => $gatewayIp,
             'login-by' => 'http-chap,http-pap',
@@ -268,8 +254,7 @@ class HotspotApiConfigurator
             'http-cookie-lifetime' => '1d',
         ]);
 
-        $this->removeByName('/ip/hotspot', 'name', $server);
-        $this->api->executeCommand('/ip/hotspot/add', [
+        $this->api->upsertResource('/ip/hotspot', ['name' => $server], [
             'name' => $server,
             'interface' => $accessInterface,
             'profile' => $profile,
@@ -280,8 +265,7 @@ class HotspotApiConfigurator
             'disabled' => 'no',
         ]);
 
-        $this->removeByName('/ip/hotspot/user/profile', 'name', $userProfile);
-        $this->api->executeCommand('/ip/hotspot/user/profile/add', [
+        $this->api->upsertResource('/ip/hotspot/user/profile', ['name' => $userProfile], [
             'name' => $userProfile,
             'add-mac-cookie' => 'yes',
             'shared-users' => 1,
@@ -290,8 +274,7 @@ class HotspotApiConfigurator
 
         $portalHost = $this->config['portal_host'] ?? null;
         if ($portalHost) {
-            $this->removeByField('/ip/hotspot/walled-garden', 'comment', 'WiFiCore Portal');
-            $this->api->executeCommand('/ip/hotspot/walled-garden/add', [
+            $this->api->upsertResource('/ip/hotspot/walled-garden', ['comment' => 'WiFiCore Portal'], [
                 'dst-host' => $portalHost,
                 'action' => 'allow',
                 'comment' => 'WiFiCore Portal',

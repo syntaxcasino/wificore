@@ -185,3 +185,21 @@ Manual force emit (ignores cooldown):
 ```bash
 php artisan provisioning:callback-guard-alert-check --force
 ```
+
+### Sustained Critical Escalation
+When callback-guard trends remain critical for multiple consecutive checks, the alert command escalates beyond logs to active notification delivery.
+
+Environment controls:
+- `PROVISIONING_CALLBACK_GUARD_ALERT_WEBHOOK_URL`
+- `PROVISIONING_CALLBACK_GUARD_ESCALATION_CONSECUTIVE_CRITICAL_CHECKS` (default: `3`)
+- `PROVISIONING_CALLBACK_GUARD_ESCALATION_COOLDOWN_SECONDS` (default: `3600`)
+
+Escalation targets:
+- system admin email notifications for active global admins
+- optional webhook delivery for NOC or incident tooling
+
+Operational note:
+- warning-level alerts still use cooldown suppression
+- critical alerts are always logged and broadcast before escalation is evaluated
+- sustained critical escalation is rate-limited separately so it does not spam operators during an incident
+

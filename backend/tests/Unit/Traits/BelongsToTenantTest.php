@@ -4,6 +4,7 @@ namespace Tests\Unit\Traits;
 
 use App\Traits\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -21,10 +22,16 @@ class BelongsToTenantTest extends TestCase
             public $timestamps = false;
         };
 
-        $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('Tenant context is required');
+        Log::spy();
 
-        $model->fill(['name' => 'test']);
-        $model->save();
+        try {
+            $model->fill(['name' => 'test']);
+            $model->save();
+            $this->fail('Expected tenant context exception was not thrown.');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('Tenant context is required', $e->getMessage());
+        }
+
+        Log::shouldHaveReceived('critical')->once();
     }
 }

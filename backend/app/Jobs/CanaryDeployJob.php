@@ -4,7 +4,7 @@ namespace App\Jobs;
 
 use App\Models\Router;
 use App\Models\CanaryDeployment;
-use App\Services\RouterDriver\DriverRegistry;
+use App\Services\Deployment\DeploymentSafetyService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\Log;
 
 /**
  * Canary Deployment Job
- * 
+ *
  * Deploys configuration to a single router as part of canary deployment.
  */
 class CanaryDeployJob implements ShouldQueue
@@ -32,30 +32,32 @@ class CanaryDeployJob implements ShouldQueue
         $this->config = $config;
     }
 
-    public function handle(DriverRegistry $driverRegistry): void
+    public function handle(DeploymentSafetyService $deploymentSafetyService): void
     {
         try {
-            $driver = $driverRegistry->getDriverForRouter($this->router);
-            
             Log::info('Starting canary deployment for router', [
                 'deployment_id' => $this->deployment->id,
                 'router_id' => $this->router->id,
             ]);
 
-            $success = $driver->applyConfig($this->router, $this->config);
+            $result = $deploymentSafetyService->deployWithSafety($this->router, $this->config, [
+                'allow_snapshot_exemption' => true,
+            ]);
 
-            if ($success) {
+            if ($result->success) {
                 Log::info('Canary deployment successful for router', [
                     'deployment_id' => $this->deployment->id,
                     'router_id' => $this->router->id,
+                    'deployment_safety' => $result->toArray(),
                 ]);
             } else {
                 Log::error('Canary deployment failed for router', [
                     'deployment_id' => $this->deployment->id,
                     'router_id' => $this->router->id,
+                    'deployment_safety' => $result->toArray(),
                 ]);
-                
-                $this->fail('Failed to apply configuration');
+
+                $this->fail($result->message ?? 'Failed to apply configuration safely');
             }
 
         } catch (\Exception $e) {
@@ -64,7 +66,7 @@ class CanaryDeployJob implements ShouldQueue
                 'router_id' => $this->router->id,
                 'error' => $e->getMessage(),
             ]);
-            
+
             $this->fail($e);
         }
     }
