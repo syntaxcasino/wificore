@@ -32,6 +32,7 @@ if (in_array($consoleCommand, ["schedule:run", "schedule:interrupt"], true)) {
 
 Schedule::useCache("database");
 
+
 Schedule::job(new CheckRoutersJob)->everyMinute();
 
 // REMOVED: RouterHandshakeMonitorJob was conflicting with UpdateVpnStatusJob
@@ -184,6 +185,13 @@ Schedule::job(new \App\Jobs\CacheRoutersJob)
 Schedule::job(new \App\Jobs\CollectSystemMetricsJob)
     ->everyMinute()
     ->name('collect-system-metrics')
+    ->withoutOverlapping()
+    ->onOneServer();
+
+// Monitor provisioning callback guard trend and emit operational alerts
+Schedule::command('provisioning:callback-guard-alert-check')
+    ->everyMinute()
+    ->name('provisioning-callback-guard-alert-check')
     ->withoutOverlapping()
     ->onOneServer();
 

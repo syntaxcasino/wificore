@@ -6,6 +6,7 @@ use App\Events\RouterInterfacesDiscovered;
 use App\Models\Router;
 use App\Models\RouterTask;
 use App\Services\ProvisioningServiceClient;
+use App\Services\MikroTik\RouterOsCapabilityRegistry;
 use App\Traits\TenantAwareJob;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -94,11 +95,9 @@ class DiscoverRouterInterfacesJob implements ShouldQueue
 
                 if (isset($liveData['interfaces']) && is_array($liveData['interfaces'])) {
                     // Update router metadata only (status already set to 'online' by CheckRoutersJob)
-                    $router->update([
-                        'model' => $liveData['board_name'] ?? $router->model,
-                        'os_version' => $liveData['version'] ?? $router->os_version,
+                    $router->update(array_merge([
                         'last_seen' => now(),
-                    ]);
+                    ], app(RouterOsCapabilityRegistry::class)->buildRouterUpdatePayload($liveData, $router)));
 
                     broadcast(new RouterInterfacesDiscovered(
                         $this->tenantId,

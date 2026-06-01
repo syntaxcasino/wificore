@@ -42,6 +42,17 @@ interface MikroTikApiInterface
 
     public function addInterfaceListMember(string $list, string $interface): array;
 
+    /**
+     * Create or update a resource using a set of exact-match filters.
+     *
+     * If a matching record already exists, the implementation updates it with
+     * the provided payload instead of issuing a duplicate add.
+     *
+     * The return payload should be the post-operation RouterOS record so callers
+     * can safely reuse it in audit and rollback ledgers.
+     */
+    public function upsertResource(string $endpoint, array $matchFilters, array $data): array;
+
     public function createPppoeServer(
         string $serviceName,
         string $interface,

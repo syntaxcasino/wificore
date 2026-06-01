@@ -2121,7 +2121,7 @@ func (h *Handler) reportProvisioningWorkflowEvent(callback *models.TaskCallbackC
 		_ = h.workflowStore.RecordProgress(workflowKey, stage, progress, message, result)
 	}
 
-	payload := h.buildCallbackPayload(status, progress, message, result, errorMessage, stage, terminal)
+	payload := h.buildCallbackPayload(callback, status, progress, message, result, errorMessage, stage, terminal)
 	if callback == nil || strings.TrimSpace(callback.URL) == "" {
 		return
 	}
@@ -2142,22 +2142,31 @@ func (h *Handler) notifyTaskCallbackWithOptions(callback *models.TaskCallbackCon
 	if callback == nil || strings.TrimSpace(callback.URL) == "" {
 		return
 	}
-	payload := h.buildCallbackPayload(status, progress, message, result, errorMessage, stage, terminal)
+	payload := h.buildCallbackPayload(callback, status, progress, message, result, errorMessage, stage, terminal)
 	if err := h.sendCallbackPayload(callback.URL, callback.APIKey, payload); err != nil {
 		h.logger.WithError(err).Warn("Task callback request failed, queued for retry")
 		_ = h.workflowStore.EnqueueCallback(h.callbackRetryKey(callback, stage), "", callback.URL, h.callbackRetryAPIKey(callback), payload, err.Error())
 	}
 }
 
-func (h *Handler) buildCallbackPayload(status string, progress int, message string, result map[string]interface{}, errorMessage string, stage string, terminal bool) map[string]interface{} {
+func (h *Handler) buildCallbackPayload(callback *models.TaskCallbackConfig, status string, progress int, message string, result map[string]interface{}, errorMessage string, stage string, terminal bool) map[string]interface{} {
 	body := map[string]interface{}{
-		"status":   status,
-		"progress": progress,
-		"message":  message,
-		"terminal": terminal,
+		"status":      status,
+		"progress":    progress,
+		"message":     message,
+		"terminal":    terminal,
+		"callback_at": time.Now().UTC().Format(time.RFC3339Nano),
 	}
 	if stage != "" {
 		body["stage"] = stage
+	}
+	if callback != nil {
+		if strings.TrimSpace(callback.TenantID) != "" {
+			body["tenant_id"] = strings.TrimSpace(callback.TenantID)
+		}
+		if strings.TrimSpace(callback.RouterID) != "" {
+			body["router_id"] = strings.TrimSpace(callback.RouterID)
+		}
 	}
 	if result != nil {
 		body["result"] = result
