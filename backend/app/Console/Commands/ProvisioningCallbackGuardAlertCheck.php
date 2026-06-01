@@ -2,8 +2,10 @@
 
 namespace App\Console\Commands;
 
+use App\Events\ProvisioningCallbackGuardAlertRaised;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Log;
 
 class ProvisioningCallbackGuardAlertCheck extends Command
@@ -56,6 +58,15 @@ class ProvisioningCallbackGuardAlertCheck extends Command
             'critical_threshold' => $criticalThreshold,
             'deltas' => $deltas,
         ]);
+
+        Event::dispatch(new ProvisioningCallbackGuardAlertRaised(
+            level: $level,
+            windowMinutes: $windowMinutes,
+            totalDelta: $totalDelta,
+            warnThreshold: $warnThreshold,
+            criticalThreshold: $criticalThreshold,
+            deltas: $deltas
+        ));
 
         $this->warn(sprintf(
             'Provisioning callback guard %s trend alert: %d in last %d minute(s).',

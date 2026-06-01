@@ -241,7 +241,7 @@ import SlideOverlay from '@/modules/common/components/base/SlideOverlay.vue'
 import { useToast } from '@/modules/common/composables/useToast.js'
 import { useSSE } from '@/modules/common/composables/websocket/useSSE'
 
-const { error: showError } = useToast()
+const { error: showError, warning: showWarning } = useToast()
 
 const metrics = ref(null)
 const queueStats = ref({})
@@ -399,6 +399,19 @@ subscribeMany({
     if (data.queue)       queueStats.value = { ...queueStats.value, ...data.queue }
     if (data.performance) metrics.value   = { ...(metrics.value || {}), ...data.performance }
     loading.value = false
+  },
+  'provisioning.callback_guard.alert': (data) => {
+    fetchAll()
+
+    const level = data?.level || 'warning'
+    const totalDelta = data?.total_delta || 0
+    const windowMinutes = data?.window_minutes || 10
+    const message = level === 'critical'
+      ? 'Critical provisioning callback guard alert: ' + totalDelta + ' outcomes in the last ' + windowMinutes + ' minute(s).'
+      : 'Provisioning callback guard alert: ' + totalDelta + ' outcomes in the last ' + windowMinutes + ' minute(s).'
+
+    if (level === 'critical') showWarning(message, 6000)
+    else showWarning(message, 4000)
   },
 })
 </script>
