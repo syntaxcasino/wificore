@@ -2,7 +2,9 @@
 
 namespace Tests\Feature\Console;
 
+use App\Events\ProvisioningCallbackGuardAlertRaised;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Event;
 use Tests\TestCase;
 
 class ProvisioningCallbackGuardAlertCheckCommandTest extends TestCase
@@ -10,6 +12,8 @@ class ProvisioningCallbackGuardAlertCheckCommandTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        config(['broadcasting.default' => 'log']);
 
         foreach ([
             'identity_validation_failed',
@@ -49,5 +53,28 @@ class ProvisioningCallbackGuardAlertCheckCommandTest extends TestCase
         $cooldown = Cache::get('metrics:provisioning:callback_guard:alert_cooldown');
         $this->assertIsArray($cooldown);
         $this->assertSame(7, (int) ($cooldown['total_delta'] ?? 0));
+    }
+
+
+    public function test_it_broadcasts_alert_event_when_threshold_exceeded(): void
+    {
+        $minuteKey = now()->format('Y-m-d\TH:i');
+        Cache::put('metrics:provisioning:callback_guard:trend:identity_validation_failed', [
+            $minuteKey => 7,
+        ], now()->addMinutes(10));
+
+        Event::fake([ProvisioningCallbackGuardAlertRaised::class]);
+
+        $this->artisan('provisioning:callback-guard-alert-check')
+            ->expectsOutputToContain('trend alert')
+            ->assertExitCode(0);
+
+        Event::assertDispatched(ProvisioningCallbackGuardAlertRaised::class, function (ProvisioningCallbackGuardAlertRaised $event): bool {
+            return $event->level === 'warning'
+                && $event->totalDelta === 7
+                && $event->windowMinutes === 10
+                && $event->warnThreshold === 5
+                && $event->criticalThreshold === 20;
+        });
     }
 }
