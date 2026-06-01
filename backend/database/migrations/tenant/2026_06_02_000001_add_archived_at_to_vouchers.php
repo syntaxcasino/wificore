@@ -1,27 +1,45 @@
 <?php
 
 use Illuminate\Database\Migrations\Migration;
-use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\DB;
 
 return new class extends Migration
 {
+    public $withinTransaction = false;
+
     public function up(): void
     {
-        if (Schema::hasTable('vouchers') && !Schema::hasColumn('vouchers', 'archived_at')) {
-            Schema::table('vouchers', function (Blueprint $table) {
-                $table->timestamp('archived_at')->nullable()->index();
-            });
+        $tableExists = DB::selectOne(
+            "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'vouchers' AND table_schema = current_schema()) AS exists"
+        );
+
+        if (!$tableExists || !$tableExists->exists) {
+            return;
         }
+
+        $columnExists = DB::selectOne(
+            "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'vouchers' AND column_name = 'archived_at' AND table_schema = current_schema()) AS exists"
+        );
+
+        if ($columnExists && $columnExists->exists) {
+            return;
+        }
+
+        DB::statement('ALTER TABLE vouchers ADD COLUMN archived_at TIMESTAMP NULL');
+        DB::statement('CREATE INDEX IF NOT EXISTS vouchers_archived_at_index ON vouchers (archived_at)');
     }
 
     public function down(): void
     {
-        if (Schema::hasTable('vouchers') && Schema::hasColumn('vouchers', 'archived_at')) {
-            Schema::table('vouchers', function (Blueprint $table) {
-                $table->dropIndex(['archived_at']);
-                $table->dropColumn('archived_at');
-            });
+        $columnExists = DB::selectOne(
+            "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'vouchers' AND column_name = 'archived_at' AND table_schema = current_schema()) AS exists"
+        );
+
+        if (!$columnExists || !$columnExists->exists) {
+            return;
         }
+
+        DB::statement('DROP INDEX IF EXISTS vouchers_archived_at_index');
+        DB::statement('ALTER TABLE vouchers DROP COLUMN IF EXISTS archived_at');
     }
 };
