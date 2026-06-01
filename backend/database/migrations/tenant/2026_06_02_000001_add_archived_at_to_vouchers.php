@@ -5,8 +5,6 @@ use Illuminate\Support\Facades\DB;
 
 return new class extends Migration
 {
-    public $withinTransaction = false;
-
     public function up(): void
     {
         $tableExists = DB::selectOne(
