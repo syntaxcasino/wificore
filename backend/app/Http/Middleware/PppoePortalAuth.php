@@ -187,6 +187,7 @@ class PppoePortalAuth
         $tenant = Tenant::query()
             ->whereKey($tenantId)
             ->where('is_active', true)
+            ->where('schema_created', true)
             ->whereNotNull('schema_name')
             ->first(['id', 'schema_name', 'schema_created']);
 
@@ -220,6 +221,7 @@ class PppoePortalAuth
 
         $tenant = Tenant::query()
             ->where('is_active', true)
+            ->where('schema_created', true)
             ->whereNotNull('schema_name')
             ->where(function ($query) use ($mapping) {
                 if (!empty($mapping->tenant_id)) {
