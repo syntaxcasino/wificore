@@ -1,4 +1,5 @@
 <template>
+  <div class="flex flex-col h-full min-h-0">
   <DataViewContainer
     title="Router Management"
     subtitle="Manage your network infrastructure"
@@ -23,64 +24,6 @@
         <path stroke-linecap="round" stroke-linejoin="round" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904 3.905 10.236 3.905 14.142 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0" />
       </svg>
     </template>
-
-    <!-- Overlays (keep mounted so provisioning flow doesn't reset during list refresh/loading) -->
-    <DetailsOverlay 
-      :show-details-overlay="showDetailsOverlay" 
-      :selected-router="currentRouter"
-      :loading="detailsLoading"
-      :error="detailsError"
-      :refreshing="refreshing"
-      :template-marketplace="templateMarketplace"
-      @close-details="closeDetails" 
-      @refresh-details="refreshDetails" 
-    />
-    <Overlay 
-      :show-form-overlay="showFormOverlay" 
-      :loading="false" 
-      :form-error="formError"
-      @close-form="closeFormOverlay"
-      @retry="fetchRouters" 
-      @refresh-routers="fetchRouters" 
-    />
-    <ReprovisionOverlay
-      :visible="showReprovisionOverlay"
-      :router="reprovisioningRouter"
-      @close="closeReprovisionOverlay"
-      @retry="handleReprovisionRetry"
-    />
-    <MassRouterOrchestrationOverlay
-      :visible="showMassOrchestrationOverlay"
-      :routers="filteredRouters"
-      :templates="templateMarketplace"
-      :preview="massOrchestrationPreview"
-      :loading="massOrchestrationLoading"
-      :deploying="massOrchestrationDeploying"
-      :error="massOrchestrationError"
-      :deploy-error="massOrchestrationDeployError"
-      :deploy-result="massOrchestrationDeployResult"
-      @close="closeMassOrchestrationOverlay"
-      @preview="handleMassOrchestrationPreview"
-      @deploy="handleMassOrchestrationDeploy"
-    />
-    <UpdateOverlay 
-      :show-update-overlay="showUpdateOverlay" 
-      :selected-router="selectedRouter" 
-      :form-data="formData"
-      :form-submitting="formSubmitting" 
-      :form-message="formMessage" 
-      :form-submitted="formSubmitted"
-      :config-token="formData.config_token" 
-      :config-loading="configLoading" 
-      :error="formError"
-      :format-timestamp="formatTimestamp" 
-      :vendor-options="vendorOptions"
-      @close-update="closeUpdateOverlay" 
-      @generate-configs="generateConfigs"
-      @copy-token="copyToClipboard" 
-      @update-router="handleFormSubmit" 
-      @retry="fetchRouters" 
-    />
 
     <!-- Filters -->
     <template #filters>
@@ -284,6 +227,65 @@
       @add="openCreateOverlay"
     />
   </DataViewContainer>
+
+  <!-- Overlays (outside DataViewContainer so they don't break v-if/v-else-if chain in the slot) -->
+  <DetailsOverlay 
+    :show-details-overlay="showDetailsOverlay" 
+    :selected-router="currentRouter"
+    :loading="detailsLoading"
+    :error="detailsError"
+    :refreshing="refreshing"
+    :template-marketplace="templateMarketplace"
+    @close-details="closeDetails" 
+    @refresh-details="refreshDetails" 
+  />
+  <Overlay 
+    :show-form-overlay="showFormOverlay" 
+    :loading="false" 
+    :form-error="formError"
+    @close-form="closeFormOverlay"
+    @retry="fetchRouters" 
+    @refresh-routers="fetchRouters" 
+  />
+  <ReprovisionOverlay
+    :visible="showReprovisionOverlay"
+    :router="reprovisioningRouter"
+    @close="closeReprovisionOverlay"
+    @retry="handleReprovisionRetry"
+  />
+  <MassRouterOrchestrationOverlay
+    :visible="showMassOrchestrationOverlay"
+    :routers="filteredRouters"
+    :templates="templateMarketplace"
+    :preview="massOrchestrationPreview"
+    :loading="massOrchestrationLoading"
+    :deploying="massOrchestrationDeploying"
+    :error="massOrchestrationError"
+    :deploy-error="massOrchestrationDeployError"
+    :deploy-result="massOrchestrationDeployResult"
+    @close="closeMassOrchestrationOverlay"
+    @preview="handleMassOrchestrationPreview"
+    @deploy="handleMassOrchestrationDeploy"
+  />
+  <UpdateOverlay 
+    :show-update-overlay="showUpdateOverlay" 
+    :selected-router="selectedRouter" 
+    :form-data="formData"
+    :form-submitting="formSubmitting" 
+    :form-message="formMessage" 
+    :form-submitted="formSubmitted"
+    :config-token="formData.config_token" 
+    :config-loading="configLoading" 
+    :error="formError"
+    :format-timestamp="formatTimestamp" 
+    :vendor-options="vendorOptions"
+    @close-update="closeUpdateOverlay" 
+    @generate-configs="generateConfigs"
+    @copy-token="copyToClipboard" 
+    @update-router="handleFormSubmit" 
+    @retry="fetchRouters" 
+  />
+  </div>
 </template>
 
 <script setup>
