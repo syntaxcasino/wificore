@@ -528,6 +528,7 @@ const {
   formatDate,
   getPackageById,
   calculateTotalValue,
+  copyVoucherCode,
   setupWebSocketListeners,
   cleanupWebSocketListeners
 } = useVouchers()
@@ -726,12 +727,10 @@ const handleGenerate = async () => {
 const copiedId = ref(null)
 
 const copyToClipboard = async (text, id) => {
-  try {
-    await navigator.clipboard.writeText(text)
+  const copied = await copyVoucherCode(text)
+  if (copied) {
     copiedId.value = id
     setTimeout(() => { copiedId.value = null }, 2000)
-  } catch (err) {
-    console.error('Failed to copy:', err)
   }
 }
 

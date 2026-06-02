@@ -429,6 +429,39 @@ export function useVouchers() {
     return (pkg.price || 0) * qty
   }
 
+  const copyVoucherCode = async (code) => {
+    if (!code) {
+      notify.error('Copy Failed', 'No voucher code available to copy')
+      return false
+    }
+
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(code)
+      } else {
+        const textarea = document.createElement('textarea')
+        textarea.value = code
+        textarea.setAttribute('readonly', '')
+        textarea.style.position = 'fixed'
+        textarea.style.opacity = '0'
+        document.body.appendChild(textarea)
+        textarea.select()
+        const copied = document.execCommand('copy')
+        document.body.removeChild(textarea)
+        if (!copied) {
+          throw new Error('Clipboard copy failed')
+        }
+      }
+
+      notify.success('Voucher Copied', `Voucher ${code} copied to clipboard`)
+      return true
+    } catch (err) {
+      console.error('Failed to copy voucher code:', err)
+      notify.error('Copy Failed', 'Failed to copy voucher code')
+      return false
+    }
+  }
+
   // WebSocket event handlers for real-time updates
   // Track last sync timestamp for catch-up on reconnect
   const lastSyncTimestamp = ref(null)
@@ -650,6 +683,7 @@ export function useVouchers() {
     formatDate,
     getPackageById,
     calculateTotalValue,
+    copyVoucherCode,
 
     // WebSocket
     setupWebSocketListeners,
