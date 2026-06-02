@@ -498,9 +498,11 @@ import BaseSelect from '@/modules/common/components/base/BaseSelect.vue'
 import SlideOverlay from '@/modules/common/components/base/SlideOverlay.vue'
 import { useVouchers } from '@/modules/tenant/composables/useVouchers'
 import { useConfirmStore } from '@/stores/confirm'
+import { useNotificationStore } from '@/stores/notifications'
 import { useToast } from '@/modules/common/composables/useToast.js'
 
 const confirmStore = useConfirmStore()
+const notify = useNotificationStore()
 const { error: showError } = useToast()
 
 const {
@@ -729,9 +731,11 @@ const copyToClipboard = async (text, id) => {
   try {
     await navigator.clipboard.writeText(text)
     copiedId.value = id
+    notify.success('Voucher Copied', `Voucher ${text} copied to clipboard`)
     setTimeout(() => { copiedId.value = null }, 2000)
   } catch (err) {
     console.error('Failed to copy:', err)
+    notify.error('Copy Failed', 'Failed to copy voucher code')
   }
 }
 
