@@ -11,6 +11,7 @@ use App\Events\VoucherDeleted;
 use App\Helpers\PackageExpiryHelper;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
 class VoucherController extends Controller
@@ -21,22 +22,14 @@ class VoucherController extends Controller
     public function index(Request $request)
     {
         // Optimized query with specific column selection
-        $query = Voucher::select([
-            'id', 'code', 'package_id', 'router_id', 'status', 'used_by',
-            'used_at', 'expires_at', 'prefix', 'notes', 'batch_id',
-            'archived_at', 'created_at', 'updated_at'
-        ])
+        $query = Voucher::select($this->voucherListColumns())
         ->with([
             'package:id,name,price,download_speed,validity'
         ])
         ->orderBy('created_at', 'desc');
 
         // Exclude archived vouchers unless explicitly requested
-        if ($request->boolean('include_archived')) {
-            $query->whereNotNull('archived_at');
-        } else {
-            $query->whereNull('archived_at');
-        }
+        $this->applyArchivedFilter($query, $request->boolean('include_archived'));
 
         // Apply filters efficiently
         if ($request->filled('status')) {
@@ -254,7 +247,20 @@ class VoucherController extends Controller
         $tenantId = auth()->user()?->tenant_id;
         $cacheKey = 'voucher_stats_tenant_' . $tenantId;
 
-        $stats = Cache::remember($cacheKey, now()->addSeconds(15), function () {
+        $supportsArchiving = $this->voucherSupportsArchiving();
+
+        $stats = Cache::remember($cacheKey, now()->addSeconds(15), function () use ($supportsArchiving) {
+            if (! $supportsArchiving) {
+                return [
+                    'total' => Voucher::count(),
+                    'unused' => Voucher::where('status', 'unused')->count(),
+                    'used' => Voucher::where('status', 'used')->count(),
+                    'expired' => Voucher::where('status', 'expired')->count(),
+                    'revoked' => Voucher::where('status', 'revoked')->count(),
+                    'archived' => 0,
+                ];
+            }
+
             return [
                 'total' => Voucher::whereNull('archived_at')->count(),
                 'unused' => Voucher::where('status', 'unused')->whereNull('archived_at')->count(),
@@ -276,6 +282,13 @@ class VoucherController extends Controller
      */
     public function archive(Voucher $voucher)
     {
+        if (! $this->voucherSupportsArchiving()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Voucher archiving is not available until the archived_at column is deployed.',
+            ], 409);
+        }
+
         if ($voucher->archived_at) {
             return response()->json([
                 'success' => false,
@@ -301,6 +314,13 @@ class VoucherController extends Controller
      */
     public function restore(Voucher $voucher)
     {
+        if (! $this->voucherSupportsArchiving()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Voucher archiving is not available until the archived_at column is deployed.',
+            ], 409);
+        }
+
         if (!$voucher->archived_at) {
             return response()->json([
                 'success' => false,
@@ -333,6 +353,13 @@ class VoucherController extends Controller
 
         $ids = $validated['ids'];
         $tenantId = auth()->user()?->tenant_id;
+
+        if (! $this->voucherSupportsArchiving()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Voucher archiving is not available until the archived_at column is deployed.',
+            ], 409);
+        }
 
         $archivedCount = 0;
         foreach ($ids as $id) {
@@ -382,8 +409,10 @@ class VoucherController extends Controller
             return '"' . str_replace('"', '""', $h) . '"';
         }, $headers)) . "\n";
 
+        $supportsArchiving = $this->voucherSupportsArchiving();
+
         foreach ($vouchers as $v) {
-            $status = $v->archived_at ? "{$v->status} (archived)" : $v->status;
+            $status = $supportsArchiving && $v->archived_at ? "{$v->status} (archived)" : $v->status;
             $row = [
                 $v->code,
                 $v->package?->name ?? '',
@@ -393,7 +422,7 @@ class VoucherController extends Controller
                 $v->expires_at ? $v->expires_at->format('Y-m-d H:i:s') : '',
                 $v->used_at ? $v->used_at->format('Y-m-d H:i:s') : '',
                 $v->created_at ? $v->created_at->format('Y-m-d H:i:s') : '',
-                $v->archived_at ? $v->archived_at->format('Y-m-d H:i:s') : '',
+                $supportsArchiving && $v->archived_at ? $v->archived_at->format('Y-m-d H:i:s') : '',
                 $v->notes ?? '',
             ];
             $csv .= implode(',', array_map(function ($cell) {
@@ -485,6 +514,37 @@ class VoucherController extends Controller
 
         // Fallback: append UUID fragment
         return ($prefix ? strtoupper($prefix) . '-' : '') . strtoupper(Str::random(12));
+    }
+
+    private function voucherSupportsArchiving(): bool
+    {
+        return Schema::hasColumn((new Voucher())->getTable(), 'archived_at');
+    }
+
+    private function voucherListColumns(): array
+    {
+        $columns = [
+            'id', 'code', 'package_id', 'router_id', 'status', 'used_by',
+            'used_at', 'expires_at', 'prefix', 'notes', 'batch_id',
+            'archived_at', 'created_at', 'updated_at'
+        ];
+
+        if (! $this->voucherSupportsArchiving()) {
+            return array_values(array_filter($columns, fn ($column) => $column !== 'archived_at'));
+        }
+
+        return $columns;
+    }
+
+    private function applyArchivedFilter($query, bool $includeArchived)
+    {
+        if (! $this->voucherSupportsArchiving()) {
+            return $query;
+        }
+
+        return $includeArchived
+            ? $query->whereNotNull('archived_at')
+            : $query->whereNull('archived_at');
     }
 
     /**

@@ -13,6 +13,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Scheduled job to check for unused vouchers whose expiry date has passed
@@ -53,6 +54,8 @@ class ExpireUnusedVouchersJob implements ShouldQueue
         $this->executeInTenantContext(function () {
             $now = now();
 
+            $supportsArchiving = Schema::hasColumn('vouchers', 'archived_at');
+
             $expiredVouchers = Voucher::query()
                 ->select(['id', 'code', 'status', 'expires_at', 'package_id'])
                 ->where('status', 'unused')
@@ -68,10 +71,15 @@ class ExpireUnusedVouchersJob implements ShouldQueue
 
             foreach ($expiredVouchers as $voucher) {
                 try {
-                    $voucher->update([
+                    $update = [
                         'status' => 'expired',
-                        'archived_at' => now(),
-                    ]);
+                    ];
+
+                    if ($supportsArchiving) {
+                        $update['archived_at'] = now();
+                    }
+
+                    $voucher->update($update);
 
                     broadcast(new VoucherUpdated($voucher->fresh(), $this->tenantId))->toOthers();
 
