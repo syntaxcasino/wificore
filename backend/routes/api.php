@@ -1030,8 +1030,9 @@ Route::middleware(['auth:sanctum', 'role:admin', 'user.active', 'tenant.context'
         Route::get('/access-points', [AccessPointController::class, 'index'])->name('access-points.index');
         Route::post('/access-points', [AccessPointController::class, 'store'])->name('access-points.store');
         Route::post('/access-points/discover', [AccessPointController::class, 'discover'])->name('access-points.discover');
-        Route::post('/orchestration/preview', [RouterController::class, 'previewMassOrchestration'])->name('orchestration.preview');
-        Route::post('/orchestration/deploy', [RouterController::class, 'deployMassOrchestration'])->name('orchestration.deploy');
+        // Router-scoped orchestration endpoints keep distinct names from the bulk API routes above.
+        Route::post('/orchestration/preview', [RouterController::class, 'previewMassOrchestration'])->name('router-orchestration.preview');
+        Route::post('/orchestration/deploy', [RouterController::class, 'deployMassOrchestration'])->name('router-orchestration.deploy');
     });
 
     // -------------------------------------------------------------------------
