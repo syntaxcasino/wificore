@@ -1010,7 +1010,6 @@ export function useRouters() {
     detailsError,
     detailsLoading,
     vendorOptions,
-    showMassOrchestrationOverlay,
     massOrchestrationPreview,
     massOrchestrationLoading,
     massOrchestrationError,
