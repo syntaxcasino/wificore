@@ -76,7 +76,7 @@
     </div>
 
     <!-- Main Content Slot -->
-    <div class="flex-1 min-h-0 overflow-hidden flex flex-col dark:bg-slate-800/50">
+    <div class="flex-1 min-h-0 overflow-auto flex flex-col dark:bg-slate-800/50">
       <slot />
     </div>
   </div>

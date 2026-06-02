@@ -1,6 +1,7 @@
 <template>
   <div class="flex flex-col h-full min-h-0">
   <DataViewContainer
+    class="flex-1 min-h-0"
     title="Router Management"
     subtitle="Manage your network infrastructure"
     color-theme="indigo"
@@ -54,7 +55,7 @@
     <DataSkeleton v-else-if="loading" :count="5" />
 
     <!-- Data Content -->
-    <div v-else-if="filteredRouters.length" class="flex flex-col h-full px-2 md:px-4 pt-1 pb-1 min-h-0">
+    <div v-else-if="filteredRouters.length" class="flex flex-col flex-1 min-h-0 px-2 md:px-4 pt-1 pb-1">
       <!-- Mobile Cards -->
       <div class="md:hidden space-y-3 overflow-y-auto flex-1 min-h-0">
         <MobileDataCard
