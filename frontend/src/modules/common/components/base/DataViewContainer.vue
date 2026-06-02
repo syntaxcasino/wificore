@@ -70,8 +70,13 @@
       </div>
     </div>
 
+    <!-- Filters Slot (rendered below header, above main content) -->
+    <div v-if="$slots.filters" class="flex-shrink-0 flex items-center gap-2 px-4 md:px-6 py-2 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
+      <slot name="filters" />
+    </div>
+
     <!-- Main Content Slot -->
-    <div class="flex-1 min-h-0 overflow-hidden flex flex-col dark:bg-slate-800/50 p-4 md:p-6">
+    <div class="flex-1 min-h-0 overflow-hidden flex flex-col dark:bg-slate-800/50">
       <slot />
     </div>
   </div>
