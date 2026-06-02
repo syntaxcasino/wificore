@@ -109,6 +109,7 @@
             >
               <svg v-if="tab.id === 'system'" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
               <svg v-else-if="tab.id === 'compliance'" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3l7 4v5c0 5-3.5 9.5-7 11-3.5-1.5-7-6-7-11V7l7-4z" /><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4" /></svg>
+              <svg v-else-if="tab.id === 'orchestration'" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
               <svg v-else-if="tab.id === 'events'" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
               <svg v-else-if="tab.id === 'assistant'" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6V4m0 16v-2m8-6h-2M6 12H4m13.657 5.657-1.414-1.414M7.757 7.757 6.343 6.343m12.728 0-1.414 1.414M7.757 16.243l-1.414 1.414M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
               <svg v-else-if="tab.id === 'inventory'" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 7l9-4 9 4-9 4-9-4z" /><path stroke-linecap="round" stroke-linejoin="round" d="M3 7v10l9 4 9-4V7" /><path stroke-linecap="round" stroke-linejoin="round" d="M12 11v10" /></svg>
@@ -199,6 +200,143 @@
             :error="complianceError"
             @refresh="loadCompliance(true)"
           />
+        </div>
+
+        <!-- Orchestration Preview Tab -->
+        <div v-show="activeTab === 'orchestration'" class="space-y-4">
+          <div class="grid grid-cols-1 xl:grid-cols-3 gap-4">
+            <div class="xl:col-span-1 space-y-4">
+              <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                <h4 class="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
+                  <svg class="w-4 h-4 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                  Preview Inputs
+                </h4>
+                <div class="space-y-3">
+                  <div>
+                    <label class="block text-xs font-medium text-slate-500 mb-1">Template</label>
+                    <select v-model="localOrchestrationTemplate" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+                      <option v-for="template in templateMarketplace" :key="template.id" :value="template.id">{{ template.name }}</option>
+                    </select>
+                    <p class="mt-2 text-xs text-slate-500">{{ selectedOrchestrationTemplate?.description || 'Select a template from the marketplace to preview its rollout path.' }}</p>
+                  </div>
+
+                  <div class="grid grid-cols-2 gap-3">
+                    <div>
+                      <label class="block text-xs font-medium text-slate-500 mb-1">Change Type</label>
+                      <select v-model="localOrchestrationChangeType" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+                        <option value="apply_service_configs">Apply Service Configs</option>
+                        <option value="deploy_service_config">Deploy Service Config</option>
+                        <option value="verify_connectivity">Verify Connectivity</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label class="block text-xs font-medium text-slate-500 mb-1">Batch Size</label>
+                      <input v-model.number="localOrchestrationBatchSize" type="number" min="1" max="50" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+                    </div>
+                  </div>
+
+                  <div class="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <p class="text-[10px] uppercase tracking-wide text-slate-500">Target Router</p>
+                    <p class="font-bold text-slate-900">{{ routerDetails.name || 'Router' }}</p>
+                    <p class="text-xs text-slate-500 mt-1">{{ routerDetails.vendor || 'MikroTik' }} · {{ routerDetails.model || 'N/A' }} · {{ routerDetails.os_version || 'N/A' }}</p>
+                  </div>
+
+                  <button
+                    type="button"
+                    class="w-full inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+                    :disabled="orchestrationLoading || !selectedOrchestrationTemplate"
+                    @click="generateOrchestrationPreview"
+                  >
+                    <svg v-if="orchestrationLoading" class="mr-2 h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                    {{ orchestrationLoading ? 'Generating Preview...' : 'Generate Preview' }}
+                  </button>
+                </div>
+              </div>
+
+              <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                <h4 class="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
+                  <svg class="w-4 h-4 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                  Selected Template
+                </h4>
+                <p class="text-sm font-semibold text-slate-900">{{ selectedOrchestrationTemplate?.name || 'No template selected' }}</p>
+                <p class="text-xs text-slate-500 mt-1">{{ selectedOrchestrationTemplate?.description || 'Templates are loaded from the marketplace.' }}</p>
+                <div v-if="selectedOrchestrationTemplate" class="mt-3 rounded-xl border px-3 py-2 text-xs" :class="selectedOrchestrationTemplate.can_execute ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-amber-200 bg-amber-50 text-amber-800'">
+                  <p class="font-semibold uppercase tracking-wide">{{ selectedOrchestrationTemplate.execution_mode || 'preview_only' }}</p>
+                  <p class="mt-1">{{ selectedOrchestrationTemplate.execution_reason || 'Template execution details unavailable.' }}</p>
+                </div>
+                <div class="mt-3 flex flex-wrap gap-1">
+                  <span v-for="tag in (selectedOrchestrationTemplate?.tags || []).slice(0, 4)" :key="tag" class="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">{{ tag }}</span>
+                </div>
+              </div>
+
+              <div v-if="templateMarketplace?.length" class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                <h4 class="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
+                  <svg class="w-4 h-4 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 7h18M5 7l1 12h12l1-12M10 11v4m4-4v4" /></svg>
+                  Template Marketplace
+                </h4>
+                <div class="space-y-2 max-h-64 overflow-y-auto pr-1">
+                  <button
+                    v-for="template in templateMarketplace"
+                    :key="template.id"
+                    type="button"
+                    @click="localOrchestrationTemplate = template.id"
+                    class="w-full text-left rounded-xl border p-3 transition-colors"
+                    :class="localOrchestrationTemplate === template.id ? 'border-indigo-300 bg-indigo-50' : 'border-slate-200 bg-white hover:bg-slate-50'"
+                  >
+                    <div class="flex items-center justify-between gap-2">
+                      <p class="text-sm font-semibold text-slate-900 truncate">{{ template.name }}</p>
+                      <span class="text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">{{ template.category || 'general' }}</span>
+                    </div>
+                    <p class="mt-1 text-xs text-slate-500 line-clamp-2">{{ template.description }}</p>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div class="xl:col-span-2 space-y-4">
+              <div v-if="orchestrationError" class="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{{ orchestrationError }}</div>
+
+              <div v-if="orchestrationPreview" class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm space-y-4">
+                <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
+                  <div>
+                    <h4 class="text-base font-semibold text-slate-900">Preview Plan</h4>
+                    <p class="text-sm text-slate-500">{{ orchestrationPreview.execution_strategy?.ordering || 'Deterministic ordering' }} · {{ orchestrationPreview.execution_strategy?.batching || 'sequential' }}</p>
+                  </div>
+                  <div class="flex gap-2 text-xs">
+                    <span class="px-2 py-1 rounded-full bg-indigo-100 text-indigo-700">{{ orchestrationPreview.router_count }} router</span>
+                    <span class="px-2 py-1 rounded-full bg-emerald-100 text-emerald-700">{{ orchestrationPreview.supported_count }} supported</span>
+                    <span class="px-2 py-1 rounded-full bg-amber-100 text-amber-700">{{ orchestrationPreview.warning_count }} warnings</span>
+                  </div>
+                </div>
+
+                <div v-if="orchestrationPreview.warnings?.length" class="rounded-xl border border-amber-200 bg-amber-50 p-3">
+                  <p class="text-xs font-semibold uppercase tracking-wide text-amber-700 mb-2">Warnings</p>
+                  <ul class="space-y-1 text-sm text-amber-800">
+                    <li v-for="warning in orchestrationPreview.warnings" :key="warning">{{ warning }}</li>
+                  </ul>
+                </div>
+
+                <div class="space-y-2 max-h-[28rem] overflow-y-auto pr-1">
+                  <div v-for="plan in orchestrationPreview.router_plans || []" :key="plan.router_id" class="rounded-xl border border-slate-200 p-3">
+                    <div class="flex items-center justify-between gap-3">
+                      <div>
+                        <p class="font-semibold text-slate-900">{{ plan.name }}</p>
+                        <p class="text-xs text-slate-500">{{ plan.vendor }} · {{ plan.version_profile || 'n/a' }} · {{ plan.vendor_profile || 'n/a' }}</p>
+                      </div>
+                      <span class="text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full" :class="plan.supported ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'">{{ plan.supported ? 'supported' : 'blocked' }}</span>
+                    </div>
+                    <ul v-if="plan.warnings?.length" class="mt-2 space-y-1 text-xs text-slate-600">
+                      <li v-for="warning in plan.warnings" :key="warning">• {{ warning }}</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+
+              <div v-else class="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">
+                Generate a preview to inspect the selected template, rollout ordering, and warnings for this router.
+              </div>
+            </div>
+          </div>
         </div>
 
         <!-- Troubleshooting Assistant Tab -->
@@ -1846,6 +1984,10 @@ export default {
     loading: Boolean,
     error: String,
     refreshing: Boolean,
+    templateMarketplace: {
+      type: Array,
+      default: () => [],
+    },
   },
   emits: ['close-details', 'refresh-details'],
   computed: {
@@ -1876,6 +2018,13 @@ export default {
       if (status === 'offline' || status === 'disconnected') return 'Offline'
       if (status === 'pending' || status === 'warning') return 'Warning'
       return 'Unknown'
+    },
+    selectedOrchestrationTemplate() {
+      if (!this.localOrchestrationTemplate || !Array.isArray(this.templateMarketplace)) {
+        return null
+      }
+
+      return this.templateMarketplace.find((template) => template.id === this.localOrchestrationTemplate) || null
     },
     vpnStatusBadgeClass() {
       const status = String(this.routerDetails.vpn_status || '').toLowerCase()
@@ -2429,6 +2578,7 @@ export default {
       tabs: [
         { id: 'system', label: 'System Information' },
         { id: 'compliance', label: 'Compliance' },
+        { id: 'orchestration', label: 'Orchestration Preview' },
         { id: 'provisioning', label: 'Provisioning Runs' },
         { id: 'events', label: 'Device Events' },
         { id: 'assistant', label: 'Assistant' },
@@ -2439,6 +2589,12 @@ export default {
         { id: 'backups', label: 'Backups' },
         { id: 'config', label: 'Configurations' },
       ],
+      orchestrationLoading: false,
+      orchestrationError: '',
+      orchestrationPreview: null,
+      localOrchestrationTemplate: '',
+      localOrchestrationChangeType: 'apply_service_configs',
+      localOrchestrationBatchSize: 1,
       trafficLoading: false,
       trafficError: '',
       trafficData: [],
@@ -2510,6 +2666,7 @@ export default {
         this.loadCompliance()
         this.loadProvisioningRuns()
         this.subscribeToMetrics()
+        this.initOrchestrationDefaults()
         if (this.activeTab === 'events') {
           this.fetchRouterEvents()
         }
@@ -2525,6 +2682,7 @@ export default {
         this.selectedProvisioningRunId = null
         this.complianceReport = null
         this.complianceError = ''
+        this.resetOrchestrationPreview()
       }
     },
     selectedRouter() {
@@ -2533,6 +2691,7 @@ export default {
         this.loadResources()
         this.loadCompliance()
         this.loadProvisioningRuns()
+        this.initOrchestrationDefaults()
       }
       this.eventsData = []
       this.eventsSummary = {}
@@ -2543,6 +2702,7 @@ export default {
       this.selectedProvisioningRunId = null
       this.complianceReport = null
       this.complianceError = ''
+      this.resetOrchestrationPreview()
       if (this.showDetailsOverlay && this.activeTab === 'events') {
         this.$nextTick(() => this.fetchRouterEvents())
       }
@@ -2567,9 +2727,18 @@ export default {
       if (val === 'compliance' && !this.complianceReport && !this.complianceLoading) {
         this.loadCompliance()
       }
+      if (val === 'orchestration') {
+        this.initOrchestrationDefaults()
+      }
       if (val === 'provisioning') {
         this.loadProvisioningRuns()
       }
+    },
+    templateMarketplace: {
+      immediate: true,
+      handler() {
+        this.initOrchestrationDefaults()
+      },
     },
   },
   methods: {
@@ -2661,6 +2830,69 @@ export default {
       }
     },
 
+    initOrchestrationDefaults() {
+      if (!Array.isArray(this.templateMarketplace) || this.templateMarketplace.length === 0) {
+        return
+      }
+
+      if (!this.localOrchestrationTemplate || !this.templateMarketplace.some((template) => template.id === this.localOrchestrationTemplate)) {
+        this.localOrchestrationTemplate = this.templateMarketplace[0].id
+      }
+    },
+    resetOrchestrationPreview() {
+      this.orchestrationLoading = false
+      this.orchestrationError = ''
+      this.orchestrationPreview = null
+      this.localOrchestrationTemplate = ''
+      this.localOrchestrationChangeType = 'apply_service_configs'
+      this.localOrchestrationBatchSize = 1
+    },
+    async generateOrchestrationPreview() {
+      const routerId = this.routerDetails?.id
+      const template = this.localOrchestrationTemplate
+
+      if (!routerId) {
+        this.orchestrationError = 'Router details are not available.'
+        return
+      }
+
+      if (!template) {
+        this.orchestrationError = 'Select a template before generating a preview.'
+        return
+      }
+
+      this.orchestrationLoading = true
+      this.orchestrationError = ''
+      this.orchestrationPreview = null
+
+      try {
+        const response = await axios.post('/routers/orchestration/preview', {
+          routers: [
+            {
+              id: routerId,
+              name: this.routerDetails.name || 'Router',
+              vendor: this.routerDetails.vendor || 'mikrotik',
+              model: this.routerDetails.model || '',
+              os_version: this.routerDetails.os_version || '',
+              status: this.routerDetails.status || 'unknown',
+            },
+          ],
+          change_type: this.localOrchestrationChangeType,
+          template,
+          batch_size: this.localOrchestrationBatchSize || 1,
+        })
+
+        if (!response.data?.success) {
+          throw new Error(response.data?.message || 'Failed to generate orchestration preview')
+        }
+
+        this.orchestrationPreview = response.data.plan || null
+      } catch (err) {
+        this.orchestrationError = err.response?.data?.message || err.response?.data?.error || err.message || 'Failed to generate orchestration preview'
+      } finally {
+        this.orchestrationLoading = false
+      }
+    },
     formatEventAction(action) {
       return (action || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
     },

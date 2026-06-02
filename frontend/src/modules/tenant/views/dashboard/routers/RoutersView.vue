@@ -31,6 +31,7 @@
       :loading="detailsLoading"
       :error="detailsError"
       :refreshing="refreshing"
+      :template-marketplace="templateMarketplace"
       @close-details="closeDetails" 
       @refresh-details="refreshDetails" 
     />
