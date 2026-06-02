@@ -98,31 +98,6 @@
       </button>
     </template>
 
-    <div v-if="templateMarketplace?.length" class="mx-2 md:mx-4 mb-4 rounded-2xl border border-indigo-200 bg-gradient-to-r from-indigo-50 via-white to-cyan-50 p-4 shadow-sm">
-      <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-        <div>
-          <p class="text-xs font-semibold uppercase tracking-wide text-indigo-600">Template Marketplace</p>
-          <p class="text-sm text-slate-600">Reusable router templates for multi-WAN, backups, hotspots, and ISP baselines.</p>
-        </div>
-        <div class="text-xs text-slate-500">{{ templateMarketplace.length }} templates available</div>
-      </div>
-      <div class="mt-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
-        <div v-for="template in templateMarketplace.slice(0, 4)" :key="template.id" class="rounded-xl border border-slate-200 bg-white p-3">
-          <div class="flex items-center justify-between gap-2">
-            <p class="font-semibold text-slate-900 text-sm truncate">{{ template.name }}</p>
-            <span class="text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">{{ template.category }}</span>
-          </div>
-          <div class="mt-1 flex items-center gap-2">
-            <span class="text-[10px] px-2 py-0.5 rounded-full" :class="template.can_execute ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'">{{ template.execution_mode || 'preview_only' }}</span>
-          </div>
-          <p class="text-xs text-slate-500 mt-1 line-clamp-2">{{ template.description }}</p>
-          <div class="mt-2 flex flex-wrap gap-1">
-            <span v-for="tag in (template.tags || []).slice(0, 3)" :key="tag" class="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">{{ tag }}</span>
-          </div>
-        </div>
-      </div>
-    </div>
-
     <!-- Error State -->
     <div v-if="listError" class="flex flex-col items-center justify-center gap-4 p-8 text-red-500">
       <svg xmlns="http://www.w3.org/2000/svg" class="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
