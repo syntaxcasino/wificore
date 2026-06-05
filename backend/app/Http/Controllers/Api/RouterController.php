@@ -1792,6 +1792,36 @@ class RouterController extends Controller
             ]);
         }
 
+        if (in_array($workflowStatus, [RouterTask::STATUS_COMPLETED, 'complete', 'success', 'duplicate_completed'], true)
+            && $task->status !== RouterTask::STATUS_COMPLETED
+        ) {
+            $previousTaskStatus = $task->status;
+            $result = (array) ($workflow['result'] ?? []);
+            $task->markCompleted(
+                $result,
+                (int) ($workflow['progress'] ?? 100),
+                (string) ($workflow['message'] ?? $task->message ?? 'Provisioning completed')
+            );
+
+            $router->update([
+                'status' => 'online',
+                'provisioning_stage' => 'completed',
+                'model' => $result['model'] ?? $router->model,
+                'os_version' => $result['os_version'] ?? $router->os_version,
+                'last_seen' => $result['last_seen'] ?? now(),
+                'last_checked' => now(),
+            ]);
+
+            Log::info('Provisioning workflow terminal completion reconciled into Laravel state', [
+                'task_id' => $task->id,
+                'router_id' => $router->id,
+                'tenant_id' => $task->tenant_id,
+                'previous_task_status' => $previousTaskStatus,
+                'workflow_stage' => $workflow['stage'] ?? null,
+                'workflow_status' => $workflowStatus,
+            ]);
+        }
+
         return $task->fresh() ?? $task;
     }
 
