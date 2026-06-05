@@ -34,6 +34,11 @@ class SystemLog extends Model
         'updated_at' => 'datetime',
     ];
 
+    public function requiresTenantContext(): bool
+    {
+        return false;
+    }
+
     /**
      * Get the user that performed the action
      */

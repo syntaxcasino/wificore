@@ -13,7 +13,7 @@ return new class extends Migration
     {
         Schema::create('system_logs', function (Blueprint $table) {
             $table->uuid('id')->primary();
-            $table->uuid('tenant_id');
+            $table->uuid('tenant_id')->nullable();
             $table->uuid('user_id')->nullable();
             $table->string('action');
             $table->json('details')->nullable();
@@ -27,7 +27,7 @@ return new class extends Migration
             $table->string('level', 20)->default('info');
             $table->timestamps();
             
-            $table->foreign('tenant_id')->references('id')->on('tenants')->onDelete('cascade');
+            $table->foreign('tenant_id')->references('id')->on('tenants')->onDelete('set null');
             $table->foreign('user_id')->references('id')->on('users')->onDelete('set null');
             
             $table->index('tenant_id');

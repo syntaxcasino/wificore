@@ -20,16 +20,20 @@ trait BelongsToTenant
 
         // Automatically set tenant_id when creating
         static::creating(function ($model) {
-            // Skip for system admins (they don't belong to a tenant)
+            // Skip for system admins (they don't belong to a tenant).
             if (auth()->check() && auth()->user()->role === 'system_admin') {
                 return;
             }
 
-            if (!$model->tenant_id && auth()->check()) {
+            if (! $model->tenant_id && auth()->check()) {
                 $model->tenant_id = auth()->user()->tenant_id;
             }
 
-            if (!$model->tenant_id) {
+            if (! $model->tenant_id && method_exists($model, 'requiresTenantContext') && ! $model->requiresTenantContext()) {
+                return;
+            }
+
+            if (! $model->tenant_id) {
                 Log::critical('Tenant context missing during tenant-scoped model creation', [
                     'model' => get_class($model),
                     'authenticated' => auth()->check(),
@@ -45,6 +49,15 @@ trait BelongsToTenant
                 );
             }
         });
+    }
+
+
+    /**
+     * Whether this model must always have a tenant context at creation time.
+     */
+    public function requiresTenantContext(): bool
+    {
+        return true;
     }
 
     /**
