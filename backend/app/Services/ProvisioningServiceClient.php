@@ -171,6 +171,13 @@ class ProvisioningServiceClient implements ProvisioningCommandBus
 
         $appUrl = rtrim((string) config('app.url', env('APP_URL', '')), '/');
         if ($appUrl === '' || $this->apiKey === '') {
+            Log::warning('Provisioning callbacks disabled: missing configuration', [
+                'has_app_url' => $appUrl !== '',
+                'has_api_key' => $this->apiKey !== '',
+                'task_id' => $task->id,
+                'tenant_id' => $task->tenant_id,
+                'hint' => 'Set APP_URL and PROVISIONING_SERVICE_API_KEY in .env',
+            ]);
             return null;
         }
 

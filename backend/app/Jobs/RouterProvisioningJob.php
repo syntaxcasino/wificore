@@ -95,6 +95,15 @@ class RouterProvisioningJob implements ShouldQueue
                 ]);
 
                 if ($task) {
+                    $callbacksEnabled = $taskExecutionService->callbacksEnabled($task);
+                    Log::info('Router provisioning submitting task command', [
+                        'router_id' => $router->id,
+                        'tenant_id' => $this->tenantId,
+                        'task_id' => $task->id,
+                        'callbacks_enabled' => $callbacksEnabled,
+                        'provisioning_run_id' => $run->id,
+                    ]);
+
                     $auditService->logStep($run, [
                         'stage' => 'submitted',
                         'action' => 'submit_task_command',
@@ -103,6 +112,7 @@ class RouterProvisioningJob implements ShouldQueue
                         'command_payload' => [
                             'task_type' => $task->type,
                             'service_type' => $this->provisioningData['service_type'] ?? null,
+                            'callbacks_enabled' => $callbacksEnabled,
                         ],
                     ]);
 

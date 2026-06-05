@@ -44,6 +44,15 @@ class ExecuteProvisioningServiceRouterTaskJob implements ShouldQueue
                 return;
             }
 
+            $callbacksEnabled = $executionService->callbacksEnabled($task);
+            Log::info('ExecuteProvisioningServiceRouterTaskJob submitting task command', [
+                'task_id' => $task->id,
+                'router_id' => $router->id,
+                'tenant_id' => $this->tenantId,
+                'task_type' => $task->type,
+                'callbacks_enabled' => $callbacksEnabled,
+            ]);
+
             $this->prepareRouterState($task, $router);
             $response = $executionService->submitTaskCommand($router, $this->tenantId, $task);
 
