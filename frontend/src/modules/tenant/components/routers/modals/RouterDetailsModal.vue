@@ -109,7 +109,6 @@
             >
               <svg v-if="tab.id === 'system'" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
               <svg v-else-if="tab.id === 'compliance'" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3l7 4v5c0 5-3.5 9.5-7 11-3.5-1.5-7-6-7-11V7l7-4z" /><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4" /></svg>
-              <svg v-else-if="tab.id === 'orchestration'" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
               <svg v-else-if="tab.id === 'events'" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
               <svg v-else-if="tab.id === 'assistant'" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6V4m0 16v-2m8-6h-2M6 12H4m13.657 5.657-1.414-1.414M7.757 7.757 6.343 6.343m12.728 0-1.414 1.414M7.757 16.243l-1.414 1.414M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
               <svg v-else-if="tab.id === 'inventory'" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 7l9-4 9 4-9 4-9-4z" /><path stroke-linecap="round" stroke-linejoin="round" d="M3 7v10l9 4 9-4V7" /><path stroke-linecap="round" stroke-linejoin="round" d="M12 11v10" /></svg>
@@ -202,8 +201,8 @@
           />
         </div>
 
-        <!-- Orchestration Preview Tab -->
-        <div v-show="activeTab === 'orchestration'" class="space-y-4">
+        <!-- Configuration Preview -->
+        <div v-show="activeTab === 'config'" class="space-y-4 mb-6">
           <div class="grid grid-cols-1 xl:grid-cols-3 gap-4">
             <div class="xl:col-span-1 space-y-4">
               <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
@@ -2578,7 +2577,6 @@ export default {
       tabs: [
         { id: 'system', label: 'System Information' },
         { id: 'compliance', label: 'Compliance' },
-        { id: 'orchestration', label: 'Orchestration Preview' },
         { id: 'provisioning', label: 'Provisioning Runs' },
         { id: 'events', label: 'Device Events' },
         { id: 'assistant', label: 'Assistant' },
@@ -2727,7 +2725,7 @@ export default {
       if (val === 'compliance' && !this.complianceReport && !this.complianceLoading) {
         this.loadCompliance()
       }
-      if (val === 'orchestration') {
+      if (val === 'config') {
         this.initOrchestrationDefaults()
       }
       if (val === 'provisioning') {
