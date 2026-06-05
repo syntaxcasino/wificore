@@ -303,6 +303,21 @@ class TenantContext
             }
         }
     }
+
+    /**
+     * Run code in a PgBouncer-safe tenant transaction.
+     */
+    public function runInTenantTransaction(Tenant $tenant, callable $callback)
+    {
+        return DB::transaction(function () use ($tenant, $callback) {
+            // Force all reads in this transaction onto the same write PDO that
+            // receives SET LOCAL search_path. Without sticky-write, callbacks on
+            // PgBouncer transaction pooling can read from a different connection.
+            DB::connection()->recordsHaveBeenModified();
+
+            return $this->runInTenantContext($tenant, $callback);
+        });
+    }
     
     /**
      * Run code in system context (public schema)

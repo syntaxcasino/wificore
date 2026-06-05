@@ -593,7 +593,7 @@ class InternalProvisioningTaskController extends Controller
             return;
         }
 
-        $this->tenantContext->runInTenantContext($tenant, function () use ($task, $run, $meta, $error): void {
+        $this->tenantContext->runInTenantTransaction($tenant, function () use ($task, $run, $meta, $error): void {
             $router = $this->findRollbackRouter((string) $task->router_id);
             if (! $router) {
                 $this->auditService->logStep($run, [
@@ -752,39 +752,37 @@ class InternalProvisioningTaskController extends Controller
             return;
         }
 
-        DB::transaction(function () use ($tenant, $task, $status, $progress, $message, $result, $stage, $terminal) {
-            $this->tenantContext->runInTenantContext($tenant, function () use ($task, $status, $progress, $message, $result, $stage, $terminal) {
-                $router = $this->findRollbackRouter((string) $task->router_id);
-                if (! $router) {
-                    Log::warning('Provisioning callback skipped router sync because router was not found', [
-                        'task_id' => $task->id,
-                        'tenant_id' => $task->tenant_id,
-                        'router_id' => $task->router_id,
-                    ]);
-                    return;
-                }
+        $this->tenantContext->runInTenantTransaction($tenant, function () use ($task, $status, $progress, $message, $result, $stage, $terminal) {
+            $router = $this->findRollbackRouter((string) $task->router_id);
+            if (! $router) {
+                Log::warning('Provisioning callback skipped router sync because router was not found', [
+                    'task_id' => $task->id,
+                    'tenant_id' => $task->tenant_id,
+                    'router_id' => $task->router_id,
+                ]);
+                return;
+            }
 
-                $stageName = $stage ?: match ($status) {
-                    RouterTask::STATUS_FAILED => 'failed',
-                    RouterTask::STATUS_COMPLETED => 'completed',
-                    default => 'submitted',
-                };
+            $stageName = $stage ?: match ($status) {
+                RouterTask::STATUS_FAILED => 'failed',
+                RouterTask::STATUS_COMPLETED => 'completed',
+                default => 'submitted',
+            };
 
-                switch ($task->type) {
-                    case RouterTask::TYPE_DEPLOY_SERVICE_CONFIG:
-                        $this->syncDeployServiceTask($router, $task, $status, $progress, $message, $result, $stageName, $terminal);
-                        break;
-                    case RouterTask::TYPE_APPLY_SERVICE_CONFIGS:
-                        $this->syncApplyConfigTask($router, $status, $result, $stageName, $terminal);
-                        break;
-                    case RouterTask::TYPE_VERIFY_CONNECTIVITY:
-                        $this->syncVerifyConnectivityTask($router, $status, $result, $stageName, $terminal);
-                        break;
-                    case RouterTask::TYPE_DISCOVER_INTERFACES:
-                        $this->syncDiscoverInterfacesTask($router, $status, $result, $stageName, $terminal, $task);
-                        break;
-                }
-            });
+            switch ($task->type) {
+                case RouterTask::TYPE_DEPLOY_SERVICE_CONFIG:
+                    $this->syncDeployServiceTask($router, $task, $status, $progress, $message, $result, $stageName, $terminal);
+                    break;
+                case RouterTask::TYPE_APPLY_SERVICE_CONFIGS:
+                    $this->syncApplyConfigTask($router, $status, $result, $stageName, $terminal);
+                    break;
+                case RouterTask::TYPE_VERIFY_CONNECTIVITY:
+                    $this->syncVerifyConnectivityTask($router, $status, $result, $stageName, $terminal);
+                    break;
+                case RouterTask::TYPE_DISCOVER_INTERFACES:
+                    $this->syncDiscoverInterfacesTask($router, $status, $result, $stageName, $terminal, $task);
+                    break;
+            }
         });
     }
 
