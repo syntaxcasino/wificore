@@ -367,6 +367,15 @@ class InternalMonitoringController extends Controller
                 $vpnConfig->update(['status' => 'disconnected']);
             }
 
+            if ($router) {
+                $router->update([
+                    'status' => 'failed',
+                    'provisioning_stage' => 'verify_connectivity_failed',
+                    'vpn_status' => 'inactive',
+                    'last_checked' => now(),
+                ]);
+            }
+
             broadcast(new VpnConnectivityFailed(
                 $tenantId,
                 $routerId,

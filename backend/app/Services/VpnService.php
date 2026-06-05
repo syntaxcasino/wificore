@@ -192,22 +192,30 @@ class VpnService extends TenantAwareService
                 return $vpnConfig;
             });
 
-            // Dispatch AFTER the transaction commits so the VPN config row is
-            // visible to the queue worker. Dispatching inside the transaction
-            // caused a race: the job dequeued and ran VpnConfiguration::find()
-            // before the creating transaction committed → "not found".
-            \App\Jobs\VerifyVpnConnectivityJob::dispatch(
-                $tenant->id,
-                $vpnConfig->id,
-                600,
-                5
-            )->onQueue('router-checks');
+            // Dispatch only after every open DB transaction commits. Redis queues have
+            // after_commit disabled in production, so dispatching here directly can race
+            // the tenant VPN row and leave provisioning waiting at 40%.
+            $dispatchVerification = function () use ($tenant, $vpnConfig, $router): void {
+                \App\Jobs\VerifyVpnConnectivityJob::dispatch(
+                    (string) $tenant->id,
+                    (int) $vpnConfig->id,
+                    600,
+                    5,
+                    (string) $router->id,
+                )->onQueue('router-checks');
 
-            Log::info('VPN connectivity verification job dispatched', [
-                'tenant_id' => $tenant->id,
-                'vpn_config_id' => $vpnConfig->id,
-                'router_id' => $router->id,
-            ]);
+                Log::info('VPN connectivity verification job dispatched', [
+                    'tenant_id' => $tenant->id,
+                    'vpn_config_id' => $vpnConfig->id,
+                    'router_id' => $router->id,
+                ]);
+            };
+
+            if (DB::transactionLevel() > 0) {
+                DB::afterCommit($dispatchVerification);
+            } else {
+                $dispatchVerification();
+            }
 
             return $vpnConfig;
         });

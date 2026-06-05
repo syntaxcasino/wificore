@@ -2,7 +2,7 @@
 
 namespace App\Services\Deployment;
 
-use Carbon\Carbon;
+use Carbon\CarbonInterface;
 
 readonly class RouterComplianceReport
 {
@@ -17,7 +17,7 @@ readonly class RouterComplianceReport
         public array $passedControls,
         public string $summary,
         public ?int $sourceSnapshotId = null,
-        public ?Carbon $evaluatedAt = null,
+        public ?CarbonInterface $evaluatedAt = null,
     ) {
     }
 
