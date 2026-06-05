@@ -112,6 +112,7 @@ services:
     container_name: wificore-provisioning
     restart: always
     environment:
+      - WIREGUARD_CONTROLLER_URL=http://172.70.255.254:8080
       - PORT=8080
       - DEBUG=${PROVISIONING_DEBUG:-false}
       - LOG_LEVEL=${PROVISIONING_LOG_LEVEL:-info}
@@ -248,6 +249,7 @@ services:
     env_file:
       - .env.production
     environment:
+      - WIREGUARD_CONTROLLER_URL=http://172.70.255.254:8080
       - DB_CONNECTION=pgsql
       - DB_HOST=${DB_HOST:-wificore-pgbouncer}
       - DB_READ_HOST=${DB_READ_HOST:-wificore-pgbouncer-read}
@@ -348,6 +350,7 @@ services:
     env_file:
       - .env.production
     environment:
+      - WIREGUARD_CONTROLLER_URL=http://172.70.255.254:8080
       - AUTO_MIGRATE=false
       - AUTO_SEED=false
       - APP_RUNTIME_ROLE=scheduler
@@ -429,6 +432,7 @@ services:
     env_file:
       - .env.production
     environment:
+      - WIREGUARD_CONTROLLER_URL=http://172.70.255.254:8080
       - APP_RUNTIME_ROLE=migrate
       - AUTO_MIGRATE=${AUTO_MIGRATE:-true}
       - AUTO_SEED=${AUTO_SEED:-true}
@@ -480,6 +484,7 @@ services:
     env_file:
       - .env.production
     environment:
+      - WIREGUARD_CONTROLLER_URL=http://172.70.255.254:8080
       - AUTO_MIGRATE=false
       - AUTO_SEED=false
       - APP_RUNTIME_ROLE=queue
