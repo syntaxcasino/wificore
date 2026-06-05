@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Support\SafeRelativeTime;
 use App\Models\Router;
 use App\Models\RouterService;
 use App\Models\ServiceVlan;
@@ -285,7 +286,7 @@ class ServiceDeploymentValidator extends TenantAwareService
         
         if (!$isReachable) {
             $lastSeenInfo = $router->last_seen 
-                ? " (last seen " . $router->last_seen->diffForHumans() . ")" 
+                ? " (last seen " . SafeRelativeTime::fromNow($router->last_seen) . ")"
                 : " (never seen)";
             $errors[] = "Router is {$router->status} - must be reachable for deployment{$lastSeenInfo}";
         }
