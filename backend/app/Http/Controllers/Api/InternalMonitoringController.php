@@ -53,46 +53,44 @@ class InternalMonitoringController extends Controller
         }
 
         $routerUpdates = [];
-        DB::transaction(function () use ($tenant, $validated, &$routerUpdates, $tenantId) {
-            $this->tenantContext->runInTenantContext($tenant, function () use ($validated, &$routerUpdates, $tenantId) {
-                foreach (($validated['result']['routers'] ?? []) as $entry) {
-                    $router = Router::find($entry['router_id'] ?? null);
-                    if (! $router) {
-                        continue;
-                    }
-
-                    $handshakeAt = $this->parseNullableTimestamp($entry['vpn_last_handshake'] ?? null);
-                    $vpnConfig = ! empty($entry['public_key'])
-                        ? VpnConfiguration::where('client_public_key', $entry['public_key'])->first()
-                        : null;
-
-                    if ($vpnConfig) {
-                        $vpnConfig->update([
-                            'last_handshake_at' => $handshakeAt,
-                            'rx_bytes' => (int) ($entry['transfer_rx'] ?? 0),
-                            'tx_bytes' => (int) ($entry['transfer_tx'] ?? 0),
-                            'status' => (string) ($entry['vpn_config_status'] ?? 'disconnected'),
-                        ]);
-                    }
-
-                    if (! empty($entry['public_key'])) {
-                        WireguardPeer::updateOrCreate(
-                            ['public_key' => $entry['public_key']],
-                            [
-                                'router_id' => $router->id,
-                                'peer_name' => $router->name,
-                                'endpoint' => $entry['endpoint'] ?? null,
-                                'allowed_ips' => $entry['allowed_ips'] ?? null,
-                                'transfer_rx' => (int) ($entry['transfer_rx'] ?? 0),
-                                'transfer_tx' => (int) ($entry['transfer_tx'] ?? 0),
-                                'last_handshake' => $handshakeAt,
-                            ]
-                        );
-                    }
-
-                    $routerUpdates[] = $this->applyOperationalRouterUpdate($router, $entry, $handshakeAt, $tenantId);
+        $this->tenantContext->runInTenantTransaction($tenant, function () use ($validated, &$routerUpdates, $tenantId) {
+            foreach (($validated['result']['routers'] ?? []) as $entry) {
+                $router = Router::find($entry['router_id'] ?? null);
+                if (! $router) {
+                    continue;
                 }
-            });
+
+                $handshakeAt = $this->parseNullableTimestamp($entry['vpn_last_handshake'] ?? null);
+                $vpnConfig = ! empty($entry['public_key'])
+                    ? VpnConfiguration::where('client_public_key', $entry['public_key'])->first()
+                    : null;
+
+                if ($vpnConfig) {
+                    $vpnConfig->update([
+                        'last_handshake_at' => $handshakeAt,
+                        'rx_bytes' => (int) ($entry['transfer_rx'] ?? 0),
+                        'tx_bytes' => (int) ($entry['transfer_tx'] ?? 0),
+                        'status' => (string) ($entry['vpn_config_status'] ?? 'disconnected'),
+                    ]);
+                }
+
+                if (! empty($entry['public_key'])) {
+                    WireguardPeer::updateOrCreate(
+                        ['public_key' => $entry['public_key']],
+                        [
+                            'router_id' => $router->id,
+                            'peer_name' => $router->name,
+                            'endpoint' => $entry['endpoint'] ?? null,
+                            'allowed_ips' => $entry['allowed_ips'] ?? null,
+                            'transfer_rx' => (int) ($entry['transfer_rx'] ?? 0),
+                            'transfer_tx' => (int) ($entry['transfer_tx'] ?? 0),
+                            'last_handshake' => $handshakeAt,
+                        ]
+                    );
+                }
+
+                $routerUpdates[] = $this->applyOperationalRouterUpdate($router, $entry, $handshakeAt, $tenantId);
+            }
         });
 
         $this->broadcastRouterUpdates($tenantId, $routerUpdates);
@@ -129,24 +127,22 @@ class InternalMonitoringController extends Controller
         $routerUpdates = [];
         $discoveryRouterIds = [];
 
-        DB::transaction(function () use ($tenant, $validated, &$routerUpdates, &$discoveryRouterIds, $tenantId) {
-            $this->tenantContext->runInTenantContext($tenant, function () use ($validated, &$routerUpdates, &$discoveryRouterIds, $tenantId) {
-                foreach (($validated['result']['routers'] ?? []) as $entry) {
-                    $router = Router::find($entry['router_id'] ?? null);
-                    if (! $router) {
-                        continue;
-                    }
-
-                    $phase = (string) ($entry['phase'] ?? 'operational');
-                    if ($phase === 'provisioning' && ! empty($entry['discovery_required'])) {
-                        $routerUpdates[] = $this->applyProvisioningRouterUpdate($router, $entry, $tenantId, $discoveryRouterIds);
-                        continue;
-                    }
-
-                    $handshakeAt = $this->parseNullableTimestamp($entry['vpn_last_handshake'] ?? null);
-                    $routerUpdates[] = $this->applyOperationalRouterUpdate($router, $entry, $handshakeAt, $tenantId);
+        $this->tenantContext->runInTenantTransaction($tenant, function () use ($validated, &$routerUpdates, &$discoveryRouterIds, $tenantId) {
+            foreach (($validated['result']['routers'] ?? []) as $entry) {
+                $router = Router::find($entry['router_id'] ?? null);
+                if (! $router) {
+                    continue;
                 }
-            });
+
+                $phase = (string) ($entry['phase'] ?? 'operational');
+                if ($phase === 'provisioning' && ! empty($entry['discovery_required'])) {
+                    $routerUpdates[] = $this->applyProvisioningRouterUpdate($router, $entry, $tenantId, $discoveryRouterIds);
+                    continue;
+                }
+
+                $handshakeAt = $this->parseNullableTimestamp($entry['vpn_last_handshake'] ?? null);
+                $routerUpdates[] = $this->applyOperationalRouterUpdate($router, $entry, $handshakeAt, $tenantId);
+            }
         });
 
         foreach ($discoveryRouterIds as $routerId) {
@@ -191,26 +187,20 @@ class InternalMonitoringController extends Controller
 
         $updatedRouterCount = 0;
 
-        // Wrap in DB::transaction() to ensure SET LOCAL search_path persists
-        // under PgBouncer transaction pooling. recordsHaveBeenModified() forces
-        // sticky-write PDO so all queries see the correct tenant schema.
-        DB::transaction(function () use ($tenant, $validated, $tenantId, &$updatedRouterCount) {
-            DB::connection()->recordsHaveBeenModified();
-            $this->tenantContext->runInTenantContext($tenant, function () use ($validated, $tenantId, &$updatedRouterCount) {
-                foreach (($validated['result']['routers'] ?? []) as $entry) {
-                    $router = Router::find($entry['router_id'] ?? null);
-                    $liveData = is_array($entry['data'] ?? null) ? $entry['data'] : null;
-                    if (! $router || ! $liveData) {
-                        continue;
-                    }
-
-                    Cache::put('router_live_data_' . $router->id, $liveData, now()->addSeconds(30));
-                    $router->update(['last_checked' => now()]);
-
-                    broadcast(new RouterLiveDataUpdated($tenantId, (string) $router->id, $liveData))->toOthers();
-                    $updatedRouterCount++;
+        $this->tenantContext->runInTenantTransaction($tenant, function () use ($validated, $tenantId, &$updatedRouterCount) {
+            foreach (($validated['result']['routers'] ?? []) as $entry) {
+                $router = Router::find($entry['router_id'] ?? null);
+                $liveData = is_array($entry['data'] ?? null) ? $entry['data'] : null;
+                if (! $router || ! $liveData) {
+                    continue;
                 }
-            });
+
+                Cache::put('router_live_data_' . $router->id, $liveData, now()->addSeconds(30));
+                $router->update(['last_checked' => now()]);
+
+                broadcast(new RouterLiveDataUpdated($tenantId, (string) $router->id, $liveData))->toOthers();
+                $updatedRouterCount++;
+            }
         });
 
         return response()->json([
@@ -247,42 +237,36 @@ class InternalMonitoringController extends Controller
 
         $updatedSeriesCount = 0;
 
-        // Wrap in DB::transaction() to ensure SET LOCAL search_path persists
-        // under PgBouncer transaction pooling. recordsHaveBeenModified() forces
-        // sticky-write PDO so all queries see the correct tenant schema.
-        DB::transaction(function () use ($tenant, $validated, $tenantId, &$updatedSeriesCount) {
-            DB::connection()->recordsHaveBeenModified();
-            $this->tenantContext->runInTenantContext($tenant, function () use ($validated, $tenantId, &$updatedSeriesCount) {
-                foreach (($validated['result']['ranges'] ?? []) as $rangeEntry) {
-                    $timeRange = (string) ($rangeEntry['time_range'] ?? '');
-                    if ($timeRange === '') {
+        $this->tenantContext->runInTenantTransaction($tenant, function () use ($validated, $tenantId, &$updatedSeriesCount) {
+            foreach (($validated['result']['ranges'] ?? []) as $rangeEntry) {
+                $timeRange = (string) ($rangeEntry['time_range'] ?? '');
+                if ($timeRange === '') {
+                    continue;
+                }
+
+                foreach (($rangeEntry['routers'] ?? []) as $routerEntry) {
+                    $router = Router::find($routerEntry['router_id'] ?? null);
+                    if (! $router) {
                         continue;
                     }
 
-                    foreach (($rangeEntry['routers'] ?? []) as $routerEntry) {
-                        $router = Router::find($routerEntry['router_id'] ?? null);
-                        if (! $router) {
-                            continue;
-                        }
+                    $routerId = (string) $router->id;
+                    $traffic = is_array($routerEntry['traffic'] ?? null) ? $routerEntry['traffic'] : [];
+                    $resources = is_array($routerEntry['resources'] ?? null) ? $routerEntry['resources'] : [];
 
-                        $routerId = (string) $router->id;
-                        $traffic = is_array($routerEntry['traffic'] ?? null) ? $routerEntry['traffic'] : [];
-                        $resources = is_array($routerEntry['resources'] ?? null) ? $routerEntry['resources'] : [];
+                    if ($traffic !== []) {
+                        Cache::put("router_metrics_{$tenantId}_{$routerId}_traffic_{$timeRange}", $traffic, now()->addSeconds(60));
+                        broadcast(new RouterMetricsUpdated($tenantId, $routerId, $traffic, 'traffic', $timeRange))->toOthers();
+                        $updatedSeriesCount++;
+                    }
 
-                        if ($traffic !== []) {
-                            Cache::put("router_metrics_{$tenantId}_{$routerId}_traffic_{$timeRange}", $traffic, now()->addSeconds(60));
-                            broadcast(new RouterMetricsUpdated($tenantId, $routerId, $traffic, 'traffic', $timeRange))->toOthers();
-                            $updatedSeriesCount++;
-                        }
-
-                        if ($resources !== []) {
-                            Cache::put("router_metrics_{$tenantId}_{$routerId}_resources_{$timeRange}", $resources, now()->addSeconds(60));
-                            broadcast(new RouterMetricsUpdated($tenantId, $routerId, $resources, 'resources', $timeRange))->toOthers();
-                            $updatedSeriesCount++;
-                        }
+                    if ($resources !== []) {
+                        Cache::put("router_metrics_{$tenantId}_{$routerId}_resources_{$timeRange}", $resources, now()->addSeconds(60));
+                        broadcast(new RouterMetricsUpdated($tenantId, $routerId, $resources, 'resources', $timeRange))->toOthers();
+                        $updatedSeriesCount++;
                     }
                 }
-            });
+            }
         });
 
         return response()->json([
@@ -329,14 +313,9 @@ class InternalMonitoringController extends Controller
             $migrationManager->runMigrationsForTenant($tenant);
         }
 
-        // Wrap in DB::transaction() to ensure SET LOCAL search_path persists
-        // under PgBouncer transaction pooling. recordsHaveBeenModified() forces
-        // sticky-write PDO so all queries see the correct tenant schema.
-        DB::transaction(function () use ($tenant, $validated, $tenantId, $routerId, $vpnConfigId, $clientIp, $result) {
-            DB::connection()->recordsHaveBeenModified();
-            $this->tenantContext->runInTenantContext($tenant, function () use ($validated, $tenantId, $routerId, $vpnConfigId, $clientIp, $result) {
-                $vpnConfig = $this->resolveVpnConfigurationForVerification($routerId, $vpnConfigId, $clientIp);
-                $router = $routerId !== '' ? Router::find($routerId) : null;
+        $this->tenantContext->runInTenantTransaction($tenant, function () use ($validated, $tenantId, $routerId, $vpnConfigId, $clientIp, $result) {
+            $vpnConfig = $this->resolveVpnConfigurationForVerification($routerId, $vpnConfigId, $clientIp);
+            $router = $routerId !== '' ? Router::find($routerId) : null;
 
             if ($validated['status'] === 'completed') {
                 if ($vpnConfig) {
@@ -408,15 +387,14 @@ class InternalMonitoringController extends Controller
                 ]);
             }
 
-                broadcast(new VpnConnectivityFailed(
-                    $tenantId,
-                    $routerId,
-                    (int) ($vpnConfig?->id ?? $vpnConfigId),
-                    (string) ($vpnConfig?->client_ip ?? $clientIp),
-                    (string) ($validated['error'] ?? 'VPN connectivity timeout'),
-                    (int) ($result['attempts'] ?? 1),
-                ));
-            });
+            broadcast(new VpnConnectivityFailed(
+                $tenantId,
+                $routerId,
+                (int) ($vpnConfig?->id ?? $vpnConfigId),
+                (string) ($vpnConfig?->client_ip ?? $clientIp),
+                (string) ($validated['error'] ?? 'VPN connectivity timeout'),
+                (int) ($result['attempts'] ?? 1),
+            ));
         });
 
         return response()->json(['success' => true]);
