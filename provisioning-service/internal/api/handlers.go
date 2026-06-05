@@ -2111,6 +2111,31 @@ func fallbackVPNConfigStatus(current string) string {
 }
 
 func (h *Handler) reportProvisioningWorkflowEvent(callback *models.TaskCallbackConfig, workflowKey string, routerID string, status string, progress int, message string, result map[string]interface{}, errorMessage string, stage string, terminal bool) {
+	fields := logrus.Fields{
+		"workflow_key": workflowKey,
+		"router_id":    routerID,
+		"status":       status,
+		"stage":        stage,
+		"progress":     progress,
+		"terminal":     terminal,
+		"has_callback": callback != nil && strings.TrimSpace(callback.URL) != "",
+		"result_keys":  mapKeys(result),
+	}
+	if result != nil {
+		if tenantID, ok := result["tenant_id"].(string); ok && strings.TrimSpace(tenantID) != "" {
+			fields["tenant_id"] = tenantID
+		}
+		if commandID, ok := result["command_id"].(string); ok && strings.TrimSpace(commandID) != "" {
+			fields["command_id"] = commandID
+		}
+	}
+	if errorMessage != "" {
+		fields["error"] = errorMessage
+		h.logger.WithFields(fields).Warn("Provisioning workflow event emitted")
+	} else {
+		h.logger.WithFields(fields).Info("Provisioning workflow event emitted")
+	}
+
 	if terminal {
 		if status == "completed" {
 			_ = h.workflowStore.RecordCompletion(workflowKey, stage, progress, message, result)
@@ -2175,6 +2200,18 @@ func (h *Handler) buildCallbackPayload(callback *models.TaskCallbackConfig, stat
 		body["error"] = errorMessage
 	}
 	return body
+}
+
+func mapKeys(values map[string]interface{}) []string {
+	if len(values) == 0 {
+		return []string{}
+	}
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 func (h *Handler) callbackRetryKey(callback *models.TaskCallbackConfig, stage string) string {

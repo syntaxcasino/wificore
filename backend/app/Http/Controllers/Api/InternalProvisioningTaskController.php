@@ -58,6 +58,21 @@ class InternalProvisioningTaskController extends Controller
 
         $task = RouterTask::findOrFail($taskId);
 
+        Log::info('Provisioning task callback received', [
+            'task_id' => $task->id,
+            'task_type' => $task->type,
+            'stored_status' => $task->status,
+            'stored_progress' => $task->progress,
+            'incoming_status' => $validated['status'] ?? null,
+            'incoming_progress' => $validated['progress'] ?? null,
+            'incoming_stage' => $validated['stage'] ?? null,
+            'incoming_terminal' => $validated['terminal'] ?? null,
+            'incoming_tenant_id' => $validated['tenant_id'] ?? null,
+            'incoming_router_id' => $validated['router_id'] ?? null,
+            'result_keys' => array_keys((array) ($validated['result'] ?? [])),
+            'has_error' => isset($validated['error']) && trim((string) $validated['error']) !== '',
+        ]);
+
         $identityCheck = $this->validateCallbackIdentity($task, $validated);
         if ($identityCheck !== null) {
             $this->recordCallbackGuardOutcome($task, 'identity_validation_failed', 'failed', [
@@ -180,6 +195,17 @@ class InternalProvisioningTaskController extends Controller
         }
 
         $freshTask = $task->fresh() ?? $task;
+        Log::info('Provisioning task callback applied', [
+            'task_id' => $freshTask->id,
+            'task_type' => $freshTask->type,
+            'final_status' => $freshTask->status,
+            'final_progress' => $freshTask->progress,
+            'stage' => $stage,
+            'terminal' => $terminal,
+            'verification_status' => $result['verification_status'] ?? null,
+            'error' => $callbackError,
+        ]);
+
         $this->syncRouterProvisioningState($freshTask, $callbackStatus, $progress, $message, $result, $stage, $terminal);
         $this->syncProvisioningRunAudit($freshTask, $callbackStatus, $progress, $message, $result, $stage, $terminal, $callbackError);
 
@@ -379,6 +405,18 @@ class InternalProvisioningTaskController extends Controller
             return [$status, $message, $error, $result, $progress];
         }
 
+        if (! $this->hasVerificationBundle($result)) {
+            $result['verification_status'] = 'not_provided';
+
+            Log::warning('Provisioning callback completed without explicit verification bundle; accepting executor success', [
+                'task_id' => $task->id,
+                'task_type' => $task->type,
+                'result_keys' => array_keys($result),
+            ]);
+
+            return [$status, $message, $error, $result, $progress];
+        }
+
         $verification = $this->evaluateVerificationBundle($result);
         $result['verification_expected'] = $verification['expected'];
         $result['verification_actual'] = $verification['actual'];
@@ -463,6 +501,15 @@ class InternalProvisioningTaskController extends Controller
             'missing' => $missing,
             'unexpected' => $unexpected,
         ];
+    }
+
+    private function hasVerificationBundle(array $result): bool
+    {
+        return (
+            isset($result['verification']['resources']) && is_array($result['verification']['resources'])
+        ) || (
+            isset($result['verification_results']) && is_array($result['verification_results'])
+        );
     }
 
     private function shouldIgnoreTerminalStatusMutation(RouterTask $task, string $incomingStatus): bool
