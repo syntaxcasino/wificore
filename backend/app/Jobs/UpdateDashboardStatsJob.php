@@ -18,6 +18,7 @@ use App\Models\UserSubscription;
 use App\Models\Tenant;
 use App\Events\DashboardStatsUpdated;
 use App\Services\MetricsService;
+use App\Support\SafeRelativeTime;
 use App\Traits\TenantAwareJob;
 use App\Http\Controllers\Api\TenantDashboardController;
 use Carbon\Carbon;
@@ -360,7 +361,7 @@ class UpdateDashboardStatsJob implements ShouldQueue
                         return [
                             'id' => $router->id,
                             'message' => "Router {$router->name} status changed to {$router->status}",
-                            'timestamp' => $router->updated_at->diffForHumans(),
+                            'timestamp' => SafeRelativeTime::fromNow($router->updated_at),
                         ];
                     });
 

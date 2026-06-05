@@ -68,6 +68,7 @@ class AppServiceProvider extends ServiceProvider
         $this->registerMorphMap();
 
         $this->configureReadReplicaFallback();
+        $this->registerFatalShutdownLogger();
         
         // Disable mass assignment protection for better performance (use API resources instead)
         // Model::unguard(); // Uncomment only if using API resources for validation
@@ -77,6 +78,46 @@ class AppServiceProvider extends ServiceProvider
      * Register morph map for polymorphic relations
      * Prevents class name resolution on every query
      */
+    private function registerFatalShutdownLogger(): void
+    {
+        register_shutdown_function(function (): void {
+            $error = error_get_last();
+            if (! is_array($error)) {
+                return;
+            }
+
+            $fatalTypes = [E_ERROR, E_CORE_ERROR, E_COMPILE_ERROR, E_PARSE, E_USER_ERROR];
+            if (! in_array($error['type'] ?? null, $fatalTypes, true)) {
+                return;
+            }
+
+            $request = request();
+            $context = [
+                'type' => $error['type'] ?? null,
+                'message' => $error['message'] ?? null,
+                'file' => $error['file'] ?? null,
+                'line' => $error['line'] ?? null,
+                'memory_limit' => ini_get('memory_limit'),
+                'peak_memory_bytes' => memory_get_peak_usage(true),
+                'sapi' => PHP_SAPI,
+                'running_in_console' => app()->runningInConsole(),
+            ];
+
+            if ($request) {
+                $context['method'] = $request->method();
+                $context['path'] = $request->path();
+                $context['full_url'] = $request->fullUrl();
+            }
+
+            if (app()->runningInConsole()) {
+                global $argv;
+                $context['argv'] = $argv ?? [];
+            }
+
+            Log::critical('Fatal shutdown error', $context);
+        });
+    }
+
     private function registerMorphMap(): void
     {
         Relation::morphMap([

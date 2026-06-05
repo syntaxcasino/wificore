@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Support\SafeRelativeTime;
 use App\Http\Controllers\Controller;
 use App\Models\Package;
 use App\Models\Router;
@@ -252,7 +253,7 @@ class CaptivePortalController extends Controller
                     'package' => $user->package_name,
                     'expires_at' => $user->subscription_expires_at?->toIso8601String(),
                     'time_remaining' => $user->subscription_expires_at
-                        ? $user->subscription_expires_at->diffForHumans()
+                        ? SafeRelativeTime::until($user->subscription_expires_at)
                         : 'Unlimited',
                 ],
             ]);
