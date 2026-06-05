@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Services\QueueMetricsService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
@@ -53,7 +54,7 @@ class QueueStatsController extends Controller
                     ],
                     'recent_activity' => $this->getRecentActivity(),
                     'health_status' => $status,
-                    'tracking_since' => Cache::get('queue_stats_start_time', now())->toIso8601String(),
+                    'tracking_since' => $this->resolveTrackingStartTime()->toIso8601String(),
                 ],
             ]);
         } catch (\Exception $e) {
@@ -63,6 +64,35 @@ class QueueStatsController extends Controller
                 'error' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    private function resolveTrackingStartTime(): Carbon
+    {
+        $cached = Cache::get('queue_stats_start_time');
+
+        if ($cached instanceof Carbon) {
+            return $cached;
+        }
+
+        if ($cached instanceof \DateTimeInterface) {
+            return Carbon::instance($cached);
+        }
+
+        if (is_numeric($cached)) {
+            return Carbon::createFromTimestamp((int) $cached);
+        }
+
+        if (is_string($cached) && trim($cached) !== '') {
+            try {
+                return Carbon::parse($cached);
+            } catch (\Throwable) {
+            }
+        }
+
+        $startTime = now();
+        Cache::put('queue_stats_start_time', $startTime, now()->addSeconds(30));
+
+        return $startTime;
     }
 
     private function getProcessedJobsCount(): int
