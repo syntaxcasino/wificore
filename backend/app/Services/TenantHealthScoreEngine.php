@@ -125,12 +125,8 @@ class TenantHealthScoreEngine
         $paymentOverdueMinutes = (int) config('health_scores.payment_overdue_minutes', 30);
         $sessionOverdueMinutes = (int) config('health_scores.session_overdue_minutes', 15);
 
-        $routers = Schema::hasTable('routers')
-            ? Router::query()->select('id', 'status', 'last_seen', 'vpn_status', 'vpn_last_handshake')->get()
-            : collect();
-
         $routerSignals = [
-            'total_count' => $routers->count(),
+            'total_count' => 0,
             'offline_count' => 0,
             'stale_count' => 0,
             'vpn_stale_count' => 0,
@@ -141,33 +137,32 @@ class TenantHealthScoreEngine
             'provisioning_router_ids' => [],
         ];
 
-        foreach ($routers as $router) {
-            $status = (string) ($router->status ?? '');
-            $lastSeen = $router->last_seen;
-            $vpnHandshake = $router->vpn_last_handshake;
-            $routerId = (string) $router->id;
+        if (Schema::hasTable('routers')) {
+            $staleCutoff = now()->subMinutes($staleRouterMinutes);
+            $vpnStaleCutoff = now()->subMinutes($vpnStaleMinutes);
+            $provisioningStatuses = ['pending', 'deploying', 'provisioning', 'verifying'];
 
-            if ($status === 'offline') {
-                $routerSignals['offline_count']++;
-                $routerSignals['offline_router_ids'][] = $routerId;
-            }
+            $offlineRouters = Router::query()->where('status', 'offline');
+            $staleRouters = Router::query()
+                ->where(function ($query) use ($staleCutoff): void {
+                    $query->whereNull('last_seen')->orWhere('last_seen', '<', $staleCutoff);
+                });
+            $vpnStaleRouters = Router::query()
+                ->where('vpn_status', 'active')
+                ->where(function ($query) use ($vpnStaleCutoff): void {
+                    $query->whereNull('vpn_last_handshake')->orWhere('vpn_last_handshake', '<', $vpnStaleCutoff);
+                });
+            $provisioningRouters = Router::query()->whereIn('status', $provisioningStatuses);
 
-            if (in_array($status, ['pending', 'deploying', 'provisioning', 'verifying'], true)) {
-                $routerSignals['provisioning_count']++;
-                $routerSignals['provisioning_router_ids'][] = $routerId;
-            }
-
-            if (! $lastSeen || $lastSeen->lt(now()->subMinutes($staleRouterMinutes))) {
-                $routerSignals['stale_count']++;
-                $routerSignals['stale_router_ids'][] = $routerId;
-            }
-
-            if ((string) ($router->vpn_status ?? '') === 'active') {
-                if (! $vpnHandshake || $vpnHandshake->lt(now()->subMinutes($vpnStaleMinutes))) {
-                    $routerSignals['vpn_stale_count']++;
-                    $routerSignals['vpn_stale_router_ids'][] = $routerId;
-                }
-            }
+            $routerSignals['total_count'] = Router::query()->count();
+            $routerSignals['offline_count'] = (clone $offlineRouters)->count();
+            $routerSignals['stale_count'] = (clone $staleRouters)->count();
+            $routerSignals['vpn_stale_count'] = (clone $vpnStaleRouters)->count();
+            $routerSignals['provisioning_count'] = (clone $provisioningRouters)->count();
+            $routerSignals['offline_router_ids'] = $this->sampleIds($offlineRouters);
+            $routerSignals['stale_router_ids'] = $this->sampleIds($staleRouters);
+            $routerSignals['vpn_stale_router_ids'] = $this->sampleIds($vpnStaleRouters);
+            $routerSignals['provisioning_router_ids'] = $this->sampleIds($provisioningRouters);
         }
 
         $paymentSignals = [
@@ -180,20 +175,15 @@ class TenantHealthScoreEngine
         if (Schema::hasTable('payments')) {
             $pendingOverdue = Payment::query()
                 ->where('status', 'pending')
-                ->where('created_at', '<', now()->subMinutes($paymentOverdueMinutes))
-                ->select('id')
-                ->get();
-
+                ->where('created_at', '<', now()->subMinutes($paymentOverdueMinutes));
             $failedToday = Payment::query()
                 ->where('status', 'failed')
-                ->whereDate('created_at', today())
-                ->select('id')
-                ->get();
+                ->whereDate('created_at', today());
 
-            $paymentSignals['pending_overdue_count'] = $pendingOverdue->count();
-            $paymentSignals['failed_today_count'] = $failedToday->count();
-            $paymentSignals['pending_overdue_payment_ids'] = $pendingOverdue->pluck('id')->all();
-            $paymentSignals['failed_today_payment_ids'] = $failedToday->pluck('id')->all();
+            $paymentSignals['pending_overdue_count'] = (clone $pendingOverdue)->count();
+            $paymentSignals['failed_today_count'] = (clone $failedToday)->count();
+            $paymentSignals['pending_overdue_payment_ids'] = $this->sampleIds($pendingOverdue);
+            $paymentSignals['failed_today_payment_ids'] = $this->sampleIds($failedToday);
         }
 
         $sessionSignals = [
@@ -205,12 +195,10 @@ class TenantHealthScoreEngine
             $expiredActive = UserSession::query()
                 ->where('status', 'active')
                 ->whereNotNull('end_time')
-                ->where('end_time', '<', now()->subMinutes($sessionOverdueMinutes))
-                ->select('id')
-                ->get();
+                ->where('end_time', '<', now()->subMinutes($sessionOverdueMinutes));
 
-            $sessionSignals['expired_active_count'] = $expiredActive->count();
-            $sessionSignals['expired_active_session_ids'] = $expiredActive->pluck('id')->all();
+            $sessionSignals['expired_active_count'] = (clone $expiredActive)->count();
+            $sessionSignals['expired_active_session_ids'] = $this->sampleIds($expiredActive);
         }
 
         return [
@@ -218,6 +206,16 @@ class TenantHealthScoreEngine
             'payments' => $paymentSignals,
             'sessions' => $sessionSignals,
         ];
+    }
+
+    private function sampleIds($query, int $limit = 10): array
+    {
+        return (clone $query)
+            ->orderBy('id')
+            ->limit($limit)
+            ->pluck('id')
+            ->map(static fn ($id): string => (string) $id)
+            ->all();
     }
 
     private function summarize(float $score, array $factors): string

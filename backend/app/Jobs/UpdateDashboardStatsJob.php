@@ -54,13 +54,20 @@ class UpdateDashboardStatsJob implements ShouldQueue
         // If no tenant ID is set, this is the main scheduler job.
         // We need to dispatch a job for each active tenant.
         if (!$this->tenantId) {
-            $tenants = Tenant::where('is_active', true)->get();
-            
-            foreach ($tenants as $tenant) {
-                self::dispatch($tenant->id);
-            }
-            
-            \Log::info("Dispatched dashboard stats jobs for " . $tenants->count() . " tenants");
+            $dispatched = 0;
+
+            Tenant::query()
+                ->where('is_active', true)
+                ->where('schema_created', true)
+                ->whereNotNull('schema_name')
+                ->select('id')
+                ->cursor()
+                ->each(function ($tenant) use (&$dispatched): void {
+                    self::dispatch($tenant->id);
+                    $dispatched++;
+                });
+
+            \Log::info("Dispatched dashboard stats jobs for {$dispatched} tenants");
             return;
         }
 
@@ -96,13 +103,10 @@ class UpdateDashboardStatsJob implements ShouldQueue
                 }
                 
                 // Total routers (tenant-scoped by schema)
-                $routerQuery = Router::query();
-                // tenant_id removed from routers table, implicit scoping by schema
-                
-                $totalRouters = $routerQuery->count();
-                $onlineRouters = $routerQuery->where('status', 'online')->count();
-                $offlineRouters = $routerQuery->where('status', 'offline')->count();
-                $provisioningRouters = $routerQuery->where('status', 'provisioning')->count();
+                $totalRouters = Router::query()->count();
+                $onlineRouters = Router::where('status', 'online')->count();
+                $offlineRouters = Router::where('status', 'offline')->count();
+                $provisioningRouters = Router::where('status', 'provisioning')->count();
 
                 $userSessionsTableExists = (bool) (DB::selectOne("
                     SELECT EXISTS (
@@ -148,6 +152,22 @@ class UpdateDashboardStatsJob implements ShouldQueue
                         'tenant_id' => $this->tenantId,
                         'schema_name' => $tenant->schema_name,
                     ]);
+                }
+
+                $paymentsTableExists = (bool) (DB::selectOne("
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables
+                        WHERE table_schema = current_schema()
+                          AND table_name = 'payments'
+                    ) AS exists
+                ")->exists ?? false);
+
+                if (!$paymentsTableExists) {
+                    \Log::info('Payments table does not exist in tenant schema yet, skipping dashboard stats update', [
+                        'tenant_id' => $this->tenantId,
+                        'schema_name' => $tenant->schema_name,
+                    ]);
+                    return;
                 }
 
                 // Total unique users
@@ -486,8 +506,9 @@ class UpdateDashboardStatsJob implements ShouldQueue
                 $maxUserTrend = 1;
                 for ($i = 6; $i >= 0; $i--) {
                     $date = Carbon::now()->subDays($i);
-                    $count = UserSession::whereDate('start_time', $date->toDateString())
-                        ->count();
+                    $count = $userSessionsTableExists
+                        ? UserSession::whereDate('start_time', $date->toDateString())->count()
+                        : 0;
                     $maxUserTrend = max($maxUserTrend, $count);
                     $userTrendData[] = [
                         'label' => $date->format('D'),
@@ -523,30 +544,33 @@ class UpdateDashboardStatsJob implements ShouldQueue
                 }
 
                 // Get currently active sessions with user info (exclude admin users)
-                $onlineUsersList = UserSession::where('status', 'active')
-                    ->where(function($query) {
-                        $query->whereNull('end_time')
-                              ->orWhere('end_time', '>', now());
-                    })
-                    ->with('payment.user:id,name,email,role')
-                    ->limit(20)
-                    ->get()
-                    ->filter(function ($session) {
-                        // Filter out admin users
-                        $user = $session->payment->user ?? null;
-                        return !$user || $user->role !== 'admin';
-                    })
-                    ->take(10)
-                    ->map(function ($session) {
-                        $user = $session->payment->user ?? null;
-                        return [
-                            'id' => $user->id ?? null,
-                            'name' => $user->name ?? ($session->voucher ? 'Voucher User' : 'Guest'),
-                            'email' => $user->email ?? '',
-                            'type' => $session->voucher ? 'Hotspot' : 'PPPoE',
-                        ];
-                    })
-                    ->values();
+                $onlineUsersList = collect();
+                if ($userSessionsTableExists) {
+                    $onlineUsersList = UserSession::where('status', 'active')
+                        ->where(function($query) {
+                            $query->whereNull('end_time')
+                                  ->orWhere('end_time', '>', now());
+                        })
+                        ->with('payment.user:id,name,email,role')
+                        ->limit(20)
+                        ->get()
+                        ->filter(function ($session) {
+                            // Filter out admin users
+                            $user = $session->payment->user ?? null;
+                            return !$user || $user->role !== 'admin';
+                        })
+                        ->take(10)
+                        ->map(function ($session) {
+                            $user = $session->payment->user ?? null;
+                            return [
+                                'id' => $user->id ?? null,
+                                'name' => $user->name ?? ($session->voucher ? 'Voucher User' : 'Guest'),
+                                'email' => $user->email ?? '',
+                                'type' => $session->voucher ? 'Hotspot' : 'PPPoE',
+                            ];
+                        })
+                        ->values();
+                }
 
                 $completedPayments = Payment::where('status', 'completed');
                 $failedPayments = Payment::where('status', 'failed')->count();
