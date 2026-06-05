@@ -320,7 +320,8 @@ class RouterStatusCheckService
         // Calculate handshake age using absolute difference (handles clock skew)
         // diffInSeconds with false parameter returns negative if timestamp is in future
         // We use abs() to handle router clock being ahead/behind server
-        $handshakeAge = abs(now()->diffInSeconds($latestHandshake, false));
+        $handshakeTime = $latestHandshake instanceof Carbon ? $latestHandshake : Carbon::parse($latestHandshake);
+        $handshakeAge = abs(now()->diffInSeconds($handshakeTime, false));
         $isHandshakeActive = $handshakeAge <= $inactiveThreshold;
 
         // Grace period logic: if handshake just went stale, give brief grace period
@@ -328,7 +329,8 @@ class RouterStatusCheckService
         if (!$isHandshakeActive && $router->status === 'online') {
             $lastSeen = $router->last_seen;
             if ($lastSeen) {
-                $secondsSinceLastSeen = now()->diffInSeconds($lastSeen);
+                $lastSeenTime = $lastSeen instanceof Carbon ? $lastSeen : Carbon::parse($lastSeen);
+                $secondsSinceLastSeen = now()->diffInSeconds($lastSeenTime);
                 if ($secondsSinceLastSeen < ($inactiveThreshold + $gracePeriod)) {
                     // Within grace period - keep online but mark VPN inactive
                     return [

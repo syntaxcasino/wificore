@@ -16,6 +16,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
@@ -164,7 +165,10 @@ class FetchRouterLiveData implements ShouldQueue
 
                         $handshakeRecentlyActive = false;
                         if ($router->vpn_status === 'active' && $router->vpn_last_handshake) {
-                            $handshakeAge = abs(now()->diffInSeconds($router->vpn_last_handshake, false));
+                            $handshakeTime = $router->vpn_last_handshake instanceof Carbon
+                                ? $router->vpn_last_handshake
+                                : Carbon::parse($router->vpn_last_handshake);
+                            $handshakeAge = abs(now()->diffInSeconds($handshakeTime, false));
                             $handshakeRecentlyActive = $handshakeAge <= $inactiveThreshold;
                         }
 
