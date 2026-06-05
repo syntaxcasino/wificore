@@ -16,6 +16,7 @@ use App\Models\VpnConfiguration;
 use App\Models\WireguardPeer;
 use App\Services\CacheInvalidationService;
 use App\Services\TenantContext;
+use App\Services\TenantMigrationManager;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
@@ -309,8 +310,13 @@ class InternalMonitoringController extends Controller
             return response()->json(['success' => true]);
         }
 
+        $migrationManager = app(TenantMigrationManager::class);
+        if ($migrationManager->hasPendingMigrations($tenant)) {
+            $migrationManager->runMigrationsForTenant($tenant);
+        }
+
         $this->tenantContext->runInTenantContext($tenant, function () use ($validated, $tenantId, $routerId, $vpnConfigId, $clientIp, $result) {
-            $vpnConfig = VpnConfiguration::find($vpnConfigId);
+            $vpnConfig = $this->resolveVpnConfigurationForVerification($routerId, $vpnConfigId, $clientIp);
             $router = $routerId !== '' ? Router::find($routerId) : null;
 
             if ($validated['status'] === 'completed') {
@@ -318,6 +324,13 @@ class InternalMonitoringController extends Controller
                     $vpnConfig->update([
                         'status' => 'connected',
                         'last_handshake_at' => now(),
+                    ]);
+                } else {
+                    Log::warning('VPN verification completed without a resolvable VPN configuration', [
+                        'tenant_id' => $tenantId,
+                        'router_id' => $routerId,
+                        'vpn_config_id' => $vpnConfigId,
+                        'client_ip' => $clientIp,
                     ]);
                 }
 
@@ -353,8 +366,8 @@ class InternalMonitoringController extends Controller
                 broadcast(new VpnConnectivityVerified(
                     $tenantId,
                     $routerId,
-                    $vpnConfigId,
-                    $clientIp,
+                    (int) ($vpnConfig?->id ?? $vpnConfigId),
+                    (string) ($vpnConfig?->client_ip ?? $clientIp),
                     (float) ($result['latency_ms'] ?? 0),
                     0,
                     (int) ($result['attempts'] ?? 1),
@@ -379,14 +392,55 @@ class InternalMonitoringController extends Controller
             broadcast(new VpnConnectivityFailed(
                 $tenantId,
                 $routerId,
-                $vpnConfigId,
-                $clientIp,
+                (int) ($vpnConfig?->id ?? $vpnConfigId),
+                (string) ($vpnConfig?->client_ip ?? $clientIp),
                 (string) ($validated['error'] ?? 'VPN connectivity timeout'),
                 (int) ($result['attempts'] ?? 1),
             ));
         });
 
         return response()->json(['success' => true]);
+    }
+
+    private function resolveVpnConfigurationForVerification(string $routerId, int $vpnConfigId, string $clientIp): ?VpnConfiguration
+    {
+        try {
+            if ($vpnConfigId > 0) {
+                $vpnConfig = VpnConfiguration::find($vpnConfigId);
+                if ($vpnConfig) {
+                    return $vpnConfig;
+                }
+            }
+
+            $query = VpnConfiguration::query();
+
+            if ($routerId !== '') {
+                $query->where('router_id', $routerId);
+            }
+
+            if ($clientIp !== '') {
+                $query->when($routerId !== '', function ($builder) use ($clientIp) {
+                    $builder->orWhere('client_ip', $clientIp);
+                }, function ($builder) use ($clientIp) {
+                    $builder->where('client_ip', $clientIp);
+                });
+            }
+
+            if ($routerId === '' && $clientIp === '') {
+                return null;
+            }
+
+            return $query->latest('id')->first();
+        } catch (\Throwable $e) {
+            Log::warning('Unable to resolve VPN configuration during verification', [
+                'router_id' => $routerId,
+                'vpn_config_id' => $vpnConfigId,
+                'client_ip' => $clientIp,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
     }
 
     private function resolveTenant(string $tenantId): ?Tenant

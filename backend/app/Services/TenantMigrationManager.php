@@ -16,6 +16,10 @@ class TenantMigrationManager
     private const MIGRATION_REQUIRED_TABLES = [
         '2025_12_05_000000_create_tenant_router_tables' => ['routers'],
         '2025_12_05_000001_create_tenant_packages_table' => ['packages'],
+        '2025_12_06_000001_create_tenant_vpn_tables' => [
+            'vpn_configurations',
+            'vpn_subnet_allocations',
+        ],
         '2025_12_31_000011_create_tenant_payment_tables' => [
             'payments',
             'user_subscriptions',
