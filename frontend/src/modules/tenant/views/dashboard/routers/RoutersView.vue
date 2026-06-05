@@ -49,20 +49,6 @@
       @close="closeReprovisionOverlay"
       @retry="handleReprovisionRetry"
     />
-    <MassRouterOrchestrationOverlay
-      :visible="showMassOrchestrationOverlay"
-      :routers="filteredRouters"
-      :templates="templateMarketplace"
-      :preview="massOrchestrationPreview"
-      :loading="massOrchestrationLoading"
-      :deploying="massOrchestrationDeploying"
-      :error="massOrchestrationError"
-      :deploy-error="massOrchestrationDeployError"
-      :deploy-result="massOrchestrationDeployResult"
-      @close="closeMassOrchestrationOverlay"
-      @preview="handleMassOrchestrationPreview"
-      @deploy="handleMassOrchestrationDeploy"
-    />
     <UpdateOverlay 
       :show-update-overlay="showUpdateOverlay" 
       :selected-router="selectedRouter" 
@@ -92,10 +78,6 @@
         <option value="rebooting">Rebooting</option>
       </BaseSelect>
       <button v-if="filterStatus" @click="clearFilters" class="text-xs text-indigo-600 hover:text-indigo-700 font-medium">Clear filters</button>
-      <button @click="openMassOrchestration" class="text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-full px-3 py-1.5 shadow-sm inline-flex items-center gap-1.5">
-        <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-        Plan Bulk Change
-      </button>
     </template>
 
     <!-- Error State -->
@@ -303,7 +285,6 @@ import UpdateOverlay from '@/modules/tenant/components/routers/modals/UpdateRout
 import DetailsOverlay from '@/modules/tenant/components/routers/modals/RouterDetailsModal.vue'
 import Overlay from '@/modules/tenant/components/routers/modals/CreateRouterModal.vue'
 import ReprovisionOverlay from '@/modules/tenant/components/routers/modals/ReprovisionOverlay.vue'
-import MassRouterOrchestrationOverlay from '@/modules/tenant/components/routers/modals/MassRouterOrchestrationOverlay.vue'
 
 const confirmStore = useConfirmStore()
 
@@ -311,11 +292,9 @@ const { error: showError, success: showSuccess } = useToast()
 
 const {
   routers, loading, refreshing, listError, formError, detailsError, detailsLoading, vendorOptions, templateMarketplace,
-  showMassOrchestrationOverlay, massOrchestrationPreview, massOrchestrationLoading, massOrchestrationError, massOrchestrationDeploying, massOrchestrationDeployError, massOrchestrationDeployResult,
   showFormOverlay, showDetailsOverlay, showUpdateOverlay, currentRouter, isEditing,
   selectedRouter, formData, formSubmitting, configLoading, formMessage, formSubmitted,
   fetchRouters, addRouter, updateRouter, deleteRouter, reprovisionRouter, generateConfigs,
-  previewMassOrchestration, deployMassOrchestration, closeMassOrchestrationOverlay,
   formatTimestamp, openCreateOverlay, openEditOverlay, openDetails, closeDetails, refreshDetails,
   closeFormOverlay, closeUpdateOverlay, copyToClipboard,
   setupRealtimeUpdates, cleanupRealtimeUpdates,
@@ -472,29 +451,6 @@ const closeReprovisionOverlay = () => {
   showReprovisionOverlay.value = false
   reprovisioningRouter.value = null
   fetchRouters()
-}
-
-const openMassOrchestration = () => {
-  showMassOrchestrationOverlay.value = true
-}
-
-const handleMassOrchestrationPreview = async (options) => {
-  try {
-    await previewMassOrchestration(filteredRouters.value, options)
-  } catch (err) {
-    console.error('Mass orchestration preview error:', err)
-  }
-}
-
-const handleMassOrchestrationDeploy = async (options) => {
-  try {
-    await deployMassOrchestration(filteredRouters.value, options)
-    showSuccess('Mass orchestration jobs queued successfully')
-  } catch (err) {
-    const errorMessage = err.response?.data?.message || err.response?.data?.error || err.message || 'Failed to queue mass orchestration deployment'
-    showError(`Mass deployment failed: ${errorMessage}`)
-    console.error('Mass orchestration deploy error:', err)
-  }
 }
 
 const handleReprovisionRetry = async (router) => {
