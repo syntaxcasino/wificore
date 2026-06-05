@@ -245,6 +245,18 @@ class InternalMonitoringController extends Controller
             return response()->json(['success' => true]);
         }
 
+        $migrationManager = app(TenantMigrationManager::class);
+        if ($migrationManager->hasPendingMigrations($tenant)) {
+            Log::warning('Tenant migrations pending; attempting tenant migration repair before router metrics update', [
+                'tenant_id' => $tenantId,
+                'schema_name' => $tenant->schema_name,
+                'missing_required_tables' => $migrationManager->missingRequiredTables($tenant),
+            ]);
+
+            $migrationManager->runMigrationsForTenant($tenant);
+            $tenant->refresh();
+        }
+
         $updatedSeriesCount = 0;
 
         // Wrap in DB::transaction() to ensure SET LOCAL search_path persists
