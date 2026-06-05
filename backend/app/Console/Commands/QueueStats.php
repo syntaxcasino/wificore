@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Services\QueueMetricsService;
 use Illuminate\Console\Command;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
@@ -47,8 +48,8 @@ class QueueStats extends Command
         $failedJobs = $metrics['failed_jobs'];
 
         $processedCount = $this->getProcessedJobsCount();
-        $startTime = Cache::get('queue_stats_start_time', now());
-        $duration = now()->diffForHumans($startTime, true);
+        $startTime = $this->resolveTrackingStartTime();
+        $duration = $this->formatTrackingDuration($startTime);
         $totalJobs = $pendingJobs + $failedJobs + $processedCount;
 
         $this->table(
@@ -129,10 +130,57 @@ class QueueStats extends Command
         return 0;
     }
 
+    private function resolveTrackingStartTime(): Carbon
+    {
+        $cached = Cache::get('queue_stats_start_time');
+
+        if ($cached instanceof Carbon) {
+            return $cached;
+        }
+
+        if ($cached instanceof \DateTimeInterface) {
+            return Carbon::instance($cached);
+        }
+
+        if (is_numeric($cached)) {
+            return Carbon::createFromTimestamp((int) $cached);
+        }
+
+        if (is_string($cached) && trim($cached) !== '') {
+            try {
+                return Carbon::parse($cached);
+            } catch (\Throwable) {
+            }
+        }
+
+        $startTime = now();
+        Cache::put('queue_stats_start_time', $startTime, now()->addSeconds(30));
+
+        return $startTime;
+    }
+
+    private function formatTrackingDuration(Carbon $startTime): string
+    {
+        $seconds = max(0, $startTime->diffInSeconds(now()));
+        $hours = intdiv($seconds, 3600);
+        $minutes = intdiv($seconds % 3600, 60);
+        $remainingSeconds = $seconds % 60;
+
+        if ($hours > 0) {
+            return sprintf('%dh %dm', $hours, $minutes);
+        }
+
+        if ($minutes > 0) {
+            return sprintf('%dm %ds', $minutes, $remainingSeconds);
+        }
+
+        return sprintf('%ds', $remainingSeconds);
+    }
+
     private function getProcessedJobsCount(): int
     {
         if (! Cache::has('queue_stats_start_time')) {
-            Cache::put('queue_stats_start_time', now(), 30);
+            Cache::put('queue_stats_start_time', now(), now()->addSeconds(30));
         }
 
         $count = Cache::get('queue_stats_processed_count', 0);
