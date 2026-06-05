@@ -163,11 +163,11 @@ class UpdateDashboardStatsJob implements ShouldQueue
                 ")->exists ?? false);
 
                 if (!$paymentsTableExists) {
-                    \Log::info('Payments table does not exist in tenant schema yet, skipping dashboard stats update', [
+                    \Log::error('Payments table is missing after tenant migration repair; dashboard stats cannot run', [
                         'tenant_id' => $this->tenantId,
                         'schema_name' => $tenant->schema_name,
                     ]);
-                    return;
+                    throw new \RuntimeException('Tenant payments table is missing after migration repair.');
                 }
 
                 // Total unique users

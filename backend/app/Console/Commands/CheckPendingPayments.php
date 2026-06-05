@@ -11,7 +11,6 @@ use App\Services\TenantContext;
 use App\Services\TenantMigrationManager;
 use Illuminate\Console\Command;
 use Illuminate\Database\QueryException;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class CheckPendingPayments extends Command
@@ -31,19 +30,33 @@ class CheckPendingPayments extends Command
 
         foreach ($tenants as $tenant) {
             if ($migrationManager->hasPendingMigrations($tenant)) {
-                Log::info('Skipping tenant pending payment check until tenant migrations complete', [
+                Log::warning('Tenant migrations pending; attempting tenant migration repair before payment check', [
                     'tenant_id' => $tenant->id,
                     'schema_name' => $tenant->schema_name,
+                    'missing_required_tables' => $migrationManager->missingRequiredTables($tenant),
                 ]);
-                continue;
+
+                $migrationManager->runMigrationsForTenant($tenant);
+                $tenant->refresh();
             }
 
-            if (! $this->tenantTableExists((string) $tenant->schema_name, 'payments')) {
-                Log::info('Skipping tenant pending payment check until payments table is ready', [
+            if (! $migrationManager->tenantTableExists($tenant, 'payments')) {
+                Log::warning('Tenant payments table missing; attempting tenant migration repair before payment check', [
                     'tenant_id' => $tenant->id,
                     'schema_name' => $tenant->schema_name,
                 ]);
-                continue;
+
+                $migrationManager->runMigrationsForTenant($tenant);
+                $tenant->refresh();
+
+                if (! $migrationManager->tenantTableExists($tenant, 'payments')) {
+                    Log::error('Tenant payments table still missing after migration repair', [
+                        'tenant_id' => $tenant->id,
+                        'schema_name' => $tenant->schema_name,
+                        'missing_required_tables' => $migrationManager->missingRequiredTables($tenant),
+                    ]);
+                    continue;
+                }
             }
 
             $tenantContext->runInTenantContext($tenant, function () use ($mpesaService, $tenant): void {
@@ -120,18 +133,5 @@ class CheckPendingPayments extends Command
                 'result' => $statusDesc,
             ]);
         }
-    }
-
-    private function tenantTableExists(string $schemaName, string $tableName): bool
-    {
-        $result = DB::selectOne(<<<'SQL'
-            SELECT EXISTS (
-                SELECT FROM information_schema.tables
-                WHERE table_schema = ?
-                  AND table_name = ?
-            ) AS exists
-        SQL, [$schemaName, $tableName]);
-
-        return (bool) ($result->exists ?? false);
     }
 }
