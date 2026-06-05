@@ -62,21 +62,6 @@ class TenantContext
             ? $this->buildSearchPath($tenant->schema_name)
             : null;
 
-        if (
-            !$force
-            && $tenant->schema_created
-            && $tenant->schema_name
-            && DB::transactionLevel() > 0
-            && $this->activeTenantId === (string) $tenant->id
-            && $this->activeSchemaName === $tenant->schema_name
-            && $this->activeSearchPath === $targetSearchPath
-        ) {
-            $this->tenant = $tenant;
-            app()->instance('current_tenant', $tenant);
-
-            return;
-        }
-
         $this->tenant = $tenant;
         
         // Also set in app container for model events to access
@@ -176,18 +161,6 @@ class TenantContext
     public function clearTenant(): void
     {
         $targetSearchPath = $this->originalSearchPath ?: $this->systemSchema;
-
-        if (
-            $this->tenant === null
-            && $this->activeSearchPath === $targetSearchPath
-            && $this->activeTenantId === null
-        ) {
-            if (app()->has('current_tenant')) {
-                app()->forgetInstance('current_tenant');
-            }
-
-            return;
-        }
 
         try {
             $this->setSearchPathStatement($targetSearchPath);
