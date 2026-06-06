@@ -66,7 +66,7 @@ class RouterComplianceEngine
             : sprintf('Compliance score %d/100 with no baseline snapshot available.', $score);
 
         return new RouterComplianceReport(
-            routerId: (int) $router->id,
+            routerId: (string) $router->id,
             tenantId: isset($router->tenant_id) ? (string) $router->tenant_id : null,
             score: $score,
             grade: $grade,
@@ -75,7 +75,7 @@ class RouterComplianceEngine
             missingControls: array_values(array_unique($missingControls)),
             passedControls: $passedControls,
             summary: $summary,
-            sourceSnapshotId: $baseline?->id ? (int) $baseline->id : null,
+            sourceSnapshotId: $baseline?->id ? (string) $baseline->id : null,
             evaluatedAt: now(),
         );
     }

@@ -27,6 +27,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Carbon\Carbon;
 use App\Models\Tenant;
@@ -2781,6 +2782,15 @@ SQL;
             ]);
         }
 
+        // Fallback for stale or missing RADIUS Portal-Password rows. The tenant DB stores
+        // bcrypt hashes, so this preserves auth without exposing plaintext credentials.
+        if ($this->verifyStoredPortalPasswordHash($pppoeUser, $inputPassword)) {
+            \Log::info('PPPoE portal: Local stored password authentication successful', [
+                'username' => $pppoeUser->username,
+            ]);
+            return true;
+        }
+
         // FALLBACK: Allow account number as default password for initial portal setup
         // This is a temporary fallback for users who haven't set a portal password yet
         if ((string) $pppoeUser->account_number !== '' && hash_equals((string) $pppoeUser->account_number, $inputPassword)) {
@@ -2788,6 +2798,28 @@ SQL;
                 'username' => $pppoeUser->username,
             ]);
             return true;
+        }
+
+        return false;
+    }
+
+    private function verifyStoredPortalPasswordHash(PppoeUser $pppoeUser, string $password): bool
+    {
+        foreach ([$pppoeUser->portal_password, $pppoeUser->password] as $hash) {
+            if (! is_string($hash) || $hash === '') {
+                continue;
+            }
+
+            try {
+                if (Hash::check($password, $hash)) {
+                    return true;
+                }
+            } catch (\Throwable $e) {
+                Log::debug('PPPoE portal: stored password hash check failed', [
+                    'username' => $pppoeUser->username,
+                    'error' => $e->getMessage(),
+                ]);
+            }
         }
 
         return false;

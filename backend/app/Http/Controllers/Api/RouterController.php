@@ -1095,7 +1095,7 @@ class RouterController extends Controller
                     'success' => true,
                     'refresh' => true,
                     'report' => [
-                        'router_id' => (int) $router->id,
+                        'router_id' => (string) $router->id,
                         'tenant_id' => $snapshot->tenant_id,
                         'score' => (int) $snapshot->score,
                         'grade' => $snapshot->grade,
@@ -1113,7 +1113,7 @@ class RouterController extends Controller
                     'success' => true,
                     'refresh' => false,
                     'report' => [
-                        'router_id' => (int) $router->id,
+                        'router_id' => (string) $router->id,
                         'tenant_id' => $latest->tenant_id,
                         'score' => (int) $latest->score,
                         'grade' => $latest->grade,
