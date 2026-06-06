@@ -118,11 +118,9 @@ class QueueStatsController extends Controller
             $command = "grep -h ' DONE' " . escapeshellarg($logDir) . "/*-queue.log 2>/dev/null | wc -l";
             $count = (int) trim(shell_exec($command));
 
-            if ($count == 0) {
-                foreach (glob($logDir . '/*-queue.log') as $logFile) {
-                    if (file_exists($logFile)) {
-                        $count += substr_count((string) file_get_contents($logFile), ' DONE');
-                    }
+            if ($count === 0) {
+                foreach (glob($logDir . '/*-queue.log') ?: [] as $logFile) {
+                    $count += $this->countTokenInFile($logFile, ' DONE');
                 }
             }
 
@@ -180,21 +178,8 @@ class QueueStatsController extends Controller
             if ($shellCount > 0) {
                 $count = $shellCount;
             } else {
-                foreach (glob($logDir . '/*-queue.log') as $logFile) {
-                    if (! file_exists($logFile)) {
-                        continue;
-                    }
-
-                    $lines = file($logFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [];
-                    foreach ($lines as $line) {
-                        if (strpos($line, ' DONE') === false) {
-                            continue;
-                        }
-
-                        if (preg_match('/(\d{4}-\d{2}-\d{2})/', $line, $matches) && $matches[1] >= $cutoffDate) {
-                            $count++;
-                        }
-                    }
+                foreach (glob($logDir . '/*-queue.log') ?: [] as $logFile) {
+                    $count += $this->countRecentTokenInFile($logFile, ' DONE', $cutoffDate);
                 }
             }
 
@@ -203,5 +188,47 @@ class QueueStatsController extends Controller
         } catch (\Exception $e) {
             return 0;
         }
+    }
+
+    private function countTokenInFile(string $path, string $token): int
+    {
+        if (! is_file($path)) {
+            return 0;
+        }
+
+        $count = 0;
+        $file = new \SplFileObject($path, 'rb');
+
+        while (! $file->eof()) {
+            $line = $file->fgets();
+            if ($line !== false && str_contains($line, $token)) {
+                $count++;
+            }
+        }
+
+        return $count;
+    }
+
+    private function countRecentTokenInFile(string $path, string $token, string $cutoffDate): int
+    {
+        if (! is_file($path)) {
+            return 0;
+        }
+
+        $count = 0;
+        $file = new \SplFileObject($path, 'rb');
+
+        while (! $file->eof()) {
+            $line = $file->fgets();
+            if ($line === false || ! str_contains($line, $token)) {
+                continue;
+            }
+
+            if (preg_match('/(\d{4}-\d{2}-\d{2})/', $line, $matches) && $matches[1] >= $cutoffDate) {
+                $count++;
+            }
+        }
+
+        return $count;
     }
 }
