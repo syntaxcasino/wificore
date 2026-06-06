@@ -125,7 +125,7 @@ func (c *binaryAPIClient) command(endpoint string, params []string) ([]map[strin
 		if strings.TrimSpace(param) == "" {
 			continue
 		}
-		if strings.HasPrefix(param, "?") || strings.HasPrefix(param, "=") || strings.HasPrefix(param, ".id=") {
+		if strings.HasPrefix(param, "?") || strings.HasPrefix(param, "=") {
 			words = append(words, param)
 			continue
 		}
@@ -167,24 +167,39 @@ func (c *binaryAPIClient) execute(command string) (string, error) {
 }
 
 func (c *binaryAPIClient) executeScript(script string) (string, error) {
-	// RouterOS 7 removed the numbers= parameter and changed .id= handling.
-	// Rather than maintain fragile binary-API compatibility for script
-	// staging (add/run/remove), delegate to the SSH fallback in
-	// Client.ExecuteScript which is fully reliable.
-	return "", errUnsupportedCommand
-}
+	script = strings.TrimSpace(script)
+	if script == "" {
+		return "", fmt.Errorf("binary api script is empty")
+	}
 
-func (c *binaryAPIClient) resolveScriptIDByName(name string) (string, error) {
-	records, err := c.command("/system/script/print", []string{"?name=" + name, "=.proplist=.id,name"})
+	name := fmt.Sprintf("wificore-%d", time.Now().UnixNano())
+
+	// 1. Add the script. RouterOS returns =ret=*1 in the !done response.
+	records, err := c.command("/system/script/add", []string{"name=" + name, "source=" + script})
 	if err != nil {
 		return "", err
 	}
-	for _, record := range records {
-		if record["name"] == name && strings.TrimSpace(record[".id"]) != "" {
-			return record[".id"], nil
-		}
+
+	scriptID := ""
+	if len(records) > 0 {
+		// !done reply contains =ret=*1 (the .id of the newly created item)
+		scriptID = records[len(records)-1]["ret"]
 	}
-	return "", fmt.Errorf("failed to resolve RouterOS script id for %q", name)
+	if strings.TrimSpace(scriptID) == "" {
+		return "", fmt.Errorf("binary api script add did not return an id")
+	}
+
+	// 3. Clean up (remove script)
+	defer func() {
+		_, _ = c.command("/system/script/remove", []string{".id=" + scriptID})
+	}()
+
+	// 2. Run the script
+	if _, err := c.command("/system/script/run", []string{".id=" + scriptID}); err != nil {
+		return "", err
+	}
+
+	return "script executed", nil
 }
 
 func (c *binaryAPIClient) executeFindMutation(baseEndpoint, action string, findFilters []string, extraParams []string) (string, error) {
