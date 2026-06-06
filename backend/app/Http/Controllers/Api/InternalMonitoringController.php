@@ -340,7 +340,9 @@ class InternalMonitoringController extends Controller
 
                 if ($router) {
                     $provisioningStatuses = ['pending', 'deploying', 'provisioning', 'verifying'];
-                    $inProvisioning = in_array($router->status, $provisioningStatuses, true);
+                    $completedProvisioningStages = ['completed', 'interfaces_discovered', 'config_applied', 'connectivity_verified'];
+                    $inProvisioning = in_array($router->status, $provisioningStatuses, true)
+                        || (! in_array($router->provisioning_stage, $completedProvisioningStages, true) && $router->provisioning_stage !== null);
                     $now = now();
 
                     if ($inProvisioning) {
@@ -360,10 +362,12 @@ class InternalMonitoringController extends Controller
                         ]);
                     }
 
-                    $key = 'discovery_dispatch_' . $router->id;
-                    if (! Cache::has($key)) {
-                        Cache::put($key, true, 30);
-                        dispatch(new DiscoverRouterInterfacesJob($tenantId, (string) $router->id))->onQueue('router-provisioning');
+                    if ($inProvisioning) {
+                        $key = 'discovery_dispatch_' . $router->id;
+                        if (! Cache::has($key)) {
+                            Cache::put($key, true, 30);
+                            dispatch(new DiscoverRouterInterfacesJob($tenantId, (string) $router->id))->onQueue('router-provisioning');
+                        }
                     }
                 }
 

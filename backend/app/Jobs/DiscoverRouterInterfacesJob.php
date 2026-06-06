@@ -139,16 +139,27 @@ class DiscoverRouterInterfacesJob implements ShouldQueue
                     }
                 }
             } catch (\Throwable $e) {
+                $errorMessage = $e->getMessage();
+                $isPermanentFailure = str_contains($errorMessage, 'unable to authenticate')
+                    || str_contains($errorMessage, 'no supported methods remain')
+                    || str_contains($errorMessage, 'handshake failed')
+                    || str_contains($errorMessage, 'Connection refused')
+                    || str_contains($errorMessage, 'no route to host');
+
                 Log::error('Failed to discover router interfaces', [
                     'router_id' => $router->id,
                     'tenant_id' => $this->tenantId,
-                    'error' => $e->getMessage(),
-                    'trace' => $e->getTraceAsString(),
+                    'error' => $errorMessage,
+                    'permanent_failure' => $isPermanentFailure,
                 ]);
+
                 if ($task) {
-                    $task->markFailed($e->getMessage(), $task->progress, 'Failed to discover router interfaces');
+                    $task->markFailed($errorMessage, $task->progress, 'Failed to discover router interfaces');
                 }
-                throw $e;
+
+                if (! $isPermanentFailure) {
+                    throw $e;
+                }
             } finally {
                 $lock->release();
             }
