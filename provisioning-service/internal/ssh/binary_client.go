@@ -125,7 +125,7 @@ func (c *binaryAPIClient) command(endpoint string, params []string) ([]map[strin
 		if strings.TrimSpace(param) == "" {
 			continue
 		}
-		if strings.HasPrefix(param, "?") || strings.HasPrefix(param, "=") {
+		if strings.HasPrefix(param, "?") || strings.HasPrefix(param, "=") || strings.HasPrefix(param, ".id=") {
 			words = append(words, param)
 			continue
 		}
@@ -449,7 +449,7 @@ func translateRouterOSCommand(command string) (string, []string, commandOptions,
 		}
 
 		if opts.action == "set" || opts.action == "remove" || opts.action == "enable" || opts.action == "disable" {
-			params = append(params, "numbers="+stripAngleAndQuotes(tok))
+			params = append(params, ".id="+stripAngleAndQuotes(tok))
 			continue
 		}
 
