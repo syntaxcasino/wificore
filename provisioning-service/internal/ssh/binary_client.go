@@ -174,15 +174,30 @@ func (c *binaryAPIClient) executeScript(script string) (string, error) {
 
 	name := fmt.Sprintf("wificore-%d", time.Now().UnixNano())
 	source := script
-	if _, err := c.command("/system/script/add", []string{"name=" + name, "source=" + source}); err != nil {
+	records, err := c.command("/system/script/add", []string{"name=" + name, "source=" + source})
+	if err != nil {
 		return "", err
 	}
+	scriptID := ""
+	if len(records) > 0 {
+		scriptID = records[0][".id"]
+	}
 	defer func() {
-		_, _ = c.command("/system/script/remove", []string{"numbers=" + name})
+		if scriptID != "" {
+			_, _ = c.command("/system/script/remove", []string{".id=" + scriptID})
+		} else {
+			_, _ = c.command("/system/script/remove", []string{"?name=" + name})
+		}
 	}()
 
-	if _, err := c.command("/system/script/run", []string{"numbers=" + name}); err != nil {
-		return "", err
+	if scriptID != "" {
+		if _, err := c.command("/system/script/run", []string{".id=" + scriptID}); err != nil {
+			return "", err
+		}
+	} else {
+		if _, err := c.command("/system/script/run", []string{"?name=" + name}); err != nil {
+			return "", err
+		}
 	}
 
 	return "script executed", nil
@@ -207,7 +222,7 @@ func (c *binaryAPIClient) executeFindMutation(baseEndpoint, action string, findF
 		}
 
 		params := append([]string{}, extraParams...)
-		params = append(params, "numbers="+id)
+		params = append(params, ".id="+id)
 		result, err := c.command(strings.TrimSuffix(baseEndpoint, "/"+action)+"/"+action, params)
 		if err != nil {
 			return "", err
