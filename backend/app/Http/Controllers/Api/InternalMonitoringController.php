@@ -32,11 +32,15 @@ class InternalMonitoringController extends Controller
     public function updateVpnStatus(Request $request, string $tenantId)
     {
         $validated = $request->validate([
-            'status' => 'required|string|in:completed,failed',
+            'status' => 'required|string|in:completed,failed,running',
             'result' => 'nullable|array',
             'result.routers' => 'nullable|array',
             'error' => 'nullable|string|max:2000',
         ]);
+
+        if ($validated['status'] === 'running') {
+            return response()->json(['success' => true]);
+        }
 
         if ($validated['status'] === 'failed') {
             Log::warning('Monitoring callback reported VPN refresh failure', [
@@ -104,11 +108,15 @@ class InternalMonitoringController extends Controller
     public function updateRouterStatus(Request $request, string $tenantId)
     {
         $validated = $request->validate([
-            'status' => 'required|string|in:completed,failed',
+            'status' => 'required|string|in:completed,failed,running',
             'result' => 'nullable|array',
             'result.routers' => 'nullable|array',
             'error' => 'nullable|string|max:2000',
         ]);
+
+        if ($validated['status'] === 'running') {
+            return response()->json(['success' => true]);
+        }
 
         if ($validated['status'] === 'failed') {
             Log::warning('Monitoring callback reported router status refresh failure', [
@@ -165,11 +173,15 @@ class InternalMonitoringController extends Controller
     public function updateLiveData(Request $request, string $tenantId)
     {
         $validated = $request->validate([
-            'status' => 'required|string|in:completed,failed',
+            'status' => 'required|string|in:completed,failed,running',
             'result' => 'nullable|array',
             'result.routers' => 'nullable|array',
             'error' => 'nullable|string|max:2000',
         ]);
+
+        if ($validated['status'] === 'running') {
+            return response()->json(['success' => true]);
+        }
 
         if ($validated['status'] === 'failed') {
             Log::warning('Monitoring callback reported live data refresh failure', [
@@ -212,7 +224,7 @@ class InternalMonitoringController extends Controller
     public function updateRouterMetrics(Request $request, string $tenantId)
     {
         $validated = $request->validate([
-            'status' => 'required|string|in:completed,failed',
+            'status' => 'required|string|in:completed,failed,running',
             'result' => 'nullable|array',
             'result.ranges' => 'nullable|array',
             'result.ranges.*.time_range' => 'required_with:result.ranges|string|max:32',
@@ -220,6 +232,10 @@ class InternalMonitoringController extends Controller
             'result.ranges.*.routers.*.router_id' => 'required_with:result.ranges.*.routers|string',
             'error' => 'nullable|string|max:2000',
         ]);
+
+        if ($validated['status'] === 'running') {
+            return response()->json(['success' => true]);
+        }
 
         if ($validated['status'] === 'failed') {
             Log::warning('Monitoring callback reported router metrics computation failure', [
