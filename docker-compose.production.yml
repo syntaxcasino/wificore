@@ -113,12 +113,14 @@ services:
     restart: always
     environment:
       - WIREGUARD_CONTROLLER_URL=http://172.70.255.254:8080
+      - WIREGUARD_API_KEY=${WIREGUARD_API_KEY:-}
       - PORT=8080
       - DEBUG=${PROVISIONING_DEBUG:-false}
       - LOG_LEVEL=${PROVISIONING_LOG_LEVEL:-info}
       - SSH_TIMEOUT=15
       - BACKEND_API_URL=http://wificore-backend:9000
       - API_KEY=${PROVISIONING_SERVICE_API_KEY:-}
+      - PROVISIONING_SERVICE_API_KEY=${PROVISIONING_SERVICE_API_KEY:-}
       - TZ=${TZ:-Africa/Nairobi}
     networks:
       wificore-network:
