@@ -167,25 +167,24 @@ func (c *binaryAPIClient) execute(command string) (string, error) {
 }
 
 func (c *binaryAPIClient) executeScript(script string) (string, error) {
-	script = strings.TrimSpace(script)
-	if script == "" {
-		return "", fmt.Errorf("binary api script is empty")
-	}
+	// RouterOS 7 removed the numbers= parameter and changed .id= handling.
+	// Rather than maintain fragile binary-API compatibility for script
+	// staging (add/run/remove), delegate to the SSH fallback in
+	// Client.ExecuteScript which is fully reliable.
+	return "", errUnsupportedCommand
+}
 
-	name := fmt.Sprintf("wificore-%d", time.Now().UnixNano())
-	source := script
-	if _, err := c.command("/system/script/add", []string{"name=" + name, "source=" + source}); err != nil {
+func (c *binaryAPIClient) resolveScriptIDByName(name string) (string, error) {
+	records, err := c.command("/system/script/print", []string{"?name=" + name, "=.proplist=.id,name"})
+	if err != nil {
 		return "", err
 	}
-	defer func() {
-		_, _ = c.command("/system/script/remove", []string{"=name=" + name})
-	}()
-
-	if _, err := c.command("/system/script/run", []string{"=name=" + name}); err != nil {
-		return "", err
+	for _, record := range records {
+		if record["name"] == name && strings.TrimSpace(record[".id"]) != "" {
+			return record[".id"], nil
+		}
 	}
-
-	return "script executed", nil
+	return "", fmt.Errorf("failed to resolve RouterOS script id for %q", name)
 }
 
 func (c *binaryAPIClient) executeFindMutation(baseEndpoint, action string, findFilters []string, extraParams []string) (string, error) {
