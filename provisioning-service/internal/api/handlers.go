@@ -2258,6 +2258,7 @@ func (h *Handler) sendCallbackPayload(url string, apiKey string, body map[string
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
 	if apiKey != "" {
 		req.Header.Set("X-API-Key", apiKey)
 	}
