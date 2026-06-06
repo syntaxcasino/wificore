@@ -169,13 +169,15 @@ trait ZeroConfigBootstrapTrait
 
         return [
             "# Service Hardening (management access restricted to: {$allowAddr})",
-            ":do { /ip service enable api } on-error={ /log info \"{$prefix}: api already enabled\" }",
-            ":do { /ip service set api address=\"{$allowAddr}\" } on-error={ /log warning \"{$prefix}: Failed to restrict api address\" }",
-            ":do { /ip service enable api-ssl } on-error={ /log info \"{$prefix}: api-ssl not available\" }",
-            ":do { /ip service set api-ssl address=\"{$allowAddr}\" } on-error={ /log warning \"{$prefix}: Failed to set api-ssl address\" }",
-            ":do { /ip service set ssh address=\"{$allowAddr}\" } on-error={ /log warning \"{$prefix}: Failed to restrict SSH\" }",
-            ":do { /ip service set winbox address=\"{$allowAddr}\" } on-error={ /log warning \"{$prefix}: Failed to restrict Winbox\" }",
-            ":do { /ip service disable telnet,ftp,www,www-ssl,romon } on-error={ /log info \"{$prefix}: Some services already disabled\" }",
+            ":do { /ip service set [find name=\"api\"] disabled=no address=\"{$allowAddr}\" } on-error={ /log warning \"{$prefix}: Failed to enable or restrict api service\" }",
+            ":do { /ip service set [find name=\"api-ssl\"] disabled=no address=\"{$allowAddr}\" } on-error={ /log info \"{$prefix}: api-ssl not available\" }",
+            ":do { /ip service set [find name=\"ssh\"] address=\"{$allowAddr}\" } on-error={ /log warning \"{$prefix}: Failed to restrict SSH\" }",
+            ":do { /ip service set [find name=\"winbox\"] address=\"{$allowAddr}\" } on-error={ /log warning \"{$prefix}: Failed to restrict Winbox\" }",
+            ":do { /ip service set [find name=\"telnet\"] disabled=yes } on-error={} ",
+            ":do { /ip service set [find name=\"ftp\"] disabled=yes } on-error={} ",
+            ":do { /ip service set [find name=\"www\"] disabled=yes } on-error={} ",
+            ":do { /ip service set [find name=\"www-ssl\"] disabled=yes } on-error={} ",
+            ":do { /tool romon set enabled=no } on-error={ /log info \"{$prefix}: RoMON not enabled\" }",
         ];
     }
 
