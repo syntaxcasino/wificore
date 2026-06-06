@@ -222,6 +222,7 @@ class ZeroConfigHybridGenerator
         }
         $s[] = ":do { /ip hotspot remove [/ip hotspot find name=\"{$server}\"]; } on-error={}";
         $s[] = ":do { /ip hotspot add name=\"{$server}\" interface=\"{$iface}\" profile=\"{$profile}\" address-pool=\"{$poolName}\" addresses-per-mac=2 idle-timeout=\"5m\" keepalive-timeout=\"2m\" disabled=no; } on-error={ :error \"hyb-hs-srv-fail\" }";
+        $s[] = ":if ([:len [/ip hotspot find name=\"{$server}\"]] = 0) do={ :error \"hyb-{$id}: FATAL - hotspot server missing after add\" }";
         if ($portalHost) {
             $s[] = ":do { /ip hotspot walled-garden remove [/ip hotspot walled-garden find comment=\"hyb-wg-{$id}\"]; } on-error={}";
             $s[] = ":do { /ip hotspot walled-garden add dst-host=\"{$portalHost}\" action=\"allow\" comment=\"hyb-wg-{$id}\"; } on-error={ /log warning \"hyb-{$id}: Failed to add walled-garden entry for {$portalHost} — captive portal may be unreachable\" }";
@@ -399,7 +400,7 @@ class ZeroConfigHybridGenerator
             "# Bridge Setup",
             ":do { /interface bridge port remove [/interface bridge port find bridge=\"{$bridge}\"]; } on-error={ /log info \"hyb-$id: INFO - No bridge ports to remove\" }",
             ":do { /interface bridge remove [/interface bridge find name=\"{$bridge}\"]; } on-error={ /log info \"hyb-$id: INFO - No bridge to remove\" }",
-            ":do { /interface bridge add name=\"{$bridge}\" protocol-mode=\"rstp\" comment=\"hyb-br-{$id}\" } on-error={ /log error \"hyb-$id: FATAL - bridge add failed\" }",
+            ":do { /interface bridge add name=\"{$bridge}\" protocol-mode=\"rstp\" comment=\"hyb-br-{$id}\" } on-error={ :error \"hyb-$id: FATAL - bridge add failed\" }",
             ":delay 500ms;",
         ];
 
@@ -490,17 +491,18 @@ class ZeroConfigHybridGenerator
             $s[] = ":do { /ip address add address=\"{$gateway}/{$pppoeCidr}\" interface=\"{$iface}\" comment=\"hyb-pp-gw-{$id}\"; } on-error={ :error \"hyb-{$id}: FATAL - PPPoE gateway IP failed\" }";
         }
         $s[] = ":do { /ip pool remove [/ip pool find name=\"{$poolName}\"]; } on-error={}";
-        $s[] = ":do { /ip pool add name=\"{$poolName}\" ranges=\"{$pool->range_start}-{$pool->range_end}\" comment=\"hyb-pp-{$id}\"; } on-error={ /log error \"hyb-$id: FATAL - PPPoE pool add failed\" }";
+        $s[] = ":do { /ip pool add name=\"{$poolName}\" ranges=\"{$pool->range_start}-{$pool->range_end}\" comment=\"hyb-pp-{$id}\"; } on-error={ :error \"hyb-$id: FATAL - PPPoE pool add failed\" }";
         $s[] = ":do { /ppp profile remove [/ppp profile find name=\"{$profile}\"]; } on-error={}";
-        $s[] = ":do { /ppp profile add name=\"{$profile}\" local-address=\"{$gateway}\" remote-address=none comment=\"hyb-pp-{$id}\"; } on-error={ /log error \"hyb-$id: FATAL - PPP profile add failed\" }";
-        $s[] = ":do { /ppp profile set [/ppp profile find name=\"{$profile}\"] use-radius=yes rate-limit=\"\" only-one=yes change-tcp-mss=yes; } on-error={ /log error \"hyb-$id: FATAL - profile RADIUS flags failed\" }";
+        $s[] = ":do { /ppp profile add name=\"{$profile}\" local-address=\"{$gateway}\" remote-address=none comment=\"hyb-pp-{$id}\"; } on-error={ :error \"hyb-$id: FATAL - PPP profile add failed\" }";
+        $s[] = ":do { /ppp profile set [/ppp profile find name=\"{$profile}\"] use-radius=yes rate-limit=\"\" only-one=yes change-tcp-mss=yes; } on-error={ :error \"hyb-$id: FATAL - profile RADIUS flags failed\" }";
         $s[] = ":do { /ppp profile set [/ppp profile find name=\"{$profile}\"] interface-list=\"{$pal}\"; } on-error={ /log warning \"hyb-$id: Failed to set profile interface-list (non-fatal)\" }";
         $s = array_merge($s, $this->bootstrapPppAaaHardening("hyb-{$id}", $profile));
         $s = array_merge($s, $this->bootstrapPppSessionLogging("hyb-{$id}", $profile));
         $s[] = ":do { /interface pppoe-server server remove [/interface pppoe-server server find service-name=\"{$serviceName}\"]; } on-error={}";
-        $s[] = ":do { /interface pppoe-server server add service-name=\"{$serviceName}\" interface=\"{$iface}\" default-profile=\"{$profile}\" authentication=\"pap,chap,mschap2\" keepalive-timeout=\"10\" max-mtu=\"1480\" max-mru=\"1480\" disabled=no; } on-error={ /log error \"hyb-$id: FATAL - PPPoE server add failed\" }";
+        $s[] = ":do { /interface pppoe-server server add service-name=\"{$serviceName}\" interface=\"{$iface}\" default-profile=\"{$profile}\" authentication=\"pap,chap,mschap2\" keepalive-timeout=\"10\" max-mtu=\"1480\" max-mru=\"1480\" disabled=no; } on-error={ :error \"hyb-$id: FATAL - PPPoE server add failed\" }";
         $s[] = ":do { /interface pppoe-server server set [/interface pppoe-server server find service-name=\"{$serviceName}\"] disabled=no; } on-error={ /log warning \"hyb-$id: Failed to enable PPPoE server (non-fatal)\" }";
-        $s[] = "/log info \"hyb-{$id}: PPPoE server '{$serviceName}' started successfully.\"";
+        $s[] = ":if ([:len [/interface pppoe-server server find service-name=\"{$serviceName}\"]] = 0) do={ :error \"hyb-$id: FATAL - PPPoE server missing after add\" }";
+        $s[] = "/log info \"hyb-{$id}: PPPoE server '{$serviceName}' verified and started successfully.\"";
         $rs = $params['radius_server'] ?? '10.8.0.1';
         $s = array_merge($s, $this->bootstrapOperationalLogging("hyb-{$id}", $serviceName, $rs));
         $s[] = "";

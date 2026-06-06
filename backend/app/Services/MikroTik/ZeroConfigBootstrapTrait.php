@@ -249,8 +249,8 @@ trait ZeroConfigBootstrapTrait
             ":do { /ip firewall filter remove [/ip firewall filter find comment~\"{$prefix}-BRUTE\"] } on-error={}",
             // Drop blacklisted sources immediately on all management ports (logged)
             "/ip firewall filter add chain=input protocol=\"tcp\" dst-port=\"22,8291,8728,8729\" connection-state=\"new\" src-address-list=\"bruteforce-blacklist\" action=\"drop\" log=\"yes\" log-prefix=\"BRUTE-BL-DROP\" comment=\"{$prefix}-BRUTE-DROP\"",
-            // Detect: >5 new connections per /32 from allowed range → blacklist for 1h
-            "/ip firewall filter add chain=input protocol=\"tcp\" dst-port=\"22,8291,8728,8729\" connection-state=\"new\" src-address=\"{$allowAddr}\" connection-limit=\"5,32\" action=\"add-src-to-address-list\" address-list=\"bruteforce-blacklist\" address-list-timeout=\"1h\" comment=\"{$prefix}-BRUTE-DETECT\"",
+            // Detect abuse from untrusted sources only; trusted management ranges must not self-blacklist during provisioning.
+            "/ip firewall filter add chain=input protocol=\"tcp\" dst-port=\"22,8291,8728,8729\" connection-state=\"new\" src-address=!\"{$allowAddr}\" connection-limit=\"5,32\" action=\"add-src-to-address-list\" address-list=\"bruteforce-blacklist\" address-list-timeout=\"1h\" comment=\"{$prefix}-BRUTE-DETECT\"",
         ];
     }
 

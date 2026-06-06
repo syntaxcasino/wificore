@@ -366,7 +366,7 @@ class ZeroConfigHotspotGenerator
         return [
             "# IP Pool",
             ":do { /ip pool remove [/ip pool find name=\"{$poolName}\"] } on-error={}",
-            ":do { /ip pool add name=\"{$poolName}\" ranges=\"{$params['range_start']}-{$params['range_end']}\" comment=\"hs-{$sid}\" } on-error={ /log error \"hs-{$sid}: FATAL - pool add failed\" }",
+            ":do { /ip pool add name=\"{$poolName}\" ranges=\"{$params['range_start']}-{$params['range_end']}\" comment=\"hs-{$sid}\" } on-error={ :error \"hs-{$sid}: FATAL - pool add failed\" }",
             ""
         ];
     }
@@ -384,9 +384,9 @@ class ZeroConfigHotspotGenerator
         return [
             "# DHCP Server",
             ":do { /ip dhcp-server remove [/ip dhcp-server find name=\"{$dhcpName}\"] } on-error={}",
-            ":do { /ip dhcp-server add name=\"{$dhcpName}\" interface=\"{$iface}\" address-pool=\"{$poolName}\" lease-time=1h disabled=no authoritative=yes } on-error={ /log error \"hs-{$sid}: FATAL - DHCP server add failed\" }",
+            ":do { /ip dhcp-server add name=\"{$dhcpName}\" interface=\"{$iface}\" address-pool=\"{$poolName}\" lease-time=1h disabled=no authoritative=yes } on-error={ :error \"hs-{$sid}: FATAL - DHCP server add failed\" }",
             ":do { /ip dhcp-server network remove [/ip dhcp-server network find comment=\"hs-net-{$sid}\"]; } on-error={}",
-            ":do { /ip dhcp-server network add address=\"{$network}/{$cidr}\" gateway=\"{$params['gateway_ip']}\" dns-server=\"{$dns}\" comment=\"hs-net-{$sid}\" } on-error={ /log error \"hs-{$sid}: FATAL - DHCP network add failed\" }",
+            ":do { /ip dhcp-server network add address=\"{$network}/{$cidr}\" gateway=\"{$params['gateway_ip']}\" dns-server=\"{$dns}\" comment=\"hs-net-{$sid}\" } on-error={ :error \"hs-{$sid}: FATAL - DHCP network add failed\" }",
             ""
         ];
     }
@@ -412,11 +412,12 @@ class ZeroConfigHotspotGenerator
         return array_values(array_filter([
             "# Hotspot Profile",
             ":do { /ip hotspot profile remove [/ip hotspot profile find name=\"{$profile}\"] } on-error={}",
-            ":do { /ip hotspot profile add name=\"{$profile}\" hotspot-address=\"{$params['gateway_ip']}\" login-by=http-chap,http-pap use-radius=yes html-directory=hotspot dns-name=\"{$dnsName}\" http-cookie-lifetime=1d } on-error={ /log error \"hs-{$sid}: FATAL - hotspot profile add failed\" }",
+            ":do { /ip hotspot profile add name=\"{$profile}\" hotspot-address=\"{$params['gateway_ip']}\" login-by=http-chap,http-pap use-radius=yes html-directory=hotspot dns-name=\"{$dnsName}\" http-cookie-lifetime=1d } on-error={ :error \"hs-{$sid}: FATAL - hotspot profile add failed\" }",
             ($portalHtml ? ":do { /file set [/file find name=\"hotspot/login.html\"] contents=\"{$portalHtml}\" } on-error={ /log warning \"hs-{$sid}: Failed to set portal URL (non-fatal)\" }" : null),
             "# Hotspot Server",
             ":do { /ip hotspot remove [/ip hotspot find name=\"{$server}\"] } on-error={}",
-            ":do { /ip hotspot add name=\"{$server}\" interface=\"{$iface}\" profile=\"{$profile}\" address-pool=\"{$poolName}\" addresses-per-mac=2 idle-timeout=5m keepalive-timeout=2m disabled=no } on-error={ /log error \"hs-{$sid}: FATAL - hotspot server add failed\" }",
+            ":do { /ip hotspot add name=\"{$server}\" interface=\"{$iface}\" profile=\"{$profile}\" address-pool=\"{$poolName}\" addresses-per-mac=2 idle-timeout=5m keepalive-timeout=2m disabled=no } on-error={ :error \"hs-{$sid}: FATAL - hotspot server add failed\" }",
+            ":if ([:len [/ip hotspot find name=\"{$server}\"]] = 0) do={ :error \"hs-{$sid}: FATAL - hotspot server missing after add\" }",
             "# User Profile - RADIUS-only: no local rate-limit fallback",
             ":do { /ip hotspot user profile remove [/ip hotspot user profile find name=\"{$userProf}\"] } on-error={}",
             ":do { /ip hotspot user profile add name=\"{$userProf}\" add-mac-cookie=yes shared-users=1 session-timeout=0 rate-limit=\"\" } on-error={ /log warning \"hs-{$sid}: Failed to add user profile (non-fatal, default will be used)\" }",

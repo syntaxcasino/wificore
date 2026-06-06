@@ -202,7 +202,7 @@ class ProvisioningServiceClient implements ProvisioningCommandBus
         ];
     }
 
-    protected function buildRouterServiceCallbackPayload(string $serviceId, bool $terminal = true, ?string $stage = null): ?array
+    protected function buildRouterServiceCallbackPayload(string $tenantId, string $routerId, string $serviceId, bool $terminal = true, ?string $stage = null): ?array
     {
         $callbackBaseUrl = $this->resolveCallbackBaseUrl();
         if ($callbackBaseUrl === '' || $this->apiKey === '') {
@@ -214,6 +214,8 @@ class ProvisioningServiceClient implements ProvisioningCommandBus
             'api_key' => $this->apiKey,
             'terminal' => $terminal,
             'stage' => $stage,
+            'tenant_id' => $tenantId,
+            'router_id' => $routerId,
         ];
     }
 
@@ -252,7 +254,7 @@ class ProvisioningServiceClient implements ProvisioningCommandBus
                     'script' => $script,
                     'connection' => $this->buildRouterConnectionPayload($router),
                 ],
-                'callback' => $this->buildRouterServiceCallbackPayload($serviceId, true),
+                'callback' => $this->buildRouterServiceCallbackPayload($tenantId, (string) $router->id, $serviceId, true),
             ], 'Router service deployment command submission failed');
         } catch (\Exception $e) {
             Log::error('Router service deployment command submission error', [
