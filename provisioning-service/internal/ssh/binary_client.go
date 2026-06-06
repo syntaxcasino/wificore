@@ -174,30 +174,15 @@ func (c *binaryAPIClient) executeScript(script string) (string, error) {
 
 	name := fmt.Sprintf("wificore-%d", time.Now().UnixNano())
 	source := script
-	records, err := c.command("/system/script/add", []string{"name=" + name, "source=" + source})
-	if err != nil {
+	if _, err := c.command("/system/script/add", []string{"name=" + name, "source=" + source}); err != nil {
 		return "", err
 	}
-	scriptID := ""
-	if len(records) > 0 {
-		scriptID = records[0][".id"]
-	}
 	defer func() {
-		if scriptID != "" {
-			_, _ = c.command("/system/script/remove", []string{".id=" + scriptID})
-		} else {
-			_, _ = c.command("/system/script/remove", []string{"?name=" + name})
-		}
+		_, _ = c.command("/system/script/remove", []string{"=name=" + name})
 	}()
 
-	if scriptID != "" {
-		if _, err := c.command("/system/script/run", []string{".id=" + scriptID}); err != nil {
-			return "", err
-		}
-	} else {
-		if _, err := c.command("/system/script/run", []string{"?name=" + name}); err != nil {
-			return "", err
-		}
+	if _, err := c.command("/system/script/run", []string{"=name=" + name}); err != nil {
+		return "", err
 	}
 
 	return "script executed", nil
