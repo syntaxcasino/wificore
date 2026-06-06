@@ -83,7 +83,7 @@ class ProvisioningServiceClient implements ProvisioningCommandBus
             'ip_address' => $router->ip_address,
             'vpn_ip' => $router->vpn_ip ? explode('/', $router->vpn_ip)[0] : null,
             'username' => $router->username,
-            'password' => Crypt::decryptString($router->password),
+            'password' => Crypt::decrypt($router->password),
             'ssh_port' => (int) ($router->port ?: 22),
         ];
     }
@@ -463,7 +463,7 @@ class ProvisioningServiceClient implements ProvisioningCommandBus
                     'ip_address' => $router->ip_address,
                     'vpn_ip' => $router->vpn_ip,
                     'username' => $router->username,
-                    'password' => Crypt::decryptString($router->password),
+                    'password' => Crypt::decrypt($router->password),
                     'ssh_port' => (int) ($router->port ?: 22),
                     'commands' => $commands,
                 ],
