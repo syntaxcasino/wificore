@@ -7,7 +7,7 @@ use Carbon\CarbonInterface;
 readonly class RouterComplianceReport
 {
     public function __construct(
-        public int $routerId,
+        public string $routerId,
         public ?string $tenantId,
         public int $score,
         public string $grade,
@@ -16,7 +16,7 @@ readonly class RouterComplianceReport
         public array $missingControls,
         public array $passedControls,
         public string $summary,
-        public ?int $sourceSnapshotId = null,
+        public ?string $sourceSnapshotId = null,
         public ?CarbonInterface $evaluatedAt = null,
     ) {
     }
