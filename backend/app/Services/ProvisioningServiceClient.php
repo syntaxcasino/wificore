@@ -110,6 +110,17 @@ class ProvisioningServiceClient implements ProvisioningCommandBus
         return implode(':', [$operation, (string) $router->id]);
     }
 
+    protected function resolveCallbackBaseUrl(): string
+    {
+        $callbackBaseUrl = rtrim((string) config('services.provisioning.callback_base_url', env('PROVISIONING_CALLBACK_BASE_URL', '')), '/');
+
+        if ($callbackBaseUrl !== '') {
+            return $callbackBaseUrl;
+        }
+
+        return rtrim((string) config('app.url', env('APP_URL', '')), '/');
+    }
+
     protected function resolveDuplicateWorkflowResponse(Router $router, string $idempotencyKey): ?array
     {
         $idempotencyKey = trim($idempotencyKey);
@@ -169,20 +180,20 @@ class ProvisioningServiceClient implements ProvisioningCommandBus
             return null;
         }
 
-        $appUrl = rtrim((string) config('app.url', env('APP_URL', '')), '/');
-        if ($appUrl === '' || $this->apiKey === '') {
+        $callbackBaseUrl = $this->resolveCallbackBaseUrl();
+        if ($callbackBaseUrl === '' || $this->apiKey === '') {
             Log::warning('Provisioning callbacks disabled: missing configuration', [
-                'has_app_url' => $appUrl !== '',
+                'has_callback_base_url' => $callbackBaseUrl !== '',
                 'has_api_key' => $this->apiKey !== '',
                 'task_id' => $task->id,
                 'tenant_id' => $task->tenant_id,
-                'hint' => 'Set APP_URL and PROVISIONING_SERVICE_API_KEY in .env',
+                'hint' => 'Set PROVISIONING_CALLBACK_BASE_URL and PROVISIONING_SERVICE_API_KEY in .env',
             ]);
             return null;
         }
 
         return [
-            'url' => $appUrl . '/api/internal/provisioning/router-tasks/' . $task->id . '/status',
+            'url' => $callbackBaseUrl . '/api/internal/provisioning/router-tasks/' . $task->id . '/status',
             'api_key' => $this->apiKey,
             'terminal' => $terminal,
             'stage' => $stage,
@@ -193,13 +204,13 @@ class ProvisioningServiceClient implements ProvisioningCommandBus
 
     protected function buildRouterServiceCallbackPayload(string $serviceId, bool $terminal = true, ?string $stage = null): ?array
     {
-        $appUrl = rtrim((string) config('app.url', env('APP_URL', '')), '/');
-        if ($appUrl === '' || $this->apiKey === '') {
+        $callbackBaseUrl = $this->resolveCallbackBaseUrl();
+        if ($callbackBaseUrl === '' || $this->apiKey === '') {
             return null;
         }
 
         return [
-            'url' => $appUrl . '/api/internal/provisioning/router-services/' . $serviceId . '/status',
+            'url' => $callbackBaseUrl . '/api/internal/provisioning/router-services/' . $serviceId . '/status',
             'api_key' => $this->apiKey,
             'terminal' => $terminal,
             'stage' => $stage,
@@ -208,13 +219,13 @@ class ProvisioningServiceClient implements ProvisioningCommandBus
 
     protected function buildMonitoringCallbackPayload(string $tenantId, string $path, bool $terminal = true, ?string $stage = null): ?array
     {
-        $appUrl = rtrim((string) config('app.url', env('APP_URL', '')), '/');
-        if ($appUrl === '' || $this->apiKey === '') {
+        $callbackBaseUrl = $this->resolveCallbackBaseUrl();
+        if ($callbackBaseUrl === '' || $this->apiKey === '') {
             return null;
         }
 
         return [
-            'url' => $appUrl . '/api/internal/provisioning/monitoring/tenants/' . $tenantId . '/' . ltrim($path, '/'),
+            'url' => $callbackBaseUrl . '/api/internal/provisioning/monitoring/tenants/' . $tenantId . '/' . ltrim($path, '/'),
             'api_key' => $this->apiKey,
             'terminal' => $terminal,
             'stage' => $stage,

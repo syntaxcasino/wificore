@@ -103,6 +103,7 @@ return [
     'provisioning' => [
         'url' => env('PROVISIONING_SERVICE_URL', 'http://wificore-provisioning:8080'),
         'api_key' => env('PROVISIONING_SERVICE_API_KEY'),
+        'callback_base_url' => env('PROVISIONING_CALLBACK_BASE_URL'),
         'require_callback_identity' => env('PROVISIONING_REQUIRE_CALLBACK_IDENTITY', false),
         'warn_on_missing_callback_identity' => env('PROVISIONING_WARN_MISSING_CALLBACK_IDENTITY', true),
         'max_callback_skew_seconds' => env('PROVISIONING_MAX_CALLBACK_SKEW_SECONDS', 900),
