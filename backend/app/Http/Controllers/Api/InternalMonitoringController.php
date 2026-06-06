@@ -324,68 +324,90 @@ class InternalMonitoringController extends Controller
             return response()->json(['success' => true]);
         }
 
-        $migrationManager = app(TenantMigrationManager::class);
-        if ($migrationManager->hasPendingMigrations($tenant)) {
-            $migrationManager->runMigrationsForTenant($tenant);
+        try {
+            $migrationManager = app(TenantMigrationManager::class);
+            if ($migrationManager->hasPendingMigrations($tenant)) {
+                $migrationManager->runMigrationsForTenant($tenant);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('VPN verification migration check failed, continuing', [
+                'tenant_id' => $tenantId,
+                'error' => $e->getMessage(),
+            ]);
         }
 
-        $this->tenantContext->runInTenantTransaction($tenant, function () use ($validated, $tenantId, $routerId, $vpnConfigId, $clientIp, $result) {
-            $this->logProvisioningLookupContext('vpn-verification', $tenantId, [
-                'router_id' => $routerId,
-                'vpn_config_id' => $vpnConfigId,
-                'client_ip' => $clientIp,
-            ]);
+        $dispatchDiscovery = false;
+        $dispatchRouterId = '';
 
-            $vpnConfig = $this->resolveVpnConfigurationForVerification($routerId, $vpnConfigId, $clientIp, $tenantId);
-            $router = $this->findTenantRouter($routerId, $tenantId, 'vpn-verification');
+        Log::info('VPN verification callback processing', [
+            'tenant_id' => $tenantId,
+            'router_id' => $routerId,
+            'status' => $validated['status'],
+        ]);
 
-            if ($validated['status'] === 'completed') {
-                if ($vpnConfig) {
-                    $vpnConfig->update([
-                        'status' => 'connected',
-                        'last_handshake_at' => now(),
-                    ]);
-                } else {
-                    Log::warning('VPN verification completed without a resolvable VPN configuration', [
-                        'tenant_id' => $tenantId,
-                        'router_id' => $routerId,
-                        'vpn_config_id' => $vpnConfigId,
-                        'client_ip' => $clientIp,
-                    ]);
-                }
+        try {
+            $this->tenantContext->runInTenantTransaction($tenant, function () use ($validated, $tenantId, $routerId, $vpnConfigId, $clientIp, $result, &$dispatchDiscovery, &$dispatchRouterId) {
+                $this->logProvisioningLookupContext('vpn-verification', $tenantId, [
+                    'router_id' => $routerId,
+                    'vpn_config_id' => $vpnConfigId,
+                    'client_ip' => $clientIp,
+                ]);
 
-                if ($router) {
-                    $provisioningStatuses = ['pending', 'deploying', 'provisioning', 'verifying'];
-                    $completedProvisioningStages = ['completed', 'interfaces_discovered', 'config_applied', 'connectivity_verified'];
-                    $inProvisioning = in_array($router->status, $provisioningStatuses, true)
-                        || (! in_array($router->provisioning_stage, $completedProvisioningStages, true) && $router->provisioning_stage !== null);
-                    $now = now();
+                $vpnConfig = $this->resolveVpnConfigurationForVerification($routerId, $vpnConfigId, $clientIp, $tenantId);
+                $router = $this->findTenantRouter($routerId, $tenantId, 'vpn-verification');
 
-                    if ($inProvisioning) {
-                        $router->update([
-                            'status' => $router->status === 'pending' ? 'provisioning' : $router->status,
-                            'provisioning_stage' => $router->provisioning_stage ?? 'vpn_verified',
-                            'last_seen' => $now,
-                            'last_checked' => $now,
+                if ($validated['status'] === 'completed') {
+                    if ($vpnConfig) {
+                        $vpnConfig->update([
+                            'status' => 'connected',
+                            'last_handshake_at' => now(),
                         ]);
                     } else {
-                        $router->update([
-                            'status' => 'online',
-                            'vpn_status' => 'active',
-                            'last_seen' => $now,
-                            'last_checked' => $now,
-                            'vpn_last_handshake' => $now,
+                        Log::warning('VPN verification completed without a resolvable VPN configuration', [
+                            'tenant_id' => $tenantId,
+                            'router_id' => $routerId,
+                            'vpn_config_id' => $vpnConfigId,
+                            'client_ip' => $clientIp,
                         ]);
                     }
 
-                    if ($inProvisioning) {
-                        $key = 'discovery_dispatch_' . $router->id;
-                        if (! Cache::has($key)) {
-                            Cache::put($key, true, 30);
-                            dispatch(new DiscoverRouterInterfacesJob($tenantId, (string) $router->id))->onQueue('router-provisioning');
+                    if ($router) {
+                        $provisioningStatuses = ['pending', 'deploying', 'provisioning', 'verifying'];
+                        $completedProvisioningStages = ['completed', 'interfaces_discovered', 'config_applied', 'connectivity_verified'];
+                        $inProvisioning = in_array($router->status, $provisioningStatuses, true)
+                            || (! in_array($router->provisioning_stage, $completedProvisioningStages, true) && $router->provisioning_stage !== null);
+                        $now = now();
+
+                        Log::info('VPN verification router found', [
+                            'tenant_id' => $tenantId,
+                            'router_id' => $router->id,
+                            'status' => $router->status,
+                            'provisioning_stage' => $router->provisioning_stage,
+                            'in_provisioning' => $inProvisioning,
+                        ]);
+
+                        if ($inProvisioning) {
+                            $router->update([
+                                'status' => $router->status === 'pending' ? 'provisioning' : $router->status,
+                                'provisioning_stage' => $router->provisioning_stage ?? 'vpn_verified',
+                                'last_seen' => $now,
+                                'last_checked' => $now,
+                            ]);
+                        } else {
+                            $router->update([
+                                'status' => 'online',
+                                'vpn_status' => 'active',
+                                'last_seen' => $now,
+                                'last_checked' => $now,
+                                'vpn_last_handshake' => $now,
+                            ]);
+                        }
+
+                        if ($inProvisioning) {
+                            $dispatchDiscovery = true;
+                            $dispatchRouterId = (string) $router->id;
                         }
                     }
-                }
 
                 broadcast(new VpnConnectivityVerified(
                     $tenantId,
@@ -422,6 +444,25 @@ class InternalMonitoringController extends Controller
                 (int) ($result['attempts'] ?? 1),
             ));
         });
+        } catch (\Throwable $e) {
+            Log::error('VPN verification callback transaction failed', [
+                'tenant_id' => $tenantId,
+                'router_id' => $routerId,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        if ($dispatchDiscovery && $dispatchRouterId !== '') {
+            $key = 'discovery_dispatch_' . $dispatchRouterId;
+            if (! Cache::has($key)) {
+                Cache::put($key, true, 30);
+                Log::info('Dispatching DiscoverRouterInterfacesJob after VPN verification', [
+                    'tenant_id' => $tenantId,
+                    'router_id' => $dispatchRouterId,
+                ]);
+                dispatch(new DiscoverRouterInterfacesJob($tenantId, $dispatchRouterId))->onQueue('router-provisioning');
+            }
+        }
 
         return response()->json(['success' => true]);
     }
