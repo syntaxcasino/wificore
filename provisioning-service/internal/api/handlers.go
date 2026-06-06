@@ -437,20 +437,104 @@ func (h *Handler) ProvisionService(c *gin.Context) {
 
 	identity := parseSingleKeyValueBlock(identityOutput)
 	resource := parseSingleKeyValueBlock(resourceOutput)
+	verificationChecks, verifyErr := verifyServiceDeploymentArtifacts(client, req.Script)
+	if verifyErr != nil {
+		failurePayload := map[string]interface{}{"command_results": results, "executed_commands": executedCommands, "verification_checks": verificationChecks}
+		h.reportProvisioningWorkflowEvent(req.Callback, idempotencyKey, req.RouterID, "failed", 100, "Service deployment verification failed", failurePayload, verifyErr.Error(), "verifying_deployment", true)
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"success": false, "error": verifyErr.Error(), "data": failurePayload})
+		return
+	}
 	payload := map[string]interface{}{
-		"router_id":         req.RouterID,
-		"status":            "connected",
-		"executed_at":       time.Now(),
-		"executed_commands": executedCommands,
-		"command_results":   results,
-		"model":             valueOrDefault(resource["board-name"], "Unknown"),
-		"os_version":        valueOrDefault(resource["version"], "Unknown"),
-		"identity":          valueOrDefault(identity["name"], "Unknown"),
-		"interfaces":        []string{},
-		"last_seen":         time.Now(),
+		"router_id":           req.RouterID,
+		"status":              "connected",
+		"executed_at":         time.Now(),
+		"executed_commands":   executedCommands,
+		"command_results":     results,
+		"model":               valueOrDefault(resource["board-name"], "Unknown"),
+		"os_version":          valueOrDefault(resource["version"], "Unknown"),
+		"identity":            valueOrDefault(identity["name"], "Unknown"),
+		"interfaces":          []string{},
+		"last_seen":           time.Now(),
+		"verification_checks": verificationChecks,
 	}
 	h.reportProvisioningWorkflowEvent(req.Callback, idempotencyKey, req.RouterID, "completed", 100, "Service provisioning workflow completed successfully", payload, "", "completed", true)
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Service provisioning workflow completed successfully", "data": payload})
+}
+
+func verifyServiceDeploymentArtifacts(client routerSSHClient, script string) (map[string]interface{}, error) {
+	checks := map[string]interface{}{}
+	missing := make([]string, 0)
+
+	artifactSpecs := []struct {
+		key      string
+		label    string
+		pattern  *regexp.Regexp
+		command  string
+		field    string
+	}{
+		{key: "pppoe_servers", label: "PPPoE server", pattern: regexp.MustCompile(`/interface pppoe-server server add service-name="([^"]+)"`), command: "/interface pppoe-server server print detail without-paging where service-name=\"%s\"", field: "service-name"},
+		{key: "ppp_profiles", label: "PPP profile", pattern: regexp.MustCompile(`/ppp profile add name="([^"]+)"`), command: "/ppp profile print detail without-paging where name=\"%s\"", field: "name"},
+		{key: "hotspot_servers", label: "Hotspot server", pattern: regexp.MustCompile(`/ip hotspot add name="([^"]+)"`), command: "/ip hotspot print detail without-paging where name=\"%s\"", field: "name"},
+		{key: "hotspot_profiles", label: "Hotspot profile", pattern: regexp.MustCompile(`/ip hotspot profile add name="([^"]+)"`), command: "/ip hotspot profile print detail without-paging where name=\"%s\"", field: "name"},
+	}
+
+	for _, spec := range artifactSpecs {
+		expected := uniqueRegexMatches(spec.pattern, script)
+		if len(expected) == 0 {
+			continue
+		}
+
+		verified := make([]string, 0, len(expected))
+		missingForSpec := make([]string, 0)
+		for _, name := range expected {
+			output, err := client.Execute(fmt.Sprintf(spec.command, name))
+			if err != nil {
+				return checks, fmt.Errorf("verification command failed for %s %q: %w", spec.label, name, err)
+			}
+			if strings.Contains(output, spec.field+"=\""+name+"\"") || strings.Contains(output, spec.field+": "+name) || strings.Contains(output, spec.field+"="+name) {
+				verified = append(verified, name)
+				continue
+			}
+			missingForSpec = append(missingForSpec, name)
+			missing = append(missing, fmt.Sprintf("%s %q", spec.label, name))
+		}
+
+		checks[spec.key] = map[string]interface{}{
+			"expected": expected,
+			"verified": verified,
+			"missing":  missingForSpec,
+		}
+	}
+
+	if len(missing) > 0 {
+		return checks, fmt.Errorf("missing deployed artifacts: %s", strings.Join(missing, ", "))
+	}
+
+	return checks, nil
+}
+
+func uniqueRegexMatches(pattern *regexp.Regexp, script string) []string {
+	matches := pattern.FindAllStringSubmatch(script, -1)
+	if len(matches) == 0 {
+		return nil
+	}
+	values := make([]string, 0, len(matches))
+	seen := make(map[string]struct{}, len(matches))
+	for _, match := range matches {
+		if len(match) < 2 {
+			continue
+		}
+		value := strings.TrimSpace(match[1])
+		if value == "" {
+			continue
+		}
+		if _, exists := seen[value]; exists {
+			continue
+		}
+		seen[value] = struct{}{}
+		values = append(values, value)
+	}
+	return values
 }
 
 // VerifyConnectivity handles connectivity verification requests
@@ -682,17 +766,23 @@ func (h *Handler) executeProvisionServiceCommand(req models.CommandRequest) {
 
 	identity := parseSingleKeyValueBlock(identityOutput)
 	resource := parseSingleKeyValueBlock(resourceOutput)
+	verificationChecks, verifyErr := verifyServiceDeploymentArtifacts(client, req.Payload.Script)
+	if verifyErr != nil {
+		h.reportCommandEvent(req, "failed", 100, "Service deployment verification failed", map[string]interface{}{"command_results": results, "executed_commands": executedCommands, "verification_checks": verificationChecks}, verifyErr.Error(), "verifying_deployment", true)
+		return
+	}
 	payload := map[string]interface{}{
-		"router_id":         req.RouterID,
-		"status":            "connected",
-		"executed_at":       time.Now(),
-		"executed_commands": executedCommands,
-		"command_results":   results,
-		"model":             valueOrDefault(resource["board-name"], "Unknown"),
-		"os_version":        valueOrDefault(resource["version"], "Unknown"),
-		"identity":          valueOrDefault(identity["name"], "Unknown"),
-		"interfaces":        []string{},
-		"last_seen":         time.Now(),
+		"router_id":           req.RouterID,
+		"status":              "connected",
+		"executed_at":         time.Now(),
+		"executed_commands":   executedCommands,
+		"command_results":     results,
+		"model":               valueOrDefault(resource["board-name"], "Unknown"),
+		"os_version":          valueOrDefault(resource["version"], "Unknown"),
+		"identity":            valueOrDefault(identity["name"], "Unknown"),
+		"interfaces":          []string{},
+		"last_seen":           time.Now(),
+		"verification_checks": verificationChecks,
 	}
 	h.reportCommandEvent(req, "completed", 100, "Service provisioning workflow completed successfully", payload, "", "completed", true)
 }
@@ -719,11 +809,33 @@ func (h *Handler) executeDeployScriptCommand(req models.CommandRequest) {
 		return
 	}
 
+	h.reportCommandEvent(req, "running", 80, "Verifying script deployment", map[string]interface{}{"executed_commands": executedCommands}, "", "verifying_deployment", false)
+	identityOutput, err := client.Execute("/system identity print")
+	if err != nil {
+		h.reportCommandEvent(req, "failed", 100, "Unable to read router identity after script deployment", map[string]interface{}{"command_results": results, "executed_commands": executedCommands}, err.Error(), "verifying_deployment", true)
+		return
+	}
+	resourceOutput, err := client.Execute("/system resource print")
+	if err != nil {
+		h.reportCommandEvent(req, "failed", 100, "Unable to read router resources after script deployment", map[string]interface{}{"command_results": results, "executed_commands": executedCommands}, err.Error(), "verifying_deployment", true)
+		return
+	}
+	identity := parseSingleKeyValueBlock(identityOutput)
+	resource := parseSingleKeyValueBlock(resourceOutput)
+	verificationChecks, verifyErr := verifyServiceDeploymentArtifacts(client, req.Payload.Script)
+	if verifyErr != nil {
+		h.reportCommandEvent(req, "failed", 100, "Script deployment verification failed", map[string]interface{}{"command_results": results, "executed_commands": executedCommands, "verification_checks": verificationChecks}, verifyErr.Error(), "verifying_deployment", true)
+		return
+	}
 	payload := map[string]interface{}{
-		"router_id":         req.RouterID,
-		"executed_at":       time.Now(),
-		"executed_commands": executedCommands,
-		"command_results":   results,
+		"router_id":           req.RouterID,
+		"executed_at":         time.Now(),
+		"executed_commands":   executedCommands,
+		"command_results":     results,
+		"model":               valueOrDefault(resource["board-name"], "Unknown"),
+		"os_version":          valueOrDefault(resource["version"], "Unknown"),
+		"identity":            valueOrDefault(identity["name"], "Unknown"),
+		"verification_checks": verificationChecks,
 	}
 	h.reportCommandEvent(req, "completed", 100, "Script deployed successfully", payload, "", "completed", true)
 }

@@ -551,8 +551,8 @@ export function useRouterProvisioning(props, emit) {
           if (_deployResolved) return
           try {
             const res = await axios.get(`/routers/${routerId}/provisioning-status`)
-            if (res.data.status === 'completed' || res.data.router_status === 'online') {
-              _resolveDeployment(true, 'Deployment completed (catch-up)')
+            if (res.data.status === 'completed') {
+              _resolveDeployment(true, 'Deployment completed and verified (catch-up)')
             } else if (res.data.status === 'failed' || res.data.router_status === 'connection_failed') {
               _resolveDeployment(false, res.data.error || 'Deployment failed (catch-up)')
             }
@@ -748,10 +748,10 @@ export function useRouterProvisioning(props, emit) {
     )
     currentStage.value = 3
     provisioningProgress.value = 75
-    provisioningStatus.value = 'Router connected - Map services to interfaces'
+    provisioningStatus.value = 'Router bootstrap connected - Map services to interfaces'
     if (vpnChanName) { window.Echo?.leave(vpnChanName); _vpnChannelName = null }
     if (routersChanName) { window.Echo?.leave(routersChanName); _routersChannelName = null }
-    addLog('success', '🎉 Router provisioning complete!')
+    addLog('success', '🎉 Router bootstrap complete. Service deployment is still pending.')
     addLog('info', 'Map services to interfaces, then confirm to deploy')
   }
 
