@@ -991,7 +991,7 @@ func parseInterfaces(output string) []map[string]string {
 	interfaces := make([]map[string]string, 0)
 	lines := strings.Split(output, "\n")
 	var current map[string]string
-	startPattern := regexp.MustCompile(`^\d+\s+.*name="([^"]+)"`)
+	startPattern := regexp.MustCompile(`^\d+\s+.*\bname=("([^"]+)"|([^\s]+))`)
 	typePattern := regexp.MustCompile(`\btype=([^\s]+)`)
 	mtuPattern := regexp.MustCompile(`\bmtu=(\d+)`)
 	commentPattern := regexp.MustCompile(`\bcomment="([^"]*)"`)
@@ -1008,7 +1008,11 @@ func parseInterfaces(output string) []map[string]string {
 			if current != nil {
 				interfaces = append(interfaces, current)
 			}
-			current = map[string]string{"name": matches[1], "type": "ether", "running": "false", "mtu": "1500", "comment": ""}
+			name := matches[2]
+			if name == "" {
+				name = matches[3]
+			}
+			current = map[string]string{"name": name, "type": "ether", "running": "false", "mtu": "1500", "comment": ""}
 			if strings.Contains(rawLine, " R ") || strings.Contains(rawLine, "running=yes") || strings.Contains(rawLine, "running=true") {
 				current["running"] = "true"
 			}

@@ -94,10 +94,14 @@ class DiscoverRouterInterfacesJob implements ShouldQueue
                 $liveData = $provisioningClient->fetchLiveData($router, 'provisioning', $this->tenantId);
 
                 if (isset($liveData['interfaces']) && is_array($liveData['interfaces'])) {
-                    // Update router metadata only (status already set to 'online' by CheckRoutersJob)
+                    $completedStages = ['completed', 'interfaces_discovered', 'config_applied', 'connectivity_verified'];
+                    $stageUpdate = in_array($router->provisioning_stage, $completedStages, true)
+                        ? []
+                        : ['provisioning_stage' => 'interfaces_discovered'];
+
                     $router->update(array_merge([
                         'last_seen' => now(),
-                    ], app(RouterOsCapabilityRegistry::class)->buildRouterUpdatePayload($liveData, $router)));
+                    ], $stageUpdate, app(RouterOsCapabilityRegistry::class)->buildRouterUpdatePayload($liveData, $router)));
 
                     broadcast(new RouterInterfacesDiscovered(
                         $this->tenantId,
