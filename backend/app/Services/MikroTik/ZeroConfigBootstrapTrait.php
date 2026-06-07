@@ -395,9 +395,9 @@ trait ZeroConfigBootstrapTrait
         return [
             "# PPP AAA Hardening — fail-closed: no local fallback for IP/DNS/rate-limit",
             // Clear local-address so RouterOS cannot assign an IP if RADIUS is unreachable
-            ":do { /ppp profile set [/ppp profile find name=\"{$profName}\"] local-address=\"\" } on-error={ /log warning \"{$prefix}: Failed to clear local-address on profile — sessions may get local IP if RADIUS is down\" }",
+            ":do { /ppp profile set \"{$profName}\" local-address=\"\" } on-error={ /log warning \"{$prefix}: Failed to clear local-address on profile — sessions may get local IP if RADIUS is down\" }",
             // Explicitly remove local DNS so RADIUS Framed-Route / DNS attributes are the only source
-            ":do { /ppp profile set [/ppp profile find name=\"{$profName}\"] dns-server=\"\" wins-server=\"\" } on-error={ /log warning \"{$prefix}: Failed to clear local DNS on profile (non-fatal)\" }",
+            ":do { /ppp profile set \"{$profName}\" dns-server=\"\" wins-server=\"\" } on-error={ /log warning \"{$prefix}: Failed to clear local DNS on profile (non-fatal)\" }",
             // Confirm /ppp aaa state: use-radius=yes + accounting=yes must both be set
             ":if ([/ppp aaa get use-radius] = true) do={ /log info \"{$prefix}: PPP AAA confirmed — use-radius=yes, RADIUS-only mode active.\" } else={ /log error \"{$prefix}: CRITICAL — PPP AAA use-radius is NOT set. Sessions may authenticate locally without rate-limit enforcement.\" }",
             ":if ([/ppp aaa get accounting] = true) do={ /log info \"{$prefix}: PPP accounting confirmed — session records will be sent to RADIUS.\" } else={ /log warning \"{$prefix}: PPP accounting is disabled — session usage data will NOT be sent to RADIUS.\" }",
@@ -471,12 +471,12 @@ trait ZeroConfigBootstrapTrait
 
         return [
             "# PPP Session Logging — per-session RADIUS attribute confirmation",
-            ":do { /system script remove [/system script find name=\"{$upScriptName}\"] } on-error={}",
+            ":do { /system script remove \"{$upScriptName}\" } on-error={}",
             ":do { /system script add name=\"{$upScriptName}\" source=\"{$this->escapeScriptSource($upBody)}\" comment=\"{$prefix}-PPP-UP-LOG\" } on-error={ /log warning \"{$prefix}: Failed to install PPP up-script\" }",
-            ":do { /system script remove [/system script find name=\"{$downScriptName}\"] } on-error={}",
+            ":do { /system script remove \"{$downScriptName}\" } on-error={}",
             ":do { /system script add name=\"{$downScriptName}\" source=\"{$this->escapeScriptSource($downBody)}\" comment=\"{$prefix}-PPP-DOWN-LOG\" } on-error={ /log warning \"{$prefix}: Failed to install PPP down-script\" }",
             // Attach event scripts to the PPP profile
-            ":do { /ppp profile set [/ppp profile find name=\"{$profName}\"] on-up=\"{$upScriptName}\" on-down=\"{$downScriptName}\" } on-error={ /log warning \"{$prefix}: Failed to attach PPP event scripts to profile (non-fatal)\" }",
+            ":do { /ppp profile set \"{$profName}\" on-up=\"{$upScriptName}\" on-down=\"{$downScriptName}\" } on-error={ /log warning \"{$prefix}: Failed to attach PPP event scripts to profile (non-fatal)\" }",
             "",
         ];
     }
