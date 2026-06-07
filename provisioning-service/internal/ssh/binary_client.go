@@ -174,21 +174,125 @@ func (c *binaryAPIClient) executeScript(script string) (string, error) {
 
 	// Per MikroTik best practices: do NOT use /system/script/add for deployment.
 	// RouterOS script source has a finite maximum length and gets silently truncated.
-	// Instead, execute each command individually via the binary API.
-	// Each :do { ... } on-error={} block is a valid CLI command that the binary API handles.
+	// Instead, strip :do { } on-error={} wrappers and execute inner commands
+	// individually via the binary API. Benign errors (already have, no such item)
+	// are ignored for idempotent operations.
 	var outputs []string
 	for _, line := range strings.Split(script, "\n") {
 		cmd := strings.TrimSpace(line)
 		if cmd == "" || strings.HasPrefix(cmd, "#") {
 			continue
 		}
+
+		innerCmd, onError, isDoBlock := extractDoBlock(cmd)
+		if isDoBlock {
+			cmd = innerCmd
+		}
+
 		out, err := c.execute(cmd)
 		if err != nil {
-			return strings.Join(outputs, "\n"), fmt.Errorf("binary api command failed: %s: %w", cmd, err)
+			if isBenignError(err) {
+				outputs = append(outputs, fmt.Sprintf("ok (benign): %s", cmd))
+				continue
+			}
+			if isDoBlock && strings.Contains(onError, ":error") {
+				return strings.Join(outputs, "\n"), fmt.Errorf("binary api command failed: %s: %w", cmd, err)
+			}
+			// Non-fatal: log warning and continue
+			outputs = append(outputs, fmt.Sprintf("warning: %s: %v", cmd, err))
+			continue
 		}
 		outputs = append(outputs, out)
 	}
 	return strings.Join(outputs, "\n"), nil
+}
+
+// extractDoBlock extracts inner command and on-error handler from
+// a :do { inner } on-error={handler} RouterOS script line.
+func extractDoBlock(line string) (innerCmd, onError string, ok bool) {
+	line = strings.TrimSpace(line)
+	if !strings.HasPrefix(line, ":do {") && !strings.HasPrefix(line, ":do{") {
+		return "", "", false
+	}
+
+	// Find the matching } for :do {
+	depth := 0
+	startIdx := strings.Index(line, "{")
+	inQuotes := false
+	for i := startIdx; i < len(line); i++ {
+		ch := line[i]
+		if ch == '"' && (i == 0 || line[i-1] != '\\') {
+			inQuotes = !inQuotes
+			continue
+		}
+		if inQuotes {
+			continue
+		}
+		if ch == '{' {
+			depth++
+		} else if ch == '}' {
+			depth--
+			if depth == 0 {
+				innerCmd = strings.TrimSpace(line[startIdx+1 : i])
+				rest := strings.TrimSpace(line[i+1:])
+				if strings.HasPrefix(rest, "on-error=") {
+					rest = strings.TrimSpace(strings.TrimPrefix(rest, "on-error="))
+					if strings.HasPrefix(rest, "{") {
+						errStart := strings.Index(rest, "{")
+						depth = 0
+						inQuotes = false
+						for j := errStart; j < len(rest); j++ {
+							ch2 := rest[j]
+							if ch2 == '"' && (j == 0 || rest[j-1] != '\\') {
+								inQuotes = !inQuotes
+								continue
+							}
+							if inQuotes {
+								continue
+							}
+							if ch2 == '{' {
+								depth++
+							} else if ch2 == '}' {
+								depth--
+								if depth == 0 {
+									onError = strings.TrimSpace(rest[errStart+1 : j])
+									return innerCmd, onError, true
+								}
+							}
+						}
+					}
+				}
+				return innerCmd, "", true
+			}
+		}
+	}
+	return "", "", false
+}
+
+// isBenignError returns true for errors that are expected during idempotent
+// operations (adding an item that already exists, removing one that doesn't).
+func isBenignError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	needles := []string{
+		"already have",
+		"already exists",
+		"no such item",
+		"nothing to remove",
+		"failure: already have",
+		"failure: item with the same name",
+		"failure: item with same name",
+		"failure: entry already exists",
+		"entry already exists",
+	}
+	for _, needle := range needles {
+		if strings.Contains(msg, needle) {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *binaryAPIClient) executeFindMutation(baseEndpoint, action string, findFilters []string, extraParams []string) (string, error) {
