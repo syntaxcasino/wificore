@@ -321,42 +321,52 @@ export function useRouterProvisioning(props, emit) {
 
       mappingDeployedServices.value = configured
 
+      // Backend merges all sibling services of the same type into ONE unified config.
+      // Deploying each service separately causes redundant router_busy errors.
+      // Group by service_type and deploy only ONE representative per type.
+      const servicesByType = new Map()
+      for (const svc of configured) {
+        const type = svc.service_type || 'unknown'
+        if (!servicesByType.has(type)) {
+          servicesByType.set(type, svc)
+        }
+      }
+      const uniqueTypes = [...servicesByType.keys()]
+
       provisioningProgress.value = 85
       provisioningStatus.value = 'Deploying services...'
-      mappingStatus.value = `Deploying ${configured.length} service(s)...`
-      addLog('info', `Deploying ${configured.length} configured service instance(s)...`)
+      mappingStatus.value = `Deploying ${uniqueTypes.length} service type(s) (${uniqueTypes.join(', ')})...`
+      addLog('info', `Deploying ${uniqueTypes.length} service type(s) across ${configured.length} interface(s)...`)
 
-      // Dispatch all deploy requests, then wait for WS events to confirm completion
       let actuallyDispatched = 0
-      for (const service of configured) {
-        const serviceLabel = `${service.service_type || 'service'} on ${service.interface_name || service.interface || 'unknown interface'}`
+      for (const [type, service] of servicesByType) {
         try {
           const deployResp = await axios.post(`/routers/${routerId}/services/${service.id}/deploy`)
           if (!deployResp.data?.success) {
             const deployMsg = deployResp.data?.message || ''
             const alreadyDeployed = /already.deployed|already.exists|already.configured/i.test(deployMsg)
             if (!alreadyDeployed) {
-              throw new Error(deployMsg || `Failed to deploy service ${service.id}`)
+              throw new Error(deployMsg || `Failed to deploy ${type} service`)
             }
-            addLog('info', `${serviceLabel} is already deployed — skipping`)
+            addLog('info', `${type} is already deployed — skipping`)
           } else {
             actuallyDispatched++
-            addLog('info', `Queued ${serviceLabel}`)
+            addLog('info', `Queued ${type} deployment (${configured.filter(s => s.service_type === type).length} interface(s))`)
           }
         } catch (deployErr) {
           const httpStatus = deployErr.response?.status
           const deployMsg = deployErr.response?.data?.message || deployErr.message || ''
           const alreadyDeployed = httpStatus === 409 || /already.deployed|already.exists|already.configured/i.test(deployMsg)
           if (!alreadyDeployed) throw deployErr
-          addLog('info', `${serviceLabel} is already deployed — skipping`)
+          addLog('info', `${type} is already deployed — skipping`)
         }
       }
 
-      // If every service was already deployed, nothing to wait for — resolve immediately
+      // If every service type was already deployed, nothing to wait for — resolve immediately
       if (actuallyDispatched === 0) {
         addLog('info', 'All services already deployed')
       } else {
-        // Wait for WS provisioning.progress events to confirm all dispatched services complete
+        // Wait for WS provisioning.progress events to confirm all dispatched types complete
         await waitForServiceDeploymentViaWs(routerId, actuallyDispatched)
       }
 
