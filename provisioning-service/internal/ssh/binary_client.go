@@ -602,7 +602,10 @@ func translateRouterOSCommand(command string) (string, []string, commandOptions,
 			continue
 		}
 
-		if strings.HasPrefix(tok, "[find") || strings.Contains(tok, "[find") {
+		// Detect [/<path> find ...] or [/<path> where ...] reference expressions.
+		// These are RouterOS scripting constructs that resolve item IDs by query.
+		// e.g. [/interface bridge port find bridge="br"] or [/ppp profile find name="prof"]
+		if strings.HasPrefix(tok, "[") && (strings.Contains(tok, " find ") || strings.Contains(tok, " where ")) {
 			opts.findMutation = true
 			filters := extractFindFilters(strings.Join(rest[i:], " "))
 			if len(filters) == 0 {
