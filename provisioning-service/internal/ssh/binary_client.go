@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"sort"
 	"strconv"
@@ -143,6 +144,8 @@ func (c *binaryAPIClient) execute(command string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
+	log.Printf("[binary_client] execute: endpoint=%q action=%q findMutation=%v findFilters=%v params=%v", endpoint, opts.action, opts.findMutation, opts.findFilters, params)
 
 	if opts.scriptDeploy {
 		return "", errUnsupportedCommand
@@ -347,26 +350,62 @@ func isBenignError(err error) bool {
 }
 
 func (c *binaryAPIClient) executeFindMutation(baseEndpoint, action string, findFilters []string, extraParams []string) (string, error) {
-	searchEndpoint := strings.TrimSuffix(baseEndpoint, "/"+action) + "/print"
-	records, err := c.command(searchEndpoint, findFilters)
+	basePath := strings.TrimSuffix(baseEndpoint, "/"+action)
+	searchEndpoint := basePath + "/print"
+
+	// RouterOS 7.x binary API rejects ?key=value query words on many endpoints
+	// (e.g. /ppp/profile/print returns "unknown parameter find name").
+	// Fetch all records without query words and filter client-side instead.
+	allRecords, err := c.command(searchEndpoint, nil)
 	if err != nil {
 		return "", err
 	}
 
-	if len(records) == 0 {
-		return "", nil
+	// Parse filters: each is "?key=value" or "?key~=value" (contains).
+	type filter struct {
+		key      string
+		val      string
+		contains bool
+	}
+	parsed := make([]filter, 0, len(findFilters))
+	for _, f := range findFilters {
+		f = strings.TrimPrefix(f, "?")
+		if idx := strings.Index(f, "~="); idx > 0 {
+			parsed = append(parsed, filter{key: f[:idx], val: f[idx+2:], contains: true})
+		} else if idx := strings.Index(f, "="); idx > 0 {
+			parsed = append(parsed, filter{key: f[:idx], val: f[idx+1:]})
+		}
 	}
 
-	outputs := make([]string, 0, len(records))
-	for _, record := range records {
+	outputs := make([]string, 0)
+	for _, record := range allRecords {
 		id := record[".id"]
 		if strings.TrimSpace(id) == "" {
+			continue
+		}
+		// Check all filters match this record.
+		match := true
+		for _, fl := range parsed {
+			rv := record[fl.key]
+			if fl.contains {
+				if !strings.Contains(rv, fl.val) {
+					match = false
+					break
+				}
+			} else {
+				if rv != fl.val {
+					match = false
+					break
+				}
+			}
+		}
+		if !match {
 			continue
 		}
 
 		params := append([]string{}, extraParams...)
 		params = append(params, ".id="+id)
-		result, err := c.command(strings.TrimSuffix(baseEndpoint, "/"+action)+"/"+action, params)
+		result, err := c.command(basePath+"/"+action, params)
 		if err != nil {
 			return "", err
 		}
