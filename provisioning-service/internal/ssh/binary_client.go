@@ -395,6 +395,17 @@ func (c *binaryAPIClient) readResponse() ([]map[string]string, error) {
 			if msg == "" {
 				msg = "routeros api error"
 			}
+			// RouterOS sends !done after !trap. Must drain it to keep
+			// command/response alignment for the next command.
+			for {
+				sentence, err := c.readSentence()
+				if err != nil {
+					return nil, err
+				}
+				if len(sentence) > 0 && (sentence[0] == "!done" || sentence[0] == "!empty") {
+					break
+				}
+			}
 			return nil, fmt.Errorf("RouterOS API error (%s): %s", typ, msg)
 		default:
 			// keep reading until !done / !trap.
@@ -621,7 +632,15 @@ func isActionToken(token string) bool {
 }
 
 func stripAngleAndQuotes(token string) string {
-	return cleanQueryValue(strings.Trim(token, "[]"))
+	token = strings.Trim(token, "[]")
+	// Handle key="value" format: strip quotes from value only.
+	if idx := strings.Index(token, "="); idx > 0 {
+		key := token[:idx]
+		val := token[idx+1:]
+		val = strings.Trim(val, "\"")
+		return key + "=" + val
+	}
+	return cleanQueryValue(token)
 }
 
 func extractFindFilters(command string) []string {
