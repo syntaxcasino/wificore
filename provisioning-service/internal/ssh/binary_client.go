@@ -687,6 +687,7 @@ func isActionToken(token string) bool {
 
 func stripAngleAndQuotes(token string) string {
 	token = strings.Trim(token, "[]")
+	token = strings.TrimSuffix(token, ";")
 	// Handle key="value" format: strip quotes from value only.
 	if idx := strings.Index(token, "="); idx > 0 {
 		key := token[:idx]
@@ -774,6 +775,7 @@ func quoteIfNeeded(value string) string {
 
 func cleanQueryValue(value string) string {
 	value = strings.TrimSpace(value)
+	value = strings.TrimSuffix(value, ";")
 	value = strings.TrimPrefix(value, "=")
 	value = strings.TrimPrefix(value, "?")
 	return strings.Trim(value, "\"")
