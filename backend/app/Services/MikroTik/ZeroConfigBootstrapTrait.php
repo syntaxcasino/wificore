@@ -306,7 +306,7 @@ trait ZeroConfigBootstrapTrait
 
         $rules = [
             '# SNMP & Syslog Export',
-            ':do { /snmp community remove "' . $snmpCommunity . '"] } on-error={}',
+            ':do { /snmp community remove [find name="' . $snmpCommunity . '"] } on-error={}',
             ':do { /snmp community add name="' . $snmpCommunity . '" addresses="' . $snmpSubnet . '" security="none" read-access="yes" write-access="no" comment="WifiCore SNMP" } on-error={ /log warning "SNMP: community add failed" }',
             ':do { /snmp set enabled="yes" contact="noc@wificore" location="WifiCore" trap-community="' . $snmpCommunity . '" trap-version=2 } on-error={ /log warning "SNMP: enable failed" }',
         ];
