@@ -172,6 +172,14 @@ func (c *binaryAPIClient) executeScript(script string) (string, error) {
 		return "", fmt.Errorf("binary api script is empty")
 	}
 
+	// RouterOS /system/script source has a maximum length (historically 4095 bytes,
+	// increased in v7 but still finite). Long scripts get silently truncated,
+	// causing commands at the end of the script to never execute.
+	// SSH streams the script interactively and has no such limit.
+	if len(script) > 4000 {
+		return "", errUnsupportedCommand
+	}
+
 	name := fmt.Sprintf("wificore-%d", time.Now().UnixNano())
 
 	// 1. Add the script. RouterOS returns =ret=*1 in the !done response.
