@@ -220,13 +220,12 @@ class HotspotService extends BaseMikroTikService
             "# Note: FTP is managed dynamically by deployment system (enabled during upload, disabled after)",
             "",
             "# Logging Configuration - Security Audit Trail",
-            ":do { /system logging action remove [/system logging action find name=remote-syslog]; } on-error={}",
-            ":do { /system logging action add name=remote-syslog target=remote remote=192.168.56.1:514 } on-error={} ",
-            ":do { /system logging add topics=hotspot,info action=remote-syslog } on-error={}",
-            ":do { /system logging add topics=hotspot,warning action=remote-syslog } on-error={}",
-            ":do { /system logging add topics=hotspot,error action=remote-syslog } on-error={}",
-            ":do { /system logging add topics=radius,info action=remote-syslog } on-error={}",
-            ":do { /system logging add topics=firewall,info action=remote-syslog } on-error={}",
+            ":do { :local act [/system logging action find name=remote-syslog]; :if ([:len $act] = 0) do={ /system logging action add name=remote-syslog target=remote remote=192.168.56.1 remote-port=514 remote-log-format=syslog syslog-facility=syslog comment=\"Hotspot legacy syslog\" } else={ /system logging action set $act target=remote remote=192.168.56.1 remote-port=514 remote-log-format=syslog syslog-facility=syslog comment=\"Hotspot legacy syslog\" } } on-error={ /log warning \"Hotspot: syslog action configure failed\" }",
+            ":do { :local rid [/system logging find topics=hotspot,info action=remote-syslog]; :if ([:len $rid] = 0) do={ /system logging add topics=hotspot,info action=remote-syslog } } on-error={}",
+            ":do { :local rid [/system logging find topics=hotspot,warning action=remote-syslog]; :if ([:len $rid] = 0) do={ /system logging add topics=hotspot,warning action=remote-syslog } } on-error={}",
+            ":do { :local rid [/system logging find topics=hotspot,error action=remote-syslog]; :if ([:len $rid] = 0) do={ /system logging add topics=hotspot,error action=remote-syslog } } on-error={}",
+            ":do { :local rid [/system logging find topics=radius,info action=remote-syslog]; :if ([:len $rid] = 0) do={ /system logging add topics=radius,info action=remote-syslog } } on-error={}",
+            ":do { :local rid [/system logging find topics=firewall,info action=remote-syslog]; :if ([:len $rid] = 0) do={ /system logging add topics=firewall,info action=remote-syslog } } on-error={}",
         ]);
 
         $script[] = "/log info \"=== Hotspot Setup Completed Successfully ===\"";

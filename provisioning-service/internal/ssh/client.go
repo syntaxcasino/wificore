@@ -178,10 +178,29 @@ func (c *Client) ExecuteScript(script string) (string, error) {
 		if err != errUnsupportedCommand && !isBinaryFallbackWorthy(err) {
 			return "", err
 		}
-		return "", fmt.Errorf("binary api script deployment failed: %w", err)
+		// Binary API cannot handle this script (too long or unsupported).
+		// Close the binary connection so subsequent Execute calls use SSH directly.
+		_ = c.binary.close()
+		c.binary = nil
 	}
 
-	return "", fmt.Errorf("binary api script deployment unavailable")
+	if err := c.connectSSH(); err != nil {
+		return "", err
+	}
+
+	// SSH fallback: execute script commands line by line.
+	// RouterOS CLI supports :do { ... } on-error={} blocks as individual commands.
+	var commands []string
+	for _, line := range strings.Split(script, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed != "" {
+			commands = append(commands, trimmed)
+		}
+	}
+
+	outputs, err := c.ExecuteMultiple(commands)
+	c.connected = true
+	return strings.Join(outputs, "\n"), err
 }
 
 // Close closes any active transport connections.
