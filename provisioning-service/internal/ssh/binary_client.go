@@ -605,14 +605,16 @@ func translateRouterOSCommand(command string) (string, []string, commandOptions,
 		// Detect [/<path> find ...] or [/<path> where ...] reference expressions.
 		// These are RouterOS scripting constructs that resolve item IDs by query.
 		// e.g. [/interface bridge port find bridge="br"] or [/ppp profile find name="prof"]
+		// IMPORTANT: do NOT break after setting findMutation — continue collecting
+		// remaining tokens (e.g. interface-list="PA-9d54fcf5") as params.
 		if strings.HasPrefix(tok, "[") && (strings.Contains(tok, " find ") || strings.Contains(tok, " where ")) {
 			opts.findMutation = true
-			filters := extractFindFilters(strings.Join(rest[i:], " "))
+			filters := extractFindFilters(tok)
 			if len(filters) == 0 {
 				return "", nil, commandOptions{}, errUnsupportedCommand
 			}
 			opts.findFilters = filters
-			break
+			continue
 		}
 
 		if strings.Contains(tok, "=") {
@@ -699,7 +701,12 @@ func stripAngleAndQuotes(token string) string {
 }
 
 func extractFindFilters(command string) []string {
-	start := strings.Index(command, "[find")
+	// RouterOS [find] expressions include a path prefix:
+	//   [/ppp profile find name="prof"]
+	//   [/interface find name="eth1"]
+	// Extract the content inside the outermost brackets and locate
+	// the " find " or " where " keyword that precedes the filters.
+	start := strings.Index(command, "[")
 	if start == -1 {
 		return nil
 	}
@@ -707,13 +714,26 @@ func extractFindFilters(command string) []string {
 	if end == -1 {
 		return nil
 	}
-	inner := strings.TrimSpace(command[start+len("[find") : start+end])
-	if inner == "" {
+	inner := command[start+1 : start+end] // e.g. "/ppp profile find name=\"prof\""
+
+	findIdx := strings.Index(inner, " find ")
+	whereIdx := strings.Index(inner, " where ")
+
+	var filtersStr string
+	if findIdx != -1 {
+		filtersStr = strings.TrimSpace(inner[findIdx+len(" find "):])
+	} else if whereIdx != -1 {
+		filtersStr = strings.TrimSpace(inner[whereIdx+len(" where "):])
+	} else {
+		return nil
+	}
+
+	if filtersStr == "" {
 		return nil
 	}
 
 	filters := make([]string, 0)
-	for _, token := range splitRouterOSCommand(inner) {
+	for _, token := range splitRouterOSCommand(filtersStr) {
 		if strings.Contains(token, "=") {
 			filters = append(filters, "?"+stripAngleAndQuotes(token))
 		}
