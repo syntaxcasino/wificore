@@ -235,10 +235,10 @@ class ZeroConfigPPPoEGenerator
         // PPP PROFILE — RADIUS-only: no local pool/DNS/rate-limit fallback.
         // All attributes (Framed-Pool, Mikrotik-Rate-Limit, DNS) MUST come from RADIUS.
         // If RADIUS is unreachable, users cannot authenticate (fail-closed by design).
-        $s[] = ":do { /ppp profile add name=\"$prof\" comment=\"PPPoE-$id\" } on-error={ /log info \"PPPoE-$id: profile exists, updating\" }";
+        $s[] = ":do { /ppp profile add name=\"$prof\" local-address=\"{$gw}\" remote-address=\"{$pool}\" interface-list=\"$pal\" change-tcp-mss=yes use-compression=no only-one=yes comment=\"PPPoE-$id\" } on-error={ /log info \"PPPoE-$id: profile exists, updating\" }";
         $s[] = ":do { /ppp aaa set use-radius=yes } on-error={ :error \"PPPoE-$id: FATAL - radius aaa set failed\" }; :do { /ppp profile set [/ppp profile find name=\"$prof\"] rate-limit=\"\" } on-error={ :error \"PPPoE-$id: FATAL - profile rate-limit set failed\" }";
-        $s[] = ":do { /ppp profile set [/ppp profile find name=\"$prof\"] interface-list=\"$pal\" } on-error={ /log warning \"PPPoE-$id: Failed to set profile interface-list (non-fatal)\" }";
-        $s[] = ":do { /ppp profile set [/ppp profile find where name=\"$prof\"] change-tcp-mss=yes use-compression=no only-one=yes; /ppp aaa set use-radius=yes accounting=yes } on-error={ /log warning \"PPPoE-$id: Failed to apply PPP settings (non-fatal)\" }";
+        $s[] = ":do { /ppp profile set [/ppp profile find name=\"$prof\"] interface-list=\"$pal\" } on-error={ :error \"PPPoE-$id: FATAL - Failed to set profile interface-list\" }";
+        $s[] = ":do { /ppp profile set [/ppp profile find where name=\"$prof\"] change-tcp-mss=yes use-compression=no only-one=yes; /ppp aaa set use-radius=yes accounting=yes } on-error={ :error \"PPPoE-$id: FATAL - Failed to apply PPP settings\" }";
         $s = array_merge($s, $this->bootstrapPppAaaHardening("PPPoE-$id", $prof));
         $s = array_merge($s, $this->bootstrapPppSessionLogging("PPPoE-$id", $prof, $isLowEnd));
 
@@ -285,7 +285,7 @@ class ZeroConfigPPPoEGenerator
         $s[] = ":do { /ip address remove [/ip address find interface=\"$bridge\"]; } on-error={}";
         $s[] = ":do { /ip address add address=\"{$gw}/24\" interface=\"$bridge\" comment=\"PPPoE-$id-GW\" } on-error={ :error \"PPPoE-$id: FATAL - gateway IP assign failed\" }";
         // Set profile local-address to dedicated gateway IP (not the pool name)
-        $s[] = ":do { /ppp profile set [/ppp profile find name=\"$prof\"] local-address=\"{$gw}\" remote-address=\"{$pool}\" } on-error={ /log warning \"PPPoE-$id: Failed to set profile addresses (non-fatal)\" }";
+        $s[] = ":do { /ppp profile set [/ppp profile find name=\"$prof\"] local-address=\"{$gw}\" remote-address=\"{$pool}\" } on-error={ :error \"PPPoE-$id: FATAL - Failed to set profile addresses\" }";
 
         $s[] = "";
         $s[] = "# ============================";
