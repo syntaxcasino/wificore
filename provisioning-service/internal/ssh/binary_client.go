@@ -172,42 +172,23 @@ func (c *binaryAPIClient) executeScript(script string) (string, error) {
 		return "", fmt.Errorf("binary api script is empty")
 	}
 
-	// RouterOS /system/script source has a maximum length (historically 4095 bytes,
-	// increased in v7 but still finite). Long scripts get silently truncated,
-	// causing commands at the end of the script to never execute.
-	// SSH streams the script interactively and has no such limit.
-	if len(script) > 4000 {
-		return "", errUnsupportedCommand
+	// Per MikroTik best practices: do NOT use /system/script/add for deployment.
+	// RouterOS script source has a finite maximum length and gets silently truncated.
+	// Instead, execute each command individually via the binary API.
+	// Each :do { ... } on-error={} block is a valid CLI command that the binary API handles.
+	var outputs []string
+	for _, line := range strings.Split(script, "\n") {
+		cmd := strings.TrimSpace(line)
+		if cmd == "" || strings.HasPrefix(cmd, "#") {
+			continue
+		}
+		out, err := c.execute(cmd)
+		if err != nil {
+			return strings.Join(outputs, "\n"), fmt.Errorf("binary api command failed: %s: %w", cmd, err)
+		}
+		outputs = append(outputs, out)
 	}
-
-	name := fmt.Sprintf("wificore-%d", time.Now().UnixNano())
-
-	// 1. Add the script. RouterOS returns =ret=*1 in the !done response.
-	records, err := c.command("/system/script/add", []string{"name=" + name, "source=" + script})
-	if err != nil {
-		return "", err
-	}
-
-	scriptID := ""
-	if len(records) > 0 {
-		// !done reply contains =ret=*1 (the .id of the newly created item)
-		scriptID = records[len(records)-1]["ret"]
-	}
-	if strings.TrimSpace(scriptID) == "" {
-		return "", fmt.Errorf("binary api script add did not return an id")
-	}
-
-	// 3. Clean up (remove script)
-	defer func() {
-		_, _ = c.command("/system/script/remove", []string{".id=" + scriptID})
-	}()
-
-	// 2. Run the script
-	if _, err := c.command("/system/script/run", []string{".id=" + scriptID}); err != nil {
-		return "", err
-	}
-
-	return "script executed", nil
+	return strings.Join(outputs, "\n"), nil
 }
 
 func (c *binaryAPIClient) executeFindMutation(baseEndpoint, action string, findFilters []string, extraParams []string) (string, error) {
