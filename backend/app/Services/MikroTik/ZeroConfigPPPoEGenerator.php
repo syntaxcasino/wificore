@@ -246,12 +246,12 @@ class ZeroConfigPPPoEGenerator
 
         // BRIDGE - Clean slate: remove everything first, then rebuild
         $s[] = ":do { /interface bridge port remove [find bridge=\"$bridge\"]; } on-error={ /log info \"PPPoE-$id: WARN - Failed to remove bridge ports\" }";
-        $s[] = ":do { /interface bridge remove \"$bridge\" } on-error={ /log info \"PPPoE-$id: WARN - Failed to remove bridge\" }";
+        $s[] = ":do { /interface bridge remove [find name=\"$bridge\"] } on-error={ /log info \"PPPoE-$id: WARN - Failed to remove bridge\" }";
         $s[] = ":do { /interface bridge add name=\"$bridge\" comment=\"PPPoE-$id\" } on-error={ :error \"PPPoE-$id: FATAL - bridge add failed\" }";
         if ($delays['bridge']) {
             $s[] = ":delay {$delays['bridge']}";
         }
-        $s[] = ":do { /interface bridge set \"$bridge\" protocol-mode=\"rstp\" } on-error={ /log warning \"PPPoE-$id: Failed to set bridge protocol-mode (non-fatal)\" }";
+        $s[] = ":do { /interface bridge set [find name=\"$bridge\"] protocol-mode=\"rstp\" } on-error={ /log warning \"PPPoE-$id: Failed to set bridge protocol-mode (non-fatal)\" }";
 
         // Add ALL interfaces to bridge — skip WireGuard/VPN interfaces (adding wg to bridge kills VPN)
         $vpnPatterns = ['wireguard', 'wg', 'vpn'];

@@ -203,6 +203,16 @@ func (c *binaryAPIClient) executeScript(script string) (string, error) {
 			}
 		}
 
+		// Handle :delay ms/s — needed between interface creation and dependent adds
+		if strings.HasPrefix(cmd, ":delay ") {
+			durStr := strings.TrimSpace(strings.TrimPrefix(cmd, ":delay "))
+			if d, err := time.ParseDuration(durStr); err == nil {
+				time.Sleep(d)
+			}
+			outputs = append(outputs, "ok: delay "+durStr)
+			continue
+		}
+
 		innerCmd, onError, isDoBlock := extractDoBlock(cmd)
 		if isDoBlock {
 			cmd = innerCmd
