@@ -208,7 +208,7 @@ class ZeroConfigPPPoEGenerator
         $s[] = "# 3. IP Pools & Interfaces";
         $s[] = "# ============================";
         // IP POOL - Atomic creation with ranges
-        $s[] = ":do { /ip pool add name=\"$pool\" ranges=\"{$p['range_start']}-{$p['range_end']}\" comment=\"PPPoE-$id\" } on-error={ /log info \"PPPoE-$id: Pool may exist, attempting update\"; /ip pool set [/ip pool find name=\"$pool\"] ranges=\"{$p['range_start']}-{$p['range_end']}\"; }";
+        $s[] = ":do { /ip pool add name=\"$pool\" ranges=\"{$p['range_start']}-{$p['range_end']}\" comment=\"PPPoE-$id\" } on-error={ /log info \"PPPoE-$id: Pool may exist, attempting update\"; /ip pool set \"$pool\" ranges=\"{$p['range_start']}-{$p['range_end']}\"; }";
 
         // INTERFACE LISTS
         $s[] = ":do { /interface list add name=\"$wan\" } on-error={} ";
@@ -237,21 +237,21 @@ class ZeroConfigPPPoEGenerator
         // If RADIUS is unreachable, users cannot authenticate (fail-closed by design).
         $s[] = ":do { /ppp profile add name=\"$prof\" local-address=\"{$gw}\" remote-address=\"{$pool}\" interface-list=\"$pal\" change-tcp-mss=yes use-compression=no only-one=yes comment=\"PPPoE-$id\" } on-error={ /log info \"PPPoE-$id: profile exists, updating\" }";
         $s[] = ":do { /ppp aaa set use-radius=yes } on-error={ :error \"PPPoE-$id: FATAL - radius aaa set failed\" }";
-        $s[] = ":do { /ppp profile set [/ppp profile find name=\"$prof\"] rate-limit=\"\" } on-error={ :error \"PPPoE-$id: FATAL - profile rate-limit set failed\" }";
-        $s[] = ":do { /ppp profile set [/ppp profile find name=\"$prof\"] interface-list=\"$pal\" } on-error={ :error \"PPPoE-$id: FATAL - Failed to set profile interface-list\" }";
-        $s[] = ":do { /ppp profile set [/ppp profile find name=\"$prof\"] change-tcp-mss=yes use-compression=no only-one=yes } on-error={ :error \"PPPoE-$id: FATAL - Failed to apply PPP settings\" }";
+        $s[] = ":do { /ppp profile set \"$prof\" rate-limit=\"\" } on-error={ :error \"PPPoE-$id: FATAL - profile rate-limit set failed\" }";
+        $s[] = ":do { /ppp profile set \"$prof\" interface-list=\"$pal\" } on-error={ :error \"PPPoE-$id: FATAL - Failed to set profile interface-list\" }";
+        $s[] = ":do { /ppp profile set \"$prof\" change-tcp-mss=yes use-compression=no only-one=yes } on-error={ :error \"PPPoE-$id: FATAL - Failed to apply PPP settings\" }";
         $s[] = ":do { /ppp aaa set use-radius=yes accounting=yes } on-error={ :error \"PPPoE-$id: FATAL - Failed to set ppp aaa\" }";
         $s = array_merge($s, $this->bootstrapPppAaaHardening("PPPoE-$id", $prof));
         $s = array_merge($s, $this->bootstrapPppSessionLogging("PPPoE-$id", $prof, $isLowEnd));
 
         // BRIDGE - Clean slate: remove everything first, then rebuild
-        $s[] = ":do { /interface bridge port remove [/interface bridge port find bridge=\"$bridge\"]; } on-error={ /log info \"PPPoE-$id: WARN - Failed to remove bridge ports\" }";
-        $s[] = ":do { /interface bridge remove [/interface bridge find name=\"$bridge\"]; } on-error={ /log info \"PPPoE-$id: WARN - Failed to remove bridge\" }";
+        $s[] = ":do { /interface bridge port remove [find bridge=\"$bridge\"]; } on-error={ /log info \"PPPoE-$id: WARN - Failed to remove bridge ports\" }";
+        $s[] = ":do { /interface bridge remove \"$bridge\" } on-error={ /log info \"PPPoE-$id: WARN - Failed to remove bridge\" }";
         $s[] = ":do { /interface bridge add name=\"$bridge\" comment=\"PPPoE-$id\" } on-error={ :error \"PPPoE-$id: FATAL - bridge add failed\" }";
         if ($delays['bridge']) {
             $s[] = ":delay {$delays['bridge']}";
         }
-        $s[] = ":do { /interface bridge set [/interface bridge find name=\"$bridge\"] protocol-mode=\"rstp\" } on-error={ /log warning \"PPPoE-$id: Failed to set bridge protocol-mode (non-fatal)\" }";
+        $s[] = ":do { /interface bridge set \"$bridge\" protocol-mode=\"rstp\" } on-error={ /log warning \"PPPoE-$id: Failed to set bridge protocol-mode (non-fatal)\" }";
 
         // Add ALL interfaces to bridge — skip WireGuard/VPN interfaces (adding wg to bridge kills VPN)
         $vpnPatterns = ['wireguard', 'wg', 'vpn'];
@@ -270,7 +270,7 @@ class ZeroConfigPPPoEGenerator
             $access = $iface;
             if ($p['vlan_required'] && $p['vlan_id']) {
                 $access = "vlan{$p['vlan_id']}-$iface";
-                $s[] = ":do { /interface vlan remove [/interface vlan find name=\"$access\"]; } on-error={ /log info \"PPPoE-$id: WARN - Failed to remove VLAN $access\" }";
+                $s[] = ":do { /interface vlan remove \"$access\" } on-error={ /log info \"PPPoE-$id: WARN - Failed to remove VLAN $access\" }";
                 $s[] = "/interface vlan add name=\"$access\" vlan-id=\"{$p['vlan_id']}\" interface=\"$iface\" comment=\"PPPoE-$id\"";
             }
             $s[] = ":do { /interface bridge port add bridge=\"$bridge\" interface=\"$access\" } on-error={ :error \"PPPoE-$id: FATAL - port add failed for $access\" }";
@@ -280,25 +280,25 @@ class ZeroConfigPPPoEGenerator
             }
         }
 
-        $s[] = ":do { /ip dhcp-server remove [/ip dhcp-server find interface=\"$bridge\"]; } on-error={}";
+        $s[] = ":do { /ip dhcp-server remove [find interface=\"$bridge\"]; } on-error={}";
 
         // Assign dedicated gateway IP to the bridge — PPP local-address uses this,
         // preventing the router from consuming an address from the subscriber pool.
-        $s[] = ":do { /ip address remove [/ip address find interface=\"$bridge\"]; } on-error={}";
+        $s[] = ":do { /ip address remove [find interface=\"$bridge\"]; } on-error={}";
         $s[] = ":do { /ip address add address=\"{$gw}/24\" interface=\"$bridge\" comment=\"PPPoE-$id-GW\" } on-error={ :error \"PPPoE-$id: FATAL - gateway IP assign failed\" }";
         // Set profile local-address to dedicated gateway IP (not the pool name)
-        $s[] = ":do { /ppp profile set [/ppp profile find name=\"$prof\"] local-address=\"{$gw}\" remote-address=\"{$pool}\" } on-error={ :error \"PPPoE-$id: FATAL - Failed to set profile addresses\" }";
+        $s[] = ":do { /ppp profile set \"$prof\" local-address=\"{$gw}\" remote-address=\"{$pool}\" } on-error={ :error \"PPPoE-$id: FATAL - Failed to set profile addresses\" }";
 
         $s[] = "";
         $s[] = "# ============================";
         $s[] = "# 5. PPPoE Server";
         $s[] = "# ============================";
-        $s[] = ":do { /interface pppoe-server server remove [/interface pppoe-server server find service-name=\"$svc\"] } on-error={ /log info \"PPPoE-$id: No existing PPPoE server to remove\" }";
+        $s[] = ":do { /interface pppoe-server server remove [find service-name=\"$svc\"] } on-error={ /log info \"PPPoE-$id: No existing PPPoE server to remove\" }";
         $keepaliveTimeout = $isLowEnd ? '120' : '30';
         $s[] = ":do { /interface pppoe-server server add service-name=\"$svc\" interface=\"$bridge\" default-profile=\"$prof\" authentication=\"chap,mschap2\" one-session-per-host=yes keepalive-timeout=\"{$keepaliveTimeout}\" max-mtu=\"1480\" max-mru=\"1480\" disabled=no } on-error={ :error \"PPPoE-$id: FATAL - PPPoE server add failed\" }";
         $s[] = ":do { /interface list member remove [/interface list member find list=\"$pl\"] } on-error={}";
         $s[] = ":do { /interface list member add list=\"$pl\" interface=\"$bridge\" comment=\"PPPoE-$id-PL\" } on-error={ /log warning \"PPPoE-$id: Failed to add bridge to list $pl\" }";
-        $s[] = ":if ([:len [/interface pppoe-server server find service-name=\"$svc\"]] = 0) do={ :error \"PPPoE-$id: FATAL - PPPoE server missing after add\" }";
+        $s[] = ":if ([:len [/interface pppoe-server server find where service-name=\"$svc\"]] = 0) do={ :error \"PPPoE-$id: FATAL - PPPoE server missing after add\" }";
         $s[] = "/log info \"PPPoE-$id: PPPoE server '$svc' verified and started successfully.\"";
         $s = array_merge($s, $this->bootstrapOperationalLogging("PPPoE-$id", $svc, $rs, $isLowEnd));
 
@@ -457,7 +457,7 @@ class ZeroConfigPPPoEGenerator
             $access = $iface;
             if ($vlanRequired && $vlanId) {
                 $access = "vlan{$vlanId}-$iface";
-                $s[] = ":do { /interface vlan remove [/interface vlan find name=\"$access\"]; } on-error={}";
+                $s[] = ":do { /interface vlan remove \"$access\" } on-error={}";
                 $s[] = "/interface vlan add name=\"$access\" vlan-id=\"{$vlanId}\" interface=\"$iface\" comment=\"PPPoE-$id\"";
             }
             $s[] = ":do { /interface bridge port add bridge=\"$bridge\" interface=\"$access\" comment=\"PPPoE-$id-add\" } on-error={ /log error \"PPPoE-$id: FATAL - Failed to add $access to bridge $bridge. PPPoE clients on this port will not connect.\" }";

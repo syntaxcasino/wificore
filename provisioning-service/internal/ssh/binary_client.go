@@ -361,6 +361,11 @@ func (c *binaryAPIClient) executeFindMutation(baseEndpoint, action string, findF
 		return "", err
 	}
 
+	log.Printf("[binary_client] executeFindMutation: %s returned %d records, filters=%v", searchEndpoint, len(allRecords), findFilters)
+	for i, r := range allRecords {
+		log.Printf("[binary_client]   record[%d]: .id=%q name=%q", i, r[".id"], r["name"])
+	}
+
 	// Parse filters: each is "?key=value" or "?key~=value" (contains).
 	type filter struct {
 		key      string
