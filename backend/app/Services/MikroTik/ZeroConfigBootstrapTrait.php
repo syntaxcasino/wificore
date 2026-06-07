@@ -305,23 +305,30 @@ trait ZeroConfigBootstrapTrait
         $snmpSubnet = '10.8.0.1/32';
 
         $rules = [
-            "# SNMP & Syslog Export",
-            ":do { /snmp community remove [/snmp community find name=\"{$snmpCommunity}\"] } on-error={}",
-            ":do { /snmp community add name=\"{$snmpCommunity}\" addresses=\"{$snmpSubnet}\" security=\"none\" read-access=\"yes\" write-access=\"no\" comment=\"WifiCore SNMP\" } on-error={ /log warning \"SNMP: community add failed\" }",
-            ":do { /snmp set enabled=\"yes\" contact=\"noc@wificore\" location=\"WifiCore\" trap-community=\"{$snmpCommunity}\" trap-version=2 } on-error={ /log warning \"SNMP: enable failed\" }",
+            '# SNMP & Syslog Export',
+            ':do { /snmp community remove [/snmp community find name="' . $snmpCommunity . '"] } on-error={}',
+            ':do { /snmp community add name="' . $snmpCommunity . '" addresses="' . $snmpSubnet . '" security="none" read-access="yes" write-access="no" comment="WifiCore SNMP" } on-error={ /log warning "SNMP: community add failed" }',
+            ':do { /snmp set enabled="yes" contact="noc@wificore" location="WifiCore" trap-community="' . $snmpCommunity . '" trap-version=2 } on-error={ /log warning "SNMP: enable failed" }',
         ];
         if ($enableSyslog) {
-            $rules[] = ":do { /system logging action remove [/system logging action find name=\"remote_syslog\"] } on-error={}";
-            $rules[] = ":do { /system logging action add name=\"remote_syslog\" target=\"remote\" remote=\"{$syslogHost}\" remote-port=\"514\" remote-log-format=\"bsd\" comment=\"WifiCore Syslog\" } on-error={ :log warning \"Syslog: action add failed\" }";
-            $rules[] = ":do { /system logging add action=\"remote_syslog\" topics=\"critical\" comment=\"WifiCore-SYSLOG-CRIT\" } on-error={}";
-            $rules[] = ":do { /system logging add action=\"remote_syslog\" topics=\"error\" comment=\"WifiCore-SYSLOG-ERR\" } on-error={}";
-            $rules[] = ":do { /system logging add action=\"remote_syslog\" topics=\"warning\" comment=\"WifiCore-SYSLOG-WARN\" } on-error={}";
-            // PPPoE/PPP session events (connect, disconnect, auth) forwarded to remote syslog
-            $rules[] = ":do { /system logging add action=\"remote_syslog\" topics=\"ppp\" comment=\"WifiCore-SYSLOG-PPP\" } on-error={}";
-            $rules[] = ":do { /system logging add action=\"remote_syslog\" topics=\"pppoe\" comment=\"WifiCore-SYSLOG-PPPOE\" } on-error={}";
-            $rules[] = ":do { /system logging add action=\"remote_syslog\" topics=\"radius\" comment=\"WifiCore-SYSLOG-RADIUS\" } on-error={}";
-            $rules[] = ":do { /system logging add action=\"remote_syslog\" topics=\"account\" comment=\"WifiCore-SYSLOG-ACCOUNT\" } on-error={}";
-            $rules[] = ":do { /system logging add action=\"remote_syslog\" topics=\"hotspot\" comment=\"WifiCore-SYSLOG-HOTSPOT\" } on-error={}";
+            $rules[] = ':do { :local actionId [/system logging action find name="remote_syslog"]; :if ([:len $actionId] = 0) do={ /system logging action add name="remote_syslog" target="remote" remote="' . $syslogHost . '" remote-port="514" remote-log-format="syslog" comment="WifiCore Syslog" } else={ /system logging action set $actionId target="remote" remote="' . $syslogHost . '" remote-port="514" remote-log-format="syslog" comment="WifiCore Syslog" } } on-error={ /log warning "Syslog: action configure failed" }';
+            $loggingRules = [
+                ['comment' => 'WifiCore-SYSLOG-CRIT', 'topics' => 'critical'],
+                ['comment' => 'WifiCore-SYSLOG-ERR', 'topics' => 'error'],
+                ['comment' => 'WifiCore-SYSLOG-WARN', 'topics' => 'warning'],
+                // PPPoE/PPP session events (connect, disconnect, auth) forwarded to remote syslog
+                ['comment' => 'WifiCore-SYSLOG-PPP', 'topics' => 'ppp'],
+                ['comment' => 'WifiCore-SYSLOG-PPPOE', 'topics' => 'pppoe'],
+                ['comment' => 'WifiCore-SYSLOG-RADIUS', 'topics' => 'radius'],
+                ['comment' => 'WifiCore-SYSLOG-ACCOUNT', 'topics' => 'account'],
+                ['comment' => 'WifiCore-SYSLOG-HOTSPOT', 'topics' => 'hotspot'],
+            ];
+
+            foreach ($loggingRules as $rule) {
+                $comment = $rule['comment'];
+                $topics = $rule['topics'];
+                $rules[] = ':do { :local logId [/system logging find comment="' . $comment . '"]; :if ([:len $logId] = 0) do={ /system logging add action="remote_syslog" topics="' . $topics . '" comment="' . $comment . '" } else={ /system logging set $logId action="remote_syslog" topics="' . $topics . '" comment="' . $comment . '" } } on-error={ /log warning "Syslog: failed to configure ' . $comment . '" }';
+            }
         }
         $rules[] = "";
         return $rules;
@@ -556,24 +563,12 @@ trait ZeroConfigBootstrapTrait
     {
         return [
             "# Traffic Flow (NetFlow v9) — per-subscriber visibility",
-            ":do { /ip traffic-flow target remove [/ip traffic-flow target find comment~\"{$prefix}-TFLOW\"] } on-error={}",
             ":do { /ip traffic-flow set enabled=\"yes\" interfaces=\"all\" active-flow-timeout=\"1m\" inactive-flow-timeout=\"15s\" } on-error={ /log warning \"{$prefix}: Failed to enable traffic-flow\" }",
-            ":do { /ip traffic-flow target add dst-address=\"{$collectorIp}\" port=\"{$collectorPort}\" version=9 } on-error={ /log warning \"{$prefix}: Failed to add traffic-flow target {$collectorIp}:{$collectorPort}\" }",
+            ":do { :local targetId [/ip traffic-flow target find dst-address=\"{$collectorIp}\" port=\"{$collectorPort}\" version=9]; :if ([:len \$targetId] = 0) do={ /ip traffic-flow target add dst-address=\"{$collectorIp}\" port=\"{$collectorPort}\" version=9 } else={ /ip traffic-flow target set \$targetId dst-address=\"{$collectorIp}\" port=\"{$collectorPort}\" version=9 } } on-error={ /log warning \"{$prefix}: Failed to configure traffic-flow target {$collectorIp}:{$collectorPort}\" }",
             "",
         ];
     }
 
-    /**
-     * RADIUS continuous health monitoring via /tool netwatch.
-     * Replaces the one-shot deploy-time ping with persistent monitoring:
-     * - On DOWN: logs critical warning AND disables the PPPoE server (fail-closed).
-     * - On UP:   logs recovery AND re-enables the PPPoE server.
-     * Netwatch runs every 30 s; 3 s timeout.
-     *
-     * @param string      $prefix          Comment prefix
-     * @param string      $radiusIp        RADIUS server IP to monitor
-     * @param string|null $pppoeServiceName PPPoE server service-name to disable on DOWN (null = hotspot only, no disable)
-     */
     protected function bootstrapRadiusNetwatch(string $prefix, string $radiusIp, ?string $pppoeServiceName = null): array
     {
         if ($pppoeServiceName) {
