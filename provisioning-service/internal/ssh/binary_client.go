@@ -178,10 +178,26 @@ func (c *binaryAPIClient) executeScript(script string) (string, error) {
 	// individually via the binary API. Benign errors (already have, no such item)
 	// are ignored for idempotent operations.
 	var outputs []string
-	for _, line := range strings.Split(script, "\n") {
-		cmd := strings.TrimSpace(line)
+	lines := strings.Split(script, "\n")
+
+	for i := 0; i < len(lines); i++ {
+		cmd := strings.TrimSpace(lines[i])
 		if cmd == "" || strings.HasPrefix(cmd, "#") {
 			continue
+		}
+
+		// Multi-line :do { } blocks: accumulate lines until braces are balanced.
+		// Generator script lines like /system script add source="..." may contain
+		// actual newlines inside the source value, causing naive \n splitting to
+		// break the block into invalid fragments.
+		if strings.HasPrefix(cmd, ":do {") && !hasBalancedBraces(cmd) {
+			for j := i + 1; j < len(lines); j++ {
+				cmd += "\n" + lines[j]
+				if hasBalancedBraces(cmd) {
+					i = j
+					break
+				}
+			}
 		}
 
 		innerCmd, onError, isDoBlock := extractDoBlock(cmd)
@@ -205,6 +221,41 @@ func (c *binaryAPIClient) executeScript(script string) (string, error) {
 		outputs = append(outputs, out)
 	}
 	return strings.Join(outputs, "\n"), nil
+}
+
+// hasBalancedBraces returns true if all '{' have matching '}' when ignoring
+// braces inside double-quoted strings.
+func hasBalancedBraces(s string) bool {
+	depth := 0
+	inQuotes := false
+	escaped := false
+	for i := 0; i < len(s); i++ {
+		ch := s[i]
+		if escaped {
+			escaped = false
+			continue
+		}
+		if ch == '\\' {
+			escaped = true
+			continue
+		}
+		if ch == '"' {
+			inQuotes = !inQuotes
+			continue
+		}
+		if inQuotes {
+			continue
+		}
+		if ch == '{' {
+			depth++
+		} else if ch == '}' {
+			depth--
+			if depth < 0 {
+				return false
+			}
+		}
+	}
+	return depth == 0
 }
 
 // extractDoBlock extracts inner command and on-error handler from
