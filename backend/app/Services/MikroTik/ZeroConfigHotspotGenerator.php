@@ -413,7 +413,7 @@ class ZeroConfigHotspotGenerator
             "# Hotspot Profile",
             ":do { /ip hotspot profile remove [/ip hotspot profile find name=\"{$profile}\"] } on-error={}",
             ":do { /ip hotspot profile add name=\"{$profile}\" hotspot-address=\"{$params['gateway_ip']}\" login-by=http-chap,http-pap use-radius=yes html-directory=hotspot dns-name=\"{$dnsName}\" http-cookie-lifetime=1d } on-error={ :error \"hs-{$sid}: FATAL - hotspot profile add failed\" }",
-            ($portalHtml ? ":do { /file set [/file find name=\"hotspot/login.html\"] contents=\"{$portalHtml}\" } on-error={ /log warning \"hs-{$sid}: Failed to set portal URL (non-fatal)\" }" : null),
+            ($portalHtml ? ":do { /file set \"hotspot/login.html\" contents=\"{$portalHtml}\" } on-error={ /log warning \"hs-{$sid}: Failed to set portal URL (non-fatal)\" }" : null),
             "# Hotspot Server",
             ":do { /ip hotspot remove [/ip hotspot find name=\"{$server}\"] } on-error={}",
             ":do { /ip hotspot add name=\"{$server}\" interface=\"{$iface}\" profile=\"{$profile}\" address-pool=\"{$poolName}\" addresses-per-mac=2 idle-timeout=5m keepalive-timeout=2m disabled=no } on-error={ :error \"hs-{$sid}: FATAL - hotspot server add failed\" }",
@@ -435,7 +435,7 @@ class ZeroConfigHotspotGenerator
         return array_merge(
             [
                 "# RADIUS - RADIUS-only AAA: Mikrotik-Rate-Limit and session attrs enforced per-user",
-                ":do { /radius remove [/radius find service=hotspot comment=\"hs-radius-{$sid}\"]; } on-error={}",
+                ":do { /radius remove [find service=hotspot comment=\"hs-radius-{$sid}\"]; } on-error={}",
                 ":do { /radius add service=hotspot address=\"{$rs}\" secret=\"{$sec}\" authentication-port=1812 accounting-port=1813 timeout=3s comment=\"hs-radius-{$sid}\"; } on-error={ /log error \"hs-{$sid}: RADIUS add failed (non-fatal)\" }",
                 ":do { /ip hotspot profile set [/ip hotspot profile find name=\"{$profile}\"] use-radius=yes } on-error={}",
             ],

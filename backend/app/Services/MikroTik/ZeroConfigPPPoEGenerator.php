@@ -176,10 +176,10 @@ class ZeroConfigPPPoEGenerator
         $s[] = "# ============================";
         $s[] = "# 2. RADIUS Configuration";
         $s[] = "# ============================";
-        $s[] = ':do { /radius remove [/radius find service="ppp" comment~"WiFiCore PPPoE"]; } on-error={}';
+        $s[] = ':do { /radius remove [find service="ppp" comment~"WiFiCore PPPoE"]; } on-error={}';
         $s[] = ":do { /radius add service=\"ppp\" address=\"{$rs}\" secret=\"{$rsec}\" authentication-port=\"1812\" accounting-port=\"1813\" timeout=\"3s\" comment=\"WiFiCore PPPoE ({$id})\"; } on-error={ /log error \"PPPoE: RADIUS configure failed (non-fatal)\" }";
         if ($radiusSrcAddress) {
-            $s[] = ":do { /radius set [/radius find service=\"ppp\"] src-address=\"{$radiusSrcAddress}\"; } on-error={ /log info \"PPPoE-$id: WARN - Failed to set RADIUS src-address\" }";
+            $s[] = ":do { /radius set [find service=\"ppp\"] src-address=\"{$radiusSrcAddress}\"; } on-error={ /log info \"PPPoE-$id: WARN - Failed to set RADIUS src-address\" }";
         }
         $s[] = "/ppp aaa set use-radius=\"yes\" accounting=\"yes\" interim-update=\"5m\" use-circuit-id-in-nas-port-id=\"yes\"";
         $s[] = ":do { /radius incoming set accept=\"yes\" port=\"3799\"; } on-error={ /log info \"PPPoE-$id: WARN - Failed to enable RADIUS incoming\" }";

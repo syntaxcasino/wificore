@@ -218,7 +218,7 @@ class ZeroConfigHybridGenerator
         $s[] = ":do { /ip hotspot profile add name=\"{$profile}\" hotspot-address=\"{$gateway}\" use-radius=yes html-directory=\"hotspot\" http-cookie-lifetime=\"1d\" dns-name=\"{$dnsName}\"; } on-error={ :error \"hyb-hs-prof-fail\" }";
         $s[] = ":do { /ip hotspot profile set [/ip hotspot profile find name=\"{$profile}\"] login-by=\"http-chap,http-pap\"; } on-error={ /log warning \"hyb: Failed to set hotspot login-by — default auth methods may be broader than expected\" }";
         if ($portalHtml) {
-            $s[] = ":do { /file set [/file find name=\"hotspot/login.html\"] contents=\"{$portalHtml}\" } on-error={ /log warning \"hyb-{$id}: Failed to set portal URL (non-fatal)\" }";
+            $s[] = ":do { /file set \"hotspot/login.html\" contents=\"{$portalHtml}\" } on-error={ /log warning \"hyb-{$id}: Failed to set portal URL (non-fatal)\" }";
         }
         $s[] = ":do { /ip hotspot remove [/ip hotspot find name=\"{$server}\"]; } on-error={}";
         $s[] = ":do { /ip hotspot add name=\"{$server}\" interface=\"{$iface}\" profile=\"{$profile}\" address-pool=\"{$poolName}\" addresses-per-mac=2 idle-timeout=\"5m\" keepalive-timeout=\"2m\" disabled=no; } on-error={ :error \"hyb-hs-srv-fail\" }";
@@ -459,7 +459,7 @@ class ZeroConfigHybridGenerator
         $s[] = ":do { /ip hotspot profile add name=\"{$profile}\" hotspot-address=\"{$gateway}\" use-radius=yes html-directory=\"hotspot\" http-cookie-lifetime=\"1d\" dns-name=\"{$dnsName}\"; } on-error={ :error \"hyb-hs-prof-fail\" }";
         $s[] = ":do { /ip hotspot profile set [/ip hotspot profile find name=\"{$profile}\"] login-by=\"http-chap,http-pap\"; } on-error={ /log warning \"hyb: Failed to set hotspot login-by — default auth methods may be broader than expected\" }";
         if ($portalHtml) {
-            $s[] = ":do { /file set [/file find name=\"hotspot/login.html\"] contents=\"{$portalHtml}\" } on-error={ /log warning \"hyb-{$id}: Failed to set portal URL (non-fatal)\" }";
+            $s[] = ":do { /file set \"hotspot/login.html\" contents=\"{$portalHtml}\" } on-error={ /log warning \"hyb-{$id}: Failed to set portal URL (non-fatal)\" }";
         }
         $s[] = ":do { /ip hotspot remove [/ip hotspot find name=\"{$server}\"]; } on-error={}";
         $s[] = ":do { /ip hotspot add name=\"{$server}\" interface=\"{$iface}\" profile=\"{$profile}\" address-pool=\"{$poolName}\" addresses-per-mac=2 idle-timeout=\"5m\" keepalive-timeout=\"2m\" disabled=no; } on-error={ :error \"hyb-hs-srv-fail\" }";
@@ -595,9 +595,9 @@ class ZeroConfigHybridGenerator
         return array_merge(
             [
                 "# RADIUS - RADIUS-ONLY AAA (hotspot + PPPoE): Mikrotik-Rate-Limit + Framed-Pool enforced per-user",
-                ":do { /radius remove [/radius find service=hotspot comment~\"hyb-hs-rad-{$id}\"]; } on-error={}",
+                ":do { /radius remove [find service=hotspot comment~\"hyb-hs-rad-{$id}\"]; } on-error={}",
                 ":do { /radius add service=hotspot address=\"{$rs}\" secret=\"{$sec}\" authentication-port=1812 accounting-port=1813 timeout=3s comment=\"hyb-hs-rad-{$id}\"; } on-error={ /log error \"hyb-hs-rad-fail (non-fatal)\" }",
-                ":do { /radius remove [/radius find service=ppp comment~\"hyb-pp-rad-{$id}\"]; } on-error={}",
+                ":do { /radius remove [find service=ppp comment~\"hyb-pp-rad-{$id}\"]; } on-error={}",
                 ":do { /radius add service=ppp address=\"{$rs}\" secret=\"{$sec}\" authentication-port=1812 accounting-port=1813 timeout=3s comment=\"hyb-pp-rad-{$id}\"; } on-error={ /log error \"hyb-pp-rad-fail (non-fatal)\" }",
             ],
             $this->bootstrapRadiusNetwatch("hyb-{$id}", $rs, $pppoeServiceName),

@@ -230,7 +230,7 @@ trait ZeroConfigBootstrapTrait
             return [];
         }
         return [
-            ":do { /system logging remove [/system logging find comment=\"{$prefix}-FW-LOG\"] } on-error={}",
+            ":do { /system logging remove [find comment=\"{$prefix}-FW-LOG\"] } on-error={}",
             ":do { /system logging add action=\"memory\" topics=\"firewall\" } on-error={}",
         ];
     }
@@ -248,7 +248,7 @@ trait ZeroConfigBootstrapTrait
     protected function bootstrapBruteForceProtection(string $prefix, string $allowAddr = '10.0.0.0/8'): array
     {
         return [
-            ":do { /ip firewall filter remove [/ip firewall filter find comment~\"{$prefix}-BRUTE\"] } on-error={}",
+            ":do { /ip firewall filter remove [find comment~\"{$prefix}-BRUTE\"] } on-error={}",
             // Drop blacklisted sources immediately on all management ports (logged)
             "/ip firewall filter add chain=input protocol=\"tcp\" dst-port=\"22,8291,8728,8729\" connection-state=\"new\" src-address-list=\"bruteforce-blacklist\" action=\"drop\" log=\"yes\" log-prefix=\"BRUTE-BL-DROP\" comment=\"{$prefix}-BRUTE-DROP\"",
             // Detect abuse from untrusted sources only; trusted management ranges must not self-blacklist during provisioning.
@@ -306,7 +306,7 @@ trait ZeroConfigBootstrapTrait
 
         $rules = [
             '# SNMP & Syslog Export',
-            ':do { /snmp community remove [/snmp community find name="' . $snmpCommunity . '"] } on-error={}',
+            ':do { /snmp community remove "' . $snmpCommunity . '"] } on-error={}',
             ':do { /snmp community add name="' . $snmpCommunity . '" addresses="' . $snmpSubnet . '" security="none" read-access="yes" write-access="no" comment="WifiCore SNMP" } on-error={ /log warning "SNMP: community add failed" }',
             ':do { /snmp set enabled="yes" contact="noc@wificore" location="WifiCore" trap-community="' . $snmpCommunity . '" trap-version=2 } on-error={ /log warning "SNMP: enable failed" }',
         ];
@@ -542,9 +542,9 @@ trait ZeroConfigBootstrapTrait
 
         return [
             "# Operational Event Logging — PPPoE server state" . ($isLowEnd ? '' : ' + RADIUS sustained-outage monitor'),
-            ":do { /system script remove [/system script find name=\"{$scriptName}\"] } on-error={}",
+            ":do { /system script remove \"{$scriptName}\" } on-error={}",
             ":do { /system script add name=\"{$scriptName}\" source=\"{$this->escapeScriptSource($scriptBody)}\" comment=\"{$prefix}-OPS-MON\" } on-error={ /log warning \"{$prefix}: Failed to install ops monitor script\" }",
-            ":do { /system scheduler remove [/system scheduler find name=\"{$schedulerName}\"] } on-error={}",
+            ":do { /system scheduler remove \"{$schedulerName}\" } on-error={}",
             ":do { /system scheduler add name=\"{$schedulerName}\" interval={$schedInterval} on-event=\"{$scriptName}\" start-time=startup comment=\"{$prefix}-OPS-SCHED\" } on-error={ /log warning \"{$prefix}: Failed to schedule ops monitor\" }",
             "",
         ];
@@ -584,7 +584,7 @@ trait ZeroConfigBootstrapTrait
 
         return [
             "# RADIUS Health Monitor (netwatch) — automated failure alerting",
-            ":do { /tool netwatch remove [/tool netwatch find comment~\"{$prefix}-RADIUS-WATCH\"] } on-error={}",
+            ":do { /tool netwatch remove [find comment~\"{$prefix}-RADIUS-WATCH\"] } on-error={}",
             ":do { /tool netwatch add host=\"{$radiusIp}\" interval=30s timeout=3s up-script=\"{$upScript}\" down-script=\"{$downScript}\" comment=\"{$prefix}-RADIUS-WATCH\" } on-error={ /log warning \"{$prefix}: Failed to add RADIUS netwatch — manual monitoring required\" }",
             "",
         ];
@@ -610,9 +610,9 @@ trait ZeroConfigBootstrapTrait
         $rules = [
             "# Subscriber Queue Fairness (PCQ types — rate limits via RADIUS Mikrotik-Rate-Limit)",
             // Clean up any stale queue tree from previous deployments
-            ":do { /queue tree remove [/queue tree find comment~\"{$prefix}-QTREE\"] } on-error={}",
-            ":do { /queue type remove [/queue type find name=\"pcq-download-{$prefix}\"] } on-error={}",
-            ":do { /queue type remove [/queue type find name=\"pcq-upload-{$prefix}\"] } on-error={}",
+            ":do { /queue tree remove [find comment~\"{$prefix}-QTREE\"] } on-error={}",
+            ":do { /queue type remove \"pcq-download-{$prefix}\" } on-error={}",
+            ":do { /queue type remove \"pcq-upload-{$prefix}\" } on-error={}",
         ];
 
         if (!$isLowEnd) {
@@ -636,8 +636,8 @@ trait ZeroConfigBootstrapTrait
     {
         return [
             "# Global Default Drop",
-            ":do { /ip firewall filter remove [/ip firewall filter find comment~\"{$prefix}-GLOBAL-DROP\"] } on-error={}",
-            ":do { /ip firewall filter remove [/ip firewall filter find comment=\"{$prefix}-GLOBAL-EST-IN\"] } on-error={}",
+            ":do { /ip firewall filter remove [find comment~\"{$prefix}-GLOBAL-DROP\"] } on-error={}",
+            ":do { /ip firewall filter remove [find comment=\"{$prefix}-GLOBAL-EST-IN\"] } on-error={}",
             "/ip firewall filter add chain=input connection-state=\"established,related\" action=\"accept\" comment=\"{$prefix}-GLOBAL-EST-IN\"",
             "/ip firewall filter add chain=input action=\"drop\" log=\"yes\" log-prefix=\"GLOBAL-DROP-IN\" comment=\"{$prefix}-GLOBAL-DROP-IN\"",
             "/ip firewall filter add chain=forward action=\"drop\" log=\"yes\" log-prefix=\"GLOBAL-DROP-FWD\" comment=\"{$prefix}-GLOBAL-DROP-FWD\"",
@@ -663,7 +663,7 @@ trait ZeroConfigBootstrapTrait
 
         $rules = [
             "# SECURITY HARDENING - BCP 38 Anti-Spoofing & DDoS Protection (GAP-14)",
-            ":do { /ip firewall filter remove [/ip firewall filter find comment~\"SEC-$id\"] } on-error={}",
+            ":do { /ip firewall filter remove [find comment~\"SEC-$id\"] } on-error={}",
         ];
 
         // Drop invalid connection states (applies to all tiers)
