@@ -1,0 +1,140 @@
+package ssh
+
+import (
+	"testing"
+)
+
+func TestTranslateRouterOSCommand_FindMutation(t *testing.T) {
+	tests := []struct {
+		name            string
+		command         string
+		wantEndpoint    string
+		wantFindMut     bool
+		wantFilters     []string
+		wantParams      []string
+		wantErr         bool
+	}{
+		{
+			name:         "ppp profile set with find and extra param",
+			command:      `/ppp profile set [/ppp profile find name="pppoe-prof-9d54fcf5"] interface-list="PA-9d54fcf5"`,
+			wantEndpoint: "/ppp/profile/set",
+			wantFindMut:  true,
+			wantFilters:  []string{"?name=pppoe-prof-9d54fcf5"},
+			wantParams:   []string{"interface-list=PA-9d54fcf5"},
+		},
+		{
+			name:         "ppp profile set with find only",
+			command:      `/ppp profile set [/ppp profile find name="pppoe-prof-02c48ed4"] rate-limit=""`,
+			wantEndpoint: "/ppp/profile/set",
+			wantFindMut:  true,
+			wantFilters:  []string{"?name=pppoe-prof-02c48ed4"},
+			wantParams:   []string{"rate-limit="},
+		},
+		{
+			name:         "ppp profile set with find and multiple params",
+			command:      `/ppp profile set [/ppp profile find name="pppoe-prof-9d54fcf5"] change-tcp-mss=yes use-compression=no only-one=yes`,
+			wantEndpoint: "/ppp/profile/set",
+			wantFindMut:  true,
+			wantFilters:  []string{"?name=pppoe-prof-9d54fcf5"},
+			wantParams:   []string{"change-tcp-mss=yes", "use-compression=no", "only-one=yes"},
+		},
+		{
+			name:         "interface bridge set with find",
+			command:      `/interface bridge set [/interface bridge find name="br-9d54fcf5"] protocol-mode="rstp"`,
+			wantEndpoint: "/interface/bridge/set",
+			wantFindMut:  true,
+			wantFilters:  []string{"?name=br-9d54fcf5"},
+			wantParams:   []string{"protocol-mode=rstp"},
+		},
+		{
+			name:         "ip firewall filter remove with find",
+			command:      `/ip firewall filter remove [/ip firewall filter find comment~="PPPoE-9d54fcf5"]`,
+			wantEndpoint: "/ip/firewall/filter/remove",
+			wantFindMut:  true,
+			wantFilters:  []string{"?comment~=PPPoE-9d54fcf5"},
+			wantParams:   []string{},
+		},
+		{
+			name:         "ppp aaa set simple",
+			command:      `/ppp aaa set use-radius=yes accounting=yes`,
+			wantEndpoint: "/ppp/aaa/set",
+			wantFindMut:  false,
+			wantFilters:  nil,
+			wantParams:   []string{"use-radius=yes", "accounting=yes"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			endpoint, params, opts, err := translateRouterOSCommand(tt.command)
+
+			if (err != nil) != tt.wantErr {
+				t.Errorf("translateRouterOSCommand() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if endpoint != tt.wantEndpoint {
+				t.Errorf("endpoint = %q, want %q", endpoint, tt.wantEndpoint)
+			}
+			if opts.findMutation != tt.wantFindMut {
+				t.Errorf("findMutation = %v, want %v", opts.findMutation, tt.wantFindMut)
+			}
+			if len(opts.findFilters) != len(tt.wantFilters) {
+				t.Errorf("findFilters = %v, want %v", opts.findFilters, tt.wantFilters)
+			} else {
+				for i := range opts.findFilters {
+					if opts.findFilters[i] != tt.wantFilters[i] {
+						t.Errorf("findFilters[%d] = %q, want %q", i, opts.findFilters[i], tt.wantFilters[i])
+					}
+				}
+			}
+			if len(params) != len(tt.wantParams) {
+				t.Errorf("params = %v, want %v", params, tt.wantParams)
+			} else {
+				for i := range params {
+					if params[i] != tt.wantParams[i] {
+						t.Errorf("params[%d] = %q, want %q", i, params[i], tt.wantParams[i])
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestExtractFindFilters(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected []string
+	}{
+		{
+			`[/ppp profile find name="pppoe-prof-9d54fcf5"]`,
+			[]string{"?name=pppoe-prof-9d54fcf5"},
+		},
+		{
+			`[/ip firewall filter find comment~="PPPoE-9d54fcf5"]`,
+			[]string{"?comment~=PPPoE-9d54fcf5"},
+		},
+		{
+			`[/interface bridge find name="br-02c48ed4"]`,
+			[]string{"?name=br-02c48ed4"},
+		},
+		{
+			`[/ppp profile find where name="pppoe-prof-8a6c1687"]`,
+			[]string{"?name=pppoe-prof-8a6c1687"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			result := extractFindFilters(tt.input)
+			if len(result) != len(tt.expected) {
+				t.Errorf("extractFindFilters(%q) = %v, want %v", tt.input, result, tt.expected)
+				return
+			}
+			for i := range result {
+				if result[i] != tt.expected[i] {
+					t.Errorf("extractFindFilters(%q)[%d] = %q, want %q", tt.input, i, result[i], tt.expected[i])
+				}
+			}
+		})
+	}
+}
