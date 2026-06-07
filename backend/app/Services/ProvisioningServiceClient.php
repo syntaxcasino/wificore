@@ -55,22 +55,27 @@ class ProvisioningServiceClient implements ProvisioningCommandBus
             throw new \Exception($errorPrefix . ': invalid JSON response');
         }
         if (($data['success'] ?? false) !== true) {
-            // Check if this is a "router busy" error - for monitoring commands, we can skip gracefully
             $error = $data['error'] ?? '';
             $status = $data['data']['status'] ?? '';
-            if (!$throwOnBusy && $status === 'router_busy') {
-                Log::warning('Provisioning service busy, skipping command', [
-                    'command_id' => $payload['command_id'] ?? 'unknown',
-                    'error' => $error,
-                    'active_idempotency_key' => $data['data']['active_idempotency_key'] ?? null,
-                ]);
-                // Return a synthetic success response with busy status
-                return [
-                    'success' => true,
-                    'message' => 'Skipped: provisioning service busy',
-                    'data' => array_merge($data['data'] ?? [], ['skipped' => true]),
-                ];
+
+            // Router busy: provisioning workflow already active.
+            // Return code 503 so callers can distinguish retryable vs fatal errors.
+            if ($status === 'router_busy') {
+                if (!$throwOnBusy) {
+                    Log::warning('Provisioning service busy, skipping command', [
+                        'command_id' => $payload['command_id'] ?? 'unknown',
+                        'error' => $error,
+                        'active_idempotency_key' => $data['data']['active_idempotency_key'] ?? null,
+                    ]);
+                    return [
+                        'success' => true,
+                        'message' => 'Skipped: provisioning service busy',
+                        'data' => array_merge($data['data'] ?? [], ['skipped' => true]),
+                    ];
+                }
+                throw new \Exception($errorPrefix . ': ' . $error, 503);
             }
+
             throw new \Exception($errorPrefix . ': ' . $error);
         }
 

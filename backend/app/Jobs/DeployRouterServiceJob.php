@@ -141,7 +141,11 @@ class DeployRouterServiceJob implements ShouldQueue
             $this->executeInTenantContext(function () use ($service, $e) {
                 $this->handleDeploymentException($service, $e);
             });
-            throw $e;
+            // Code 503 (router busy) already triggered job release for retry.
+            // Don't re-throw to avoid "failed" noise in logs and UI.
+            if ((int) $e->getCode() !== 503) {
+                throw $e;
+            }
         } finally {
             $lock->release();
         }
