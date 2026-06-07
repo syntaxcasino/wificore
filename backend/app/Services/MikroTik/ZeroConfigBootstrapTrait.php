@@ -469,14 +469,13 @@ trait ZeroConfigBootstrapTrait
             "/log info \"{$prefix}: SESSION-DOWN user=\$user\"",
         ]);
 
+        // Flatten multi-line scripts for inline embedding in profile on-up/on-down
+        $upBodyFlat   = str_replace("\n", "; ", $upBody);
+        $downBodyFlat = str_replace("\n", "; ", $downBody);
+
         return [
             "# PPP Session Logging — per-session RADIUS attribute confirmation",
-            ":do { /system script remove \"{$upScriptName}\" } on-error={}",
-            ":do { /system script add name=\"{$upScriptName}\" source=\"{$this->escapeScriptSource($upBody)}\" comment=\"{$prefix}-PPP-UP-LOG\" } on-error={ /log warning \"{$prefix}: Failed to install PPP up-script\" }",
-            ":do { /system script remove \"{$downScriptName}\" } on-error={}",
-            ":do { /system script add name=\"{$downScriptName}\" source=\"{$this->escapeScriptSource($downBody)}\" comment=\"{$prefix}-PPP-DOWN-LOG\" } on-error={ /log warning \"{$prefix}: Failed to install PPP down-script\" }",
-            // Attach event scripts to the PPP profile
-            ":do { /ppp profile set \"{$profName}\" on-up=\"{$upScriptName}\" on-down=\"{$downScriptName}\" } on-error={ /log warning \"{$prefix}: Failed to attach PPP event scripts to profile (non-fatal)\" }",
+            ":do { /ppp profile set \"{$profName}\" on-up=\"{$upBodyFlat}\" on-down=\"{$downBodyFlat}\" } on-error={ /log warning \"{$prefix}: Failed to attach PPP event scripts to profile (non-fatal)\" }",
             "",
         ];
     }
@@ -539,13 +538,13 @@ trait ZeroConfigBootstrapTrait
 
         $scriptBody = implode("\n", $scriptLines);
         $schedInterval = $isLowEnd ? '15m' : '5m';
+        // Flatten script for inline embedding in scheduler on-event (avoids /system script add which binary API blocks)
+        $scriptFlat = str_replace("\n", "; ", $scriptBody);
 
         return [
             "# Operational Event Logging — PPPoE server state" . ($isLowEnd ? '' : ' + RADIUS sustained-outage monitor'),
-            ":do { /system script remove \"{$scriptName}\" } on-error={}",
-            ":do { /system script add name=\"{$scriptName}\" source=\"{$this->escapeScriptSource($scriptBody)}\" comment=\"{$prefix}-OPS-MON\" } on-error={ /log warning \"{$prefix}: Failed to install ops monitor script\" }",
             ":do { /system scheduler remove \"{$schedulerName}\" } on-error={}",
-            ":do { /system scheduler add name=\"{$schedulerName}\" interval={$schedInterval} on-event=\"{$scriptName}\" start-time=startup comment=\"{$prefix}-OPS-SCHED\" } on-error={ /log warning \"{$prefix}: Failed to schedule ops monitor\" }",
+            ":do { /system scheduler add name=\"{$schedulerName}\" interval={$schedInterval} on-event=\"{$scriptFlat}\" start-time=startup comment=\"{$prefix}-OPS-SCHED\" } on-error={ /log warning \"{$prefix}: Failed to schedule ops monitor\" }",
             "",
         ];
     }
@@ -572,14 +571,14 @@ trait ZeroConfigBootstrapTrait
     protected function bootstrapRadiusNetwatch(string $prefix, string $radiusIp, ?string $pppoeServiceName = null): array
     {
         if ($pppoeServiceName) {
-            $svcQ = '\"' . $pppoeServiceName . '\"';
-            $downScript = ':log error \"' . $prefix . ': CRITICAL - RADIUS ' . $radiusIp . ' DOWN. Disabling PPPoE server to prevent unmetered sessions.\"; '
+            $svcQ = '"' . $pppoeServiceName . '"';
+            $downScript = ':log error "' . $prefix . ': CRITICAL - RADIUS ' . $radiusIp . ' DOWN. Disabling PPPoE server to prevent unmetered sessions."; '
                 . '/interface pppoe-server server set ' . $svcQ . ' disabled=yes';
-            $upScript   = ':log info \"' . $prefix . ': RADIUS ' . $radiusIp . ' recovered. Re-enabling PPPoE server.\"; '
+            $upScript   = ':log info "' . $prefix . ': RADIUS ' . $radiusIp . ' recovered. Re-enabling PPPoE server."; '
                 . '/interface pppoe-server server set ' . $svcQ . ' disabled=no';
         } else {
-            $downScript = ':log warning \"' . $prefix . ': CRITICAL - RADIUS ' . $radiusIp . ' is DOWN. New sessions will be REJECTED. Notify NOC immediately.\"';
-            $upScript   = ':log info \"' . $prefix . ': RADIUS ' . $radiusIp . ' recovered. AAA services restored.\"';
+            $downScript = ':log warning "' . $prefix . ': CRITICAL - RADIUS ' . $radiusIp . ' is DOWN. New sessions will be REJECTED. Notify NOC immediately."';
+            $upScript   = ':log info "' . $prefix . ': RADIUS ' . $radiusIp . ' recovered. AAA services restored."';
         }
 
         return [
