@@ -574,9 +574,9 @@ trait ZeroConfigBootstrapTrait
         if ($pppoeServiceName) {
             $svcQ = '\"' . $pppoeServiceName . '\"';
             $downScript = ':log error \"' . $prefix . ': CRITICAL - RADIUS ' . $radiusIp . ' DOWN. Disabling PPPoE server to prevent unmetered sessions.\"; '
-                . '/interface pppoe-server server set [/interface pppoe-server server find service-name=' . $svcQ . '] disabled=yes';
+                . '/interface pppoe-server server set ' . $svcQ . ' disabled=yes';
             $upScript   = ':log info \"' . $prefix . ': RADIUS ' . $radiusIp . ' recovered. Re-enabling PPPoE server.\"; '
-                . '/interface pppoe-server server set [/interface pppoe-server server find service-name=' . $svcQ . '] disabled=no';
+                . '/interface pppoe-server server set ' . $svcQ . ' disabled=no';
         } else {
             $downScript = ':log warning \"' . $prefix . ': CRITICAL - RADIUS ' . $radiusIp . ' is DOWN. New sessions will be REJECTED. Notify NOC immediately.\"';
             $upScript   = ':log info \"' . $prefix . ': RADIUS ' . $radiusIp . ' recovered. AAA services restored.\"';
