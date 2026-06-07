@@ -521,24 +521,25 @@ SCRIPT;
 # 6.1. REMOTE SYSLOG - Centralized log collection
 # ============================================================
 
-# Create remote syslog action
+# Create or update remote syslog action
 /system logging action
 :if ([:len [find name="remote-syslog"]] = 0) do={
-    add name=remote-syslog remote=10.100.1.1 remote-port=514 \
-        src-address=auto target=remote \
+    add name=remote-syslog remote=10.100.1.1 remote-port=514 remote-log-format=syslog syslog-facility=syslog target=remote \
+        comment="WiFiCore Centralized Logging"
+} else={
+    set [find name="remote-syslog"] remote=10.100.1.1 remote-port=514 remote-log-format=syslog syslog-facility=syslog target=remote \
         comment="WiFiCore Centralized Logging"
 }
 
 # Configure logging topics to remote syslog
 /system logging
-add topics=critical action=remote-syslog prefix="CRITICAL:"
-add topics=error action=remote-syslog prefix="ERROR:"
-add topics=warning action=remote-syslog prefix="WARNING:"
-add topics=firewall,info action=remote-syslog prefix="FW:"
-add topics=account,info action=remote-syslog prefix="AUTH:"
-add topics=system,info action=remote-syslog prefix="SYS:"
-add topics=ssh action=remote-syslog prefix="SSH:"
-
+:do { :local rid [find topics=critical action=remote-syslog prefix="CRITICAL:"]; :if ([:len $rid] = 0) do={ add topics=critical action=remote-syslog prefix="CRITICAL:" } } on-error={}
+:do { :local rid [find topics=error action=remote-syslog prefix="ERROR:"]; :if ([:len $rid] = 0) do={ add topics=error action=remote-syslog prefix="ERROR:" } } on-error={}
+:do { :local rid [find topics=warning action=remote-syslog prefix="WARNING:"]; :if ([:len $rid] = 0) do={ add topics=warning action=remote-syslog prefix="WARNING:" } } on-error={}
+:do { :local rid [find topics=firewall,info action=remote-syslog prefix="FW:"]; :if ([:len $rid] = 0) do={ add topics=firewall,info action=remote-syslog prefix="FW:" } } on-error={}
+:do { :local rid [find topics=account,info action=remote-syslog prefix="AUTH:"]; :if ([:len $rid] = 0) do={ add topics=account,info action=remote-syslog prefix="AUTH:" } } on-error={}
+:do { :local rid [find topics=system,info action=remote-syslog prefix="SYS:"]; :if ([:len $rid] = 0) do={ add topics=system,info action=remote-syslog prefix="SYS:" } } on-error={}
+:do { :local rid [find topics=ssh action=remote-syslog prefix="SSH:"]; :if ([:len $rid] = 0) do={ add topics=ssh action=remote-syslog prefix="SSH:" } } on-error={}
 # Keep local logging for quick access
 add topics=ssh action=memory
 add topics=firewall action=memory
