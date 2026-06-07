@@ -649,16 +649,22 @@ func translateRouterOSCommand(command string) (string, []string, commandOptions,
 		// Detect [/<path> find ...] or [/<path> where ...] reference expressions.
 		// These are RouterOS scripting constructs that resolve item IDs by query.
 		// e.g. [/interface bridge port find bridge="br"] or [/ppp profile find name="prof"]
+		// Also supports context-relative [find name="eth1"] and [where service="ppp"].
 		// IMPORTANT: do NOT break after setting findMutation — continue collecting
 		// remaining tokens (e.g. interface-list="PA-9d54fcf5") as params.
-		if strings.HasPrefix(tok, "[") && (strings.Contains(tok, " find ") || strings.Contains(tok, " where ")) {
-			opts.findMutation = true
-			filters := extractFindFilters(tok)
-			if len(filters) == 0 {
-				return "", nil, commandOptions{}, errUnsupportedCommand
+		if strings.HasPrefix(tok, "[") {
+			trimmed := strings.TrimPrefix(tok, "[")
+			hasFind := strings.Contains(tok, " find ") || strings.HasPrefix(trimmed, "find ")
+			hasWhere := strings.Contains(tok, " where ") || strings.HasPrefix(trimmed, "where ")
+			if hasFind || hasWhere {
+				opts.findMutation = true
+				filters := extractFindFilters(tok)
+				if len(filters) == 0 {
+					return "", nil, commandOptions{}, errUnsupportedCommand
+				}
+				opts.findFilters = filters
+				continue
 			}
-			opts.findFilters = filters
-			continue
 		}
 
 		if strings.Contains(tok, "=") {
@@ -745,9 +751,12 @@ func stripAngleAndQuotes(token string) string {
 }
 
 func extractFindFilters(command string) []string {
-	// RouterOS [find] expressions include a path prefix:
+	// RouterOS [find] expressions may include a path prefix:
 	//   [/ppp profile find name="prof"]
 	//   [/interface find name="eth1"]
+	// Or be context-relative (no path prefix):
+	//   [find name="eth1"]
+	//   [where service="ppp"]
 	// Extract the content inside the outermost brackets and locate
 	// the " find " or " where " keyword that precedes the filters.
 	start := strings.Index(command, "[")
@@ -758,7 +767,7 @@ func extractFindFilters(command string) []string {
 	if end == -1 {
 		return nil
 	}
-	inner := command[start+1 : start+end] // e.g. "/ppp profile find name=\"prof\""
+	inner := command[start+1 : start+end] // e.g. "/ppp profile find name=\"prof\"" or "find name=\"eth1\""
 
 	findIdx := strings.Index(inner, " find ")
 	whereIdx := strings.Index(inner, " where ")
@@ -768,6 +777,10 @@ func extractFindFilters(command string) []string {
 		filtersStr = strings.TrimSpace(inner[findIdx+len(" find "):])
 	} else if whereIdx != -1 {
 		filtersStr = strings.TrimSpace(inner[whereIdx+len(" where "):])
+	} else if strings.HasPrefix(inner, "find ") {
+		filtersStr = strings.TrimSpace(strings.TrimPrefix(inner, "find "))
+	} else if strings.HasPrefix(inner, "where ") {
+		filtersStr = strings.TrimSpace(strings.TrimPrefix(inner, "where "))
 	} else {
 		return nil
 	}
@@ -778,7 +791,11 @@ func extractFindFilters(command string) []string {
 
 	filters := make([]string, 0)
 	for _, token := range splitRouterOSCommand(filtersStr) {
-		if strings.Contains(token, "=") {
+		if strings.Contains(token, "~") && !strings.Contains(token, "=") {
+			// RouterOS script uses "~" for partial match; binary API uses "~="
+			token = strings.Replace(token, "~", "~=", 1)
+		}
+		if strings.Contains(token, "=") || strings.Contains(token, "~=") {
 			filters = append(filters, "?"+stripAngleAndQuotes(token))
 		}
 	}

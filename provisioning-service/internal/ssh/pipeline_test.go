@@ -52,6 +52,21 @@ func TestFullPipeline(t *testing.T) {
 			wantParams:  []string{"rate-limit="},
 			wantEndpt:   "/ppp/profile/set",
 		},
+		// Context-relative [find name=...] without path prefix (RouterOS script syntax)
+		{
+			scriptLine:  `:do { /interface ethernet set [find name="ether1"] disable-running-check=no } on-error={}`,
+			wantFindMut: true,
+			wantFilters: []string{"?name=ether1"},
+			wantParams:  []string{"disable-running-check=no"},
+			wantEndpt:   "/interface/ethernet/set",
+		},
+		{
+			scriptLine:  `:do { /ip firewall filter remove [find comment~"PPPoE-test"] } on-error={}`,
+			wantFindMut: true,
+			wantFilters: []string{"?comment~=PPPoE-test"},
+			wantParams:  []string{},
+			wantEndpt:   "/ip/firewall/filter/remove",
+		},
 	}
 
 	for _, tt := range lines {
