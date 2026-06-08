@@ -169,15 +169,15 @@ trait ZeroConfigBootstrapTrait
 
         return [
             "# Service Hardening (management access restricted to: {$allowAddr})",
-            ":do { /ip service set [find name=\"api\"] disabled=no address=\"{$allowAddr}\" } on-error={ /log warning \"{$prefix}: Failed to enable or restrict api service\" }",
-            ":do { /ip service set [find name=\"api-ssl\"] disabled=no address=\"{$allowAddr}\" } on-error={ /log info \"{$prefix}: api-ssl not available\" }",
-            ":do { /ip service set [find name=\"ssh\"] address=\"{$allowAddr}\" } on-error={ /log warning \"{$prefix}: Failed to restrict SSH\" }",
-            ":do { /ip service set [find name=\"winbox\"] address=\"{$allowAddr}\" } on-error={ /log warning \"{$prefix}: Failed to restrict Winbox\" }",
-            ":do { /ip service set [find name=\"telnet\"] disabled=yes } on-error={} ",
-            ":do { /ip service set [find name=\"ftp\"] disabled=yes } on-error={} ",
-            ":do { /ip service set [find name=\"www\"] disabled=yes } on-error={} ",
-            ":do { /ip service set [find name=\"www-ssl\"] disabled=yes } on-error={} ",
-            ":do { /tool romon set enabled=no } on-error={ /log info \"{$prefix}: RoMON not enabled\" }",
+            "/ip service set [find name=\"api\"] disabled=no address=\"{$allowAddr}\"",
+            "/ip service set [find name=\"api-ssl\"] disabled=no address=\"{$allowAddr}\"",
+            "/ip service set [find name=\"ssh\"] address=\"{$allowAddr}\"",
+            "/ip service set [find name=\"winbox\"] address=\"{$allowAddr}\"",
+            "/ip service set [find name=\"telnet\"] disabled=yes",
+            "/ip service set [find name=\"ftp\"] disabled=yes",
+            "/ip service set [find name=\"www\"] disabled=yes",
+            "/ip service set [find name=\"www-ssl\"] disabled=yes",
+            "/tool romon set enabled=no",
         ];
     }
 
@@ -194,7 +194,7 @@ trait ZeroConfigBootstrapTrait
         // Convert PHP timezone to RouterOS format (they're compatible)
         return [
             "# System Clock Configuration",
-            ":do { /system clock set time-zone-name=\"{$tz}\" } on-error={ /log warning \"Failed to set timezone\" }",
+            "/system clock set time-zone-name=\"{$tz}\"",
         ];
     }
 
@@ -211,8 +211,8 @@ trait ZeroConfigBootstrapTrait
 
         return [
             "# NTP Client Configuration",
-            ":do { /system ntp client set enabled=yes servers=\"{$serverList}\" } on-error={ /log warning \"Failed to configure NTP\" }",
-            ":do { /system ntp server set enabled=no } on-error={ /log info \"NTP server already disabled\" }",
+            "/system ntp client set enabled=yes servers=\"{$serverList}\"",
+            "/system ntp server set enabled=no",
         ];
     }
 
@@ -230,8 +230,8 @@ trait ZeroConfigBootstrapTrait
             return [];
         }
         return [
-            ":do { /system logging remove [find comment=\"{$prefix}-FW-LOG\"] } on-error={}",
-            ":do { /system logging add action=\"memory\" topics=\"firewall\" } on-error={}",
+            "/system logging remove [find comment=\"{$prefix}-FW-LOG\"]",
+            "/system logging add action=\"memory\" topics=\"firewall\"",
         ];
     }
 
@@ -248,7 +248,7 @@ trait ZeroConfigBootstrapTrait
     protected function bootstrapBruteForceProtection(string $prefix, string $allowAddr = '10.0.0.0/8'): array
     {
         return [
-            ":do { /ip firewall filter remove [find comment~\"{$prefix}-BRUTE\"] } on-error={}",
+            "/ip firewall filter remove [find comment~\"{$prefix}-BRUTE\"]",
             // Drop blacklisted sources immediately on all management ports (logged)
             "/ip firewall filter add chain=input protocol=\"tcp\" dst-port=\"22,8291,8728,8729\" connection-state=\"new\" src-address-list=\"bruteforce-blacklist\" action=\"drop\" log=\"yes\" log-prefix=\"BRUTE-BL-DROP\" comment=\"{$prefix}-BRUTE-DROP\"",
             // Detect abuse from untrusted sources only; trusted management ranges must not self-blacklist during provisioning.
@@ -306,12 +306,12 @@ trait ZeroConfigBootstrapTrait
 
         $rules = [
             '# SNMP & Syslog Export',
-            ':do { /snmp community remove [find name="' . $snmpCommunity . '"] } on-error={}',
-            ':do { /snmp community add name="' . $snmpCommunity . '" addresses="' . $snmpSubnet . '" security="none" read-access="yes" write-access="no" comment="WifiCore SNMP" } on-error={ /log warning "SNMP: community add failed" }',
-            ':do { /snmp set enabled="yes" contact="noc@wificore" location="WifiCore" trap-community="' . $snmpCommunity . '" trap-version=2 } on-error={ /log warning "SNMP: enable failed" }',
+            '/snmp community remove [find name="' . $snmpCommunity . '"]',
+            '/snmp community add name="' . $snmpCommunity . '" addresses="' . $snmpSubnet . '" security="none" read-access="yes" write-access="no" comment="WifiCore SNMP"',
+            '/snmp set enabled="yes" contact="noc@wificore" location="WifiCore" trap-community="' . $snmpCommunity . '" trap-version=2',
         ];
         if ($enableSyslog) {
-            $rules[] = ':do { :local actionId [/system logging action find name="remote_syslog"]; :if ([:len $actionId] = 0) do={ /system logging action add name="remote_syslog" target="remote" remote="' . $syslogHost . '" remote-port="514" remote-log-format="syslog" comment="WifiCore Syslog" } else={ /system logging action set $actionId target="remote" remote="' . $syslogHost . '" remote-port="514" remote-log-format="syslog" comment="WifiCore Syslog" } } on-error={ /log warning "Syslog: action configure failed" }';
+            $rules[] = '/system logging action add name="remote_syslog" target="remote" remote="' . $syslogHost . '" remote-port="514" remote-log-format="syslog" comment="WifiCore Syslog"';
             $loggingRules = [
                 ['comment' => 'WifiCore-SYSLOG-CRIT', 'topics' => 'critical'],
                 ['comment' => 'WifiCore-SYSLOG-ERR', 'topics' => 'error'],
@@ -327,7 +327,7 @@ trait ZeroConfigBootstrapTrait
             foreach ($loggingRules as $rule) {
                 $comment = $rule['comment'];
                 $topics = $rule['topics'];
-                $rules[] = ':do { :local logId [/system logging find comment="' . $comment . '"]; :if ([:len $logId] = 0) do={ /system logging add action="remote_syslog" topics="' . $topics . '" comment="' . $comment . '" } else={ /system logging set $logId action="remote_syslog" topics="' . $topics . '" comment="' . $comment . '" } } on-error={ /log warning "Syslog: failed to configure ' . $comment . '" }';
+                $rules[] = '/system logging add action="remote_syslog" topics="' . $topics . '" comment="' . $comment . '"';
             }
         }
         $rules[] = "";
@@ -394,13 +394,8 @@ trait ZeroConfigBootstrapTrait
     {
         return [
             "# PPP AAA Hardening — fail-closed: no local fallback for IP/DNS/rate-limit",
-            // Clear local-address so RouterOS cannot assign an IP if RADIUS is unreachable
-            ":do { /ppp profile set \"{$profName}\" local-address=\"\" } on-error={ /log warning \"{$prefix}: Failed to clear local-address on profile — sessions may get local IP if RADIUS is down\" }",
-            // Explicitly remove local DNS so RADIUS Framed-Route / DNS attributes are the only source
-            ":do { /ppp profile set \"{$profName}\" dns-server=\"\" wins-server=\"\" } on-error={ /log warning \"{$prefix}: Failed to clear local DNS on profile (non-fatal)\" }",
-            // Confirm /ppp aaa state: use-radius=yes + accounting=yes must both be set
-            ":if ([/ppp aaa get use-radius] = true) do={ /log info \"{$prefix}: PPP AAA confirmed — use-radius=yes, RADIUS-only mode active.\" } else={ /log error \"{$prefix}: CRITICAL — PPP AAA use-radius is NOT set. Sessions may authenticate locally without rate-limit enforcement.\" }",
-            ":if ([/ppp aaa get accounting] = true) do={ /log info \"{$prefix}: PPP accounting confirmed — session records will be sent to RADIUS.\" } else={ /log warning \"{$prefix}: PPP accounting is disabled — session usage data will NOT be sent to RADIUS.\" }",
+            "/ppp profile set \"{$profName}\" local-address=\"\"",
+            "/ppp profile set \"{$profName}\" dns-server=\"\" wins-server=\"\"",
             "",
         ];
     }
@@ -475,7 +470,7 @@ trait ZeroConfigBootstrapTrait
 
         return [
             "# PPP Session Logging — per-session RADIUS attribute confirmation",
-            ":do { /ppp profile set \"{$profName}\" on-up=\"{$upBodyFlat}\" on-down=\"{$downBodyFlat}\" } on-error={ /log warning \"{$prefix}: Failed to attach PPP event scripts to profile (non-fatal)\" }",
+            "/ppp profile set \"{$profName}\" on-up=\"{$upBodyFlat}\" on-down=\"{$downBodyFlat}\"",
             "",
         ];
     }
@@ -543,8 +538,8 @@ trait ZeroConfigBootstrapTrait
 
         return [
             "# Operational Event Logging — PPPoE server state" . ($isLowEnd ? '' : ' + RADIUS sustained-outage monitor'),
-            ":do { /system scheduler remove \"{$schedulerName}\" } on-error={}",
-            ":do { /system scheduler add name=\"{$schedulerName}\" interval={$schedInterval} on-event=\"{$scriptFlat}\" start-time=startup comment=\"{$prefix}-OPS-SCHED\" } on-error={ /log warning \"{$prefix}: Failed to schedule ops monitor\" }",
+            "/system scheduler remove \"{$schedulerName}\"",
+            "/system scheduler add name=\"{$schedulerName}\" interval={$schedInterval} on-event=\"{$scriptFlat}\" start-time=startup comment=\"{$prefix}-OPS-SCHED\"",
             "",
         ];
     }
@@ -562,8 +557,8 @@ trait ZeroConfigBootstrapTrait
     {
         return [
             "# Traffic Flow (NetFlow v9) — per-subscriber visibility",
-            ":do { /ip traffic-flow set enabled=\"yes\" interfaces=\"all\" active-flow-timeout=\"1m\" inactive-flow-timeout=\"15s\" } on-error={ /log warning \"{$prefix}: Failed to enable traffic-flow\" }",
-            ":do { :local targetId [/ip traffic-flow target find dst-address=\"{$collectorIp}\" port=\"{$collectorPort}\" version=9]; :if ([:len \$targetId] = 0) do={ /ip traffic-flow target add dst-address=\"{$collectorIp}\" port=\"{$collectorPort}\" version=9 } else={ /ip traffic-flow target set \$targetId dst-address=\"{$collectorIp}\" port=\"{$collectorPort}\" version=9 } } on-error={ /log warning \"{$prefix}: Failed to configure traffic-flow target {$collectorIp}:{$collectorPort}\" }",
+            "/ip traffic-flow set enabled=\"yes\" interfaces=\"all\" active-flow-timeout=\"1m\" inactive-flow-timeout=\"15s\"",
+            "/ip traffic-flow target add dst-address=\"{$collectorIp}\" port=\"{$collectorPort}\" version=9",
             "",
         ];
     }
@@ -583,8 +578,8 @@ trait ZeroConfigBootstrapTrait
 
         return [
             "# RADIUS Health Monitor (netwatch) — automated failure alerting",
-            ":do { /tool netwatch remove [find comment~\"{$prefix}-RADIUS-WATCH\"] } on-error={}",
-            ":do { /tool netwatch add host=\"{$radiusIp}\" interval=30s timeout=3s up-script=\"{$upScript}\" down-script=\"{$downScript}\" comment=\"{$prefix}-RADIUS-WATCH\" } on-error={ /log warning \"{$prefix}: Failed to add RADIUS netwatch — manual monitoring required\" }",
+            "/tool netwatch remove [find comment~\"{$prefix}-RADIUS-WATCH\"]",
+            "/tool netwatch add host=\"{$radiusIp}\" interval=30s timeout=3s up-script=\"{$upScript}\" down-script=\"{$downScript}\" comment=\"{$prefix}-RADIUS-WATCH\"",
             "",
         ];
     }
@@ -608,16 +603,14 @@ trait ZeroConfigBootstrapTrait
     {
         $rules = [
             "# Subscriber Queue Fairness (PCQ types — rate limits via RADIUS Mikrotik-Rate-Limit)",
-            // Clean up any stale queue tree from previous deployments
-            ":do { /queue tree remove [find comment~\"{$prefix}-QTREE\"] } on-error={}",
-            ":do { /queue type remove \"pcq-download-{$prefix}\" } on-error={}",
-            ":do { /queue type remove \"pcq-upload-{$prefix}\" } on-error={}",
+            "/queue tree remove [find comment~\"{$prefix}-QTREE\"]",
+            "/queue type remove \"pcq-download-{$prefix}\"",
+            "/queue type remove \"pcq-upload-{$prefix}\"",
         ];
 
         if (!$isLowEnd) {
-            // Register PCQ types so RADIUS simple queues can reference them
-            $rules[] = ":do { /queue type add name=\"pcq-download-{$prefix}\" kind=\"pcq\" pcq-classifier=\"dst-address\" pcq-burst-rate=\"0\" } on-error={ /log warning \"{$prefix}: PCQ download type add failed\" }";
-            $rules[] = ":do { /queue type add name=\"pcq-upload-{$prefix}\" kind=\"pcq\" pcq-classifier=\"src-address\" pcq-burst-rate=\"0\" } on-error={ /log warning \"{$prefix}: PCQ upload type add failed\" }";
+            $rules[] = "/queue type add name=\"pcq-download-{$prefix}\" kind=\"pcq\" pcq-classifier=\"dst-address\" pcq-burst-rate=\"0\"";
+            $rules[] = "/queue type add name=\"pcq-upload-{$prefix}\" kind=\"pcq\" pcq-classifier=\"src-address\" pcq-burst-rate=\"0\"";
         }
 
         $rules[] = "";
@@ -635,8 +628,8 @@ trait ZeroConfigBootstrapTrait
     {
         return [
             "# Global Default Drop",
-            ":do { /ip firewall filter remove [find comment~\"{$prefix}-GLOBAL-DROP\"] } on-error={}",
-            ":do { /ip firewall filter remove [find comment=\"{$prefix}-GLOBAL-EST-IN\"] } on-error={}",
+            "/ip firewall filter remove [find comment~\"{$prefix}-GLOBAL-DROP\"]",
+            "/ip firewall filter remove [find comment=\"{$prefix}-GLOBAL-EST-IN\"]",
             "/ip firewall filter add chain=input connection-state=\"established,related\" action=\"accept\" comment=\"{$prefix}-GLOBAL-EST-IN\"",
             "/ip firewall filter add chain=input action=\"drop\" log=\"yes\" log-prefix=\"GLOBAL-DROP-IN\" comment=\"{$prefix}-GLOBAL-DROP-IN\"",
             "/ip firewall filter add chain=forward action=\"drop\" log=\"yes\" log-prefix=\"GLOBAL-DROP-FWD\" comment=\"{$prefix}-GLOBAL-DROP-FWD\"",
@@ -662,7 +655,7 @@ trait ZeroConfigBootstrapTrait
 
         $rules = [
             "# SECURITY HARDENING - BCP 38 Anti-Spoofing & DDoS Protection (GAP-14)",
-            ":do { /ip firewall filter remove [find comment~\"SEC-$id\"] } on-error={}",
+            "/ip firewall filter remove [find comment~\"SEC-$id\"]",
         ];
 
         // Drop invalid connection states (applies to all tiers)

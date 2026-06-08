@@ -224,12 +224,12 @@ func (c *binaryAPIClient) executeScript(script string) (string, error) {
 				outputs = append(outputs, fmt.Sprintf("ok (benign): %s", cmd))
 				continue
 			}
-			if isDoBlock && strings.Contains(onError, ":error") {
-				return strings.Join(outputs, "\n"), fmt.Errorf("binary api command failed: %s: %w", cmd, err)
+			if isDoBlock && !strings.Contains(onError, ":error") {
+				// Non-fatal :do block with on-error that does not contain :error
+				outputs = append(outputs, fmt.Sprintf("warning: %s: %v", cmd, err))
+				continue
 			}
-			// Non-fatal: log warning and continue
-			outputs = append(outputs, fmt.Sprintf("warning: %s: %v", cmd, err))
-			continue
+			return strings.Join(outputs, "\n"), fmt.Errorf("binary api command failed: %s: %w", cmd, err)
 		}
 		outputs = append(outputs, out)
 	}
