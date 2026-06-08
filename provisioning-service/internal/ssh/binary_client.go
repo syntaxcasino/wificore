@@ -213,6 +213,12 @@ func (c *binaryAPIClient) executeScript(script string) (string, error) {
 			continue
 		}
 
+		// /log commands are script-only; binary API has no /log endpoint
+		if strings.HasPrefix(cmd, "/log ") {
+			outputs = append(outputs, "ok (skipped): "+cmd)
+			continue
+		}
+
 		innerCmd, onError, isDoBlock := extractDoBlock(cmd)
 		if isDoBlock {
 			cmd = innerCmd
