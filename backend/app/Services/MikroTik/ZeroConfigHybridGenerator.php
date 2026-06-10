@@ -590,7 +590,6 @@ class ZeroConfigHybridGenerator
             ],
             $this->bootstrapRadiusNetwatch("hyb-{$id}", $rs, $pppoeServiceName),
             [
-                ":local pingResult [/ping address=\"{$rs}\" count=2 interval=500ms]; :if (\$pingResult = 0) do={}",
                 "/ppp aaa set use-radius=yes accounting=yes interim-update=5m use-circuit-id-in-nas-port-id=yes",
                 "/ip hotspot user remove [find]",
                 "/ppp secret remove [find]",
