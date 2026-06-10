@@ -54,6 +54,31 @@ func TestTranslateRouterOSCommand_FindMutation(t *testing.T) {
 			wantFilters:  []string{"?comment~=PPPoE-9d54fcf5"},
 			wantParams:   []string{},
 		},
+
+		{
+			name:         "escaped identity value from script source",
+			command:      `/system identity set name=\"chr\";`,
+			wantEndpoint: "/system/identity/set",
+			wantFindMut:  false,
+			wantFilters:  nil,
+			wantParams:   []string{"name=chr"},
+		},
+		{
+			name:         "escaped radius comment with spaces",
+			command:      `/radius add service=\"ppp\" address=\"10.8.0.1\" comment=\"WiFiCore PPPoE (723504cd)\";`,
+			wantEndpoint: "/radius/add",
+			wantFindMut:  false,
+			wantFilters:  nil,
+			wantParams:   []string{"service=ppp", "address=10.8.0.1", "comment=WiFiCore PPPoE (723504cd)"},
+		},
+		{
+			name:         "ppp profile set by cli name",
+			command:      `/ppp profile set "pppoe-prof-723504cd" local-address="100.64.0.1" remote-address="pppoe-pool-723504cd"`,
+			wantEndpoint: "/ppp/profile/set",
+			wantFindMut:  true,
+			wantFilters:  []string{"?name=pppoe-prof-723504cd"},
+			wantParams:   []string{"local-address=100.64.0.1", "remote-address=pppoe-pool-723504cd"},
+		},
 		{
 			name:         "ppp aaa set simple",
 			command:      `/ppp aaa set use-radius=yes accounting=yes`,

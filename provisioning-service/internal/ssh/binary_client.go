@@ -689,7 +689,13 @@ func translateRouterOSCommand(command string) (string, []string, commandOptions,
 		}
 
 		if opts.action == "set" || opts.action == "remove" || opts.action == "enable" || opts.action == "disable" {
-			params = append(params, ".id="+stripAngleAndQuotes(tok))
+			idOrName := stripAngleAndQuotes(tok)
+			if strings.HasPrefix(idOrName, "*") || strings.Contains(idOrName, "=") {
+				params = append(params, ".id="+idOrName)
+			} else {
+				opts.findMutation = true
+				opts.findFilters = []string{"?name=" + idOrName}
+			}
 			continue
 		}
 
@@ -717,11 +723,31 @@ func splitRouterOSCommand(command string) []string {
 		}
 	}
 
-	for _, r := range command {
+	for i := 0; i < len(command); i++ {
+		r := rune(command[i])
 		switch {
 		case escaped:
 			current.WriteRune(r)
 			escaped = false
+		case r == '\\' && i+1 < len(command) && command[i+1] == '"':
+			next := byte(0)
+			if i+2 < len(command) {
+				next = command[i+2]
+			}
+			if !inQuotes {
+				current.WriteByte('"')
+				inQuotes = true
+				i++
+				continue
+			}
+			if next == 0 || next == ' ' || next == '\t' || next == ';' || next == ']' || next == '}' {
+				current.WriteByte('"')
+				inQuotes = false
+				i++
+				continue
+			}
+			current.WriteRune(r)
+			escaped = true
 		case r == '\\':
 			current.WriteRune(r)
 			escaped = true
@@ -760,10 +786,39 @@ func stripAngleAndQuotes(token string) string {
 	if idx := strings.Index(token, "="); idx > 0 {
 		key := token[:idx]
 		val := token[idx+1:]
-		val = strings.Trim(val, "\"")
+		val = cleanRouterOSValue(val)
 		return key + "=" + val
 	}
-	return cleanQueryValue(token)
+	return cleanRouterOSValue(cleanQueryValue(token))
+}
+
+func cleanRouterOSValue(value string) string {
+	value = strings.TrimSpace(value)
+	value = strings.TrimSuffix(value, ";")
+	if len(value) >= 2 && strings.HasPrefix(value, `\"`) && strings.HasSuffix(value, `\"`) {
+		value = strings.TrimPrefix(value, `\"`)
+		value = strings.TrimSuffix(value, `\"`)
+	} else {
+		value = strings.Trim(value, `"`)
+	}
+	return unescapeRouterOSValue(value)
+}
+
+func unescapeRouterOSValue(value string) string {
+	var b strings.Builder
+	b.Grow(len(value))
+	for i := 0; i < len(value); i++ {
+		if value[i] == '\\' && i+1 < len(value) {
+			switch value[i+1] {
+			case '\\', '"', '$':
+				b.WriteByte(value[i+1])
+				i++
+				continue
+			}
+		}
+		b.WriteByte(value[i])
+	}
+	return b.String()
 }
 
 func extractFindFilters(command string) []string {
