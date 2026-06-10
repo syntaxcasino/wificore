@@ -128,10 +128,9 @@ class ZeroConfigHybridGenerator
         $isLowEnd = $params['is_low_end'] ?? false;
         $syslogHost = $params['syslog_host'] ?? config('services.syslog.host', $params['radius_server'] ?? '10.8.0.1');
 
-        $script   = [];
-        $script[] = "/log info \"=== Zero-Config Hybrid Deployment (VLAN-Enforced) ===\"";
-        $script[] = "/log info \"Router: {$params['router_id']}\"";
-        $script[] = "";
+        $script   = [
+            "# Zero-Config Hybrid Deployment (VLAN-Enforced)"
+        ];
         $script = array_merge($script, $this->bootstrapRadiusAaaAttributes());
 
         $script = array_merge($script, $this->generateVlanSetup($params));
@@ -158,9 +157,6 @@ class ZeroConfigHybridGenerator
         $script = array_merge($script, $this->generateFirewallRules($params));
         $script = array_merge($script, $this->bootstrapGlobalDefaultDrop("hyb-{$id}"));
         $script = array_merge($script, $this->generateNatRules($params));
-
-        $script[] = "";
-        $script[] = "/log info \"=== Hybrid Deployment Complete ===\"";
 
         return implode("\n", $script);
     }
@@ -216,16 +212,15 @@ class ZeroConfigHybridGenerator
         $s[] = ":do { /ip dhcp-server network add address=\"{$network}/{$cidr}\" gateway=\"{$gateway}\" dns-server=\"{$dns}\" comment=\"hyb-hs-net-{$id}\"; } on-error={ :error \"hyb-hs-net-fail\" }";
         $s[] = ":do { /ip hotspot profile remove [/ip hotspot profile find name=\"{$profile}\"]; } on-error={}";
         $s[] = ":do { /ip hotspot profile add name=\"{$profile}\" hotspot-address=\"{$gateway}\" use-radius=yes html-directory=\"hotspot\" http-cookie-lifetime=\"1d\" dns-name=\"{$dnsName}\"; } on-error={ :error \"hyb-hs-prof-fail\" }";
-        $s[] = ":do { /ip hotspot profile set [/ip hotspot profile find name=\"{$profile}\"] login-by=\"http-chap,http-pap\"; } on-error={ /log warning \"hyb: Failed to set hotspot login-by — default auth methods may be broader than expected\" }";
+        $s[] = "/ip hotspot profile set \"{$profile}\" login-by=\"http-chap,http-pap\"";
         if ($portalHtml) {
-            $s[] = ":do { /file set \"hotspot/login.html\" contents=\"{$portalHtml}\" } on-error={ /log warning \"hyb-{$id}: Failed to set portal URL (non-fatal)\" }";
+            $s[] = "/file set \"hotspot/login.html\" contents=\"{$portalHtml}\"";
         }
-        $s[] = ":do { /ip hotspot remove [/ip hotspot find name=\"{$server}\"]; } on-error={}";
-        $s[] = ":do { /ip hotspot add name=\"{$server}\" interface=\"{$iface}\" profile=\"{$profile}\" address-pool=\"{$poolName}\" addresses-per-mac=2 idle-timeout=\"5m\" keepalive-timeout=\"2m\" disabled=no; } on-error={ :error \"hyb-hs-srv-fail\" }";
-        $s[] = ":if ([:len [/ip hotspot find name=\"{$server}\"]] = 0) do={ :error \"hyb-{$id}: FATAL - hotspot server missing after add\" }";
+        $s[] = "/ip hotspot remove [find name=\"{$server}\"]";
+        $s[] = "/ip hotspot add name=\"{$server}\" interface=\"{$iface}\" profile=\"{$profile}\" address-pool=\"{$poolName}\" addresses-per-mac=2 idle-timeout=\"5m\" keepalive-timeout=\"2m\" disabled=no";
         if ($portalHost) {
             $s[] = ":do { /ip hotspot walled-garden remove [/ip hotspot walled-garden find comment=\"hyb-wg-{$id}\"]; } on-error={}";
-            $s[] = ":do { /ip hotspot walled-garden add dst-host=\"{$portalHost}\" action=\"allow\" comment=\"hyb-wg-{$id}\"; } on-error={ /log warning \"hyb-{$id}: Failed to add walled-garden entry for {$portalHost} — captive portal may be unreachable\" }";
+            $s[] = "/ip hotspot walled-garden add dst-host=\"{$portalHost}\" action=\"allow\" comment=\"hyb-wg-{$id}\"";
         }
         $s[] = "";
         return $s;
@@ -348,11 +343,9 @@ class ZeroConfigHybridGenerator
         $isLowEnd   = $params['is_low_end'] ?? false;
         $syslogHost = $params['syslog_host'] ?? config('services.syslog.host', $params['radius_server'] ?? '10.8.0.1');
 
-        $script   = [];
-        $script[] = "/log info \"=== Zero-Config Hybrid Deployment (Bridge Mode) ===\"";
-        $script[] = "/log info \"Router: {$params['router_id']}\"";
-        $script[] = "/log info \"Bridge: {$bridge}\"";
-        $script[] = "";
+        $script   = [
+            "# Zero-Config Hybrid Deployment (Bridge Mode)"
+        ];
         $script = array_merge($script, $this->bootstrapRadiusAaaAttributes());
 
         $script = array_merge($script, $this->generateBridgeSetup($params));
@@ -379,9 +372,6 @@ class ZeroConfigHybridGenerator
         $script = array_merge($script, $this->bootstrapGlobalDefaultDrop("hyb-{$id}"));
         $script = array_merge($script, $this->generateBridgeNatRules($params));
 
-        $script[] = "";
-        $script[] = "/log info \"=== Hybrid Deployment Complete - Bridge Mode ===\"";
-
         return implode("\n", $script);
     }
 
@@ -393,20 +383,20 @@ class ZeroConfigHybridGenerator
 
         $script = [
             "# Interface Lists",
-            ":do { /interface list add name=\"LAN\" comment=\"Local Area Network\" } on-error={ /log info \"hyb-$id: INFO - LAN list exists or failed\" }",
-            ":do { /interface list add name=\"WAN\" comment=\"Wide Area Network\" } on-error={ /log info \"hyb-$id: INFO - WAN list exists or failed\" }",
-            ":do { /interface list member add list=\"WAN\" interface=\"ether1\" } on-error={ /log info \"hyb-$id: WARN - Failed to add ether1 to WAN\" }",
+            "/interface list add name=\"LAN\" comment=\"Local Area Network\"",
+            "/interface list add name=\"WAN\" comment=\"Wide Area Network\"",
+            "/interface list member add list=\"WAN\" interface=\"ether1\"",
             "",
             "# Bridge Setup",
-            ":do { /interface bridge port remove [/interface bridge port find bridge=\"{$bridge}\"]; } on-error={ /log info \"hyb-$id: INFO - No bridge ports to remove\" }",
-            ":do { /interface bridge remove [/interface bridge find name=\"{$bridge}\"]; } on-error={ /log info \"hyb-$id: INFO - No bridge to remove\" }",
-            ":do { /interface bridge add name=\"{$bridge}\" protocol-mode=\"rstp\" comment=\"hyb-br-{$id}\" } on-error={ :error \"hyb-$id: FATAL - bridge add failed\" }",
-            ":delay 500ms;",
+            "/interface bridge port remove [find bridge=\"{$bridge}\"]",
+            "/interface bridge remove [find name=\"{$bridge}\"]",
+            "/interface bridge add name=\"{$bridge}\" protocol-mode=\"rstp\" comment=\"hyb-br-{$id}\"",
+            ":delay 500ms",
         ];
 
         foreach ($interfaces as $iface) {
-            $script[] = ":do { /interface bridge port add bridge=\"{$bridge}\" interface=\"{$iface}\" comment=\"hyb-port-{$id}\" } on-error={ /log error \"hyb-$id: FATAL - port add failed for $iface\" }";
-            $script[] = ":do { /interface list member add list=\"LAN\" interface=\"{$iface}\" } on-error={ /log warning \"hyb-{$id}: Failed to add {$iface} to LAN list — inter-VLAN routing or firewall rules may not apply correctly\" }";
+            $script[] = "/interface bridge port add bridge=\"{$bridge}\" interface=\"{$iface}\" comment=\"hyb-port-{$id}\"";
+            $script[] = "/interface list member add list=\"LAN\" interface=\"{$iface}\"";
         }
 
         $script[] = "";
@@ -457,15 +447,15 @@ class ZeroConfigHybridGenerator
         $s[] = ":do { /ip dhcp-server network add address=\"{$network}/{$cidr}\" gateway=\"{$gateway}\" dns-server=\"{$dns}\" comment=\"hyb-hs-net-{$id}\"; } on-error={ :error \"hyb-hs-net-fail\" }";
         $s[] = ":do { /ip hotspot profile remove [/ip hotspot profile find name=\"{$profile}\"]; } on-error={}";
         $s[] = ":do { /ip hotspot profile add name=\"{$profile}\" hotspot-address=\"{$gateway}\" use-radius=yes html-directory=\"hotspot\" http-cookie-lifetime=\"1d\" dns-name=\"{$dnsName}\"; } on-error={ :error \"hyb-hs-prof-fail\" }";
-        $s[] = ":do { /ip hotspot profile set [/ip hotspot profile find name=\"{$profile}\"] login-by=\"http-chap,http-pap\"; } on-error={ /log warning \"hyb: Failed to set hotspot login-by — default auth methods may be broader than expected\" }";
+        $s[] = "/ip hotspot profile set \"{$profile}\" login-by=\"http-chap,http-pap\"";
         if ($portalHtml) {
-            $s[] = ":do { /file set \"hotspot/login.html\" contents=\"{$portalHtml}\" } on-error={ /log warning \"hyb-{$id}: Failed to set portal URL (non-fatal)\" }";
+            $s[] = "/file set \"hotspot/login.html\" contents=\"{$portalHtml}\"";
         }
         $s[] = ":do { /ip hotspot remove [/ip hotspot find name=\"{$server}\"]; } on-error={}";
         $s[] = ":do { /ip hotspot add name=\"{$server}\" interface=\"{$iface}\" profile=\"{$profile}\" address-pool=\"{$poolName}\" addresses-per-mac=2 idle-timeout=\"5m\" keepalive-timeout=\"2m\" disabled=no; } on-error={ :error \"hyb-hs-srv-fail\" }";
         if ($portalHost) {
             $s[] = ":do { /ip hotspot walled-garden remove [/ip hotspot walled-garden find comment=\"hyb-wg-{$id}\"]; } on-error={}";
-            $s[] = ":do { /ip hotspot walled-garden add dst-host=\"{$portalHost}\" action=\"allow\" comment=\"hyb-wg-{$id}\"; } on-error={ /log warning \"hyb-{$id}: Failed to add walled-garden entry for {$portalHost} — captive portal may be unreachable\" }";
+            $s[] = "/ip hotspot walled-garden add dst-host=\"{$portalHost}\" action=\"allow\" comment=\"hyb-wg-{$id}\"";
         }
         $s[] = "";
         return $s;
@@ -495,14 +485,14 @@ class ZeroConfigHybridGenerator
         $s[] = ":do { /ppp profile remove [/ppp profile find name=\"{$profile}\"]; } on-error={}";
         $s[] = ":do { /ppp profile add name=\"{$profile}\" local-address=\"{$gateway}\" remote-address=none comment=\"hyb-pp-{$id}\"; } on-error={ :error \"hyb-$id: FATAL - PPP profile add failed\" }";
         $s[] = ":do { /ppp profile set [/ppp profile find name=\"{$profile}\"] use-radius=yes rate-limit=\"\" only-one=yes change-tcp-mss=yes; } on-error={ :error \"hyb-$id: FATAL - profile RADIUS flags failed\" }";
-        $s[] = ":do { /ppp profile set [/ppp profile find name=\"{$profile}\"] interface-list=\"{$pal}\"; } on-error={ /log warning \"hyb-$id: Failed to set profile interface-list (non-fatal)\" }";
+        $s[] = "/ppp profile set \"{$profile}\" interface-list=\"{$pal}\"";
         $s = array_merge($s, $this->bootstrapPppAaaHardening("hyb-{$id}", $profile));
         $s = array_merge($s, $this->bootstrapPppSessionLogging("hyb-{$id}", $profile));
         $s[] = ":do { /interface pppoe-server server remove [/interface pppoe-server server find service-name=\"{$serviceName}\"]; } on-error={}";
         $s[] = ":do { /interface pppoe-server server add service-name=\"{$serviceName}\" interface=\"{$iface}\" default-profile=\"{$profile}\" authentication=\"pap,chap,mschap2\" keepalive-timeout=\"10\" max-mtu=\"1480\" max-mru=\"1480\" disabled=no; } on-error={ :error \"hyb-$id: FATAL - PPPoE server add failed\" }";
-        $s[] = ":do { /interface pppoe-server server set [/interface pppoe-server server find service-name=\"{$serviceName}\"] disabled=no; } on-error={ /log warning \"hyb-$id: Failed to enable PPPoE server (non-fatal)\" }";
+        $s[] = "/interface pppoe-server server set [find service-name=\"{$serviceName}\"] disabled=no";
         $s[] = ":if ([:len [/interface pppoe-server server find service-name=\"{$serviceName}\"]] = 0) do={ :error \"hyb-$id: FATAL - PPPoE server missing after add\" }";
-        $s[] = "/log info \"hyb-{$id}: PPPoE server '{$serviceName}' verified and started successfully.\"";
+        $s[] = "# PPPoE server configured";
         $rs = $params['radius_server'] ?? '10.8.0.1';
         $s = array_merge($s, $this->bootstrapOperationalLogging("hyb-{$id}", $serviceName, $rs));
         $s[] = "";
@@ -596,13 +586,13 @@ class ZeroConfigHybridGenerator
             [
                 "# RADIUS - RADIUS-ONLY AAA (hotspot + PPPoE): Mikrotik-Rate-Limit + Framed-Pool enforced per-user",
                 ":do { /radius remove [find service=hotspot comment~\"hyb-hs-rad-{$id}\"]; } on-error={}",
-                ":do { /radius add service=hotspot address=\"{$rs}\" secret=\"{$sec}\" authentication-port=1812 accounting-port=1813 timeout=3s comment=\"hyb-hs-rad-{$id}\"; } on-error={ /log error \"hyb-hs-rad-fail (non-fatal)\" }",
+                "/radius add service=hotspot address=\"{$rs}\" secret=\"{$sec}\" authentication-port=1812 accounting-port=1813 timeout=3s comment=\"hyb-hs-rad-{$id}\"",
                 ":do { /radius remove [find service=ppp comment~\"hyb-pp-rad-{$id}\"]; } on-error={}",
-                ":do { /radius add service=ppp address=\"{$rs}\" secret=\"{$sec}\" authentication-port=1812 accounting-port=1813 timeout=3s comment=\"hyb-pp-rad-{$id}\"; } on-error={ /log error \"hyb-pp-rad-fail (non-fatal)\" }",
+                "/radius add service=ppp address=\"{$rs}\" secret=\"{$sec}\" authentication-port=1812 accounting-port=1813 timeout=3s comment=\"hyb-pp-rad-{$id}\"",
             ],
             $this->bootstrapRadiusNetwatch("hyb-{$id}", $rs, $pppoeServiceName),
             [
-                ":local pingResult [/ping address=\"{$rs}\" count=2 interval=500ms]; :if (\$pingResult = 0) do={ /log warning \"hyb-{$id}: CRITICAL - RADIUS {$rs} unreachable at deploy time.\" } else={ /log info \"hyb-{$id}: RADIUS {$rs} reachable (\$pingResult replies). Netwatch monitoring active.\" }",
+                ":local pingResult [/ping address=\"{$rs}\" count=2 interval=500ms]; :if (\$pingResult = 0) do={}",
                 "/ppp aaa set use-radius=yes accounting=yes interim-update=5m use-circuit-id-in-nas-port-id=yes",
                 ":do { /ip hotspot user remove [/ip hotspot user find] } on-error={}",
                 ":do { /ppp secret remove [/ppp secret find] } on-error={}",

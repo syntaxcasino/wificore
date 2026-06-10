@@ -56,18 +56,16 @@ class ZeroConfigHotspotGenerator
         $syslogHost = config('services.syslog.host', $resolvedRadiusServer);
 
         $script = [
-            "/log info \"=== ISP-Grade Multi-Interface Hotspot Deployment ===\"",
-            "/log info \"Router: {$router->id}\"",
-            ""
+            "# ISP-Grade Multi-Interface Hotspot Deployment"
         ];
 
         $script = array_merge($script, $this->bootstrapRadiusAaaAttributes());
 
         $script = array_merge($script, [
             "# Interface Lists",
-            ":if ([:len [/interface list find name=\"LAN\"]] = 0) do={ /interface list add name=\"LAN\" comment=\"Local Area Network\" }",
-            ":if ([:len [/interface list find name=\"WAN\"]] = 0) do={ /interface list add name=\"WAN\" comment=\"Wide Area Network\" }",
-            ":if ([:len [/interface list member find list=\"WAN\" interface=\"ether1\"]] = 0) do={ /interface list member add list=\"WAN\" interface=\"ether1\" }",
+            "/interface list add name=\"LAN\" comment=\"Local Area Network\"",
+            "/interface list add name=\"WAN\" comment=\"Wide Area Network\"",
+            "/interface list member add list=\"WAN\" interface=\"ether1\"",
             ""
         ]);
 
@@ -178,15 +176,16 @@ class ZeroConfigHotspotGenerator
         // Create shared bridge and attach all access interfaces
         $script = array_merge($script, [
             "# Hotspot Access Bridge (Mode A)",
-            ":do { /interface bridge add name=\"{$bridgeName}\" comment=\"hs-br-{$shortId}\" } on-error={}",
-            ":do { /interface bridge port remove [/interface bridge port find bridge=\"{$bridgeName}\" comment=\"hs-port-{$shortId}\"] } on-error={}",
+            "/interface bridge port remove [find bridge=\"{$bridgeName}\" comment~=\"hs-port\"]",
+            "/interface bridge remove [find name=\"{$bridgeName}\"]",
+            "/interface bridge add name=\"{$bridgeName}\" comment=\"hs-br-{$shortId}\"",
         ]);
 
         foreach ($accessIfaces as $iface) {
             $script[] = ":if ([:len [/interface find name=\"{$iface}\"]] = 0) do={ :error \"hs-iface-miss-{$iface}\" }";
             $script[] = ":if ([:len [/interface wireguard find name=\"{$iface}\"]] > 0) do={ :error \"hs-wg-refuse-{$iface}\" }";
-            $script[] = ":do { /interface bridge port remove [/interface bridge port find bridge=\"{$bridgeName}\" interface=\"{$iface}\"] } on-error={}";
-            $script[] = ":do { /interface bridge port add bridge=\"{$bridgeName}\" interface=\"{$iface}\" comment=\"hs-port-{$shortId}\" } on-error={ :error \"hs-port-fail-{$iface}\" }";
+            $script[] = "/interface bridge port remove [find bridge=\"{$bridgeName}\" interface=\"{$iface}\"]";
+            $script[] = "/interface bridge port add bridge=\"{$bridgeName}\" interface=\"{$iface}\" comment=\"hs-port-{$shortId}\"";
         }
 
         // Verify ALL expected bridge ports were added
@@ -194,7 +193,6 @@ class ZeroConfigHotspotGenerator
         // (top-level lines in /import .rsc each get their own scope — variables don't persist)
         $expectedPortCount = count($accessIfaces);
         $script[] = "{ :local actualPorts [:len [/interface bridge port find bridge=\"{$bridgeName}\" comment~\"hs-port\"]]; :if (\$actualPorts < {$expectedPortCount}) do={ :error \"hs-port-count-mismatch-{$shortId}\" } }";
-        $script[] = "/log info \"hs-{$shortId}-ports-ok\"";
         $script[] = "";
 
         $params = [
@@ -224,8 +222,6 @@ class ZeroConfigHotspotGenerator
         ];
 
         $script = array_merge($script, $this->buildInterfaceConfig($params));
-
-        $script[] = "/log info \"=== ISP-Grade Hotspot Deployment Complete ===\"";
 
         return implode("\n", $script);
     }
@@ -411,16 +407,15 @@ class ZeroConfigHotspotGenerator
 
         return array_values(array_filter([
             "# Hotspot Profile",
-            ":do { /ip hotspot profile remove [/ip hotspot profile find name=\"{$profile}\"] } on-error={}",
-            ":do { /ip hotspot profile add name=\"{$profile}\" hotspot-address=\"{$params['gateway_ip']}\" login-by=http-chap,http-pap use-radius=yes html-directory=hotspot dns-name=\"{$dnsName}\" http-cookie-lifetime=1d } on-error={ :error \"hs-{$sid}: FATAL - hotspot profile add failed\" }",
-            ($portalHtml ? ":do { /file set \"hotspot/login.html\" contents=\"{$portalHtml}\" } on-error={ /log warning \"hs-{$sid}: Failed to set portal URL (non-fatal)\" }" : null),
+            "/ip hotspot profile remove [find name=\"{$profile}\"]",
+            "/ip hotspot profile add name=\"{$profile}\" hotspot-address=\"{$params['gateway_ip']}\" login-by=http-chap,http-pap use-radius=yes html-directory=hotspot dns-name=\"{$dnsName}\" http-cookie-lifetime=1d",
+            ($portalHtml ? "/file set \"hotspot/login.html\" contents=\"{$portalHtml}\"" : null),
             "# Hotspot Server",
-            ":do { /ip hotspot remove [/ip hotspot find name=\"{$server}\"] } on-error={}",
-            ":do { /ip hotspot add name=\"{$server}\" interface=\"{$iface}\" profile=\"{$profile}\" address-pool=\"{$poolName}\" addresses-per-mac=2 idle-timeout=5m keepalive-timeout=2m disabled=no } on-error={ :error \"hs-{$sid}: FATAL - hotspot server add failed\" }",
-            ":if ([:len [/ip hotspot find name=\"{$server}\"]] = 0) do={ :error \"hs-{$sid}: FATAL - hotspot server missing after add\" }",
+            "/ip hotspot remove [find name=\"{$server}\"]",
+            "/ip hotspot add name=\"{$server}\" interface=\"{$iface}\" profile=\"{$profile}\" address-pool=\"{$poolName}\" addresses-per-mac=2 idle-timeout=5m keepalive-timeout=2m disabled=no",
             "# User Profile - RADIUS-only: no local rate-limit fallback",
-            ":do { /ip hotspot user profile remove [/ip hotspot user profile find name=\"{$userProf}\"] } on-error={}",
-            ":do { /ip hotspot user profile add name=\"{$userProf}\" add-mac-cookie=yes shared-users=1 session-timeout=0 rate-limit=\"\" } on-error={ /log warning \"hs-{$sid}: Failed to add user profile (non-fatal, default will be used)\" }",
+            "/ip hotspot user profile remove [find name=\"{$userProf}\"]",
+            "/ip hotspot user profile add name=\"{$userProf}\" add-mac-cookie=yes shared-users=1 session-timeout=0 rate-limit=\"\"",
             ""
         ], fn ($line) => $line !== null && $line !== ''));
     }
@@ -435,14 +430,14 @@ class ZeroConfigHotspotGenerator
         return array_merge(
             [
                 "# RADIUS - RADIUS-only AAA: Mikrotik-Rate-Limit and session attrs enforced per-user",
-                ":do { /radius remove [find service=hotspot comment=\"hs-radius-{$sid}\"]; } on-error={}",
-                ":do { /radius add service=hotspot address=\"{$rs}\" secret=\"{$sec}\" authentication-port=1812 accounting-port=1813 timeout=3s comment=\"hs-radius-{$sid}\"; } on-error={ /log error \"hs-{$sid}: RADIUS add failed (non-fatal)\" }",
-                ":do { /ip hotspot profile set [/ip hotspot profile find name=\"{$profile}\"] use-radius=yes } on-error={}",
+                "/radius remove [find service=hotspot comment~=\"hs-radius-{$sid}\"]",
+                "/radius add service=hotspot address=\"{$rs}\" secret=\"{$sec}\" authentication-port=1812 accounting-port=1813 timeout=3s comment=\"hs-radius-{$sid}\"",
+                "/ip hotspot profile set \"{$profile}\" use-radius=yes",
             ],
             $this->bootstrapRadiusNetwatch("hs-{$sid}", $rs),
             [
-                ":local pingResult [/ping address=\"{$rs}\" count=2 interval=500ms]; :if (\$pingResult = 0) do={ /log warning \"hs-{$sid}: CRITICAL - RADIUS {$rs} unreachable at deploy time.\" } else={ /log info \"hs-{$sid}: RADIUS {$rs} reachable (\$pingResult replies). Netwatch monitoring active.\" }",
-                ":do { /ip hotspot user remove [/ip hotspot user find] } on-error={}",
+                ":local pingResult [/ping address=\"{$rs}\" count=2 interval=500ms]; :if (\$pingResult = 0) do={}",
+                "/ip hotspot user remove [find]",
                 ""
             ]
         );

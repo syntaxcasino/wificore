@@ -165,8 +165,8 @@ class ZeroConfigPPPoEGenerator
         $s = [];
 
         $syslogHost = $p['syslog_host'] ?? config('services.syslog.host', $rs);
-        $s[] = "/log info \"PPPoE-$id-START [$profileName profile for: $deviceModel]\"";
-        $s[] = "";
+        // Note: /log commands are script-only and skipped by binary API
+        // Provisioning progress is tracked by the provisioning service itself
         $s[] = "# ============================";
         $s[] = "# 1. System Identity & Logging";
         $s[] = "# ============================";
@@ -247,7 +247,7 @@ class ZeroConfigPPPoEGenerator
                 if (str_contains($ifaceLower, $pat)) { $isVpn = true; break; }
             }
             if ($isVpn) {
-                $s[] = "/log info \"PPPoE-$id: SKIP VPN interface $iface (not added to bridge)\"";
+                // VPN interface skip - logged by provisioning service, not via /log
                 continue;
             }
             $access = $iface;
@@ -277,7 +277,6 @@ class ZeroConfigPPPoEGenerator
         $s[] = "/interface pppoe-server server add service-name=\"$svc\" interface=\"$bridge\" default-profile=\"$prof\" authentication=\"chap,mschap2\" one-session-per-host=yes keepalive-timeout=\"{$keepaliveTimeout}\" max-mtu=\"1480\" max-mru=\"1480\" disabled=no";
         $s[] = "/interface list member remove [find list=\"$pl\"]";
         $s[] = "/interface list member add list=\"$pl\" interface=\"$bridge\" comment=\"PPPoE-$id-PL\"";
-        $s[] = "/log info \"PPPoE-$id: PPPoE server '$svc' started\"";
         $s = array_merge($s, $this->bootstrapOperationalLogging("PPPoE-$id", $svc, $rs, $isLowEnd));
 
         $s[] = "";
@@ -383,7 +382,8 @@ class ZeroConfigPPPoEGenerator
         $s[] = $this->bootstrapConnectionTracking();
 
         $s[] = ":delay {$delays['final']}";
-        $s[] = "/log info \"PPPoE-$id-DONE [$profileName profile]\"";
+        // Final log skipped - binary API doesn't support /log commands
+        // Provisioning completion is tracked by the provisioning service
 
         return implode("\n", $s);
     }
@@ -426,7 +426,7 @@ class ZeroConfigPPPoEGenerator
         }
 
         $s = [];
-        $s[] = "/log info \"PPPoE-$id-ADD-INTERFACES-START\"";
+        // Note: Progress logging handled by provisioning service
 
         foreach ($additionalInterfaces as $iface) {
             $access = $iface;
@@ -436,10 +436,9 @@ class ZeroConfigPPPoEGenerator
                 $s[] = "/interface vlan add name=\"$access\" vlan-id=\"{$vlanId}\" interface=\"$iface\" comment=\"PPPoE-$id\"";
             }
             $s[] = "/interface bridge port add bridge=\"$bridge\" interface=\"$access\" comment=\"PPPoE-$id-add\"";
-            $s[] = "/log info \"PPPoE-$id: Added interface $iface to bridge\"";
         }
 
-        $s[] = "/log info \"PPPoE-$id-ADD-INTERFACES-DONE\"";
+        // Interface addition complete - tracked by provisioning service
 
         return implode("\n", $s);
     }
