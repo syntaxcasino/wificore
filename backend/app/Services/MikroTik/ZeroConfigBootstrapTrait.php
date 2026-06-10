@@ -248,7 +248,7 @@ trait ZeroConfigBootstrapTrait
     protected function bootstrapBruteForceProtection(string $prefix, string $allowAddr = '10.0.0.0/8'): array
     {
         return [
-            "/ip firewall filter remove [find comment~\"{$prefix}-BRUTE\"]",
+            "/ip firewall filter remove [find comment=\"{$prefix}-BRUTE\"]",  // Binary API: exact match
             // Drop blacklisted sources immediately on all management ports (logged)
             "/ip firewall filter add chain=input protocol=\"tcp\" dst-port=\"22,8291,8728,8729\" connection-state=\"new\" src-address-list=\"bruteforce-blacklist\" action=\"drop\" log=\"yes\" log-prefix=\"BRUTE-BL-DROP\" comment=\"{$prefix}-BRUTE-DROP\"",
             // Detect abuse from untrusted sources only; trusted management ranges must not self-blacklist during provisioning.
@@ -578,7 +578,7 @@ trait ZeroConfigBootstrapTrait
 
         return [
             "# RADIUS Health Monitor (netwatch) — automated failure alerting",
-            "/tool netwatch remove [find comment~\"{$prefix}-RADIUS-WATCH\"]",
+            "/tool netwatch remove [find comment=\"{$prefix}-RADIUS-WATCH\"]",  // Binary API: exact match
             "/tool netwatch add host=\"{$radiusIp}\" interval=30s timeout=3s up-script=\"{$upScript}\" down-script=\"{$downScript}\" comment=\"{$prefix}-RADIUS-WATCH\"",
             "",
         ];
@@ -603,7 +603,7 @@ trait ZeroConfigBootstrapTrait
     {
         $rules = [
             "# Subscriber Queue Fairness (PCQ types — rate limits via RADIUS Mikrotik-Rate-Limit)",
-            "/queue tree remove [find comment~\"{$prefix}-QTREE\"]",
+            "/queue tree remove [find comment=\"{$prefix}-QTREE\"]",  // Binary API: exact match
             "/queue type remove \"pcq-download-{$prefix}\"",
             "/queue type remove \"pcq-upload-{$prefix}\"",
         ];
@@ -628,7 +628,7 @@ trait ZeroConfigBootstrapTrait
     {
         return [
             "# Global Default Drop",
-            "/ip firewall filter remove [find comment~\"{$prefix}-GLOBAL-DROP\"]",
+            "/ip firewall filter remove [find comment=\"{$prefix}-GLOBAL-DROP\"]",  // Binary API: exact match
             "/ip firewall filter remove [find comment=\"{$prefix}-GLOBAL-EST-IN\"]",
             "/ip firewall filter add chain=input connection-state=\"established,related\" action=\"accept\" comment=\"{$prefix}-GLOBAL-EST-IN\"",
             "/ip firewall filter add chain=input action=\"drop\" log=\"yes\" log-prefix=\"GLOBAL-DROP-IN\" comment=\"{$prefix}-GLOBAL-DROP-IN\"",
@@ -655,7 +655,7 @@ trait ZeroConfigBootstrapTrait
 
         $rules = [
             "# SECURITY HARDENING - BCP 38 Anti-Spoofing & DDoS Protection (GAP-14)",
-            "/ip firewall filter remove [find comment~\"SEC-$id\"]",
+            "/ip firewall filter remove [find comment=\"SEC-$id\"]",  // Binary API: exact match
         ];
 
         // Drop invalid connection states (applies to all tiers)

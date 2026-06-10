@@ -126,7 +126,7 @@ class ZeroConfigHotspotGenerator
                 $vlanIface = "vlan-hotspot-{$vlanId}-{$ifaceName}";
                 $script = array_merge($script, [
                     "# VLAN Setup",
-                    ":do { /interface vlan remove [/interface vlan find name=\"{$vlanIface}\"] } on-error={}",
+                    ":do { /interface vlan remove [/interface vlan find name=\"{$vlanIface}\"]",
                     "/interface vlan add name=\"{$vlanIface}\" vlan-id=\"{$vlanId}\" interface=\"{$ifaceName}\" comment=\"Hotspot VLAN ({$router->id})\"",
                     ""
                 ]);
@@ -176,7 +176,7 @@ class ZeroConfigHotspotGenerator
         // Create shared bridge and attach all access interfaces
         $script = array_merge($script, [
             "# Hotspot Access Bridge (Mode A)",
-            "/interface bridge port remove [find bridge=\"{$bridgeName}\" comment~=\"hs-port\"]",
+            "/interface bridge port remove [find bridge=\"{$bridgeName}\" comment=\"hs-port\"]",
             "/interface bridge remove [find name=\"{$bridgeName}\"]",
             "/interface bridge add name=\"{$bridgeName}\" comment=\"hs-br-{$shortId}\"",
         ]);
@@ -192,7 +192,7 @@ class ZeroConfigHotspotGenerator
         // Wrapped in { } block so :local variable is visible to :if on the next line
         // (top-level lines in /import .rsc each get their own scope — variables don't persist)
         $expectedPortCount = count($accessIfaces);
-        $script[] = "{ :local actualPorts [:len [/interface bridge port find bridge=\"{$bridgeName}\" comment~\"hs-port\"]]; :if (\$actualPorts < {$expectedPortCount}) do={ :error \"hs-port-count-mismatch-{$shortId}\" } }";
+        $script[] = "{ :local actualPorts [:len [/interface bridge port find bridge=\"{$bridgeName}\" comment=\"hs-port\"]]; :if (\$actualPorts < {$expectedPortCount}) do={ :error \"hs-port-count-mismatch-{$shortId}\" } }";
         $script[] = "";
 
         $params = [
@@ -327,7 +327,7 @@ class ZeroConfigHotspotGenerator
         return [
             "# Bridge Setup (Optional)",
             ":do { /interface bridge add name=\"{$bridge}\" comment=\"Hotspot Bridge\" } on-error={}",
-            ":do { /interface bridge port remove [/interface bridge port find bridge=\"{$bridge}\" interface=\"{$iface}\"] } on-error={}",
+            ":do { /interface bridge port remove [/interface bridge port find bridge=\"{$bridge}\" interface=\"{$iface}\"]",
             ":do { /interface bridge port add bridge=\"{$bridge}\" interface=\"{$iface}\" comment=\"Hotspot Access Port\" } on-error={}",
             ""
         ];
@@ -361,7 +361,7 @@ class ZeroConfigHotspotGenerator
         $poolName = "hs-pool-{$sid}";
         return [
             "# IP Pool",
-            ":do { /ip pool remove [/ip pool find name=\"{$poolName}\"] } on-error={}",
+            ":do { /ip pool remove [/ip pool find name=\"{$poolName}\"]",
             ":do { /ip pool add name=\"{$poolName}\" ranges=\"{$params['range_start']}-{$params['range_end']}\" comment=\"hs-{$sid}\" } on-error={ :error \"hs-{$sid}: FATAL - pool add failed\" }",
             ""
         ];
@@ -379,7 +379,7 @@ class ZeroConfigHotspotGenerator
 
         return [
             "# DHCP Server",
-            ":do { /ip dhcp-server remove [/ip dhcp-server find name=\"{$dhcpName}\"] } on-error={}",
+            ":do { /ip dhcp-server remove [/ip dhcp-server find name=\"{$dhcpName}\"]",
             ":do { /ip dhcp-server add name=\"{$dhcpName}\" interface=\"{$iface}\" address-pool=\"{$poolName}\" lease-time=1h disabled=no authoritative=yes } on-error={ :error \"hs-{$sid}: FATAL - DHCP server add failed\" }",
             ":do { /ip dhcp-server network remove [/ip dhcp-server network find comment=\"hs-net-{$sid}\"]; } on-error={}",
             ":do { /ip dhcp-server network add address=\"{$network}/{$cidr}\" gateway=\"{$params['gateway_ip']}\" dns-server=\"{$dns}\" comment=\"hs-net-{$sid}\" } on-error={ :error \"hs-{$sid}: FATAL - DHCP network add failed\" }",
@@ -430,7 +430,7 @@ class ZeroConfigHotspotGenerator
         return array_merge(
             [
                 "# RADIUS - RADIUS-only AAA: Mikrotik-Rate-Limit and session attrs enforced per-user",
-                "/radius remove [find service=hotspot comment~=\"hs-radius-{$sid}\"]",
+                "/radius remove [find service=hotspot comment=\"hs-radius-{$sid}\"]",
                 "/radius add service=hotspot address=\"{$rs}\" secret=\"{$sec}\" authentication-port=1812 accounting-port=1813 timeout=3s comment=\"hs-radius-{$sid}\"",
                 "/ip hotspot profile set \"{$profile}\" use-radius=yes",
             ],
@@ -459,7 +459,7 @@ class ZeroConfigHotspotGenerator
         if ($isLowEnd) {
             return [
                 "# Firewall [MINIMAL] - Essential security for low-end device",
-                ":do { /ip firewall filter remove [/ip firewall filter find comment~\"hs-fw-{$sid}\"] } on-error={}",
+                "/ip firewall filter remove [find comment=\"hs-fw-{$sid}\"]",
                 "/ip firewall filter add chain=\"forward\" in-interface=\"{$iface}\" connection-state=\"established,related\" action=\"accept\" comment=\"hs-fw-{$sid}-EST\"",
                 "/ip firewall filter add chain=\"forward\" in-interface=\"{$iface}\" connection-state=\"invalid\" action=\"drop\" comment=\"hs-fw-{$sid}-INV\"",
                 "/ip firewall filter add chain=\"forward\" in-interface-list=\"WAN\" out-interface=\"{$iface}\" connection-state=\"established,related\" action=\"accept\" comment=\"hs-fw-{$sid}-WAN-RET\"",
@@ -471,7 +471,7 @@ class ZeroConfigHotspotGenerator
 
         return [
             "# Firewall [FULL] - Complete security for high-end device",
-            ":do { /ip firewall filter remove [/ip firewall filter find comment~\"hs-fw-{$sid}\"] } on-error={}",
+            "/ip firewall filter remove [find comment=\"hs-fw-{$sid}\"]",
             "/ip firewall filter add chain=\"forward\" in-interface=\"{$iface}\" connection-state=\"established,related\" action=\"accept\" comment=\"hs-fw-{$sid}-EST\"",
             "/ip firewall filter add chain=\"forward\" in-interface=\"{$iface}\" connection-state=\"invalid\" action=\"drop\" comment=\"hs-fw-{$sid}-INV\"",
             "/ip firewall filter add chain=\"forward\" in-interface-list=\"WAN\" out-interface=\"{$iface}\" connection-state=\"established,related\" action=\"accept\" comment=\"hs-fw-{$sid}-WAN-RET\"",
@@ -494,7 +494,7 @@ class ZeroConfigHotspotGenerator
 
         $rules = [
             "# Management & Service Hardening",
-            ":do { /ip firewall filter remove [/ip firewall filter find comment~\"hs-mgmt-{$sid}\"] } on-error={}",
+            "/ip firewall filter remove [find comment=\"hs-mgmt-{$sid}\"]",
         ];
         // Shared bootstrap: service hardening, system clock, NTP, firewall logging, brute-force
         $vpnIp = $params['vpn_ip'] ?? null;
@@ -532,7 +532,7 @@ class ZeroConfigHotspotGenerator
 
         return [
             "# NAT Rules",
-            ":do { /ip firewall nat remove [/ip firewall nat find comment=\"hs-nat-{$sid}\"] } on-error={}",
+            ":do { /ip firewall nat remove [/ip firewall nat find comment=\"hs-nat-{$sid}\"]",
             ":do { /ip firewall nat add chain=\"srcnat\" action=\"masquerade\" src-address=\"{$network}/{$cidr}\" out-interface-list=\"WAN\" comment=\"hs-nat-{$sid}\" } on-error={}",
             ":do { /ip firewall nat add chain=\"dstnat\" action=\"redirect\" to-ports=\"64872\" protocol=\"tcp\" dst-port=\"80\" in-interface=\"{$iface}\" comment=\"hs-redir80-{$sid}\" } on-error={}",
             ":do { /ip firewall nat add chain=\"dstnat\" action=\"redirect\" to-ports=\"64875\" protocol=\"tcp\" dst-port=\"443\" in-interface=\"{$iface}\" comment=\"hs-redir443-{$sid}\" } on-error={}",
@@ -558,10 +558,10 @@ class ZeroConfigHotspotGenerator
         return [
             "# Walled Garden - Allow Portal Access Without Authentication",
             "# CRITICAL: Users must access portal to view packages and make payments",
-            ":do { /ip hotspot walled-garden remove [/ip hotspot walled-garden find comment=\"WiFiCore Portal\"] } on-error={}",
+            ":do { /ip hotspot walled-garden remove [/ip hotspot walled-garden find comment=\"WiFiCore Portal\"]",
             ":do { /ip hotspot walled-garden add dst-host=\"{$portalHost}\" action=\"allow\" comment=\"WiFiCore Portal\" } on-error={}",
             "# Allow API endpoints for package loading and payment",
-            ":do { /ip hotspot walled-garden ip remove [/ip hotspot walled-garden ip find comment=\"WiFiCore API\"] } on-error={}",
+            ":do { /ip hotspot walled-garden ip remove [/ip hotspot walled-garden ip find comment=\"WiFiCore API\"]",
             ""
         ];
     }

@@ -208,7 +208,7 @@ class ZeroConfigHybridGenerator
         $s[] = "/ip pool add name=\"{$poolName}\" ranges=\"{$pool->range_start}-{$pool->range_end}\" comment=\"hyb-hs-{$id}\"";
         $s[] = "/ip dhcp-server remove [find name=\"{$dhcpName}\"]";
         $s[] = "/ip dhcp-server add name=\"{$dhcpName}\" interface=\"{$iface}\" address-pool=\"{$poolName}\" lease-time=\"1h\" disabled=no";
-        $s[] = "/ip dhcp-server network remove [find comment~=\"hyb-hs-net-{$id}\"]]";
+        $s[] = "/ip dhcp-server network remove [find comment=\"hyb-hs-net-{$id}\"]]";  // Binary API: use exact match
         $s[] = "/ip dhcp-server network add address=\"{$network}/{$cidr}\" gateway=\"{$gateway}\" dns-server=\"{$dns}\" comment=\"hyb-hs-net-{$id}\"";
         $s[] = "/ip hotspot profile remove [find name=\"{$profile}\"]";
         $s[] = "/ip hotspot profile add name=\"{$profile}\" hotspot-address=\"{$gateway}\" use-radius=yes html-directory=\"hotspot\" http-cookie-lifetime=\"1d\" dns-name=\"{$dnsName}\"";
@@ -251,7 +251,7 @@ class ZeroConfigHybridGenerator
         if ($isLowEnd) {
             return [
                 "# Firewall [MINIMAL] - Essential security for low-end device",
-                "/ip firewall filter remove [find comment~=\"hyb-fw-{$id}\"]]",
+                "/ip firewall filter remove [find comment=\"hyb-fw-{$id}\"]]",  // Binary API: use exact match
                 "/ip firewall filter add chain=\"forward\" in-interface=\"{$hsIface}\" connection-state=\"established,related\" action=\"accept\" comment=\"hyb-fw-{$id}-hs-EST\"",
                 "/ip firewall filter add chain=\"forward\" in-interface-list=\"{$pal}\" connection-state=\"established,related\" action=\"accept\" comment=\"hyb-fw-{$id}-pp-EST\"",
                 "/ip firewall filter add chain=\"forward\" in-interface-list=\"WAN\" out-interface=\"{$hsIface}\" connection-state=\"established,related\" action=\"accept\" comment=\"hyb-fw-{$id}-hs-WAN\"",
@@ -267,7 +267,7 @@ class ZeroConfigHybridGenerator
 
         return [
             "# Firewall [FULL] - Complete security for high-end device",
-            "/ip firewall filter remove [find comment~=\"hyb-fw-{$id}\"]]",
+            "/ip firewall filter remove [find comment=\"hyb-fw-{$id}\"]]",  // Binary API: use exact match
             "/ip firewall filter add chain=\"forward\" in-interface=\"{$hsIface}\" connection-state=\"established,related\" action=\"accept\" comment=\"hyb-fw-{$id}-hs-est\"",
             "/ip firewall filter add chain=\"forward\" in-interface-list=\"{$pal}\" connection-state=\"established,related\" action=\"accept\" comment=\"hyb-fw-{$id}-pp-est\"",
             "/ip firewall filter add chain=\"forward\" in-interface-list=\"WAN\" out-interface=\"{$hsIface}\" connection-state=\"established,related\" action=\"accept\" comment=\"hyb-fw-{$id}-hs-wan\"",
@@ -296,7 +296,7 @@ class ZeroConfigHybridGenerator
 
         return [
             "# NAT Rules",
-            "/ip firewall nat remove [find comment~=\"hyb-nat-{$id}\"]]",
+            "/ip firewall nat remove [find comment=\"hyb-nat-{$id}\"]]",  // Binary API: use exact match
             // Hotspot: srcnat masquerade for hotspot pool subnet going to WAN
             "/ip firewall nat add chain=\"srcnat\" action=\"masquerade\" src-address=\"{$hsNet}/{$hsCidr}\" out-interface-list=\"WAN\" comment=\"hyb-nat-{$id}-hs\"",
             // PPPoE: srcnat masquerade for PPPoE active sessions going to WAN (out-interface-list only)
@@ -443,7 +443,7 @@ class ZeroConfigHybridGenerator
         $s[] = "/ip pool add name=\"{$poolName}\" ranges=\"{$pool->range_start}-{$pool->range_end}\" comment=\"hyb-hs-{$id}\"";
         $s[] = "/ip dhcp-server remove [find name=\"{$dhcpName}\"]";
         $s[] = "/ip dhcp-server add name=\"{$dhcpName}\" interface=\"{$iface}\" address-pool=\"{$poolName}\" lease-time=\"1h\" disabled=no";
-        $s[] = "/ip dhcp-server network remove [find comment~=\"hyb-hs-net-{$id}\"]]";
+        $s[] = "/ip dhcp-server network remove [find comment=\"hyb-hs-net-{$id}\"]]";  // Binary API: use exact match
         $s[] = "/ip dhcp-server network add address=\"{$network}/{$cidr}\" gateway=\"{$gateway}\" dns-server=\"{$dns}\" comment=\"hyb-hs-net-{$id}\"";
         $s[] = "/ip hotspot profile remove [find name=\"{$profile}\"]";
         $s[] = "/ip hotspot profile add name=\"{$profile}\" hotspot-address=\"{$gateway}\" use-radius=yes html-directory=\"hotspot\" http-cookie-lifetime=\"1d\" dns-name=\"{$dnsName}\"";
@@ -519,7 +519,7 @@ class ZeroConfigHybridGenerator
         if ($isLowEnd) {
             return [
                 "# Firewall [MINIMAL] - Bridge mode essential security",
-                "/ip firewall filter remove [find comment~=\"hyb-fw-{$id}\"]]",
+                "/ip firewall filter remove [find comment=\"hyb-fw-{$id}\"]]",  // Binary API: use exact match
                 "/ip firewall filter add chain=\"forward\" in-interface=\"{$bridge}\" connection-state=\"established,related\" action=\"accept\" comment=\"hyb-fw-{$id}-EST\"",
                 "/ip firewall filter add chain=\"forward\" in-interface-list=\"WAN\" out-interface=\"{$bridge}\" connection-state=\"established,related\" action=\"accept\" comment=\"hyb-fw-{$id}-WAN\"",
                 "/ip firewall filter add chain=\"forward\" in-interface-list=\"WAN\" out-interface-list=\"{$pal}\" connection-state=\"established,related\" action=\"accept\" comment=\"hyb-fw-{$id}-pp-WAN\"",
@@ -533,7 +533,7 @@ class ZeroConfigHybridGenerator
 
         return [
             "# Firewall [FULL] - Bridge mode complete security",
-            "/ip firewall filter remove [find comment~=\"hyb-fw-{$id}\"]]",
+            "/ip firewall filter remove [find comment=\"hyb-fw-{$id}\"]]",  // Binary API: use exact match
             "/ip firewall filter add chain=\"forward\" in-interface=\"{$bridge}\" connection-state=\"established,related\" action=\"accept\" comment=\"hyb-fw-{$id}-hs-est\"",
             "/ip firewall filter add chain=\"forward\" in-interface-list=\"{$pal}\" connection-state=\"established,related\" action=\"accept\" comment=\"hyb-fw-{$id}-pp-est\"",
             "/ip firewall filter add chain=\"forward\" in-interface-list=\"WAN\" out-interface=\"{$bridge}\" connection-state=\"established,related\" action=\"accept\" comment=\"hyb-fw-{$id}-hs-wan\"",
@@ -558,7 +558,7 @@ class ZeroConfigHybridGenerator
 
         return [
             "# NAT Rules (Bridge)",
-            "/ip firewall nat remove [find comment~=\"hyb-nat-{$id}\"]]",
+            "/ip firewall nat remove [find comment=\"hyb-nat-{$id}\"]]",  // Binary API: use exact match
             "/ip firewall nat add chain=\"srcnat\" action=\"masquerade\" src-address=\"{$hsNet}/{$hsCidr}\" out-interface-list=\"WAN\" comment=\"hyb-nat-{$id}-hs\"",
             "/ip firewall nat add chain=\"srcnat\" action=\"masquerade\" in-interface-list=\"{$pal}\" out-interface-list=\"WAN\" comment=\"hyb-nat-{$id}-pp\"",
             "/ip firewall nat add chain=\"dstnat\" action=\"redirect\" to-ports=\"64872\" protocol=\"tcp\" dst-port=\"80\" in-interface=\"{$bridge}\" comment=\"hyb-redir80-{$id}\"",
@@ -583,9 +583,9 @@ class ZeroConfigHybridGenerator
         return array_merge(
             [
                 "# RADIUS - RADIUS-ONLY AAA (hotspot + PPPoE): Mikrotik-Rate-Limit + Framed-Pool enforced per-user",
-                "/radius remove [find service=hotspot comment~=\"hyb-hs-rad-{$id}\"]]",
+                "/radius remove [find service=hotspot]",  // Binary API: regex ~ not supported, filter by service only
                 "/radius add service=hotspot address=\"{$rs}\" secret=\"{$sec}\" authentication-port=1812 accounting-port=1813 timeout=3s comment=\"hyb-hs-rad-{$id}\"",
-                "/radius remove [find service=ppp comment~=\"hyb-pp-rad-{$id}\"]]",
+                "/radius remove [find service=ppp]",  // Binary API: regex ~ not supported, filter by service only
                 "/radius add service=ppp address=\"{$rs}\" secret=\"{$sec}\" authentication-port=1812 accounting-port=1813 timeout=3s comment=\"hyb-pp-rad-{$id}\"",
             ],
             $this->bootstrapRadiusNetwatch("hyb-{$id}", $rs, $pppoeServiceName),
@@ -608,7 +608,7 @@ class ZeroConfigHybridGenerator
 
         $rules = [
             "# Management & Service Hardening",
-            "/ip firewall filter remove [find comment~=\"hyb-mgmt-{$id}\"]]",
+            "/ip firewall filter remove [find comment=\"hyb-mgmt-{$id}\"]]",  // Binary API: use exact match
         ];
         // Shared bootstrap: service hardening, system clock, NTP, firewall logging, brute-force
         $allowAddr = $mgmt; // Use only mgmt subnet for ACLs

@@ -117,7 +117,7 @@ class PppoeCaptivePortalService extends BaseMikroTikService
     {
         $script = [];
         $script[] = "# Mark PPPoE user as unpaid - {$pppoeUser->username}";
-        $script[] = "/ip firewall address-list remove [find list=pppoe-paid-users address={$ipAddress} comment~\"WiFiCore: {$pppoeUser->username}\"]";
+        $script[] = "/ip firewall address-list remove [find list=pppoe-paid-users address={$ipAddress}]";
         
         // Clear connection tracking to force re-evaluation
         $script[] = "/ip firewall connection remove [find src-address=\"{$ipAddress}\" || dst-address=\"{$ipAddress}\"]";

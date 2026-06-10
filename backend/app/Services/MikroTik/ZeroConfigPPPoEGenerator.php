@@ -176,7 +176,7 @@ class ZeroConfigPPPoEGenerator
         $s[] = "# ============================";
         $s[] = "# 2. RADIUS Configuration";
         $s[] = "# ============================";
-        $s[] = '/radius remove [find service="ppp" comment~"WiFiCore PPPoE"]';
+        $s[] = '/radius remove [find service="ppp"]';  // Binary API: regex ~ not supported, filter by service only
         $s[] = "/radius add service=\"ppp\" address=\"{$rs}\" secret=\"{$rsec}\" authentication-port=\"1812\" accounting-port=\"1813\" timeout=\"3s\" comment=\"WiFiCore PPPoE ({$id})\"";
         if ($radiusSrcAddress) {
             $s[] = "/radius set [find service=\"ppp\"] src-address=\"{$radiusSrcAddress}\"";
@@ -296,8 +296,8 @@ class ZeroConfigPPPoEGenerator
         $s[] = "# ============================";
         $s[] = "# 7. Firewall & Security";
         $s[] = "# ============================";
-        $s[] = "/ip firewall filter remove [find comment~\"PPPoE-$id\"]";
-        $s[] = "/ip firewall filter remove [find comment~\"pp-wan-est-$id\"]";
+        $s[] = "/ip firewall filter remove [find comment=\"PPPoE-$id\"]";  // Use exact match, not regex
+        $s[] = "/ip firewall filter remove [find comment=\"pp-wan-est-$id\"]";  // Use exact match, not regex
         $s[] = ":delay 100ms";
         
         // Security hardening - BCP 38 and DDoS protection
@@ -366,10 +366,10 @@ class ZeroConfigPPPoEGenerator
         
         $s[] = ":delay {$delays['between_sections']}";
 
-        $s[] = "/ip firewall nat remove [find comment=\"PPPoE-$id\"]";
+        $s[] = "/ip firewall nat remove [find comment=\"PPPoE-$id\"]";  // Exact match for binary API
         $s[] = "/ip firewall nat add chain=\"srcnat\" out-interface-list=\"$wan\" action=\"masquerade\" comment=\"PPPoE-$id\"";
 
-        $s[] = "/ip firewall filter remove [find comment~\"PPPoE-$id-COA\"]";
+        $s[] = "/ip firewall filter remove [find comment=\"PPPoE-$id-COA\"]";  // Exact match for binary API
         $s[] = "/ip firewall filter add chain=\"input\" protocol=\"udp\" dst-port=\"3799\" src-address=\"{$rs}\" action=\"accept\" comment=\"PPPoE-$id-COA\"";
 
         // Global default drop — last rules, re-added on every deploy

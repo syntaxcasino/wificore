@@ -81,7 +81,7 @@ class PPPoEService extends BaseMikroTikService
         // Configure PPPoE access on a bridge so multiple selected interfaces work cleanly
         $script[] = "# PPPoE Access Bridge";
         $script[] = ":do { :if ([:len [/interface bridge find name=\"{$bridgeName}\"]] = 0) do={ /interface bridge add name=\"{$bridgeName}\" comment=\"WiFiCore PPPoE bridge ({$routerId})\" } } on-error={ :error \"PPPoE: bridge create failed ({$bridgeName})\" }";
-        $script[] = ":do { /interface bridge port remove [/interface bridge port find bridge=\"{$bridgeName}\" comment~\"WiFiCore PPPoE port \\\\({$routerId}\\\\)\"]; } on-error={}";
+        $script[] = "/interface bridge port remove [find bridge=\"{$bridgeName}\" comment=\"WiFiCore PPPoE port ({$routerId})\"]";
 
         foreach ($safeInterfaces as $iface) {
             $script[] = ":if ([:len [/interface find name=\"{$iface}\"]] = 0) do={ :error \"PPPoE: interface not found ({$iface})\" }";
@@ -142,7 +142,7 @@ class PPPoEService extends BaseMikroTikService
         
         // RADIUS configuration with incoming/accounting enabled for rate limiting
         if ($useRadius) {
-            $script[] = ':do { /radius remove [/radius find service=ppp comment~"WiFiCore PPPoE"]; } on-error={}';
+            $script[] = '/radius remove [find service=ppp]';
             $script[] = ":do { /radius add service=ppp address=\"{$radiusIp}\" secret=\"{$radiusSecret}\" authentication-port=1812 accounting-port=1813 timeout=3s comment=\"WiFiCore PPPoE ({$routerId})\" ; } on-error={ :error \"PPPoE: RADIUS configure failed\" }";
             $script[] = '';
 
@@ -169,7 +169,7 @@ class PPPoEService extends BaseMikroTikService
         // 4. Accept established/related FROM WAN (return traffic)
         // 5. DROP everything from bridge (unauthenticated devices)
         $script[] = "# Forward chain - authentication enforcement";
-        $script[] = ":do { /ip firewall filter remove [/ip firewall filter find comment~\"WiFiCore PPPoE FW\"]; } on-error={}";
+        $script[] = "/ip firewall filter remove [find comment=\"WiFiCore PPPoE FW\"]";
         // 5. DROP all traffic from bridge (unauthenticated devices cannot pass)
         $script[] = ":do { /ip firewall filter add chain=forward in-interface=\"{$bridgeName}\" action=drop place-before=0 comment=\"WiFiCore PPPoE FW-DROP ({$routerId})\"; } on-error={}";
         // 4. Accept established/related from WAN (return traffic)

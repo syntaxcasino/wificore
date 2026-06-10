@@ -195,7 +195,7 @@ class HotspotService extends BaseMikroTikService
             "/ip firewall filter add chain=input action=drop in-interface=\"$bridge\" comment=\"Drop Other Hotspot Input\"",
             "",
             "# NAT Rules - Production Configuration",
-            "/ip firewall nat remove [/ip firewall nat find comment~\"Hotspot\"]",
+            "/ip firewall nat remove [find comment=\"Hotspot\"]",
             "/ip firewall nat add chain=srcnat action=masquerade src-address=\"$network\" out-interface=\"{$wanInterface}\" comment=\"Hotspot Internet Access\"",
             "# Fallback NAT for any interface except bridge",
             ":do { /ip firewall nat add chain=srcnat action=masquerade src-address=\"$network\" out-interface=!\"$bridge\" comment=\"Hotspot NAT Fallback\" } on-error={}",
