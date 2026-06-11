@@ -101,12 +101,12 @@ class HotspotService extends BaseMikroTikService
             "",
             "# Bridge Setup - NON-DESTRUCTIVE (update existing or create new)",
             "# Create bridge if it doesn't exist (will fail silently if exists)",
-            ":do { /interface bridge add name=\"$bridge\" comment=\"Hotspot Bridge\" } on-error={}"
+            "/interface bridge add name=\"$bridge\" comment=\"Hotspot Bridge\" "
         ];
 
         // Add bridge ports (skip if already added)
         foreach ($interfaces as $iface) {
-            $script[] = ":do { /interface bridge port add bridge=\"$bridge\" interface=\"$iface\" comment=\"Hotspot Interface\" } on-error={}";
+            $script[] = "/interface bridge port add bridge=\"$bridge\" interface=\"$iface\" comment=\"Hotspot Interface\" ";
         }
 
         $script = array_merge($script, [
@@ -167,21 +167,21 @@ class HotspotService extends BaseMikroTikService
             "/ip hotspot profile set $profile use-radius=yes",
             "",
             "# Walled Garden - Configured via API after deployment (script import has issues with walled garden)",
-            ":do { /ip hotspot walled-garden remove [/ip hotspot walled-garden find comment=\"WiFiCore Portal\"]; } on-error={}",
-            ($portalHost ? "/ip hotspot walled-garden add dst-host=\"$portalHost\" action=allow comment=\"WiFiCore Portal\"" : ":do { } on-error={}"),
+            "/ip hotspot walled-garden remove [/ip hotspot walled-garden find comment=\"WiFiCore Portal\"]; ",
+            ($portalHost ? "/ip hotspot walled-garden add dst-host=\"$portalHost\" action=allow comment=\"WiFiCore Portal\"" : " "),
             "",
             "# Firewall Filter Rules - Security Best Practices",
-            ":do { /ip firewall filter remove [/ip firewall filter find comment=\"Allow Established/Related\"]; } on-error={}",
-            ":do { /ip firewall filter remove [/ip firewall filter find comment=\"Drop Invalid\"]; } on-error={}",
-            ":do { /ip firewall filter remove [/ip firewall filter find comment=\"Limit TCP Connections per IP\"]; } on-error={}",
-            ":do { /ip firewall filter remove [/ip firewall filter find comment=\"Drop Port Scanners\"]; } on-error={}",
-            ":do { /ip firewall filter remove [/ip firewall filter find comment=\"Limit ICMP\"]; } on-error={}",
-            ":do { /ip firewall filter remove [/ip firewall filter find comment=\"Allow Hotspot to WAN\"]; } on-error={}",
-            ":do { /ip firewall filter remove [/ip firewall filter find comment=\"Allow Hotspot WAN Return\"]; } on-error={}",
-            ":do { /ip firewall filter remove [/ip firewall filter find comment=\"Allow DHCP\"]; } on-error={}",
-            ":do { /ip firewall filter remove [/ip firewall filter find comment=\"Allow Hotspot HTTP/HTTPS\"]; } on-error={}",
-            ":do { /ip firewall filter remove [/ip firewall filter find comment=\"Allow RADIUS\"]; } on-error={}",
-            ":do { /ip firewall filter remove [/ip firewall filter find comment=\"Drop Other Hotspot Input\"]; } on-error={}",
+            "/ip firewall filter remove [/ip firewall filter find comment=\"Allow Established/Related\"]; ",
+            "/ip firewall filter remove [/ip firewall filter find comment=\"Drop Invalid\"]; ",
+            "/ip firewall filter remove [/ip firewall filter find comment=\"Limit TCP Connections per IP\"]; ",
+            "/ip firewall filter remove [/ip firewall filter find comment=\"Drop Port Scanners\"]; ",
+            "/ip firewall filter remove [/ip firewall filter find comment=\"Limit ICMP\"]; ",
+            "/ip firewall filter remove [/ip firewall filter find comment=\"Allow Hotspot to WAN\"]; ",
+            "/ip firewall filter remove [/ip firewall filter find comment=\"Allow Hotspot WAN Return\"]; ",
+            "/ip firewall filter remove [/ip firewall filter find comment=\"Allow DHCP\"]; ",
+            "/ip firewall filter remove [/ip firewall filter find comment=\"Allow Hotspot HTTP/HTTPS\"]; ",
+            "/ip firewall filter remove [/ip firewall filter find comment=\"Allow RADIUS\"]; ",
+            "/ip firewall filter remove [/ip firewall filter find comment=\"Drop Other Hotspot Input\"]; ",
             "/ip firewall filter add chain=forward action=accept connection-state=established,related in-interface=\"$wanInterface\" out-interface=\"$bridge\" comment=\"Allow Hotspot WAN Return\"",
             "/ip firewall filter add chain=forward action=accept connection-state=established,related comment=\"Allow Established/Related\"",
             "/ip firewall filter add chain=forward action=drop connection-state=invalid comment=\"Drop Invalid\"",
@@ -198,7 +198,7 @@ class HotspotService extends BaseMikroTikService
             "/ip firewall nat remove [find comment=\"Hotspot\"]",
             "/ip firewall nat add chain=srcnat action=masquerade src-address=\"$network\" out-interface=\"{$wanInterface}\" comment=\"Hotspot Internet Access\"",
             "# Fallback NAT for any interface except bridge",
-            ":do { /ip firewall nat add chain=srcnat action=masquerade src-address=\"$network\" out-interface=!\"$bridge\" comment=\"Hotspot NAT Fallback\" } on-error={}",
+            "/ip firewall nat add chain=srcnat action=masquerade src-address=\"$network\" out-interface=!\"$bridge\" comment=\"Hotspot NAT Fallback\" ",
             "/ip firewall nat add chain=dstnat action=redirect to-ports=64872 protocol=tcp dst-port=80 in-interface=\"$bridge\"",
             "/ip firewall nat set [/ip firewall nat find to-ports=64872] comment=\"HTTP to Hotspot\"",
             "/ip firewall nat add chain=dstnat action=redirect to-ports=64875 protocol=tcp dst-port=443 in-interface=\"$bridge\"",

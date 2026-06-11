@@ -215,7 +215,6 @@ class ZeroConfigPPPoEGenerator
             $s[] = "/interface ethernet set [find name=\"{$iface}\"] disable-running-check=no";
         }
 
-
         $s[] = "";
         $s[] = "# ============================";
         $s[] = "# 4. PPP Profile & Bridge";

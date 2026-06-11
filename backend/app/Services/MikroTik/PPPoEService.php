@@ -22,6 +22,7 @@ class PPPoEService extends BaseMikroTikService
     {
         $this->interfaceManager = $manager;
     }
+
     /**
      * Generate complete PPPoE configuration
      */
@@ -71,7 +72,7 @@ class PPPoEService extends BaseMikroTikService
         // Ensure interface lists exist (single-line commands for SSH exec compatibility)
         $script[] = '/interface list add name="LAN" comment="Local Area Network" ';
         $script[] = '/interface list add name="WAN" comment="Wide Area Network" ';
-        $script[] = "/interface list member add list=WAN interface=\"{$wanInterface}\";
+        $script[] = "/interface list member add list=WAN interface=\"{$wanInterface}\"";
         $script[] = '';
         
         $safeInterfaces = array_values(array_unique(array_map(fn ($i) => $this->validateInterface((string) $i), $interfaces)));
@@ -80,12 +81,12 @@ class PPPoEService extends BaseMikroTikService
 
         // Configure PPPoE access on a bridge so multiple selected interfaces work cleanly
         $script[] = "# PPPoE Access Bridge";
-        $script[] = "/interface bridge add name=\"{$bridgeName}\" comment=\"WiFiCore PPPoE bridge ({$routerId})\";
+        $script[] = "/interface bridge add name=\"{$bridgeName}\" comment=\"WiFiCore PPPoE bridge ({$routerId})\"";
         $script[] = "/interface bridge port remove [find bridge=\"{$bridgeName}\" comment=\"WiFiCore PPPoE port ({$routerId})\"]";
 
         foreach ($safeInterfaces as $iface) {
-        // Interface validation removed for Binary API compatibility
-            $script[] = "/interface bridge port add bridge=\"{$bridgeName}\" interface=\"{$iface}\" comment=\"WiFiCore PPPoE port ({$routerId})\";
+            $script[] = "/interface bridge port add bridge=\"{$bridgeName}\" interface=\"{$iface}\" comment=\"WiFiCore PPPoE port ({$routerId})\"";
+        }
         $script[] = '';
 
         // Single PPPoE service/profile/pool bound to the bridge
@@ -118,17 +119,16 @@ class PPPoEService extends BaseMikroTikService
 
         // PPPoE Server on bridge (RouterOS 7 property names)
         $script[] = "/interface pppoe-server server remove [find comment=\"WiFiCore PPPoE ({$routerId})\"]";
-        $script[] = "/interface pppoe-server server add service-name=\"{$serviceName}\" interface=\"{$bridgeName}\" default-profile=\"{$profileName}\" authentication=\"{$authMethods}\" one-session-per-host=yes keepalive-timeout=\"{$keepaliveTimeout}\" max-mtu=\"{$mtu}\" max-mru=\"{$mru}\" disabled=no comment=\"WiFiCore PPPoE ({$routerId})\";
-
+        $script[] = "/interface pppoe-server server add service-name=\"{$serviceName}\" interface=\"{$bridgeName}\" default-profile=\"{$profileName}\" authentication=\"{$authMethods}\" one-session-per-host=yes keepalive-timeout=\"{$keepaliveTimeout}\" max-mtu=\"{$mtu}\" max-mru=\"{$mru}\" disabled=no comment=\"WiFiCore PPPoE ({$routerId})\"";
         $script[] = '';
 
         // Add PPPoE bridge to LAN list (single-line)
-        $script[] = "/interface list member add list=LAN interface=\"{$bridgeName}\" comment=\"WiFiCore PPPoE bridge\";
+        $script[] = "/interface list member add list=LAN interface=\"{$bridgeName}\" comment=\"WiFiCore PPPoE bridge\"";
         $script[] = '';
 
         // Add PPPoE bridge to PPPOE interface list so we can safely exclude it from FastTrack rules
         $script[] = '/interface list add name=PPPOE; ';
-        $script[] = "/interface list member add list=PPPOE interface=\"{$bridgeName}\" comment=\"WiFiCore PPPoE list\";
+        $script[] = "/interface list member add list=PPPOE interface=\"{$bridgeName}\" comment=\"WiFiCore PPPoE list\"";
         $script[] = '';
 
         // PPPOE-ACTIVE list: authenticated dynamic <pppoe-*> interfaces auto-join via PPP profile
@@ -138,13 +138,13 @@ class PPPoEService extends BaseMikroTikService
 
         // Ensure PPPoE traffic is not FastTracked (FastTrack bypasses queues and breaks Mikrotik-Rate-Limit)
         $script[] = "/ip firewall filter remove [find comment=\"WiFiCore PPPoE NO-FT ({$routerId})\"]";
-        $script[] = "/ip firewall filter add chain=forward action=accept connection-state=established,related in-interface-list=PPPOE place-before=0 comment=\"WiFiCore PPPoE NO-FT ({$routerId})\";
+        $script[] = "/ip firewall filter add chain=forward action=accept connection-state=established,related in-interface-list=PPPOE place-before=0 comment=\"WiFiCore PPPoE NO-FT ({$routerId})\"";
         $script[] = '';
         
         // RADIUS configuration with incoming/accounting enabled for rate limiting
         if ($useRadius) {
             $script[] = '/radius remove [find service=ppp]';
-        $script[] = "/radius add service=ppp address=\"{$radiusIp}\" secret=\"{$radiusSecret}\" authentication-port=1812 accounting-port=1813 timeout=3s comment=\"WiFiCore PPPoE ({$routerId})\";
+            $script[] = "/radius add service=ppp address=\"{$radiusIp}\" secret=\"{$radiusSecret}\" authentication-port=1812 accounting-port=1813 timeout=3s comment=\"WiFiCore PPPoE ({$routerId})\"";
             $script[] = '';
 
             // Ensure PPP uses RADIUS and accounting is enabled (required for radacct + session age)
@@ -172,22 +172,22 @@ class PPPoEService extends BaseMikroTikService
         $script[] = "# Forward chain - authentication enforcement";
         $script[] = "/ip firewall filter remove [find comment=\"WiFiCore PPPoE FW\"]";
         // 5. DROP all traffic from bridge (unauthenticated devices cannot pass)
-        $script[] = "/ip firewall filter add chain=forward in-interface=\"{$bridgeName}\" action=drop place-before=0 comment=\"WiFiCore PPPoE FW-DROP ({$routerId})\";
+        $script[] = "/ip firewall filter add chain=forward in-interface=\"{$bridgeName}\" action=drop place-before=0 comment=\"WiFiCore PPPoE FW-DROP ({$routerId})\"";
         // 4. Accept established/related from WAN (return traffic)
-        $script[] = "/ip firewall filter add chain=forward in-interface-list=WAN connection-state=established,related action=accept place-before=0 comment=\"WiFiCore PPPoE FW-RETURN ({$routerId})\";
+        $script[] = "/ip firewall filter add chain=forward in-interface-list=WAN connection-state=established,related action=accept place-before=0 comment=\"WiFiCore PPPoE FW-RETURN ({$routerId})\"";
         // 3. Allow ONLY authenticated PPPoE sessions to WAN (interface-list, NOT src-address)
-        $script[] = "/ip firewall filter add chain=forward in-interface-list=PPPOE-ACTIVE out-interface-list=WAN action=accept place-before=0 comment=\"WiFiCore PPPoE FW-INET ({$routerId})\";
+        $script[] = "/ip firewall filter add chain=forward in-interface-list=PPPOE-ACTIVE out-interface-list=WAN action=accept place-before=0 comment=\"WiFiCore PPPoE FW-INET ({$routerId})\"";
         // 2. Drop invalid from authenticated PPPoE interfaces
-        $script[] = "/ip firewall filter add chain=forward in-interface-list=PPPOE-ACTIVE connection-state=invalid action=drop place-before=0 comment=\"WiFiCore PPPoE FW-INV ({$routerId})\";
+        $script[] = "/ip firewall filter add chain=forward in-interface-list=PPPOE-ACTIVE connection-state=invalid action=drop place-before=0 comment=\"WiFiCore PPPoE FW-INV ({$routerId})\"";
         // 1. Accept established/related from authenticated PPPoE interfaces
-        $script[] = "/ip firewall filter add chain=forward in-interface-list=PPPOE-ACTIVE connection-state=established,related action=accept place-before=0 comment=\"WiFiCore PPPoE FW-EST ({$routerId})\";
+        $script[] = "/ip firewall filter add chain=forward in-interface-list=PPPOE-ACTIVE connection-state=established,related action=accept place-before=0 comment=\"WiFiCore PPPoE FW-EST ({$routerId})\"";
         $script[] = '';
         
         // ============ NAT - SCOPED MASQUERADE (SECURITY) ============
         // Masquerade ONLY traffic from authenticated PPPoE interfaces (not subnet-based)
         // Subnet-based NAT is a security bypass: unauthorized clients can spoof src-address
-        $script[] = '/ip firewall nat remove [/ip firewall nat find comment="WiFiCore PPPoE NAT"]; ';
-        $script[] = "/ip firewall nat add chain=srcnat in-interface-list=PPPOE-ACTIVE out-interface-list=WAN action=masquerade comment=\"WiFiCore PPPoE NAT\";";
+        $script[] = '/ip firewall nat remove [find comment="WiFiCore PPPoE NAT"]';
+        $script[] = "/ip firewall nat add chain=srcnat in-interface-list=PPPOE-ACTIVE out-interface-list=WAN action=masquerade comment=\"WiFiCore PPPoE NAT\"";
         $script[] = '';
         
         // DNS
@@ -233,35 +233,28 @@ class PPPoEService extends BaseMikroTikService
         $script[] = "# PPPoE Configuration for interface $safeInterface";
         $script[] = '';
 
-        // Validate interface exists (single-line)
-        $script[] = ":if ([:len [/interface find name=\"{$safeInterface}\"]] = 0) do={ :error \"PPPoE: interface not found ({$safeInterface})\" }";
-        $script[] = '';
-
         // IP Pool (single-line, idempotent)
-        $script[] = "/ip pool remove [/ip pool find name=\"{$poolName}\"]
-        $script[] = "/ip pool add name=\"{$poolName}\" ranges=\"{$ipPool}\" comment=\"WiFiCore PPPoE pool ({$safeInterface})\"")\" }";
-        $script[] = ":if ([:len [/ip pool find name=\"{$poolName}\"]] = 0) do={ :error \"PPPoE: pool missing ({$poolName})\" }";
+        $script[] = "/ip pool remove [find name=\"{$poolName}\"]";
+        $script[] = "/ip pool add name=\"{$poolName}\" ranges=\"{$ipPool}\" comment=\"WiFiCore PPPoE pool ({$safeInterface})\"";
         $script[] = '';
 
         // Optional gateway IP on the access interface (single-line, scoped by comment)
-        $script[] = "/ip address remove [/ip address find comment=\"WiFiCore PPPoE gateway ({$safeInterface})\"]
-        $script[] = "/ip address add address=\"{$gateway}/24\" interface=\"{$safeInterface}\" comment=\"WiFiCore PPPoE gateway ({$safeInterface})\"")\" }";
+        $script[] = "/ip address remove [find comment=\"WiFiCore PPPoE gateway ({$safeInterface})\"]";
+        $script[] = "/ip address add address=\"{$gateway}/24\" interface=\"{$safeInterface}\" comment=\"WiFiCore PPPoE gateway ({$safeInterface})\"";
         $script[] = '';
 
         // PPP Profile (single-line)
-        $script[] = "/ppp profile remove [/ppp profile find name=\"{$profileName}\"]
-        $script[] = "/ppp profile add name=\"{$profileName}\" local-address=\"{$gateway}\" remote-address=\"{$poolName}\" dns-server=\"{$dnsServers}\" use-compression=no use-encryption=no only-one=no change-tcp-mss=yes rate-limit=\"\"")\" }";
-        $script[] = ":if ([:len [/ppp profile find name=\"{$profileName}\"]] = 0) do={ :error \"PPPoE: PPP profile missing ({$profileName})\" }";
+        $script[] = "/ppp profile remove [find name=\"{$profileName}\"]";
+        $script[] = "/ppp profile add name=\"{$profileName}\" local-address=\"{$gateway}\" remote-address=\"{$poolName}\" dns-server=\"{$dnsServers}\" use-compression=no use-encryption=no only-one=no change-tcp-mss=yes rate-limit=\"\"";
         $script[] = '';
 
         // PPPoE Server (RouterOS 7 property names)
-        $script[] = "/interface pppoe-server server remove [/interface pppoe-server server find service-name=\"{$serviceName}\"]
-        $script[] = "/interface pppoe-server server add service-name=\"{$serviceName}\" interface=\"{$safeInterface}\" default-profile=\"{$profileName}\" authentication=\"{$authMethods}\" one-session-per-host=yes keepalive-timeout=\"{$keepaliveTimeout}\" max-mtu=\"{$mtu}\" max-mru=\"{$mru}\" disabled=no")\" }";
-        $script[] = ":if ([:len [/interface pppoe-server server find service-name=\"{$serviceName}\"]] = 0) do={ :error \"PPPoE: PPPoE server missing ({$serviceName})\" }";
+        $script[] = "/interface pppoe-server server remove [find service-name=\"{$serviceName}\"]";
+        $script[] = "/interface pppoe-server server add service-name=\"{$serviceName}\" interface=\"{$safeInterface}\" default-profile=\"{$profileName}\" authentication=\"{$authMethods}\" one-session-per-host=yes keepalive-timeout=\"{$keepaliveTimeout}\" max-mtu=\"{$mtu}\" max-mru=\"{$mru}\" disabled=no";
         $script[] = '';
 
         // Add interface to LAN list (single-line)
-        $script[] = ":do { :if ([/interface list member find list=\"LAN\" interface=\"{$safeInterface}\"] = \"\") do={ /interface list member add list=\"LAN\" interface=\"{$safeInterface}\" comment=\"WiFiCore PPPoE interface\" } } on-error={}";
+        $script[] = "/interface list member add list=\"LAN\" interface=\"{$safeInterface}\" comment=\"WiFiCore PPPoE interface\"";
         $script[] = '';
         
         return $script;

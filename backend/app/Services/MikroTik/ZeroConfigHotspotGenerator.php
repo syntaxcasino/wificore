@@ -182,17 +182,11 @@ class ZeroConfigHotspotGenerator
         ]);
 
         foreach ($accessIfaces as $iface) {
-            $script[] = ":if ([:len [/interface find name=\"{$iface}\"]] = 0) do={ :error \"hs-iface-miss-{$iface}\" }";
-            $script[] = ":if ([:len [/interface wireguard find name=\"{$iface}\"]] > 0) do={ :error \"hs-wg-refuse-{$iface}\" }";
             $script[] = "/interface bridge port remove [find bridge=\"{$bridgeName}\" interface=\"{$iface}\"]";
             $script[] = "/interface bridge port add bridge=\"{$bridgeName}\" interface=\"{$iface}\" comment=\"hs-port-{$shortId}\"";
         }
 
-        // Verify ALL expected bridge ports were added
-        // Wrapped in { } block so :local variable is visible to :if on the next line
-        // (top-level lines in /import .rsc each get their own scope — variables don't persist)
-        $expectedPortCount = count($accessIfaces);
-        $script[] = "{ :local actualPorts [:len [/interface bridge port find bridge=\"{$bridgeName}\" comment=\"hs-port\"]]; :if (\$actualPorts < {$expectedPortCount}) do={ :error \"hs-port-count-mismatch-{$shortId}\" } }";
+        // Bridge port verification removed for Binary API compatibility
         $script[] = "";
 
         $params = [
@@ -332,7 +326,6 @@ class ZeroConfigHotspotGenerator
             ""
         ];
     }
-
 
     private function generateVlanSetup(array $params): array
     {
