@@ -203,7 +203,7 @@ class SnmpConfigurationService
 /snmp set enabled=yes
 /snmp set contact="{$contact}"
 /snmp set location="{$location}"
-:do { /snmp community remove [find name="{$community}"]; } on-error={}
+/snmp community remove [find name="{$community}"]
 /snmp community add name=\"{$community}\" addresses=\"{$snmpSubnet}\" security=none read-access=yes write-access=no
 /snmp set trap-community="{$community}" trap-version=2
 SCRIPT;
