@@ -138,7 +138,7 @@ class HotspotService extends BaseMikroTikService
             "/ip hotspot profile set $profile smtp-server=0.0.0.0",
             "/ip hotspot profile set $profile split-user-domain=no",
             "",
-            "/file set hotspot/login.html contents=\"<html><head><meta http-equiv=refresh content=0;url={$portalUrlForHtml}></head><body>Redirecting...</body></html>\"",
+            "/file set name=\"hotspot/login.html\" contents=\"<html><head><meta http-equiv=refresh content=0;url={$portalUrlForHtml}></head><body>Redirecting...</body></html>\"",
             "",
             "# Hotspot Server",
             "/ip hotspot remove [/ip hotspot find name=\"$server\"]",
