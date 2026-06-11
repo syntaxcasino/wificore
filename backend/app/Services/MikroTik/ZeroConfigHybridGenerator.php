@@ -208,7 +208,7 @@ class ZeroConfigHybridGenerator
         $s[] = "/ip pool add name=\"{$poolName}\" ranges=\"{$pool->range_start}-{$pool->range_end}\" comment=\"hyb-hs-{$id}\"";
         $s[] = "/ip dhcp-server remove [find name=\"{$dhcpName}\"]";
         $s[] = "/ip dhcp-server add name=\"{$dhcpName}\" interface=\"{$iface}\" address-pool=\"{$poolName}\" lease-time=\"1h\" disabled=no";
-        $s[] = "/ip dhcp-server network remove [find comment=\"hyb-hs-net-{$id}\"]]";  // Binary API: use exact match
+        $s[] = "/ip dhcp-server network remove [find comment=\"hyb-hs-net-{$id}\"]";
         $s[] = "/ip dhcp-server network add address=\"{$network}/{$cidr}\" gateway=\"{$gateway}\" dns-server=\"{$dns}\" comment=\"hyb-hs-net-{$id}\"";
         $s[] = "/ip hotspot profile remove [find name=\"{$profile}\"]";
         $s[] = "/ip hotspot profile add name=\"{$profile}\" hotspot-address=\"{$gateway}\" use-radius=yes html-directory=\"hotspot\" http-cookie-lifetime=\"1d\" dns-name=\"{$dnsName}\"";
@@ -219,7 +219,7 @@ class ZeroConfigHybridGenerator
         $s[] = "/ip hotspot remove [find name=\"{$server}\"]";
         $s[] = "/ip hotspot add name=\"{$server}\" interface=\"{$iface}\" profile=\"{$profile}\" address-pool=\"{$poolName}\" addresses-per-mac=2 idle-timeout=\"5m\" keepalive-timeout=\"2m\" disabled=no";
         if ($portalHost) {
-            $s[] = "/ip hotspot walled-garden remove [find comment=\"hyb-wg-{$id}\"]]";
+            $s[] = "/ip hotspot walled-garden remove [find comment=\"hyb-wg-{$id}\"]";
             $s[] = "/ip hotspot walled-garden add dst-host=\"{$portalHost}\" action=\"allow\" comment=\"hyb-wg-{$id}\"";
         }
         $s[] = "";
@@ -251,7 +251,7 @@ class ZeroConfigHybridGenerator
         if ($isLowEnd) {
             return [
                 "# Firewall [MINIMAL] - Essential security for low-end device",
-                "/ip firewall filter remove [find comment=\"hyb-fw-{$id}\"]]",  // Binary API: use exact match
+                "/ip firewall filter remove [find comment=\"hyb-fw-{$id}\"]",  // Binary API: use exact match
                 "/ip firewall filter add chain=\"forward\" in-interface=\"{$hsIface}\" connection-state=\"established,related\" action=\"accept\" comment=\"hyb-fw-{$id}-hs-EST\"",
                 "/ip firewall filter add chain=\"forward\" in-interface-list=\"{$pal}\" connection-state=\"established,related\" action=\"accept\" comment=\"hyb-fw-{$id}-pp-EST\"",
                 "/ip firewall filter add chain=\"forward\" in-interface-list=\"WAN\" out-interface=\"{$hsIface}\" connection-state=\"established,related\" action=\"accept\" comment=\"hyb-fw-{$id}-hs-WAN\"",
@@ -267,7 +267,7 @@ class ZeroConfigHybridGenerator
 
         return [
             "# Firewall [FULL] - Complete security for high-end device",
-            "/ip firewall filter remove [find comment=\"hyb-fw-{$id}\"]]",  // Binary API: use exact match
+            "/ip firewall filter remove [find comment=\"hyb-fw-{$id}\"]",  // Binary API: use exact match
             "/ip firewall filter add chain=\"forward\" in-interface=\"{$hsIface}\" connection-state=\"established,related\" action=\"accept\" comment=\"hyb-fw-{$id}-hs-est\"",
             "/ip firewall filter add chain=\"forward\" in-interface-list=\"{$pal}\" connection-state=\"established,related\" action=\"accept\" comment=\"hyb-fw-{$id}-pp-est\"",
             "/ip firewall filter add chain=\"forward\" in-interface-list=\"WAN\" out-interface=\"{$hsIface}\" connection-state=\"established,related\" action=\"accept\" comment=\"hyb-fw-{$id}-hs-wan\"",
@@ -443,7 +443,7 @@ class ZeroConfigHybridGenerator
         $s[] = "/ip pool add name=\"{$poolName}\" ranges=\"{$pool->range_start}-{$pool->range_end}\" comment=\"hyb-hs-{$id}\"";
         $s[] = "/ip dhcp-server remove [find name=\"{$dhcpName}\"]";
         $s[] = "/ip dhcp-server add name=\"{$dhcpName}\" interface=\"{$iface}\" address-pool=\"{$poolName}\" lease-time=\"1h\" disabled=no";
-        $s[] = "/ip dhcp-server network remove [find comment=\"hyb-hs-net-{$id}\"]]";  // Binary API: use exact match
+        $s[] = "/ip dhcp-server network remove [find comment=\"hyb-hs-net-{$id}\"]";
         $s[] = "/ip dhcp-server network add address=\"{$network}/{$cidr}\" gateway=\"{$gateway}\" dns-server=\"{$dns}\" comment=\"hyb-hs-net-{$id}\"";
         $s[] = "/ip hotspot profile remove [find name=\"{$profile}\"]";
         $s[] = "/ip hotspot profile add name=\"{$profile}\" hotspot-address=\"{$gateway}\" use-radius=yes html-directory=\"hotspot\" http-cookie-lifetime=\"1d\" dns-name=\"{$dnsName}\"";
@@ -454,7 +454,7 @@ class ZeroConfigHybridGenerator
         $s[] = "/ip hotspot remove [find name=\"{$server}\"]";
         $s[] = "/ip hotspot add name=\"{$server}\" interface=\"{$iface}\" profile=\"{$profile}\" address-pool=\"{$poolName}\" addresses-per-mac=2 idle-timeout=\"5m\" keepalive-timeout=\"2m\" disabled=no";
         if ($portalHost) {
-            $s[] = "/ip hotspot walled-garden remove [find comment=\"hyb-wg-{$id}\"]]";
+            $s[] = "/ip hotspot walled-garden remove [find comment=\"hyb-wg-{$id}\"]";
             $s[] = "/ip hotspot walled-garden add dst-host=\"{$portalHost}\" action=\"allow\" comment=\"hyb-wg-{$id}\"";
         }
         $s[] = "";
@@ -519,7 +519,7 @@ class ZeroConfigHybridGenerator
         if ($isLowEnd) {
             return [
                 "# Firewall [MINIMAL] - Bridge mode essential security",
-                "/ip firewall filter remove [find comment=\"hyb-fw-{$id}\"]]",  // Binary API: use exact match
+                "/ip firewall filter remove [find comment=\"hyb-fw-{$id}\"]",  // Binary API: use exact match
                 "/ip firewall filter add chain=\"forward\" in-interface=\"{$bridge}\" connection-state=\"established,related\" action=\"accept\" comment=\"hyb-fw-{$id}-EST\"",
                 "/ip firewall filter add chain=\"forward\" in-interface-list=\"WAN\" out-interface=\"{$bridge}\" connection-state=\"established,related\" action=\"accept\" comment=\"hyb-fw-{$id}-WAN\"",
                 "/ip firewall filter add chain=\"forward\" in-interface-list=\"WAN\" out-interface-list=\"{$pal}\" connection-state=\"established,related\" action=\"accept\" comment=\"hyb-fw-{$id}-pp-WAN\"",
@@ -533,7 +533,7 @@ class ZeroConfigHybridGenerator
 
         return [
             "# Firewall [FULL] - Bridge mode complete security",
-            "/ip firewall filter remove [find comment=\"hyb-fw-{$id}\"]]",  // Binary API: use exact match
+            "/ip firewall filter remove [find comment=\"hyb-fw-{$id}\"]",  // Binary API: use exact match
             "/ip firewall filter add chain=\"forward\" in-interface=\"{$bridge}\" connection-state=\"established,related\" action=\"accept\" comment=\"hyb-fw-{$id}-hs-est\"",
             "/ip firewall filter add chain=\"forward\" in-interface-list=\"{$pal}\" connection-state=\"established,related\" action=\"accept\" comment=\"hyb-fw-{$id}-pp-est\"",
             "/ip firewall filter add chain=\"forward\" in-interface-list=\"WAN\" out-interface=\"{$bridge}\" connection-state=\"established,related\" action=\"accept\" comment=\"hyb-fw-{$id}-hs-wan\"",

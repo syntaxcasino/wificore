@@ -238,30 +238,16 @@ SCRIPT;
 }
 
 # 5. Configure RADIUS for PPPoE
-/radius
 /radius remove [find service=ppp]
-:if ([:len [find address="{$radiusServer}" service="ppp"]] = 0) do={
-    add address="{$radiusServer}" secret="{$radiusSecret}" \
-        service=ppp timeout=3s comment="WiFiCore RADIUS PPPoE"
-}
+/radius add address="{$radiusServer}" secret="{$radiusSecret}" service=ppp timeout=3s comment="WiFiCore RADIUS PPPoE"
 
 # 6. Enable RADIUS for PPP
 /ppp aaa
 set use-radius=yes
 
 # 7. Create PPPoE server on bridge
-/interface pppoe-server server
-:if ([:len [find interface="{$bridgeName}"]] = 0) do={
-    add interface=\"{$bridgeName}\" \
-        service-name=wificore-pppoe \
-        default-profile=pppoe-profile \
-        authentication=pap,chap,mschap1,mschap2 \
-        keepalive-timeout=60 \
-        max-mtu=\"{$mtu}\" \
-        max-mru=\"{$mtu}\" \
-        disabled=no \
-        comment="WiFiCore PPPoE Server"
-}
+/interface pppoe-server server remove [find interface="{$bridgeName}"]
+/interface pppoe-server server add interface="{$bridgeName}" service-name=wificore-pppoe default-profile=pppoe-profile authentication=pap,chap,mschap1,mschap2 keepalive-timeout=60 max-mtu="{$mtu}" max-mru="{$mtu}" disabled=no comment="WiFiCore PPPoE Server"
 
 # 8. Configure firewall for PPPoE
 /ip firewall nat
@@ -276,7 +262,7 @@ add name=pppoe-default target=pppoe-pool \
     burst-threshold=0/0 burst-time=0s/0s \
     disabled=yes comment="Default PPPoE Queue (disabled, RADIUS controls)"
 
-:log info "PPPoE service configured successfully on bridge {$bridgeName}"
+# PPPoE service configuration complete
 
 SCRIPT;
     }
