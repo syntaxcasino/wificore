@@ -42,6 +42,27 @@ class ProvisioningServiceClient implements ProvisioningCommandBus
     {
         $response = $this->getHttpClient()->post($this->baseUrl . $path, $payload);
 
+        $data = $response->json();
+
+        // Handle router_busy (HTTP 409) before the generic failed() check so that
+        // throwOnBusy=false callers (monitoring jobs) can silently skip instead of throw.
+        if ($response->status() === 409 && is_array($data) && ($data['data']['status'] ?? '') === 'router_busy') {
+            $error = $data['error'] ?? 'Router already has an active provisioning workflow';
+            if (!$throwOnBusy) {
+                Log::warning('Provisioning service busy, skipping command', [
+                    'command_id' => $payload['command_id'] ?? 'unknown',
+                    'error' => $error,
+                    'active_idempotency_key' => $data['data']['active_idempotency_key'] ?? null,
+                ]);
+                return [
+                    'success' => true,
+                    'message' => 'Skipped: provisioning service busy',
+                    'data' => array_merge($data['data'] ?? [], ['skipped' => true]),
+                ];
+            }
+            throw new \Exception($errorPrefix . ': ' . $error, 503);
+        }
+
         if ($response->failed()) {
             $message = trim((string) $response->body());
             if ($message === '') {
@@ -50,7 +71,6 @@ class ProvisioningServiceClient implements ProvisioningCommandBus
             throw new \Exception($errorPrefix . ': ' . $message);
         }
 
-        $data = $response->json();
         if (!is_array($data)) {
             throw new \Exception($errorPrefix . ': invalid JSON response');
         }
@@ -58,8 +78,6 @@ class ProvisioningServiceClient implements ProvisioningCommandBus
             $error = $data['error'] ?? '';
             $status = $data['data']['status'] ?? '';
 
-            // Router busy: provisioning workflow already active.
-            // Return code 503 so callers can distinguish retryable vs fatal errors.
             if ($status === 'router_busy') {
                 if (!$throwOnBusy) {
                     Log::warning('Provisioning service busy, skipping command', [
