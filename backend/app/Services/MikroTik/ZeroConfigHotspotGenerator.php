@@ -126,7 +126,7 @@ class ZeroConfigHotspotGenerator
                 $vlanIface = "vlan-hotspot-{$vlanId}-{$ifaceName}";
                 $script = array_merge($script, [
                     "# VLAN Setup",
-                    ":do { /interface vlan remove [/interface vlan find name=\"{$vlanIface}\"]",
+                    "/interface vlan remove [find name=\"{$vlanIface}\"]",
                     "/interface vlan add name=\"{$vlanIface}\" vlan-id=\"{$vlanId}\" interface=\"{$ifaceName}\" comment=\"Hotspot VLAN ({$router->id})\"",
                     ""
                 ]);
@@ -319,10 +319,10 @@ class ZeroConfigHotspotGenerator
         $iface = $params['interface'];
 
         return [
-            "# Bridge Setup (Optional)",
-            ":do { /interface bridge add name=\"{$bridge}\" comment=\"Hotspot Bridge\" } on-error={}",
-            ":do { /interface bridge port remove [/interface bridge port find bridge=\"{$bridge}\" interface=\"{$iface}\"]",
-            ":do { /interface bridge port add bridge=\"{$bridge}\" interface=\"{$iface}\" comment=\"Hotspot Access Port\" } on-error={}",
+            "# Bridge Setup",
+            "/interface bridge add name=\"{$bridge}\" comment=\"Hotspot Bridge\"",
+            "/interface bridge port remove [find bridge=\"{$bridge}\" interface=\"{$iface}\"]",
+            "/interface bridge port add bridge=\"{$bridge}\" interface=\"{$iface}\" comment=\"Hotspot Access Port\"",
             ""
         ];
     }
@@ -331,7 +331,8 @@ class ZeroConfigHotspotGenerator
     {
         return [
             "# VLAN Setup",
-            ":do { /interface vlan add name=\"{$params['interface']}\" vlan-id=\"{$params['vlan_id']}\" interface=\"{$params['parent_interface']}\" comment=\"Hotspot VLAN\" } on-error={}",
+            "/interface vlan remove [find name=\"{$params['interface']}\"]",
+            "/interface vlan add name=\"{$params['interface']}\" vlan-id=\"{$params['vlan_id']}\" interface=\"{$params['parent_interface']}\" comment=\"Hotspot VLAN\"",
             ""
         ];
     }
@@ -343,7 +344,8 @@ class ZeroConfigHotspotGenerator
 
         return [
             "# IP Addressing",
-            ":do { /ip address add address=\"{$params['gateway_ip']}/{$cidr}\" interface=\"{$iface}\" comment=\"Hotspot Gateway\" } on-error={}",
+            "/ip address remove [find interface=\"{$iface}\" comment=\"Hotspot Gateway\"]",
+            "/ip address add address=\"{$params['gateway_ip']}/{$cidr}\" interface=\"{$iface}\" comment=\"Hotspot Gateway\"",
             ""
         ];
     }
@@ -354,8 +356,8 @@ class ZeroConfigHotspotGenerator
         $poolName = "hs-pool-{$sid}";
         return [
             "# IP Pool",
-            ":do { /ip pool remove [/ip pool find name=\"{$poolName}\"]",
-            ":do { /ip pool add name=\"{$poolName}\" ranges=\"{$params['range_start']}-{$params['range_end']}\" comment=\"hs-{$sid}\" } on-error={ :error \"hs-{$sid}: FATAL - pool add failed\" }",
+            "/ip pool remove [find name=\"{$poolName}\"]",
+            "/ip pool add name=\"{$poolName}\" ranges=\"{$params['range_start']}-{$params['range_end']}\" comment=\"hs-{$sid}\"",
             ""
         ];
     }
@@ -372,10 +374,10 @@ class ZeroConfigHotspotGenerator
 
         return [
             "# DHCP Server",
-            ":do { /ip dhcp-server remove [/ip dhcp-server find name=\"{$dhcpName}\"]",
-            ":do { /ip dhcp-server add name=\"{$dhcpName}\" interface=\"{$iface}\" address-pool=\"{$poolName}\" lease-time=1h disabled=no authoritative=yes } on-error={ :error \"hs-{$sid}: FATAL - DHCP server add failed\" }",
-            ":do { /ip dhcp-server network remove [/ip dhcp-server network find comment=\"hs-net-{$sid}\"]; } on-error={}",
-            ":do { /ip dhcp-server network add address=\"{$network}/{$cidr}\" gateway=\"{$params['gateway_ip']}\" dns-server=\"{$dns}\" comment=\"hs-net-{$sid}\" } on-error={ :error \"hs-{$sid}: FATAL - DHCP network add failed\" }",
+            "/ip dhcp-server remove [find name=\"{$dhcpName}\"]",
+            "/ip dhcp-server add name=\"{$dhcpName}\" interface=\"{$iface}\" address-pool=\"{$poolName}\" lease-time=1h disabled=no authoritative=yes",
+            "/ip dhcp-server network remove [find comment=\"hs-net-{$sid}\"]",
+            "/ip dhcp-server network add address=\"{$network}/{$cidr}\" gateway=\"{$params['gateway_ip']}\" dns-server=\"{$dns}\" comment=\"hs-net-{$sid}\"",
             ""
         ];
     }
@@ -429,7 +431,6 @@ class ZeroConfigHotspotGenerator
             ],
             $this->bootstrapRadiusNetwatch("hs-{$sid}", $rs),
             [
-                ":local pingResult [/ping address=\"{$rs}\" count=2 interval=500ms]; :if (\$pingResult = 0) do={}",
                 "/ip hotspot user remove [find]",
                 ""
             ]
@@ -525,10 +526,12 @@ class ZeroConfigHotspotGenerator
 
         return [
             "# NAT Rules",
-            ":do { /ip firewall nat remove [/ip firewall nat find comment=\"hs-nat-{$sid}\"]",
-            ":do { /ip firewall nat add chain=\"srcnat\" action=\"masquerade\" src-address=\"{$network}/{$cidr}\" out-interface-list=\"WAN\" comment=\"hs-nat-{$sid}\" } on-error={}",
-            ":do { /ip firewall nat add chain=\"dstnat\" action=\"redirect\" to-ports=\"64872\" protocol=\"tcp\" dst-port=\"80\" in-interface=\"{$iface}\" comment=\"hs-redir80-{$sid}\" } on-error={}",
-            ":do { /ip firewall nat add chain=\"dstnat\" action=\"redirect\" to-ports=\"64875\" protocol=\"tcp\" dst-port=\"443\" in-interface=\"{$iface}\" comment=\"hs-redir443-{$sid}\" } on-error={}",
+            "/ip firewall nat remove [find comment=\"hs-nat-{$sid}\"]",
+            "/ip firewall nat add chain=\"srcnat\" action=\"masquerade\" src-address=\"{$network}/{$cidr}\" out-interface-list=\"WAN\" comment=\"hs-nat-{$sid}\"",
+            "/ip firewall nat remove [find comment=\"hs-redir80-{$sid}\"]",
+            "/ip firewall nat add chain=\"dstnat\" action=\"redirect\" to-ports=\"64872\" protocol=\"tcp\" dst-port=\"80\" in-interface=\"{$iface}\" comment=\"hs-redir80-{$sid}\"",
+            "/ip firewall nat remove [find comment=\"hs-redir443-{$sid}\"]",
+            "/ip firewall nat add chain=\"dstnat\" action=\"redirect\" to-ports=\"64875\" protocol=\"tcp\" dst-port=\"443\" in-interface=\"{$iface}\" comment=\"hs-redir443-{$sid}\"",
             ""
         ];
     }
@@ -551,10 +554,10 @@ class ZeroConfigHotspotGenerator
         return [
             "# Walled Garden - Allow Portal Access Without Authentication",
             "# CRITICAL: Users must access portal to view packages and make payments",
-            ":do { /ip hotspot walled-garden remove [/ip hotspot walled-garden find comment=\"WiFiCore Portal\"]",
-            ":do { /ip hotspot walled-garden add dst-host=\"{$portalHost}\" action=\"allow\" comment=\"WiFiCore Portal\" } on-error={}",
+            "/ip hotspot walled-garden remove [find comment=\"WiFiCore Portal\"]",
+            "/ip hotspot walled-garden add dst-host=\"{$portalHost}\" action=\"allow\" comment=\"WiFiCore Portal\"",
             "# Allow API endpoints for package loading and payment",
-            ":do { /ip hotspot walled-garden ip remove [/ip hotspot walled-garden ip find comment=\"WiFiCore API\"]",
+            "/ip hotspot walled-garden ip remove [find comment=\"WiFiCore API\"]",
             ""
         ];
     }

@@ -536,22 +536,38 @@ SCRIPT;
 # Generated: {now()->toDateTimeString()}
 # ============================================================
 
-:log info "Configuring PCC balanced multi-WAN"
-:if ([:len [/routing table find name="to_wan1"]] = 0) do={ /routing table add name="to_wan1" }
-:if ([:len [/routing table find name="to_wan2"]] = 0) do={ /routing table add name="to_wan2" }
-:if ([:len [/interface list find name="WAN"]] = 0) do={ /interface list add name="WAN" comment="Wide Area Network" }
-:if ([:len [/interface list find name="LAN"]] = 0) do={ /interface list add name="LAN" comment="Local Area Network" }
-:if ([:len [/interface list member find list="WAN" interface="{$primaryWan}"]] = 0) do={ /interface list member add list="WAN" interface="{$primaryWan}" }
-:if ([:len [/interface list member find list="WAN" interface="{$backupWan}"]] = 0) do={ /interface list member add list="WAN" interface="{$backupWan}" }
-:if ([:len [/interface list member find list="LAN" interface="{$lanInterface}"]] = 0) do={ /interface list member add list="LAN" interface="{$lanInterface}" }
-:if ([:len [/ip firewall mangle find comment="WiFiCore PCC WAN1"]] = 0) do={ /ip firewall mangle add chain=prerouting in-interface-list=LAN dst-address-type=!local per-connection-classifier=both-addresses-and-ports:2/0 action=mark-connection new-connection-mark=wan1_conn passthrough=yes comment="WiFiCore PCC WAN1" }
-:if ([:len [/ip firewall mangle find comment="WiFiCore PCC WAN2"]] = 0) do={ /ip firewall mangle add chain=prerouting in-interface-list=LAN dst-address-type=!local per-connection-classifier=both-addresses-and-ports:2/1 action=mark-connection new-connection-mark=wan2_conn passthrough=yes comment="WiFiCore PCC WAN2" }
-:if ([:len [/ip firewall mangle find comment="WiFiCore PCC Route WAN1"]] = 0) do={ /ip firewall mangle add chain=prerouting in-interface-list=LAN connection-mark=wan1_conn action=mark-routing new-routing-mark=to_wan1 passthrough=no comment="WiFiCore PCC Route WAN1" }
-:if ([:len [/ip firewall mangle find comment="WiFiCore PCC Route WAN2"]] = 0) do={ /ip firewall mangle add chain=prerouting in-interface-list=LAN connection-mark=wan2_conn action=mark-routing new-routing-mark=to_wan2 passthrough=no comment="WiFiCore PCC Route WAN2" }
-:if ([:len [/ip route find comment="WiFiCore PCC Route WAN1"]] = 0) do={ /ip route add dst-address=0.0.0.0/0 gateway="{$primaryGateway}" routing-table=to_wan1 distance=1 check-gateway=ping comment="WiFiCore PCC Route WAN1" }
-:if ([:len [/ip route find comment="WiFiCore PCC Route WAN2"]] = 0) do={ /ip route add dst-address=0.0.0.0/0 gateway="{$backupGateway}" routing-table=to_wan2 distance=1 check-gateway=ping comment="WiFiCore PCC Route WAN2" }
-:if ([:len [/ip firewall nat find comment="WiFiCore PCC NAT"]] = 0) do={ /ip firewall nat add chain=srcnat out-interface-list=WAN action=masquerade comment="WiFiCore PCC NAT" }
-:log info "PCC balanced multi-WAN configured with primary={$primaryWan} backup={$backupWan}"
+# Routing tables
+/routing table remove [find name="to_wan1"]
+/routing table add name="to_wan1" disabled=no
+/routing table remove [find name="to_wan2"]
+/routing table add name="to_wan2" disabled=no
+# Interface lists
+/interface list add name="WAN" comment="Wide Area Network"
+/interface list add name="LAN" comment="Local Area Network"
+/interface list member remove [find list="WAN" interface="{$primaryWan}"]
+/interface list member add list="WAN" interface="{$primaryWan}"
+/interface list member remove [find list="WAN" interface="{$backupWan}"]
+/interface list member add list="WAN" interface="{$backupWan}"
+/interface list member remove [find list="LAN" interface="{$lanInterface}"]
+/interface list member add list="LAN" interface="{$lanInterface}"
+# PCC mangle rules
+/ip firewall mangle remove [find comment="WiFiCore PCC WAN1"]
+/ip firewall mangle add chain=prerouting in-interface-list=LAN dst-address-type=!local per-connection-classifier=both-addresses-and-ports:2/0 action=mark-connection new-connection-mark=wan1_conn passthrough=yes comment="WiFiCore PCC WAN1"
+/ip firewall mangle remove [find comment="WiFiCore PCC WAN2"]
+/ip firewall mangle add chain=prerouting in-interface-list=LAN dst-address-type=!local per-connection-classifier=both-addresses-and-ports:2/1 action=mark-connection new-connection-mark=wan2_conn passthrough=yes comment="WiFiCore PCC WAN2"
+/ip firewall mangle remove [find comment="WiFiCore PCC Route WAN1"]
+/ip firewall mangle add chain=prerouting in-interface-list=LAN connection-mark=wan1_conn action=mark-routing new-routing-mark=to_wan1 passthrough=no comment="WiFiCore PCC Route WAN1"
+/ip firewall mangle remove [find comment="WiFiCore PCC Route WAN2"]
+/ip firewall mangle add chain=prerouting in-interface-list=LAN connection-mark=wan2_conn action=mark-routing new-routing-mark=to_wan2 passthrough=no comment="WiFiCore PCC Route WAN2"
+# Routes
+/ip route remove [find comment="WiFiCore PCC Route WAN1"]
+/ip route add dst-address=0.0.0.0/0 gateway="{$primaryGateway}" routing-table=to_wan1 distance=1 check-gateway=ping comment="WiFiCore PCC Route WAN1"
+/ip route remove [find comment="WiFiCore PCC Route WAN2"]
+/ip route add dst-address=0.0.0.0/0 gateway="{$backupGateway}" routing-table=to_wan2 distance=1 check-gateway=ping comment="WiFiCore PCC Route WAN2"
+# NAT
+/ip firewall nat remove [find comment="WiFiCore PCC NAT"]
+/ip firewall nat add chain=srcnat out-interface-list=WAN action=masquerade comment="WiFiCore PCC NAT"
+# PCC configuration complete
 
 SCRIPT;
     }

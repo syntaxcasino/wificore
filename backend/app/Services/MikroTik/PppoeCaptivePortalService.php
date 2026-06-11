@@ -43,8 +43,6 @@ class PppoeCaptivePortalService extends BaseMikroTikService
 
         // NAT redirect chain for unpaid users
         $script[] = "# NAT Redirect for Unpaid PPPoE Users";
-        $script[] = ':local portalUrl "' . $portalUrl . '"';
-        $script[] = ':local portalDomain "' . $portalDomain . '"';
         $script[] = '';
 
         // Mark packets from unpaid PPPoE users (not in paid list)
@@ -71,26 +69,20 @@ class PppoeCaptivePortalService extends BaseMikroTikService
 
         // Redirect HTTP traffic to portal (port 80)
         $script[] = "# Redirect HTTP to Portal (port 80)";
-        $script[] = "/ip firewall nat add chain=dstnat action=dst-nat to-addresses={$portalDomain} to-ports=443 \\";
-        $script[] = "    protocol=tcp dst-port=80 connection-mark=pppoe-unpaid \\";
-        $script[] = "    comment=\"WiFiCore: Redirect HTTP to Portal\"";
+        $script[] = "/ip firewall nat add chain=dstnat action=dst-nat to-addresses={$portalDomain} to-ports=443 protocol=tcp dst-port=80 connection-mark=pppoe-unpaid comment=\"WiFiCore: Redirect HTTP to Portal\"";
         $script[] = '';
 
         // Redirect HTTPS traffic (optional - may cause cert warnings but effective)
         $script[] = "# Optional: Redirect HTTPS to Portal (shows cert warning but blocks all traffic)";
-        $script[] = "/ip firewall nat add chain=dstnat action=dst-nat to-addresses={$portalDomain} to-ports=443 \\";
-        $script[] = "    protocol=tcp dst-port=443 connection-mark=pppoe-unpaid \\";
-        $script[] = "    comment=\"WiFiCore: Redirect HTTPS to Portal (disabled by default)\" disabled=yes";
+        $script[] = "/ip firewall nat add chain=dstnat action=dst-nat to-addresses={$portalDomain} to-ports=443 protocol=tcp dst-port=443 connection-mark=pppoe-unpaid comment=\"WiFiCore: Redirect HTTPS to Portal (disabled by default)\" disabled=yes";
         $script[] = '';
 
         // Add filter rules to block non-HTTP traffic from unpaid users
         $script[] = "# Block other traffic from unpaid users";
-        $script[] = "/ip firewall filter add chain=forward action=drop connection-mark=pppoe-unpaid \\";
-        $script[] = "    comment=\"WiFiCore: Block unpaid PPPoE traffic\" disabled=yes";
+        $script[] = "/ip firewall filter add chain=forward action=drop connection-mark=pppoe-unpaid comment=\"WiFiCore: Block unpaid PPPoE traffic\" disabled=yes";
         $script[] = '';
 
         $script[] = "# === END PPPoE Captive Portal Configuration ===";
-        $script[] = ":log info \"WiFiCore: PPPoE Captive Portal config applied for router {$routerId}\"";
 
         return implode("\n", $script);
     }
@@ -149,8 +141,7 @@ class PppoeCaptivePortalService extends BaseMikroTikService
 
         // Alternative: Use NAT to redirect DNS queries from unpaid users to a local DNS
         $script[] = "# Redirect DNS from unpaid users to our DNS with custom records";
-        $script[] = "/ip firewall nat add chain=dstnat action=redirect protocol=udp dst-port=53 \\";
-        $script[] = "    src-address-list=!pppoe-paid-users comment=\"WiFiCore: DNS Hijack Unpaid\"";
+        $script[] = "/ip firewall nat add chain=dstnat action=redirect protocol=udp dst-port=53 src-address-list=!pppoe-paid-users comment=\"WiFiCore: DNS Hijack Unpaid\"";
         $script[] = '';
 
         // Add static DNS entries for portal (always resolve correctly)
