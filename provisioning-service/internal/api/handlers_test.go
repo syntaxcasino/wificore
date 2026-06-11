@@ -21,7 +21,7 @@ func TestSubmitCommandAcceptsComputeRouterMetrics(t *testing.T) {
 	logger := logrus.New()
 	logger.SetOutput(io.Discard)
 
-	store, err := newPersistedWorkflowStore(filepath.Join(t.TempDir(), "workflows.json"), 30*time.Minute, 30*time.Second, "")
+	store, err := newPersistedWorkflowStore(filepath.Join(t.TempDir(), "workflows.json"), 30*time.Minute, 10*time.Minute, 30*time.Second, "")
 	if err != nil {
 		t.Fatalf("failed to create workflow store: %v", err)
 	}

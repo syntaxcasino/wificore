@@ -59,7 +59,7 @@ type Handler struct {
 // NewHandler creates a new API handler
 func NewHandler(logger *logrus.Logger) *Handler {
 	callbackAPIKey := strings.TrimSpace(os.Getenv("PROVISIONING_SERVICE_API_KEY"))
-	store, err := newPersistedWorkflowStore(filepath.Join("data", "provisioning-workflows.json"), 30*time.Minute, 30*time.Second, callbackAPIKey)
+	store, err := newPersistedWorkflowStore(filepath.Join("data", "provisioning-workflows.json"), 30*time.Minute, 10*time.Minute, 30*time.Second, callbackAPIKey)
 	if err != nil {
 		logger.WithError(err).Fatal("Failed to initialize provisioning workflow store")
 	}
