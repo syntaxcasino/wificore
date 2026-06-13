@@ -19,6 +19,7 @@ type persistedWorkflowStore struct {
 	mu              sync.Mutex
 	path            string
 	completedTTL    time.Duration
+	runningTTL      time.Duration
 	outboxRetryBase time.Duration
 	callbackSecret  string
 	state           workflowStoreState
@@ -60,13 +61,14 @@ type workflowOutboxEntry struct {
 	UpdatedAt     time.Time              `json:"updated_at"`
 }
 
-func newPersistedWorkflowStore(path string, completedTTL time.Duration, outboxRetryBase time.Duration, callbackSecret string) (*persistedWorkflowStore, error) {
+func newPersistedWorkflowStore(path string, completedTTL time.Duration, runningTTL time.Duration, outboxRetryBase time.Duration, callbackSecret string) (*persistedWorkflowStore, error) {
 	if strings.TrimSpace(path) == "" {
 		path = filepath.Join("data", "provisioning-workflows.json")
 	}
 	store := &persistedWorkflowStore{
 		path:            path,
 		completedTTL:    completedTTL,
+		runningTTL:      runningTTL,
 		outboxRetryBase: outboxRetryBase,
 		callbackSecret:  strings.TrimSpace(callbackSecret),
 		state: workflowStoreState{
@@ -326,10 +328,19 @@ func (s *persistedWorkflowStore) sanitizeOutboxLocked() bool {
 }
 
 func (s *persistedWorkflowStore) cleanupLocked() {
+	now := time.Now()
 	if s.completedTTL > 0 {
-		cutoff := time.Now().Add(-s.completedTTL)
+		cutoff := now.Add(-s.completedTTL)
 		for key, record := range s.state.Workflows {
 			if (record.Status == "completed" || record.Status == "failed") && record.CompletedAt != nil && record.CompletedAt.Before(cutoff) {
+				delete(s.state.Workflows, key)
+			}
+		}
+	}
+	if s.runningTTL > 0 {
+		staleCutoff := now.Add(-s.runningTTL)
+		for key, record := range s.state.Workflows {
+			if record.Status == "running" && record.UpdatedAt.Before(staleCutoff) {
 				delete(s.state.Workflows, key)
 			}
 		}

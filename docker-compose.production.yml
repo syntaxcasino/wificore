@@ -113,12 +113,14 @@ services:
     restart: always
     environment:
       - WIREGUARD_CONTROLLER_URL=http://172.70.255.254:8080
+      - WIREGUARD_API_KEY=${WIREGUARD_API_KEY:-}
       - PORT=8080
       - DEBUG=${PROVISIONING_DEBUG:-false}
       - LOG_LEVEL=${PROVISIONING_LOG_LEVEL:-info}
       - SSH_TIMEOUT=15
       - BACKEND_API_URL=http://wificore-backend:9000
       - API_KEY=${PROVISIONING_SERVICE_API_KEY:-}
+      - PROVISIONING_SERVICE_API_KEY=${PROVISIONING_SERVICE_API_KEY:-}
       - TZ=${TZ:-Africa/Nairobi}
     networks:
       wificore-network:
@@ -156,6 +158,7 @@ services:
       - DB_DIRECT_PORT=${DB_DIRECT_PORT:-5432}
       - PROVISIONING_SERVICE_URL=http://wificore-provisioning:8080
       - PROVISIONING_SERVICE_API_KEY=${PROVISIONING_SERVICE_API_KEY:-}
+      - PROVISIONING_CALLBACK_BASE_URL=${PROVISIONING_CALLBACK_BASE_URL:-http://wificore-nginx}
       - BROADCAST_DRIVER=pusher
       - PUSHER_HOST=wificore-soketi
       - PUSHER_PORT=6071
@@ -261,6 +264,7 @@ services:
       - DB_DIRECT_PORT=${DB_DIRECT_PORT:-5432}
       - PROVISIONING_SERVICE_URL=http://wificore-provisioning:8080
       - PROVISIONING_SERVICE_API_KEY=${PROVISIONING_SERVICE_API_KEY:-}
+      - PROVISIONING_CALLBACK_BASE_URL=${PROVISIONING_CALLBACK_BASE_URL:-http://wificore-nginx}
       - BROADCAST_DRIVER=pusher
       - PUSHER_HOST=wificore-soketi
       - PUSHER_PORT=6071
@@ -380,6 +384,7 @@ services:
       - MULTITENANCY_MODE=schema
       - PROVISIONING_SERVICE_URL=http://wificore-provisioning:8080
       - PROVISIONING_SERVICE_API_KEY=${PROVISIONING_SERVICE_API_KEY:-}
+      - PROVISIONING_CALLBACK_BASE_URL=${PROVISIONING_CALLBACK_BASE_URL:-http://wificore-nginx}
       - VICTORIA_METRICS_WRITE_URL=${VICTORIA_METRICS_WRITE_URL:-http://wificore-victoriametrics:8428}
       - ROUTER_POLLING_MODE=${ROUTER_POLLING_MODE:-telegraf}
       - TELEGRAF_SHARD_INDEX=${TELEGRAF_SHARD_INDEX:-0}
@@ -413,7 +418,7 @@ services:
       - laravel-storage:/var/www/html/storage:rw
       - laravel-logs:/var/www/html/storage/logs:rw
     healthcheck:
-      test: ["CMD-SHELL", "ps aux | grep 'schedule:work' | grep -v grep || exit 1"]
+      test: ["CMD-SHELL", "ps aux | grep 'scheduler-loop.sh' | grep -v grep || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -456,6 +461,7 @@ services:
       - VICTORIA_METRICS_WRITE_URL=${VICTORIA_METRICS_WRITE_URL:-http://wificore-victoriametrics:8428}
       - PROVISIONING_SERVICE_URL=http://wificore-provisioning:8080
       - PROVISIONING_SERVICE_API_KEY=${PROVISIONING_SERVICE_API_KEY:-}
+      - PROVISIONING_CALLBACK_BASE_URL=${PROVISIONING_CALLBACK_BASE_URL:-http://wificore-nginx}
       - MULTITENANCY_MODE=schema
       - AUTO_CREATE_TENANT_SCHEMA=true
       - AUTO_MIGRATE_TENANT_SCHEMA=true

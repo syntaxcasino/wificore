@@ -57,10 +57,6 @@ class RouterComplianceEngine
             ? 'compliant'
             : ($score >= 70 ? 'warning' : 'non_compliant');
 
-        if ($baseline === null) {
-            $missingControls[] = 'Baseline config snapshot';
-        }
-
         $summary = $baseline
             ? sprintf('Compliance score %d/100 based on %d checks and snapshot %s.', $score, count($checks), $baseline->id)
             : sprintf('Compliance score %d/100 with no baseline snapshot available.', $score);
@@ -122,12 +118,17 @@ class RouterComplianceEngine
         $weights = config('router_compliance.weights', []);
 
         return [
-            ['key' => 'ssh', 'label' => 'SSH management access enabled', 'weight' => (int) ($weights['ssh'] ?? 15), 'patterns' => ['/ip service', 'name=ssh', 'disabled=no']],
-            ['key' => 'api', 'label' => 'API service enabled', 'weight' => (int) ($weights['api'] ?? 15), 'patterns' => ['/ip service', 'name=api', 'disabled=no']],
-            ['key' => 'firewall', 'label' => 'Firewall baseline present', 'weight' => (int) ($weights['firewall'] ?? 20), 'patterns' => ['/ip firewall filter', '/ip firewall nat']],
-            ['key' => 'ntp', 'label' => 'NTP configured', 'weight' => (int) ($weights['ntp'] ?? 15), 'patterns' => ['/system ntp', 'ntp client', 'time-zone-name']],
-            ['key' => 'dns', 'label' => 'DNS configured', 'weight' => (int) ($weights['dns'] ?? 10), 'patterns' => ['/ip dns set', 'servers=']],
-            ['key' => 'backup_schedule', 'label' => 'Backup schedule configured', 'weight' => (int) ($weights['backup_schedule'] ?? 15), 'patterns' => ['/system scheduler', 'daily-backup', 'backup save']],
+            // RouterOS v7 /export compact uses '/ip/service' sections with 'set <name> disabled=no'
+            ['key' => 'ssh', 'label' => 'SSH management access enabled', 'weight' => (int) ($weights['ssh'] ?? 15), 'patterns' => ['/ip/service', 'set ssh', 'disabled=no']],
+            ['key' => 'api', 'label' => 'API service enabled', 'weight' => (int) ($weights['api'] ?? 15), 'patterns' => ['/ip/service', 'set api', 'disabled=no']],
+            // RouterOS v7 uses forward-slash paths in compact export: /ip/firewall/filter
+            ['key' => 'firewall', 'label' => 'Firewall baseline present', 'weight' => (int) ($weights['firewall'] ?? 20), 'patterns' => ['/ip/firewall/filter', '/ip/firewall/nat']],
+            // RouterOS v7: /system/ntp/client with 'enabled=yes'
+            ['key' => 'ntp', 'label' => 'NTP configured', 'weight' => (int) ($weights['ntp'] ?? 15), 'patterns' => ['/system/ntp', 'enabled=yes']],
+            // RouterOS v7: /ip/dns with 'servers='
+            ['key' => 'dns', 'label' => 'DNS configured', 'weight' => (int) ($weights['dns'] ?? 10), 'patterns' => ['/ip/dns', 'servers=']],
+            // Any scheduler entry mentioning 'backup' qualifies
+            ['key' => 'backup_schedule', 'label' => 'Backup schedule configured', 'weight' => (int) ($weights['backup_schedule'] ?? 15), 'patterns' => ['/system/scheduler', 'backup']],
             ['key' => 'baseline_snapshot', 'label' => 'Baseline snapshot available', 'weight' => (int) ($weights['baseline_snapshot'] ?? 10), 'patterns' => []],
         ];
     }

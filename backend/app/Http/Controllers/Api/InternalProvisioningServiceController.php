@@ -31,7 +31,7 @@ class InternalProvisioningServiceController extends Controller
             'stage' => 'nullable|string|max:255',
         ]);
 
-        $tenantId = (string) ($request->input('result.tenant_id') ?? '');
+        $tenantId = (string) ($request->input('tenant_id') ?? $request->input('result.tenant_id') ?? '');
         if ($tenantId === '') {
             return response()->json([
                 'success' => false,

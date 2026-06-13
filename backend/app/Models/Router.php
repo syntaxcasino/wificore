@@ -8,6 +8,7 @@ use App\Traits\HasUuid;
 use App\Traits\TenantRouteBindable;
 use App\Services\VpnService;
 use App\Models\VpnConfiguration;
+use App\Models\RouterComplianceSnapshot;
 use Illuminate\Support\Facades\Log;
 
 class Router extends Model
@@ -365,6 +366,15 @@ class Router extends Model
     public function accessPoints()
     {
         return $this->hasMany(AccessPoint::class, 'router_id', 'id');
+    }
+
+    /**
+     * Get the latest compliance snapshot for this router
+     */
+    public function compliance()
+    {
+        return $this->hasOne(RouterComplianceSnapshot::class, 'router_id', 'id')
+            ->latest('evaluated_at');
     }
 
     // ========================================

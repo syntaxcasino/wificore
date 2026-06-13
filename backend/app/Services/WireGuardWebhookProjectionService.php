@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\Redis;
 class WireGuardWebhookProjectionService
 {
     private array $provisioningStatuses = ['pending', 'deploying', 'provisioning', 'verifying'];
+    private array $completedProvisioningStages = ['completed', 'interfaces_discovered', 'config_applied', 'connectivity_verified'];
 
     public function __construct(private readonly TenantContext $tenantContext)
     {
@@ -64,7 +65,8 @@ class WireGuardWebhookProjectionService
             $router = $peer->router;
             $previousStatus = $router->status;
             $previousVpnStatus = $router->vpn_status;
-            $inProvisioning = in_array($router->status, $this->provisioningStatuses, true);
+            $inProvisioning = in_array($router->status, $this->provisioningStatuses, true)
+                || (! in_array($router->provisioning_stage, $this->completedProvisioningStages, true) && $router->provisioning_stage !== null);
 
             $router->update([
                 'status' => 'online',
@@ -104,7 +106,8 @@ class WireGuardWebhookProjectionService
             $router = $peer->router;
             $previousStatus = $router->status;
             $previousVpnStatus = $router->vpn_status;
-            $inProvisioning = in_array($router->status, $this->provisioningStatuses, true);
+            $inProvisioning = in_array($router->status, $this->provisioningStatuses, true)
+                || (! in_array($router->provisioning_stage, $this->completedProvisioningStages, true) && $router->provisioning_stage !== null);
             $router->update([
                 'status' => $inProvisioning ? $router->status : 'offline',
                 'vpn_status' => 'inactive',
@@ -155,7 +158,8 @@ class WireGuardWebhookProjectionService
                     ]);
 
                     $router = $peer->router;
-                    $inProvisioning = in_array($router->status, $this->provisioningStatuses, true);
+                    $inProvisioning = in_array($router->status, $this->provisioningStatuses, true)
+                        || (! in_array($router->provisioning_stage, $this->completedProvisioningStages, true) && $router->provisioning_stage !== null);
                     $router->update([
                         'status' => 'online',
                         'provisioning_stage' => $inProvisioning ? 'completed' : $router->provisioning_stage,

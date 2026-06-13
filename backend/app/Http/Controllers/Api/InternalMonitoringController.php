@@ -32,11 +32,15 @@ class InternalMonitoringController extends Controller
     public function updateVpnStatus(Request $request, string $tenantId)
     {
         $validated = $request->validate([
-            'status' => 'required|string|in:completed,failed',
+            'status' => 'required|string|in:completed,failed,running',
             'result' => 'nullable|array',
             'result.routers' => 'nullable|array',
             'error' => 'nullable|string|max:2000',
         ]);
+
+        if ($validated['status'] === 'running') {
+            return response()->json(['success' => true]);
+        }
 
         if ($validated['status'] === 'failed') {
             Log::warning('Monitoring callback reported VPN refresh failure', [
@@ -55,14 +59,14 @@ class InternalMonitoringController extends Controller
         $routerUpdates = [];
         $this->tenantContext->runInTenantTransaction($tenant, function () use ($validated, &$routerUpdates, $tenantId) {
             foreach (($validated['result']['routers'] ?? []) as $entry) {
-                $router = Router::find($entry['router_id'] ?? null);
+                $router = $this->findTenantRouter($entry['router_id'] ?? null, $tenantId, 'vpn-status');
                 if (! $router) {
                     continue;
                 }
 
                 $handshakeAt = $this->parseNullableTimestamp($entry['vpn_last_handshake'] ?? null);
                 $vpnConfig = ! empty($entry['public_key'])
-                    ? VpnConfiguration::where('client_public_key', $entry['public_key'])->first()
+                    ? VpnConfiguration::on('pgsql')->useWritePdo()->where('client_public_key', $entry['public_key'])->first()
                     : null;
 
                 if ($vpnConfig) {
@@ -104,11 +108,15 @@ class InternalMonitoringController extends Controller
     public function updateRouterStatus(Request $request, string $tenantId)
     {
         $validated = $request->validate([
-            'status' => 'required|string|in:completed,failed',
+            'status' => 'required|string|in:completed,failed,running',
             'result' => 'nullable|array',
             'result.routers' => 'nullable|array',
             'error' => 'nullable|string|max:2000',
         ]);
+
+        if ($validated['status'] === 'running') {
+            return response()->json(['success' => true]);
+        }
 
         if ($validated['status'] === 'failed') {
             Log::warning('Monitoring callback reported router status refresh failure', [
@@ -129,7 +137,7 @@ class InternalMonitoringController extends Controller
 
         $this->tenantContext->runInTenantTransaction($tenant, function () use ($validated, &$routerUpdates, &$discoveryRouterIds, $tenantId) {
             foreach (($validated['result']['routers'] ?? []) as $entry) {
-                $router = Router::find($entry['router_id'] ?? null);
+                $router = $this->findTenantRouter($entry['router_id'] ?? null, $tenantId, 'router-status');
                 if (! $router) {
                     continue;
                 }
@@ -165,11 +173,15 @@ class InternalMonitoringController extends Controller
     public function updateLiveData(Request $request, string $tenantId)
     {
         $validated = $request->validate([
-            'status' => 'required|string|in:completed,failed',
+            'status' => 'required|string|in:completed,failed,running',
             'result' => 'nullable|array',
             'result.routers' => 'nullable|array',
             'error' => 'nullable|string|max:2000',
         ]);
+
+        if ($validated['status'] === 'running') {
+            return response()->json(['success' => true]);
+        }
 
         if ($validated['status'] === 'failed') {
             Log::warning('Monitoring callback reported live data refresh failure', [
@@ -189,7 +201,7 @@ class InternalMonitoringController extends Controller
 
         $this->tenantContext->runInTenantTransaction($tenant, function () use ($validated, $tenantId, &$updatedRouterCount) {
             foreach (($validated['result']['routers'] ?? []) as $entry) {
-                $router = Router::find($entry['router_id'] ?? null);
+                $router = $this->findTenantRouter($entry['router_id'] ?? null, $tenantId, 'live-data');
                 $liveData = is_array($entry['data'] ?? null) ? $entry['data'] : null;
                 if (! $router || ! $liveData) {
                     continue;
@@ -212,7 +224,7 @@ class InternalMonitoringController extends Controller
     public function updateRouterMetrics(Request $request, string $tenantId)
     {
         $validated = $request->validate([
-            'status' => 'required|string|in:completed,failed',
+            'status' => 'required|string|in:completed,failed,running',
             'result' => 'nullable|array',
             'result.ranges' => 'nullable|array',
             'result.ranges.*.time_range' => 'required_with:result.ranges|string|max:32',
@@ -220,6 +232,10 @@ class InternalMonitoringController extends Controller
             'result.ranges.*.routers.*.router_id' => 'required_with:result.ranges.*.routers|string',
             'error' => 'nullable|string|max:2000',
         ]);
+
+        if ($validated['status'] === 'running') {
+            return response()->json(['success' => true]);
+        }
 
         if ($validated['status'] === 'failed') {
             Log::warning('Monitoring callback reported router metrics computation failure', [
@@ -245,7 +261,7 @@ class InternalMonitoringController extends Controller
                 }
 
                 foreach (($rangeEntry['routers'] ?? []) as $routerEntry) {
-                    $router = Router::find($routerEntry['router_id'] ?? null);
+                    $router = $this->findTenantRouter($routerEntry['router_id'] ?? null, $tenantId, 'router-metrics');
                     if (! $router) {
                         continue;
                     }
@@ -308,58 +324,90 @@ class InternalMonitoringController extends Controller
             return response()->json(['success' => true]);
         }
 
-        $migrationManager = app(TenantMigrationManager::class);
-        if ($migrationManager->hasPendingMigrations($tenant)) {
-            $migrationManager->runMigrationsForTenant($tenant);
+        try {
+            $migrationManager = app(TenantMigrationManager::class);
+            if ($migrationManager->hasPendingMigrations($tenant)) {
+                $migrationManager->runMigrationsForTenant($tenant);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('VPN verification migration check failed, continuing', [
+                'tenant_id' => $tenantId,
+                'error' => $e->getMessage(),
+            ]);
         }
 
-        $this->tenantContext->runInTenantTransaction($tenant, function () use ($validated, $tenantId, $routerId, $vpnConfigId, $clientIp, $result) {
-            $vpnConfig = $this->resolveVpnConfigurationForVerification($routerId, $vpnConfigId, $clientIp);
-            $router = $routerId !== '' ? Router::find($routerId) : null;
+        $dispatchDiscovery = false;
+        $dispatchRouterId = '';
 
-            if ($validated['status'] === 'completed') {
-                if ($vpnConfig) {
-                    $vpnConfig->update([
-                        'status' => 'connected',
-                        'last_handshake_at' => now(),
-                    ]);
-                } else {
-                    Log::warning('VPN verification completed without a resolvable VPN configuration', [
-                        'tenant_id' => $tenantId,
-                        'router_id' => $routerId,
-                        'vpn_config_id' => $vpnConfigId,
-                        'client_ip' => $clientIp,
-                    ]);
-                }
+        Log::info('VPN verification callback processing', [
+            'tenant_id' => $tenantId,
+            'router_id' => $routerId,
+            'status' => $validated['status'],
+        ]);
 
-                if ($router) {
-                    $provisioningStatuses = ['pending', 'deploying', 'provisioning', 'verifying'];
-                    $inProvisioning = in_array($router->status, $provisioningStatuses, true);
-                    $now = now();
+        try {
+            $this->tenantContext->runInTenantTransaction($tenant, function () use ($validated, $tenantId, $routerId, $vpnConfigId, $clientIp, $result, &$dispatchDiscovery, &$dispatchRouterId) {
+                $this->logProvisioningLookupContext('vpn-verification', $tenantId, [
+                    'router_id' => $routerId,
+                    'vpn_config_id' => $vpnConfigId,
+                    'client_ip' => $clientIp,
+                ]);
 
-                    if ($inProvisioning) {
-                        $router->update([
-                            'status' => $router->status === 'pending' ? 'provisioning' : $router->status,
-                            'provisioning_stage' => $router->provisioning_stage ?? 'vpn_verified',
-                            'last_seen' => $now,
-                            'last_checked' => $now,
+                $vpnConfig = $this->resolveVpnConfigurationForVerification($routerId, $vpnConfigId, $clientIp, $tenantId);
+                $router = $this->findTenantRouter($routerId, $tenantId, 'vpn-verification');
+
+                if ($validated['status'] === 'completed') {
+                    if ($vpnConfig) {
+                        $vpnConfig->update([
+                            'status' => 'connected',
+                            'last_handshake_at' => now(),
                         ]);
                     } else {
-                        $router->update([
-                            'status' => 'online',
-                            'vpn_status' => 'active',
-                            'last_seen' => $now,
-                            'last_checked' => $now,
-                            'vpn_last_handshake' => $now,
+                        Log::warning('VPN verification completed without a resolvable VPN configuration', [
+                            'tenant_id' => $tenantId,
+                            'router_id' => $routerId,
+                            'vpn_config_id' => $vpnConfigId,
+                            'client_ip' => $clientIp,
                         ]);
                     }
 
-                    $key = 'discovery_dispatch_' . $router->id;
-                    if (! Cache::has($key)) {
-                        Cache::put($key, true, 30);
-                        dispatch(new DiscoverRouterInterfacesJob($tenantId, (string) $router->id))->onQueue('router-provisioning');
+                    if ($router) {
+                        $provisioningStatuses = ['pending', 'deploying', 'provisioning', 'verifying'];
+                        $completedProvisioningStages = ['completed', 'interfaces_discovered', 'config_applied', 'connectivity_verified'];
+                        $inProvisioning = in_array($router->status, $provisioningStatuses, true)
+                            || (! in_array($router->provisioning_stage, $completedProvisioningStages, true) && $router->provisioning_stage !== null);
+                        $now = now();
+
+                        Log::info('VPN verification router found', [
+                            'tenant_id' => $tenantId,
+                            'router_id' => $router->id,
+                            'status' => $router->status,
+                            'provisioning_stage' => $router->provisioning_stage,
+                            'in_provisioning' => $inProvisioning,
+                        ]);
+
+                        if ($inProvisioning) {
+                            $router->update([
+                                'status' => $router->status === 'pending' ? 'provisioning' : $router->status,
+                                'provisioning_stage' => $router->provisioning_stage ?? 'vpn_verified',
+                                'last_seen' => $now,
+                                'last_checked' => $now,
+                            ]);
+                        } else {
+                            $router->update([
+                                'status' => 'online',
+                                'vpn_status' => 'active',
+                                'last_seen' => $now,
+                                'last_checked' => $now,
+                                'vpn_last_handshake' => $now,
+                            ]);
+                        }
+
+                        if ($inProvisioning) {
+                            $dispatchDiscovery = true;
+                            $dispatchRouterId = (string) $router->id;
+                        }
                     }
-                }
 
                 broadcast(new VpnConnectivityVerified(
                     $tenantId,
@@ -396,21 +444,40 @@ class InternalMonitoringController extends Controller
                 (int) ($result['attempts'] ?? 1),
             ));
         });
+        } catch (\Throwable $e) {
+            Log::error('VPN verification callback transaction failed', [
+                'tenant_id' => $tenantId,
+                'router_id' => $routerId,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        if ($dispatchDiscovery && $dispatchRouterId !== '') {
+            $key = 'discovery_dispatch_' . $dispatchRouterId;
+            if (! Cache::has($key)) {
+                Cache::put($key, true, 30);
+                Log::info('Dispatching DiscoverRouterInterfacesJob after VPN verification', [
+                    'tenant_id' => $tenantId,
+                    'router_id' => $dispatchRouterId,
+                ]);
+                dispatch(new DiscoverRouterInterfacesJob($tenantId, $dispatchRouterId))->onQueue('router-provisioning');
+            }
+        }
 
         return response()->json(['success' => true]);
     }
 
-    private function resolveVpnConfigurationForVerification(string $routerId, int $vpnConfigId, string $clientIp): ?VpnConfiguration
+    private function resolveVpnConfigurationForVerification(string $routerId, int $vpnConfigId, string $clientIp, string $tenantId): ?VpnConfiguration
     {
         try {
             if ($vpnConfigId > 0) {
-                $vpnConfig = VpnConfiguration::find($vpnConfigId);
+                $vpnConfig = VpnConfiguration::on('pgsql')->useWritePdo()->find($vpnConfigId);
                 if ($vpnConfig) {
                     return $vpnConfig;
                 }
             }
 
-            $query = VpnConfiguration::query();
+            $query = VpnConfiguration::on('pgsql')->useWritePdo();
 
             if ($routerId !== '') {
                 $query->where('router_id', $routerId);
@@ -431,19 +498,58 @@ class InternalMonitoringController extends Controller
             return $query->latest('id')->first();
         } catch (\Throwable $e) {
             Log::warning('Unable to resolve VPN configuration during verification', [
+                'tenant_id' => $tenantId,
                 'router_id' => $routerId,
                 'vpn_config_id' => $vpnConfigId,
                 'client_ip' => $clientIp,
                 'error' => $e->getMessage(),
+                'transaction_level' => DB::transactionLevel(),
+                'search_path' => $this->tenantContext->getCurrentSearchPath(),
             ]);
 
             return null;
         }
     }
 
+
+    private function findTenantRouter(mixed $routerId, string $tenantId, string $operation): ?Router
+    {
+        $normalizedRouterId = is_string($routerId) ? trim($routerId) : '';
+        if ($normalizedRouterId === '') {
+            return null;
+        }
+
+        $this->logProvisioningLookupContext($operation, $tenantId, [
+            'router_id' => $normalizedRouterId,
+        ]);
+
+        $router = Router::on('pgsql')->useWritePdo()->find($normalizedRouterId);
+        if (! $router) {
+            Log::warning('Provisioning callback router lookup missed in tenant schema', [
+                'operation' => $operation,
+                'tenant_id' => $tenantId,
+                'router_id' => $normalizedRouterId,
+                'transaction_level' => DB::transactionLevel(),
+                'search_path' => $this->tenantContext->getCurrentSearchPath(),
+            ]);
+        }
+
+        return $router;
+    }
+
+    private function logProvisioningLookupContext(string $operation, string $tenantId, array $context = []): void
+    {
+        Log::info('Provisioning callback tenant lookup context', array_merge([
+            'operation' => $operation,
+            'tenant_id' => $tenantId,
+            'transaction_level' => DB::transactionLevel(),
+            'search_path' => $this->tenantContext->getCurrentSearchPath(),
+        ], $context));
+    }
+
     private function resolveTenant(string $tenantId): ?Tenant
     {
-        $tenant = Tenant::find($tenantId);
+        $tenant = Tenant::on('pgsql')->useWritePdo()->find($tenantId);
         if (! $tenant || ! $tenant->schema_created || ! $tenant->schema_name) {
             Log::warning('Monitoring callback skipped because tenant schema is unavailable', [
                 'tenant_id' => $tenantId,

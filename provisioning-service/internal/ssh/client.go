@@ -167,33 +167,18 @@ func (c *Client) ExecuteMultiple(commands []string) ([]string, error) {
 	return results, nil
 }
 
-// ExecuteScript runs a full RouterOS script.
+// ExecuteScript runs a full RouterOS script via the binary API.
 func (c *Client) ExecuteScript(script string) (string, error) {
 	if c.binary != nil {
-		if output, err := c.binary.executeScript(script); err == nil {
+		output, err := c.binary.executeScript(script)
+		if err == nil {
 			c.connected = true
 			return output, nil
-		} else if err != errUnsupportedCommand && !isBinaryFallbackWorthy(err) {
-			return "", err
 		}
-	}
-
-	if err := c.connectSSH(); err != nil {
 		return "", err
 	}
 
-	session, err := c.ssh.NewSession()
-	if err != nil {
-		return "", fmt.Errorf("failed to create session: %w", err)
-	}
-	defer session.Close()
-
-	output, err := session.CombinedOutput(script)
-	if err != nil {
-		return string(output), fmt.Errorf("command failed: %w", err)
-	}
-	c.connected = true
-	return string(output), nil
+	return "", fmt.Errorf("binary api not connected")
 }
 
 // Close closes any active transport connections.

@@ -42,6 +42,27 @@ class ProvisioningServiceClient implements ProvisioningCommandBus
     {
         $response = $this->getHttpClient()->post($this->baseUrl . $path, $payload);
 
+        $data = $response->json();
+
+        // Handle router_busy (HTTP 409) before the generic failed() check so that
+        // throwOnBusy=false callers (monitoring jobs) can silently skip instead of throw.
+        if ($response->status() === 409 && is_array($data) && ($data['data']['status'] ?? '') === 'router_busy') {
+            $error = $data['error'] ?? 'Router already has an active provisioning workflow';
+            if (!$throwOnBusy) {
+                Log::warning('Provisioning service busy, skipping command', [
+                    'command_id' => $payload['command_id'] ?? 'unknown',
+                    'error' => $error,
+                    'active_idempotency_key' => $data['data']['active_idempotency_key'] ?? null,
+                ]);
+                return [
+                    'success' => true,
+                    'message' => 'Skipped: provisioning service busy',
+                    'data' => array_merge($data['data'] ?? [], ['skipped' => true]),
+                ];
+            }
+            throw new \Exception($errorPrefix . ': ' . $error, 503);
+        }
+
         if ($response->failed()) {
             $message = trim((string) $response->body());
             if ($message === '') {
@@ -50,27 +71,29 @@ class ProvisioningServiceClient implements ProvisioningCommandBus
             throw new \Exception($errorPrefix . ': ' . $message);
         }
 
-        $data = $response->json();
         if (!is_array($data)) {
             throw new \Exception($errorPrefix . ': invalid JSON response');
         }
         if (($data['success'] ?? false) !== true) {
-            // Check if this is a "router busy" error - for monitoring commands, we can skip gracefully
             $error = $data['error'] ?? '';
             $status = $data['data']['status'] ?? '';
-            if (!$throwOnBusy && $status === 'router_busy') {
-                Log::warning('Provisioning service busy, skipping command', [
-                    'command_id' => $payload['command_id'] ?? 'unknown',
-                    'error' => $error,
-                    'active_idempotency_key' => $data['data']['active_idempotency_key'] ?? null,
-                ]);
-                // Return a synthetic success response with busy status
-                return [
-                    'success' => true,
-                    'message' => 'Skipped: provisioning service busy',
-                    'data' => array_merge($data['data'] ?? [], ['skipped' => true]),
-                ];
+
+            if ($status === 'router_busy') {
+                if (!$throwOnBusy) {
+                    Log::warning('Provisioning service busy, skipping command', [
+                        'command_id' => $payload['command_id'] ?? 'unknown',
+                        'error' => $error,
+                        'active_idempotency_key' => $data['data']['active_idempotency_key'] ?? null,
+                    ]);
+                    return [
+                        'success' => true,
+                        'message' => 'Skipped: provisioning service busy',
+                        'data' => array_merge($data['data'] ?? [], ['skipped' => true]),
+                    ];
+                }
+                throw new \Exception($errorPrefix . ': ' . $error, 503);
             }
+
             throw new \Exception($errorPrefix . ': ' . $error);
         }
 
@@ -83,7 +106,7 @@ class ProvisioningServiceClient implements ProvisioningCommandBus
             'ip_address' => $router->ip_address,
             'vpn_ip' => $router->vpn_ip ? explode('/', $router->vpn_ip)[0] : null,
             'username' => $router->username,
-            'password' => Crypt::decryptString($router->password),
+            'password' => Crypt::decrypt($router->password),
             'ssh_port' => (int) ($router->port ?: 22),
         ];
     }
@@ -108,6 +131,17 @@ class ProvisioningServiceClient implements ProvisioningCommandBus
         }
 
         return implode(':', [$operation, (string) $router->id]);
+    }
+
+    protected function resolveCallbackBaseUrl(): string
+    {
+        $callbackBaseUrl = rtrim((string) config('services.provisioning.callback_base_url', env('PROVISIONING_CALLBACK_BASE_URL', '')), '/');
+
+        if ($callbackBaseUrl !== '') {
+            return $callbackBaseUrl;
+        }
+
+        return rtrim((string) config('app.url', env('APP_URL', '')), '/');
     }
 
     protected function resolveDuplicateWorkflowResponse(Router $router, string $idempotencyKey): ?array
@@ -169,20 +203,20 @@ class ProvisioningServiceClient implements ProvisioningCommandBus
             return null;
         }
 
-        $appUrl = rtrim((string) config('app.url', env('APP_URL', '')), '/');
-        if ($appUrl === '' || $this->apiKey === '') {
+        $callbackBaseUrl = $this->resolveCallbackBaseUrl();
+        if ($callbackBaseUrl === '' || $this->apiKey === '') {
             Log::warning('Provisioning callbacks disabled: missing configuration', [
-                'has_app_url' => $appUrl !== '',
+                'has_callback_base_url' => $callbackBaseUrl !== '',
                 'has_api_key' => $this->apiKey !== '',
                 'task_id' => $task->id,
                 'tenant_id' => $task->tenant_id,
-                'hint' => 'Set APP_URL and PROVISIONING_SERVICE_API_KEY in .env',
+                'hint' => 'Set PROVISIONING_CALLBACK_BASE_URL and PROVISIONING_SERVICE_API_KEY in .env',
             ]);
             return null;
         }
 
         return [
-            'url' => $appUrl . '/api/internal/provisioning/router-tasks/' . $task->id . '/status',
+            'url' => $callbackBaseUrl . '/api/internal/provisioning/router-tasks/' . $task->id . '/status',
             'api_key' => $this->apiKey,
             'terminal' => $terminal,
             'stage' => $stage,
@@ -191,30 +225,32 @@ class ProvisioningServiceClient implements ProvisioningCommandBus
         ];
     }
 
-    protected function buildRouterServiceCallbackPayload(string $serviceId, bool $terminal = true, ?string $stage = null): ?array
+    protected function buildRouterServiceCallbackPayload(string $tenantId, string $routerId, string $serviceId, bool $terminal = true, ?string $stage = null): ?array
     {
-        $appUrl = rtrim((string) config('app.url', env('APP_URL', '')), '/');
-        if ($appUrl === '' || $this->apiKey === '') {
+        $callbackBaseUrl = $this->resolveCallbackBaseUrl();
+        if ($callbackBaseUrl === '' || $this->apiKey === '') {
             return null;
         }
 
         return [
-            'url' => $appUrl . '/api/internal/provisioning/router-services/' . $serviceId . '/status',
+            'url' => $callbackBaseUrl . '/api/internal/provisioning/router-services/' . $serviceId . '/status',
             'api_key' => $this->apiKey,
             'terminal' => $terminal,
             'stage' => $stage,
+            'tenant_id' => $tenantId,
+            'router_id' => $routerId,
         ];
     }
 
     protected function buildMonitoringCallbackPayload(string $tenantId, string $path, bool $terminal = true, ?string $stage = null): ?array
     {
-        $appUrl = rtrim((string) config('app.url', env('APP_URL', '')), '/');
-        if ($appUrl === '' || $this->apiKey === '') {
+        $callbackBaseUrl = $this->resolveCallbackBaseUrl();
+        if ($callbackBaseUrl === '' || $this->apiKey === '') {
             return null;
         }
 
         return [
-            'url' => $appUrl . '/api/internal/provisioning/monitoring/tenants/' . $tenantId . '/' . ltrim($path, '/'),
+            'url' => $callbackBaseUrl . '/api/internal/provisioning/monitoring/tenants/' . $tenantId . '/' . ltrim($path, '/'),
             'api_key' => $this->apiKey,
             'terminal' => $terminal,
             'stage' => $stage,
@@ -241,7 +277,7 @@ class ProvisioningServiceClient implements ProvisioningCommandBus
                     'script' => $script,
                     'connection' => $this->buildRouterConnectionPayload($router),
                 ],
-                'callback' => $this->buildRouterServiceCallbackPayload($serviceId, true),
+                'callback' => $this->buildRouterServiceCallbackPayload($tenantId, (string) $router->id, $serviceId, true),
             ], 'Router service deployment command submission failed');
         } catch (\Exception $e) {
             Log::error('Router service deployment command submission error', [
@@ -452,7 +488,7 @@ class ProvisioningServiceClient implements ProvisioningCommandBus
                     'ip_address' => $router->ip_address,
                     'vpn_ip' => $router->vpn_ip,
                     'username' => $router->username,
-                    'password' => Crypt::decryptString($router->password),
+                    'password' => Crypt::decrypt($router->password),
                     'ssh_port' => (int) ($router->port ?: 22),
                     'commands' => $commands,
                 ],
