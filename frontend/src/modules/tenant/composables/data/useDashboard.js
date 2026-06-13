@@ -78,50 +78,7 @@ export function useDashboard() {
     userTrend: [],
     userAverage: 0,
     userPeak: 0,
-    userGrowth: 0,
-    businessKpis: {
-      mrr: 0,
-      arr: 0,
-      arpu: 0,
-      churn_rate: 0,
-      failed_payment_rate: 0,
-      daily_revenue: 0,
-      monthly_completed_count: 0,
-      revenue_by_area: [],
-      active_subscribers: 0,
-    },
-  })
-
-  const revenueAssurance = ref({
-    score: 100,
-    status: 'healthy',
-    summary: '',
-    findings: [],
-    signals: {},
-    generatedAt: null,
-    kpis: {
-      mrr: 0,
-      arr: 0,
-      arpu: 0,
-      churn_rate: 0,
-      failed_payment_rate: 0,
-      daily_revenue: 0,
-      monthly_completed_count: 0,
-      revenue_by_area: [],
-      active_subscribers: 0,
-    },
-  })
-
-  const healthScore = ref({
-    score: 100,
-    grade: 'healthy',
-    summary: '',
-    factors: [],
-    signals: {},
-    history: [],
-    calculatedAt: null,
-    cached: false,
-    refreshing: false,
+    userGrowth: 0
   })
 
   const chartData = ref({ labels: [], users: [], revenue: [] })
@@ -164,43 +121,7 @@ export function useDashboard() {
 
     if (data.payment_details)   paymentData.value   = data.payment_details
     if (data.sms_expenses)      expensesData.value  = data.sms_expenses
-    if (data.business_analytics) {
-      analyticsData.value = {
-        ...analyticsData.value,
-        ...data.business_analytics,
-        businessKpis: data.business_analytics.businessKpis && typeof data.business_analytics.businessKpis === 'object'
-          ? data.business_analytics.businessKpis
-          : analyticsData.value.businessKpis,
-      }
-    }
-    if (data.revenue_assurance) {
-      revenueAssurance.value = {
-        score: Number(data.revenue_assurance.score ?? 100),
-        status: data.revenue_assurance.status || 'healthy',
-        summary: data.revenue_assurance.summary || '',
-        findings: Array.isArray(data.revenue_assurance.findings) ? data.revenue_assurance.findings : [],
-        signals: data.revenue_assurance.signals && typeof data.revenue_assurance.signals === 'object' ? data.revenue_assurance.signals : {},
-        generatedAt: data.revenue_assurance.generated_at || null,
-        kpis: data.revenue_assurance.kpis && typeof data.revenue_assurance.kpis === 'object' ? data.revenue_assurance.kpis : revenueAssurance.value.kpis,
-      }
-    }
-
-    if (data.business_kpis && typeof data.business_kpis === 'object') {
-      revenueAssurance.value = {
-        ...revenueAssurance.value,
-        kpis: {
-          ...revenueAssurance.value.kpis,
-          ...data.business_kpis,
-        },
-      }
-      analyticsData.value = {
-        ...analyticsData.value,
-        businessKpis: {
-          ...analyticsData.value.businessKpis,
-          ...data.business_kpis,
-        },
-      }
-    }
+    if (data.business_analytics) analyticsData.value = data.business_analytics
 
     if (data.weekly_users_trend?.length) {
       chartData.value.labels = data.weekly_users_trend.map((i) => i.date)
@@ -283,43 +204,13 @@ export function useDashboard() {
     }
   }
 
-  const applyHealthScore = (data) => {
-    healthScore.value = {
-      score: Number(data?.score ?? 100),
-      grade: data?.grade || 'healthy',
-      summary: data?.summary || '',
-      factors: Array.isArray(data?.factors) ? data.factors : [],
-      signals: data?.signals && typeof data.signals === 'object' ? data.signals : {},
-      history: Array.isArray(data?.history) ? data.history : [],
-      calculatedAt: data?.calculated_at || null,
-      sourceEvent: data?.source_event || null,
-      sourceReference: data?.source_reference || null,
-      cached: !!data?.cached,
-      refreshing: !!data?.refreshing,
-    }
-  }
-
-  const fetchHealthScore = async () => {
-    try {
-      const response = await axios.get('/tenant/dashboard/health-score')
-      if (response.data?.success) {
-        applyHealthScore(response.data?.data || {})
-      }
-    } catch (error) {
-      console.error('Failed to fetch health score:', error)
-    }
-  }
-
   /**
    * Force-refresh dashboard statistics (triggers cache bust + background job).
    */
   const refreshStats = async () => {
     try {
       await axios.post('/tenant/dashboard/refresh')
-      setTimeout(() => {
-        fetchDashboardStats()
-        fetchHealthScore()
-      }, 800)
+      setTimeout(fetchDashboardStats, 800)
     } catch (error) {
       console.error('Failed to refresh dashboard stats:', error)
     }
@@ -399,7 +290,6 @@ export function useDashboard() {
     paymentData,
     expensesData,
     analyticsData,
-    revenueAssurance,
     chartData,
     recentActivities,
     onlineUsers,
@@ -407,7 +297,6 @@ export function useDashboard() {
     hasCachedSnapshot,
     lastUpdated,
     fetchDashboardStats,
-    fetchHealthScore,
     refreshStats,
     updateStatsFromEvent,
     formatCurrency,
@@ -415,7 +304,6 @@ export function useDashboard() {
     formatTimeAgo,
     routerHealthPercentage,
     routerHealthStatus,
-    healthScore,
     revenueGrowth,
     userGrowth,
   }

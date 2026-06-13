@@ -689,12 +689,7 @@ class PppoeSessionController extends Controller
      */
     public function live(Request $request, VictoriaMetricsClient $vm)
     {
-        $response = $this->index($request, $vm);
-
-        return $response
-            ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
-            ->header('Pragma', 'no-cache')
-            ->header('Expires', '0');
+        return $this->index($request, $vm);
     }
     
     private function parseSpeedToBytesPerSecond(?string $speed): ?int

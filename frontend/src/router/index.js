@@ -41,7 +41,7 @@ const BandwidthLimitRules = () => import('@/modules/tenant/views/dashboard/packa
 
 // Routers
 const RoutersLayout = () => import('@/modules/tenant/views/dashboard/routers/RoutersLayout.vue')
-const MikrotikList = () => import('@/modules/tenant/views/dashboard/routers/RoutersView.vue')
+const MikrotikList = () => import('@/modules/tenant/views/dashboard/routers/MikrotikList.vue')
 const AddRouter = () => import('@/modules/tenant/views/dashboard/routers/AddRouter.vue')
 const ApiConnectionStatus = () => import('@/modules/tenant/views/dashboard/routers/ApiConnectionStatus.vue')
 const BackupConfigurations = () => import('@/modules/tenant/views/dashboard/routers/BackupConfigurations.vue')

@@ -59,7 +59,7 @@ type Handler struct {
 // NewHandler creates a new API handler
 func NewHandler(logger *logrus.Logger) *Handler {
 	callbackAPIKey := strings.TrimSpace(os.Getenv("PROVISIONING_SERVICE_API_KEY"))
-	store, err := newPersistedWorkflowStore(filepath.Join("data", "provisioning-workflows.json"), 30*time.Minute, 10*time.Minute, 30*time.Second, callbackAPIKey)
+	store, err := newPersistedWorkflowStore(filepath.Join("data", "provisioning-workflows.json"), 30*time.Minute, 30*time.Second, callbackAPIKey)
 	if err != nil {
 		logger.WithError(err).Fatal("Failed to initialize provisioning workflow store")
 	}
@@ -437,104 +437,20 @@ func (h *Handler) ProvisionService(c *gin.Context) {
 
 	identity := parseSingleKeyValueBlock(identityOutput)
 	resource := parseSingleKeyValueBlock(resourceOutput)
-	verificationChecks, verifyErr := verifyServiceDeploymentArtifacts(client, req.Script)
-	if verifyErr != nil {
-		failurePayload := map[string]interface{}{"command_results": results, "executed_commands": executedCommands, "verification_checks": verificationChecks}
-		h.reportProvisioningWorkflowEvent(req.Callback, idempotencyKey, req.RouterID, "failed", 100, "Service deployment verification failed", failurePayload, verifyErr.Error(), "verifying_deployment", true)
-		c.JSON(http.StatusUnprocessableEntity, gin.H{"success": false, "error": verifyErr.Error(), "data": failurePayload})
-		return
-	}
 	payload := map[string]interface{}{
-		"router_id":           req.RouterID,
-		"status":              "connected",
-		"executed_at":         time.Now(),
-		"executed_commands":   executedCommands,
-		"command_results":     results,
-		"model":               valueOrDefault(resource["board-name"], "Unknown"),
-		"os_version":          valueOrDefault(resource["version"], "Unknown"),
-		"identity":            valueOrDefault(identity["name"], "Unknown"),
-		"interfaces":          []string{},
-		"last_seen":           time.Now(),
-		"verification_checks": verificationChecks,
+		"router_id":         req.RouterID,
+		"status":            "connected",
+		"executed_at":       time.Now(),
+		"executed_commands": executedCommands,
+		"command_results":   results,
+		"model":             valueOrDefault(resource["board-name"], "Unknown"),
+		"os_version":        valueOrDefault(resource["version"], "Unknown"),
+		"identity":          valueOrDefault(identity["name"], "Unknown"),
+		"interfaces":        []string{},
+		"last_seen":         time.Now(),
 	}
 	h.reportProvisioningWorkflowEvent(req.Callback, idempotencyKey, req.RouterID, "completed", 100, "Service provisioning workflow completed successfully", payload, "", "completed", true)
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Service provisioning workflow completed successfully", "data": payload})
-}
-
-func verifyServiceDeploymentArtifacts(client routerSSHClient, script string) (map[string]interface{}, error) {
-	checks := map[string]interface{}{}
-	missing := make([]string, 0)
-
-	artifactSpecs := []struct {
-		key      string
-		label    string
-		pattern  *regexp.Regexp
-		command  string
-		field    string
-	}{
-		{key: "pppoe_servers", label: "PPPoE server", pattern: regexp.MustCompile(`/interface pppoe-server server add service-name="([^"]+)"`), command: "/interface pppoe-server server print detail without-paging where service-name=\"%s\"", field: "service-name"},
-		{key: "ppp_profiles", label: "PPP profile", pattern: regexp.MustCompile(`/ppp profile add name="([^"]+)"`), command: "/ppp profile print detail without-paging where name=\"%s\"", field: "name"},
-		{key: "hotspot_servers", label: "Hotspot server", pattern: regexp.MustCompile(`/ip hotspot add name="([^"]+)"`), command: "/ip hotspot print detail without-paging where name=\"%s\"", field: "name"},
-		{key: "hotspot_profiles", label: "Hotspot profile", pattern: regexp.MustCompile(`/ip hotspot profile add name="([^"]+)"`), command: "/ip hotspot profile print detail without-paging where name=\"%s\"", field: "name"},
-	}
-
-	for _, spec := range artifactSpecs {
-		expected := uniqueRegexMatches(spec.pattern, script)
-		if len(expected) == 0 {
-			continue
-		}
-
-		verified := make([]string, 0, len(expected))
-		missingForSpec := make([]string, 0)
-		for _, name := range expected {
-			output, err := client.Execute(fmt.Sprintf(spec.command, name))
-			if err != nil {
-				return checks, fmt.Errorf("verification command failed for %s %q: %w", spec.label, name, err)
-			}
-			if strings.Contains(output, spec.field+"=\""+name+"\"") || strings.Contains(output, spec.field+": "+name) || strings.Contains(output, spec.field+"="+name) {
-				verified = append(verified, name)
-				continue
-			}
-			missingForSpec = append(missingForSpec, name)
-			missing = append(missing, fmt.Sprintf("%s %q", spec.label, name))
-		}
-
-		checks[spec.key] = map[string]interface{}{
-			"expected": expected,
-			"verified": verified,
-			"missing":  missingForSpec,
-		}
-	}
-
-	if len(missing) > 0 {
-		return checks, fmt.Errorf("missing deployed artifacts: %s", strings.Join(missing, ", "))
-	}
-
-	return checks, nil
-}
-
-func uniqueRegexMatches(pattern *regexp.Regexp, script string) []string {
-	matches := pattern.FindAllStringSubmatch(script, -1)
-	if len(matches) == 0 {
-		return nil
-	}
-	values := make([]string, 0, len(matches))
-	seen := make(map[string]struct{}, len(matches))
-	for _, match := range matches {
-		if len(match) < 2 {
-			continue
-		}
-		value := strings.TrimSpace(match[1])
-		if value == "" {
-			continue
-		}
-		if _, exists := seen[value]; exists {
-			continue
-		}
-		seen[value] = struct{}{}
-		values = append(values, value)
-	}
-	return values
 }
 
 // VerifyConnectivity handles connectivity verification requests
@@ -766,23 +682,17 @@ func (h *Handler) executeProvisionServiceCommand(req models.CommandRequest) {
 
 	identity := parseSingleKeyValueBlock(identityOutput)
 	resource := parseSingleKeyValueBlock(resourceOutput)
-	verificationChecks, verifyErr := verifyServiceDeploymentArtifacts(client, req.Payload.Script)
-	if verifyErr != nil {
-		h.reportCommandEvent(req, "failed", 100, "Service deployment verification failed", map[string]interface{}{"command_results": results, "executed_commands": executedCommands, "verification_checks": verificationChecks}, verifyErr.Error(), "verifying_deployment", true)
-		return
-	}
 	payload := map[string]interface{}{
-		"router_id":           req.RouterID,
-		"status":              "connected",
-		"executed_at":         time.Now(),
-		"executed_commands":   executedCommands,
-		"command_results":     results,
-		"model":               valueOrDefault(resource["board-name"], "Unknown"),
-		"os_version":          valueOrDefault(resource["version"], "Unknown"),
-		"identity":            valueOrDefault(identity["name"], "Unknown"),
-		"interfaces":          []string{},
-		"last_seen":           time.Now(),
-		"verification_checks": verificationChecks,
+		"router_id":         req.RouterID,
+		"status":            "connected",
+		"executed_at":       time.Now(),
+		"executed_commands": executedCommands,
+		"command_results":   results,
+		"model":             valueOrDefault(resource["board-name"], "Unknown"),
+		"os_version":        valueOrDefault(resource["version"], "Unknown"),
+		"identity":          valueOrDefault(identity["name"], "Unknown"),
+		"interfaces":        []string{},
+		"last_seen":         time.Now(),
 	}
 	h.reportCommandEvent(req, "completed", 100, "Service provisioning workflow completed successfully", payload, "", "completed", true)
 }
@@ -809,33 +719,11 @@ func (h *Handler) executeDeployScriptCommand(req models.CommandRequest) {
 		return
 	}
 
-	h.reportCommandEvent(req, "running", 80, "Verifying script deployment", map[string]interface{}{"executed_commands": executedCommands}, "", "verifying_deployment", false)
-	identityOutput, err := client.Execute("/system identity print")
-	if err != nil {
-		h.reportCommandEvent(req, "failed", 100, "Unable to read router identity after script deployment", map[string]interface{}{"command_results": results, "executed_commands": executedCommands}, err.Error(), "verifying_deployment", true)
-		return
-	}
-	resourceOutput, err := client.Execute("/system resource print")
-	if err != nil {
-		h.reportCommandEvent(req, "failed", 100, "Unable to read router resources after script deployment", map[string]interface{}{"command_results": results, "executed_commands": executedCommands}, err.Error(), "verifying_deployment", true)
-		return
-	}
-	identity := parseSingleKeyValueBlock(identityOutput)
-	resource := parseSingleKeyValueBlock(resourceOutput)
-	verificationChecks, verifyErr := verifyServiceDeploymentArtifacts(client, req.Payload.Script)
-	if verifyErr != nil {
-		h.reportCommandEvent(req, "failed", 100, "Script deployment verification failed", map[string]interface{}{"command_results": results, "executed_commands": executedCommands, "verification_checks": verificationChecks}, verifyErr.Error(), "verifying_deployment", true)
-		return
-	}
 	payload := map[string]interface{}{
-		"router_id":           req.RouterID,
-		"executed_at":         time.Now(),
-		"executed_commands":   executedCommands,
-		"command_results":     results,
-		"model":               valueOrDefault(resource["board-name"], "Unknown"),
-		"os_version":          valueOrDefault(resource["version"], "Unknown"),
-		"identity":            valueOrDefault(identity["name"], "Unknown"),
-		"verification_checks": verificationChecks,
+		"router_id":         req.RouterID,
+		"executed_at":       time.Now(),
+		"executed_commands": executedCommands,
+		"command_results":   results,
 	}
 	h.reportCommandEvent(req, "completed", 100, "Script deployed successfully", payload, "", "completed", true)
 }
@@ -1103,7 +991,7 @@ func parseInterfaces(output string) []map[string]string {
 	interfaces := make([]map[string]string, 0)
 	lines := strings.Split(output, "\n")
 	var current map[string]string
-	startPattern := regexp.MustCompile(`^\d+\s+.*\bname=("([^"]+)"|([^\s]+))`)
+	startPattern := regexp.MustCompile(`^\d+\s+.*name="([^"]+)"`)
 	typePattern := regexp.MustCompile(`\btype=([^\s]+)`)
 	mtuPattern := regexp.MustCompile(`\bmtu=(\d+)`)
 	commentPattern := regexp.MustCompile(`\bcomment="([^"]*)"`)
@@ -1120,11 +1008,7 @@ func parseInterfaces(output string) []map[string]string {
 			if current != nil {
 				interfaces = append(interfaces, current)
 			}
-			name := matches[2]
-			if name == "" {
-				name = matches[3]
-			}
-			current = map[string]string{"name": name, "type": "ether", "running": "false", "mtu": "1500", "comment": ""}
+			current = map[string]string{"name": matches[1], "type": "ether", "running": "false", "mtu": "1500", "comment": ""}
 			if strings.Contains(rawLine, " R ") || strings.Contains(rawLine, "running=yes") || strings.Contains(rawLine, "running=true") {
 				current["running"] = "true"
 			}
@@ -2227,31 +2111,6 @@ func fallbackVPNConfigStatus(current string) string {
 }
 
 func (h *Handler) reportProvisioningWorkflowEvent(callback *models.TaskCallbackConfig, workflowKey string, routerID string, status string, progress int, message string, result map[string]interface{}, errorMessage string, stage string, terminal bool) {
-	fields := logrus.Fields{
-		"workflow_key": workflowKey,
-		"router_id":    routerID,
-		"status":       status,
-		"stage":        stage,
-		"progress":     progress,
-		"terminal":     terminal,
-		"has_callback": callback != nil && strings.TrimSpace(callback.URL) != "",
-		"result_keys":  mapKeys(result),
-	}
-	if result != nil {
-		if tenantID, ok := result["tenant_id"].(string); ok && strings.TrimSpace(tenantID) != "" {
-			fields["tenant_id"] = tenantID
-		}
-		if commandID, ok := result["command_id"].(string); ok && strings.TrimSpace(commandID) != "" {
-			fields["command_id"] = commandID
-		}
-	}
-	if errorMessage != "" {
-		fields["error"] = errorMessage
-		h.logger.WithFields(fields).Warn("Provisioning workflow event emitted")
-	} else {
-		h.logger.WithFields(fields).Info("Provisioning workflow event emitted")
-	}
-
 	if terminal {
 		if status == "completed" {
 			_ = h.workflowStore.RecordCompletion(workflowKey, stage, progress, message, result)
@@ -2262,7 +2121,7 @@ func (h *Handler) reportProvisioningWorkflowEvent(callback *models.TaskCallbackC
 		_ = h.workflowStore.RecordProgress(workflowKey, stage, progress, message, result)
 	}
 
-	payload := h.buildCallbackPayload(callback, status, progress, message, result, errorMessage, stage, terminal)
+	payload := h.buildCallbackPayload(status, progress, message, result, errorMessage, stage, terminal)
 	if callback == nil || strings.TrimSpace(callback.URL) == "" {
 		return
 	}
@@ -2283,31 +2142,22 @@ func (h *Handler) notifyTaskCallbackWithOptions(callback *models.TaskCallbackCon
 	if callback == nil || strings.TrimSpace(callback.URL) == "" {
 		return
 	}
-	payload := h.buildCallbackPayload(callback, status, progress, message, result, errorMessage, stage, terminal)
+	payload := h.buildCallbackPayload(status, progress, message, result, errorMessage, stage, terminal)
 	if err := h.sendCallbackPayload(callback.URL, callback.APIKey, payload); err != nil {
 		h.logger.WithError(err).Warn("Task callback request failed, queued for retry")
 		_ = h.workflowStore.EnqueueCallback(h.callbackRetryKey(callback, stage), "", callback.URL, h.callbackRetryAPIKey(callback), payload, err.Error())
 	}
 }
 
-func (h *Handler) buildCallbackPayload(callback *models.TaskCallbackConfig, status string, progress int, message string, result map[string]interface{}, errorMessage string, stage string, terminal bool) map[string]interface{} {
+func (h *Handler) buildCallbackPayload(status string, progress int, message string, result map[string]interface{}, errorMessage string, stage string, terminal bool) map[string]interface{} {
 	body := map[string]interface{}{
-		"status":      status,
-		"progress":    progress,
-		"message":     message,
-		"terminal":    terminal,
-		"callback_at": time.Now().UTC().Format(time.RFC3339Nano),
+		"status":   status,
+		"progress": progress,
+		"message":  message,
+		"terminal": terminal,
 	}
 	if stage != "" {
 		body["stage"] = stage
-	}
-	if callback != nil {
-		if strings.TrimSpace(callback.TenantID) != "" {
-			body["tenant_id"] = strings.TrimSpace(callback.TenantID)
-		}
-		if strings.TrimSpace(callback.RouterID) != "" {
-			body["router_id"] = strings.TrimSpace(callback.RouterID)
-		}
 	}
 	if result != nil {
 		body["result"] = result
@@ -2316,18 +2166,6 @@ func (h *Handler) buildCallbackPayload(callback *models.TaskCallbackConfig, stat
 		body["error"] = errorMessage
 	}
 	return body
-}
-
-func mapKeys(values map[string]interface{}) []string {
-	if len(values) == 0 {
-		return []string{}
-	}
-	keys := make([]string, 0, len(values))
-	for key := range values {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	return keys
 }
 
 func (h *Handler) callbackRetryKey(callback *models.TaskCallbackConfig, stage string) string {
@@ -2374,7 +2212,6 @@ func (h *Handler) sendCallbackPayload(url string, apiKey string, body map[string
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
 	if apiKey != "" {
 		req.Header.Set("X-API-Key", apiKey)
 	}

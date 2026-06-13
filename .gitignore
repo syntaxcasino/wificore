@@ -46,8 +46,14 @@ screenshots/
 # ENVIRONMENT AND CONFIGURATION
 # ============================================================================
 
-# Environment files - NEVER commit these, they may contain secrets
-.env*
+# Environment files
+.env
+.env.*
+!.env.example
+!.env.production.example
+
+# Production configuration files (contain sensitive data)
+.env.production
 
 # ============================================================================
 # LOGS AND TEMPORARY FILES

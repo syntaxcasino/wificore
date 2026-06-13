@@ -85,52 +85,6 @@ class MikroTikRestApiService implements MikroTikApiInterface
     }
 
     /**
-     * Find the first record returned by a GET print call using exact filters.
-     */
-    private function findFirstRecord(string $endpoint, array $filters = []): ?array
-    {
-        $response = $this->get($endpoint . '/print', $filters);
-        $records = $response->json() ?? [];
-
-        if (isset($records['.id'])) {
-            return $records;
-        }
-
-        return $records[0] ?? null;
-    }
-
-    /**
-     * Determine whether a record satisfies all exact-match filters.
-     */
-    private function recordMatches(array $record, array $filters): bool
-    {
-        foreach ($filters as $key => $expected) {
-            $actual = $record[$key] ?? null;
-            if ((string) $actual !== (string) $expected) {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    /**
-     * Update an existing record by RouterOS internal ID.
-     */
-    private function updateRecord(string $endpoint, string $id, array $data): array
-    {
-        return $this->post($endpoint . '/set', array_merge(['.id' => $id], $data));
-    }
-
-    /**
-     * Add a new record on the target resource.
-     */
-    private function addRecord(string $endpoint, array $data): array
-    {
-        return $this->post($endpoint . '/add', $data);
-    }
-
-    /**
      * Create bridge interface
      */
     public function createBridge(string $name, ?string $comment = null): array
@@ -260,11 +214,6 @@ class MikroTikRestApiService implements MikroTikApiInterface
             $data['comment'] = $comment;
         }
 
-        $existing = $this->findFirstRecord('/interface/vlan', ['name' => $name]);
-        if ($existing && isset($existing['.id'])) {
-            return $this->updateRecord('/interface/vlan', (string) $existing['.id'], $data);
-        }
-
         return $this->post('/interface/vlan/add', $data);
     }
 
@@ -296,29 +245,10 @@ class MikroTikRestApiService implements MikroTikApiInterface
      */
     public function addInterfaceListMember(string $list, string $interface): array
     {
-        $existing = $this->findFirstRecord('/interface/list/member', [
-            'list' => $list,
-            'interface' => $interface,
-        ]);
-
-        if ($existing) {
-            return $existing;
-        }
-
         return $this->post('/interface/list/member/add', [
             'list' => $list,
             'interface' => $interface,
         ]);
-    }
-
-    public function upsertResource(string $endpoint, array $matchFilters, array $data): array
-    {
-        $existing = $this->findFirstRecord($endpoint, $matchFilters);
-        if ($existing && isset($existing['.id'])) {
-            return $this->updateRecord($endpoint, (string) $existing['.id'], $data);
-        }
-
-        return $this->addRecord($endpoint, $data);
     }
 
     /**
@@ -334,7 +264,7 @@ class MikroTikRestApiService implements MikroTikApiInterface
         int $keepaliveTimeout = 30,
         string $authentication = 'chap,mschap2'
     ): array {
-        $data = [
+        return $this->post('/interface/pppoe-server/server/add', [
             'service-name' => $serviceName,
             'interface' => $interface,
             'default-profile' => $profile,
@@ -344,14 +274,7 @@ class MikroTikRestApiService implements MikroTikApiInterface
             'keepalive-timeout' => $keepaliveTimeout,
             'authentication' => $authentication,
             'disabled' => 'no',
-        ];
-
-        $existing = $this->findFirstRecord('/interface/pppoe-server/server', ['service-name' => $serviceName]);
-        if ($existing && isset($existing['.id'])) {
-            return $this->updateRecord('/interface/pppoe-server/server', (string) $existing['.id'], $data);
-        }
-
-        return $this->post('/interface/pppoe-server/server/add', $data);
+        ]);
     }
 
     /**
@@ -397,13 +320,6 @@ class MikroTikRestApiService implements MikroTikApiInterface
             $data['comment'] = $comment;
         }
 
-        $existing = $comment
-            ? $this->findFirstRecord('/radius', ['comment' => $comment])
-            : $this->findFirstRecord('/radius', ['service' => $service, 'address' => $address]);
-        if ($existing && isset($existing['.id'])) {
-            return $this->updateRecord('/radius', (string) $existing['.id'], $data);
-        }
-
         return $this->post('/radius/add', $data);
     }
 
@@ -433,13 +349,6 @@ class MikroTikRestApiService implements MikroTikApiInterface
      */
     public function addFirewallFilterRule(array $params): array
     {
-        if (isset($params['comment']) && is_string($params['comment']) && $params['comment'] !== '') {
-            $existing = $this->findFirstRecord('/ip/firewall/filter', ['comment' => $params['comment']]);
-            if ($existing && isset($existing['.id'])) {
-                return $this->updateRecord('/ip/firewall/filter', (string) $existing['.id'], $params);
-            }
-        }
-
         return $this->post('/ip/firewall/filter/add', $params);
     }
 
@@ -469,13 +378,6 @@ class MikroTikRestApiService implements MikroTikApiInterface
      */
     public function addNatRule(array $params): array
     {
-        if (isset($params['comment']) && is_string($params['comment']) && $params['comment'] !== '') {
-            $existing = $this->findFirstRecord('/ip/firewall/nat', ['comment' => $params['comment']]);
-            if ($existing && isset($existing['.id'])) {
-                return $this->updateRecord('/ip/firewall/nat', (string) $existing['.id'], $params);
-            }
-        }
-
         return $this->post('/ip/firewall/nat/add', $params);
     }
 

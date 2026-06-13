@@ -13,7 +13,6 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Redis;
@@ -144,10 +143,7 @@ class RouterHandshakeMonitorJob implements ShouldQueue
         // this monitor to flip the router back to offline.
         $deployGracePeriodSeconds = 180;
         $recentlyDeployed = $router->last_seen
-            && abs(now()->diffInSeconds(
-                $router->last_seen instanceof Carbon ? $router->last_seen : Carbon::parse($router->last_seen),
-                false
-            )) <= $deployGracePeriodSeconds;
+            && abs(now()->diffInSeconds($router->last_seen, false)) <= $deployGracePeriodSeconds;
 
         // Determine current status based on handshake
         if (!$latestHandshake) {
@@ -161,8 +157,7 @@ class RouterHandshakeMonitorJob implements ShouldQueue
             }
             $handshakeAge = null;
         } else {
-            $handshakeTime = $latestHandshake instanceof Carbon ? $latestHandshake : Carbon::parse($latestHandshake);
-            $handshakeAge = abs(now()->diffInSeconds($handshakeTime, false));
+            $handshakeAge = abs(now()->diffInSeconds($latestHandshake, false));
             $isActive = $handshakeAge <= $inactiveThreshold;
             $newStatus = $isActive ? 'online' : 'offline';
             $newVpnStatus = $isActive ? 'active' : 'inactive';

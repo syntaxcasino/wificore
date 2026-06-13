@@ -142,7 +142,6 @@ RUN chmod 0440 /etc/sudoers.d/supervisorctl
 # Copy entrypoint scripts
 COPY --chmod=755 ./docker/entrypoint.sh /entrypoint.sh
 COPY --chmod=755 ./docker/telegraf-config-entrypoint.sh /telegraf-config-entrypoint.sh
-RUN chmod +x /var/www/html/docker/scheduler-loop.sh
 
 # Expose PHP-FPM port
 EXPOSE 9000

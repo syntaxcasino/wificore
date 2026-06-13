@@ -167,8 +167,6 @@ export function usePackages() {
         formSubmitted.value = false
         resetFormData()
       }, 1500)
-
-      return true
     } catch (err) {
       const errors = err.response?.data?.errors
       let errMsg
@@ -181,7 +179,6 @@ export function usePackages() {
       formMessage.value = { text: errMsg, type: 'error' }
       notify.error('Package Creation Failed', errMsg)
       console.error('addPackage error:', err.message, err.response?.data)
-      return false
     } finally {
       formSubmitting.value = false
     }

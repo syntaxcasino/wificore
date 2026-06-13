@@ -13,23 +13,6 @@ class TenantMigrationManager
 {
     private const LOCK_TIMEOUT_SQLSTATE = '55P03';
 
-    private const MIGRATION_REQUIRED_TABLES = [
-        '2025_12_05_000000_create_tenant_router_tables' => ['routers'],
-        '2025_12_05_000001_create_tenant_packages_table' => ['packages'],
-        '2025_12_06_000001_create_tenant_vpn_tables' => [
-            'vpn_configurations',
-            'vpn_subnet_allocations',
-        ],
-        '2025_12_31_000011_create_tenant_payment_tables' => [
-            'payments',
-            'user_subscriptions',
-            'payment_reminders',
-            'service_control_logs',
-        ],
-        '2025_12_31_000013_move_hotspot_entities_to_tenant' => ['user_sessions'],
-        '2026_06_01_000001_create_health_score_snapshots_table' => ['health_score_snapshots'],
-    ];
-
     /**
      * Run all tenant migrations for a specific tenant.
      * Each migration runs in its own transaction to prevent cascade failures.
@@ -65,20 +48,9 @@ class TenantMigrationManager
             foreach ($migrationFiles as $migrationFile) {
                 $migrationName = pathinfo($migrationFile, PATHINFO_FILENAME);
 
-                $missingTables = $this->missingRequiredTablesForMigration($tenant, $migrationName);
-                if (in_array($migrationName, $executedMigrations, true) && $missingTables === []) {
+                if (in_array($migrationName, $executedMigrations)) {
                     $skippedCount++;
                     continue;
-                }
-
-                if (in_array($migrationName, $executedMigrations, true) && $missingTables !== []) {
-                    Log::warning('Tenant migration record exists but required tables are missing; rerunning migration', [
-                        'tenant_id' => $tenant->id,
-                        'schema_name' => $tenant->schema_name,
-                        'migration' => $migrationName,
-                        'missing_tables' => $missingTables,
-                    ]);
-                    $this->forgetMigrationRecord($tenant, $migrationName);
                 }
 
                 // If a migration is repeatedly failing due to lock contention, back off
@@ -449,75 +421,21 @@ class TenantMigrationManager
     public function hasPendingMigrations(Tenant $tenant): bool
     {
         try {
-            $migrationFiles = $this->getTenantMigrationFiles();
-            $executedMigrations = $this->getExecutedMigrations($tenant);
+            $migrationFiles      = $this->getTenantMigrationFiles();
+            $executedMigrations  = $this->getExecutedMigrations($tenant);
 
             foreach ($migrationFiles as $file) {
                 $name = pathinfo($file, PATHINFO_FILENAME);
-                if (!in_array($name, $executedMigrations, true)) {
+                if (!in_array($name, $executedMigrations)) {
                     return true;
                 }
             }
 
-            return $this->missingRequiredTables($tenant) !== [];
+            return false;
         } catch (\Exception $e) {
             Log::warning("Could not determine pending migrations for tenant {$tenant->id}: " . $e->getMessage());
-            return true;
-        }
-    }
-
-    public function tenantTableExists(Tenant $tenant, string $tableName): bool
-    {
-        if (empty($tenant->schema_name)) {
             return false;
         }
-
-        $result = DB::selectOne(<<<'SQL'
-            SELECT EXISTS (
-                SELECT FROM information_schema.tables
-                WHERE table_schema = ?
-                  AND table_name = ?
-            ) AS exists
-        SQL, [(string) $tenant->schema_name, $tableName]);
-
-        return (bool) ($result->exists ?? false);
-    }
-
-    public function missingRequiredTables(Tenant $tenant): array
-    {
-        $missing = [];
-
-        foreach (self::MIGRATION_REQUIRED_TABLES as $tables) {
-            foreach ($tables as $table) {
-                if (!$this->tenantTableExists($tenant, $table)) {
-                    $missing[] = $table;
-                }
-            }
-        }
-
-        return array_values(array_unique($missing));
-    }
-
-    private function missingRequiredTablesForMigration(Tenant $tenant, string $migrationName): array
-    {
-        $tables = self::MIGRATION_REQUIRED_TABLES[$migrationName] ?? [];
-        $missing = [];
-
-        foreach ($tables as $table) {
-            if (!$this->tenantTableExists($tenant, $table)) {
-                $missing[] = $table;
-            }
-        }
-
-        return $missing;
-    }
-
-    private function forgetMigrationRecord(Tenant $tenant, string $migrationName): void
-    {
-        DB::table('tenant_schema_migrations')
-            ->where('tenant_id', $tenant->id)
-            ->where('migration', $migrationName)
-            ->delete();
     }
 
     /**

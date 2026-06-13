@@ -1,16 +1,5 @@
 <?php
 
-
-$testResultsCache = __DIR__ . '/../vendor/pestphp/pest/.temp/test-results';
-if (is_file($testResultsCache)) {
-    @unlink($testResultsCache);
-}
-
-$testResultsDir = dirname($testResultsCache);
-if (! is_dir($testResultsDir)) {
-    @mkdir($testResultsDir, 0775, true);
-}
-
 /*
 |--------------------------------------------------------------------------
 | Test Case

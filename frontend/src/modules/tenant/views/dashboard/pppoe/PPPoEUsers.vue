@@ -939,29 +939,6 @@ const { packages, fetchPackages } = usePackages()
 const { routers, fetchRouters } = useRouters()
 const pppoePackages = computed(() => (packages.value || []).filter(p => p?.type === 'pppoe'))
 
-const lookupLoaded = ref(false)
-const lookupLoading = ref(false)
-const ensureLookupDataLoaded = async () => {
-  if (lookupLoaded.value || lookupLoading.value) return
-  lookupLoading.value = true
-  try {
-    await Promise.allSettled([fetchPackages(), fetchRouters()])
-    lookupLoaded.value = true
-  } finally {
-    lookupLoading.value = false
-  }
-}
-
-const deferLookupPrefetch = () => {
-  if (typeof window === 'undefined') return
-  const run = () => ensureLookupDataLoaded()
-  if (typeof window.requestIdleCallback === 'function') {
-    window.requestIdleCallback(run, { timeout: 1200 })
-  } else {
-    setTimeout(run, 350)
-  }
-}
-
 const { filters, searchQuery, filteredData, hasActiveFilters } = useFilters(users, { status: '', package_id: '' })
 const { currentPage, itemsPerPage, paginatedData, totalPages } = usePagination(filteredData, 10)
 
@@ -1000,7 +977,6 @@ const paymentTotals = computed(() => {
 })
 
 const openUserPanel = async (user) => {
-  ensureLookupDataLoaded()
   panelUser.value   = user
   showUserPanel.value = true
   activeTab.value   = 'details'
@@ -1390,7 +1366,6 @@ const generatedPassword = ref('')
 const createdUser       = ref(null)
 
 const openAddUser = () => {
-  ensureLookupDataLoaded()
   addFormError.value = ''
   Object.keys(addFieldErrors).forEach(k => addFieldErrors[k] = '')
   Object.assign(addForm, { username: '', package_id: '', router_id: '', simultaneous_use: 1 })
@@ -1636,7 +1611,8 @@ const handleDeleteUser = async (user) => {
 // ── Lifecycle ─────────────────────────────────────────────────────────────
 onMounted(() => {
   fetchUsers()
-  deferLookupPrefetch()
+  fetchPackages()
+  fetchRouters()
   subscribeToWebSocket()
   document.addEventListener('click', handleClickOutside)
   document.addEventListener('keydown', handleKeydown)

@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Carbon\Carbon;
@@ -35,7 +36,7 @@ class BackupDatabase extends Command
         $host = config('database.connections.pgsql.host');
         $port = config('database.connections.pgsql.port');
         
-        $backupDir = env('DB_BACKUP_PATH', storage_path('app/backups/database'));
+        $backupDir = storage_path('app/backups/database');
         
         // Create backup directory if it doesn't exist
         if (!file_exists($backupDir)) {

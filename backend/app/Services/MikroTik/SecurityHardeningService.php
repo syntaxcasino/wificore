@@ -146,8 +146,8 @@ class SecurityHardeningService extends TenantAwareService
     {
         try {
             $commands = [
-                '/ip hotspot walled-garden remove [find comment~="WiFiCore"]',
-                '/ip hotspot walled-garden ip remove [find comment~="WiFiCore"]',
+                ':foreach rule in=[/ip hotspot walled-garden find] do={ /ip hotspot walled-garden remove $rule }',
+                ':foreach rule in=[/ip hotspot walled-garden ip find] do={ /ip hotspot walled-garden ip remove $rule }',
             ];
 
             $hosts = [

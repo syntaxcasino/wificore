@@ -108,10 +108,7 @@
               :class="activeTab === tab.id ? 'bg-white text-purple-700 shadow-sm' : 'text-purple-200 hover:text-white hover:bg-white/10'"
             >
               <svg v-if="tab.id === 'system'" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
-              <svg v-else-if="tab.id === 'compliance'" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3l7 4v5c0 5-3.5 9.5-7 11-3.5-1.5-7-6-7-11V7l7-4z" /><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4" /></svg>
               <svg v-else-if="tab.id === 'events'" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-              <svg v-else-if="tab.id === 'assistant'" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6V4m0 16v-2m8-6h-2M6 12H4m13.657 5.657-1.414-1.414M7.757 7.757 6.343 6.343m12.728 0-1.414 1.414M7.757 16.243l-1.414 1.414M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-              <svg v-else-if="tab.id === 'inventory'" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 7l9-4 9 4-9 4-9-4z" /><path stroke-linecap="round" stroke-linejoin="round" d="M3 7v10l9 4 9-4V7" /><path stroke-linecap="round" stroke-linejoin="round" d="M12 11v10" /></svg>
               <svg v-else-if="tab.id === 'reports'" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
               <svg v-else-if="tab.id === 'users'" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
               <svg v-else-if="tab.id === 'payments'" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
@@ -190,274 +187,6 @@
 
         <!-- Router Details -->
         <div class="space-y-4">
-
-        <!-- Compliance Tab -->
-        <div v-show="activeTab === 'compliance'" class="space-y-4">
-          <RouterComplianceWidgetClean
-            :report="complianceReport"
-            :loading="complianceLoading"
-            :error="complianceError"
-            @refresh="loadCompliance(true)"
-          />
-        </div>
-
-        <!-- Configuration Preview -->
-        <div v-show="activeTab === 'config'" class="space-y-4 mb-6">
-          <div class="grid grid-cols-1 xl:grid-cols-3 gap-4">
-            <div class="xl:col-span-1 space-y-4">
-              <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-                <h4 class="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
-                  <svg class="w-4 h-4 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-                  Preview Inputs
-                </h4>
-                <div class="space-y-3">
-                  <div>
-                    <label class="block text-xs font-medium text-slate-500 mb-1">Template</label>
-                    <select v-model="localOrchestrationTemplate" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
-                      <option v-for="template in templateMarketplace" :key="template.id" :value="template.id">{{ template.name }}</option>
-                    </select>
-                    <p class="mt-2 text-xs text-slate-500">{{ selectedOrchestrationTemplate?.description || 'Select a template from the marketplace to preview its rollout path.' }}</p>
-                  </div>
-
-                  <div class="grid grid-cols-2 gap-3">
-                    <div>
-                      <label class="block text-xs font-medium text-slate-500 mb-1">Change Type</label>
-                      <select v-model="localOrchestrationChangeType" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
-                        <option value="apply_service_configs">Apply Service Configs</option>
-                        <option value="deploy_service_config">Deploy Service Config</option>
-                        <option value="verify_connectivity">Verify Connectivity</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label class="block text-xs font-medium text-slate-500 mb-1">Batch Size</label>
-                      <input v-model.number="localOrchestrationBatchSize" type="number" min="1" max="50" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
-                    </div>
-                  </div>
-
-                  <div class="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                    <p class="text-[10px] uppercase tracking-wide text-slate-500">Target Router</p>
-                    <p class="font-bold text-slate-900">{{ routerDetails.name || 'Router' }}</p>
-                    <p class="text-xs text-slate-500 mt-1">{{ routerDetails.vendor || 'MikroTik' }} · {{ routerDetails.model || 'N/A' }} · {{ routerDetails.os_version || 'N/A' }}</p>
-                  </div>
-
-                  <button
-                    type="button"
-                    class="w-full inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
-                    :disabled="orchestrationLoading || !selectedOrchestrationTemplate"
-                    @click="generateOrchestrationPreview"
-                  >
-                    <svg v-if="orchestrationLoading" class="mr-2 h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-                    {{ orchestrationLoading ? 'Generating Preview...' : 'Generate Preview' }}
-                  </button>
-                </div>
-              </div>
-
-              <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-                <h4 class="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
-                  <svg class="w-4 h-4 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-                  Selected Template
-                </h4>
-                <p class="text-sm font-semibold text-slate-900">{{ selectedOrchestrationTemplate?.name || 'No template selected' }}</p>
-                <p class="text-xs text-slate-500 mt-1">{{ selectedOrchestrationTemplate?.description || 'Templates are loaded from the marketplace.' }}</p>
-                <div v-if="selectedOrchestrationTemplate" class="mt-3 rounded-xl border px-3 py-2 text-xs" :class="selectedOrchestrationTemplate.can_execute ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-amber-200 bg-amber-50 text-amber-800'">
-                  <p class="font-semibold uppercase tracking-wide">{{ selectedOrchestrationTemplate.execution_mode || 'preview_only' }}</p>
-                  <p class="mt-1">{{ selectedOrchestrationTemplate.execution_reason || 'Template execution details unavailable.' }}</p>
-                </div>
-                <div class="mt-3 flex flex-wrap gap-1">
-                  <span v-for="tag in (selectedOrchestrationTemplate?.tags || []).slice(0, 4)" :key="tag" class="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">{{ tag }}</span>
-                </div>
-              </div>
-
-              <div v-if="templateMarketplace?.length" class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-                <h4 class="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
-                  <svg class="w-4 h-4 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 7h18M5 7l1 12h12l1-12M10 11v4m4-4v4" /></svg>
-                  Template Marketplace
-                </h4>
-                <div class="space-y-2 max-h-64 overflow-y-auto pr-1">
-                  <button
-                    v-for="template in templateMarketplace"
-                    :key="template.id"
-                    type="button"
-                    @click="localOrchestrationTemplate = template.id"
-                    class="w-full text-left rounded-xl border p-3 transition-colors"
-                    :class="localOrchestrationTemplate === template.id ? 'border-indigo-300 bg-indigo-50' : 'border-slate-200 bg-white hover:bg-slate-50'"
-                  >
-                    <div class="flex items-center justify-between gap-2">
-                      <p class="text-sm font-semibold text-slate-900 truncate">{{ template.name }}</p>
-                      <span class="text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">{{ template.category || 'general' }}</span>
-                    </div>
-                    <p class="mt-1 text-xs text-slate-500 line-clamp-2">{{ template.description }}</p>
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div class="xl:col-span-2 space-y-4">
-              <div v-if="orchestrationError" class="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{{ orchestrationError }}</div>
-
-              <div v-if="orchestrationPreview" class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm space-y-4">
-                <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
-                  <div>
-                    <h4 class="text-base font-semibold text-slate-900">Preview Plan</h4>
-                    <p class="text-sm text-slate-500">{{ orchestrationPreview.execution_strategy?.ordering || 'Deterministic ordering' }} · {{ orchestrationPreview.execution_strategy?.batching || 'sequential' }}</p>
-                  </div>
-                  <div class="flex gap-2 text-xs">
-                    <span class="px-2 py-1 rounded-full bg-indigo-100 text-indigo-700">{{ orchestrationPreview.router_count }} router</span>
-                    <span class="px-2 py-1 rounded-full bg-emerald-100 text-emerald-700">{{ orchestrationPreview.supported_count }} supported</span>
-                    <span class="px-2 py-1 rounded-full bg-amber-100 text-amber-700">{{ orchestrationPreview.warning_count }} warnings</span>
-                  </div>
-                </div>
-
-                <div v-if="orchestrationPreview.warnings?.length" class="rounded-xl border border-amber-200 bg-amber-50 p-3">
-                  <p class="text-xs font-semibold uppercase tracking-wide text-amber-700 mb-2">Warnings</p>
-                  <ul class="space-y-1 text-sm text-amber-800">
-                    <li v-for="warning in orchestrationPreview.warnings" :key="warning">{{ warning }}</li>
-                  </ul>
-                </div>
-
-                <div class="space-y-2 max-h-[28rem] overflow-y-auto pr-1">
-                  <div v-for="plan in orchestrationPreview.router_plans || []" :key="plan.router_id" class="rounded-xl border border-slate-200 p-3">
-                    <div class="flex items-center justify-between gap-3">
-                      <div>
-                        <p class="font-semibold text-slate-900">{{ plan.name }}</p>
-                        <p class="text-xs text-slate-500">{{ plan.vendor }} · {{ plan.version_profile || 'n/a' }} · {{ plan.vendor_profile || 'n/a' }}</p>
-                      </div>
-                      <span class="text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full" :class="plan.supported ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'">{{ plan.supported ? 'supported' : 'blocked' }}</span>
-                    </div>
-                    <ul v-if="plan.warnings?.length" class="mt-2 space-y-1 text-xs text-slate-600">
-                      <li v-for="warning in plan.warnings" :key="warning">• {{ warning }}</li>
-                    </ul>
-                  </div>
-                </div>
-              </div>
-
-              <div v-else class="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">
-                Generate a preview to inspect the selected template, rollout ordering, and warnings for this router.
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Troubleshooting Assistant Tab -->
-        <div v-show="activeTab === 'assistant'" class="space-y-4">
-          <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-            <h4 class="text-sm font-semibold text-slate-700 mb-3 flex items-center">
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0zm0 0v1.5a3 3 0 11-6 0V12m6 0a3 3 0 00-6 0m6 0h4m-4 0H5" /></svg>
-              Deterministic Diagnosis
-            </h4>
-            <div v-if="routerDetails.troubleshooting" class="space-y-4">
-              <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <div class="rounded-lg bg-slate-50 border border-slate-200 p-3">
-                  <p class="text-[10px] uppercase tracking-wide text-slate-500">Severity</p>
-                  <p class="font-bold text-slate-900">{{ routerDetails.troubleshooting.severity || 'info' }}</p>
-                </div>
-                <div class="rounded-lg bg-slate-50 border border-slate-200 p-3">
-                  <p class="text-[10px] uppercase tracking-wide text-slate-500">Confidence</p>
-                  <p class="font-bold text-slate-900">{{ Math.round((routerDetails.troubleshooting.confidence || 0) * 100) }}%</p>
-                </div>
-                <div class="rounded-lg bg-slate-50 border border-slate-200 p-3">
-                  <p class="text-[10px] uppercase tracking-wide text-slate-500">Deterministic</p>
-                  <p class="font-bold text-slate-900">{{ routerDetails.troubleshooting.deterministic ? 'Yes' : 'No' }}</p>
-                </div>
-                <div class="rounded-lg bg-slate-50 border border-slate-200 p-3">
-                  <p class="text-[10px] uppercase tracking-wide text-slate-500">Generated</p>
-                  <p class="font-bold text-slate-900 text-sm">{{ formatDate(routerDetails.troubleshooting.generated_at) }}</p>
-                </div>
-              </div>
-
-              <div class="rounded-xl border border-indigo-200 bg-indigo-50/70 p-4">
-                <p class="text-[10px] uppercase tracking-wide text-indigo-600 font-semibold mb-1">Likely Cause</p>
-                <p class="text-slate-900 font-semibold">{{ routerDetails.troubleshooting.diagnosis }}</p>
-                <p class="text-sm text-slate-600 mt-1">{{ routerDetails.troubleshooting.summary }}</p>
-              </div>
-
-              <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <div class="rounded-xl border border-slate-200 p-4">
-                  <p class="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">Evidence</p>
-                  <ul class="space-y-2 text-sm text-slate-700">
-                    <li v-for="item in (routerDetails.troubleshooting.evidence || [])" :key="item" class="flex gap-2">
-                      <span class="text-indigo-500">•</span><span>{{ item }}</span>
-                    </li>
-                    <li v-if="!(routerDetails.troubleshooting.evidence || []).length" class="text-slate-500">No direct evidence recorded.</li>
-                  </ul>
-                </div>
-                <div class="rounded-xl border border-slate-200 p-4">
-                  <p class="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">Next Actions</p>
-                  <ul class="space-y-2 text-sm text-slate-700">
-                    <li v-for="item in (routerDetails.troubleshooting.next_actions || [])" :key="item" class="flex gap-2">
-                      <span class="text-emerald-500">•</span><span>{{ item }}</span>
-                    </li>
-                    <li v-if="!(routerDetails.troubleshooting.next_actions || []).length" class="text-slate-500">No recommended actions recorded.</li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-            <div v-else class="text-sm text-slate-500">Troubleshooting data is not available for this router yet.</div>
-          </div>
-        </div>
-
-        <!-- Inventory Topology Tab -->
-        <div v-show="activeTab === 'inventory'" class="space-y-4">
-          <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-            <h4 class="text-sm font-semibold text-slate-700 mb-4 flex items-center">
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2 text-sky-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 7l9-4 9 4-9 4-9-4z" /><path stroke-linecap="round" stroke-linejoin="round" d="M3 7v10l9 4 9-4V7" /><path stroke-linecap="round" stroke-linejoin="round" d="M12 11v10" /></svg>
-              Inventory Snapshot
-            </h4>
-            <div v-if="routerDetails.inventory_topology" class="space-y-4">
-              <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
-                <div class="rounded-lg bg-slate-50 border border-slate-200 p-3">
-                  <p class="text-[10px] uppercase tracking-wide text-slate-500">Routers</p>
-                  <p class="font-bold text-slate-900">{{ routerDetails.inventory_topology.summary?.routers || 0 }}</p>
-                </div>
-                <div class="rounded-lg bg-slate-50 border border-slate-200 p-3">
-                  <p class="text-[10px] uppercase tracking-wide text-slate-500">Access Points</p>
-                  <p class="font-bold text-slate-900">{{ routerDetails.inventory_topology.summary?.access_points || 0 }}</p>
-                </div>
-                <div class="rounded-lg bg-slate-50 border border-slate-200 p-3">
-                  <p class="text-[10px] uppercase tracking-wide text-slate-500">Online APs</p>
-                  <p class="font-bold text-slate-900">{{ routerDetails.inventory_topology.summary?.access_points_online || 0 }}</p>
-                </div>
-                <div class="rounded-lg bg-slate-50 border border-slate-200 p-3">
-                  <p class="text-[10px] uppercase tracking-wide text-slate-500">Offline APs</p>
-                  <p class="font-bold text-slate-900">{{ routerDetails.inventory_topology.summary?.access_points_offline || 0 }}</p>
-                </div>
-                <div class="rounded-lg bg-slate-50 border border-slate-200 p-3">
-                  <p class="text-[10px] uppercase tracking-wide text-slate-500">Health</p>
-                  <p class="font-bold text-slate-900">{{ routerDetails.inventory_topology.health?.score ?? '—' }}/100</p>
-                </div>
-              </div>
-
-              <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <div class="rounded-xl border border-slate-200 p-4">
-                  <p class="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">Topology Nodes</p>
-                  <div class="space-y-2 max-h-64 overflow-y-auto pr-1">
-                    <div v-for="node in (routerDetails.inventory_topology.nodes || [])" :key="node.id" class="rounded-lg border border-slate-200 p-3 bg-slate-50">
-                      <div class="flex items-center justify-between gap-3">
-                        <div>
-                          <p class="font-semibold text-slate-900">{{ node.label }}</p>
-                          <p class="text-xs text-slate-500">{{ node.sub_label || node.type }}</p>
-                        </div>
-                        <span class="text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full" :class="node.status === 'online' ? 'bg-emerald-100 text-emerald-700' : node.status === 'offline' ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-600'">{{ node.status || 'unknown' }}</span>
-                      </div>
-                    </div>
-                    <div v-if="!(routerDetails.inventory_topology.nodes || []).length" class="text-sm text-slate-500">No inventory nodes were found.</div>
-                  </div>
-                </div>
-                <div class="rounded-xl border border-slate-200 p-4">
-                  <p class="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">Uplink Edges</p>
-                  <div class="space-y-2 max-h-64 overflow-y-auto pr-1">
-                    <div v-for="edge in (routerDetails.inventory_topology.edges || [])" :key="edge.source + '-' + edge.target" class="rounded-lg border border-slate-200 p-3 bg-white">
-                      <p class="font-semibold text-slate-900 text-sm">{{ edge.label || 'link' }}</p>
-                      <p class="text-xs text-slate-500 font-mono">{{ edge.source }} → {{ edge.target }}</p>
-                    </div>
-                    <div v-if="!(routerDetails.inventory_topology.edges || []).length" class="text-sm text-slate-500">No topology edges were found.</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div v-else class="text-sm text-slate-500">Inventory topology data is not available for this router yet.</div>
-          </div>
-        </div>
           <!-- Basic Info Card -->
           <div v-show="activeTab === 'system'" class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
             <h4 class="text-sm font-semibold text-slate-700 mb-4 flex items-center">
@@ -557,34 +286,12 @@
             </h4>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label class="block text-xs font-medium text-slate-500 mb-1">Vendor</label>
-                <p class="text-slate-900">{{ routerDetails.vendor || 'MikroTik' }}</p>
-              </div>
-              <div>
                 <label class="block text-xs font-medium text-slate-500 mb-1">Model</label>
                 <p class="text-slate-900">{{ routerDetails.model || 'N/A' }}</p>
               </div>
               <div>
                 <label class="block text-xs font-medium text-slate-500 mb-1">OS Version</label>
                 <p class="text-slate-900">{{ routerDetails.os_version || 'N/A' }}</p>
-              </div>
-              <div>
-                <label class="block text-xs font-medium text-slate-500 mb-1">Capability Profile</label>
-                <p class="text-slate-900">
-                  {{ routerDetails.capability_profile || 'Pending detection' }}
-                  <span
-                    v-if="routerDetails.capability_supported === false && routerDetails.capability_error"
-                    class="ml-2 inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-700"
-                  >
-                    Unsupported
-                  </span>
-                </p>
-                <p
-                  v-if="routerDetails.capability_error"
-                  class="mt-1 text-xs text-amber-600"
-                >
-                  {{ routerDetails.capability_error }}
-                </p>
               </div>
               <div>
                 <label class="block text-xs font-medium text-slate-500 mb-1">Serial Number</label>
@@ -1580,141 +1287,6 @@
           </div>
         </div>
 
-        <!-- Provisioning Ledger Tab -->
-        <div v-show="activeTab === 'provisioning'" class="space-y-4">
-          <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
-            <div>
-              <label class="block text-xs font-medium text-slate-500 mb-1">Run</label>
-              <select
-                v-model="selectedProvisioningRunId"
-                class="w-full md:w-80 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
-                :disabled="provisioningLoading || provisioningRuns.length === 0"
-              >
-                <option v-if="!provisioningRuns.length" :value="null">No runs available</option>
-                <option
-                  v-for="run in provisioningRuns"
-                  :key="run.id"
-                  :value="run.id"
-                >
-                  {{ formatDate(run.created_at) }} · {{ formatEventAction(run.status) }} · {{ run.progress ?? 0 }}%
-                </option>
-              </select>
-            </div>
-            <div class="text-xs text-slate-500">Showing the most recent {{ provisioningRuns.length }} run(s)</div>
-          </div>
-
-          <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-              <div class="text-xs text-slate-500 mb-1">Recent Runs</div>
-              <div class="text-2xl font-bold text-slate-800">{{ provisioningLoading ? '…' : provisioningRuns.length }}</div>
-              <div class="text-xs text-slate-400 mt-1">Latest provisioning attempts</div>
-            </div>
-            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-              <div class="text-xs text-slate-500 mb-1">Latest Status</div>
-              <div class="text-2xl font-bold text-slate-800">{{ provisioningLoading ? '…' : (selectedProvisioningRun?.status ? formatEventAction(selectedProvisioningRun.status) : '—') }}</div>
-              <div class="text-xs text-slate-400 mt-1">Current run state</div>
-            </div>
-            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-              <div class="text-xs text-slate-500 mb-1">Progress</div>
-              <div class="text-2xl font-bold text-slate-800">{{ provisioningLoading ? '…' : ((selectedProvisioningRun?.progress ?? '—') + (selectedProvisioningRun?.progress !== undefined && selectedProvisioningRun?.progress !== null ? '%' : '')) }}</div>
-              <div class="text-xs text-slate-400 mt-1">Ledger progress snapshot</div>
-            </div>
-            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-              <div class="text-xs text-slate-500 mb-1">Steps</div>
-              <div class="text-2xl font-bold text-slate-800">{{ provisioningLoading ? '…' : (selectedProvisioningRun?.step_count ?? '—') }}</div>
-              <div class="text-xs text-slate-400 mt-1">Commands captured</div>
-            </div>
-          </div>
-
-          <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-            <div class="flex items-center justify-between gap-3 mb-4">
-              <div>
-                <h4 class="text-sm font-semibold text-slate-700">Provisioning Run Ledger</h4>
-                <p class="text-xs text-slate-500 mt-1">Read-only audit trail for the router provisioning flow.</p>
-              </div>
-              <button
-                type="button"
-                class="px-3 py-1.5 text-xs font-medium text-slate-700 bg-slate-100 rounded-md hover:bg-slate-200 transition-colors"
-                @click="loadProvisioningRuns"
-                :disabled="provisioningLoading"
-              >
-                {{ provisioningLoading ? 'Refreshing…' : 'Refresh' }}
-              </button>
-            </div>
-
-            <div v-if="provisioningLoading" class="flex items-center justify-center py-10 text-slate-500">
-              Loading provisioning runs...
-            </div>
-
-            <div v-else-if="provisioningError" class="bg-rose-50 border border-rose-200 rounded-lg p-4 text-rose-700">
-              <p class="text-sm font-medium">{{ provisioningError }}</p>
-              <button
-                type="button"
-                class="mt-3 px-3 py-1.5 text-xs font-medium text-white bg-rose-600 rounded-md hover:bg-rose-700 transition-colors"
-                @click="loadProvisioningRuns"
-              >
-                Retry
-              </button>
-            </div>
-
-            <div v-else-if="!selectedProvisioningRun" class="text-center py-10 text-slate-500">
-              No provisioning runs have been recorded for this router yet.
-            </div>
-
-            <div v-else class="space-y-4">
-              <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div class="bg-slate-50 rounded-lg border border-slate-200 p-3">
-                  <div class="text-xs text-slate-500 mb-1">Source</div>
-                  <div class="text-sm font-medium text-slate-800">{{ selectedProvisioningRun.source || 'router_task' }}</div>
-                </div>
-                <div class="bg-slate-50 rounded-lg border border-slate-200 p-3">
-                  <div class="text-xs text-slate-500 mb-1">Mode</div>
-                  <div class="text-sm font-medium text-slate-800">{{ selectedProvisioningRun.mode || 'deploy' }}</div>
-                </div>
-                <div class="bg-slate-50 rounded-lg border border-slate-200 p-3">
-                  <div class="text-xs text-slate-500 mb-1">Stage</div>
-                  <div class="text-sm font-medium text-slate-800">{{ selectedProvisioningRun.current_stage || 'queued' }}</div>
-                </div>
-              </div>
-
-              <div v-if="selectedProvisioningRun.error_message" class="bg-rose-50 border border-rose-200 rounded-lg p-4">
-                <div class="text-xs text-rose-700 font-semibold uppercase tracking-wide mb-1">Latest error</div>
-                <div class="text-sm text-rose-800">{{ selectedProvisioningRun.error_message }}</div>
-              </div>
-
-              <div class="space-y-3 max-h-[28rem] overflow-y-auto pr-1">
-                <div
-                  v-for="step in selectedProvisioningRun.steps"
-                  :key="step.id"
-                  class="rounded-lg border border-slate-200 p-4 bg-white shadow-sm"
-                >
-                  <div class="flex items-start justify-between gap-3">
-                    <div class="min-w-0">
-                      <div class="text-sm font-semibold text-slate-800 truncate">{{ formatEventAction(step.stage) }} · {{ formatEventAction(step.action) }}</div>
-                      <div class="text-xs text-slate-500 mt-1 font-mono break-all">{{ step.command || '—' }}</div>
-                    </div>
-                    <span
-                      class="text-[10px] font-bold uppercase tracking-wide px-2 py-1 rounded-full flex-shrink-0"
-                      :class="step.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : step.status === 'failed' ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700'"
-                    >
-                      {{ formatEventAction(step.status) }}
-                    </span>
-                  </div>
-                  <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mt-3 text-xs text-slate-600">
-                    <div>Seq: <span class="font-medium text-slate-800">{{ step.sequence }}</span></div>
-                    <div>Terminal: <span class="font-medium text-slate-800">{{ step.is_terminal ? 'Yes' : 'No' }}</span></div>
-                    <div>Duration: <span class="font-medium text-slate-800">{{ step.duration_ms ?? '—' }} ms</span></div>
-                    <div>Completed: <span class="font-medium text-slate-800">{{ formatDate(step.completed_at) }}</span></div>
-                  </div>
-                  <div v-if="step.trap_message || step.error_message" class="mt-3 text-xs text-rose-700 bg-rose-50 border border-rose-100 rounded-md p-3">
-                    {{ step.trap_message || step.error_message }}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
         <!-- Device Events Tab -->
         <div v-show="activeTab === 'events'" class="space-y-4">
           <!-- Events KPIs -->
@@ -1961,18 +1533,14 @@
 
 <script>
 import axios from 'axios'
-import { defineAsyncComponent } from 'vue'
 import SlideOverlay from '@/modules/common/components/base/SlideOverlay.vue'
 import { useRouterUtils } from '@/modules/common/composables/utils/useRouterUtils'
 import { useAuthStore } from '@/stores/auth'
 
-const { formatHandshakeDateTime, parseMemoryValue } = useRouterUtils()
+const { formatHandshakeDateTime, getMemoryUsage, getDiskUsage, parseMemoryValue } = useRouterUtils()
 
 export default {
-  components: {
-    SlideOverlay,
-    RouterComplianceWidgetClean: defineAsyncComponent(() => import('@/modules/tenant/components/routers/widgets/RouterComplianceWidgetClean.vue')),
-  },
+  components: { SlideOverlay },
   setup() {
     const authStore = useAuthStore()
     return { authStore }
@@ -1983,10 +1551,6 @@ export default {
     loading: Boolean,
     error: String,
     refreshing: Boolean,
-    templateMarketplace: {
-      type: Array,
-      default: () => [],
-    },
   },
   emits: ['close-details', 'refresh-details'],
   computed: {
@@ -2018,13 +1582,6 @@ export default {
       if (status === 'pending' || status === 'warning') return 'Warning'
       return 'Unknown'
     },
-    selectedOrchestrationTemplate() {
-      if (!this.localOrchestrationTemplate || !Array.isArray(this.templateMarketplace)) {
-        return null
-      }
-
-      return this.templateMarketplace.find((template) => template.id === this.localOrchestrationTemplate) || null
-    },
     vpnStatusBadgeClass() {
       const status = String(this.routerDetails.vpn_status || '').toLowerCase()
       return {
@@ -2046,18 +1603,6 @@ export default {
     },
     handshakeUtcTime() {
       return formatHandshakeDateTime(this.routerDetails, 'UTC')
-    },
-    selectedProvisioningRun() {
-      if (!Array.isArray(this.provisioningRuns) || this.provisioningRuns.length === 0) {
-        return null
-      }
-
-      if (this.selectedProvisioningRunId) {
-        const selected = this.provisioningRuns.find(run => run.id === this.selectedProvisioningRunId)
-        if (selected) return selected
-      }
-
-      return this.provisioningRuns[0] || null
     },
     groupedServices() {
       const services = this.routerDetails.services || []
@@ -2368,7 +1913,7 @@ export default {
             hour: '2-digit',
             minute: '2-digit',
           })
-        } catch {
+        } catch (e) {
           label = ''
         }
 
@@ -2506,7 +2051,7 @@ export default {
             hour: '2-digit',
             minute: '2-digit',
           })
-        } catch {
+        } catch (e) {
           label = ''
         }
 
@@ -2567,32 +2112,15 @@ export default {
       eventsSummary: {},
       eventsMeta: null,
       eventsLevelFilter: 'all',
-      provisioningLoading: false,
-      provisioningError: '',
-      provisioningRuns: [],
-      selectedProvisioningRunId: null,
-      complianceLoading: false,
-      complianceError: '',
-      complianceReport: null,
       tabs: [
         { id: 'system', label: 'System Information' },
-        { id: 'compliance', label: 'Compliance' },
-        { id: 'provisioning', label: 'Provisioning Runs' },
         { id: 'events', label: 'Device Events' },
-        { id: 'assistant', label: 'Assistant' },
-        { id: 'inventory', label: 'Inventory' },
         { id: 'reports', label: 'Reports' },
         { id: 'users', label: 'Internet Users' },
         { id: 'payments', label: 'Payments' },
         { id: 'backups', label: 'Backups' },
         { id: 'config', label: 'Configurations' },
       ],
-      orchestrationLoading: false,
-      orchestrationError: '',
-      orchestrationPreview: null,
-      localOrchestrationTemplate: '',
-      localOrchestrationChangeType: 'apply_service_configs',
-      localOrchestrationBatchSize: 1,
       trafficLoading: false,
       trafficError: '',
       trafficData: [],
@@ -2648,8 +2176,6 @@ export default {
     if (this.showDetailsOverlay) {
       this.loadTraffic()
       this.loadResources()
-      this.loadCompliance()
-      this.loadProvisioningRuns()
       // Only subscribe if not already subscribed to this router
       if (this.subscribedRouterId !== this.routerDetails?.id) {
         this.subscribeToMetrics()
@@ -2661,10 +2187,7 @@ export default {
       if (val) {
         this.loadTraffic()
         this.loadResources()
-        this.loadCompliance()
-        this.loadProvisioningRuns()
         this.subscribeToMetrics()
-        this.initOrchestrationDefaults()
         if (this.activeTab === 'events') {
           this.fetchRouterEvents()
         }
@@ -2675,37 +2198,19 @@ export default {
         this.eventsMeta = null
         this.eventsError = ''
         this.eventsLevelFilter = 'all'
-        this.provisioningRuns = []
-        this.provisioningError = ''
-        this.selectedProvisioningRunId = null
-        this.complianceReport = null
-        this.complianceError = ''
-        this.resetOrchestrationPreview()
       }
     },
     selectedRouter() {
       if (this.showDetailsOverlay) {
         this.loadTraffic()
         this.loadResources()
-        this.loadCompliance()
-        this.loadProvisioningRuns()
-        this.initOrchestrationDefaults()
       }
       this.eventsData = []
       this.eventsSummary = {}
       this.eventsMeta = null
       this.eventsError = ''
-      this.provisioningRuns = []
-      this.provisioningError = ''
-      this.selectedProvisioningRunId = null
-      this.complianceReport = null
-      this.complianceError = ''
-      this.resetOrchestrationPreview()
       if (this.showDetailsOverlay && this.activeTab === 'events') {
         this.$nextTick(() => this.fetchRouterEvents())
-      }
-      if (this.showDetailsOverlay && this.activeTab === 'provisioning') {
-        this.$nextTick(() => this.loadProvisioningRuns())
       }
     },
     trafficTimeRange() {
@@ -2722,21 +2227,6 @@ export default {
       if (val === 'events' && !this.eventsData.length && !this.eventsLoading) {
         this.fetchRouterEvents()
       }
-      if (val === 'compliance' && !this.complianceReport && !this.complianceLoading) {
-        this.loadCompliance()
-      }
-      if (val === 'config') {
-        this.initOrchestrationDefaults()
-      }
-      if (val === 'provisioning') {
-        this.loadProvisioningRuns()
-      }
-    },
-    templateMarketplace: {
-      immediate: true,
-      handler() {
-        this.initOrchestrationDefaults()
-      },
     },
   },
   methods: {
@@ -2772,125 +2262,6 @@ export default {
         this.eventsLoading = false
       }
     },
-    async loadCompliance(refresh = false) {
-      const routerId = this.routerDetails?.id
-      if (!routerId) {
-        return
-      }
-
-      this.complianceLoading = true
-      this.complianceError = ''
-
-      try {
-        const res = await axios.get(`/routers/${routerId}/compliance`, {
-          params: { refresh: refresh ? 1 : 0 },
-        })
-
-        if (res.data?.success) {
-          this.complianceReport = res.data.report || null
-        } else {
-          this.complianceError = res.data?.error || 'Failed to load compliance report'
-        }
-      } catch (e) {
-        this.complianceError = e.response?.data?.error || e.message || 'Failed to load compliance report'
-      } finally {
-        this.complianceLoading = false
-      }
-    },
-
-    async loadProvisioningRuns() {
-      const routerId = this.routerDetails?.id
-      if (!routerId) {
-        return
-      }
-
-      this.provisioningLoading = true
-      this.provisioningError = ''
-
-      try {
-        const res = await axios.get(`/routers/${routerId}/provisioning-runs`, {
-          params: { per_page: 5 },
-        })
-
-        if (res.data?.success) {
-          this.provisioningRuns = Array.isArray(res.data.runs) ? res.data.runs : []
-          const selected = this.selectedProvisioningRunId
-          if (!selected || !this.provisioningRuns.some(run => run.id === selected)) {
-            this.selectedProvisioningRunId = this.provisioningRuns[0]?.id || null
-          }
-        } else {
-          this.provisioningError = res.data?.error || 'Failed to load provisioning runs'
-        }
-      } catch (e) {
-        this.provisioningError = e.response?.data?.error || e.message || 'Failed to load provisioning runs'
-      } finally {
-        this.provisioningLoading = false
-      }
-    },
-
-    initOrchestrationDefaults() {
-      if (!Array.isArray(this.templateMarketplace) || this.templateMarketplace.length === 0) {
-        return
-      }
-
-      if (!this.localOrchestrationTemplate || !this.templateMarketplace.some((template) => template.id === this.localOrchestrationTemplate)) {
-        this.localOrchestrationTemplate = this.templateMarketplace[0].id
-      }
-    },
-    resetOrchestrationPreview() {
-      this.orchestrationLoading = false
-      this.orchestrationError = ''
-      this.orchestrationPreview = null
-      this.localOrchestrationTemplate = ''
-      this.localOrchestrationChangeType = 'apply_service_configs'
-      this.localOrchestrationBatchSize = 1
-    },
-    async generateOrchestrationPreview() {
-      const routerId = this.routerDetails?.id
-      const template = this.localOrchestrationTemplate
-
-      if (!routerId) {
-        this.orchestrationError = 'Router details are not available.'
-        return
-      }
-
-      if (!template) {
-        this.orchestrationError = 'Select a template before generating a preview.'
-        return
-      }
-
-      this.orchestrationLoading = true
-      this.orchestrationError = ''
-      this.orchestrationPreview = null
-
-      try {
-        const response = await axios.post('/routers/orchestration/preview', {
-          routers: [
-            {
-              id: routerId,
-              name: this.routerDetails.name || 'Router',
-              vendor: this.routerDetails.vendor || 'mikrotik',
-              model: this.routerDetails.model || '',
-              os_version: this.routerDetails.os_version || '',
-              status: this.routerDetails.status || 'unknown',
-            },
-          ],
-          change_type: this.localOrchestrationChangeType,
-          template,
-          batch_size: this.localOrchestrationBatchSize || 1,
-        })
-
-        if (!response.data?.success) {
-          throw new Error(response.data?.message || 'Failed to generate orchestration preview')
-        }
-
-        this.orchestrationPreview = response.data.plan || null
-      } catch (err) {
-        this.orchestrationError = err.response?.data?.message || err.response?.data?.error || err.message || 'Failed to generate orchestration preview'
-      } finally {
-        this.orchestrationLoading = false
-      }
-    },
     formatEventAction(action) {
       return (action || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
     },
@@ -2912,7 +2283,7 @@ export default {
           hour: '2-digit',
           minute: '2-digit',
         })
-      } catch {
+      } catch (e) {
         return ''
       }
     },
@@ -3076,7 +2447,7 @@ export default {
       try {
         const date = new Date(dateString)
         return date.toLocaleString()
-      } catch {
+      } catch (err) {
         return 'Invalid date'
       }
     },
@@ -3261,6 +2632,10 @@ export default {
         this.trafficData = points.slice(-60)
         this.trafficError = '' // Clear error on success
 
+        const lastPoint = this.trafficData[this.trafficData.length - 1] || {
+          download: 0,
+          upload: 0,
+        }
         // trafficStats now computed property - no need to set manually
         // this.trafficStats.download = lastPoint.download
         // this.trafficStats.upload = lastPoint.upload
@@ -3358,7 +2733,7 @@ export default {
       }
     },
     // calculateResourceStats removed - now computed property
-    getResourceMax() {
+    getResourceMax(type) {
       return 100 // CPU, Memory, Disk are all percentages 0-100
     },
     formatPercent(value) {

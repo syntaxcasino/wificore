@@ -483,56 +483,17 @@
                   </li>
                   <li class="flex items-start gap-2">
                     <span class="font-bold text-blue-600">2.</span>
-                    <span>Use Preview Dry-Run to validate the generated service plan</span>
-                  </li>
-                  <li class="flex items-start gap-2">
-                    <span class="font-bold text-blue-600">3.</span>
                     <span>Click Confirm & Deploy to apply all mappings</span>
                   </li>
                   <li class="flex items-start gap-2">
-                    <span class="font-bold text-blue-600">4.</span>
+                    <span class="font-bold text-blue-600">3.</span>
                     <span>Wait for deployment status to complete</span>
                   </li>
                   <li class="flex items-start gap-2">
-                    <span class="font-bold text-blue-600">5.</span>
+                    <span class="font-bold text-blue-600">4.</span>
                     <span>Monitor router status from the dashboard</span>
                   </li>
                 </ol>
-              </div>
-
-              <div v-if="lastDryRunSummary" class="bg-amber-50 border border-amber-200 rounded-lg p-4 shadow-sm">
-                <h5 class="text-sm font-bold text-amber-900 mb-2">Dry-run Summary</h5>
-                <div class="grid grid-cols-2 gap-2 text-xs text-amber-900">
-                  <div class="bg-white/70 rounded p-2">
-                    <span class="font-semibold">Script length:</span> {{ lastDryRunSummary.script_length ?? 0 }} chars
-                  </div>
-                  <div class="bg-white/70 rounded p-2">
-                    <span class="font-semibold">Interfaces:</span> {{ lastDryRunSummary.interface_count ?? 0 }} requested / {{ lastDryRunSummary.available_interface_count ?? 0 }} available
-                  </div>
-                </div>
-                <div v-if="Array.isArray(lastDryRunSummary.warnings) && lastDryRunSummary.warnings.length" class="mt-3 space-y-1">
-                  <div class="text-[11px] font-semibold text-amber-900">Warnings</div>
-                  <div v-for="(warn, idx) in lastDryRunSummary.warnings" :key="idx" class="text-[11px] text-amber-800">• {{ warn }}</div>
-                </div>
-                <div v-if="Array.isArray(lastDryRunSummary.missing_interfaces) && lastDryRunSummary.missing_interfaces.length" class="mt-3 text-[11px] text-amber-800">
-                  Missing interfaces: {{ lastDryRunSummary.missing_interfaces.join(', ') }}
-                </div>
-              </div>
-
-              <div v-if="serviceScript" class="bg-slate-900 rounded-lg overflow-hidden border border-slate-700 shadow-sm">
-                <div class="flex items-center justify-between px-4 py-3 border-b border-slate-700">
-                  <div>
-                    <h5 class="text-sm font-bold text-white">Dry-run Service Script</h5>
-                    <p class="text-xs text-slate-400">Preview output from RouterOS validation before deployment</p>
-                  </div>
-                  <button
-                    @click="copyToClipboard(serviceScript)"
-                    class="px-3 py-1.5 text-xs font-semibold rounded bg-slate-700 text-white hover:bg-slate-600 transition-colors"
-                  >
-                    Copy
-                  </button>
-                </div>
-                <pre class="max-h-56 overflow-auto p-4 text-[11px] leading-5 text-slate-100 whitespace-pre-wrap">{{ serviceScript }}</pre>
               </div>
             </div>
 
@@ -591,7 +552,7 @@
               Continue →
             </button>
 
-            <!-- Stage 3: Deploying - Preview / Confirm & Deploy -->
+            <!-- Stage 3: Deploying - Confirm & Deploy -->
             <button
               v-if="currentStage === 3 && provisioningProgress < 100"
               @click="$emit('close-form')"
@@ -599,14 +560,6 @@
               class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-50"
             >
               Cancel
-            </button>
-            <button
-              v-if="currentStage === 3 && provisioningProgress < 100"
-              @click="previewServiceConfig"
-              :disabled="mappingDeploying"
-              class="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-blue-300 rounded-lg hover:bg-blue-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Preview Dry-Run
             </button>
             <button
               v-if="currentStage === 3 && provisioningProgress < 100"
@@ -666,9 +619,12 @@ const {
   initialConfig,
   waitingForJobCompletion,
   provisioningLogs,
+  enableHotspot,
+  enablePPPoE,
   serviceScript,
-  lastDryRunSummary,
   availableInterfaces,
+  selectedHotspotInterfaces,
+  selectedPPPoEInterfaces,
   serviceMappings,
   mappingDeploying,
   mappingStatus,
@@ -676,9 +632,15 @@ const {
   setServiceMapping,
   confirmServiceMappingAndDeploy,
   connectionStatus,
+  deploymentFailed,
+  deploymentTimedOut,
+  hotspotConfig,
+  pppoeConfig,
   
   // Computed
   currentStageText,
+  deploymentStatusClass,
+  deploymentStatus,
   connectionStatusClass,
   connectionStatusTextClass,
   combinedScript,
@@ -687,11 +649,16 @@ const {
   // Methods
   createRouterWithConfig,
   continueToMonitoring,
-  previewServiceConfig,
+  previousStage,
+  generateServiceConfig,
+  deployConfiguration,
+  addLog,
   clearLogs,
   formatLogTime,
   getLogLevelClass,
   copyToClipboard,
+  toggleInterfaceSelection,
+  retryDeployment,
   resetForm,
 } = useRouterProvisioning(props, emit)
 </script>

@@ -3,10 +3,12 @@ import axios from 'axios'
 import { useToast } from '@/modules/common/composables/useToast.js'
 import { useConfirmStore } from '@/stores/confirm'
 import { CreditCard, Smartphone, Banknote, Building } from 'lucide-vue-next'
+import { readSnapshot, scheduleAfterPaint, writeSnapshot } from '@/modules/common/composables/performance/useViewCache'
 
 export function useAdminPayments() {
   const { error: showError, info: showInfo } = useToast()
   const confirmStore = useConfirmStore()
+  const cacheKey = () => `tenant:admin-payments:${localStorage.getItem('tenantId') || 'default'}:v1`
 
   const loading = ref(false)
   const refreshing = ref(false)
@@ -16,12 +18,19 @@ export function useAdminPayments() {
   const selectedPayment = ref(null)
   const showDetailsOverlay = ref(false)
   const showRecordOverlay = ref(false)
-  let paymentsFetchPromise = null
-  let fetchDebounceTimer = null
 
   const recordForm = ref({
     phone_number: '', amount: 0, payment_method: 'cash', transaction_id: ''
   })
+
+  const hydratePayments = () => {
+    const snapshot = readSnapshot(cacheKey(), 30 * 1000)
+    if (!Array.isArray(snapshot)) return false
+    payments.value = snapshot
+    return true
+  }
+
+  const persistPayments = () => writeSnapshot(cacheKey(), payments.value)
 
   const stats = computed(() => {
     const total = payments.value.reduce((sum, p) => sum + p.amount, 0)
@@ -48,60 +57,45 @@ export function useAdminPayments() {
     date ? new Date(date).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : 'N/A'
 
   const fetchPayments = async (filters = {}) => {
-    if (fetchDebounceTimer) {
-      clearTimeout(fetchDebounceTimer)
-    }
-
-    if (paymentsFetchPromise) {
-      fetchDebounceTimer = setTimeout(() => {
-        void fetchPayments(filters)
-      }, 300)
-      return paymentsFetchPromise
-    }
-
     const isInitial = payments.value.length === 0
     if (isInitial) {
-      loading.value = true
+      if (!hydratePayments()) {
+        scheduleAfterPaint(() => {
+          if (payments.value.length === 0) loading.value = true
+        })
+      }
     } else {
       refreshing.value = true
     }
-
     error.value = null
-
-    paymentsFetchPromise = (async () => {
-      try {
-        const params = { per_page: 100, ...filters }
-        const response = await axios.get('/payments', { params })
-        const data = response.data?.payments?.data || response.data?.payments || response.data?.data || []
-        payments.value = data.map(p => ({
-          id: p.id,
-          reference: p.reference || `PAY-${p.id}`,
-          transaction_id: p.transaction_id || p.mpesa_receipt || '',
-          customer_name: p.user?.name || p.phone_number || 'Unknown',
-          customer_email: p.user?.email || '',
-          phone_number: p.phone_number || p.user?.phone_number || '',
-          amount: Number(p.amount) || 0,
-          method: p.payment_method || 'mpesa',
-          status: p.status || 'completed',
-          invoice_number: p.invoice_number || null,
-          payment_date: p.created_at || p.paid_at || new Date().toISOString(),
-          package: p.package || null,
-          user: p.user || null,
-          _raw: p
-        }))
-        return payments.value
-      } catch (err) {
-        if (isInitial) error.value = err.response?.data?.message || 'Failed to load payments.'
-        console.error('fetchPayments error:', err)
-        return payments.value
-      } finally {
-        loading.value = false
-        refreshing.value = false
-        paymentsFetchPromise = null
-      }
-    })()
-
-    return paymentsFetchPromise
+    try {
+      const params = { per_page: 100, ...filters }
+      const response = await axios.get('/payments', { params })
+      const data = response.data?.payments?.data || response.data?.payments || response.data?.data || []
+      payments.value = data.map(p => ({
+        id: p.id,
+        reference: p.reference || `PAY-${p.id}`,
+        transaction_id: p.transaction_id || p.mpesa_receipt || '',
+        customer_name: p.user?.name || p.phone_number || 'Unknown',
+        customer_email: p.user?.email || '',
+        phone_number: p.phone_number || p.user?.phone_number || '',
+        amount: Number(p.amount) || 0,
+        method: p.payment_method || 'mpesa',
+        status: p.status || 'completed',
+        invoice_number: p.invoice_number || null,
+        payment_date: p.created_at || p.paid_at || new Date().toISOString(),
+        package: p.package || null,
+        user: p.user || null,
+        _raw: p
+      }))
+      persistPayments()
+    } catch (err) {
+      if (isInitial) error.value = err.response?.data?.message || 'Failed to load payments.'
+      console.error('fetchPayments error:', err)
+    } finally {
+      loading.value = false
+      refreshing.value = false
+    }
   }
 
   const viewPayment = (payment) => {

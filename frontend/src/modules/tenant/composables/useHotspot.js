@@ -2,6 +2,7 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import axios from 'axios'
 import { useAuthStore } from '@/stores/auth'
 import Echo from 'laravel-echo'
+import { readSnapshot, scheduleAfterPaint, writeSnapshot } from '@/modules/common/composables/performance/useViewCache'
 
 /**
  * Composable for managing Hotspot users, sessions, and real-time updates.
@@ -13,7 +14,21 @@ import Echo from 'laravel-echo'
  * - Track provisioning status
  */
 export function useHotspot() {
-  const authStore = useAuthStore()  
+  const authStore = useAuthStore()
+  const cacheKey = () => `tenant:hotspot:${authStore.user?.tenant_id || authStore.tenantId || 'default'}:v1`
+  const hydrateSnapshot = () => {
+    const snapshot = readSnapshot(cacheKey(), 30 * 1000)
+    if (!snapshot || typeof snapshot !== 'object') return false
+    if (Array.isArray(snapshot.users)) users.value = snapshot.users
+    if (Array.isArray(snapshot.sessions)) sessions.value = snapshot.sessions
+    if (Array.isArray(snapshot.packages)) packages.value = snapshot.packages
+    if (snapshot.pagination && typeof snapshot.pagination === 'object') {
+      pagination.value = { ...pagination.value, ...snapshot.pagination }
+    }
+    return true
+  }
+  const persistSnapshot = () => writeSnapshot(cacheKey(), { users: users.value, sessions: sessions.value, packages: packages.value, pagination: pagination.value })
+  
   // State
   const users = ref([])
   const sessions = ref([])
@@ -51,7 +66,15 @@ export function useHotspot() {
    * Fetch hotspot users from API
    */
   async function fetchUsers(params = {}) {
-    loading.value = true
+    if (users.value.length === 0) {
+      if (!hydrateSnapshot()) {
+        scheduleAfterPaint(() => {
+          if (users.value.length === 0) loading.value = true
+        })
+      }
+    } else {
+      loading.value = true
+    }
     error.value = null
     
     try {
@@ -74,6 +97,7 @@ export function useHotspot() {
           total: data.meta.total,
         }
       }
+      persistSnapshot()
       
       return users.value
     } catch (err) {
@@ -92,6 +116,7 @@ export function useHotspot() {
     try {
       const response = await axios.get('/hotspot/sessions', { params })
       sessions.value = response.data.data || response.data
+      persistSnapshot()
       return sessions.value
     } catch (err) {
       console.error('Error fetching sessions:', err)
@@ -112,6 +137,7 @@ export function useHotspot() {
       const userIndex = users.value.findIndex(u => u.id === userId)
       if (userIndex !== -1) {
         users.value[userIndex].status = 'disconnecting'
+        persistSnapshot()
       }
       
       return response.data
@@ -137,6 +163,7 @@ export function useHotspot() {
         const index = users.value.findIndex(u => u.id === userId)
         if (index !== -1) {
           users.value.splice(index, 1, { ...users.value[index], ...updatedUser })
+          persistSnapshot()
         }
       }
       
@@ -163,6 +190,7 @@ export function useHotspot() {
         const index = users.value.findIndex(u => u.id === userId)
         if (index !== -1) {
           users.value.splice(index, 1, { ...users.value[index], ...updatedUser })
+          persistSnapshot()
         }
       }
       
@@ -196,6 +224,7 @@ export function useHotspot() {
       if (newUser) {
         users.value.unshift(newUser)
         pagination.value.total += 1
+        persistSnapshot()
       }
       return response.data
     } catch (err) {
@@ -215,6 +244,7 @@ export function useHotspot() {
         const idx = users.value.findIndex(u => u.id === userId)
         if (idx !== -1) {
           users.value.splice(idx, 1, { ...users.value[idx], ...updated })
+          persistSnapshot()
         }
       }
       return response.data
@@ -237,6 +267,7 @@ export function useHotspot() {
     if (deletedUserIndex !== -1) {
       users.value.splice(deletedUserIndex, 1)
       pagination.value.total -= 1
+      persistSnapshot()
     }
 
     try {
@@ -247,6 +278,7 @@ export function useHotspot() {
       if (deletedUser) {
         users.value.splice(deletedUserIndex, 0, deletedUser)
         pagination.value.total += 1
+        persistSnapshot()
       }
       error.value = err.response?.data?.message || 'Failed to delete hotspot user'
       throw err
@@ -347,6 +379,7 @@ export function useHotspot() {
         subscription_expires_at: event.expires_at,
         package_name: event.package_name,
       }
+      persistSnapshot()
     }
   }
   
@@ -358,6 +391,7 @@ export function useHotspot() {
         status: 'revoked',
         has_active_subscription: false,
       }
+      persistSnapshot()
     }
   }
   
@@ -369,6 +403,7 @@ export function useHotspot() {
         status: 'expired',
         has_active_subscription: false,
       }
+      persistSnapshot()
     }
   }
   
@@ -385,6 +420,7 @@ export function useHotspot() {
     if (!exists && event.user) {
       users.value.unshift(event.user)
       pagination.value.total += 1
+      persistSnapshot()
     }
   }
 
@@ -393,6 +429,7 @@ export function useHotspot() {
     const index = users.value.findIndex(u => u.id === event.user?.id)
     if (index !== -1) {
       users.value.splice(index, 1, { ...users.value[index], ...event.user })
+      persistSnapshot()
     }
   }
 
@@ -402,6 +439,7 @@ export function useHotspot() {
     if (index !== -1) {
       users.value.splice(index, 1)
       pagination.value.total -= 1
+      persistSnapshot()
     }
   }
   
@@ -498,6 +536,7 @@ export function useHotspot() {
     try {
       const response = await axios.get('/hotspot/packages', { params: { per_page: 100 } })
       packages.value = response.data?.packages?.data || response.data?.packages || []
+      persistSnapshot()
     } catch (err) {
       console.error('fetchPackages error:', err)
     }
@@ -551,7 +590,15 @@ export function useHotspotProvisioning() {
    * Deploy hotspot to a router
    */
   async function deployHotspot(routerId, config = {}) {
-    loading.value = true
+    if (users.value.length === 0) {
+      if (!hydrateSnapshot()) {
+        scheduleAfterPaint(() => {
+          if (users.value.length === 0) loading.value = true
+        })
+      }
+    } else {
+      loading.value = true
+    }
     error.value = null
     
     try {
@@ -582,7 +629,15 @@ export function useHotspotProvisioning() {
    * Undeploy hotspot from a router
    */
   async function undeployHotspot(routerId, serviceId) {
-    loading.value = true
+    if (users.value.length === 0) {
+      if (!hydrateSnapshot()) {
+        scheduleAfterPaint(() => {
+          if (users.value.length === 0) loading.value = true
+        })
+      }
+    } else {
+      loading.value = true
+    }
     error.value = null
     
     try {

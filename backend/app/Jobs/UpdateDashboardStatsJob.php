@@ -14,11 +14,9 @@ use App\Models\User;
 use App\Models\Payment;
 use App\Models\UserSession;
 use App\Models\Package;
-use App\Models\UserSubscription;
 use App\Models\Tenant;
 use App\Events\DashboardStatsUpdated;
 use App\Services\MetricsService;
-use App\Support\SafeRelativeTime;
 use App\Traits\TenantAwareJob;
 use App\Http\Controllers\Api\TenantDashboardController;
 use Carbon\Carbon;
@@ -55,20 +53,13 @@ class UpdateDashboardStatsJob implements ShouldQueue
         // If no tenant ID is set, this is the main scheduler job.
         // We need to dispatch a job for each active tenant.
         if (!$this->tenantId) {
-            $dispatched = 0;
-
-            Tenant::query()
-                ->where('is_active', true)
-                ->where('schema_created', true)
-                ->whereNotNull('schema_name')
-                ->select('id')
-                ->cursor()
-                ->each(function ($tenant) use (&$dispatched): void {
-                    self::dispatch($tenant->id);
-                    $dispatched++;
-                });
-
-            \Log::info("Dispatched dashboard stats jobs for {$dispatched} tenants");
+            $tenants = Tenant::where('is_active', true)->get();
+            
+            foreach ($tenants as $tenant) {
+                self::dispatch($tenant->id);
+            }
+            
+            \Log::info("Dispatched dashboard stats jobs for " . $tenants->count() . " tenants");
             return;
         }
 
@@ -104,10 +95,13 @@ class UpdateDashboardStatsJob implements ShouldQueue
                 }
                 
                 // Total routers (tenant-scoped by schema)
-                $totalRouters = Router::query()->count();
-                $onlineRouters = Router::where('status', 'online')->count();
-                $offlineRouters = Router::where('status', 'offline')->count();
-                $provisioningRouters = Router::where('status', 'provisioning')->count();
+                $routerQuery = Router::query();
+                // tenant_id removed from routers table, implicit scoping by schema
+                
+                $totalRouters = $routerQuery->count();
+                $onlineRouters = $routerQuery->where('status', 'online')->count();
+                $offlineRouters = $routerQuery->where('status', 'offline')->count();
+                $provisioningRouters = $routerQuery->where('status', 'provisioning')->count();
 
                 $userSessionsTableExists = (bool) (DB::selectOne("
                     SELECT EXISTS (
@@ -153,22 +147,6 @@ class UpdateDashboardStatsJob implements ShouldQueue
                         'tenant_id' => $this->tenantId,
                         'schema_name' => $tenant->schema_name,
                     ]);
-                }
-
-                $paymentsTableExists = (bool) (DB::selectOne("
-                    SELECT EXISTS (
-                        SELECT FROM information_schema.tables
-                        WHERE table_schema = current_schema()
-                          AND table_name = 'payments'
-                    ) AS exists
-                ")->exists ?? false);
-
-                if (!$paymentsTableExists) {
-                    \Log::error('Payments table is missing after tenant migration repair; dashboard stats cannot run', [
-                        'tenant_id' => $this->tenantId,
-                        'schema_name' => $tenant->schema_name,
-                    ]);
-                    throw new \RuntimeException('Tenant payments table is missing after migration repair.');
                 }
 
                 // Total unique users
@@ -361,7 +339,7 @@ class UpdateDashboardStatsJob implements ShouldQueue
                         return [
                             'id' => $router->id,
                             'message' => "Router {$router->name} status changed to {$router->status}",
-                            'timestamp' => SafeRelativeTime::fromNow($router->updated_at),
+                            'timestamp' => $router->updated_at->diffForHumans(),
                         ];
                     });
 
@@ -507,9 +485,8 @@ class UpdateDashboardStatsJob implements ShouldQueue
                 $maxUserTrend = 1;
                 for ($i = 6; $i >= 0; $i--) {
                     $date = Carbon::now()->subDays($i);
-                    $count = $userSessionsTableExists
-                        ? UserSession::whereDate('start_time', $date->toDateString())->count()
-                        : 0;
+                    $count = UserSession::whereDate('start_time', $date->toDateString())
+                        ->count();
                     $maxUserTrend = max($maxUserTrend, $count);
                     $userTrendData[] = [
                         'label' => $date->format('D'),
@@ -545,84 +522,30 @@ class UpdateDashboardStatsJob implements ShouldQueue
                 }
 
                 // Get currently active sessions with user info (exclude admin users)
-                $onlineUsersList = collect();
-                if ($userSessionsTableExists) {
-                    $onlineUsersList = UserSession::where('status', 'active')
-                        ->where(function($query) {
-                            $query->whereNull('end_time')
-                                  ->orWhere('end_time', '>', now());
-                        })
-                        ->with('payment.user:id,name,email,role')
-                        ->limit(20)
-                        ->get()
-                        ->filter(function ($session) {
-                            // Filter out admin users
-                            $user = $session->payment->user ?? null;
-                            return !$user || $user->role !== 'admin';
-                        })
-                        ->take(10)
-                        ->map(function ($session) {
-                            $user = $session->payment->user ?? null;
-                            return [
-                                'id' => $user->id ?? null,
-                                'name' => $user->name ?? ($session->voucher ? 'Voucher User' : 'Guest'),
-                                'email' => $user->email ?? '',
-                                'type' => $session->voucher ? 'Hotspot' : 'PPPoE',
-                            ];
-                        })
-                        ->values();
-                }
-
-                $completedPayments = Payment::where('status', 'completed');
-                $failedPayments = Payment::where('status', 'failed')->count();
-                $dailyCompletedRevenue = (float) (clone $completedPayments)->whereDate('created_at', now()->toDateString())->sum('amount');
-                $monthlyCompletedRevenue = (float) (clone $completedPayments)->whereBetween('created_at', [now()->startOfMonth(), now()->endOfDay()])->sum('amount');
-                $completedPaymentsCount = (int) (clone $completedPayments)->count();
-                $activeSubscriptions = UserSubscription::where(function ($query) {
-                    $query->whereNull('expires_at')->orWhere('expires_at', '>', now());
-                })->count();
-                $activeSubscribers = max($activeSessions, $activeSubscriptions);
-                $arpu = $activeSubscribers > 0 ? round($monthlyCompletedRevenue / $activeSubscribers, 2) : 0.0;
-                $mrr = round($monthlyCompletedRevenue, 2);
-                $arr = round($mrr * 12, 2);
-                $failedPaymentRate = ($failedPayments + $completedPaymentsCount) > 0
-                    ? round(($failedPayments / ($failedPayments + $completedPaymentsCount)) * 100, 2)
-                    : 0.0;
-                $churnRate = $lastMonthUsers > 0
-                    ? round(max(0, ($lastMonthUsers - $retainedUsers)) / $lastMonthUsers * 100, 2)
-                    : 0.0;
-
-                $revenueByArea = Router::query()
-                    ->whereNotNull('location')
-                    ->selectRaw('location, COALESCE(SUM(payments.amount), 0) as revenue')
-                    ->leftJoin('payments', function ($join) {
-                        $join->on('payments.router_id', '=', 'routers.id')
-                            ->where('payments.status', '=', 'completed');
+                $onlineUsersList = UserSession::where('status', 'active')
+                    ->where(function($query) {
+                        $query->whereNull('end_time')
+                              ->orWhere('end_time', '>', now());
                     })
-                    ->groupBy('location')
-                    ->orderByDesc('revenue')
-                    ->limit(5)
+                    ->with('payment.user:id,name,email,role')
+                    ->limit(20)
                     ->get()
-                    ->map(function ($row) {
+                    ->filter(function ($session) {
+                        // Filter out admin users
+                        $user = $session->payment->user ?? null;
+                        return !$user || $user->role !== 'admin';
+                    })
+                    ->take(10)
+                    ->map(function ($session) {
+                        $user = $session->payment->user ?? null;
                         return [
-                            'area' => $row->location ?: 'Unknown',
-                            'revenue' => round((float) $row->revenue, 2),
+                            'id' => $user->id ?? null,
+                            'name' => $user->name ?? ($session->voucher ? 'Voucher User' : 'Guest'),
+                            'email' => $user->email ?? '',
+                            'type' => $session->voucher ? 'Hotspot' : 'PPPoE',
                         ];
                     })
-                    ->values()
-                    ->all();
-
-                $businessKpis = [
-                    'mrr' => $mrr,
-                    'arr' => $arr,
-                    'arpu' => $arpu,
-                    'churn_rate' => $churnRate,
-                    'failed_payment_rate' => $failedPaymentRate,
-                    'daily_revenue' => round($dailyCompletedRevenue, 2),
-                    'monthly_completed_count' => $completedPaymentsCount,
-                    'revenue_by_area' => $revenueByArea,
-                    'active_subscribers' => $activeSubscribers,
-                ];
+                    ->values();
 
                 // Compile all statistics
                 $stats = [
@@ -717,7 +640,6 @@ class UpdateDashboardStatsJob implements ShouldQueue
                         'userAverage' => $userAverage,
                         'userPeak' => $userPeak,
                         'userGrowth' => $userGrowth,
-                        'businessKpis' => $businessKpis,
                     ],
                     'performance_metrics' => MetricsService::getPerformanceMetrics(),
                     'last_updated' => now()->toIso8601String(),

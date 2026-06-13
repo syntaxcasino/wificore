@@ -138,15 +138,12 @@
 
       <!-- ROW 3: WIDGETS — stack on mobile, side-by-side on lg -->
       <template v-if="widgetsReady">
-        <HealthScoreWidget :health-score="healthScore" :format-time-ago="formatTimeAgo" />
         <PaymentWidget :paymentData="paymentData" />
 
         <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
           <ExpensesWidget :expensesData="expensesData" />
           <BusinessAnalyticsWidget :analyticsData="analyticsData" />
         </div>
-
-        <RevenueAssuranceWidget :revenue-assurance="revenueAssurance" :format-currency="formatCurrency" />
       </template>
 
       <template v-else>
@@ -191,33 +188,30 @@
 
 <script setup>
 import { computed, defineAsyncComponent, onMounted, onUnmounted, ref } from 'vue'
+import { useAuth } from '@/modules/common/composables/auth/useAuth'
 import { useDashboard } from '@/modules/tenant/composables/data/useDashboard'
 import { Users, Wifi, Package, BarChart3, Radio, CreditCard, Settings, Activity } from 'lucide-vue-next'
 
 const PaymentWidget = defineAsyncComponent(() => import('@/modules/tenant/components/dashboard/PaymentWidgetClean.vue'))
 const ExpensesWidget = defineAsyncComponent(() => import('@/modules/tenant/components/dashboard/ExpensesWidgetClean.vue'))
 const BusinessAnalyticsWidget = defineAsyncComponent(() => import('@/modules/tenant/components/dashboard/BusinessAnalyticsWidgetClean.vue'))
-const RevenueAssuranceWidget = defineAsyncComponent(() => import('@/modules/tenant/components/dashboard/RevenueAssuranceWidgetClean.vue'))
-const HealthScoreWidget = defineAsyncComponent(() => import('@/modules/tenant/components/dashboard/HealthScoreWidgetClean.vue'))
+
+const { user } = useAuth()
 
 const {
   stats,
   paymentData,
   expensesData,
   analyticsData,
-  healthScore,
   loading,
   hasCachedSnapshot,
   fetchDashboardStats,
-  fetchHealthScore,
   refreshStats,
   updateStatsFromEvent,
   formatCurrency,
   formatDataSize,
-  formatTimeAgo,
   routerHealthStatus,
   revenueGrowth,
-  revenueAssurance,
 } = useDashboard()
 
 const quickActions = computed(() => [
@@ -258,7 +252,6 @@ onMounted(() => {
 
   requestAnimationFrame(() => {
     fetchDashboardStats()
-    fetchHealthScore()
   })
 
   connection = window.Echo?.connector?.pusher?.connection || null

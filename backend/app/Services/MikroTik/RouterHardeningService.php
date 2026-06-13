@@ -59,6 +59,7 @@ class RouterHardeningService extends TenantAwareService
 # Generated: {now()->toDateTimeString()}
 # ============================================================
 
+:log info "Starting WiFiCore security hardening"
 
 SCRIPT;
     }
@@ -84,6 +85,8 @@ SCRIPT;
 # Disable unnecessary services, keep only SSH and required services
 # ============================================================
 
+:log info "Hardening services"
+
 # Disable dangerous services
 /ip service set telnet disabled=yes
 /ip service set ftp disabled=yes
@@ -106,6 +109,7 @@ SCRIPT;
 # Keep HTTPS enabled (for Hotspot login pages)
 /ip service set www-ssl disabled=no
 
+:log info "Services hardened successfully"
 
 
 SCRIPT;
@@ -126,12 +130,15 @@ SCRIPT;
 # Restrict SSH to VPN subnet only
 # ============================================================
 
+:log info "Configuring SSH restrictions"
+
 # Restrict SSH to specific source IPs (VPN subnet)
 /ip service set ssh address=\"{$ipList}\"
 
 # Change SSH port to non-standard (optional security through obscurity)
 # /ip service set ssh port=2222
 
+:log info "SSH restrictions applied"
 
 
 SCRIPT;
@@ -148,6 +155,7 @@ SCRIPT;
 # Comprehensive protection against attacks and intrusions
 # ============================================================
 
+:log info "Configuring advanced firewall rules"
 
 # ============================================================
 # 3.1. ADDRESS LISTS - Define network groups
@@ -334,6 +342,7 @@ add chain=forward src-address-list=bogons action=drop \
 add chain=forward dst-address-list=bogons action=drop \
     comment="Drop bogon destination addresses"
 
+:log info "Advanced firewall rules configured"
 
 
 SCRIPT;
@@ -352,14 +361,23 @@ SCRIPT;
 # Configure dedicated management user with SSH key
 # ============================================================
 
+:log info "Configuring user security"
+
 # Ensure management user exists with proper permissions
-/user remove [find name="{$username}" group!=full]
-/user add name=\"{$username}\" group=full disabled=no
+/user
+:if ([:len [find name="{$username}"]] = 0) do={
+    add name=\"{$username}\" group=full disabled=no
+    :log info "Created management user: {$username}"
+} else={
+    set [find name="{$username}"] group=full disabled=no
+    :log info "Updated management user: {$username}"
+}
 
 # Disable default admin user (CRITICAL SECURITY)
 # CAUTION: Only do this after SSH key is working!
 # /user set admin disabled=yes
 
+:log info "User security configured"
 
 
 SCRIPT;
@@ -376,6 +394,7 @@ SCRIPT;
 # Additional system-level security hardening
 # ============================================================
 
+:log info "Configuring system security"
 
 # ============================================================
 # 5.1. SYSTEM HARDENING
@@ -406,11 +425,13 @@ set enabled=yes \
 /system ntp server
 set enabled=no broadcast=no multicast=no
 
+:log info "System security configured"
 
 # ============================================================
 # 5.2. DNS SECURITY & HARDENING
 # ============================================================
 
+:log info "Configuring DNS security"
 
 # Configure DNS with DoH (DNS over HTTPS)
 /ip dns
@@ -446,17 +467,34 @@ add chain=input protocol=udp dst-port=53 \
     connection-limit=50,32 action=drop \
     comment="DNS query rate limit"
 
+:log info "DNS security configured"
 
 # ============================================================
 # 5.3. AUTOMATED BACKUPS
 # ============================================================
 
-# Backup script
-/system script remove [find name="daily-backup"]
-/system script add name=daily-backup source="/system backup save name=daily-backup"
+# Create backup script
+/system script
+:if ([:len [find name="daily-backup"]] = 0) do={
+    add name=daily-backup source={
+        :log info "Starting daily backup"
+        /system backup save name=daily-backup
+        :delay 5s
+        :log info "Daily backup completed"
+    }
+}
+
 # Schedule daily backups at 3:00 AM
-/system scheduler remove [find name="daily-backup-schedule"]
-/system scheduler add name=daily-backup-schedule interval=1d on-event=daily-backup start-time=03:00:00 comment="Daily automated backup"
+/system scheduler
+:if ([:len [find name="daily-backup-schedule"]] = 0) do={
+    add name=daily-backup-schedule \
+        interval=1d \
+        on-event=daily-backup \
+        start-time=03:00:00 \
+        comment="Daily automated backup"
+}
+
+:log info "Automated backups configured"
 
 
 SCRIPT;
@@ -477,30 +515,37 @@ SCRIPT;
 # Comprehensive monitoring, logging, and alerting
 # ============================================================
 
+:log info "Configuring monitoring and logging"
 
 # ============================================================
 # 6.1. REMOTE SYSLOG - Centralized log collection
 # ============================================================
 
-# Create or update remote syslog action
-/system logging action remove [find name="remote-syslog"]
-/system logging action add name=remote-syslog remote=10.100.1.1 remote-port=514 remote-log-format=syslog syslog-facility=syslog target=remote comment="WiFiCore Centralized Logging"
+# Create remote syslog action
+/system logging action
+:if ([:len [find name="remote-syslog"]] = 0) do={
+    add name=remote-syslog remote=10.100.1.1 remote-port=514 \
+        src-address=auto target=remote \
+        comment="WiFiCore Centralized Logging"
+}
 
 # Configure logging topics to remote syslog
-/system logging remove [find action=remote-syslog]
-/system logging add topics=critical action=remote-syslog prefix="CRITICAL:"
-/system logging add topics=error action=remote-syslog prefix="ERROR:"
-/system logging add topics=warning action=remote-syslog prefix="WARNING:"
-/system logging add topics=firewall,info action=remote-syslog prefix="FW:"
-/system logging add topics=account,info action=remote-syslog prefix="AUTH:"
-/system logging add topics=system,info action=remote-syslog prefix="SYS:"
-/system logging add topics=ssh action=remote-syslog prefix="SSH:"
-# Local logging
-/system logging add topics=ssh action=memory
-/system logging add topics=firewall action=memory
-/system logging add topics=account action=memory
-/system logging add topics=critical action=memory
+/system logging
+add topics=critical action=remote-syslog prefix="CRITICAL:"
+add topics=error action=remote-syslog prefix="ERROR:"
+add topics=warning action=remote-syslog prefix="WARNING:"
+add topics=firewall,info action=remote-syslog prefix="FW:"
+add topics=account,info action=remote-syslog prefix="AUTH:"
+add topics=system,info action=remote-syslog prefix="SYS:"
+add topics=ssh action=remote-syslog prefix="SSH:"
 
+# Keep local logging for quick access
+add topics=ssh action=memory
+add topics=firewall action=memory
+add topics=account action=memory
+add topics=critical action=memory
+
+:log info "Remote syslog configured"
 
 # ============================================================
 # 6.2. SNMP - Network monitoring
@@ -512,12 +557,13 @@ set enabled=yes \
     contact="admin@wificore.local" \
     location="Managed by WiFiCore"
 
-/snmp community remove [find name="{$snmpCommunity}"]
+:do { /snmp community remove [find name="{$snmpCommunity}"]; } on-error={}
 /snmp community add name=\"{$snmpCommunity}\" addresses=\"{$snmpSubnet}\" security=none read-access=yes write-access=no \
     comment="WiFiCore VPN Monitoring"
 
 /snmp set trap-community="{$snmpCommunity}" trap-version=2
 
+:log info "SNMP monitoring enabled"
 
 # ============================================================
 # 6.3. EMAIL ALERTS - Proactive notifications
@@ -535,6 +581,7 @@ set server=smtp.wificore.local \
 # Note: Email alerts can be triggered via scripts
 # Example: /tool e-mail send to="admin@wificore.local" subject="Alert" body="Message"
 
+:log info "Email alerts configured"
 
 # ============================================================
 # 6.4. TRAFFIC ACCOUNTING - Usage tracking
@@ -550,6 +597,7 @@ set enabled=yes \
 /ip accounting web-access
 set accessible-via-web=yes
 
+:log info "Traffic accounting enabled"
 
 # ============================================================
 # 6.5. NETFLOW/IPFIX - Advanced traffic analysis (optional)
@@ -566,11 +614,13 @@ set accessible-via-web=yes
 # /ip traffic-flow target
 # add dst-address=10.100.1.1:2055 version=9
 
+:log info "Monitoring and logging configured"
 
 # ============================================================
 # HARDENING COMPLETE
 # ============================================================
 
+:log info "WiFiCore security hardening completed successfully"
 
 SCRIPT;
     }

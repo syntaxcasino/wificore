@@ -64,9 +64,6 @@ return new class extends Migration
             // Status
             $table->boolean('is_active')->default(false);
 
-            // Payment trace logging mode
-            $table->string('payment_trace_mode', 20)->default('stdout');
-
             // Account reference prefix for landlord paybill
             $table->string('account_reference_prefix', 50)->nullable();
 

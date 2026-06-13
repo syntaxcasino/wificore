@@ -5,7 +5,9 @@
 
 import { ref, computed } from 'vue'
 import axios from '@/modules/common/services/api/axios'
+import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/modules/common/composables/useToast'
+import { readSnapshot, scheduleAfterPaint, writeSnapshot } from '@/modules/common/composables/performance/useViewCache'
 
 export function useAccessPoints() {
   const loading = ref(false)
@@ -20,8 +22,20 @@ export function useAccessPoints() {
   })
   
   const { toast } = useToast()
-  let fetchDebounceTimer = null
-  let isFetchingAccessPoints = false
+  const authStore = useAuthStore()
+  const cacheKey = () => `tenant:access-points:${authStore.user?.tenant_id || authStore.tenantId || 'default'}:v1`
+
+  const hydrateAccessPoints = () => {
+    const snapshot = readSnapshot(cacheKey(), 30 * 1000)
+    if (!snapshot || typeof snapshot !== 'object') return false
+    accessPoints.value = Array.isArray(snapshot.accessPoints) ? snapshot.accessPoints : []
+    stats.value = snapshot.stats || stats.value
+    availableRouters.value = Array.isArray(snapshot.availableRouters) ? snapshot.availableRouters : availableRouters.value
+    return true
+  }
+
+  const persistAccessPoints = () => writeSnapshot(cacheKey(), { accessPoints: accessPoints.value, stats: stats.value, availableRouters: availableRouters.value })
+
 
   // Computed filters
   const onlineAccessPoints = computed(() => 
@@ -38,43 +52,39 @@ export function useAccessPoints() {
 
   // API Functions (trigger events, no polling needed)
   const fetchAccessPoints = async (filters = {}) => {
-    if (fetchDebounceTimer) {
-      clearTimeout(fetchDebounceTimer)
-    }
-
-    if (isFetchingAccessPoints) {
-      fetchDebounceTimer = setTimeout(() => {
-        fetchAccessPoints(filters)
-      }, 400)
-      return accessPoints.value
-    }
-
-    isFetchingAccessPoints = true
     if (accessPoints.value.length === 0) {
+      if (!hydrateAccessPoints()) {
+        scheduleAfterPaint(() => {
+          if (accessPoints.value.length === 0) loading.value = true
+        })
+      }
+    } else {
       loading.value = true
     }
     error.value = null
-
+    
     try {
       const params = new URLSearchParams(filters).toString()
       const url = params ? `/access-points?${params}` : '/access-points'
       const response = await axios.get(url)
-
+      
+      // Debug logging to understand response structure
+      
+      // Handle various response structures safely
       let apData = []
       if (response?.data) {
         if (Array.isArray(response.data)) {
           apData = response.data
         } else if (response.data.access_points && Array.isArray(response.data.access_points)) {
           apData = response.data.access_points
-        } else if (Array.isArray(response.data?.data?.data)) {
-          apData = response.data.data.data
-        } else if (Array.isArray(response.data.data)) {
+        } else if (response.data.data && Array.isArray(response.data.data)) {
           apData = response.data.data
-        } else if (typeof response.data === 'object' && response.data?.id) {
+        } else if (typeof response.data === 'object') {
+          // If it's a single object wrapped, try to extract
           apData = [response.data]
         }
       }
-
+      
       accessPoints.value = apData.map(ap => ({
         id: ap.id,
         router_id: ap.router_id || null,
@@ -90,11 +100,14 @@ export function useAccessPoints() {
         total_capacity: ap.total_capacity || 0,
         management_protocol: ap.management_protocol || 'snmp'
       }))
-
+      
       updateStats()
+      persistAccessPoints()
+      
       return accessPoints.value
     } catch (err) {
       console.error('fetchAccessPoints error:', err)
+      // Safely extract error message with multiple fallbacks
       let errorMsg = 'Failed to fetch access points'
       try {
         if (err?.response?.data?.message) {
@@ -114,7 +127,6 @@ export function useAccessPoints() {
       throw err
     } finally {
       loading.value = false
-      isFetchingAccessPoints = false
     }
   }
 
@@ -141,17 +153,25 @@ export function useAccessPoints() {
         unknown: statsData.unknown || unknownAccessPoints.value.length,
         totalUsers: statsData.total_users || accessPoints.value.reduce((sum, ap) => sum + (ap.active_users || 0), 0)
       }
+      persistAccessPoints()
       return stats.value
     } catch (err) {
       console.error('Failed to fetch statistics:', err)
       // Fallback to computed stats
       updateStats()
+      persistAccessPoints()
       return stats.value
     }
   }
 
   const createAccessPoint = async (apData) => {
     if (accessPoints.value.length === 0) {
+      if (!hydrateAccessPoints()) {
+        scheduleAfterPaint(() => {
+          if (accessPoints.value.length === 0) loading.value = true
+        })
+      }
+    } else {
       loading.value = true
     }
     error.value = null
@@ -166,7 +186,8 @@ export function useAccessPoints() {
       if (newAp) {
         accessPoints.value.unshift(newAp)
         updateStats()
-        }
+        persistAccessPoints()
+      }
       
       toast.success('Access point created successfully')
       return newAp
@@ -183,6 +204,12 @@ export function useAccessPoints() {
 
   const updateAccessPoint = async (apId, updates) => {
     if (accessPoints.value.length === 0) {
+      if (!hydrateAccessPoints()) {
+        scheduleAfterPaint(() => {
+          if (accessPoints.value.length === 0) loading.value = true
+        })
+      }
+    } else {
       loading.value = true
     }
     error.value = null
@@ -199,7 +226,8 @@ export function useAccessPoints() {
         if (index !== -1) {
           accessPoints.value[index] = { ...accessPoints.value[index], ...updatedAp }
           updateStats()
-            }
+          persistAccessPoints()
+        }
       }
       
       toast.success('Access point updated successfully')
@@ -217,6 +245,12 @@ export function useAccessPoints() {
 
   const deleteAccessPoint = async (apId) => {
     if (accessPoints.value.length === 0) {
+      if (!hydrateAccessPoints()) {
+        scheduleAfterPaint(() => {
+          if (accessPoints.value.length === 0) loading.value = true
+        })
+      }
+    } else {
       loading.value = true
     }
     error.value = null
@@ -227,6 +261,7 @@ export function useAccessPoints() {
       // Optimistically remove from local state immediately for better UX
       accessPoints.value = accessPoints.value.filter(ap => ap.id !== apId)
       updateStats()
+      persistAccessPoints()
       
       toast.success('Access point deleted successfully')
       
@@ -253,7 +288,8 @@ export function useAccessPoints() {
         if (index !== -1) {
           accessPoints.value[index] = { ...accessPoints.value[index], ...syncedAp }
           updateStats()
-            }
+          persistAccessPoints()
+        }
       }
       
       toast.success('Access point synced successfully')
@@ -354,7 +390,8 @@ export function useAccessPoints() {
   const fetchAvailableRouters = async () => {
     try {
       const response = await axios.get('/routers')
-      availableRouters.value = response.data?.data?.data || response.data?.data || response.data?.routers || response.data || []
+      availableRouters.value = response.data?.data || response.data?.routers || response.data || []
+      persistAccessPoints()
     } catch (err) {
       console.error('fetchAvailableRouters error:', err)
       availableRouters.value = []

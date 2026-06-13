@@ -2,8 +2,6 @@
 
 namespace App\Services\RouterDriver;
 
-use App\Models\Router;
-
 /**
  * Router Driver Registry
  * 
@@ -13,13 +11,6 @@ class DriverRegistry
 {
     /** @var array<string, RouterDriverInterface> */
     private array $drivers = [];
-
-    private readonly RouterVendorProfileRegistry $profileRegistry;
-
-    public function __construct(?RouterVendorProfileRegistry $profileRegistry = null)
-    {
-        $this->profileRegistry = $profileRegistry ?? new RouterVendorProfileRegistry();
-    }
 
     /**
      * Register a driver instance
@@ -40,28 +31,17 @@ class DriverRegistry
     /**
      * Get driver for a router instance
      */
-    public function getDriverForRouter(Router $router): RouterDriverInterface
+    public function getDriverForRouter(\App\Models\Router $router): RouterDriverInterface
     {
-        $profile = $this->profileRegistry->resolveForRouter($router);
-        $resolvedVendor = strtolower((string) ($profile['vendor'] ?? $router->vendor ?? ''));
-        $driverKey = strtolower((string) ($profile['driver'] ?? $resolvedVendor));
-
-        if ($resolvedVendor !== '' && isset($this->drivers[$resolvedVendor])) {
-            return $this->drivers[$resolvedVendor];
+        // Check if router has explicit vendor set
+        if ($router->vendor && isset($this->drivers[strtolower($router->vendor)])) {
+            return $this->drivers[strtolower($router->vendor)];
         }
 
-        if ($driverKey !== '' && isset($this->drivers[$driverKey])) {
-            return $this->drivers[$driverKey];
-        }
-
-        $explicitVendor = strtolower((string) ($router->vendor ?? ''));
-        if ($explicitVendor !== '' && isset($this->drivers[$explicitVendor])) {
-            return $this->drivers[$explicitVendor];
-        }
-
-        $vendorByModel = $this->detectVendorByModel($router->model);
-        if ($vendorByModel && isset($this->drivers[strtolower($vendorByModel)])) {
-            return $this->drivers[strtolower($vendorByModel)];
+        // Auto-detect by model name
+        $vendor = $this->detectVendorByModel($router->model);
+        if ($vendor && isset($this->drivers[strtolower($vendor)])) {
+            return $this->drivers[strtolower($vendor)];
         }
 
         // Default to MikroTik for backward compatibility
@@ -73,7 +53,58 @@ class DriverRegistry
      */
     public function detectVendorByModel(?string $model): ?string
     {
-        return $this->profileRegistry->resolve(null, $model)['vendor'] ?? null;
+        if (!$model) {
+            return null;
+        }
+
+        $modelLower = strtolower($model);
+
+        // MikroTik patterns
+        if (str_contains($modelLower, 'mikrotik') ||
+            str_contains($modelLower, 'routerboard') ||
+            str_contains($modelLower, 'hap') ||
+            str_contains($modelLower, 'crs') ||
+            str_contains($modelLower, 'rb') ||
+            str_contains($modelLower, 'sxt') ||
+            str_contains($modelLower, 'lhg')) {
+            return 'mikrotik';
+        }
+
+        // Cisco patterns
+        if (str_contains($modelLower, 'cisco') ||
+            str_contains($modelLower, 'isr') ||
+            str_contains($modelLower, 'asr') ||
+            str_contains($modelLower, 'catalyst') ||
+            preg_match('/^c\d{4}/', $modelLower)) {
+            return 'cisco';
+        }
+
+        // Ubiquiti patterns
+        if (str_contains($modelLower, 'ubiquiti') ||
+            str_contains($modelLower, 'ubnt') ||
+            str_contains($modelLower, 'edgeswitch') ||
+            str_contains($modelLower, 'edgerouter') ||
+            str_contains($modelLower, 'unifi')) {
+            return 'ubiquiti';
+        }
+
+        // TP-Link patterns
+        if (str_contains($modelLower, 'tp-link') ||
+            str_contains($modelLower, 'tplink') ||
+            str_contains($modelLower, 'omada') ||
+            str_contains($modelLower, 'tl-')) {
+            return 'tplink';
+        }
+
+        // Juniper patterns
+        if (str_contains($modelLower, 'juniper') ||
+            str_contains($modelLower, 'srx') ||
+            str_contains($modelLower, 'mx') ||
+            str_contains($modelLower, 'ex')) {
+            return 'juniper';
+        }
+
+        return null;
     }
 
     /**
@@ -91,10 +122,7 @@ class DriverRegistry
      */
     public function getSupportedVendors(): array
     {
-        return array_values(array_unique(array_merge(
-            array_keys($this->drivers),
-            $this->profileRegistry->getSupportedVendors(),
-        )));
+        return array_keys($this->drivers);
     }
 
     /**
@@ -102,7 +130,7 @@ class DriverRegistry
      */
     public function isVendorSupported(string $vendor): bool
     {
-        return isset($this->drivers[strtolower($vendor)]) || $this->profileRegistry->supportsVendor($vendor);
+        return isset($this->drivers[strtolower($vendor)]);
     }
 
     /**

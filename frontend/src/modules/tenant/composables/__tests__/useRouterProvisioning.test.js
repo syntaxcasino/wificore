@@ -654,39 +654,6 @@ describe('useRouterProvisioning — generateServiceConfig', () => {
     )
   })
 
-  it('passes dry_run=true when previewing configuration', async () => {
-    axios.post.mockResolvedValue({
-      data: { success: true, service_script: '/ip hotspot add...' },
-    })
-    const { composable } = makeComposable()
-    composable.provisioningRouter.value = { id: 'router-001' }
-    await composable.generateServiceConfig({ dryRun: true })
-    expect(axios.post).toHaveBeenCalledWith(
-      '/routers/router-001/generate-service-config',
-      expect.objectContaining({ dry_run: true }),
-    )
-    expect(composable.currentStage.value).toBe(1)
-  })
-
-  it('logs dry-run warnings from the backend summary', async () => {
-    axios.post.mockResolvedValue({
-      data: {
-        success: true,
-        service_script: '/ip hotspot add...',
-        dry_run_summary: {
-          warnings: ['WAN interface could not be verified because live inventory is unavailable.'],
-          missing_interfaces: ['ether9'],
-        },
-      },
-    })
-    const { composable } = makeComposable()
-    composable.provisioningRouter.value = { id: 'router-001' }
-    await composable.generateServiceConfig({ dryRun: true })
-    const warningLogs = composable.provisioningLogs.value.filter((entry) => entry.level === 'warning')
-    expect(warningLogs.some((entry) => entry.message.includes('WAN interface'))).toBe(true)
-    expect(warningLogs.some((entry) => entry.message.includes('ether9'))).toBe(true)
-  })
-
   it('advances to stage 4 on success', async () => {
     axios.post.mockResolvedValue({
       data: { success: true, service_script: '/ip ...' },

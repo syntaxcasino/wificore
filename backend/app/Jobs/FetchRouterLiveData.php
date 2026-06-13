@@ -8,7 +8,6 @@ use App\Models\Router;
 use App\Services\CacheInvalidationService;
 use App\Services\RouterMetricsService;
 use App\Services\VictoriaMetricsClient;
-use App\Services\MikroTik\RouterOsCapabilityRegistry;
 use App\Traits\TenantAwareJob;
 use Illuminate\Bus\Batchable;
 use Illuminate\Bus\Queueable;
@@ -16,7 +15,6 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
@@ -165,10 +163,7 @@ class FetchRouterLiveData implements ShouldQueue
 
                         $handshakeRecentlyActive = false;
                         if ($router->vpn_status === 'active' && $router->vpn_last_handshake) {
-                            $handshakeTime = $router->vpn_last_handshake instanceof Carbon
-                                ? $router->vpn_last_handshake
-                                : Carbon::parse($router->vpn_last_handshake);
-                            $handshakeAge = abs(now()->diffInSeconds($handshakeTime, false));
+                            $handshakeAge = abs(now()->diffInSeconds($router->vpn_last_handshake, false));
                             $handshakeRecentlyActive = $handshakeAge <= $inactiveThreshold;
                         }
 
@@ -240,10 +235,8 @@ class FetchRouterLiveData implements ShouldQueue
 
             if ($status === 'online') {
                 $updates['last_seen'] = now();
-                $updates = array_merge(
-                    $updates,
-                    app(RouterOsCapabilityRegistry::class)->buildRouterUpdatePayload($liveData, $router)
-                );
+                if (isset($liveData['board_name'])) $updates['model'] = $liveData['board_name'];
+                if (isset($liveData['version'])) $updates['os_version'] = $liveData['version'];
             }
 
             $router->update($updates);

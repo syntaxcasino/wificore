@@ -1,6 +1,6 @@
 <template>
   <Teleport to="body">
-    <div class="fixed top-4 right-4 z-[99990] flex flex-col gap-3 max-w-sm w-[calc(100vw-2rem)] sm:w-96 pointer-events-none">
+    <div class="fixed top-4 right-4 z-[9999] flex flex-col gap-3 max-w-sm w-[calc(100vw-2rem)] sm:w-96 pointer-events-none">
       <TransitionGroup name="notification">
         <div
           v-for="notification in notifications"

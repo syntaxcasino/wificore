@@ -6,7 +6,6 @@ use App\Events\RouterInterfacesDiscovered;
 use App\Models\Router;
 use App\Models\RouterTask;
 use App\Services\ProvisioningServiceClient;
-use App\Services\MikroTik\RouterOsCapabilityRegistry;
 use App\Traits\TenantAwareJob;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -94,14 +93,12 @@ class DiscoverRouterInterfacesJob implements ShouldQueue
                 $liveData = $provisioningClient->fetchLiveData($router, 'provisioning', $this->tenantId);
 
                 if (isset($liveData['interfaces']) && is_array($liveData['interfaces'])) {
-                    $completedStages = ['completed', 'interfaces_discovered', 'config_applied', 'connectivity_verified'];
-                    $stageUpdate = in_array($router->provisioning_stage, $completedStages, true)
-                        ? []
-                        : ['provisioning_stage' => 'interfaces_discovered'];
-
-                    $router->update(array_merge([
+                    // Update router metadata only (status already set to 'online' by CheckRoutersJob)
+                    $router->update([
+                        'model' => $liveData['board_name'] ?? $router->model,
+                        'os_version' => $liveData['version'] ?? $router->os_version,
                         'last_seen' => now(),
-                    ], $stageUpdate, app(RouterOsCapabilityRegistry::class)->buildRouterUpdatePayload($liveData, $router)));
+                    ]);
 
                     broadcast(new RouterInterfacesDiscovered(
                         $this->tenantId,
@@ -143,27 +140,16 @@ class DiscoverRouterInterfacesJob implements ShouldQueue
                     }
                 }
             } catch (\Throwable $e) {
-                $errorMessage = $e->getMessage();
-                $isPermanentFailure = str_contains($errorMessage, 'unable to authenticate')
-                    || str_contains($errorMessage, 'no supported methods remain')
-                    || str_contains($errorMessage, 'handshake failed')
-                    || str_contains($errorMessage, 'Connection refused')
-                    || str_contains($errorMessage, 'no route to host');
-
                 Log::error('Failed to discover router interfaces', [
                     'router_id' => $router->id,
                     'tenant_id' => $this->tenantId,
-                    'error' => $errorMessage,
-                    'permanent_failure' => $isPermanentFailure,
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString(),
                 ]);
-
                 if ($task) {
-                    $task->markFailed($errorMessage, $task->progress, 'Failed to discover router interfaces');
+                    $task->markFailed($e->getMessage(), $task->progress, 'Failed to discover router interfaces');
                 }
-
-                if (! $isPermanentFailure) {
-                    throw $e;
-                }
+                throw $e;
             } finally {
                 $lock->release();
             }

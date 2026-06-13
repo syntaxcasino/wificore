@@ -29,7 +29,6 @@ export function useRouterProvisioning(props, emit) {
   const enableHotspot = ref(false)
   const enablePPPoE = ref(false)
   const serviceScript = ref('')
-  const lastDryRunSummary = ref(null)
   const availableInterfaces = ref([])
   const selectedHotspotInterfaces = ref([])
   const selectedPPPoEInterfaces = ref([])
@@ -321,52 +320,42 @@ export function useRouterProvisioning(props, emit) {
 
       mappingDeployedServices.value = configured
 
-      // Backend merges all sibling services of the same type into ONE unified config.
-      // Deploying each service separately causes redundant router_busy errors.
-      // Group by service_type and deploy only ONE representative per type.
-      const servicesByType = new Map()
-      for (const svc of configured) {
-        const type = svc.service_type || 'unknown'
-        if (!servicesByType.has(type)) {
-          servicesByType.set(type, svc)
-        }
-      }
-      const uniqueTypes = [...servicesByType.keys()]
-
       provisioningProgress.value = 85
       provisioningStatus.value = 'Deploying services...'
-      mappingStatus.value = `Deploying ${uniqueTypes.length} service type(s) (${uniqueTypes.join(', ')})...`
-      addLog('info', `Deploying ${uniqueTypes.length} service type(s) across ${configured.length} interface(s)...`)
+      mappingStatus.value = `Deploying ${configured.length} service(s)...`
+      addLog('info', `Deploying ${configured.length} configured service instance(s)...`)
 
+      // Dispatch all deploy requests, then wait for WS events to confirm completion
       let actuallyDispatched = 0
-      for (const [type, service] of servicesByType) {
+      for (const service of configured) {
+        const serviceLabel = `${service.service_type || 'service'} on ${service.interface_name || service.interface || 'unknown interface'}`
         try {
           const deployResp = await axios.post(`/routers/${routerId}/services/${service.id}/deploy`)
           if (!deployResp.data?.success) {
             const deployMsg = deployResp.data?.message || ''
             const alreadyDeployed = /already.deployed|already.exists|already.configured/i.test(deployMsg)
             if (!alreadyDeployed) {
-              throw new Error(deployMsg || `Failed to deploy ${type} service`)
+              throw new Error(deployMsg || `Failed to deploy service ${service.id}`)
             }
-            addLog('info', `${type} is already deployed — skipping`)
+            addLog('info', `${serviceLabel} is already deployed — skipping`)
           } else {
             actuallyDispatched++
-            addLog('info', `Queued ${type} deployment (${configured.filter(s => s.service_type === type).length} interface(s))`)
+            addLog('info', `Queued ${serviceLabel}`)
           }
         } catch (deployErr) {
           const httpStatus = deployErr.response?.status
           const deployMsg = deployErr.response?.data?.message || deployErr.message || ''
           const alreadyDeployed = httpStatus === 409 || /already.deployed|already.exists|already.configured/i.test(deployMsg)
           if (!alreadyDeployed) throw deployErr
-          addLog('info', `${type} is already deployed — skipping`)
+          addLog('info', `${serviceLabel} is already deployed — skipping`)
         }
       }
 
-      // If every service type was already deployed, nothing to wait for — resolve immediately
+      // If every service was already deployed, nothing to wait for — resolve immediately
       if (actuallyDispatched === 0) {
         addLog('info', 'All services already deployed')
       } else {
-        // Wait for WS provisioning.progress events to confirm all dispatched types complete
+        // Wait for WS provisioning.progress events to confirm all dispatched services complete
         await waitForServiceDeploymentViaWs(routerId, actuallyDispatched)
       }
 
@@ -385,15 +374,12 @@ export function useRouterProvisioning(props, emit) {
     }
   }
 
-  const generateServiceConfig = async (options = {}) => {
+  const generateServiceConfig = async () => {
     formSubmitting.value = true
     try {
-      const dryRun = Boolean(options.dryRun)
-
       const payload = {
         enable_hotspot: enableHotspot.value,
         enable_pppoe: enablePPPoE.value,
-        dry_run: dryRun,
       }
 
       // Add hotspot configuration if enabled
@@ -414,38 +400,12 @@ export function useRouterProvisioning(props, emit) {
 
       if (response.data?.success) {
         serviceScript.value = response.data?.service_script || response.data?.script
-
-        const dryRunSummary = response.data?.dry_run_summary || {}
-        lastDryRunSummary.value = dryRunSummary
-        const preflightWarnings = Array.isArray(response.data?.preflight?.warnings)
-          ? response.data.preflight.warnings
-          : Array.isArray(dryRunSummary.warnings)
-            ? dryRunSummary.warnings
-            : []
-
-        if (dryRun) {
-          provisioningStatus.value = 'Dry-run completed successfully'
-          addLog('success', 'Service configuration dry-run completed successfully')
-          addLog('info', `Dry-run script length: ${serviceScript.value?.length || 0} characters`)
-          if (preflightWarnings.length > 0) {
-            addLog('warning', `Dry-run warnings: ${preflightWarnings.join(' | ')}`)
-          }
-          if (dryRunSummary.missing_interfaces?.length > 0) {
-            addLog('warning', `Missing interfaces: ${dryRunSummary.missing_interfaces.join(', ')}`)
-          }
-        } else {
-          currentStage.value = 4
-          provisioningProgress.value = 90
-          provisioningStatus.value = 'Configuration generated - Ready to deploy'
-          addLog('success', 'Service configuration generated successfully')
-          addLog('info', `Script length: ${serviceScript.value?.length || 0} characters`)
-          if (preflightWarnings.length > 0) {
-            addLog('warning', `Preflight warnings: ${preflightWarnings.join(' | ')}`)
-          }
-        }
+        currentStage.value = 4
+        provisioningProgress.value = 90
+        provisioningStatus.value = 'Configuration generated - Ready to deploy'
+        addLog('success', 'Service configuration generated successfully')
+        addLog('info', `Script length: ${serviceScript.value?.length || 0} characters`)
       }
-
-      return response.data
     } catch (error) {
       console.error('Error generating config:', error)
       const errorMsg = error.response?.data?.error || 'Error generating configuration'
@@ -455,8 +415,6 @@ export function useRouterProvisioning(props, emit) {
       formSubmitting.value = false
     }
   }
-
-  const previewServiceConfig = async () => generateServiceConfig({ dryRun: true })
 
   const deployConfiguration = async () => {
     deploymentFailed.value = false
@@ -561,8 +519,8 @@ export function useRouterProvisioning(props, emit) {
           if (_deployResolved) return
           try {
             const res = await axios.get(`/routers/${routerId}/provisioning-status`)
-            if (res.data.status === 'completed') {
-              _resolveDeployment(true, 'Deployment completed and verified (catch-up)')
+            if (res.data.status === 'completed' || res.data.router_status === 'online') {
+              _resolveDeployment(true, 'Deployment completed (catch-up)')
             } else if (res.data.status === 'failed' || res.data.router_status === 'connection_failed') {
               _resolveDeployment(false, res.data.error || 'Deployment failed (catch-up)')
             }
@@ -597,12 +555,12 @@ export function useRouterProvisioning(props, emit) {
 
   const getLogLevelClass = (level) => {
     const classes = {
-      info: 'text-blue-600',
-      success: 'text-green-600',
-      warning: 'text-yellow-600',
-      error: 'text-red-600',
+      info: 'text-blue-400',
+      success: 'text-emerald-400',
+      warning: 'text-amber-400',
+      error: 'text-red-400',
     }
-    return classes[level] || 'text-gray-600'
+    return classes[level] || 'text-slate-400'
   }
 
   const copyToClipboard = async (text) => {
@@ -758,10 +716,10 @@ export function useRouterProvisioning(props, emit) {
     )
     currentStage.value = 3
     provisioningProgress.value = 75
-    provisioningStatus.value = 'Router bootstrap connected - Map services to interfaces'
+    provisioningStatus.value = 'Router connected - Map services to interfaces'
     if (vpnChanName) { window.Echo?.leave(vpnChanName); _vpnChannelName = null }
     if (routersChanName) { window.Echo?.leave(routersChanName); _routersChannelName = null }
-    addLog('success', '🎉 Router bootstrap complete. Service deployment is still pending.')
+    addLog('success', '🎉 Router provisioning complete!')
     addLog('info', 'Map services to interfaces, then confirm to deploy')
   }
 
@@ -915,7 +873,6 @@ export function useRouterProvisioning(props, emit) {
     enableHotspot.value = false
     enablePPPoE.value = false
     serviceScript.value = ''
-    lastDryRunSummary.value = null
     Object.assign(hotspotConfig, {
       ssid: '',
       password: '',
@@ -1003,7 +960,6 @@ export function useRouterProvisioning(props, emit) {
     enableHotspot,
     enablePPPoE,
     serviceScript,
-    lastDryRunSummary,
     availableInterfaces,
     selectedHotspotInterfaces,
     selectedPPPoEInterfaces,
@@ -1031,7 +987,6 @@ export function useRouterProvisioning(props, emit) {
     continueToMonitoring,
     previousStage,
     generateServiceConfig,
-    previewServiceConfig,
     deployConfiguration,
     addLog,
     clearLogs,

@@ -40,15 +40,6 @@
       <button @click="openHistoryOverlay" :class="['px-3 py-1.5 text-sm font-medium rounded-lg transition-colors', isDark ? 'text-slate-400 hover:bg-slate-800' : 'text-slate-600 hover:bg-slate-100']">
         Usage History
       </button>
-      <button @click="openBillingOverlay" :class="['px-3 py-1.5 text-sm font-medium rounded-lg transition-colors', isDark ? 'text-slate-400 hover:bg-slate-800' : 'text-slate-600 hover:bg-slate-100']">
-        Billing
-      </button>
-      <button @click="openSupportOverlay" :class="['px-3 py-1.5 text-sm font-medium rounded-lg transition-colors', isDark ? 'text-slate-400 hover:bg-slate-800' : 'text-slate-600 hover:bg-slate-100']">
-        Support
-      </button>
-      <button @click="openSecurityOverlay" :class="['px-3 py-1.5 text-sm font-medium rounded-lg transition-colors', isDark ? 'text-slate-400 hover:bg-slate-800' : 'text-slate-600 hover:bg-slate-100']">
-        Security
-      </button>
     </nav>
 
     <main class="flex-1 p-4 sm:p-6 lg:p-8 pb-24 sm:pb-8 w-full">
@@ -710,157 +701,6 @@
       </div>
     </Teleport>
 
-    <!-- Billing Overlay -->
-    <Teleport to="body">
-      <div v-if="showBillingOverlay" class="fixed inset-0 z-50">
-        <div class="absolute inset-0 bg-black/60" @click="showBillingOverlay = false"></div>
-        <aside :class="['absolute right-0 top-0 h-full w-full lg:w-1/2 flex flex-col border-l shadow-2xl', isDark ? 'bg-gray-900 border-white/10 text-white' : 'bg-white border-gray-200 text-gray-900']">
-          <div :class="['flex items-center justify-between px-5 py-4 border-b flex-shrink-0', isDark ? 'border-white/10' : 'border-gray-100']">
-            <div>
-              <p :class="['font-bold flex items-center gap-2', isDark ? 'text-white' : 'text-gray-800']"><i class="fas fa-receipt text-indigo-500"></i>Invoices & Receipts</p>
-              <p :class="['text-xs mt-0.5', isDark ? 'text-white/40' : 'text-gray-400']">Recent payments and invoice history</p>
-            </div>
-            <button @click="showBillingOverlay = false" :class="['w-8 h-8 flex items-center justify-center rounded-lg transition-colors', isDark ? 'text-white/40 hover:bg-white/10 hover:text-white' : 'text-gray-400 hover:bg-gray-100']"><i class="fas fa-xmark"></i></button>
-          </div>
-          <div class="flex-1 overflow-y-auto p-4 space-y-3">
-            <div v-if="billingLoading" class="flex justify-center py-8"><div class="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div></div>
-            <template v-else>
-              <div v-for="invoice in (billingData?.invoices || dashboardData?.recent_payments || [])" :key="invoice.id" :class="['rounded-xl border p-4 space-y-2', isDark ? 'bg-white/5 border-white/10' : 'bg-gray-50 border-gray-100']">
-                <div class="flex items-start justify-between gap-3">
-                  <div>
-                    <p :class="['font-semibold text-sm', isDark ? 'text-white' : 'text-gray-800']">{{ invoice.invoice_number || invoice.transaction_id || `INV-${String(invoice.id).slice(0, 8)}` }}</p>
-                    <p :class="['text-xs mt-0.5', isDark ? 'text-white/40' : 'text-gray-400']">{{ invoice.payment_method || 'payment' }} · {{ formatDate(invoice.issued_at || invoice.created_at) }}</p>
-                  </div>
-                  <div class="text-right">
-                    <p :class="['font-bold text-sm', isDark ? 'text-white' : 'text-gray-800']">KES {{ formatNumber(invoice.amount || 0) }}</p>
-                    <span :class="['text-[10px] px-2 py-0.5 rounded-full font-semibold uppercase', invoice.status === 'completed' ? (isDark ? 'bg-emerald-500/20 text-emerald-400' : 'bg-emerald-100 text-emerald-700') : (invoice.status === 'pending' ? (isDark ? 'bg-amber-500/20 text-amber-400' : 'bg-amber-100 text-amber-700') : (isDark ? 'bg-slate-800 text-slate-400' : 'bg-slate-200 text-slate-600'))]">{{ invoice.status || 'unknown' }}</span>
-                  </div>
-                </div>
-                <p v-if="invoice.notes" :class="['text-xs leading-relaxed', isDark ? 'text-white/55' : 'text-gray-500']">{{ invoice.notes }}</p>
-              </div>
-              <p v-if="!(billingData?.invoices || dashboardData?.recent_payments || []).length" :class="['text-sm text-center py-8', isDark ? 'text-white/35' : 'text-gray-400']">No invoices found yet.</p>
-            </template>
-          </div>
-          <div :class="['p-4 border-t flex-shrink-0', isDark ? 'border-white/10' : 'border-gray-100']">
-            <button @click="showBillingOverlay = false" :class="['w-full py-2.5 rounded-xl font-semibold text-sm border transition-colors', isDark ? 'border-white/10 text-white/50 hover:bg-white/5' : 'border-gray-200 text-gray-500 hover:bg-gray-50']">Close</button>
-          </div>
-        </aside>
-      </div>
-    </Teleport>
-
-    <!-- Support Overlay -->
-    <Teleport to="body">
-      <div v-if="showSupportOverlay" class="fixed inset-0 z-50">
-        <div class="absolute inset-0 bg-black/60" @click="showSupportOverlay = false"></div>
-        <aside :class="['absolute right-0 top-0 h-full w-full lg:w-1/2 flex flex-col border-l shadow-2xl', isDark ? 'bg-gray-900 border-white/10 text-white' : 'bg-white border-gray-200 text-gray-900']">
-          <div :class="['flex items-center justify-between px-5 py-4 border-b flex-shrink-0', isDark ? 'border-white/10' : 'border-gray-100']">
-            <div>
-              <p :class="['font-bold flex items-center gap-2', isDark ? 'text-white' : 'text-gray-800']"><i class="fas fa-life-ring text-indigo-500"></i>Support Tickets</p>
-              <p :class="['text-xs mt-0.5', isDark ? 'text-white/40' : 'text-gray-400']">Create a new ticket and track recent requests</p>
-            </div>
-            <button @click="showSupportOverlay = false" :class="['w-8 h-8 flex items-center justify-center rounded-lg transition-colors', isDark ? 'text-white/40 hover:bg-white/10 hover:text-white' : 'text-gray-400 hover:bg-gray-100']"><i class="fas fa-xmark"></i></button>
-          </div>
-          <div class="flex-1 overflow-y-auto p-4 space-y-4">
-            <div v-if="supportLoading" class="flex justify-center py-8"><div class="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div></div>
-            <template v-else>
-              <div :class="['rounded-xl border p-4 space-y-3', isDark ? 'bg-white/5 border-white/10' : 'bg-gray-50 border-gray-100']">
-                <div>
-                  <label :class="['block text-xs font-semibold uppercase tracking-wider mb-2', isDark ? 'text-white/50' : 'text-gray-500']">Subject</label>
-                  <input v-model="ticketForm.subject" type="text" placeholder="Internet is slow" :class="['w-full px-4 py-3 rounded-xl text-sm border outline-none transition-colors', isDark ? 'bg-white/8 border-white/15 text-white placeholder-white/30 focus:border-indigo-500/60' : 'bg-white border-gray-200 text-gray-900 placeholder-gray-400 focus:border-indigo-400']" />
-                </div>
-                <div class="grid grid-cols-2 gap-3">
-                  <div>
-                    <label :class="['block text-xs font-semibold uppercase tracking-wider mb-2', isDark ? 'text-white/50' : 'text-gray-500']">Category</label>
-                    <select v-model="ticketForm.category" :class="['w-full px-4 py-3 rounded-xl text-sm border outline-none transition-colors', isDark ? 'bg-white/8 border-white/15 text-white focus:border-indigo-500/60' : 'bg-white border-gray-200 text-gray-900 focus:border-indigo-400']">
-                      <option value="general">General</option>
-                      <option value="billing">Billing</option>
-                      <option value="connectivity">Connectivity</option>
-                      <option value="account">Account</option>
-                      <option value="technical">Technical</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label :class="['block text-xs font-semibold uppercase tracking-wider mb-2', isDark ? 'text-white/50' : 'text-gray-500']">Priority</label>
-                    <select v-model="ticketForm.priority" :class="['w-full px-4 py-3 rounded-xl text-sm border outline-none transition-colors', isDark ? 'bg-white/8 border-white/15 text-white focus:border-indigo-500/60' : 'bg-white border-gray-200 text-gray-900 focus:border-indigo-400']">
-                      <option value="low">Low</option>
-                      <option value="normal">Normal</option>
-                      <option value="high">High</option>
-                      <option value="urgent">Urgent</option>
-                    </select>
-                  </div>
-                </div>
-                <div>
-                  <label :class="['block text-xs font-semibold uppercase tracking-wider mb-2', isDark ? 'text-white/50' : 'text-gray-500']">Message</label>
-                  <textarea v-model="ticketForm.message" rows="5" placeholder="Describe the issue" :class="['w-full px-4 py-3 rounded-xl text-sm border outline-none transition-colors resize-none', isDark ? 'bg-white/8 border-white/15 text-white placeholder-white/30 focus:border-indigo-500/60' : 'bg-white border-gray-200 text-gray-900 placeholder-gray-400 focus:border-indigo-400']"></textarea>
-                </div>
-                <button @click="submitSupportTicket" :disabled="supportSubmitting" class="w-full py-3.5 bg-indigo-500 hover:bg-indigo-600 text-white font-bold rounded-xl transition-colors flex items-center justify-center gap-2 disabled:opacity-40">
-                  <i v-if="supportSubmitting" class="fas fa-spinner fa-spin"></i>
-                  <span>{{ supportSubmitting ? 'Submitting…' : 'Submit Ticket' }}</span>
-                </button>
-                <div v-if="supportStatusMessage" :class="['rounded-xl border px-4 py-3 text-sm', isDark ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300' : 'bg-emerald-50 border-emerald-200 text-emerald-700']">{{ supportStatusMessage }}</div>
-                <div v-if="supportErrorMessage" :class="['rounded-xl border px-4 py-3 text-sm', isDark ? 'bg-red-500/10 border-red-500/20 text-red-300' : 'bg-red-50 border-red-200 text-red-600']">{{ supportErrorMessage }}</div>
-              </div>
-              <div class="space-y-3">
-                <p :class="['text-xs font-semibold uppercase tracking-wider', isDark ? 'text-white/40' : 'text-gray-400']">Recent tickets</p>
-                <div v-for="ticket in (supportData?.tickets || [])" :key="ticket.id" :class="['rounded-xl border p-4 space-y-2', isDark ? 'bg-white/5 border-white/10' : 'bg-gray-50 border-gray-100']">
-                  <div class="flex items-start justify-between gap-3">
-                    <div>
-                      <p :class="['font-semibold text-sm', isDark ? 'text-white' : 'text-gray-800']">{{ ticket.ticket_number }}</p>
-                      <p :class="['text-xs mt-0.5', isDark ? 'text-white/40' : 'text-gray-400']">{{ ticket.subject }}</p>
-                    </div>
-                    <span :class="['text-[10px] px-2 py-0.5 rounded-full font-semibold uppercase', ticket.status === 'resolved' ? (isDark ? 'bg-emerald-500/20 text-emerald-400' : 'bg-emerald-100 text-emerald-700') : (ticket.status === 'in_progress' ? (isDark ? 'bg-amber-500/20 text-amber-400' : 'bg-amber-100 text-amber-700') : (isDark ? 'bg-indigo-500/20 text-indigo-300' : 'bg-indigo-100 text-indigo-700'))]">{{ ticket.status }}</span>
-                  </div>
-                  <p :class="['text-xs leading-relaxed', isDark ? 'text-white/55' : 'text-gray-500']">{{ ticket.message }}</p>
-                </div>
-                <p v-if="!(supportData?.tickets || []).length" :class="['text-sm text-center py-8', isDark ? 'text-white/35' : 'text-gray-400']">No support tickets yet.</p>
-              </div>
-            </template>
-          </div>
-          <div :class="['p-4 border-t flex-shrink-0', isDark ? 'border-white/10' : 'border-gray-100']">
-            <button @click="showSupportOverlay = false" :class="['w-full py-2.5 rounded-xl font-semibold text-sm border transition-colors', isDark ? 'border-white/10 text-white/50 hover:bg-white/5' : 'border-gray-200 text-gray-500 hover:bg-gray-50']">Close</button>
-          </div>
-        </aside>
-      </div>
-    </Teleport>
-
-    <!-- Security Overlay -->
-    <Teleport to="body">
-      <div v-if="showSecurityOverlay" class="fixed inset-0 z-50">
-        <div class="absolute inset-0 bg-black/60" @click="showSecurityOverlay = false"></div>
-        <aside :class="['absolute right-0 top-0 h-full w-full lg:w-1/2 flex flex-col border-l shadow-2xl', isDark ? 'bg-gray-900 border-white/10 text-white' : 'bg-white border-gray-200 text-gray-900']">
-          <div :class="['flex items-center justify-between px-5 py-4 border-b flex-shrink-0', isDark ? 'border-white/10' : 'border-gray-100']">
-            <div>
-              <p :class="['font-bold flex items-center gap-2', isDark ? 'text-white' : 'text-gray-800']"><i class="fas fa-shield-halved text-indigo-500"></i>Security & Passwords</p>
-              <p :class="['text-xs mt-0.5', isDark ? 'text-white/40' : 'text-gray-400']">Reset your PPPoE or portal password safely</p>
-            </div>
-            <button @click="showSecurityOverlay = false" :class="['w-8 h-8 flex items-center justify-center rounded-lg transition-colors', isDark ? 'text-white/40 hover:bg-white/10 hover:text-white' : 'text-gray-400 hover:bg-gray-100']"><i class="fas fa-xmark"></i></button>
-          </div>
-          <div class="flex-1 overflow-y-auto p-4 space-y-4">
-            <div :class="['rounded-xl border p-4 space-y-3', isDark ? 'bg-white/5 border-white/10' : 'bg-gray-50 border-gray-100']">
-              <button @click="handleResetPassword" :disabled="securityLoading" class="w-full py-3.5 bg-indigo-500 hover:bg-indigo-600 text-white font-bold rounded-xl transition-colors flex items-center justify-center gap-2 disabled:opacity-40">
-                <i v-if="securityLoading" class="fas fa-spinner fa-spin"></i>
-                <span>{{ securityLoading ? 'Resetting…' : 'Reset PPPoE Password' }}</span>
-              </button>
-              <button @click="handleResetPortalPassword" :disabled="securityLoading" class="w-full py-3.5 bg-slate-700 hover:bg-slate-800 text-white font-bold rounded-xl transition-colors flex items-center justify-center gap-2 disabled:opacity-40">
-                <i v-if="securityLoading" class="fas fa-spinner fa-spin"></i>
-                <span>{{ securityLoading ? 'Resetting…' : 'Reset Portal Password' }}</span>
-              </button>
-              <div v-if="securityStatusMessage" :class="['rounded-xl border px-4 py-3 text-sm', isDark ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300' : 'bg-emerald-50 border-emerald-200 text-emerald-700']">{{ securityStatusMessage }}</div>
-              <div v-if="securityErrorMessage" :class="['rounded-xl border px-4 py-3 text-sm', isDark ? 'bg-red-500/10 border-red-500/20 text-red-300' : 'bg-red-50 border-red-200 text-red-600']">{{ securityErrorMessage }}</div>
-            </div>
-            <div v-if="securityGeneratedPassword || securityGeneratedPortalPassword" :class="['rounded-xl border p-4 space-y-2', isDark ? 'bg-amber-500/10 border-amber-500/20' : 'bg-amber-50 border-amber-200']">
-              <p :class="['font-semibold text-sm', isDark ? 'text-amber-300' : 'text-amber-700']">Generated credentials are shown once</p>
-              <p v-if="securityGeneratedPassword" :class="['text-sm font-mono break-all', isDark ? 'text-white/85' : 'text-gray-800']">PPPoE: {{ securityGeneratedPassword }}</p>
-              <p v-if="securityGeneratedPortalPassword" :class="['text-sm font-mono break-all', isDark ? 'text-white/85' : 'text-gray-800']">Portal: {{ securityGeneratedPortalPassword }}</p>
-            </div>
-          </div>
-          <div :class="['p-4 border-t flex-shrink-0', isDark ? 'border-white/10' : 'border-gray-100']">
-            <button @click="showSecurityOverlay = false" :class="['w-full py-2.5 rounded-xl font-semibold text-sm border transition-colors', isDark ? 'border-white/10 text-white/50 hover:bg-white/5' : 'border-gray-200 text-gray-500 hover:bg-gray-50']">Close</button>
-          </div>
-        </aside>
-      </div>
-    </Teleport>
-
     <!-- Voucher Modal -->
     <Teleport to="body">
       <div v-if="showVoucherModal" :class="['fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4', isDark ? 'bg-black/80' : 'bg-black/50']" @click.self="closeVoucherModal">
@@ -926,11 +766,6 @@ const {
   cancelPlanSwitch,
   fetchTimedVoucherOptions,
   buyTimedVoucher,
-  fetchInvoices,
-  fetchSupportTickets,
-  createSupportTicket,
-  resetPassword,
-  resetPortalPassword,
 } = usePppoePortal();
 
 const isDark = ref(false);
@@ -973,39 +808,23 @@ const planSwitchLoading = ref(false);
 const showTimedVoucherOverlay = ref(false);
 const showPauseOverlay = ref(false);
 const showPlanSwitchOverlay = ref(false);
-const showBillingOverlay = ref(false);
-const showSupportOverlay = ref(false);
-const showSecurityOverlay = ref(false);
-
-const billingLoading = ref(false);
-const billingData = ref(null);
-const supportLoading = ref(false);
-const supportData = ref(null);
-const supportSubmitting = ref(false);
-const supportStatusMessage = ref('');
-const supportErrorMessage = ref('');
-const securityLoading = ref(false);
-const securityStatusMessage = ref('');
-const securityErrorMessage = ref('');
-const securityGeneratedPassword = ref('');
-const securityGeneratedPortalPassword = ref('');
-const ticketForm = ref({
-  subject: '',
-  category: 'general',
-  priority: 'normal',
-  message: '',
-});
+const showRecentSessionsOverlay = ref(false);
 
 // Timed Vouchers
 const tvPackages = ref([]);
 const tvPackagesLoading = ref(false);
 const selectedTvPackage = ref(null);
 const selectedTvDuration = ref(null);
+const timedVoucherOptions = ref([]);
 const activeTimedVoucher = ref(null);
+const selectedVoucherIdx = ref(null);
 const timedVoucherPhone = ref('');
 const timedVoucherLoading = ref(false);
 const timedVoucherMessage = ref('');
 const timedVoucherSuccess = ref(false);
+
+// Recent Sessions overlay data
+const allRecentSessions = ref([]);
 
 const paymentStep = ref('form'); // 'form' | 'processing' | 'success' | 'failed'
 const paymentPollAttempt = ref(0);
@@ -1055,89 +874,6 @@ const closeVoucherModal = () => {
   voucherErrorMessage.value = '';
   voucherStatusMessage.value = '';
   voucherForm.value = { code: '' };
-};
-
-const openBillingOverlay = async () => {
-  showBillingOverlay.value = true;
-  billingLoading.value = true;
-  try {
-    billingData.value = await fetchInvoices();
-  } catch {
-    billingData.value = { invoices: dashboardData.value?.recent_payments || [], summary: { total: dashboardData.value?.recent_payments?.length || 0, paid: 0, pending: 0, failed: 0 } };
-  } finally {
-    billingLoading.value = false;
-  }
-};
-
-const openSupportOverlay = async () => {
-  showSupportOverlay.value = true;
-  supportLoading.value = true;
-  supportErrorMessage.value = '';
-  supportStatusMessage.value = '';
-  try {
-    supportData.value = await fetchSupportTickets();
-  } catch (error) {
-    supportErrorMessage.value = error?.response?.data?.message || 'Failed to load support tickets';
-    supportData.value = { tickets: [], summary: { total: 0, open: 0, in_progress: 0, resolved: 0 } };
-  } finally {
-    supportLoading.value = false;
-  }
-};
-
-const openSecurityOverlay = () => {
-  showSecurityOverlay.value = true;
-  securityStatusMessage.value = '';
-  securityErrorMessage.value = '';
-  securityGeneratedPassword.value = '';
-  securityGeneratedPortalPassword.value = '';
-};
-
-const submitSupportTicket = async () => {
-  supportSubmitting.value = true;
-  supportStatusMessage.value = '';
-  supportErrorMessage.value = '';
-  try {
-    const response = await createSupportTicket(ticketForm.value);
-    supportStatusMessage.value = response?.message || 'Support ticket created successfully.';
-    ticketForm.value = { subject: '', category: 'general', priority: 'normal', message: '' };
-    supportData.value = await fetchSupportTickets();
-  } catch (error) {
-    supportErrorMessage.value = error?.response?.data?.message || 'Failed to create support ticket';
-  } finally {
-    supportSubmitting.value = false;
-  }
-};
-
-const handleResetPassword = async () => {
-  securityLoading.value = true;
-  securityErrorMessage.value = '';
-  securityStatusMessage.value = '';
-  try {
-    const response = await resetPassword();
-    securityGeneratedPassword.value = response?.data?.generated_password || '';
-    securityStatusMessage.value = response?.message || 'PPPoE password reset successfully.';
-    showSecurityOverlay.value = true;
-  } catch (error) {
-    securityErrorMessage.value = error?.response?.data?.message || 'Failed to reset PPPoE password';
-  } finally {
-    securityLoading.value = false;
-  }
-};
-
-const handleResetPortalPassword = async () => {
-  securityLoading.value = true;
-  securityErrorMessage.value = '';
-  securityStatusMessage.value = '';
-  try {
-    const response = await resetPortalPassword();
-    securityGeneratedPortalPassword.value = response?.data?.generated_portal_password || '';
-    securityStatusMessage.value = response?.message || 'Portal password reset successfully.';
-    showSecurityOverlay.value = true;
-  } catch (error) {
-    securityErrorMessage.value = error?.response?.data?.message || 'Failed to reset portal password';
-  } finally {
-    securityLoading.value = false;
-  }
 };
 
 const emptyDashboard = () => ({
@@ -1223,6 +959,14 @@ const paymentStatusLabel = computed(() => {
     unknown: 'Unknown',
   };
   return labels[value] || value.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
+});
+
+const paymentStatusClass = computed(() => {
+  const value = String(dashboardData.value?.user?.payment_status || '').toLowerCase();
+  if (value === 'paid') return 'bg-green-100 text-green-700';
+  if (value === 'pending') return 'bg-yellow-100 text-yellow-700';
+  if (value === 'unpaid' || value === 'overdue') return 'bg-red-100 text-red-700';
+  return 'bg-gray-100 text-gray-600';
 });
 
 const planAmount = computed(() => {
@@ -1347,6 +1091,11 @@ function openPlanSwitchOverlay() {
   selectedPlanId.value = null;
   showPlanSwitchOverlay.value = true;
   if (!availablePlans.value.length) loadPlans();
+}
+
+function openRecentSessionsOverlay() {
+  allRecentSessions.value = dashboardData.value?.recent_sessions || recentSessions.value || [];
+  showRecentSessionsOverlay.value = true;
 }
 
 async function openHistoryOverlay() {

@@ -1,5 +1,4 @@
 <template>
-  <!-- eslint-disable vue/no-mutating-props -->
   <SlideOverlay
     :model-value="showUpdateOverlay"
     title="Edit Router"
@@ -73,27 +72,6 @@
             <p v-if="!formData.name && formSubmitted" class="mt-1.5 text-sm text-red-500">
               Router name is required
             </p>
-          </div>
-
-          <div class="grid grid-cols-2 gap-4">
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2">Vendor</label>
-              <select
-                v-model="formData.vendor"
-                class="block w-full px-3.5 py-2.5 border border-gray-200 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors bg-white"
-              >
-                <option v-for="option in vendorSelectOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
-              </select>
-            </div>
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2">Model</label>
-              <input
-                v-model="formData.model"
-                type="text"
-                class="block w-full px-3.5 py-2.5 border border-gray-200 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                placeholder="RB5009UG+S+"
-              />
-            </div>
           </div>
 
           <div class="grid grid-cols-2 gap-4">
@@ -272,23 +250,11 @@ export default {
     configLoading: Boolean,
     error: String,
     formatTimestamp: Function,
-    vendorOptions: { type: Array, default: () => [] },
   },
   emits: ['close-update', 'generate-configs', 'copy-token', 'update-router', 'retry'],
   computed: {
     apiBaseUrl() {
       return import.meta.env.VITE_API_BASE_URL || '/api'
-    },
-    vendorSelectOptions() {
-      return Array.isArray(this.vendorOptions) && this.vendorOptions.length > 0
-        ? this.vendorOptions
-        : [
-            { value: 'mikrotik', label: 'MikroTik' },
-            { value: 'cisco', label: 'Cisco' },
-            { value: 'ubiquiti', label: 'Ubiquiti' },
-            { value: 'tplink', label: 'TP-Link' },
-            { value: 'juniper', label: 'Juniper' },
-          ]
     },
   },
   methods: {

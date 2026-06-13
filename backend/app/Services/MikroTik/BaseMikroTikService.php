@@ -92,12 +92,11 @@ abstract class BaseMikroTikService extends TenantAwareService
 
         return [
             '# Interface Lists',
-            '/interface list add name="LAN" comment="Local Area Network"',
-            '/interface list add name="WAN" comment="Wide Area Network"',
+            ':if ([/interface list find name="LAN"] = "") do={ /interface list add name="LAN" comment="Local Area Network" }',
+            ':if ([/interface list find name="WAN"] = "") do={ /interface list add name="WAN" comment="Wide Area Network" }',
             '',
             '# Add WAN interface to WAN list',
-            "/interface list member remove [find list=\"WAN\" interface=\"{$wanInterface}\"]",
-            "/interface list member add list=\"WAN\" interface=\"{$wanInterface}\"",
+            ":if ([/interface list member find list=\"WAN\" interface=\"{$wanInterface}\"] = \"\") do={ /interface list member add list=\"WAN\" interface=\"{$wanInterface}\" }",
             '',
         ];
     }
@@ -134,7 +133,7 @@ abstract class BaseMikroTikService extends TenantAwareService
     {
         return [
             '# NAT Masquerade',
-            '/ip firewall nat remove [find chain=srcnat action=masquerade out-interface-list=WAN comment="Internet access for services"]',
+            '{ :local existingMasq [/ip firewall nat find chain=srcnat action=masquerade out-interface-list=WAN]; :if ([:len $existingMasq] > 0) do={ /ip firewall nat remove $existingMasq } }',
             '/ip firewall nat add chain=srcnat out-interface-list=WAN action=masquerade comment="Internet access for services"',
             '',
         ];
@@ -147,8 +146,7 @@ abstract class BaseMikroTikService extends TenantAwareService
     {
         return [
             '# RADIUS Configuration',
-            "/radius remove [find address=\"{$radiusIp}\" service=\"{$service}\"]",
-            "/radius add address=\"{$radiusIp}\" secret=\"{$radiusSecret}\" service=\"{$service}\" timeout=3s",
+            "{ :local radiusServer \"$radiusIp\"; :local radiusSecret \"$radiusSecret\"; :if ([:len [/system/script/environment get RADIUS_SERVER]] > 0) do={ :set radiusServer [/system/script/environment get RADIUS_SERVER] }; :local existingRadius [/radius find address=\"\$radiusServer\"]; :if ([:len \$existingRadius] > 0) do={ /radius remove \$existingRadius }; /radius add address=\"\$radiusServer\" secret=\"\$radiusSecret\" service=\"$service\" timeout=3s; :log info \"Configured RADIUS server: \$radiusServer\" }",
             '',
         ];
     }
@@ -187,6 +185,7 @@ abstract class BaseMikroTikService extends TenantAwareService
             '# ========================================',
             '# Configuration Complete',
             '# ========================================',
+            ':log info "Configuration applied successfully"',
         ];
     }
     
@@ -213,7 +212,7 @@ abstract class BaseMikroTikService extends TenantAwareService
         $safeInterface = $this->validateInterface($interface);
         
         return [
-            "# Interface existence check for {$safeInterface} (validated PHP-side)",
+            "{ :local iface \"$safeInterface\"; :local ifaceExists [/interface find name=\$iface]; :if ([:len \$ifaceExists] = 0) do={ :log error \"Interface \$iface does not exist\"; :error \"Interface \$iface does not exist\" } }",
         ];
     }
 }

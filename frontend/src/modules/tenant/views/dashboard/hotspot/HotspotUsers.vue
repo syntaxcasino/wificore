@@ -871,7 +871,10 @@ const openUserPanel = async (user) => {
   editForm.simultaneous_use = Number(user.simultaneous_use ?? 1)
   editForm.status           = user.status           || 'active'
   resetEditErrors()
+  loadCurrentSession(user)
+  loadSessionHistory(user)
   loadPaymentHistory(user)
+  loadTrafficMetrics(user)
   try {
     const fresh = await getUserDetails(user.id)
     if (fresh && panelUser.value?.id === user.id) panelUser.value = { ...panelUser.value, ...fresh }
@@ -918,7 +921,7 @@ const loadCurrentSession = async (user, silent = false) => {
 const loadSessionHistory = async (user) => {
   historyLoading.value = true
   try {
-    const res = await axios.get('/hotspot/sessions/inactive', { params: { username: user.username, per_page: 50 } })
+    const res = await axios.get('/hotspot/sessions/inactive', { params: { username: user.username, per_page: 200 } })
     const raw  = res.data?.data || res.data?.sessions || res.data || []
     const list = Array.isArray(raw) ? raw : []
     sessionHistory.value = list

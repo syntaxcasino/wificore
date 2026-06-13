@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"sort"
 	"strconv"
@@ -145,8 +144,6 @@ func (c *binaryAPIClient) execute(command string) (string, error) {
 		return "", err
 	}
 
-	log.Printf("[binary_client] execute: endpoint=%q action=%q findMutation=%v findFilters=%v params=%v", endpoint, opts.action, opts.findMutation, opts.findFilters, params)
-
 	if opts.scriptDeploy {
 		return "", errUnsupportedCommand
 	}
@@ -175,258 +172,43 @@ func (c *binaryAPIClient) executeScript(script string) (string, error) {
 		return "", fmt.Errorf("binary api script is empty")
 	}
 
-	// Per MikroTik best practices: do NOT use /system/script/add for deployment.
-	// RouterOS script source has a finite maximum length and gets silently truncated.
-	// Instead, strip :do { } on-error={} wrappers and execute inner commands
-	// individually via the binary API. Benign errors (already have, no such item)
-	// are ignored for idempotent operations.
-	var outputs []string
-	lines := strings.Split(script, "\n")
-
-	for i := 0; i < len(lines); i++ {
-		cmd := strings.TrimSpace(lines[i])
-		if cmd == "" || strings.HasPrefix(cmd, "#") {
-			continue
-		}
-
-		// Multi-line :do { } blocks: accumulate lines until braces are balanced.
-		// Generator script lines like /system script add source="..." may contain
-		// actual newlines inside the source value, causing naive \n splitting to
-		// break the block into invalid fragments.
-		if strings.HasPrefix(cmd, ":do {") && !hasBalancedBraces(cmd) {
-			for j := i + 1; j < len(lines); j++ {
-				cmd += "\n" + lines[j]
-				if hasBalancedBraces(cmd) {
-					i = j
-					break
-				}
-			}
-		}
-
-		// Handle :delay ms/s — needed between interface creation and dependent adds
-		if strings.HasPrefix(cmd, ":delay ") {
-			durStr := strings.TrimSpace(strings.TrimPrefix(cmd, ":delay "))
-			if d, err := time.ParseDuration(durStr); err == nil {
-				time.Sleep(d)
-			}
-			outputs = append(outputs, "ok: delay "+durStr)
-			continue
-		}
-
-		// /log commands are script-only; binary API has no /log endpoint
-		if strings.HasPrefix(cmd, "/log ") {
-			outputs = append(outputs, "ok (skipped): "+cmd)
-			continue
-		}
-
-		innerCmd, onError, isDoBlock := extractDoBlock(cmd)
-		if isDoBlock {
-			cmd = innerCmd
-		}
-
-		out, err := c.execute(cmd)
-		if err != nil {
-			if isBenignError(err) {
-				outputs = append(outputs, fmt.Sprintf("ok (benign): %s", cmd))
-				continue
-			}
-			if isDoBlock && !strings.Contains(onError, ":error") {
-				// Non-fatal :do block with on-error that does not contain :error
-				outputs = append(outputs, fmt.Sprintf("warning: %s: %v", cmd, err))
-				continue
-			}
-			return strings.Join(outputs, "\n"), fmt.Errorf("binary api command failed: %s: %w", cmd, err)
-		}
-		outputs = append(outputs, out)
+	name := fmt.Sprintf("wificore-%d", time.Now().UnixNano())
+	source := script
+	if _, err := c.command("/system/script/add", []string{"name=" + name, "source=" + source}); err != nil {
+		return "", err
 	}
-	return strings.Join(outputs, "\n"), nil
-}
+	defer func() {
+		_, _ = c.command("/system/script/remove", []string{"numbers=" + name})
+	}()
 
-// hasBalancedBraces returns true if all '{' have matching '}' when ignoring
-// braces inside double-quoted strings.
-func hasBalancedBraces(s string) bool {
-	depth := 0
-	inQuotes := false
-	escaped := false
-	for i := 0; i < len(s); i++ {
-		ch := s[i]
-		if escaped {
-			escaped = false
-			continue
-		}
-		if ch == '\\' {
-			escaped = true
-			continue
-		}
-		if ch == '"' {
-			inQuotes = !inQuotes
-			continue
-		}
-		if inQuotes {
-			continue
-		}
-		if ch == '{' {
-			depth++
-		} else if ch == '}' {
-			depth--
-			if depth < 0 {
-				return false
-			}
-		}
-	}
-	return depth == 0
-}
-
-// extractDoBlock extracts inner command and on-error handler from
-// a :do { inner } on-error={handler} RouterOS script line.
-func extractDoBlock(line string) (innerCmd, onError string, ok bool) {
-	line = strings.TrimSpace(line)
-	if !strings.HasPrefix(line, ":do {") && !strings.HasPrefix(line, ":do{") {
-		return "", "", false
+	if _, err := c.command("/system/script/run", []string{"numbers=" + name}); err != nil {
+		return "", err
 	}
 
-	// Find the matching } for :do {
-	depth := 0
-	startIdx := strings.Index(line, "{")
-	inQuotes := false
-	for i := startIdx; i < len(line); i++ {
-		ch := line[i]
-		if ch == '"' && (i == 0 || line[i-1] != '\\') {
-			inQuotes = !inQuotes
-			continue
-		}
-		if inQuotes {
-			continue
-		}
-		if ch == '{' {
-			depth++
-		} else if ch == '}' {
-			depth--
-			if depth == 0 {
-				innerCmd = strings.TrimSpace(line[startIdx+1 : i])
-				rest := strings.TrimSpace(line[i+1:])
-				if strings.HasPrefix(rest, "on-error=") {
-					rest = strings.TrimSpace(strings.TrimPrefix(rest, "on-error="))
-					if strings.HasPrefix(rest, "{") {
-						errStart := strings.Index(rest, "{")
-						depth = 0
-						inQuotes = false
-						for j := errStart; j < len(rest); j++ {
-							ch2 := rest[j]
-							if ch2 == '"' && (j == 0 || rest[j-1] != '\\') {
-								inQuotes = !inQuotes
-								continue
-							}
-							if inQuotes {
-								continue
-							}
-							if ch2 == '{' {
-								depth++
-							} else if ch2 == '}' {
-								depth--
-								if depth == 0 {
-									onError = strings.TrimSpace(rest[errStart+1 : j])
-									return innerCmd, onError, true
-								}
-							}
-						}
-					}
-				}
-				return innerCmd, "", true
-			}
-		}
-	}
-	return "", "", false
-}
-
-// isBenignError returns true for errors that are expected during idempotent
-// operations (adding an item that already exists, removing one that doesn't).
-func isBenignError(err error) bool {
-	if err == nil {
-		return false
-	}
-	msg := strings.ToLower(err.Error())
-	needles := []string{
-		"already have",
-		"already exists",
-		"no such item",
-		"nothing to remove",
-		"failure: already have",
-		"failure: item with the same name",
-		"failure: item with same name",
-		"failure: entry already exists",
-		"entry already exists",
-	}
-	for _, needle := range needles {
-		if strings.Contains(msg, needle) {
-			return true
-		}
-	}
-	return false
+	return "script executed", nil
 }
 
 func (c *binaryAPIClient) executeFindMutation(baseEndpoint, action string, findFilters []string, extraParams []string) (string, error) {
-	basePath := strings.TrimSuffix(baseEndpoint, "/"+action)
-	searchEndpoint := basePath + "/print"
-
-	// RouterOS 7.x binary API rejects ?key=value query words on many endpoints
-	// (e.g. /ppp/profile/print returns "unknown parameter find name").
-	// Fetch all records without query words and filter client-side instead.
-	allRecords, err := c.command(searchEndpoint, nil)
+	searchEndpoint := strings.TrimSuffix(baseEndpoint, "/"+action) + "/print"
+	records, err := c.command(searchEndpoint, findFilters)
 	if err != nil {
 		return "", err
 	}
 
-	log.Printf("[binary_client] executeFindMutation: %s returned %d records, filters=%v", searchEndpoint, len(allRecords), findFilters)
-	for i, r := range allRecords {
-		log.Printf("[binary_client]   record[%d]: .id=%q name=%q", i, r[".id"], r["name"])
+	if len(records) == 0 {
+		return "", nil
 	}
 
-	// Parse filters: each is "?key=value" or "?key~=value" (contains).
-	type filter struct {
-		key      string
-		val      string
-		contains bool
-	}
-	parsed := make([]filter, 0, len(findFilters))
-	for _, f := range findFilters {
-		f = strings.TrimPrefix(f, "?")
-		if idx := strings.Index(f, "~="); idx > 0 {
-			parsed = append(parsed, filter{key: f[:idx], val: f[idx+2:], contains: true})
-		} else if idx := strings.Index(f, "="); idx > 0 {
-			parsed = append(parsed, filter{key: f[:idx], val: f[idx+1:]})
-		}
-	}
-
-	outputs := make([]string, 0)
-	for _, record := range allRecords {
+	outputs := make([]string, 0, len(records))
+	for _, record := range records {
 		id := record[".id"]
 		if strings.TrimSpace(id) == "" {
 			continue
 		}
-		// Check all filters match this record.
-		match := true
-		for _, fl := range parsed {
-			rv := record[fl.key]
-			if fl.contains {
-				if !strings.Contains(rv, fl.val) {
-					match = false
-					break
-				}
-			} else {
-				if rv != fl.val {
-					match = false
-					break
-				}
-			}
-		}
-		if !match {
-			continue
-		}
 
 		params := append([]string{}, extraParams...)
-		params = append(params, ".id="+id)
-		result, err := c.command(basePath+"/"+action, params)
+		params = append(params, "numbers="+id)
+		result, err := c.command(strings.TrimSuffix(baseEndpoint, "/"+action)+"/"+action, params)
 		if err != nil {
 			return "", err
 		}
@@ -505,17 +287,6 @@ func (c *binaryAPIClient) readResponse() ([]map[string]string, error) {
 			}
 			if msg == "" {
 				msg = "routeros api error"
-			}
-			// RouterOS sends !done after !trap. Must drain it to keep
-			// command/response alignment for the next command.
-			for {
-				sentence, err := c.readSentence()
-				if err != nil {
-					return nil, err
-				}
-				if len(sentence) > 0 && (sentence[0] == "!done" || sentence[0] == "!empty") {
-					break
-				}
 			}
 			return nil, fmt.Errorf("RouterOS API error (%s): %s", typ, msg)
 		default:
@@ -662,25 +433,14 @@ func translateRouterOSCommand(command string) (string, []string, commandOptions,
 			continue
 		}
 
-		// Detect [/<path> find ...] or [/<path> where ...] reference expressions.
-		// These are RouterOS scripting constructs that resolve item IDs by query.
-		// e.g. [/interface bridge port find bridge="br"] or [/ppp profile find name="prof"]
-		// Also supports context-relative [find name="eth1"] and [where service="ppp"].
-		// IMPORTANT: do NOT break after setting findMutation — continue collecting
-		// remaining tokens (e.g. interface-list="PA-9d54fcf5") as params.
-		if strings.HasPrefix(tok, "[") {
-			trimmed := strings.TrimPrefix(tok, "[")
-			hasFind := strings.Contains(tok, " find ") || strings.HasPrefix(trimmed, "find ")
-			hasWhere := strings.Contains(tok, " where ") || strings.HasPrefix(trimmed, "where ")
-			if hasFind || hasWhere {
-				opts.findMutation = true
-				filters := extractFindFilters(tok)
-				if len(filters) == 0 {
-					return "", nil, commandOptions{}, errUnsupportedCommand
-				}
-				opts.findFilters = filters
-				continue
+		if strings.HasPrefix(tok, "[find") || strings.Contains(tok, "[find") {
+			opts.findMutation = true
+			filters := extractFindFilters(strings.Join(rest[i:], " "))
+			if len(filters) == 0 {
+				return "", nil, commandOptions{}, errUnsupportedCommand
 			}
+			opts.findFilters = filters
+			break
 		}
 
 		if strings.Contains(tok, "=") {
@@ -689,13 +449,7 @@ func translateRouterOSCommand(command string) (string, []string, commandOptions,
 		}
 
 		if opts.action == "set" || opts.action == "remove" || opts.action == "enable" || opts.action == "disable" {
-			idOrName := stripAngleAndQuotes(tok)
-			if strings.HasPrefix(idOrName, "*") || strings.Contains(idOrName, "=") {
-				params = append(params, ".id="+idOrName)
-			} else {
-				opts.findMutation = true
-				opts.findFilters = []string{"?name=" + idOrName}
-			}
+			params = append(params, "numbers="+stripAngleAndQuotes(tok))
 			continue
 		}
 
@@ -723,31 +477,11 @@ func splitRouterOSCommand(command string) []string {
 		}
 	}
 
-	for i := 0; i < len(command); i++ {
-		r := rune(command[i])
+	for _, r := range command {
 		switch {
 		case escaped:
 			current.WriteRune(r)
 			escaped = false
-		case r == '\\' && i+1 < len(command) && command[i+1] == '"':
-			next := byte(0)
-			if i+2 < len(command) {
-				next = command[i+2]
-			}
-			if !inQuotes {
-				current.WriteByte('"')
-				inQuotes = true
-				i++
-				continue
-			}
-			if next == 0 || next == ' ' || next == '\t' || next == ';' || next == ']' || next == '}' {
-				current.WriteByte('"')
-				inQuotes = false
-				i++
-				continue
-			}
-			current.WriteRune(r)
-			escaped = true
 		case r == '\\':
 			current.WriteRune(r)
 			escaped = true
@@ -780,57 +514,11 @@ func isActionToken(token string) bool {
 }
 
 func stripAngleAndQuotes(token string) string {
-	token = strings.Trim(token, "[]")
-	token = strings.TrimSuffix(token, ";")
-	// Handle key="value" format: strip quotes from value only.
-	if idx := strings.Index(token, "="); idx > 0 {
-		key := token[:idx]
-		val := token[idx+1:]
-		val = cleanRouterOSValue(val)
-		return key + "=" + val
-	}
-	return cleanRouterOSValue(cleanQueryValue(token))
-}
-
-func cleanRouterOSValue(value string) string {
-	value = strings.TrimSpace(value)
-	value = strings.TrimSuffix(value, ";")
-	if len(value) >= 2 && strings.HasPrefix(value, `\"`) && strings.HasSuffix(value, `\"`) {
-		value = strings.TrimPrefix(value, `\"`)
-		value = strings.TrimSuffix(value, `\"`)
-	} else {
-		value = strings.Trim(value, `"`)
-	}
-	return unescapeRouterOSValue(value)
-}
-
-func unescapeRouterOSValue(value string) string {
-	var b strings.Builder
-	b.Grow(len(value))
-	for i := 0; i < len(value); i++ {
-		if value[i] == '\\' && i+1 < len(value) {
-			switch value[i+1] {
-			case '\\', '"', '$':
-				b.WriteByte(value[i+1])
-				i++
-				continue
-			}
-		}
-		b.WriteByte(value[i])
-	}
-	return b.String()
+	return cleanQueryValue(strings.Trim(token, "[]"))
 }
 
 func extractFindFilters(command string) []string {
-	// RouterOS [find] expressions may include a path prefix:
-	//   [/ppp profile find name="prof"]
-	//   [/interface find name="eth1"]
-	// Or be context-relative (no path prefix):
-	//   [find name="eth1"]
-	//   [where service="ppp"]
-	// Extract the content inside the outermost brackets and locate
-	// the " find " or " where " keyword that precedes the filters.
-	start := strings.Index(command, "[")
+	start := strings.Index(command, "[find")
 	if start == -1 {
 		return nil
 	}
@@ -838,35 +526,14 @@ func extractFindFilters(command string) []string {
 	if end == -1 {
 		return nil
 	}
-	inner := command[start+1 : start+end] // e.g. "/ppp profile find name=\"prof\"" or "find name=\"eth1\""
-
-	findIdx := strings.Index(inner, " find ")
-	whereIdx := strings.Index(inner, " where ")
-
-	var filtersStr string
-	if findIdx != -1 {
-		filtersStr = strings.TrimSpace(inner[findIdx+len(" find "):])
-	} else if whereIdx != -1 {
-		filtersStr = strings.TrimSpace(inner[whereIdx+len(" where "):])
-	} else if strings.HasPrefix(inner, "find ") {
-		filtersStr = strings.TrimSpace(strings.TrimPrefix(inner, "find "))
-	} else if strings.HasPrefix(inner, "where ") {
-		filtersStr = strings.TrimSpace(strings.TrimPrefix(inner, "where "))
-	} else {
-		return nil
-	}
-
-	if filtersStr == "" {
+	inner := strings.TrimSpace(command[start+len("[find") : start+end])
+	if inner == "" {
 		return nil
 	}
 
 	filters := make([]string, 0)
-	for _, token := range splitRouterOSCommand(filtersStr) {
-		if strings.Contains(token, "~") && !strings.Contains(token, "=") {
-			// RouterOS script uses "~" for partial match; binary API uses "~="
-			token = strings.Replace(token, "~", "~=", 1)
-		}
-		if strings.Contains(token, "=") || strings.Contains(token, "~=") {
+	for _, token := range splitRouterOSCommand(inner) {
+		if strings.Contains(token, "=") {
 			filters = append(filters, "?"+stripAngleAndQuotes(token))
 		}
 	}
@@ -927,7 +594,6 @@ func quoteIfNeeded(value string) string {
 
 func cleanQueryValue(value string) string {
 	value = strings.TrimSpace(value)
-	value = strings.TrimSuffix(value, ";")
 	value = strings.TrimPrefix(value, "=")
 	value = strings.TrimPrefix(value, "?")
 	return strings.Trim(value, "\"")

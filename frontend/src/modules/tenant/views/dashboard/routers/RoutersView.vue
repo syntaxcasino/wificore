@@ -31,7 +31,6 @@
       :loading="detailsLoading"
       :error="detailsError"
       :refreshing="refreshing"
-      :template-marketplace="templateMarketplace"
       @close-details="closeDetails" 
       @refresh-details="refreshDetails" 
     />
@@ -60,7 +59,6 @@
       :config-loading="configLoading" 
       :error="formError"
       :format-timestamp="formatTimestamp" 
-      :vendor-options="vendorOptions"
       @close-update="closeUpdateOverlay" 
       @generate-configs="generateConfigs"
       @copy-token="copyToClipboard" 
@@ -291,12 +289,15 @@ const confirmStore = useConfirmStore()
 const { error: showError, success: showSuccess } = useToast()
 
 const {
-  routers, loading, refreshing, listError, formError, detailsError, detailsLoading, vendorOptions, templateMarketplace,
+  routers, loading, refreshing, listError, formError, detailsError, detailsLoading,
   showFormOverlay, showDetailsOverlay, showUpdateOverlay, currentRouter, isEditing,
-  selectedRouter, formData, formSubmitting, configLoading, formMessage, formSubmitted,
-  fetchRouters, addRouter, updateRouter, deleteRouter, reprovisionRouter, generateConfigs,
-  formatTimestamp, openCreateOverlay, openEditOverlay, openDetails, closeDetails, refreshDetails,
-  closeFormOverlay, closeUpdateOverlay, copyToClipboard,
+  selectedRouter, formData, formSubmitting, currentStep, steps, configLoading,
+  connectivityVerified, availableInterfaces, configurationProgress, formMessage, formSubmitted,
+  fetchRouters, verifyConnectivity, addRouter, editRouter, updateRouter, deleteRouter,
+  reprovisionRouter, generateConfigs, applyConfigurations, formatTimestamp, statusBadgeClass,
+  openCreateOverlay, openEditOverlay, openDetails, closeDetails, refreshDetails,
+  closeFormOverlay, closeUpdateOverlay, nextStep, previousStep, copyToClipboard,
+  updateInterfaceAssignments, updateFormData,
   setupRealtimeUpdates, cleanupRealtimeUpdates,
 } = useRouters()
 
@@ -314,8 +315,6 @@ const searchQuery = ref('')
 const filterStatus = ref('')
 const currentPage = ref(1)
 const itemsPerPage = ref(10)
-let lastFreshFetchAt = 0
-const FRESH_FETCH_MIN_INTERVAL_MS = 5000
 
 const normalizeName = (router) => String(router?.name ?? '').trim()
 const normalizeId = (router) => String(router?.id ?? '')
@@ -538,36 +537,15 @@ const loginToRouter = (router) => {
   window.open(winboxUrl, '_blank')
 }
 
-const refreshIfStale = () => {
-  const nowTs = Date.now()
-  if (nowTs - lastFreshFetchAt < FRESH_FETCH_MIN_INTERVAL_MS) return
-  lastFreshFetchAt = nowTs
-  fetchRouters()
-}
-
-const handleWindowFocus = () => {
-  refreshIfStale()
-}
-
-const handleVisibilityChange = () => {
-  if (document.visibilityState === 'visible') {
-    refreshIfStale()
-  }
-}
-
 onMounted(() => {
-  refreshIfStale()
+  fetchRouters()
   setupRealtimeUpdates()
   document.addEventListener('click', handleClickOutside)
-  window.addEventListener('focus', handleWindowFocus)
-  document.addEventListener('visibilitychange', handleVisibilityChange)
 })
 
 onUnmounted(() => {
   cleanupRealtimeUpdates()
   document.removeEventListener('click', handleClickOutside)
-  window.removeEventListener('focus', handleWindowFocus)
-  document.removeEventListener('visibilitychange', handleVisibilityChange)
 })
 
 const handleClickOutside = (event) => {

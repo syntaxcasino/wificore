@@ -184,7 +184,7 @@ return [
     |
     */
     'backup_enabled' => env('TENANT_BACKUP_ENABLED', true),
-    'backup_path' => env('TENANT_BACKUP_PATH', storage_path('app/tenant-backups')),
+    'backup_path' => storage_path('app/tenant-backups'),
     'backup_retention_days' => env('TENANT_BACKUP_RETENTION_DAYS', 30),
     
     /*

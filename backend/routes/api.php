@@ -348,21 +348,6 @@ Route::prefix('pppoe-portal')->group(function () {
         Route::get('/payment/status', [PppoePortalController::class, 'checkPaymentStatus'])
             ->middleware('throttle:30,1')
             ->name('api.pppoe-portal.payment.status');
-        Route::get('/invoices', [PppoePortalController::class, 'invoices'])
-            ->middleware('throttle:30,1')
-            ->name('api.pppoe-portal.invoices');
-        Route::get('/support/tickets', [PppoePortalController::class, 'supportTickets'])
-            ->middleware('throttle:30,1')
-            ->name('api.pppoe-portal.support.tickets');
-        Route::post('/support/tickets', [PppoePortalController::class, 'createSupportTicket'])
-            ->middleware('throttle:10,1')
-            ->name('api.pppoe-portal.support.tickets.store');
-        Route::post('/account/reset-password', [PppoePortalController::class, 'resetPassword'])
-            ->middleware('throttle:5,1')
-            ->name('api.pppoe-portal.account.reset-password');
-        Route::post('/account/reset-portal-password', [PppoePortalController::class, 'resetPortalPassword'])
-            ->middleware('throttle:5,1')
-            ->name('api.pppoe-portal.account.reset-portal-password');
         Route::get('/debug/payment-state', [PppoePortalController::class, 'debugPaymentState'])
             ->middleware('throttle:30,1')
             ->name('api.pppoe-portal.debug.payment-state');
@@ -512,10 +497,6 @@ Route::middleware(['auth:sanctum', 'system.admin'])->prefix('system')->name('api
         ->name('health');
     Route::get('/metrics', [\App\Http\Controllers\Api\SystemMetricsController::class, 'getMetrics'])
         ->name('metrics');
-    Route::get('/metrics/provisioning/callback-guard', [\App\Http\Controllers\Api\SystemMetricsController::class, 'getProvisioningCallbackGuardMetrics'])
-        ->name('metrics.provisioning.callback-guard');
-    Route::post('/metrics/provisioning/callback-guard/reset', [\App\Http\Controllers\Api\SystemMetricsController::class, 'resetProvisioningCallbackGuardMetrics'])
-        ->name('metrics.provisioning.callback-guard.reset');
     Route::get('/queue/stats', [\App\Http\Controllers\Api\SystemMetricsController::class, 'getQueueStats'])
         ->name('queue.stats');
     Route::get('/queue/historical', [\App\Http\Controllers\Api\SystemMetricsController::class, 'getHistoricalQueueMetrics'])
@@ -797,14 +778,6 @@ Route::middleware(['auth:sanctum', 'role:admin', 'user.active', 'tenant.context'
         ->name('api.vouchers.generate');
     Route::post('/vouchers/{voucher}/revoke', [VoucherController::class, 'revoke'])
         ->name('api.vouchers.revoke');
-    Route::post('/vouchers/{voucher}/archive', [VoucherController::class, 'archive'])
-        ->name('api.vouchers.archive');
-    Route::post('/vouchers/{voucher}/restore', [VoucherController::class, 'restore'])
-        ->name('api.vouchers.restore');
-    Route::post('/vouchers/bulk-archive', [VoucherController::class, 'bulkArchive'])
-        ->name('api.vouchers.bulk-archive');
-    Route::post('/vouchers/export', [VoucherController::class, 'export'])
-        ->name('api.vouchers.export');
     Route::delete('/vouchers/{voucher}', [VoucherController::class, 'destroy'])
         ->name('api.vouchers.destroy');
 
@@ -904,7 +877,6 @@ Route::middleware(['auth:sanctum', 'role:admin', 'user.active', 'tenant.context'
         // Router Status & Details
         Route::get('/{router}/status', [RouterController::class, 'status'])->name('status');
         Route::get('/{router}/details', [RouterController::class, 'getRouterDetails'])->name('details');
-        Route::get('/{router}/compliance', [RouterController::class, 'getRouterCompliance'])->name('compliance');
         Route::get('/{router}/events', [RouterController::class, 'getRouterEvents'])->name('events');
         Route::get('/{router}/metrics/live', [RouterMetricsController::class, 'live'])->name('metrics.live');
         Route::get('/{router}/metrics/traffic', [RouterMetricsController::class, 'trafficRange'])->name('metrics.traffic.range');
@@ -948,8 +920,6 @@ Route::middleware(['auth:sanctum', 'role:admin', 'user.active', 'tenant.context'
 
         // Get provisioning status
         Route::get('/{router}/provisioning-status', [RouterController::class, 'getProvisioningStatus'])->name('provisioning-status');
-        Route::get('/{router}/provisioning-runs', [RouterController::class, 'getProvisioningRuns'])->name('provisioning-runs.index');
-        Route::get('/{router}/provisioning-runs/{run}', [RouterController::class, 'getProvisioningRun'])->name('provisioning-runs.show');
         Route::post('/{router}/tasks', [RouterController::class, 'createTask'])->name('tasks.create');
         Route::get('/{router}/tasks/{task}', [RouterController::class, 'getTaskStatus'])->name('tasks.show');
 
@@ -972,12 +942,6 @@ Route::middleware(['auth:sanctum', 'role:admin', 'user.active', 'tenant.context'
         Route::post('/{router}/services/{service}/validate', [ServiceConfigurationController::class, 'validateService'])->name('services.validate');
         Route::post('/{router}/services/{service}/deploy', [ServiceConfigurationController::class, 'deploy'])->name('services.deploy');
     });
-
-    // -------------------------------------------------------------------------
-    // Bulk Router Orchestration
-    // -------------------------------------------------------------------------
-    Route::post('/routers/orchestration/preview', [RouterController::class, 'previewMassOrchestration'])->name('api.routers.orchestration.preview');
-    Route::post('/routers/orchestration/deploy', [RouterController::class, 'deployMassOrchestration'])->name('api.routers.orchestration.deploy');
     
     // -------------------------------------------------------------------------
     // VPN Configuration Management (WireGuard/IPsec)
@@ -1030,8 +994,6 @@ Route::middleware(['auth:sanctum', 'role:admin', 'user.active', 'tenant.context'
         Route::get('/access-points', [AccessPointController::class, 'index'])->name('access-points.index');
         Route::post('/access-points', [AccessPointController::class, 'store'])->name('access-points.store');
         Route::post('/access-points/discover', [AccessPointController::class, 'discover'])->name('access-points.discover');
-        Route::post('/orchestration/preview', [RouterController::class, 'previewMassOrchestration'])->name('router.orchestration.preview');
-        Route::post('/orchestration/deploy', [RouterController::class, 'deployMassOrchestration'])->name('router.orchestration.deploy');
     });
 
     // -------------------------------------------------------------------------
@@ -1479,8 +1441,6 @@ Route::middleware(['auth:sanctum', 'role:admin', 'user.active', 'tenant.context'
     // Dashboard & Statistics
     Route::get('/dashboard', [TenantDashboardController::class, 'index'])
         ->name('api.tenant.dashboard');
-    Route::get('/dashboard/health-score', [TenantDashboardController::class, 'healthScore'])
-        ->name('api.tenant.dashboard.health-score');
     Route::get('/dashboard/stats', [DashboardController::class, 'getStats'])
         ->name('api.tenant.dashboard.stats');
     Route::post('/dashboard/refresh', [DashboardController::class, 'refreshStats'])

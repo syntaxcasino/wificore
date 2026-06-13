@@ -17,7 +17,7 @@ class RotateRouterSshKeys extends Command
 
     protected $description = 'Rotate SSH keys for routers that are due for rotation (90+ days old)';
 
-    public function handle(SshKeyRotationService $rotationService)
+    public function handle()
     {
         $this->info('Starting SSH key rotation for routers...');
         

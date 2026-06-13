@@ -62,6 +62,21 @@ class TenantContext
             ? $this->buildSearchPath($tenant->schema_name)
             : null;
 
+        if (
+            !$force
+            && $tenant->schema_created
+            && $tenant->schema_name
+            && DB::transactionLevel() > 0
+            && $this->activeTenantId === (string) $tenant->id
+            && $this->activeSchemaName === $tenant->schema_name
+            && $this->activeSearchPath === $targetSearchPath
+        ) {
+            $this->tenant = $tenant;
+            app()->instance('current_tenant', $tenant);
+
+            return;
+        }
+
         $this->tenant = $tenant;
         
         // Also set in app container for model events to access
@@ -161,6 +176,18 @@ class TenantContext
     public function clearTenant(): void
     {
         $targetSearchPath = $this->originalSearchPath ?: $this->systemSchema;
+
+        if (
+            $this->tenant === null
+            && $this->activeSearchPath === $targetSearchPath
+            && $this->activeTenantId === null
+        ) {
+            if (app()->has('current_tenant')) {
+                app()->forgetInstance('current_tenant');
+            }
+
+            return;
+        }
 
         try {
             $this->setSearchPathStatement($targetSearchPath);
@@ -302,21 +329,6 @@ class TenantContext
                 ]);
             }
         }
-    }
-
-    /**
-     * Run code in a PgBouncer-safe tenant transaction.
-     */
-    public function runInTenantTransaction(Tenant $tenant, callable $callback)
-    {
-        return DB::transaction(function () use ($tenant, $callback) {
-            // Force all reads in this transaction onto the same write PDO that
-            // receives SET LOCAL search_path. Without sticky-write, callbacks on
-            // PgBouncer transaction pooling can read from a different connection.
-            DB::connection()->recordsHaveBeenModified();
-
-            return $this->runInTenantContext($tenant, $callback);
-        });
     }
     
     /**

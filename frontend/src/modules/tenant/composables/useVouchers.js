@@ -1,12 +1,12 @@
 import { ref, computed } from 'vue'
 import axios from '@/modules/common/services/api/axios'
 import { useAuthStore } from '@/stores/auth'
-import { useNotificationStore } from '@/stores/notifications'
+import { useToast } from '@/modules/common/composables/useToast'
 import { readSnapshot, scheduleAfterPaint, writeSnapshot } from '@/modules/common/composables/performance/useViewCache'
 import { useEventDeduplicationStore } from '@/stores/eventDeduplication'
 
 export function useVouchers() {
-  const notify = useNotificationStore()
+  const toast = useToast()
   const dedupStore = useEventDeduplicationStore()
   const authStore = useAuthStore()
   const cacheKey = () => `tenant:vouchers:${authStore.user?.tenant_id || authStore.tenantId || 'default'}:v1`
@@ -49,14 +49,6 @@ export function useVouchers() {
     to: 0,
     total: 0
   })
-
-  // Active filters for server-side filtering
-  const activeFilters = ref({
-    search: '',
-    status: '',
-    package_id: '',
-    include_archived: false
-  })
   
   // Stats
   const stats = ref({
@@ -64,8 +56,7 @@ export function useVouchers() {
     unused: 0,
     used: 0,
     expired: 0,
-    revoked: 0,
-    archived: 0
+    revoked: 0
   })
 
   // Track pending optimistic updates for rollback
@@ -76,8 +67,7 @@ export function useVouchers() {
     { color: 'bg-emerald-500', value: stats.value.unused || 0, tooltip: 'Unused vouchers' },
     { color: 'bg-blue-500', value: stats.value.used || 0, tooltip: 'Used vouchers' },
     { color: 'bg-amber-500', value: stats.value.expired || 0, tooltip: 'Expired vouchers' },
-    { color: 'bg-red-500', value: stats.value.revoked || 0, tooltip: 'Revoked vouchers' },
-    { color: 'bg-gray-500', value: stats.value.archived || 0, tooltip: 'Archived vouchers' }
+    { color: 'bg-red-500', value: stats.value.revoked || 0, tooltip: 'Revoked vouchers' }
   ])
 
   // Actions
@@ -133,17 +123,8 @@ export function useVouchers() {
       const queryParams = {
         page: params.page || pagination.value.currentPage,
         per_page: params.per_page || pagination.value.perPage,
+        ...params
       }
-
-      const search = params.search !== undefined ? params.search : activeFilters.value.search
-      const status = params.status !== undefined ? params.status : activeFilters.value.status
-      const package_id = params.package_id !== undefined ? params.package_id : activeFilters.value.package_id
-      const include_archived = params.include_archived !== undefined ? params.include_archived : activeFilters.value.include_archived
-
-      if (search) queryParams.search = search
-      if (status) queryParams.status = status
-      if (package_id) queryParams.package_id = package_id
-      if (include_archived) queryParams.include_archived = true
       
       const res = await axios.get('/vouchers', { params: queryParams })
       const data = res.data.data || res.data
@@ -190,10 +171,6 @@ export function useVouchers() {
     return fetchVouchers({ page: pagination.value.currentPage })
   }
 
-  const setFilters = (filters) => {
-    activeFilters.value = { ...activeFilters.value, ...filters }
-  }
-
   const goToPage = async (page) => {
     if (page < 1 || page > pagination.value.lastPage) return
     pagination.value.currentPage = page
@@ -215,12 +192,12 @@ export function useVouchers() {
         quantity: formData.quantity,
       }
       if (formData.prefix) payload.prefix = formData.prefix
-      payload.expires_at = formData.expires_at || null
+      if (formData.expires_at) payload.expires_at = formData.expires_at
       if (formData.notes) payload.notes = formData.notes
 
       const response = await axios.post('/vouchers/generate', payload)
       const generated = response.data?.data?.vouchers || []
-      notify.success('Vouchers Generated', `Generated ${generated.length || formData.quantity} voucher(s)`)
+      toast.success(`Generated ${generated.length || formData.quantity} voucher(s)`)
 
       // IMMEDIATE UI UPDATE: Inject vouchers locally so they appear right away.
       // Also dispatch events so any listening components pick them up instantly.
@@ -247,133 +224,31 @@ export function useVouchers() {
       return true
     } catch (err) {
       generateError.value = err.response?.data?.message || 'Failed to generate vouchers'
-      notify.error('Voucher Generation Failed', generateError.value)
+      toast.error(generateError.value)
       return false
     } finally {
       generating.value = false
     }
   }
 
-  const archiveVoucher = async (voucher) => {
-    const index = vouchers.value.findIndex(v => v.id === voucher.id)
-    if (index === -1) {
-      notify.error('Not Found', 'Voucher not found')
-      return false
-    }
-
-    try {
-      await axios.post(`/vouchers/${voucher.id}/archive`)
-      vouchers.value[index].archived_at = new Date().toISOString()
-      notify.success('Voucher Archived', `Voucher ${voucher.code} archived`)
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('voucher-updated', {
-          detail: { voucher: vouchers.value[index], timestamp: new Date().toISOString() }
-        }))
-      }
-      return true
-    } catch (err) {
-      const message = err.response?.data?.message || 'Failed to archive voucher'
-      notify.error('Archive Failed', message)
-      console.error('Error archiving voucher:', err)
-      return false
-    }
-  }
-
-  const restoreVoucher = async (voucher) => {
-    const index = vouchers.value.findIndex(v => v.id === voucher.id)
-    if (index === -1) {
-      notify.error('Not Found', 'Voucher not found')
-      return false
-    }
-
-    try {
-      await axios.post(`/vouchers/${voucher.id}/restore`)
-      vouchers.value[index].archived_at = null
-      notify.success('Voucher Restored', `Voucher ${voucher.code} restored`)
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('voucher-updated', {
-          detail: { voucher: vouchers.value[index], timestamp: new Date().toISOString() }
-        }))
-      }
-      return true
-    } catch (err) {
-      const message = err.response?.data?.message || 'Failed to restore voucher'
-      notify.error('Restore Failed', message)
-      console.error('Error restoring voucher:', err)
-      return false
-    }
-  }
-
-  const bulkArchiveVouchers = async (ids) => {
-    if (!ids || ids.length === 0) {
-      notify.error('No Selection', 'Please select vouchers to archive')
-      return false
-    }
-
-    try {
-      const res = await axios.post('/vouchers/bulk-archive', { ids })
-      const count = res.data?.data?.archived_count || ids.length
-      notify.success('Vouchers Archived', `Archived ${count} voucher(s)`)
-      return true
-    } catch (err) {
-      const message = err.response?.data?.message || 'Failed to archive vouchers'
-      notify.error('Bulk Archive Failed', message)
-      console.error('Error bulk archiving vouchers:', err)
-      return false
-    }
-  }
-
-  const exportVouchers = async (ids = null) => {
-    try {
-      const payload = ids ? { ids, format: 'csv' } : { format: 'csv' }
-      const res = await axios.post('/vouchers/export', payload, { responseType: 'blob' })
-      const blob = new Blob([res.data], { type: 'text/csv' })
-      const url = window.URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      const filename = res.headers['content-disposition']?.match(/filename="(.+)"/)?.[1] || 'vouchers.csv'
-      link.setAttribute('download', filename)
-      document.body.appendChild(link)
-      link.click()
-      link.remove()
-      window.URL.revokeObjectURL(url)
-      notify.success('Export Complete', 'Vouchers exported successfully')
-      return true
-    } catch (err) {
-      const message = err.response?.data?.message || 'Failed to export vouchers'
-      notify.error('Export Failed', message)
-      console.error('Error exporting vouchers:', err)
-      return false
-    }
-  }
-
   const revokeVoucher = async (voucher) => {
     const index = vouchers.value.findIndex(v => v.id === voucher.id)
     if (index === -1) {
-      notify.error('Not Found', 'Voucher not found')
+      toast.error('Voucher not found')
       return false
     }
 
-    const originalStatus = vouchers.value[index].status
-    // Optimistically update UI immediately
-    vouchers.value[index].status = 'revoked'
-
-    // Dispatch local event so any listeners pick it up right away
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('voucher-updated', {
-        detail: { voucher: vouchers.value[index], timestamp: new Date().toISOString() }
-      }))
-    }
-
+    // No optimistic updates - let WebSocket events handle everything
+    
     try {
       await axios.post(`/vouchers/${voucher.id}/revoke`)
-      notify.success('Voucher Revoked', `Voucher ${voucher.code} revoked`)
+      toast.success(`Voucher ${voucher.code} revoked`)
+
+      // Purely event-driven - WebSocket events will handle the UI update automatically
       return true
     } catch (err) {
-      // Revert optimistic update on failure
-      vouchers.value[index].status = originalStatus
       const message = err.response?.data?.message || 'Failed to revoke voucher'
-      notify.error('Revoke Failed', message)
+      toast.error(message)
       console.error('Error revoking voucher:', err)
       return false
     }
@@ -400,8 +275,7 @@ export function useVouchers() {
   }
 
   // Helpers
-  const statusClass = (status, archivedAt) => {
-    if (archivedAt) return 'bg-gray-100 text-gray-500'
+  const statusClass = (status) => {
     const map = {
       unused: 'bg-green-100 text-green-700',
       used: 'bg-blue-100 text-blue-700',
@@ -427,39 +301,6 @@ export function useVouchers() {
   const calculateTotalValue = (pkg, qty) => {
     if (!pkg || !qty) return 0
     return (pkg.price || 0) * qty
-  }
-
-  const copyVoucherCode = async (code) => {
-    if (!code) {
-      notify.error('Copy Failed', 'No voucher code available to copy')
-      return false
-    }
-
-    try {
-      if (navigator?.clipboard?.writeText) {
-        await navigator.clipboard.writeText(code)
-      } else {
-        const textarea = document.createElement('textarea')
-        textarea.value = code
-        textarea.setAttribute('readonly', '')
-        textarea.style.position = 'fixed'
-        textarea.style.opacity = '0'
-        document.body.appendChild(textarea)
-        textarea.select()
-        const copied = document.execCommand('copy')
-        document.body.removeChild(textarea)
-        if (!copied) {
-          throw new Error('Clipboard copy failed')
-        }
-      }
-
-      notify.success('Voucher Copied', `Voucher ${code} copied to clipboard`)
-      return true
-    } catch (err) {
-      console.error('Failed to copy voucher code:', err)
-      notify.error('Copy Failed', 'Failed to copy voucher code')
-      return false
-    }
   }
 
   // WebSocket event handlers for real-time updates
@@ -657,7 +498,6 @@ export function useVouchers() {
     stats,
     lastSyncTimestamp,
     pendingUpdates,
-    activeFilters,
 
     // Computed
     statsForView,
@@ -670,20 +510,14 @@ export function useVouchers() {
     refreshVouchers,
     goToPage,
     generateVouchers,
-    archiveVoucher,
-    restoreVoucher,
-    bulkArchiveVouchers,
-    exportVouchers,
     revokeVoucher,
     filterVouchers,
-    setFilters,
 
     // Helpers
     statusClass,
     formatDate,
     getPackageById,
     calculateTotalValue,
-    copyVoucherCode,
 
     // WebSocket
     setupWebSocketListeners,

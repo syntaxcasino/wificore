@@ -75,7 +75,8 @@ class RotateLogs implements ShouldQueue
                         ]));
 
                         $compressedFile = "$rotatedFile.gz";
-                        $this->compressFile($rotatedFile, $compressedFile, $context);
+                        $content = file_get_contents($rotatedFile);
+                        file_put_contents($compressedFile, gzencode($content, 9));
                         unlink($rotatedFile);
 
                         Log::withContext($context)->info('Rotated file compressed', [
@@ -118,43 +119,6 @@ class RotateLogs implements ShouldQueue
             ]));
             throw $e;
         }
-    }
-
-    protected function compressFile(string $source, string $destination, array $context): void
-    {
-        $input = fopen($source, 'rb');
-        if ($input === false) {
-            throw new \RuntimeException("Unable to open rotated log for compression: {$source}");
-        }
-
-        $output = gzopen($destination, 'wb9');
-        if ($output === false) {
-            fclose($input);
-            throw new \RuntimeException("Unable to open compressed log for writing: {$destination}");
-        }
-
-        try {
-            while (! feof($input)) {
-                $chunk = fread($input, 1024 * 1024);
-                if ($chunk === false) {
-                    throw new \RuntimeException("Failed reading rotated log during compression: {$source}");
-                }
-
-                if ($chunk === '') {
-                    continue;
-                }
-
-                gzwrite($output, $chunk);
-            }
-        } finally {
-            fclose($input);
-            gzclose($output);
-        }
-
-        Log::withContext($context)->debug('Rotated file compressed with streaming gzip', [
-            'source' => basename($source),
-            'destination' => basename($destination),
-        ]);
     }
 
     protected function cleanupOldLogs(string $logPath, string $logFile, int $maxRotations, array $context): void

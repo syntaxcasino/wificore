@@ -212,65 +212,6 @@ class MikroTikBinaryApiService implements MikroTikApiInterface
         return $result[0] ?? [];
     }
 
-    /**
-     * Find the first record returned by a print command.
-     *
-     * The caller may pass exact match filters. When a matching record is found,
-     * it is returned verbatim so helpers can safely decide whether to update or
-     * re-use it without duplicating add operations.
-     */
-    private function findFirstRecord(string $path, array $filters = []): ?array
-    {
-        $query = [];
-        foreach ($filters as $key => $value) {
-            $query[] = '?' . $key . '=' . $value;
-        }
-
-        $records = $this->command($path . '/print', $query);
-        return $records[0] ?? null;
-    }
-
-    /**
-     * Determine whether a record satisfies all exact-match filters.
-     */
-    private function recordMatches(array $record, array $filters): bool
-    {
-        foreach ($filters as $key => $expected) {
-            $actual = $record[$key] ?? null;
-            if ((string) $actual !== (string) $expected) {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    /**
-     * Update an existing record by RouterOS internal ID.
-     */
-    private function updateRecord(string $path, string $id, array $params): array
-    {
-        $words = ['.id=' . $id];
-        foreach ($params as $key => $value) {
-            $words[] = $key . '=' . $value;
-        }
-
-        return $this->commandOne($path . '/set', $words);
-    }
-
-    /**
-     * Add a new record on the target resource.
-     */
-    private function addRecord(string $path, array $params): array
-    {
-        $words = [];
-        foreach ($params as $key => $value) {
-            $words[] = $key . '=' . $value;
-        }
-
-        return $this->commandOne($path . '/add', $words);
-    }
-
     // -------------------------------------------------------------------------
     // High-level provisioning helpers mirroring MikroTikRestApiService API
     // -------------------------------------------------------------------------
@@ -335,55 +276,19 @@ class MikroTikBinaryApiService implements MikroTikApiInterface
 
     public function addVlan(string $name, int $vlanId, string $interface, ?string $comment = null): array
     {
-        $desired = [
-            'name' => $name,
-            'vlan-id' => $vlanId,
-            'interface' => $interface,
-        ];
+        $params = ['name=' . $name, 'vlan-id=' . $vlanId, 'interface=' . $interface];
         if ($comment) {
-            $desired['comment'] = $comment;
+            $params[] = 'comment=' . $comment;
         }
-
-        $existing = $this->findFirstRecord('/interface/vlan', ['name' => $name]);
-        if ($existing && isset($existing['.id'])) {
-            return $this->updateRecord('/interface/vlan', (string) $existing['.id'], $desired);
-        }
-
-        $params = [];
-        foreach ($desired as $key => $value) {
-            $params[] = $key . '=' . $value;
-        }
-
         return $this->commandOne('/interface/vlan/add', $params);
     }
 
     public function addInterfaceListMember(string $list, string $interface): array
     {
-        $existing = $this->findFirstRecord('/interface/list/member', [
-            'list' => $list,
-            'interface' => $interface,
-        ]);
-
-        if ($existing) {
-            return $existing;
-        }
-
         return $this->commandOne('/interface/list/member/add', [
             'list=' . $list,
             'interface=' . $interface,
         ]);
-    }
-
-    public function upsertResource(string $endpoint, array $matchFilters, array $data): array
-    {
-        $records = $this->fetch($endpoint);
-        foreach ($records as $record) {
-            if ($this->recordMatches($record, $matchFilters) && isset($record['.id'])) {
-                return $this->updateRecord($endpoint, (string) $record['.id'], $data);
-            }
-        }
-
-        return $this->addRecord($endpoint, $data);
     }
 
     public function createPppoeServer(
@@ -396,29 +301,17 @@ class MikroTikBinaryApiService implements MikroTikApiInterface
         int    $keepaliveTimeout    = 30,
         string $authentication      = 'chap,mschap2'
     ): array {
-        $desired = [
-            'service-name' => $serviceName,
-            'interface' => $interface,
-            'default-profile' => $profile,
-            'max-mtu' => $maxMtu,
-            'max-mru' => $maxMru,
-            'one-session-per-host' => $oneSessionPerHost ? 'yes' : 'no',
-            'keepalive-timeout' => $keepaliveTimeout,
-            'authentication' => $authentication,
-            'disabled' => 'no',
-        ];
-
-        $existing = $this->findFirstRecord('/interface/pppoe-server/server', ['service-name' => $serviceName]);
-        if ($existing && isset($existing['.id'])) {
-            return $this->updateRecord('/interface/pppoe-server/server', (string) $existing['.id'], $desired);
-        }
-
-        $params = [];
-        foreach ($desired as $key => $value) {
-            $params[] = $key . '=' . $value;
-        }
-
-        return $this->commandOne('/interface/pppoe-server/server/add', $params);
+        return $this->commandOne('/interface/pppoe-server/server/add', [
+            'service-name='        . $serviceName,
+            'interface='           . $interface,
+            'default-profile='     . $profile,
+            'max-mtu='             . $maxMtu,
+            'max-mru='             . $maxMru,
+            'one-session-per-host=' . ($oneSessionPerHost ? 'yes' : 'no'),
+            'keepalive-timeout='   . $keepaliveTimeout,
+            'authentication='      . $authentication,
+            'disabled=no',
+        ]);
     }
 
     public function addRadiusServer(
@@ -428,41 +321,20 @@ class MikroTikBinaryApiService implements MikroTikApiInterface
         int     $timeout = 3,
         ?string $comment = null
     ): array {
-        $desired = [
-            'service' => $service,
-            'address' => $address,
-            'secret' => $secret,
-            'timeout' => $this->secondsToRosTime($timeout),
+        $params = [
+            'service=' . $service,
+            'address=' . $address,
+            'secret='  . $secret,
+            'timeout=' . $this->secondsToRosTime($timeout),
         ];
         if ($comment) {
-            $desired['comment'] = $comment;
+            $params[] = 'comment=' . $comment;
         }
-
-        $existing = $comment
-            ? $this->findFirstRecord('/radius', ['comment' => $comment])
-            : $this->findFirstRecord('/radius', ['service' => $service, 'address' => $address]);
-
-        if ($existing && isset($existing['.id'])) {
-            return $this->updateRecord('/radius', (string) $existing['.id'], $desired);
-        }
-
-        $params = [];
-        foreach ($desired as $key => $value) {
-            $params[] = $key . '=' . $value;
-        }
-
         return $this->commandOne('/radius/add', $params);
     }
 
     public function addFirewallFilterRule(array $params): array
     {
-        if (isset($params['comment']) && is_string($params['comment']) && $params['comment'] !== '') {
-            $existing = $this->findFirstRecord('/ip/firewall/filter', ['comment' => $params['comment']]);
-            if ($existing && isset($existing['.id'])) {
-                return $this->updateRecord('/ip/firewall/filter', (string) $existing['.id'], $params);
-            }
-        }
-
         $words = [];
         foreach ($params as $k => $v) {
             $words[] = $k . '=' . $v;
@@ -472,13 +344,6 @@ class MikroTikBinaryApiService implements MikroTikApiInterface
 
     public function addNatRule(array $params): array
     {
-        if (isset($params['comment']) && is_string($params['comment']) && $params['comment'] !== '') {
-            $existing = $this->findFirstRecord('/ip/firewall/nat', ['comment' => $params['comment']]);
-            if ($existing && isset($existing['.id'])) {
-                return $this->updateRecord('/ip/firewall/nat', (string) $existing['.id'], $params);
-            }
-        }
-
         $words = [];
         foreach ($params as $k => $v) {
             $words[] = $k . '=' . $v;

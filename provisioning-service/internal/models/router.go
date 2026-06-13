@@ -31,8 +31,6 @@ type TaskCallbackConfig struct {
 	APIKey   string `json:"api_key"`
 	Terminal bool   `json:"terminal"`
 	Stage    string `json:"stage,omitempty"`
-	TenantID string `json:"tenant_id,omitempty"`
-	RouterID string `json:"router_id,omitempty"`
 }
 
 const (

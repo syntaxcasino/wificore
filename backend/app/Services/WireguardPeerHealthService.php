@@ -117,13 +117,7 @@ class WireguardPeerHealthService
                 $seenPeerPublicKeys[] = $peer['public_key']; // Track seen peer
 
                 // Use absolute time difference to handle clock skew (router clock ahead/behind server)
-                $handshakeAge = null;
-                if ($peer['latest_handshake']) {
-                    $handshakeAt = $peer['latest_handshake'] instanceof Carbon
-                        ? $peer['latest_handshake']
-                        : Carbon::parse($peer['latest_handshake']);
-                    $handshakeAge = abs(now()->diffInSeconds($handshakeAt, false));
-                }
+                $handshakeAge = $peer['latest_handshake'] ? abs(now()->diffInSeconds($peer['latest_handshake'], false)) : null;
                 Log::info('Processing peer from dump', [
                     'public_key' => substr($peer['public_key'], 0, 20) . '...',
                     'handshake_at' => $peer['latest_handshake']?->toIso8601String(),
@@ -385,10 +379,7 @@ class WireguardPeerHealthService
         foreach ($stalePeers as $peer) {
             $router = $peer->router;
             // Use absolute difference to handle clock skew (router clock ahead/behind server)
-            $lastHandshake = $peer->last_handshake instanceof Carbon
-                ? $peer->last_handshake
-                : Carbon::parse($peer->last_handshake);
-            $staleAge = abs(now()->diffInSeconds($lastHandshake, false));
+            $staleAge = abs(now()->diffInSeconds($peer->last_handshake, false));
             $lastHandshake = $peer->last_handshake; // Preserve - do NOT null it out
 
             // Do NOT update peer->last_handshake here. The WireGuard dump reported it;
@@ -574,8 +565,7 @@ class WireguardPeerHealthService
 
         $threshold = (int) config('vpn.monitoring.inactive_threshold', 190);
         // Use absolute difference to handle clock skew (router clock ahead/behind server)
-        $handshakeTime = $handshakeAt instanceof Carbon ? $handshakeAt : Carbon::parse($handshakeAt);
-        $age = abs(now()->diffInSeconds($handshakeTime, false));
+        $age = abs(now()->diffInSeconds($handshakeAt, false));
 
         return $age <= $threshold ? 'connected' : 'disconnected';
     }
@@ -588,8 +578,7 @@ class WireguardPeerHealthService
 
         $threshold = (int) config('vpn.monitoring.inactive_threshold', 190);
         // Use absolute difference to handle clock skew (router clock ahead/behind server)
-        $handshakeTime = $handshakeAt instanceof Carbon ? $handshakeAt : Carbon::parse($handshakeAt);
-        return abs(now()->diffInSeconds($handshakeTime, false)) <= $threshold ? 'active' : 'inactive';
+        return abs(now()->diffInSeconds($handshakeAt, false)) <= $threshold ? 'active' : 'inactive';
     }
 
     private function isWireGuardInstalled(): bool

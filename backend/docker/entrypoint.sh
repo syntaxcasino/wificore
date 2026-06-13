@@ -108,7 +108,7 @@ case "${APP_RUNTIME_ROLE}" in
   scheduler)
     rm -f /etc/supervisor/conf.d/php-fpm.conf
     disable_all_queue_confs
-    echo "🧩 Runtime role: scheduler (schedule:run loop)"
+    echo "🧩 Runtime role: scheduler (schedule:work only)"
     ;;
   queue)
     rm -f /etc/supervisor/conf.d/php-fpm.conf

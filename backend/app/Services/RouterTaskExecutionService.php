@@ -6,16 +6,11 @@ use App\Contracts\ProvisioningCommandBus;
 use App\Models\Router;
 use App\Models\RouterConfig;
 use App\Models\RouterTask;
-use App\Services\MikroTik\RouterOsCapabilityRegistry;
-use App\Services\MikroTik\RouterOsV7ProvisioningValidator;
 
 class RouterTaskExecutionService
 {
     public function __construct(
         protected ProvisioningCommandBus $provisioningClient,
-        protected RouterOsCapabilityRegistry $capabilityRegistry,
-        protected RouterOsV7ProvisioningValidator $routerOsValidator,
-        protected RouterProvisioningPreflightService $preflightService,
     ) {
     }
 
@@ -40,15 +35,11 @@ class RouterTaskExecutionService
             throw new \RuntimeException('No valid service configuration found. Please generate the configuration first.');
         }
 
-        $this->validateRouterOsCompatibility($router, $serviceScript);
-
         return $serviceScript;
     }
 
     public function submitTaskCommand(Router $router, string $tenantId, RouterTask $task, ?string $script = null): array
     {
-        $this->validateTaskPreflight($router, $task);
-
         $payload = match ($task->type) {
             RouterTask::TYPE_DEPLOY_SERVICE_CONFIG => [
                 'script' => $this->buildServiceScript($router, $script),
@@ -130,30 +121,5 @@ class RouterTaskExecutionService
     public function discoverInterfaces(Router $router, string $tenantId, ?RouterTask $task = null): array
     {
         return $this->provisioningClient->fetchLiveData($router, 'provisioning', $tenantId, $task);
-    }
-
-    private function validateRouterOsCompatibility(Router $router, string $script): void
-    {
-        $versionProfile = $this->capabilityRegistry->resolveProfile($router->os_version);
-        if (! ($versionProfile['supported'] ?? false)) {
-            throw new \RuntimeException($versionProfile['error'] ?? 'Unsupported RouterOS version for provisioning.');
-        }
-
-        $validation = $this->routerOsValidator->validateScript($router, $script);
-        if (! ($validation['valid'] ?? false)) {
-            $message = implode(' | ', array_slice($validation['errors'] ?? ['RouterOS validation failed'], 0, 6));
-            throw new \RuntimeException('RouterOS validation failed: ' . $message);
-        }
-    }
-
-    private function validateTaskPreflight(Router $router, RouterTask $task): void
-    {
-        $payload = is_array($task->request_payload) ? $task->request_payload : [];
-        $preflight = $this->preflightService->preflight($router, $payload, $router->interface_list ?? []);
-
-        if (! ($preflight['valid'] ?? false)) {
-            $errors = array_slice($preflight['errors'] ?? ['Router interface preflight failed'], 0, 6);
-            throw new \RuntimeException('Router interface preflight failed: ' . implode(' | ', $errors));
-        }
     }
 }

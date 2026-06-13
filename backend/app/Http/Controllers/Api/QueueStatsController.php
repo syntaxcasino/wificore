@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Services\QueueMetricsService;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
@@ -54,7 +53,7 @@ class QueueStatsController extends Controller
                     ],
                     'recent_activity' => $this->getRecentActivity(),
                     'health_status' => $status,
-                    'tracking_since' => $this->resolveTrackingStartTime()->toIso8601String(),
+                    'tracking_since' => Cache::get('queue_stats_start_time', now())->toIso8601String(),
                 ],
             ]);
         } catch (\Exception $e) {
@@ -64,35 +63,6 @@ class QueueStatsController extends Controller
                 'error' => $e->getMessage(),
             ], 500);
         }
-    }
-
-    private function resolveTrackingStartTime(): Carbon
-    {
-        $cached = Cache::get('queue_stats_start_time');
-
-        if ($cached instanceof Carbon) {
-            return $cached;
-        }
-
-        if ($cached instanceof \DateTimeInterface) {
-            return Carbon::instance($cached);
-        }
-
-        if (is_numeric($cached)) {
-            return Carbon::createFromTimestamp((int) $cached);
-        }
-
-        if (is_string($cached) && trim($cached) !== '') {
-            try {
-                return Carbon::parse($cached);
-            } catch (\Throwable) {
-            }
-        }
-
-        $startTime = now();
-        Cache::put('queue_stats_start_time', $startTime, now()->addSeconds(30));
-
-        return $startTime;
     }
 
     private function getProcessedJobsCount(): int
@@ -118,9 +88,11 @@ class QueueStatsController extends Controller
             $command = "grep -h ' DONE' " . escapeshellarg($logDir) . "/*-queue.log 2>/dev/null | wc -l";
             $count = (int) trim(shell_exec($command));
 
-            if ($count === 0) {
-                foreach (glob($logDir . '/*-queue.log') ?: [] as $logFile) {
-                    $count += $this->countTokenInFile($logFile, ' DONE');
+            if ($count == 0) {
+                foreach (glob($logDir . '/*-queue.log') as $logFile) {
+                    if (file_exists($logFile)) {
+                        $count += substr_count((string) file_get_contents($logFile), ' DONE');
+                    }
                 }
             }
 
@@ -178,8 +150,21 @@ class QueueStatsController extends Controller
             if ($shellCount > 0) {
                 $count = $shellCount;
             } else {
-                foreach (glob($logDir . '/*-queue.log') ?: [] as $logFile) {
-                    $count += $this->countRecentTokenInFile($logFile, ' DONE', $cutoffDate);
+                foreach (glob($logDir . '/*-queue.log') as $logFile) {
+                    if (! file_exists($logFile)) {
+                        continue;
+                    }
+
+                    $lines = file($logFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [];
+                    foreach ($lines as $line) {
+                        if (strpos($line, ' DONE') === false) {
+                            continue;
+                        }
+
+                        if (preg_match('/(\d{4}-\d{2}-\d{2})/', $line, $matches) && $matches[1] >= $cutoffDate) {
+                            $count++;
+                        }
+                    }
                 }
             }
 
@@ -188,47 +173,5 @@ class QueueStatsController extends Controller
         } catch (\Exception $e) {
             return 0;
         }
-    }
-
-    private function countTokenInFile(string $path, string $token): int
-    {
-        if (! is_file($path)) {
-            return 0;
-        }
-
-        $count = 0;
-        $file = new \SplFileObject($path, 'rb');
-
-        while (! $file->eof()) {
-            $line = $file->fgets();
-            if ($line !== false && str_contains($line, $token)) {
-                $count++;
-            }
-        }
-
-        return $count;
-    }
-
-    private function countRecentTokenInFile(string $path, string $token, string $cutoffDate): int
-    {
-        if (! is_file($path)) {
-            return 0;
-        }
-
-        $count = 0;
-        $file = new \SplFileObject($path, 'rb');
-
-        while (! $file->eof()) {
-            $line = $file->fgets();
-            if ($line === false || ! str_contains($line, $token)) {
-                continue;
-            }
-
-            if (preg_match('/(\d{4}-\d{2}-\d{2})/', $line, $matches) && $matches[1] >= $cutoffDate) {
-                $count++;
-            }
-        }
-
-        return $count;
     }
 }

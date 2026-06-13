@@ -41,21 +41,6 @@ class SetTenantContext
                 return $next($request);
             }
             
-            // Fail closed: authenticated non-system users must have tenant context.
-            if (!$user->tenant_id) {
-                Log::critical("Authenticated user missing tenant context", [
-                    "user_id" => $user->id,
-                    "role" => $user->role,
-                    "path" => $request->path(),
-                    "method" => $request->method(),
-                ]);
-
-                return response()->json([
-                    "success" => false,
-                    "message" => "Tenant context is required for this account"
-                ], 403);
-            }
-
             // Regular users: set tenant context
             if ($user->tenant_id) {
                 $tenant = $this->resolveTenant((string) $user->tenant_id);
@@ -76,22 +61,7 @@ class SetTenantContext
                         'suspension_reason' => $tenant->suspension_reason,
                     ], 403);
                 }
-
-                // Verify tenant schema is fully created
-                if (!$tenant->schema_created) {
-                    Log::warning('Tenant schema not created, rejecting request', [
-                        'tenant_id' => $tenant->id,
-                        'schema_name' => $tenant->schema_name,
-                        'user_id' => $user->id,
-                    ]);
-
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Tenant workspace is being set up. Please try again shortly.',
-                        'code' => 'TENANT_SCHEMA_NOT_READY',
-                    ], 503);
-                }
-
+                
                 // Set tenant context (will set PostgreSQL search_path if schema exists)
                 try {
                     // Store tenant in request for easy access

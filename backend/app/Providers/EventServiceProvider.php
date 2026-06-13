@@ -23,13 +23,10 @@ use App\Events\PppoePaymentReminderDue;
 use App\Events\PppoeReminderSent;
 use App\Events\PppoeUserDisconnectedForNonPayment;
 use App\Events\PppoeUserReconnectedAfterPayment;
-use App\Events\VpnConnectivityFailed;
-use App\Events\VpnConnectivityVerified;
 use App\Listeners\QueuePppoeInvoiceJob;
 use App\Listeners\QueuePppoeMonthlyPaymentReportJob;
 use App\Listeners\QueuePppoePaymentReminderJob;
 use App\Listeners\QueuePppoePaymentReceipt;
-use App\Listeners\QueueTenantHealthScoreRecalculation;
 use App\Listeners\TrackCompletedJobs;
 use App\Listeners\UpdateRouterStatus;
 use App\Listeners\LogPppoeBillingLifecycle;
@@ -78,11 +75,11 @@ class EventServiceProvider extends ServiceProvider
         
         // Payment events
         PaymentCompleted::class => [
-            QueueTenantHealthScoreRecalculation::class,
+            // e.g., UpdateBillingStats::class
         ],
         
         PaymentFailed::class => [
-            QueueTenantHealthScoreRecalculation::class,
+            // e.g., NotifyAdminOfFailedPayment::class
         ],
         
         PaymentReceived::class => [
@@ -137,17 +134,9 @@ class EventServiceProvider extends ServiceProvider
         
         // Router events
         RouterStatusUpdated::class => [
-            QueueTenantHealthScoreRecalculation::class,
+            // e.g., AlertAdminOfRouterIssues::class
         ],
         
-        VpnConnectivityVerified::class => [
-            QueueTenantHealthScoreRecalculation::class,
-        ],
-
-        VpnConnectivityFailed::class => [
-            QueueTenantHealthScoreRecalculation::class,
-        ],
-
         RouterProvisioningCompleted::class => [
             UpdateRouterStatus::class,
         ],

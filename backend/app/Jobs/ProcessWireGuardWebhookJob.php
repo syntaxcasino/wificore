@@ -33,7 +33,6 @@ class ProcessWireGuardWebhookJob implements ShouldQueue
     public $tries = 3;
     public $timeout = 30;
     private array $provisioningStatuses = ['pending', 'deploying', 'provisioning', 'verifying'];
-    private array $completedProvisioningStages = ['completed', 'interfaces_discovered', 'config_applied', 'connectivity_verified'];
 
     public function __construct(array $eventData)
     {
@@ -138,8 +137,7 @@ class ProcessWireGuardWebhookJob implements ShouldQueue
             $previousStatus = $router->status;
             $previousVpnStatus = $router->vpn_status;
             $now = now();
-            $inProvisioning = in_array($router->status, $this->provisioningStatuses, true)
-                || (! in_array($router->provisioning_stage, $this->completedProvisioningStages, true) && $router->provisioning_stage !== null);
+            $inProvisioning = in_array($router->status, $this->provisioningStatuses, true);
 
             // On first handshake a router always becomes online regardless of provisioning state.
             // The WireGuard tunnel is live — that IS the proof of connectivity.
@@ -224,8 +222,7 @@ class ProcessWireGuardWebhookJob implements ShouldQueue
 
             $previousStatus = $router->status;
             $previousVpnStatus = $router->vpn_status;
-            $inProvisioning = in_array($router->status, $this->provisioningStatuses, true)
-                || (! in_array($router->provisioning_stage, $this->completedProvisioningStages, true) && $router->provisioning_stage !== null);
+            $inProvisioning = in_array($router->status, $this->provisioningStatuses, true);
 
             // Mark router offline only if operational; leave provisioning routers alone
             $router->update([
@@ -303,8 +300,7 @@ class ProcessWireGuardWebhookJob implements ShouldQueue
                     }
 
                     $previousStatus = $router->status;
-                    $inProvisioning = in_array($router->status, $this->provisioningStatuses, true)
-                        || (! in_array($router->provisioning_stage, $this->completedProvisioningStages, true) && $router->provisioning_stage !== null);
+                    $inProvisioning = in_array($router->status, $this->provisioningStatuses, true);
                     $now = now();
 
                     // WireGuard handshake = tunnel live = router online, always
