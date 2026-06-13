@@ -390,7 +390,7 @@ onMounted(() => {
 
 // SSE: receive SystemMetricsUpdated event pushed by CollectSystemMetricsJob every minute
 // useSSE auto-closes on onUnmounted
-const { subscribeMany } = useSSE('/api/system/sse', {
+const { subscribeMany } = useSSE('/system/sse', {
   channels: 'system.admin',
 })
 

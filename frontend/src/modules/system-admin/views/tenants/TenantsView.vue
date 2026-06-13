@@ -301,7 +301,7 @@ onMounted(() => {
 
 // SSE: auto-refresh tenant list on new tenant events
 // useSSE auto-closes on onUnmounted
-const { subscribeMany } = useSSE('/api/system/sse', {
+const { subscribeMany } = useSSE('/system/sse', {
   channels: 'system.admin,system.tenants',
 })
 
