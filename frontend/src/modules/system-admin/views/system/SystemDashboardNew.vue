@@ -630,7 +630,7 @@ onMounted(() => {
 
 // SSE: real-time updates from system.admin + system.tenants channels
 // useSSE auto-closes on onUnmounted
-const { subscribeMany } = useSSE('/api/system/sse', {
+const { subscribeMany } = useSSE('/system/sse', {
   channels: 'system.admin,system.tenants',
 })
 

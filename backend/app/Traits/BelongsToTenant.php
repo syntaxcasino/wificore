@@ -2,7 +2,7 @@
 
 namespace App\Traits;
 
-use AppModelsTenant;
+use App\Models\Tenant;
 use App\Scopes\TenantScope;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Facades\Log;
