@@ -31,7 +31,7 @@ ENV VITE_PUSHER_PATH=$VITE_PUSHER_PATH
 COPY package*.json ./
 
 # Install ALL dependencies (needed for build)
-RUN npm ci --ignore-scripts
+RUN npm ci --ignore-scripts --legacy-peer-deps
 
 # Copy source files
 COPY . .
