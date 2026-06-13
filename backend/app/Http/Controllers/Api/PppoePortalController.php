@@ -6,11 +6,15 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\MpesaTransactionMap;
+use App\Events\PppoeUserUpdated;
+use App\Jobs\DisconnectPppoeSessionJob;
 use App\Models\Package;
+use App\Models\PortalSupportTicket;
 use App\Models\PppoePayment;
 use App\Models\PppoeTimedVoucher;
 use App\Models\PppoeUser;
 use App\Models\SystemLog;
+use App\Events\VoucherUpdated;
 use App\Models\Voucher;
 use App\Services\MpesaService;
 use App\Services\RadiusService;
@@ -21,6 +25,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Carbon\Carbon;
@@ -1257,7 +1262,7 @@ SQL;
             $result = DB::transaction(function () use ($tenant, $pppoeUser, $voucherCode) {
                 DB::connection()->recordsHaveBeenModified();
 
-                return $this->tenantContext->runInTenantContext($tenant, function () use ($pppoeUser, $voucherCode) {
+                return $this->tenantContext->runInTenantContext($tenant, function () use ($tenant, $pppoeUser, $voucherCode) {
                     // OPTIMIZATION: Select only needed fields with lockForUpdate for concurrency
                     $voucher = Voucher::query()
                         ->select(['id', 'code', 'value', 'package_id', 'status', 'used_at', 'used_by', 'expires_at', 'package_duration_days'])
@@ -1337,6 +1342,9 @@ SQL;
                     }
 
                     $pppoeUser->update($updateData);
+
+                    // Broadcast voucher status update to tenant dashboard in real time
+                    broadcast(new VoucherUpdated($voucher->fresh(), $tenant->id))->toOthers();
 
                     return [
                         'voucher' => [
@@ -2230,7 +2238,468 @@ SQL;
         }
     }
 
+    public function invoices(Request $request): JsonResponse
+    {
+        $pppoeUser = $request->attributes->get('pppoe_user');
+        if (!$pppoeUser) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized'], 401);
+        }
+
+        $invoices = PppoePayment::query()
+            ->where('pppoe_user_id', $pppoeUser->id)
+            ->orderByDesc('created_at')
+            ->limit(20)
+            ->get([
+                'id',
+                'amount',
+                'status',
+                'payment_method',
+                'transaction_id',
+                'payment_reference',
+                'notes',
+                'verified_at',
+                'created_at',
+                'payment_date',
+                'period_start',
+                'period_end',
+            ])
+            ->map(function (PppoePayment $payment): array {
+                return [
+                    'id' => $payment->id,
+                    'invoice_number' => $payment->payment_reference ?: $payment->transaction_id ?: ('INV-' . substr((string) $payment->id, 0, 8)),
+                    'amount' => (float) $payment->amount,
+                    'status' => $payment->status,
+                    'payment_method' => $payment->payment_method,
+                    'transaction_id' => $payment->transaction_id,
+                    'notes' => $payment->notes,
+                    'verified_at' => $payment->verified_at?->toIso8601String(),
+                    'payment_date' => $payment->payment_date?->toIso8601String(),
+                    'issued_at' => $payment->created_at?->toIso8601String(),
+                    'period_start' => $payment->period_start?->toIso8601String(),
+                    'period_end' => $payment->period_end?->toIso8601String(),
+                ];
+            })
+            ->values()
+            ->all();
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'invoices' => $invoices,
+                'summary' => [
+                    'total' => count($invoices),
+                    'paid' => collect($invoices)->where('status', 'completed')->count(),
+                    'pending' => collect($invoices)->where('status', 'pending')->count(),
+                    'failed' => collect($invoices)->where('status', 'failed')->count(),
+                ],
+            ],
+        ]);
+    }
+
+    public function supportTickets(Request $request): JsonResponse
+    {
+        $pppoeUser = $request->attributes->get('pppoe_user');
+        if (!$pppoeUser) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized'], 401);
+        }
+
+        $tenant = $this->findTenantForPortalUser($pppoeUser);
+        if (!$tenant) {
+            return response()->json(['success' => false, 'message' => 'Tenant context not available.'], 500);
+        }
+
+        $tickets = DB::transaction(function () use ($tenant, $pppoeUser) {
+            DB::connection()->recordsHaveBeenModified();
+            return $this->tenantContext->runInTenantContext($tenant, function () use ($pppoeUser) {
+                return PortalSupportTicket::query()
+                    ->where('pppoe_user_id', $pppoeUser->id)
+                    ->orderByDesc('created_at')
+                    ->limit(20)
+                    ->get([
+                        'id',
+                        'ticket_number',
+                        'subject',
+                        'category',
+                        'priority',
+                        'status',
+                        'message',
+                        'metadata',
+                        'resolved_at',
+                        'closed_at',
+                        'created_at',
+                        'updated_at',
+                    ])
+                    ->map(function (PortalSupportTicket $ticket): array {
+                        return [
+                            'id' => $ticket->id,
+                            'ticket_number' => $ticket->ticket_number,
+                            'subject' => $ticket->subject,
+                            'category' => $ticket->category,
+                            'priority' => $ticket->priority,
+                            'status' => $ticket->status,
+                            'message' => $ticket->message,
+                            'metadata' => $ticket->metadata ?? [],
+                            'resolved_at' => $ticket->resolved_at?->toIso8601String(),
+                            'closed_at' => $ticket->closed_at?->toIso8601String(),
+                            'created_at' => $ticket->created_at?->toIso8601String(),
+                            'updated_at' => $ticket->updated_at?->toIso8601String(),
+                        ];
+                    })
+                    ->values()
+                    ->all();
+            });
+        });
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'tickets' => $tickets,
+                'summary' => [
+                    'total' => count($tickets),
+                    'open' => collect($tickets)->where('status', 'open')->count(),
+                    'in_progress' => collect($tickets)->where('status', 'in_progress')->count(),
+                    'resolved' => collect($tickets)->where('status', 'resolved')->count(),
+                ],
+            ],
+        ]);
+    }
+
+    public function createSupportTicket(Request $request): JsonResponse
+    {
+        $pppoeUser = $request->attributes->get('pppoe_user');
+        if (!$pppoeUser) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized'], 401);
+        }
+
+        $validated = $request->validate([
+            'subject' => 'required|string|min:3|max:120',
+            'message' => 'required|string|min:10|max:5000',
+            'category' => 'nullable|string|in:billing,connectivity,account,technical,general',
+            'priority' => 'nullable|string|in:low,normal,high,urgent',
+        ]);
+
+        $tenant = $this->findTenantForPortalUser($pppoeUser);
+        if (!$tenant) {
+            return response()->json(['success' => false, 'message' => 'Tenant context not available.'], 500);
+        }
+
+        $ticketNumber = 'PT-' . strtoupper(Str::random(8));
+
+        try {
+            $ticket = DB::transaction(function () use ($tenant, $pppoeUser, $validated, $ticketNumber) {
+                DB::connection()->recordsHaveBeenModified();
+                return $this->tenantContext->runInTenantContext($tenant, function () use ($pppoeUser, $validated, $ticketNumber, $tenant) {
+                    return PortalSupportTicket::create([
+                        'tenant_id' => $tenant->id,
+                        'pppoe_user_id' => $pppoeUser->id,
+                        'account_number' => $pppoeUser->account_number,
+                        'ticket_number' => $ticketNumber,
+                        'subject' => trim((string) $validated['subject']),
+                        'category' => $validated['category'] ?? 'general',
+                        'priority' => $validated['priority'] ?? 'normal',
+                        'status' => 'open',
+                        'message' => trim((string) $validated['message']),
+                        'metadata' => [
+                            'source' => 'pppoe_portal',
+                            'username' => $pppoeUser->username,
+                        ],
+                    ]);
+                });
+            });
+
+            Log::info('PPPoE portal support ticket created', [
+                'tenant_id' => $tenant->id,
+                'pppoe_user_id' => $pppoeUser->id,
+                'ticket_number' => $ticket->ticket_number,
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Support ticket created successfully.',
+                'data' => [
+                    'ticket_number' => $ticket->ticket_number,
+                    'status' => $ticket->status,
+                ],
+            ], 201);
+        } catch (\Throwable $e) {
+            Log::error('Failed to create PPPoE portal support ticket', [
+                'tenant_id' => $tenant->id,
+                'pppoe_user_id' => $pppoeUser->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to create support ticket. Please try again.',
+            ], 500);
+        }
+    }
+
+    public function resetPassword(Request $request): JsonResponse
+    {
+        $pppoeUser = $request->attributes->get('pppoe_user');
+        if (!$pppoeUser) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized'], 401);
+        }
+
+        $tenant = $this->findTenantForPortalUser($pppoeUser);
+        if (!$tenant) {
+            return response()->json(['success' => false, 'message' => 'Tenant context not available.'], 500);
+        }
+
+        $newPassword = Str::random(12);
+
+        try {
+            $this->tenantContext->runInTenantContext($tenant, function () use ($pppoeUser, $newPassword, $tenant) {
+                $this->ensureRadiusSchemaMapping((string) $pppoeUser->username, (string) $tenant->schema_name, (string) $tenant->id, (string) $pppoeUser->id);
+
+                $pppoeUser->password = bcrypt($newPassword);
+                $pppoeUser->save();
+
+                $shortRouterId = substr(str_replace('-', '', (string) $pppoeUser->router_id), 0, 8);
+                $existingPortalPassword = null;
+                if ($pppoeUser->portal_password) {
+                    $existingPortalPassword = DB::table('radcheck')
+                        ->where('username', $pppoeUser->username)
+                        ->where('attribute', 'Portal-Password')
+                        ->value('value');
+                }
+
+                $this->syncRadiusCredentials(
+                    (string) $pppoeUser->username,
+                    $newPassword,
+                    $pppoeUser->expires_at,
+                    $pppoeUser->rate_limit,
+                    (int) $pppoeUser->simultaneous_use,
+                    (string) $tenant->id,
+                    $pppoeUser->router_id ? 'pppoe-pool-' . $shortRouterId : null,
+                    $existingPortalPassword
+                );
+
+                app()->instance("pppoe_mapping_synced_{$pppoeUser->id}", true);
+            });
+
+            event(new PppoeUserUpdated($pppoeUser, (string) $tenant->id));
+            $this->invalidateDashboardCache($pppoeUser);
+            $this->disconnectPppoeUserSessions($pppoeUser, 'Customer password reset');
+
+            Log::info('PPPoE password reset by customer', [
+                'tenant_id' => $tenant->id,
+                'pppoe_user_id' => $pppoeUser->id,
+                'username' => $pppoeUser->username,
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'PPPoE password reset successfully.',
+                'data' => [
+                    'generated_password' => $newPassword,
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Failed to reset PPPoE portal password', [
+                'tenant_id' => $tenant->id,
+                'pppoe_user_id' => $pppoeUser->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to reset PPPoE password. Please contact support.',
+            ], 500);
+        }
+    }
+
+    public function resetPortalPassword(Request $request): JsonResponse
+    {
+        $pppoeUser = $request->attributes->get('pppoe_user');
+        if (!$pppoeUser) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized'], 401);
+        }
+
+        $tenant = $this->findTenantForPortalUser($pppoeUser);
+        if (!$tenant) {
+            return response()->json(['success' => false, 'message' => 'Tenant context not available.'], 500);
+        }
+
+        if (!$this->tenantSupportsPortalPassword($tenant)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This tenant schema does not support portal passwords yet. Please reset the main PPPoE password instead.',
+            ], 409);
+        }
+
+        $newPortalPassword = Str::random(8);
+
+        try {
+            $this->tenantContext->runInTenantContext($tenant, function () use ($pppoeUser, $newPortalPassword) {
+                $pppoeUser->portal_password = bcrypt($newPortalPassword);
+                $pppoeUser->save();
+
+                DB::table('radcheck')->updateOrInsert(
+                    ['username' => $pppoeUser->username, 'attribute' => 'Portal-Password'],
+                    ['op' => ':=', 'value' => $newPortalPassword]
+                );
+            });
+
+            event(new PppoeUserUpdated($pppoeUser, (string) $tenant->id));
+            $this->invalidateDashboardCache($pppoeUser);
+
+            Log::info('PPPoE portal password reset by customer', [
+                'tenant_id' => $tenant->id,
+                'pppoe_user_id' => $pppoeUser->id,
+                'username' => $pppoeUser->username,
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Portal password reset successfully.',
+                'data' => [
+                    'generated_portal_password' => $newPortalPassword,
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Failed to reset PPPoE portal password', [
+                'tenant_id' => $tenant->id,
+                'pppoe_user_id' => $pppoeUser->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to reset portal password. Please contact support.',
+            ], 500);
+        }
+    }
+
     // ============== Helper Methods ==============
+
+    private function tenantSupportsPortalPassword(Tenant $tenant): bool
+    {
+        try {
+            return $this->tenantContext->runInTenantContext($tenant, function () {
+                return Schema::hasTable('pppoe_users') && Schema::hasColumn('pppoe_users', 'portal_password');
+            });
+        } catch (\Throwable $e) {
+            Log::warning('Unable to check portal password support for portal user', [
+                'tenant_id' => $tenant->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return false;
+        }
+    }
+
+    private function disconnectPppoeUserSessions(PppoeUser $pppoeUser, ?string $reason = null): void
+    {
+        if (empty($pppoeUser->router_id) || empty($pppoeUser->username)) {
+            return;
+        }
+
+        DisconnectPppoeSessionJob::dispatch(
+            (string) $pppoeUser->id,
+            (string) ($this->tenantContext->getTenantId() ?? $pppoeUser->tenant_id ?? ''),
+            $reason
+        );
+    }
+
+    private function syncRadiusCredentials(string $username, string $plainPassword, ?\DateTime $expiresAt, ?string $rateLimit, int $simultaneousUse, string $tenantId, ?string $framedPool = null, ?string $portalPassword = null): void
+    {
+        $ntPassword = $this->calculateNtPasswordHash($plainPassword);
+        $now = now();
+
+        $radcheckValues = [
+            ['username' => $username, 'attribute' => 'Cleartext-Password', 'op' => ':=', 'value' => $plainPassword, 'created_at' => $now, 'updated_at' => $now],
+            ['username' => $username, 'attribute' => 'NT-Password', 'op' => ':=', 'value' => $ntPassword, 'created_at' => $now, 'updated_at' => $now],
+            ['username' => $username, 'attribute' => 'Simultaneous-Use', 'op' => ':=', 'value' => (string) $simultaneousUse, 'created_at' => $now, 'updated_at' => $now],
+        ];
+
+        if ($portalPassword) {
+            $radcheckValues[] = ['username' => $username, 'attribute' => 'Portal-Password', 'op' => ':=', 'value' => $portalPassword, 'created_at' => $now, 'updated_at' => $now];
+        }
+
+        if ($expiresAt) {
+            $radcheckValues[] = ['username' => $username, 'attribute' => 'Expiration', 'op' => ':=', 'value' => $expiresAt->format('F d Y H:i:s'), 'created_at' => $now, 'updated_at' => $now];
+        }
+
+        DB::table('radcheck')->upsert(
+            $radcheckValues,
+            ['username', 'attribute'],
+            ['op', 'value', 'updated_at']
+        );
+
+        $keepAttributes = array_column($radcheckValues, 'attribute');
+        DB::table('radcheck')
+            ->where('username', $username)
+            ->whereNotIn('attribute', $keepAttributes)
+            ->delete();
+
+        $replyValues = [
+            ['username' => $username, 'attribute' => 'Tenant-ID', 'op' => ':=', 'value' => $tenantId, 'created_at' => $now, 'updated_at' => $now],
+            ['username' => $username, 'attribute' => 'Service-Type', 'op' => ':=', 'value' => 'Framed-User', 'created_at' => $now, 'updated_at' => $now],
+        ];
+
+        if ($expiresAt) {
+            $sessionTimeout = max(60, (int) $now->diffInSeconds($expiresAt, false));
+            $replyValues[] = ['username' => $username, 'attribute' => 'Session-Timeout', 'op' => ':=', 'value' => (string) $sessionTimeout, 'created_at' => $now, 'updated_at' => $now];
+        }
+
+        if ($rateLimit) {
+            $replyValues[] = ['username' => $username, 'attribute' => 'Mikrotik-Rate-Limit', 'op' => ':=', 'value' => $rateLimit, 'created_at' => $now, 'updated_at' => $now];
+        }
+
+        if ($framedPool) {
+            $replyValues[] = ['username' => $username, 'attribute' => 'Framed-Pool', 'op' => ':=', 'value' => $framedPool, 'created_at' => $now, 'updated_at' => $now];
+        }
+
+        if (!empty($replyValues)) {
+            DB::table('radreply')->upsert(
+                $replyValues,
+                ['username', 'attribute'],
+                ['op', 'value', 'updated_at']
+            );
+
+            $keepReplyAttributes = array_column($replyValues, 'attribute');
+            DB::table('radreply')
+                ->where('username', $username)
+                ->whereNotIn('attribute', $keepReplyAttributes)
+                ->delete();
+        }
+    }
+
+    private function calculateNtPasswordHash(string $plainPassword): string
+    {
+        if (function_exists('mb_convert_encoding')) {
+            $utf16le = mb_convert_encoding($plainPassword, 'UTF-16LE', 'UTF-8');
+        } else {
+            $utf16le = iconv('UTF-8', 'UTF-16LE', $plainPassword);
+        }
+
+        return strtoupper(hash('md4', $utf16le));
+    }
+
+    private function ensureRadiusSchemaMapping(string $username, string $schemaName, string $tenantId, ?string $pppoeUserId = null): void
+    {
+        $username = strtolower(trim($username));
+
+        DB::statement("
+            INSERT INTO public.radius_user_schema_mapping (username, pppoe_user_id, schema_name, tenant_id, user_role, is_active, created_at, updated_at)
+            VALUES (?, ?::uuid, ?, ?::uuid, 'pppoe', true, NOW(), NOW())
+            ON CONFLICT (username) DO UPDATE SET
+                pppoe_user_id = EXCLUDED.pppoe_user_id,
+                schema_name = EXCLUDED.schema_name,
+                tenant_id = EXCLUDED.tenant_id,
+                user_role = EXCLUDED.user_role,
+                is_active = true,
+                updated_at = NOW()
+        ", [$username, $pppoeUserId, $schemaName, $tenantId]);
+
+        Log::info('RADIUS schema mapping ensured for portal user', [
+            'username' => $username,
+            'schema_name' => $schemaName,
+            'tenant_id' => $tenantId,
+        ]);
+    }
 
     private function formatDuration(?int $seconds): string
     {

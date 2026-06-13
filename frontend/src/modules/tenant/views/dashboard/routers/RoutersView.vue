@@ -48,6 +48,20 @@
       @close="closeReprovisionOverlay"
       @retry="handleReprovisionRetry"
     />
+    <MassRouterOrchestrationOverlay
+      :visible="showMassOrchestrationOverlay"
+      :routers="filteredRouters"
+      :templates="templateMarketplace"
+      :preview="massOrchestrationPreview"
+      :loading="massOrchestrationLoading"
+      :deploying="massOrchestrationDeploying"
+      :error="massOrchestrationError"
+      :deploy-error="massOrchestrationDeployError"
+      :deploy-result="massOrchestrationDeployResult"
+      @close="closeMassOrchestrationOverlay"
+      @preview="handleMassOrchestrationPreview"
+      @deploy="handleMassOrchestrationDeploy"
+    />
     <UpdateOverlay 
       :show-update-overlay="showUpdateOverlay" 
       :selected-router="selectedRouter" 
@@ -59,6 +73,7 @@
       :config-loading="configLoading" 
       :error="formError"
       :format-timestamp="formatTimestamp" 
+      :vendor-options="vendorOptions"
       @close-update="closeUpdateOverlay" 
       @generate-configs="generateConfigs"
       @copy-token="copyToClipboard" 
@@ -76,7 +91,36 @@
         <option value="rebooting">Rebooting</option>
       </BaseSelect>
       <button v-if="filterStatus" @click="clearFilters" class="text-xs text-indigo-600 hover:text-indigo-700 font-medium">Clear filters</button>
+      <button @click="openMassOrchestration" class="text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-full px-3 py-1.5 shadow-sm inline-flex items-center gap-1.5">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+        Plan Bulk Change
+      </button>
     </template>
+
+    <div v-if="templateMarketplace?.length" class="mx-2 md:mx-4 mb-4 rounded-2xl border border-indigo-200 bg-gradient-to-r from-indigo-50 via-white to-cyan-50 p-4 shadow-sm">
+      <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-wide text-indigo-600">Template Marketplace</p>
+          <p class="text-sm text-slate-600">Reusable router templates for multi-WAN, backups, hotspots, and ISP baselines.</p>
+        </div>
+        <div class="text-xs text-slate-500">{{ templateMarketplace.length }} templates available</div>
+      </div>
+      <div class="mt-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+        <div v-for="template in templateMarketplace.slice(0, 4)" :key="template.id" class="rounded-xl border border-slate-200 bg-white p-3">
+          <div class="flex items-center justify-between gap-2">
+            <p class="font-semibold text-slate-900 text-sm truncate">{{ template.name }}</p>
+            <span class="text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">{{ template.category }}</span>
+          </div>
+          <div class="mt-1 flex items-center gap-2">
+            <span class="text-[10px] px-2 py-0.5 rounded-full" :class="template.can_execute ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'">{{ template.execution_mode || 'preview_only' }}</span>
+          </div>
+          <p class="text-xs text-slate-500 mt-1 line-clamp-2">{{ template.description }}</p>
+          <div class="mt-2 flex flex-wrap gap-1">
+            <span v-for="tag in (template.tags || []).slice(0, 3)" :key="tag" class="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">{{ tag }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <!-- Error State -->
     <div v-if="listError" class="flex flex-col items-center justify-center gap-4 p-8 text-red-500">
@@ -283,21 +327,21 @@ import UpdateOverlay from '@/modules/tenant/components/routers/modals/UpdateRout
 import DetailsOverlay from '@/modules/tenant/components/routers/modals/RouterDetailsModal.vue'
 import Overlay from '@/modules/tenant/components/routers/modals/CreateRouterModal.vue'
 import ReprovisionOverlay from '@/modules/tenant/components/routers/modals/ReprovisionOverlay.vue'
+import MassRouterOrchestrationOverlay from '@/modules/tenant/components/routers/modals/MassRouterOrchestrationOverlay.vue'
 
 const confirmStore = useConfirmStore()
 
 const { error: showError, success: showSuccess } = useToast()
 
 const {
-  routers, loading, refreshing, listError, formError, detailsError, detailsLoading,
+  routers, loading, refreshing, listError, formError, detailsError, detailsLoading, vendorOptions, templateMarketplace,
+  showMassOrchestrationOverlay, massOrchestrationPreview, massOrchestrationLoading, massOrchestrationError, massOrchestrationDeploying, massOrchestrationDeployError, massOrchestrationDeployResult,
   showFormOverlay, showDetailsOverlay, showUpdateOverlay, currentRouter, isEditing,
-  selectedRouter, formData, formSubmitting, currentStep, steps, configLoading,
-  connectivityVerified, availableInterfaces, configurationProgress, formMessage, formSubmitted,
-  fetchRouters, verifyConnectivity, addRouter, editRouter, updateRouter, deleteRouter,
-  reprovisionRouter, generateConfigs, applyConfigurations, formatTimestamp, statusBadgeClass,
-  openCreateOverlay, openEditOverlay, openDetails, closeDetails, refreshDetails,
-  closeFormOverlay, closeUpdateOverlay, nextStep, previousStep, copyToClipboard,
-  updateInterfaceAssignments, updateFormData,
+  selectedRouter, formData, formSubmitting, configLoading, formMessage, formSubmitted,
+  fetchRouters, addRouter, updateRouter, deleteRouter, reprovisionRouter, generateConfigs,
+  previewMassOrchestration, deployMassOrchestration, closeMassOrchestrationOverlay,
+  formatTimestamp, openCreateOverlay, openEditOverlay, openDetails, closeDetails, refreshDetails,
+  closeFormOverlay, closeUpdateOverlay, copyToClipboard,
   setupRealtimeUpdates, cleanupRealtimeUpdates,
 } = useRouters()
 
@@ -315,6 +359,8 @@ const searchQuery = ref('')
 const filterStatus = ref('')
 const currentPage = ref(1)
 const itemsPerPage = ref(10)
+let lastFreshFetchAt = 0
+const FRESH_FETCH_MIN_INTERVAL_MS = 5000
 
 const normalizeName = (router) => String(router?.name ?? '').trim()
 const normalizeId = (router) => String(router?.id ?? '')
@@ -452,6 +498,29 @@ const closeReprovisionOverlay = () => {
   fetchRouters()
 }
 
+const openMassOrchestration = () => {
+  showMassOrchestrationOverlay.value = true
+}
+
+const handleMassOrchestrationPreview = async (options) => {
+  try {
+    await previewMassOrchestration(filteredRouters.value, options)
+  } catch (err) {
+    console.error('Mass orchestration preview error:', err)
+  }
+}
+
+const handleMassOrchestrationDeploy = async (options) => {
+  try {
+    await deployMassOrchestration(filteredRouters.value, options)
+    showSuccess('Mass orchestration jobs queued successfully')
+  } catch (err) {
+    const errorMessage = err.response?.data?.message || err.response?.data?.error || err.message || 'Failed to queue mass orchestration deployment'
+    showError(`Mass deployment failed: ${errorMessage}`)
+    console.error('Mass orchestration deploy error:', err)
+  }
+}
+
 const handleReprovisionRetry = async (router) => {
   if (!router) return
   try {
@@ -537,15 +606,36 @@ const loginToRouter = (router) => {
   window.open(winboxUrl, '_blank')
 }
 
-onMounted(() => {
+const refreshIfStale = () => {
+  const nowTs = Date.now()
+  if (nowTs - lastFreshFetchAt < FRESH_FETCH_MIN_INTERVAL_MS) return
+  lastFreshFetchAt = nowTs
   fetchRouters()
+}
+
+const handleWindowFocus = () => {
+  refreshIfStale()
+}
+
+const handleVisibilityChange = () => {
+  if (document.visibilityState === 'visible') {
+    refreshIfStale()
+  }
+}
+
+onMounted(() => {
+  refreshIfStale()
   setupRealtimeUpdates()
   document.addEventListener('click', handleClickOutside)
+  window.addEventListener('focus', handleWindowFocus)
+  document.addEventListener('visibilitychange', handleVisibilityChange)
 })
 
 onUnmounted(() => {
   cleanupRealtimeUpdates()
   document.removeEventListener('click', handleClickOutside)
+  window.removeEventListener('focus', handleWindowFocus)
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
 })
 
 const handleClickOutside = (event) => {

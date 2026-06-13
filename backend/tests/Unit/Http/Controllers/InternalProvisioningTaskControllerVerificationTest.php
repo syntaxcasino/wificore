@@ -100,11 +100,10 @@ class InternalProvisioningTaskControllerVerificationTest extends TestCase
     }
 
     #[Test]
-    public function it_accepts_terminal_completed_status_when_verification_bundle_is_not_provided(): void
+    public function it_downgrades_terminal_completed_status_when_verification_bundle_is_missing(): void
     {
         $controller = $this->makeController();
         $task = new RouterTask();
-        $task->id = 'task-1';
         $task->type = RouterTask::TYPE_DEPLOY_SERVICE_CONFIG;
 
         $result = $this->invokeApplyVerificationPolicy(
@@ -112,22 +111,18 @@ class InternalProvisioningTaskControllerVerificationTest extends TestCase
             $task,
             RouterTask::STATUS_COMPLETED,
             true,
-            [
-                'command_results' => [],
-                'executed_commands' => 42,
-                'status' => 'connected',
-            ],
+            [],
             'ok',
             null,
             100,
         );
 
-        $this->assertSame(RouterTask::STATUS_COMPLETED, $result[0]);
-        $this->assertSame('ok', $result[1]);
-        $this->assertNull($result[2]);
-        $this->assertSame('not_provided', $result[3]['verification_status']);
-        $this->assertSame(42, $result[3]['executed_commands']);
-        $this->assertSame(100, $result[4]);
+        $this->assertSame(RouterTask::STATUS_FAILED, $result[0]);
+        $this->assertStringContainsString('Post-provision verification failed', (string) $result[1]);
+        $this->assertSame($result[1], $result[2]);
+        $this->assertSame('failed', $result[3]['verification_status']);
+        $this->assertNotEmpty($result[3]['verification_missing']);
+        $this->assertLessThanOrEqual(99, $result[4]);
     }
 
     #[Test]
@@ -170,7 +165,6 @@ class InternalProvisioningTaskControllerVerificationTest extends TestCase
         $this->assertSame(true, $result[3]['verification_expected']['ppp_profile']);
     }
 
-    #[Test]
     public function it_keeps_terminal_completed_status_when_verification_bundle_passes(): void
     {
         $controller = $this->makeController();
@@ -205,9 +199,7 @@ class InternalProvisioningTaskControllerVerificationTest extends TestCase
         $this->assertSame(RouterTask::STATUS_COMPLETED, $result[0]);
         $this->assertSame('ok', $result[1]);
         $this->assertNull($result[2]);
-        $this->assertSame('passed', $result[3]['verification_status']);
-        $this->assertSame([], $result[3]['verification_missing']);
-        $this->assertSame([], $result[3]['verification_diff']['missing']);
+        $this->assertSame($verification, $result[3]);
         $this->assertSame(100, $result[4]);
     }
 

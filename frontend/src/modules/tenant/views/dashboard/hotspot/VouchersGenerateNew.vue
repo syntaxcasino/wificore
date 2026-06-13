@@ -100,7 +100,7 @@
               </h4>
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label class="block text-sm font-medium text-slate-700 mb-2">Expiry Date (Optional)</label>
+                  <label class="block text-sm font-medium text-slate-700 mb-2">Unused Voucher Expiry (Optional)</label>
                   <input v-model="formData.expires_at" type="date" :min="minDate" class="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500" />
                 </div>
                 <div>
@@ -249,7 +249,7 @@
             </h4>
             <div class="grid grid-cols-2 gap-3">
               <div class="bg-slate-50 rounded-lg p-3">
-                <div class="text-xs text-slate-500 mb-0.5">Expires</div>
+                <div class="text-xs text-slate-500 mb-0.5">Unused Expiry</div>
                 <div class="text-sm font-semibold text-slate-900">{{ selectedVoucher.expires_at ? formatDate(selectedVoucher.expires_at) : 'No expiry' }}</div>
               </div>
               <div class="bg-slate-50 rounded-lg p-3">
@@ -309,7 +309,7 @@
     <DataSkeleton v-else-if="loading && !vouchers.length" :count="5" />
 
     <!-- Data Content -->
-    <div v-else-if="filteredVouchers.length" class="flex flex-col h-full pt-2 pb-2 min-h-0">
+    <div v-else-if="vouchers.length" class="flex flex-col h-full pt-2 pb-2 min-h-0">
       <!-- Mobile Cards -->
       <div class="md:hidden space-y-3 overflow-y-auto flex-1 min-h-0">
         <MobileDataCard
@@ -319,7 +319,7 @@
           :subtitle="voucher.package?.name || 'No package'"
           :meta-lines="[
             { text: `Status: ${voucher.status}`, class: statusClass(voucher.status) },
-            { text: `Expires: ${voucher.expires_at ? formatDate(voucher.expires_at) : 'No expiry'}` },
+            { text: `Unused Expiry: ${voucher.expires_at ? formatDate(voucher.expires_at) : 'No expiry'}` },
             { text: `Created: ${formatDate(voucher.created_at)}` }
           ]"
           :status="voucher.status"
@@ -338,7 +338,7 @@
                 <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[20%]">Code</th>
                 <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[25%]">Package</th>
                 <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[12%]">Status</th>
-                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[18%]">Expires</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[18%]">Unused Expiry</th>
                 <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[15%]">Created</th>
                 <th class="px-6 py-3 text-right text-xs font-semibold text-slate-700 uppercase tracking-wider w-[10%]">Actions</th>
               </tr>
@@ -454,12 +454,11 @@ const {
   fetchPackages,
   fetchVouchers,
   refreshVouchers,
+  setFilters,
   fetchStats,
   fetchVoucherDetails,
-  goToPage,
   generateVouchers,
   revokeVoucher,
-  filterVouchers,
   statusClass,
   formatDate,
   getPackageById,
@@ -478,26 +477,10 @@ const selectedVoucher = ref(null)
 const filterStatus = ref('')
 const filterPackage = ref('')
 
-const filters = computed(() => ({
-  status: filterStatus.value,
-  package_id: filterPackage.value
-}))
-
-const hasActiveFilters = computed(() => filterStatus.value || filterPackage.value)
+const hasActiveFilters = computed(() => !!(filterStatus.value || filterPackage.value || searchQuery.value))
 
 // Computed
-const filteredVouchers = computed(() => filterVouchers(searchQuery.value, filters.value))
-
-const paginatedVouchers = computed(() => {
-  // Use server-side pagination if no local filters
-  if (!searchQuery.value && !filterStatus.value && !filterPackage.value) {
-    return vouchers.value
-  }
-  // Use client-side filtering with pagination
-  const start = (currentPage.value - 1) * itemsPerPage.value
-  const end = start + itemsPerPage.value
-  return filteredVouchers.value.slice(start, end)
-})
+const paginatedVouchers = computed(() => vouchers.value)
 
 const selectedPackage = computed(() => getPackageById(formData.value.package_id))
 const totalValue = computed(() => calculateTotalValue(selectedPackage.value, formData.value.quantity))
@@ -568,19 +551,18 @@ watch(() => formData.value.package_id, (newPackageId) => {
   }
 })
 
-// Reset page on search/filter change
-watch([searchQuery, itemsPerPage], () => {
+// Reset page and fetch on search change
+watch(searchQuery, () => {
   currentPage.value = 1
+  setFilters({ search: searchQuery.value })
+  fetchVouchers({ page: 1, per_page: itemsPerPage.value })
 })
 
 // Watch filter changes to trigger API call
 watch([filterStatus, filterPackage], () => {
   currentPage.value = 1
-  fetchVouchers({
-    page: 1,
-    status: filterStatus.value || undefined,
-    package_id: filterPackage.value || undefined
-  })
+  setFilters({ status: filterStatus.value, package_id: filterPackage.value })
+  fetchVouchers({ page: 1, per_page: itemsPerPage.value })
 })
 
 // Actions
@@ -589,7 +571,8 @@ const clearFilters = () => {
   filterPackage.value = ''
   searchQuery.value = ''
   currentPage.value = 1
-  fetchVouchers({ page: 1 })
+  setFilters({ search: '', status: '', package_id: '' })
+  fetchVouchers({ page: 1, per_page: itemsPerPage.value })
 }
 
 const handleFilterChange = () => {
@@ -628,6 +611,8 @@ const handleGenerate = async () => {
   const success = await generateVouchers(formData.value)
   if (success) {
     closeCreateOverlay()
+    currentPage.value = 1
+    await fetchVouchers({ page: 1, per_page: itemsPerPage.value })
   }
 }
 
@@ -647,7 +632,7 @@ const isVoucherFree = (v) => v.status === 'unused' && !v.used_by
 
 const handlePageChange = async (page) => {
   currentPage.value = page
-  await fetchVouchers({ page })
+  await fetchVouchers({ page, per_page: itemsPerPage.value })
 }
 
 const handleRevoke = async (voucher) => {

@@ -16,14 +16,14 @@ class RouterComplianceEndpointTest extends TestCase
     public function test_it_returns_a_router_compliance_report(): void
     {
         $tenant = (new Tenant())->setRawAttributes([
-            'id' => 'be27f09b-ee28-46b0-ba5e-1ec43226d421',
+            'id' => 'tenant-a',
             'name' => 'Tenant A',
             'slug' => 'tenant-a',
             'is_active' => true,
         ], true);
 
         $router = (new Router())->setRawAttributes([
-            'id' => '01a03b6a-b737-4039-a376-32cba5479a39',
+            'id' => 901,
             'tenant_id' => $tenant->id,
             'name' => 'Compliance Router',
             'status' => 'online',
@@ -31,7 +31,7 @@ class RouterComplianceEndpointTest extends TestCase
         ], true);
         $router->setRelation('tenant', $tenant);
 
-        $request = Request::create('/api/routers/01a03b6a-b737-4039-a376-32cba5479a39/compliance', 'GET', ['refresh' => 0]);
+        $request = Request::create('/api/routers/901/compliance', 'GET', ['refresh' => 0]);
         $request->setUserResolver(fn () => (object) ['tenant_id' => $tenant->id]);
 
         $snapshot = RouterComplianceSnapshot::make([
@@ -68,7 +68,7 @@ class RouterComplianceEndpointTest extends TestCase
         $this->assertSame(200, $response->getStatusCode());
         $this->assertTrue($payload['success']);
         $this->assertTrue($payload['refresh']);
-        $this->assertSame('01a03b6a-b737-4039-a376-32cba5479a39', $payload['report']['router_id']);
+        $this->assertSame(901, $payload['report']['router_id']);
         $this->assertSame(92, $payload['report']['score']);
         $this->assertSame('compliant', $payload['report']['status']);
         $this->assertSame('Router is compliant.', $payload['report']['summary']);

@@ -7,6 +7,8 @@ use App\Listeners\TrackCompletedJobs;
 use App\Services\ProvisioningServiceClient;
 use App\Models\PersonalAccessToken;
 use App\Services\RadiusService;
+use App\Services\RouterDriver\DriverRegistry;
+use App\Services\RouterDriver\RouterVendorProfileRegistry;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Queue\Events\JobProcessed;
 use Illuminate\Support\Facades\Cache;
@@ -30,6 +32,12 @@ class AppServiceProvider extends ServiceProvider
         });
 
         $this->app->singleton(ProvisioningCommandBus::class, ProvisioningServiceClient::class);
+        $this->app->singleton(RouterVendorProfileRegistry::class);
+        $this->app->singleton(DriverRegistry::class, function ($app) {
+            $registry = new DriverRegistry($app->make(RouterVendorProfileRegistry::class));
+            $registry->registerDefaults();
+            return $registry;
+        });
         
         // TenantContext carries request-scoped mutable state (tenant/search_path).
         // Under Octane, singleton would leak state across requests.

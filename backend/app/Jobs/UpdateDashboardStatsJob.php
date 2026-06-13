@@ -14,6 +14,7 @@ use App\Models\User;
 use App\Models\Payment;
 use App\Models\UserSession;
 use App\Models\Package;
+use App\Models\UserSubscription;
 use App\Models\Tenant;
 use App\Events\DashboardStatsUpdated;
 use App\Services\MetricsService;
@@ -547,6 +548,57 @@ class UpdateDashboardStatsJob implements ShouldQueue
                     })
                     ->values();
 
+                $completedPayments = Payment::where('status', 'completed');
+                $failedPayments = Payment::where('status', 'failed')->count();
+                $dailyCompletedRevenue = (float) (clone $completedPayments)->whereDate('created_at', now()->toDateString())->sum('amount');
+                $monthlyCompletedRevenue = (float) (clone $completedPayments)->whereBetween('created_at', [now()->startOfMonth(), now()->endOfDay()])->sum('amount');
+                $completedPaymentsCount = (int) (clone $completedPayments)->count();
+                $activeSubscriptions = UserSubscription::where(function ($query) {
+                    $query->whereNull('expires_at')->orWhere('expires_at', '>', now());
+                })->count();
+                $activeSubscribers = max($activeSessions, $activeSubscriptions);
+                $arpu = $activeSubscribers > 0 ? round($monthlyCompletedRevenue / $activeSubscribers, 2) : 0.0;
+                $mrr = round($monthlyCompletedRevenue, 2);
+                $arr = round($mrr * 12, 2);
+                $failedPaymentRate = ($failedPayments + $completedPaymentsCount) > 0
+                    ? round(($failedPayments / ($failedPayments + $completedPaymentsCount)) * 100, 2)
+                    : 0.0;
+                $churnRate = $lastMonthUsers > 0
+                    ? round(max(0, ($lastMonthUsers - $retainedUsers)) / $lastMonthUsers * 100, 2)
+                    : 0.0;
+
+                $revenueByArea = Router::query()
+                    ->whereNotNull('location')
+                    ->selectRaw('location, COALESCE(SUM(payments.amount), 0) as revenue')
+                    ->leftJoin('payments', function ($join) {
+                        $join->on('payments.router_id', '=', 'routers.id')
+                            ->where('payments.status', '=', 'completed');
+                    })
+                    ->groupBy('location')
+                    ->orderByDesc('revenue')
+                    ->limit(5)
+                    ->get()
+                    ->map(function ($row) {
+                        return [
+                            'area' => $row->location ?: 'Unknown',
+                            'revenue' => round((float) $row->revenue, 2),
+                        ];
+                    })
+                    ->values()
+                    ->all();
+
+                $businessKpis = [
+                    'mrr' => $mrr,
+                    'arr' => $arr,
+                    'arpu' => $arpu,
+                    'churn_rate' => $churnRate,
+                    'failed_payment_rate' => $failedPaymentRate,
+                    'daily_revenue' => round($dailyCompletedRevenue, 2),
+                    'monthly_completed_count' => $completedPaymentsCount,
+                    'revenue_by_area' => $revenueByArea,
+                    'active_subscribers' => $activeSubscribers,
+                ];
+
                 // Compile all statistics
                 $stats = [
                     'total_routers' => $totalRouters,
@@ -640,6 +692,7 @@ class UpdateDashboardStatsJob implements ShouldQueue
                         'userAverage' => $userAverage,
                         'userPeak' => $userPeak,
                         'userGrowth' => $userGrowth,
+                        'businessKpis' => $businessKpis,
                     ],
                     'performance_metrics' => MetricsService::getPerformanceMetrics(),
                     'last_updated' => now()->toIso8601String(),

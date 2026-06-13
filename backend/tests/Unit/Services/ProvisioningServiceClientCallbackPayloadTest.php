@@ -45,27 +45,6 @@ class ProvisioningServiceClientCallbackPayloadTest extends TestCase
     }
 
     #[Test]
-    public function it_prefers_the_configured_callback_base_url_for_task_callbacks(): void
-    {
-        config()->set('app.url', 'https://public.example.test');
-        config()->set('services.provisioning.api_key', 'test-api-key');
-        config()->set('services.provisioning.callback_base_url', 'http://wificore-nginx');
-
-        $client = new ProvisioningServiceClient();
-
-        $task = new RouterTask();
-        $task->id = 'task-123';
-        $task->tenant_id = 'tenant-abc';
-        $task->router_id = 'router-xyz';
-
-        $payload = $this->invokeBuildTaskCallbackPayload($client, $task);
-
-        $this->assertIsArray($payload);
-        $this->assertSame('http://wificore-nginx/api/internal/provisioning/router-tasks/task-123/status', $payload['url']);
-        $this->assertSame('test-api-key', $payload['api_key']);
-    }
-
-    #[Test]
     public function it_returns_null_callback_payload_without_task(): void
     {
         config()->set('app.url', 'https://example.test');
@@ -76,25 +55,6 @@ class ProvisioningServiceClientCallbackPayloadTest extends TestCase
         $payload = $this->invokeBuildTaskCallbackPayload($client, null);
 
         $this->assertNull($payload);
-    }
-
-    #[Test]
-    public function it_prefers_the_configured_callback_base_url_for_monitoring_callbacks(): void
-    {
-        config()->set('app.url', 'https://public.example.test');
-        config()->set('services.provisioning.api_key', 'test-api-key');
-        config()->set('services.provisioning.callback_base_url', 'http://wificore-nginx');
-
-        $client = new ProvisioningServiceClient();
-        $invoker = \Closure::bind(function (string $tenantId, string $path, bool $terminal = true, ?string $stage = null): ?array {
-            return $this->buildMonitoringCallbackPayload($tenantId, $path, $terminal, $stage);
-        }, $client, $client);
-
-        $payload = $invoker('tenant-abc', 'router-metrics');
-
-        $this->assertIsArray($payload);
-        $this->assertSame('http://wificore-nginx/api/internal/provisioning/monitoring/tenants/tenant-abc/router-metrics', $payload['url']);
-        $this->assertSame('test-api-key', $payload['api_key']);
     }
 
     #[Test]

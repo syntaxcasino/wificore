@@ -502,6 +502,8 @@ const {
 
 const showAlertSettings = ref(false)
 const showAlertPanel = ref(false)
+let lastFreshFetchAt = 0
+const FRESH_FETCH_MIN_INTERVAL_MS = 5000
 
 const maxTraffic = computed(() => {
   if (!trafficData.value.historical?.length) return 1
@@ -541,12 +543,33 @@ const exportData = () => {
   URL.revokeObjectURL(url)
 }
 
+const refreshIfStale = () => {
+  const nowTs = Date.now()
+  if (nowTs - lastFreshFetchAt < FRESH_FETCH_MIN_INTERVAL_MS) return
+  lastFreshFetchAt = nowTs
+  fetchAllMetrics({ force: true }).catch(() => {})
+}
+
+const handleWindowFocus = () => {
+  refreshIfStale()
+}
+
+const handleVisibilityChange = () => {
+  if (document.visibilityState === 'visible') {
+    refreshIfStale()
+  }
+}
+
 onMounted(() => {
-  fetchAllMetrics()
+  refreshIfStale()
   setupWebSocketListeners()
+  window.addEventListener('focus', handleWindowFocus)
+  document.addEventListener('visibilitychange', handleVisibilityChange)
 })
 
 onUnmounted(() => {
   cleanupWebSocketListeners()
+  window.removeEventListener('focus', handleWindowFocus)
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
 })
 </script>

@@ -122,11 +122,55 @@
           <p class="text-sm text-slate-500 dark:text-slate-400 truncate">Active locations</p>
         </div>
       </div>
+      <!-- KPI Snapshot -->
+      <div class="col-span-2 md:col-span-2 lg:col-span-4 rounded-xl border border-slate-200 dark:border-slate-700 p-3 sm:p-4 bg-slate-50/80 dark:bg-slate-900/50">
+        <div class="flex items-center justify-between gap-3 mb-3">
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Business KPIs</p>
+            <p class="text-sm text-slate-500 dark:text-slate-400">Revenue and leakage indicators</p>
+          </div>
+          <span class="text-xs font-semibold px-2.5 py-1 rounded-full" :class="businessKpis.failed_payment_rate > 15 ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'">{{ formatPercent(businessKpis.failed_payment_rate) }} failed payment rate</span>
+        </div>
+        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          <div class="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-3 min-w-0">
+            <p class="text-[10px] uppercase tracking-wide text-slate-400 dark:text-slate-500">MRR</p>
+            <p class="text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{{ formatCurrency(businessKpis.mrr) }}</p>
+          </div>
+          <div class="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-3 min-w-0">
+            <p class="text-[10px] uppercase tracking-wide text-slate-400 dark:text-slate-500">ARR</p>
+            <p class="text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{{ formatCurrency(businessKpis.arr) }}</p>
+          </div>
+          <div class="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-3 min-w-0">
+            <p class="text-[10px] uppercase tracking-wide text-slate-400 dark:text-slate-500">ARPU</p>
+            <p class="text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{{ formatCurrency(businessKpis.arpu) }}</p>
+          </div>
+          <div class="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-3 min-w-0">
+            <p class="text-[10px] uppercase tracking-wide text-slate-400 dark:text-slate-500">Daily Rev</p>
+            <p class="text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{{ formatCurrency(businessKpis.daily_revenue) }}</p>
+          </div>
+          <div class="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-3 min-w-0">
+            <p class="text-[10px] uppercase tracking-wide text-slate-400 dark:text-slate-500">Churn</p>
+            <p class="text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{{ formatPercent(businessKpis.churn_rate) }}</p>
+          </div>
+          <div class="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-3 min-w-0">
+            <p class="text-[10px] uppercase tracking-wide text-slate-400 dark:text-slate-500">Active Subs</p>
+            <p class="text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{{ businessKpis.active_subscribers || 0 }}</p>
+          </div>
+        </div>
+        <div v-if="(businessKpis.revenue_by_area || []).length" class="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+          <div v-for="area in businessKpis.revenue_by_area" :key="area.area" class="flex items-center justify-between rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm min-w-0">
+            <span class="truncate text-slate-600 dark:text-slate-300">{{ area.area }}</span>
+            <span class="font-semibold text-slate-900 dark:text-slate-100 truncate">{{ formatCurrency(area.revenue) }}</span>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup>
+import { computed } from 'vue'
+
 const props = defineProps({
   analyticsData: {
     type: Object,
@@ -134,12 +178,19 @@ const props = defineProps({
   }
 })
 
+const businessKpis = computed(() => props.analyticsData?.businessKpis || {})
+
 const formatCurrency = (value) => {
   return new Intl.NumberFormat('en-KE', {
     style: 'currency',
     currency: 'KES',
     minimumFractionDigits: 0,
   }).format(value || 0)
+}
+
+const formatPercent = (value) => {
+  const numeric = Number(value || 0)
+  return `${numeric.toFixed(2)}%`
 }
 </script>
 

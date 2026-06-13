@@ -22,6 +22,7 @@ use App\Jobs\ProcessScheduledPackages;
 use App\Jobs\UnsuspendExpiredAccountsJob;
 // Hotspot Jobs
 use App\Jobs\CheckHotspotExpirationsJob;
+use App\Jobs\ExpireUnusedVouchersJob;
 
 $consoleCommand = $_SERVER["argv"][1] ?? null;
 
@@ -30,6 +31,7 @@ if (in_array($consoleCommand, ["schedule:run", "schedule:interrupt"], true)) {
 }
 
 Schedule::useCache("database");
+
 
 Schedule::job(new CheckRoutersJob)->everyMinute();
 
@@ -186,6 +188,13 @@ Schedule::job(new \App\Jobs\CollectSystemMetricsJob)
     ->withoutOverlapping()
     ->onOneServer();
 
+// Monitor provisioning callback guard trend and emit operational alerts
+Schedule::command('provisioning:callback-guard-alert-check')
+    ->everyMinute()
+    ->name('provisioning-callback-guard-alert-check')
+    ->withoutOverlapping()
+    ->onOneServer();
+
 // Reset TPS counter every minute for accurate metrics
 Schedule::call(function () {
     \App\Services\MetricsService::resetTPSCounter();
@@ -306,5 +315,12 @@ Schedule::call(function () {
 Schedule::job(new CheckHotspotExpirationsJob())
     ->everyMinute()
     ->name('check-hotspot-expirations')
+    ->onOneServer()
+    ->withoutOverlapping();
+
+// Check for unused vouchers past their expiry date and mark as expired - every minute
+Schedule::job(new ExpireUnusedVouchersJob())
+    ->everyMinute()
+    ->name('expire-unused-vouchers')
     ->onOneServer()
     ->withoutOverlapping();

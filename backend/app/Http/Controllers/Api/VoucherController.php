@@ -46,7 +46,13 @@ class VoucherController extends Controller
 
         if ($request->filled('search')) {
             $search = $request->search;
-            $query->where('code', 'ilike', $search . '%'); // More efficient prefix search
+            $query->where(function ($q) use ($search) {
+                $q->where('code', 'ilike', $search . '%')
+                  ->orWhere('status', 'ilike', $search)
+                  ->orWhereHas('package', function ($pkg) use ($search) {
+                      $pkg->where('name', 'ilike', $search . '%');
+                  });
+            });
         }
 
         // Optimized pagination with reasonable limits
@@ -100,9 +106,10 @@ class VoucherController extends Controller
         // Fetch package details for value and duration
         $package = Package::select(['id', 'price', 'validity', 'duration'])->find($validated['package_id']);
 
-        // Auto-calculate expiry from package if not explicitly provided
+        // Auto-calculate expiry from package only if not explicitly provided in request.
+        // If user clears the field (sends null/empty), leave as null so voucher never expires.
         $expiresAt = $validated['expires_at'] ?? null;
-        if (!$expiresAt && $package) {
+        if (!$expiresAt && $package && !$request->has('expires_at')) {
             $expiresAt = PackageExpiryHelper::calculateExpiresAt($package, now())->toDateTimeString();
         }
 

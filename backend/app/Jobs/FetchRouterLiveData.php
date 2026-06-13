@@ -8,6 +8,7 @@ use App\Models\Router;
 use App\Services\CacheInvalidationService;
 use App\Services\RouterMetricsService;
 use App\Services\VictoriaMetricsClient;
+use App\Services\MikroTik\RouterOsCapabilityRegistry;
 use App\Traits\TenantAwareJob;
 use Illuminate\Bus\Batchable;
 use Illuminate\Bus\Queueable;
@@ -235,8 +236,10 @@ class FetchRouterLiveData implements ShouldQueue
 
             if ($status === 'online') {
                 $updates['last_seen'] = now();
-                if (isset($liveData['board_name'])) $updates['model'] = $liveData['board_name'];
-                if (isset($liveData['version'])) $updates['os_version'] = $liveData['version'];
+                $updates = array_merge(
+                    $updates,
+                    app(RouterOsCapabilityRegistry::class)->buildRouterUpdatePayload($liveData, $router)
+                );
             }
 
             $router->update($updates);

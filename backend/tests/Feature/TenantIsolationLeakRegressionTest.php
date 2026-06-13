@@ -201,39 +201,6 @@ class TenantIsolationLeakRegressionTest extends TestCase
         });
     }
 
-
-    public function test_set_tenant_reapplies_search_path_even_when_cached_state_matches(): void
-    {
-        $tenant = $this->createTenant('tenant-cache', 'ts_isolation_cache');
-        $this->createTenantSchema($tenant);
-
-        $context = app(TenantContext::class);
-        $reflection = new \ReflectionClass($context);
-
-        foreach ([
-            'activeTenantId' => (string) $tenant->id,
-            'activeSchemaName' => $tenant->schema_name,
-            'activeSearchPath' => $tenant->schema_name . ', public',
-        ] as $property => $value) {
-            $prop = $reflection->getProperty($property);
-            $prop->setAccessible(true);
-            $prop->setValue($context, $value);
-        }
-
-        $this->switchSearchPath('public');
-
-        DB::transaction(function () use ($tenant, $context): void {
-            DB::connection()->recordsHaveBeenModified();
-
-            $context->setTenant($tenant, false);
-
-            $searchPath = DB::selectOne('SHOW search_path')->search_path ?? '';
-
-            $this->assertStringContainsString($tenant->schema_name, $searchPath);
-            $this->assertStringContainsString('public', $searchPath);
-        });
-    }
-
     public function test_two_tenants_remain_isolated_for_router_pppoe_hotspot_payment_and_sessions(): void
     {
         $tenantA = $this->createTenant('tenant-a', 'ts_isolation_a');

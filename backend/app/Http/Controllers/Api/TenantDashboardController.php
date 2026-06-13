@@ -4,10 +4,16 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Jobs\UpdateDashboardStatsJob;
+use App\Jobs\UpdateTenantHealthScoreJob;
+use App\Models\HealthScoreSnapshot;
 use App\Models\Package;
 use App\Models\Payment;
 use App\Models\Router;
 use App\Models\UserSession;
+use App\Services\RevenueAssuranceEngine;
+use App\Models\UserSubscription;
+use App\Models\PppoeUser;
+use App\Models\HotspotUser;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Cache;
@@ -305,6 +311,8 @@ class TenantDashboardController extends Controller
         $retainedUsers     = 0;
         $retentionRate     = $lastMonthUsers > 0 ? round(($currentMonthUsers / $lastMonthUsers) * 100, 2) : 0;
 
+        $revenueAssurance = $this->buildRevenueAssuranceReport($tenantId, $hasPayments, $hasUserSessions, $hasRouters);
+
         $revenueAverage = count($revenueTrendData) > 0
             ? round(array_sum(array_column($revenueTrendData, 'amount')) / count($revenueTrendData), 2)
             : 0;
@@ -432,7 +440,10 @@ class TenantDashboardController extends Controller
                 'userAverage'    => $userAverage,
                 'userPeak'       => $maxUsr === 1 ? 0 : $maxUsr,
                 'userGrowth'     => $userGrowth,
+                'businessKpis'   => $revenueAssurance['kpis'] ?? [],
             ],
+            'revenue_assurance' => $revenueAssurance,
+            'business_kpis' => $revenueAssurance['kpis'] ?? [],
             'last_updated' => $now->toIso8601String(),
         ];
 
@@ -448,6 +459,168 @@ class TenantDashboardController extends Controller
         return $stats;
     }
 
+    private function buildRevenueAssuranceReport(string $tenantId, bool $hasPayments, bool $hasUserSessions, bool $hasRouters): array
+    {
+        $now = now();
+        $signals = [
+            'payments' => [
+                'monthly_completed_amount' => 0.0,
+                'monthly_completed_count' => 0,
+                'daily_completed_amount' => 0.0,
+                'completed_today' => 0,
+                'failed_today' => 0,
+                'callback_mismatch' => 0,
+                'missing_accounting' => 0,
+                'pending_overdue' => 0,
+                'callback_mismatch_examples' => [],
+                'missing_accounting_examples' => [],
+                'pending_overdue_examples' => [],
+            ],
+            'subscriptions' => [
+                'active_count' => 0,
+                'expired_count' => 0,
+            ],
+            'pppoe' => [
+                'active_count' => 0,
+                'active_not_billed' => 0,
+                'duplicate_usernames' => 0,
+                'expired_online' => 0,
+                'active_not_billed_users' => [],
+                'duplicate_username_examples' => [],
+                'expired_online_examples' => [],
+            ],
+            'hotspot' => [
+                'active_count' => 0,
+                'active_not_billed' => 0,
+                'duplicate_usernames' => 0,
+                'expired_online' => 0,
+                'active_not_billed_users' => [],
+                'duplicate_username_examples' => [],
+                'expired_online_examples' => [],
+            ],
+            'sessions' => [
+                'unmatched_active' => 0,
+                'unmatched_examples' => [],
+            ],
+            'revenue_by_area' => [],
+        ];
+
+        if ($hasPayments) {
+            $signals['payments']['monthly_completed_amount'] = (float) (Payment::query()
+                ->where('status', 'completed')
+                ->where('created_at', '>=', $now->copy()->startOfMonth())
+                ->sum('amount'));
+            $signals['payments']['monthly_completed_count'] = (int) Payment::query()
+                ->where('status', 'completed')
+                ->where('created_at', '>=', $now->copy()->startOfMonth())
+                ->count();
+            $signals['payments']['daily_completed_amount'] = (float) Payment::query()
+                ->where('status', 'completed')
+                ->whereDate('created_at', $now->toDateString())
+                ->sum('amount');
+            $signals['payments']['completed_today'] = (int) Payment::query()
+                ->where('status', 'completed')
+                ->whereDate('created_at', $now->toDateString())
+                ->count();
+            $signals['payments']['failed_today'] = (int) Payment::query()
+                ->where('status', 'failed')
+                ->whereDate('created_at', $now->toDateString())
+                ->count();
+            $signals['payments']['callback_mismatch'] = (int) Payment::query()
+                ->where('status', 'completed')
+                ->where(function ($query) {
+                    $query->whereNull('callback_response')
+                        ->orWhereNull('mpesa_receipt')
+                        ->orWhere('mpesa_receipt', '');
+                })
+                ->count();
+            $signals['payments']['missing_accounting'] = (int) Payment::query()
+                ->where('status', 'completed')
+                ->whereDoesntHave('subscription')
+                ->count();
+            $signals['payments']['pending_overdue'] = (int) Payment::query()
+                ->where('status', 'pending')
+                ->where('created_at', '<', $now->copy()->subHours(24))
+                ->count();
+            $signals['payments']['callback_mismatch_examples'] = Payment::query()
+                ->where('status', 'completed')
+                ->where(function ($query) {
+                    $query->whereNull('callback_response')
+                        ->orWhereNull('mpesa_receipt')
+                        ->orWhere('mpesa_receipt', '');
+                })
+                ->orderByDesc('created_at')
+                ->limit(10)
+                ->pluck('transaction_id')
+                ->filter()
+                ->values()
+                ->all();
+            $signals['payments']['missing_accounting_examples'] = Payment::query()
+                ->where('status', 'completed')
+                ->whereDoesntHave('subscription')
+                ->orderByDesc('created_at')
+                ->limit(10)
+                ->pluck('transaction_id')
+                ->filter()
+                ->values()
+                ->all();
+            $signals['payments']['pending_overdue_examples'] = Payment::query()
+                ->where('status', 'pending')
+                ->where('created_at', '<', $now->copy()->subHours(24))
+                ->orderBy('created_at')
+                ->limit(10)
+                ->pluck('transaction_id')
+                ->filter()
+                ->values()
+                ->all();
+
+            if ($hasRouters) {
+                $signals['revenue_by_area'] = Payment::query()
+                    ->leftJoin('routers', 'payments.router_id', '=', 'routers.id')
+                    ->where('payments.status', 'completed')
+                    ->selectRaw("COALESCE(routers.location, 'Unspecified') as label, COALESCE(SUM(payments.amount), 0) as amount, COUNT(*) as count")
+                    ->groupByRaw("COALESCE(routers.location, 'Unspecified')")
+                    ->orderByDesc('amount')
+                    ->limit(5)
+                    ->get()
+                    ->map(fn ($row) => ['label' => $row->label, 'amount' => (float) $row->amount, 'count' => (int) $row->count])
+                    ->all();
+            }
+        }
+
+        if (DB::connection()->getSchemaBuilder()->hasTable('user_subscriptions')) {
+            $signals['subscriptions']['active_count'] = UserSubscription::query()->where('status', 'active')->count();
+            $signals['subscriptions']['expired_count'] = UserSubscription::query()->where('status', 'expired')->count();
+        }
+
+        if (DB::connection()->getSchemaBuilder()->hasTable('pppoe_users')) {
+            $signals['pppoe']['active_count'] = PppoeUser::query()->where('status', 'active')->count();
+            $signals['pppoe']['active_not_billed'] = PppoeUser::query()->where('status', 'active')->where('payment_status', '!=', 'paid')->count();
+            $signals['pppoe']['expired_online'] = PppoeUser::query()->where('status', 'active')->whereNotNull('expires_at')->where('expires_at', '<', $now)->count();
+            $signals['pppoe']['duplicate_usernames'] = DB::table('pppoe_users')->select('username')->groupBy('username')->havingRaw('COUNT(*) > 1')->get()->count();
+            $signals['pppoe']['active_not_billed_users'] = PppoeUser::query()->where('status', 'active')->where('payment_status', '!=', 'paid')->orderByDesc('updated_at')->limit(10)->pluck('username')->filter()->values()->all();
+            $signals['pppoe']['duplicate_username_examples'] = DB::table('pppoe_users')->select('username')->groupBy('username')->havingRaw('COUNT(*) > 1')->orderBy('username')->limit(10)->pluck('username')->filter()->values()->all();
+            $signals['pppoe']['expired_online_examples'] = PppoeUser::query()->where('status', 'active')->whereNotNull('expires_at')->where('expires_at', '<', $now)->orderBy('expires_at')->limit(10)->pluck('username')->filter()->values()->all();
+        }
+
+        if (DB::connection()->getSchemaBuilder()->hasTable('hotspot_users')) {
+            $signals['hotspot']['active_count'] = HotspotUser::query()->where('status', 'active')->count();
+            $signals['hotspot']['active_not_billed'] = HotspotUser::query()->where('status', 'active')->where('has_active_subscription', false)->count();
+            $signals['hotspot']['expired_online'] = HotspotUser::query()->where('status', 'active')->whereNotNull('subscription_expires_at')->where('subscription_expires_at', '<', $now)->count();
+            $signals['hotspot']['duplicate_usernames'] = DB::table('hotspot_users')->select('username')->groupBy('username')->havingRaw('COUNT(*) > 1')->get()->count();
+            $signals['hotspot']['active_not_billed_users'] = HotspotUser::query()->where('status', 'active')->where('has_active_subscription', false)->orderByDesc('updated_at')->limit(10)->pluck('username')->filter()->values()->all();
+            $signals['hotspot']['duplicate_username_examples'] = DB::table('hotspot_users')->select('username')->groupBy('username')->havingRaw('COUNT(*) > 1')->orderBy('username')->limit(10)->pluck('username')->filter()->values()->all();
+            $signals['hotspot']['expired_online_examples'] = HotspotUser::query()->where('status', 'active')->whereNotNull('subscription_expires_at')->where('subscription_expires_at', '<', $now)->orderBy('subscription_expires_at')->limit(10)->pluck('username')->filter()->values()->all();
+        }
+
+        if ($hasUserSessions) {
+            $signals['sessions']['unmatched_active'] = (int) UserSession::query()->where('status', 'active')->whereNull('payment_id')->count();
+            $signals['sessions']['unmatched_examples'] = UserSession::query()->where('status', 'active')->whereNull('payment_id')->orderByDesc('start_time')->limit(10)->pluck('voucher')->filter()->values()->all();
+        }
+
+        return app(RevenueAssuranceEngine::class)->evaluate($signals, $now);
+    }
+
     private function tenantTableExists(string $tableName): bool
     {
         $result = DB::selectOne(
@@ -460,6 +633,121 @@ class TenantDashboardController extends Controller
         );
 
         return (bool) ($result->exists ?? false);
+    }
+
+    public function healthScore(Request $request)
+    {
+        $user = $request->user();
+        $tenantId = $user->tenant_id;
+
+        if (! $tenantId) {
+            return response()->json([
+                'success' => false,
+                'message' => 'User does not belong to any tenant',
+            ], 403);
+        }
+
+        $cacheKey = 'tenant_health_score_latest:' . (string) $tenantId;
+        $cached = $this->cacheGet($cacheKey);
+
+        if (is_array($cached) && ! empty($cached)) {
+            return response()->json([
+                'success' => true,
+                'data' => $cached,
+                'cached' => true,
+            ]);
+        }
+
+        $latest = HealthScoreSnapshot::query()
+            ->where('tenant_id', $tenantId)
+            ->orderByDesc('calculated_at')
+            ->orderByDesc('created_at')
+            ->first();
+
+        if (! $latest) {
+            UpdateTenantHealthScoreJob::dispatch((string) $tenantId, [
+                'source_event' => 'health_score_request',
+                'source_reference' => 'dashboard',
+            ])->onQueue('dashboard');
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'score' => 100,
+                    'grade' => 'healthy',
+                    'summary' => 'Health score is being calculated.',
+                    'factors' => [],
+                    'signals' => [],
+                    'history' => [],
+                    'calculated_at' => now()->toIso8601String(),
+                ],
+                'cached' => false,
+                'refreshing' => true,
+            ]);
+        }
+
+        if ($latest->calculated_at && $latest->calculated_at->lt(now()->subMinutes(5))) {
+            UpdateTenantHealthScoreJob::dispatch((string) $tenantId, [
+                'source_event' => 'health_score_refresh',
+                'source_reference' => (string) $latest->id,
+            ])->onQueue('dashboard');
+        }
+
+        $history = HealthScoreSnapshot::query()
+            ->where('tenant_id', $tenantId)
+            ->select('score', 'grade', 'calculated_at', 'source_event')
+            ->orderByDesc('calculated_at')
+            ->orderByDesc('created_at')
+            ->limit(10)
+            ->get()
+            ->map(fn (HealthScoreSnapshot $snapshot) => [
+                'score' => $snapshot->score,
+                'grade' => $snapshot->grade,
+                'calculated_at' => optional($snapshot->calculated_at)->toIso8601String(),
+                'source_event' => $snapshot->source_event,
+            ])
+            ->values();
+
+        $data = [
+            'score' => $latest->score,
+            'grade' => $latest->grade,
+            'summary' => $this->healthScoreSummary($latest),
+            'factors' => $latest->factors ?? [],
+            'signals' => $latest->signals ?? [],
+            'calculated_at' => optional($latest->calculated_at)->toIso8601String(),
+            'source_event' => $latest->source_event,
+            'source_reference' => $latest->source_reference,
+            'history' => $history,
+        ];
+
+        try {
+            $this->cachePut($cacheKey, $data, self::CACHE_TTL_SECONDS);
+        } catch (\Exception $e) {
+            // Cache is optional; return fresh DB data regardless.
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => $data,
+            'cached' => false,
+        ]);
+    }
+
+    private function healthScoreSummary(HealthScoreSnapshot $snapshot): string
+    {
+        $summary = $snapshot->factors ?? [];
+        $contributors = collect($summary)
+            ->filter(fn (array $factor) => (float) ($factor['penalty'] ?? 0) > 0)
+            ->sortByDesc('penalty')
+            ->take(3)
+            ->pluck('label')
+            ->all();
+
+        if ($contributors === []) {
+            return 'No significant health degradations detected.';
+        }
+
+        return 'Top negative contributors: ' . implode(', ', $contributors);
     }
 
     private function emptyTrendRows(): array
@@ -622,7 +910,6 @@ class TenantDashboardController extends Controller
             ], 403);
         }
 
-        $cacheKey = $this->getListCacheKey(self::KEY_PAYMENTS, $tenantId, $request);
         $perPage = $request->per_page ?? 15;
 
         if (! $this->tenantTableExists('payments')) {
@@ -631,26 +918,22 @@ class TenantDashboardController extends Controller
                 'data' => $this->emptyPaginator($request, $perPage),
                 'cached' => false,
                 'schema_incomplete' => true,
-            ]);
+            ])
+            ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+            ->header('Pragma', 'no-cache')
+            ->header('Expires', '0');
         }
 
-        if ($request->has('status') || $request->has('date_from') || $request->has('date_to')) {
-            $payments = $this->fetchPaymentsQuery($request, $perPage);
-            return response()->json(['success' => true, 'data' => $payments, 'cached' => false]);
-        }
-
-        $payments = $this->cacheRemember($cacheKey, self::LIST_CACHE_TTL_SECONDS, function () use ($perPage) {
-            return Payment::with(['user:id,name,email', 'package:id,name'])
-                ->select('id', 'user_id', 'package_id', 'amount', 'status', 'payment_method', 'created_at', 'verified_at')
-                ->orderBy('created_at', 'desc')
-                ->paginate($perPage);
-        });
+        $payments = $this->fetchPaymentsQuery($request, $perPage);
 
         return response()->json([
             'success' => true,
             'data' => $payments,
-            'cached' => $this->cacheHas($cacheKey),
-        ]);
+            'cached' => false,
+        ])
+        ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+        ->header('Pragma', 'no-cache')
+        ->header('Expires', '0');
     }
 
     /**

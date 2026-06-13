@@ -110,6 +110,54 @@ class ProvisioningServiceClient implements ProvisioningCommandBus
         return implode(':', [$operation, (string) $router->id]);
     }
 
+    protected function resolveDuplicateWorkflowResponse(Router $router, string $idempotencyKey): ?array
+    {
+        $idempotencyKey = trim($idempotencyKey);
+        if ($idempotencyKey === '') {
+            return null;
+        }
+
+        $existing = $this->getWorkflowStatus($idempotencyKey);
+        if (is_array($existing) && $existing !== []) {
+            $status = strtolower(trim((string) ($existing['status'] ?? '')));
+            if ($status !== '') {
+                return $this->buildDuplicateWorkflowResponse($existing, $status, $idempotencyKey, 'existing workflow');
+            }
+        }
+
+        $active = $this->getActiveWorkflow((string) $router->id);
+        if (is_array($active) && $active !== []) {
+            $activeKey = trim((string) ($active['idempotency_key'] ?? ''));
+            if ($activeKey !== '' && $activeKey === $idempotencyKey) {
+                $status = strtolower(trim((string) ($active['status'] ?? 'running')));
+                return $this->buildDuplicateWorkflowResponse($active, $status, $idempotencyKey, 'active workflow');
+            }
+        }
+
+        return null;
+    }
+
+    protected function buildDuplicateWorkflowResponse(array $workflow, string $status, string $idempotencyKey, string $sourceLabel): array
+    {
+        $normalizedStatus = in_array($status, ['completed', 'complete', 'success', 'duplicate_completed', 'failed'], true)
+            ? 'duplicate_completed'
+            : 'duplicate_active';
+
+        $message = $normalizedStatus === 'duplicate_completed'
+            ? 'Provisioning workflow already completed for this idempotency key'
+            : 'Provisioning workflow already in progress for this idempotency key';
+
+        return [
+            'success' => true,
+            'message' => $message,
+            'data' => array_merge($workflow, [
+                'status' => $normalizedStatus,
+                'idempotency_key' => $idempotencyKey,
+                'source' => $sourceLabel,
+            ]),
+        ];
+    }
+
     public function callbacksEnabled(?RouterTask $task = null, bool $terminal = true, ?string $stage = null): bool
     {
         return $this->buildTaskCallbackPayload($task, $terminal, $stage) !== null;
@@ -131,6 +179,8 @@ class ProvisioningServiceClient implements ProvisioningCommandBus
             'api_key' => $this->apiKey,
             'terminal' => $terminal,
             'stage' => $stage,
+            'tenant_id' => (string) $task->tenant_id,
+            'router_id' => (string) $task->router_id,
         ];
     }
 
@@ -341,6 +391,17 @@ class ProvisioningServiceClient implements ProvisioningCommandBus
                 'task_id' => $task?->id,
             ]);
 
+            if ($task?->id && ($duplicate = $this->resolveDuplicateWorkflowResponse($router, (string) $task->id))) {
+                Log::info('Provisioning command submission reused existing workflow', [
+                    'router_id' => $router->id,
+                    'tenant_id' => $tenantId,
+                    'type' => $type,
+                    'task_id' => $task?->id,
+                    'workflow_status' => $duplicate['data']['status'] ?? null,
+                ]);
+                return $duplicate;
+            }
+
             $commandPayload = array_merge($payload, [
                 'connection' => $this->buildRouterConnectionPayload($router),
             ]);
@@ -439,12 +500,24 @@ class ProvisioningServiceClient implements ProvisioningCommandBus
                 'script_length' => strlen($script),
             ]);
 
+            $idempotencyKey = $this->buildIdempotencyKey($router, 'deploy-script', $task);
+            if ($duplicate = $this->resolveDuplicateWorkflowResponse($router, $idempotencyKey)) {
+                Log::info('Script deployment reused existing workflow', [
+                    'router_id' => $router->id,
+                    'tenant_id' => $tenantId,
+                    'workflow_status' => $duplicate['data']['status'] ?? null,
+                    'idempotency_key' => $idempotencyKey,
+                ]);
+                return $duplicate;
+            }
+
             return $this->requestJson('/api/v1/deploy-script', [
                 'router_id' => $router->id,
                 'tenant_id' => $tenantId,
                 'script' => $script,
                 'connection' => $this->buildRouterConnectionPayload($router),
                 'callback' => $this->buildTaskCallbackPayload($task, $terminalCallback, $callbackStage),
+                'idempotency_key' => $this->buildIdempotencyKey($router, 'deploy-script', $task),
             ], 'Script deployment failed');
         } catch (\Exception $e) {
             Log::error('Script deployment error', [
@@ -465,12 +538,24 @@ class ProvisioningServiceClient implements ProvisioningCommandBus
                 'command_count' => count($commands),
             ]);
 
+            $idempotencyKey = $this->buildIdempotencyKey($router, 'execute-commands', $task);
+            if ($duplicate = $this->resolveDuplicateWorkflowResponse($router, $idempotencyKey)) {
+                Log::info('Command execution reused existing workflow', [
+                    'router_id' => $router->id,
+                    'tenant_id' => $tenantId,
+                    'workflow_status' => $duplicate['data']['status'] ?? null,
+                    'idempotency_key' => $idempotencyKey,
+                ]);
+                return $duplicate['data']['result'] ?? $duplicate['data']['command_results'] ?? [];
+            }
+
             $data = $this->requestJson('/api/v1/execute', [
                 'router_id' => $router->id,
                 'tenant_id' => $tenantId,
                 'commands' => $commands,
                 'connection' => $this->buildRouterConnectionPayload($router),
                 'callback' => $this->buildTaskCallbackPayload($task),
+                'idempotency_key' => $this->buildIdempotencyKey($router, 'execute-commands', $task),
             ], 'Command execution failed');
 
             return $data['results'] ?? [];
@@ -499,6 +584,7 @@ class ProvisioningServiceClient implements ProvisioningCommandBus
                 'commands' => array_values($commands),
                 'connection' => $this->normalizeConnectionPayload($connection),
                 'callback' => $this->buildTaskCallbackPayload($task),
+                'idempotency_key' => 'execute-commands:' . $routerId . ':' . md5(json_encode(array_values($commands))),
             ], 'Command execution failed');
 
             return $data['results'] ?? [];
@@ -557,6 +643,7 @@ class ProvisioningServiceClient implements ProvisioningCommandBus
                 'script' => $script,
                 'connection' => $this->normalizeConnectionPayload($connection),
                 'callback' => $this->buildTaskCallbackPayload($task, $terminalCallback, $callbackStage),
+                'idempotency_key' => 'deploy-script:' . $routerId . ':' . md5($script),
             ], 'Script deployment failed');
         } catch (\Exception $e) {
             Log::error('Script deployment error', [
@@ -644,6 +731,17 @@ class ProvisioningServiceClient implements ProvisioningCommandBus
                 'tenant_id' => $tenantId,
                 'script_length' => strlen($script),
             ]);
+
+            $idempotencyKey = $this->buildIdempotencyKey($router, RouterTask::TYPE_DEPLOY_SERVICE_CONFIG, $task);
+            if ($duplicate = $this->resolveDuplicateWorkflowResponse($router, $idempotencyKey)) {
+                Log::info('Service provisioning workflow reused existing workflow', [
+                    'router_id' => $router->id,
+                    'tenant_id' => $tenantId,
+                    'workflow_status' => $duplicate['data']['status'] ?? null,
+                    'idempotency_key' => $idempotencyKey,
+                ]);
+                return $duplicate;
+            }
 
             return $this->requestJson('/api/v1/provision-service', [
                 'router_id' => $router->id,

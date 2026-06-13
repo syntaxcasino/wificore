@@ -6,6 +6,7 @@ use App\Models\Router;
 use App\Services\MikroTik\MikroTikRestApiService;
 use App\Services\MikrotikSshService;
 use App\Services\MikrotikSnmpService;
+use App\Services\RouterDriver\RouterVendorProfileRegistry;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -19,15 +20,18 @@ class MikroTikDriver implements RouterDriverInterface
     private MikrotikSshService $sshService;
     private MikroTikRestApiService $apiService;
     private ?MikrotikSnmpService $snmpService;
+    private RouterVendorProfileRegistry $profileRegistry;
 
     public function __construct(
         MikrotikSshService $sshService,
         MikroTikRestApiService $apiService,
-        ?MikrotikSnmpService $snmpService = null
+        ?MikrotikSnmpService $snmpService = null,
+        ?RouterVendorProfileRegistry $profileRegistry = null
     ) {
         $this->sshService = $sshService;
         $this->apiService = $apiService;
         $this->snmpService = $snmpService;
+        $this->profileRegistry = $profileRegistry ?? new RouterVendorProfileRegistry();
     }
 
     /**
@@ -35,9 +39,12 @@ class MikroTikDriver implements RouterDriverInterface
      */
     public function getCapabilities(): DriverCapabilities
     {
+        $vendorProfile = $this->profileRegistry->getVendorProfile('mikrotik') ?? [];
+        $supportedModels = implode(',', (array) ($vendorProfile['model_patterns'] ?? ['RouterBOARD*', 'hAP*', 'cRS*', 'SXT*', 'LHG*', 'RB*', 'CCR*', 'CRS*', 'mAP*']));
+
         return new DriverCapabilities(
             vendor: 'MikroTik',
-            supportedModels: 'RouterBOARD*,hAP*,cRS*,SXT*,LHG*,RB*,CCR*,CRS*,mAP*',
+            supportedModels: $supportedModels,
             supportsPppoe: true,
             supportsHotspot: true,
             supportsVlan: true,
@@ -91,25 +98,9 @@ class MikroTikDriver implements RouterDriverInterface
      */
     public function supports(Router $router): bool
     {
-        // Check explicit vendor
-        if ($router->vendor && strtolower($router->vendor) === 'mikrotik') {
-            return true;
-        }
+        $resolvedVendor = $this->profileRegistry->resolve($router->vendor, $router->model)['vendor'] ?? null;
 
-        // Check model patterns
-        $model = strtolower($router->model ?? '');
-        $mikrotikPatterns = [
-            'mikrotik', 'routerboard', 'hap', 'crs', 'rb', 'sxt', 
-            'lhg', 'ccr', 'map', 'crs', 'cap'
-        ];
-
-        foreach ($mikrotikPatterns as $pattern) {
-            if (str_contains($model, $pattern)) {
-                return true;
-            }
-        }
-
-        return false;
+        return $resolvedVendor === 'mikrotik';
     }
 
     /**

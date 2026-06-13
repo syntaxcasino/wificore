@@ -221,6 +221,68 @@ export function usePppoePortal() {
     }
   }
 
+  async function fetchInvoices() {
+    try {
+      const response = await api.get('/invoices');
+      return response.data.data;
+    } catch (err) {
+      error.value = err.response?.data?.message || 'Failed to load invoices';
+      throw err;
+    }
+  }
+
+  async function fetchSupportTickets() {
+    try {
+      const response = await api.get('/support/tickets');
+      return response.data.data;
+    } catch (err) {
+      error.value = err.response?.data?.message || 'Failed to load support tickets';
+      throw err;
+    }
+  }
+
+  async function createSupportTicket(payload) {
+    isLoading.value = true;
+    try {
+      const response = await api.post('/support/tickets', payload);
+      invalidateDashboardCache();
+      return response.data;
+    } catch (err) {
+      error.value = err.response?.data?.message || 'Failed to create support ticket';
+      throw err;
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  async function resetPassword() {
+    isLoading.value = true;
+    try {
+      const response = await api.post('/account/reset-password');
+      invalidateDashboardCache();
+      return response.data;
+    } catch (err) {
+      error.value = err.response?.data?.message || 'Failed to reset PPPoE password';
+      throw err;
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  async function resetPortalPassword() {
+    isLoading.value = true;
+    try {
+      const response = await api.post('/account/reset-portal-password');
+      invalidateDashboardCache();
+      return response.data;
+    } catch (err) {
+      error.value = err.response?.data?.message || 'Failed to reset portal password';
+      throw err;
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
   async function fetchPaymentInstructions() {
     try {
       const response = await api.get('/payment/instructions');
@@ -368,6 +430,11 @@ export function usePppoePortal() {
     fetchSessionHistory,
     initiateMpesaPayment,
     redeemVoucher,
+    fetchInvoices,
+    fetchSupportTickets,
+    createSupportTicket,
+    resetPassword,
+    resetPortalPassword,
     fetchPaymentInstructions,
     checkPaymentStatus,
     clearError,

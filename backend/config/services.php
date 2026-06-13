@@ -103,6 +103,14 @@ return [
     'provisioning' => [
         'url' => env('PROVISIONING_SERVICE_URL', 'http://wificore-provisioning:8080'),
         'api_key' => env('PROVISIONING_SERVICE_API_KEY'),
+        'require_callback_identity' => env('PROVISIONING_REQUIRE_CALLBACK_IDENTITY', false),
+        'warn_on_missing_callback_identity' => env('PROVISIONING_WARN_MISSING_CALLBACK_IDENTITY', true),
+        'max_callback_skew_seconds' => env('PROVISIONING_MAX_CALLBACK_SKEW_SECONDS', 900),
+        'reject_stale_callbacks' => env('PROVISIONING_REJECT_STALE_CALLBACKS', false),
+        'warn_on_stale_callbacks' => env('PROVISIONING_WARN_STALE_CALLBACKS', true),
+        'callback_guard_alert_webhook_url' => env('PROVISIONING_CALLBACK_GUARD_ALERT_WEBHOOK_URL'),
+        'callback_guard_escalation_consecutive_critical_checks' => env('PROVISIONING_CALLBACK_GUARD_ESCALATION_CONSECUTIVE_CRITICAL_CHECKS', 3),
+        'callback_guard_escalation_cooldown_seconds' => env('PROVISIONING_CALLBACK_GUARD_ESCALATION_COOLDOWN_SECONDS', 3600),
     ],
 
     'wireguard' => [

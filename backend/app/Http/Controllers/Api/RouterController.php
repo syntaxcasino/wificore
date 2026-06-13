@@ -10,18 +10,30 @@ use App\Events\ProvisioningFailed;
 use App\Events\RouterProvisioningProgress;
 use App\Models\Router;
 use App\Models\RouterConfig;
+use App\Models\ProvisioningRun;
+use App\Models\ProvisioningStep;
 use App\Models\RouterTask;
 use App\Models\RouterTenantMap;
 use App\Models\Tenant;
 use App\Services\MikrotikSnmpService;
 use App\Services\RouterMetricsService;
 use App\Services\TenantContext;
+use App\Services\MikroTik\RouterOsCapabilityRegistry;
+use App\Services\RouterDriver\RouterVendorProfileRegistry;
+use App\Services\RouterDriver\RouterTemplateMarketplaceRegistry;
 use App\Services\TenantMigrationManager;
 use App\Services\VictoriaMetricsClient;
 use App\Models\SystemLog;
 use App\Services\AuditLogService;
+use App\Services\RouterProvisioningPreflightService;
+use App\Services\Deployment\RouterComplianceEngine;
+use App\Services\Troubleshooting\RouterTroubleshootingAssistant;
+use App\Services\Inventory\RouterInventoryTopologyService;
+use App\Services\Orchestration\MassRouterOrchestrationService;
 use App\Services\ProvisioningServiceClient;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -31,7 +43,6 @@ use Illuminate\Support\Facades\Crypt;
 
 class RouterController extends Controller
 {
-    private const ROUTER_LIST_CACHE_TTL_SECONDS = 15;
     private const PROVISIONING_TASK_STALE_TIMEOUT_MINUTES = 8;
 
     public function index(Request $request)
@@ -49,24 +60,31 @@ class RouterController extends Controller
                 ], 403);
             }
 
-            $basePayload = Cache::remember(
-                $this->routerListCacheKey($tenantId, $perPage),
-                self::ROUTER_LIST_CACHE_TTL_SECONDS,
-                function () use ($perPage) {
-                    $routers = Router::select(['id', 'name', 'ip_address', 'status', 'vpn_status', 'last_seen', 'model', 'os_version', 'location', 'created_at'])
-                        ->orderBy('created_at', 'desc')
-                        ->paginate($perPage);
+            $routers = Router::select(['id', 'name', 'ip_address', 'status', 'vpn_status', 'last_seen', 'vendor', 'model', 'os_version', 'location', 'created_at'])
+                ->orderBy('created_at', 'desc')
+                ->paginate($perPage);
 
-                    return [
-                        'data' => $routers,
-                        'has_live_data' => false,
-                        'message' => 'Router information loaded successfully',
-                    ];
-                }
-            );
+            $routers->getCollection()->transform(function ($router) {
+                $summary = $this->routerCapabilitySummary($router);
+                $router->setAttribute('capability_profile', $summary['profile']);
+                $router->setAttribute('capability_supported', $summary['supported']);
+                $router->setAttribute('capability_error', $summary['error']);
+                return $router;
+            });
+
+            $basePayload = [
+                'data' => $routers,
+                'has_live_data' => false,
+                'vendor_options' => $this->vendorOptions(),
+                'template_marketplace' => app(RouterTemplateMarketplaceRegistry::class)->all(),
+                'message' => 'Router information loaded successfully',
+            ];
 
             if (!$withLive) {
-                return response()->json($basePayload);
+                return response()->json($basePayload)
+                    ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+                    ->header('Pragma', 'no-cache')
+                    ->header('Expires', '0');
             }
 
             /** @var \Illuminate\Pagination\LengthAwarePaginator $routers */
@@ -110,7 +128,10 @@ class RouterController extends Controller
                     'text' => 'loading-text',
                     'overlay' => 'loading-overlay'
                 ]
-            ]);
+            ])
+            ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+            ->header('Pragma', 'no-cache')
+            ->header('Expires', '0');
             
         } catch (\Exception $e) {
             Log::error('Failed to fetch routers: ' . $e->getMessage());
@@ -142,7 +163,7 @@ class RouterController extends Controller
                 ], 403);
             }
 
-            $routers = Router::select(['id', 'name', 'ip_address', 'status', 'vpn_ip', 'vpn_status', 'last_seen', 'model', 'os_version', 'created_at'])
+            $routers = Router::select(['id', 'name', 'ip_address', 'status', 'vpn_ip', 'vpn_status', 'last_seen', 'vendor', 'model', 'os_version', 'created_at'])
                 ->orderBy('created_at', 'desc')
                 ->get();
 
@@ -179,6 +200,131 @@ class RouterController extends Controller
             Log::error('Failed to fetch live router data: ' . $e->getMessage());
             return response()->json(['error' => 'Failed to fetch live data'], 500);
         }
+    }
+
+    private function buildTroubleshootingReport(Router $router, array $context = []): array
+    {
+        return app(RouterTroubleshootingAssistant::class)->diagnose($router, $context);
+    }
+
+
+    private function buildInventoryTopologyReport(Router $router, array|Collection $accessPoints = [], array|Collection $services = [], array $liveData = []): array
+    {
+        return app(RouterInventoryTopologyService::class)->build($router, $accessPoints, $services, $liveData);
+    }
+
+    public function previewMassOrchestration(Request $request): \Illuminate\Http\JsonResponse
+    {
+        $validated = $request->validate([
+            'routers' => ['required', 'array', 'min:1'],
+            'routers.*.id' => ['nullable'],
+            'routers.*.name' => ['nullable', 'string'],
+            'routers.*.vendor' => ['nullable', 'string'],
+            'routers.*.model' => ['nullable', 'string'],
+            'routers.*.os_version' => ['nullable', 'string'],
+            'routers.*.status' => ['nullable', 'string'],
+            'change_type' => ['nullable', 'string'],
+            'template' => ['nullable', 'string'],
+            'batch_size' => ['nullable', 'integer', 'min:1', 'max:50'],
+        ]);
+
+        $plan = app(MassRouterOrchestrationService::class)->preview(
+            $validated['routers'],
+            [
+                'change_type' => $validated['change_type'] ?? 'apply_service_configs',
+                'template' => $validated['template'] ?? 'default',
+                'batch_size' => $validated['batch_size'] ?? 5,
+            ]
+        );
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Mass orchestration preview generated successfully',
+            'plan' => $plan,
+        ]);
+    }
+
+    public function deployMassOrchestration(Request $request, TenantContext $tenantContext): \Illuminate\Http\JsonResponse
+    {
+        $validated = $request->validate([
+            'routers' => ['required', 'array', 'min:1'],
+            'routers.*.id' => ['required'],
+            'change_type' => ['nullable', 'string'],
+            'template' => ['required', 'string'],
+            'batch_size' => ['nullable', 'integer', 'min:1', 'max:50'],
+        ]);
+
+        $tenantId = $tenantContext->getTenantId();
+        if (! $tenantId) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Tenant context not set',
+                'error' => 'Unable to resolve tenant for mass orchestration.',
+            ], 403);
+        }
+
+        $routerIds = collect($validated['routers'])
+            ->pluck('id')
+            ->filter(fn ($value) => is_scalar($value) && trim((string) $value) !== '')
+            ->map(fn ($value) => (string) $value)
+            ->values()
+            ->all();
+
+        $routers = Router::whereIn('id', $routerIds)->get()->filter(
+            fn (Router $router): bool => (string) $router->getTenantIdAttribute() === (string) $tenantId
+        )->values()->all();
+
+        if ($routers === []) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No eligible routers were found for deployment.',
+                'error' => 'Router selection is empty or does not belong to the current tenant.',
+            ], 422);
+        }
+
+        try {
+            $result = app(MassRouterOrchestrationService::class)->deploy(
+                $routers,
+                [
+                    'change_type' => $validated['change_type'] ?? 'apply_service_configs',
+                    'template' => $validated['template'],
+                    'batch_size' => $validated['batch_size'] ?? 5,
+                ]
+            );
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+                'error' => $e->getMessage(),
+            ], 422);
+        } catch (\Throwable $e) {
+            Log::error('Mass orchestration deployment failed', [
+                'tenant_id' => $tenantId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to deploy mass orchestration plan.',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+
+        if (($result['queued_count'] ?? 0) === 0) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No routers were queued for deployment.',
+                'error' => 'The selected template or router set produced no executable jobs.',
+                'plan' => $result['preview'] ?? null,
+                'result' => $result,
+            ], 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Mass orchestration deployment queued successfully',
+            'result' => $result,
+        ]);
     }
 
     private function shouldHideInterfaceForUi(array $iface): bool
@@ -223,6 +369,8 @@ class RouterController extends Controller
     {
         $request->validate([
             'name' => 'required|string|max:255',
+            'vendor' => 'nullable|string|max:64',
+            'model' => 'nullable|string|max:100',
             'wan_interface' => 'nullable|string|max:64',
         ]);
 
@@ -254,6 +402,8 @@ class RouterController extends Controller
                 'username' => $username,
                 'password' => Crypt::encrypt($password),
                 'port' => $port,
+                'vendor' => $request->input('vendor', 'mikrotik'),
+                'model' => $request->input('model'),
                 'wan_interface' => $request->input('wan_interface'),
                 'config_token' => $configToken,
                 'config_token_created_at' => $tokenCreatedAt,
@@ -336,6 +486,8 @@ class RouterController extends Controller
         // Generate sanitized script for UI display (hides secrets)
         $sanitizedScript = $this->generateSanitizedScript($router, $connectivityScript);
 
+        $capabilitySummary = $this->routerCapabilitySummary($router);
+
         return response()->json([
             'id' => $router->id,
             'name' => $router->name,
@@ -347,6 +499,9 @@ class RouterController extends Controller
             'status' => $router->status,
             'model' => $router->model,
             'os_version' => $router->os_version,
+            'capability_profile' => $capabilitySummary['profile'],
+            'capability_supported' => $capabilitySummary['supported'],
+            'capability_error' => $capabilitySummary['error'],
             'last_seen' => $router->last_seen,
             'vpn_enabled' => true,
             'vpn_status' => $router->vpn_status,
@@ -517,6 +672,8 @@ class RouterController extends Controller
             'name' => 'required|string|max:255',
             'ip_address' => 'nullable|string|max:255',
             'config_token' => 'nullable|string|max:255',
+            'vendor' => 'nullable|string|max:64',
+            'model' => 'nullable|string|max:100',
             'wan_interface' => 'nullable|string|max:64',
         ]);
 
@@ -524,6 +681,8 @@ class RouterController extends Controller
             $updateData = [
                 'name' => $request->name,
                 'ip_address' => $request->ip_address ?? $router->ip_address,
+                'vendor' => $request->input('vendor', $router->vendor ?? 'mikrotik'),
+                'model' => $request->input('model', $router->model),
                 'wan_interface' => $request->input('wan_interface', $router->wan_interface),
             ];
 
@@ -664,6 +823,7 @@ class RouterController extends Controller
             // Load relationships quickly from database
             $services = $router->load('services')->services;
             $accessPoints = $router->load('accessPoints')->accessPoints;
+            $activeConnections = 0;
 
             if (!$withLive) {
                 return response()->json([
@@ -699,6 +859,15 @@ class RouterController extends Controller
                     // Additional metadata from database
                     'services' => $services,
                     'access_points' => $accessPoints,
+                    'inventory_topology' => $this->buildInventoryTopologyReport($router, $accessPoints, $services, [
+                        'active_connections' => 0,
+                    ]),
+                    'troubleshooting' => $this->buildTroubleshootingReport($router, [
+                        'services' => $services,
+                        'access_points' => $accessPoints,
+                        'active_connections' => $activeConnections,
+                        'compliance' => $router->relationLoaded('compliance') ? ['score' => $router->compliance->score ?? null] : [],
+                    ]),
                 ]);
             }
 
@@ -738,6 +907,15 @@ class RouterController extends Controller
                 // Additional metadata from database
                 'services' => $services,
                 'access_points' => $accessPoints,
+                'inventory_topology' => $this->buildInventoryTopologyReport($router, $accessPoints, $services, [
+                    'active_connections' => null,
+                ]),
+                'troubleshooting' => $this->buildTroubleshootingReport($router, [
+                    'services' => $services,
+                    'access_points' => $accessPoints,
+                    'active_connections' => null,
+                    'compliance' => $router->relationLoaded('compliance') ? ['score' => $router->compliance->score ?? null] : [],
+                ]),
                 // Explicit loading indicators
                 'loading_indicators' => [
                     'live_data' => 'Loading...',
@@ -899,6 +1077,75 @@ class RouterController extends Controller
      * @param Router $router
      * @return \Illuminate\Http\JsonResponse
      */
+
+    /**
+     * Get router compliance report
+     */
+    public function getRouterCompliance(Request $request, Router $router, RouterComplianceEngine $engine)
+    {
+        try {
+            $refresh = $request->boolean('refresh', false);
+            $latest = $engine->getLatestSnapshot($router);
+            $ttlMinutes = max(5, (int) config('router_compliance.snapshot_ttl_minutes', 30));
+            $stale = $latest?->evaluated_at ? $latest->evaluated_at->lt(now()->subMinutes($ttlMinutes)) : true;
+
+            if ($refresh || ! $latest || $stale) {
+                $snapshot = $engine->evaluateAndPersist($router);
+                $report = [
+                    'success' => true,
+                    'refresh' => true,
+                    'report' => [
+                        'router_id' => (int) $router->id,
+                        'tenant_id' => $snapshot->tenant_id,
+                        'score' => (int) $snapshot->score,
+                        'grade' => $snapshot->grade,
+                        'status' => $snapshot->status,
+                        'checks' => $snapshot->checks ?? [],
+                        'missing_controls' => $snapshot->missing_controls ?? [],
+                        'passed_controls' => $snapshot->passed_controls ?? [],
+                        'summary' => $snapshot->summary,
+                        'source_snapshot_id' => $snapshot->source_snapshot_id,
+                        'evaluated_at' => optional($snapshot->evaluated_at)->toIso8601String(),
+                    ],
+                ];
+            } else {
+                $report = [
+                    'success' => true,
+                    'refresh' => false,
+                    'report' => [
+                        'router_id' => (int) $router->id,
+                        'tenant_id' => $latest->tenant_id,
+                        'score' => (int) $latest->score,
+                        'grade' => $latest->grade,
+                        'status' => $latest->status,
+                        'checks' => $latest->checks ?? [],
+                        'missing_controls' => $latest->missing_controls ?? [],
+                        'passed_controls' => $latest->passed_controls ?? [],
+                        'summary' => $latest->summary,
+                        'source_snapshot_id' => $latest->source_snapshot_id,
+                        'evaluated_at' => optional($latest->evaluated_at)->toIso8601String(),
+                    ],
+                ];
+            }
+
+            return response()->json($report)
+                ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+                ->header('Pragma', 'no-cache')
+                ->header('Expires', '0');
+        } catch (\Throwable $e) {
+            Log::error('Failed to fetch router compliance', [
+                'router_id' => $router->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'error' => 'Unable to load router compliance',
+                'message' => 'There was a problem loading the router compliance report. Please try again.',
+            ], 500);
+        }
+    }
+
     public function getRouterInterfaces(Router $router)
     {
         try {
@@ -967,17 +1214,64 @@ class RouterController extends Controller
                 'login_method' => 'nullable|string',
                 'pppoe_service_name' => 'nullable|string',
                 'pppoe_ip_pool' => 'nullable|string',
+                'dry_run' => 'boolean',
             ]);
 
+            $dryRun = $request->boolean('dry_run');
             Log::info('Generating service configuration', [
                 'router_id' => $router->id,
                 'enable_hotspot' => $validated['enable_hotspot'] ?? false,
                 'enable_pppoe' => $validated['enable_pppoe'] ?? false,
+                'dry_run' => $dryRun,
             ]);
+
+            $liveInterfaces = [];
+            try {
+                $sshService = app(\App\Services\MikrotikSshService::class);
+                $liveResult = $sshService->fetchInterfaces($router, false);
+                $liveInterfaces = array_values(array_filter(array_map(
+                    static fn (array $iface) => trim((string) ($iface['name'] ?? '')),
+                    $liveResult['interfaces'] ?? []
+                )));
+            } catch (\Throwable $e) {
+                Log::warning('Failed to fetch live interfaces during service config generation', [
+                    'router_id' => $router->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
+            $preflight = app(RouterProvisioningPreflightService::class)->preflight($router, $validated, $liveInterfaces);
+            if (! ($preflight['valid'] ?? false)) {
+                return response()->json([
+                    'success' => false,
+                    'dry_run' => $dryRun,
+                    'error' => 'Interface preflight failed',
+                    'preflight' => $preflight,
+                ], 422);
+            }
 
             // Use the ConfigurationService to generate the script
             $configService = app(\App\Services\MikroTik\ConfigurationService::class);
             $result = $configService->generateServiceConfig($router, $validated);
+
+            $summary = [
+                'script_length' => strlen((string) ($result['service_script'] ?? '')),
+                'interface_count' => count($preflight['requested_interfaces'] ?? []),
+                'available_interface_count' => count($preflight['available_interfaces'] ?? []),
+                'warnings' => $preflight['warnings'] ?? [],
+                'missing_interfaces' => $preflight['missing_interfaces'] ?? [],
+            ];
+
+            if ($dryRun) {
+                return response()->json([
+                    'success' => true,
+                    'dry_run' => true,
+                    'service_script' => $result['service_script'] ?? '',
+                    'preflight' => $preflight,
+                    'dry_run_summary' => $summary,
+                    'message' => 'Dry-run completed successfully',
+                ]);
+            }
 
             // Save the generated script to router_configs table
             if (!empty($result['service_script'])) {
@@ -995,7 +1289,7 @@ class RouterController extends Controller
                     'service_config_generated',
                     (string) $router->id,
                     'info',
-                    ['service_type' => $validated['service_type'] ?? 'unknown'],
+                    ['service_type' => $validated['service_type'] ?? 'unknown', 'dry_run' => false],
                     "Service configuration generated for router '{$router->name}'",
                     (string) $router->tenant_id
                 );
@@ -1009,6 +1303,8 @@ class RouterController extends Controller
             return response()->json([
                 'success' => true,
                 'service_script' => $result['service_script'] ?? '',
+                'preflight' => $preflight,
+                'dry_run_summary' => $summary,
                 'message' => 'Service configuration generated successfully',
             ]);
         } catch (\Illuminate\Validation\ValidationException $e) {
@@ -1199,6 +1495,222 @@ class RouterController extends Controller
                 'error' => 'Failed to get provisioning status: ' . $e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * Get a tenant-scoped provisioning ledger for a router.
+     *
+     * Returns recent provisioning runs and their step history for the current
+     * tenant only. This is read-only and intentionally cache-busted.
+     */
+    public function getProvisioningRuns(Request $request, Router $router)
+    {
+        try {
+            $accessError = $this->assertTenantCanAccessRouter($request, $router);
+            if ($accessError !== null) {
+                return $accessError;
+            }
+
+            $perPage = min(max((int) $request->input('per_page', 5), 1), 20);
+            $statusFilter = trim((string) $request->input('status', ''));
+            $fromFilter = $this->parseLedgerBoundary($request->input('from'));
+            $toFilter = $this->parseLedgerBoundary($request->input('to'));
+
+            $query = ProvisioningRun::query()
+                ->where('router_id', (string) $router->id)
+                ->where(function ($query) use ($router): void {
+                    $routerTenantId = (string) ($router->getTenantIdAttribute() ?? '');
+                    if ($routerTenantId === '') {
+                        $query->whereNotNull('tenant_id');
+                        return;
+                    }
+
+                    $query->where('tenant_id', $routerTenantId);
+                });
+
+            if ($statusFilter !== '') {
+                $query->where('status', $statusFilter);
+            }
+
+            if ($fromFilter !== null) {
+                $query->where('created_at', '>=', $fromFilter);
+            }
+
+            if ($toFilter !== null) {
+                $query->where('created_at', '<=', $toFilter);
+            }
+
+            $rawRuns = $query
+                ->with(['steps' => function ($query): void {
+                    $query->orderBy('sequence', 'asc');
+                }])
+                ->orderByDesc('created_at')
+                ->limit($perPage + 1)
+                ->get();
+
+            $hasMore = $rawRuns->count() > $perPage;
+            $runs = $rawRuns->take($perPage)
+                ->map(fn (ProvisioningRun $run) => $this->formatProvisioningRunLedger($run))
+                ->values();
+
+            $latestRun = $runs->first();
+
+            return response()->json([
+                'success' => true,
+                'router_id' => (string) $router->id,
+                'router_name' => $router->name,
+                'filters' => [
+                    'status' => $statusFilter !== '' ? $statusFilter : null,
+                    'from' => $fromFilter?->toIso8601String(),
+                    'to' => $toFilter?->toIso8601String(),
+                    'per_page' => $perPage,
+                ],
+                'latest_run' => $latestRun,
+                'runs' => $runs,
+                'count' => $runs->count(),
+                'has_more' => $hasMore,
+            ])
+                ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+                ->header('Pragma', 'no-cache')
+                ->header('Expires', '0');
+        } catch (\Exception $e) {
+            Log::error('Failed to get provisioning runs', [
+                'router_id' => $router->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'error' => 'Failed to load provisioning runs: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Get a single provisioning run with step history.
+     */
+    public function getProvisioningRun(Request $request, Router $router, ProvisioningRun $run)
+    {
+        try {
+            $accessError = $this->assertTenantCanAccessRouter($request, $router);
+            if ($accessError !== null) {
+                return $accessError;
+            }
+
+            if ((string) $run->router_id !== (string) $router->id) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Provisioning run does not belong to the selected router',
+                ], 404);
+            }
+
+            $routerTenantId = (string) ($router->getTenantIdAttribute() ?? '');
+            if ($routerTenantId !== '' && (string) ($run->tenant_id ?? '') !== $routerTenantId) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Provisioning run is not available for this tenant',
+                ], 403);
+            }
+
+            $run->load(['steps' => function ($query): void {
+                $query->orderBy('sequence', 'asc');
+            }]);
+
+            return response()->json([
+                'success' => true,
+                'router_id' => (string) $router->id,
+                'run' => $this->formatProvisioningRunLedger($run),
+            ])
+                ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+                ->header('Pragma', 'no-cache')
+                ->header('Expires', '0');
+        } catch (\Exception $e) {
+            Log::error('Failed to get provisioning run', [
+                'router_id' => $router->id,
+                'run_id' => $run->id ?? null,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'error' => 'Failed to load provisioning run: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    private function assertTenantCanAccessRouter(Request $request, Router $router): ?\Illuminate\Http\JsonResponse
+    {
+        $routerTenantId = (string) ($router->getTenantIdAttribute() ?? '');
+        $userTenantId = (string) ($request->user()?->tenant_id ?? auth()->user()?->tenant_id ?? '');
+
+        if ($routerTenantId === '' || $userTenantId === '' || ! hash_equals($routerTenantId, $userTenantId)) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Tenant context not available for router provisioning ledger',
+            ], 403);
+        }
+
+        return null;
+    }
+
+    private function parseLedgerBoundary(mixed $value): ?Carbon
+    {
+        if (! is_string($value) || trim($value) === '') {
+            return null;
+        }
+
+        try {
+            return Carbon::parse($value);
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    private function formatProvisioningRunLedger(ProvisioningRun $run): array
+    {
+        $steps = $run->relationLoaded('steps')
+            ? $run->steps
+            : $run->steps()->orderBy('sequence', 'asc')->get();
+
+        $stepSummaries = $steps->map(fn (ProvisioningStep $step) => [
+            'id' => (string) $step->id,
+            'sequence' => (int) $step->sequence,
+            'stage' => $step->stage,
+            'action' => $step->action,
+            'status' => $step->status,
+            'command' => $step->command,
+            'command_payload' => $step->command_payload,
+            'response_payload' => $step->response_payload,
+            'trap_message' => $step->trap_message,
+            'error_message' => $step->error_message,
+            'is_terminal' => (bool) $step->is_terminal,
+            'duration_ms' => $step->duration_ms,
+            'started_at' => $step->started_at,
+            'completed_at' => $step->completed_at,
+        ])->values();
+
+        return [
+            'id' => (string) $run->id,
+            'router_id' => (string) $run->router_id,
+            'router_task_id' => $run->router_task_id ? (string) $run->router_task_id : null,
+            'tenant_id' => $run->tenant_id ? (string) $run->tenant_id : null,
+            'source' => $run->source,
+            'mode' => $run->mode,
+            'status' => $run->status,
+            'progress' => (int) ($run->progress ?? 0),
+            'current_stage' => $run->current_stage,
+            'metadata' => $run->metadata,
+            'error_message' => $run->error_message,
+            'duration_ms' => $run->duration_ms,
+            'started_at' => $run->started_at,
+            'completed_at' => $run->completed_at,
+            'created_at' => $run->created_at,
+            'updated_at' => $run->updated_at,
+            'step_count' => $stepSummaries->count(),
+            'completed_step_count' => $stepSummaries->where('status', ProvisioningStep::STATUS_COMPLETED)->count(),
+            'failed_step_count' => $stepSummaries->where('status', ProvisioningStep::STATUS_FAILED)->count(),
+            'steps' => $stepSummaries,
+        ];
     }
 
     private function failStaleProvisioningTaskIfNeeded(Router $router, RouterTask $task): RouterTask
@@ -2156,6 +2668,51 @@ EOT;
             ]);
             return response()->json(['success' => false, 'error' => 'Failed to fetch events'], 500);
         }
+    }
+
+    private function routerCapabilitySummary(Router $router): array
+    {
+        $vendorRegistry = app(RouterVendorProfileRegistry::class);
+        $vendorSummary = $vendorRegistry->resolveForRouter($router);
+        $vendor = (string) ($vendorSummary['vendor'] ?? $router->vendor ?? 'mikrotik');
+
+        if ($vendor === 'mikrotik') {
+            $registry = app(RouterOsCapabilityRegistry::class);
+            $summary = $registry->resolveProfile($router->os_version);
+
+            return [
+                'vendor' => $vendor,
+                'vendor_profile' => $vendorSummary['capability_profile'] ?? null,
+                'driver' => $vendorSummary['driver'] ?? null,
+                'profile' => $summary['profile'] ?? null,
+                'supported' => (bool) ($summary['supported'] ?? false),
+                'error' => $summary['error'] ?? null,
+            ];
+        }
+
+        return [
+            'vendor' => $vendor,
+            'vendor_profile' => $vendorSummary['capability_profile'] ?? null,
+            'driver' => $vendorSummary['driver'] ?? null,
+            'profile' => $vendorSummary['capability_profile'] ?? null,
+            'supported' => false,
+            'error' => $vendorSummary['error'] ?? sprintf('Vendor %s is recognized but has no provisioning driver yet.', $vendor),
+        ];
+    }
+
+    private function vendorOptions(): array
+    {
+        $registry = app(RouterVendorProfileRegistry::class);
+
+        return array_map(static function (string $vendor) use ($registry): array {
+            $profile = $registry->getVendorProfile($vendor) ?? [];
+            return [
+                'value' => $vendor,
+                'label' => $profile['display_name'] ?? ucfirst($vendor),
+                'driver' => $profile['driver'] ?? $vendor,
+                'capability_profile' => $profile['capability_profile'] ?? null,
+            ];
+        }, $registry->getSupportedVendors());
     }
 
     private function routerListCacheKey(string $tenantId, int $perPage): string

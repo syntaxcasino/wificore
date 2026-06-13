@@ -505,6 +505,72 @@ SCRIPT;
     }
     
     /**
+     * Generate Multi-WAN failover configuration.
+     */
+    public function generateMultiWanFailoverTemplate(Router $router, array $config): string
+    {
+        $primaryWan = $this->resolveWanInterface($config['primary_wan'] ?? $router->wan_interface ?? null);
+        $backupWan = $this->resolveWanInterface($config['backup_wan'] ?? 'ether2');
+        $dnsServers = $config['dns_servers'] ?? '8.8.8.8,8.8.4.4';
+        $healthCheckHost = $config['health_check_host'] ?? '1.1.1.1';
+
+        return <<<SCRIPT
+# ============================================================
+# WiFiCore Multi-WAN Failover Template
+# Router: {$router->name}
+# Generated: {now()->toDateTimeString()}
+# ============================================================
+
+:log info "Configuring Multi-WAN failover"
+:if ([:len [/interface list find name="WAN"]] = 0) do={ /interface list add name="WAN" comment="Wide Area Network" }
+:if ([:len [/interface list find name="LAN"]] = 0) do={ /interface list add name="LAN" comment="Local Area Network" }
+:if ([:len [/interface list member find list="WAN" interface="{$primaryWan}"]] = 0) do={ /interface list member add list="WAN" interface="{$primaryWan}" }
+:if ([:len [/interface list member find list="WAN" interface="{$backupWan}"]] = 0) do={ /interface list member add list="WAN" interface="{$backupWan}" }
+:if ([:len [/ip dhcp-client find interface="{$primaryWan}"]] = 0) do={ /ip dhcp-client add interface="{$primaryWan}" add-default-route=yes default-route-distance=1 use-peer-dns=no use-peer-ntp=no comment="WiFiCore Primary WAN" }
+:if ([:len [/ip dhcp-client find interface="{$backupWan}"]] = 0) do={ /ip dhcp-client add interface="{$backupWan}" add-default-route=yes default-route-distance=2 use-peer-dns=no use-peer-ntp=no comment="WiFiCore Backup WAN" }
+/ip dns set allow-remote-requests=yes servers="{$dnsServers}"
+:if ([:len [/ip firewall nat find comment="WiFiCore Multi-WAN NAT"]] = 0) do={ /ip firewall nat add chain=srcnat out-interface-list=WAN action=masquerade comment="WiFiCore Multi-WAN NAT" }
+:log info "Multi-WAN failover configured with primary={$primaryWan} backup={$backupWan} health-check={$healthCheckHost}"
+
+SCRIPT;
+    }
+
+    public function generatePccBalancedTemplate(Router $router, array $config): string
+    {
+        $primaryWan = $this->resolveWanInterface($config['primary_wan'] ?? $router->wan_interface ?? null);
+        $backupWan = $this->resolveWanInterface($config['backup_wan'] ?? 'ether2');
+        $lanInterface = $config['lan_interface'] ?? 'bridge-lan';
+        $primaryGateway = $config['primary_gateway'] ?? '192.0.2.1';
+        $backupGateway = $config['backup_gateway'] ?? '198.51.100.1';
+
+        return <<<SCRIPT
+# ============================================================
+# WiFiCore PCC Balanced Multi-WAN Template
+# Router: {$router->name}
+# Generated: {now()->toDateTimeString()}
+# ============================================================
+
+:log info "Configuring PCC balanced multi-WAN"
+:if ([:len [/routing table find name="to_wan1"]] = 0) do={ /routing table add name="to_wan1" }
+:if ([:len [/routing table find name="to_wan2"]] = 0) do={ /routing table add name="to_wan2" }
+:if ([:len [/interface list find name="WAN"]] = 0) do={ /interface list add name="WAN" comment="Wide Area Network" }
+:if ([:len [/interface list find name="LAN"]] = 0) do={ /interface list add name="LAN" comment="Local Area Network" }
+:if ([:len [/interface list member find list="WAN" interface="{$primaryWan}"]] = 0) do={ /interface list member add list="WAN" interface="{$primaryWan}" }
+:if ([:len [/interface list member find list="WAN" interface="{$backupWan}"]] = 0) do={ /interface list member add list="WAN" interface="{$backupWan}" }
+:if ([:len [/interface list member find list="LAN" interface="{$lanInterface}"]] = 0) do={ /interface list member add list="LAN" interface="{$lanInterface}" }
+:if ([:len [/ip firewall mangle find comment="WiFiCore PCC WAN1"]] = 0) do={ /ip firewall mangle add chain=prerouting in-interface-list=LAN dst-address-type=!local per-connection-classifier=both-addresses-and-ports:2/0 action=mark-connection new-connection-mark=wan1_conn passthrough=yes comment="WiFiCore PCC WAN1" }
+:if ([:len [/ip firewall mangle find comment="WiFiCore PCC WAN2"]] = 0) do={ /ip firewall mangle add chain=prerouting in-interface-list=LAN dst-address-type=!local per-connection-classifier=both-addresses-and-ports:2/1 action=mark-connection new-connection-mark=wan2_conn passthrough=yes comment="WiFiCore PCC WAN2" }
+:if ([:len [/ip firewall mangle find comment="WiFiCore PCC Route WAN1"]] = 0) do={ /ip firewall mangle add chain=prerouting in-interface-list=LAN connection-mark=wan1_conn action=mark-routing new-routing-mark=to_wan1 passthrough=no comment="WiFiCore PCC Route WAN1" }
+:if ([:len [/ip firewall mangle find comment="WiFiCore PCC Route WAN2"]] = 0) do={ /ip firewall mangle add chain=prerouting in-interface-list=LAN connection-mark=wan2_conn action=mark-routing new-routing-mark=to_wan2 passthrough=no comment="WiFiCore PCC Route WAN2" }
+:if ([:len [/ip route find comment="WiFiCore PCC Route WAN1"]] = 0) do={ /ip route add dst-address=0.0.0.0/0 gateway="{$primaryGateway}" routing-table=to_wan1 distance=1 check-gateway=ping comment="WiFiCore PCC Route WAN1" }
+:if ([:len [/ip route find comment="WiFiCore PCC Route WAN2"]] = 0) do={ /ip route add dst-address=0.0.0.0/0 gateway="{$backupGateway}" routing-table=to_wan2 distance=1 check-gateway=ping comment="WiFiCore PCC Route WAN2" }
+:if ([:len [/ip firewall nat find comment="WiFiCore PCC NAT"]] = 0) do={ /ip firewall nat add chain=srcnat out-interface-list=WAN action=masquerade comment="WiFiCore PCC NAT" }
+:log info "PCC balanced multi-WAN configured with primary={$primaryWan} backup={$backupWan}"
+
+SCRIPT;
+    }
+
+    /**
      * Generate service configuration based on template type
      * 
      * @param Router $router
@@ -523,6 +589,8 @@ SCRIPT;
             'hotspot' => $this->generateHotspotTemplate($router, $config),
             'pppoe' => $this->generatePppoeTemplate($router, $config),
             'hybrid' => $this->generateHybridTemplate($router, $config),
+            'multi-wan-failover' => $this->generateMultiWanFailoverTemplate($router, $config),
+            'pcc-balanced' => $this->generatePccBalancedTemplate($router, $config),
             default => throw new \InvalidArgumentException("Unknown template type: {$templateType}")
         };
         
@@ -565,5 +633,21 @@ SCRIPT;
         ]);
         
         return $script;
+    }
+
+    /**
+     * Normalize WAN interface selection for generated templates.
+     *
+     * @param string|null $wanInterface
+     * @return string
+     */
+    protected function resolveWanInterface(?string $wanInterface): string
+    {
+        $wanInterface = trim((string) $wanInterface);
+        if ($wanInterface === '' || !preg_match('/^[a-zA-Z0-9_\-\.]+$/', $wanInterface)) {
+            return 'ether1';
+        }
+
+        return $wanInterface;
     }
 }

@@ -2,7 +2,6 @@ import { ref, reactive, watch, onUnmounted } from 'vue'
 import axios from 'axios'
 import { useBroadcasting } from '@/modules/common/composables/websocket/useBroadcasting'
 import { useAuthStore } from '@/stores/auth'
-import { readSnapshot, scheduleAfterPaint, writeSnapshot } from '@/modules/common/composables/performance/useViewCache'
 
 export function useRouters() {
   const routers = ref([]) // Initialize as empty array
@@ -12,6 +11,21 @@ export function useRouters() {
   const formError = ref('')
   const detailsError = ref('')
   const detailsLoading = ref(false)
+  const vendorOptions = ref([
+    { value: 'mikrotik', label: 'MikroTik' },
+    { value: 'cisco', label: 'Cisco' },
+    { value: 'ubiquiti', label: 'Ubiquiti' },
+    { value: 'tplink', label: 'TP-Link' },
+    { value: 'juniper', label: 'Juniper' },
+  ])
+  const showMassOrchestrationOverlay = ref(false)
+  const massOrchestrationPreview = ref(null)
+  const massOrchestrationLoading = ref(false)
+  const massOrchestrationError = ref('')
+  const massOrchestrationDeploying = ref(false)
+  const massOrchestrationDeployError = ref('')
+  const massOrchestrationDeployResult = ref(null)
+  const templateMarketplace = ref([])
   const showFormOverlay = ref(false)
   const showDetailsOverlay = ref(false)
   const showUpdateOverlay = ref(false)
@@ -28,6 +42,7 @@ export function useRouters() {
     configurations: {},
     connectivity_script: '',
     service_script: '',
+    vendor: 'mikrotik',
     model: '',
     os_version: '',
     last_seen: null,
@@ -42,7 +57,6 @@ export function useRouters() {
   const configurationProgress = reactive({ status: 'Idle', percentage: 0, message: '' })
   const formMessage = ref({ text: '', type: '' })
   const formSubmitted = ref(false)
-  const routerCacheKey = () => `tenant:routers:${authStore.tenantId || localStorage.getItem('tenantId') || 'default'}`
   const showMenu = ref(null) // Track which router's menu is open (null or router ID)
   let latestMetricsRequestToken = 0
   let fetchDebounceTimer = null
@@ -258,18 +272,6 @@ export function useRouters() {
       return {}
     }
   }
-
-  const hydrateRouters = () => {
-    const snapshot = readSnapshot(routerCacheKey(), 30 * 1000)
-    if (snapshot && Array.isArray(snapshot.routers)) {
-      routers.value = snapshot.routers
-      return true
-    }
-    return false
-  }
-
-  const persistRouters = () => writeSnapshot(routerCacheKey(), { routers: routers.value })
-
   const fetchRouters = async () => {
     // Debounce rapid calls - clear any pending debounce timer
     if (fetchDebounceTimer) {
@@ -288,11 +290,7 @@ export function useRouters() {
     const isInitialLoad = routers.value.length === 0
 
     if (isInitialLoad) {
-      if (!hydrateRouters()) {
-        scheduleAfterPaint(() => {
-          if (routers.value.length === 0) loading.value = true
-        })
-      }
+      loading.value = true
     } else {
       refreshing.value = true
     }
@@ -317,7 +315,12 @@ export function useRouters() {
       // Note: Sorting is handled in the computed property (filteredRouters) in the component
       // This avoids double-sorting and allows the UI to control sort order
       routers.value = validRouters
-      persistRouters()
+      if (Array.isArray(rawData?.vendor_options) && rawData.vendor_options.length > 0) {
+        vendorOptions.value = rawData.vendor_options
+      }
+      if (Array.isArray(rawData?.template_marketplace)) {
+        templateMarketplace.value = rawData.template_marketplace
+      }
 
       const routerIds = validRouters.map((r) => String(r?.id ?? '')).filter((id) => id !== '')
       const requestToken = ++latestMetricsRequestToken
@@ -382,6 +385,8 @@ export function useRouters() {
     try {
       const response = await axios.post('/routers', {
         name: formData.value.name,
+        vendor: formData.value.vendor || 'mikrotik',
+        model: formData.value.model || '',
       })
       formData.value = {
         ...formData.value,
@@ -391,6 +396,7 @@ export function useRouters() {
         configurations: response.data.configurations || {},
         connectivity_script: response.data.connectivity_script || '',
         service_script: response.data.service_script || '',
+        vendor: response.data.vendor || 'mikrotik',
         model: response.data.model || '',
         os_version: response.data.os_version || '',
         last_seen: response.data.last_seen || null,
@@ -427,6 +433,7 @@ export function useRouters() {
         availableInterfaces.value = response.data.interfaces || []
         formData.value = {
           ...formData.value,
+          vendor: response.data.vendor || formData.value.vendor || 'mikrotik',
           model: response.data.model || '',
           os_version: response.data.os_version || '',
           last_seen: response.data.last_seen || null,
@@ -511,6 +518,7 @@ export function useRouters() {
           configurations: {},
           connectivity_script: '',
           service_script: '',
+          vendor: 'mikrotik',
           model: '',
           os_version: '',
           last_seen: null,
@@ -553,6 +561,8 @@ export function useRouters() {
         name: formData.value.name,
         ip_address: formData.value.ip_address,
         config_token: formData.value.config_token,
+        vendor: formData.value.vendor || 'mikrotik',
+        model: formData.value.model || '',
       })
       formMessage.value = { text: 'Router updated successfully', type: 'success' }
       showUpdateOverlay.value = false
@@ -671,6 +681,7 @@ export function useRouters() {
       configurations: {},
       connectivity_script: '',
       service_script: '',
+      vendor: 'mikrotik',
       model: '',
       os_version: '',
       last_seen: null,
@@ -816,6 +827,7 @@ export function useRouters() {
       configurations: {},
       connectivity_script: '',
       service_script: '',
+      vendor: 'mikrotik',
       model: '',
       os_version: '',
       last_seen: null,
@@ -838,6 +850,7 @@ export function useRouters() {
       configurations: {},
       connectivity_script: '',
       service_script: '',
+      vendor: 'mikrotik',
       model: '',
       os_version: '',
       last_seen: null,
@@ -902,6 +915,88 @@ export function useRouters() {
     console.log('formData updated in useRouters:', JSON.parse(JSON.stringify(formData.value)))
   }
 
+
+  const previewMassOrchestration = async (routersSubset = [], options = {}) => {
+    massOrchestrationLoading.value = true
+    massOrchestrationError.value = ''
+    massOrchestrationPreview.value = null
+    showMassOrchestrationOverlay.value = true
+
+    try {
+      const response = await axios.post('/routers/orchestration/preview', {
+        routers: routersSubset.map((router) => ({
+          id: router.id,
+          name: router.name,
+          vendor: router.vendor || 'mikrotik',
+          model: router.model || '',
+          os_version: router.os_version || '',
+          status: router.status || 'unknown',
+        })),
+        change_type: options.change_type || 'apply_service_configs',
+        template: options.template || 'mikrotik-default',
+        batch_size: options.batch_size || 5,
+      })
+
+      if (!response.data?.success) {
+        throw new Error(response.data?.message || 'Failed to generate orchestration preview')
+      }
+
+      massOrchestrationPreview.value = response.data.plan || null
+      return massOrchestrationPreview.value
+    } catch (err) {
+      massOrchestrationError.value = err.response?.data?.message || err.response?.data?.error || err.message || 'Failed to generate orchestration preview'
+      throw err
+    } finally {
+      massOrchestrationLoading.value = false
+    }
+  }
+
+  const deployMassOrchestration = async (routersSubset = [], options = {}) => {
+    massOrchestrationDeploying.value = true
+    massOrchestrationDeployError.value = ''
+    massOrchestrationDeployResult.value = null
+    showMassOrchestrationOverlay.value = true
+
+    try {
+      const response = await axios.post('/routers/orchestration/deploy', {
+        routers: routersSubset.map((router) => ({
+          id: router.id,
+          name: router.name,
+          vendor: router.vendor || 'mikrotik',
+          model: router.model || '',
+          os_version: router.os_version || '',
+          status: router.status || 'unknown',
+        })),
+        change_type: options.change_type || 'apply_service_configs',
+        template: options.template || 'mikrotik-default',
+        batch_size: options.batch_size || 5,
+      })
+
+      if (!response.data?.success) {
+        throw new Error(response.data?.message || 'Failed to queue mass orchestration deployment')
+      }
+
+      massOrchestrationDeployResult.value = response.data.result || null
+      if (response.data.result?.preview) {
+        massOrchestrationPreview.value = response.data.result.preview
+      }
+      return massOrchestrationDeployResult.value
+    } catch (err) {
+      massOrchestrationDeployError.value = err.response?.data?.message || err.response?.data?.error || err.message || 'Failed to queue mass orchestration deployment'
+      throw err
+    } finally {
+      massOrchestrationDeploying.value = false
+    }
+  }
+
+  const closeMassOrchestrationOverlay = () => {
+    showMassOrchestrationOverlay.value = false
+    massOrchestrationPreview.value = null
+    massOrchestrationError.value = ''
+    massOrchestrationDeployError.value = ''
+    massOrchestrationDeployResult.value = null
+  }
+
   onUnmounted(() => {
     cleanupRealtimeUpdates()
   })
@@ -914,6 +1009,14 @@ export function useRouters() {
     formError,
     detailsError,
     detailsLoading,
+    vendorOptions,
+    massOrchestrationPreview,
+    massOrchestrationLoading,
+    massOrchestrationError,
+    massOrchestrationDeploying,
+    massOrchestrationDeployError,
+    massOrchestrationDeployResult,
+    templateMarketplace,
     showFormOverlay,
     showDetailsOverlay,
     showUpdateOverlay,
@@ -951,6 +1054,9 @@ export function useRouters() {
     refreshDetails,
     closeFormOverlay,
     closeUpdateOverlay,
+    previewMassOrchestration,
+    deployMassOrchestration,
+    closeMassOrchestrationOverlay,
     nextStep,
     previousStep,
     copyToClipboard,

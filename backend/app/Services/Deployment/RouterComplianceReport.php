@@ -2,12 +2,12 @@
 
 namespace App\Services\Deployment;
 
-use Carbon\CarbonInterface;
+use Carbon\Carbon;
 
 readonly class RouterComplianceReport
 {
     public function __construct(
-        public string $routerId,
+        public int $routerId,
         public ?string $tenantId,
         public int $score,
         public string $grade,
@@ -16,8 +16,8 @@ readonly class RouterComplianceReport
         public array $missingControls,
         public array $passedControls,
         public string $summary,
-        public ?string $sourceSnapshotId = null,
-        public ?CarbonInterface $evaluatedAt = null,
+        public ?int $sourceSnapshotId = null,
+        public ?Carbon $evaluatedAt = null,
     ) {
     }
 

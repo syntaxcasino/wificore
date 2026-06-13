@@ -1,12 +1,12 @@
 import { ref, computed } from 'vue'
 import axios from '@/modules/common/services/api/axios'
 import { useAuthStore } from '@/stores/auth'
-import { useToast } from '@/modules/common/composables/useToast'
+import { useNotificationStore } from '@/stores/notifications'
 import { readSnapshot, scheduleAfterPaint, writeSnapshot } from '@/modules/common/composables/performance/useViewCache'
 import { useEventDeduplicationStore } from '@/stores/eventDeduplication'
 
 export function useVouchers() {
-  const toast = useToast()
+  const notify = useNotificationStore()
   const dedupStore = useEventDeduplicationStore()
   const authStore = useAuthStore()
   const cacheKey = () => `tenant:vouchers:${authStore.user?.tenant_id || authStore.tenantId || 'default'}:v1`
@@ -48,6 +48,13 @@ export function useVouchers() {
     from: 0,
     to: 0,
     total: 0
+  })
+
+  // Active filters for server-side filtering
+  const activeFilters = ref({
+    search: '',
+    status: '',
+    package_id: ''
   })
   
   // Stats
@@ -123,8 +130,15 @@ export function useVouchers() {
       const queryParams = {
         page: params.page || pagination.value.currentPage,
         per_page: params.per_page || pagination.value.perPage,
-        ...params
       }
+
+      const search = params.search !== undefined ? params.search : activeFilters.value.search
+      const status = params.status !== undefined ? params.status : activeFilters.value.status
+      const package_id = params.package_id !== undefined ? params.package_id : activeFilters.value.package_id
+
+      if (search) queryParams.search = search
+      if (status) queryParams.status = status
+      if (package_id) queryParams.package_id = package_id
       
       const res = await axios.get('/vouchers', { params: queryParams })
       const data = res.data.data || res.data
@@ -171,6 +185,10 @@ export function useVouchers() {
     return fetchVouchers({ page: pagination.value.currentPage })
   }
 
+  const setFilters = (filters) => {
+    activeFilters.value = { ...activeFilters.value, ...filters }
+  }
+
   const goToPage = async (page) => {
     if (page < 1 || page > pagination.value.lastPage) return
     pagination.value.currentPage = page
@@ -192,12 +210,12 @@ export function useVouchers() {
         quantity: formData.quantity,
       }
       if (formData.prefix) payload.prefix = formData.prefix
-      if (formData.expires_at) payload.expires_at = formData.expires_at
+      payload.expires_at = formData.expires_at || null
       if (formData.notes) payload.notes = formData.notes
 
       const response = await axios.post('/vouchers/generate', payload)
       const generated = response.data?.data?.vouchers || []
-      toast.success(`Generated ${generated.length || formData.quantity} voucher(s)`)
+      notify.success('Vouchers Generated', `Generated ${generated.length || formData.quantity} voucher(s)`)
 
       // IMMEDIATE UI UPDATE: Inject vouchers locally so they appear right away.
       // Also dispatch events so any listening components pick them up instantly.
@@ -224,7 +242,7 @@ export function useVouchers() {
       return true
     } catch (err) {
       generateError.value = err.response?.data?.message || 'Failed to generate vouchers'
-      toast.error(generateError.value)
+      notify.error('Voucher Generation Failed', generateError.value)
       return false
     } finally {
       generating.value = false
@@ -234,21 +252,30 @@ export function useVouchers() {
   const revokeVoucher = async (voucher) => {
     const index = vouchers.value.findIndex(v => v.id === voucher.id)
     if (index === -1) {
-      toast.error('Voucher not found')
+      notify.error('Not Found', 'Voucher not found')
       return false
     }
 
-    // No optimistic updates - let WebSocket events handle everything
-    
+    const originalStatus = vouchers.value[index].status
+    // Optimistically update UI immediately
+    vouchers.value[index].status = 'revoked'
+
+    // Dispatch local event so any listeners pick it up right away
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('voucher-updated', {
+        detail: { voucher: vouchers.value[index], timestamp: new Date().toISOString() }
+      }))
+    }
+
     try {
       await axios.post(`/vouchers/${voucher.id}/revoke`)
-      toast.success(`Voucher ${voucher.code} revoked`)
-
-      // Purely event-driven - WebSocket events will handle the UI update automatically
+      notify.success('Voucher Revoked', `Voucher ${voucher.code} revoked`)
       return true
     } catch (err) {
+      // Revert optimistic update on failure
+      vouchers.value[index].status = originalStatus
       const message = err.response?.data?.message || 'Failed to revoke voucher'
-      toast.error(message)
+      notify.error('Revoke Failed', message)
       console.error('Error revoking voucher:', err)
       return false
     }
@@ -498,6 +525,7 @@ export function useVouchers() {
     stats,
     lastSyncTimestamp,
     pendingUpdates,
+    activeFilters,
 
     // Computed
     statsForView,
@@ -512,6 +540,7 @@ export function useVouchers() {
     generateVouchers,
     revokeVoucher,
     filterVouchers,
+    setFilters,
 
     // Helpers
     statusClass,

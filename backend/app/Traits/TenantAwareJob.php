@@ -39,6 +39,12 @@ trait TenantAwareJob
     {
         // If no tenant context, execute normally (for system-wide jobs)
         if (!$this->tenantId) {
+            \Illuminate\Support\Facades\Log::warning('TenantAwareJob executed without tenant context', [
+                'job_class' => get_class($this),
+                'queue' => property_exists($this, 'queue') ? $this->queue : null,
+                'connection' => property_exists($this, 'connection') ? $this->connection : null,
+            ]);
+
             return $callback();
         }
 
@@ -68,7 +74,7 @@ trait TenantAwareJob
 
         // Verify tenant schema is created
         if (!$tenant->schema_created || empty($tenant->schema_name)) {
-            \Illuminate\Support\Facades\Log::warning("Skipping job execution: Tenant schema not created", [
+            \Illuminate\Support\Facades\Log::warning('Skipping job execution: Tenant schema not created', [
                 'tenant_id' => $this->tenantId,
                 'schema_name' => $tenant->schema_name,
                 'schema_created' => $tenant->schema_created,
@@ -93,7 +99,7 @@ trait TenantAwareJob
         // preventing 42P01 errors on tenants whose schema was created but never fully migrated.
         $migrationManager = app(TenantMigrationManager::class);
         if ($migrationManager->hasPendingMigrations($tenant)) {
-            \Illuminate\Support\Facades\Log::info("Auto-migrating tenant schema before job execution", [
+            \Illuminate\Support\Facades\Log::info('Auto-migrating tenant schema before job execution', [
                 'tenant_id' => $tenant->id,
                 'schema_name' => $tenant->schema_name,
                 'job_class' => get_class($this),

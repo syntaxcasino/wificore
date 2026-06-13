@@ -50,8 +50,8 @@ class ZeroConfigHybridGenerator
         }
 
         // Get IP pools
-        $hotspotPool = TenantIpPool::withoutGlobalScopes()->find($advancedConfig['hotspot_pool_id'] ?? null);
-        $pppoePool   = TenantIpPool::withoutGlobalScopes()->find($advancedConfig['pppoe_pool_id'] ?? null);
+        $hotspotPool = $this->resolveServicePool($service, 'hotspotPool', $advancedConfig['hotspot_pool_id'] ?? null);
+        $pppoePool   = $this->resolveServicePool($service, 'pppoePool', $advancedConfig['pppoe_pool_id'] ?? null);
 
         if (!$hotspotPool || !$pppoePool) {
             throw new \Exception('Hybrid service requires both hotspot and pppoe IP pools');
@@ -314,6 +314,24 @@ class ZeroConfigHybridGenerator
     // -------------------------------------------------------------------------
     // BRIDGE MODE
     // -------------------------------------------------------------------------
+
+    private function resolveServicePool(RouterService $service, string $relation, ?string $poolId): ?TenantIpPool
+    {
+        if ($service->relationLoaded($relation)) {
+            $pool = $service->getRelation($relation);
+            if ($pool instanceof TenantIpPool) {
+                if ($poolId === null || (string) $pool->id === (string) $poolId) {
+                    return $pool;
+                }
+            }
+        }
+
+        if (! is_string($poolId) || trim($poolId) === '') {
+            return null;
+        }
+
+        return TenantIpPool::withoutGlobalScopes()->find($poolId);
+    }
 
     private function buildBridgeConfiguration(array $params): string
     {

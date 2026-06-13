@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Traits\HasUuid;
+use App\Models\ProvisioningRun;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -89,5 +90,10 @@ class RouterTask extends Model
             'completed_at' => now(),
             'error_message' => $error,
         ])->save();
+    }
+
+    public function provisioningRuns()
+    {
+        return $this->hasMany(ProvisioningRun::class, 'router_task_id');
     }
 }
