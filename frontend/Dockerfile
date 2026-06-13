@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # -------------------------------------------------------------------
 # Stage 1: Build Vue app with Node 20 LTS Alpine
 # -------------------------------------------------------------------
@@ -31,7 +32,9 @@ ENV VITE_PUSHER_PATH=$VITE_PUSHER_PATH
 COPY package*.json ./
 
 # Install ALL dependencies (needed for build)
-RUN npm ci --ignore-scripts --legacy-peer-deps
+# --mount=type=cache keeps npm cache across builds, cutting install time by ~80%
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --ignore-scripts --legacy-peer-deps
 
 # Copy source files
 COPY . .
