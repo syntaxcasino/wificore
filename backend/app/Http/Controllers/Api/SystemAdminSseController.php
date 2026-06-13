@@ -134,7 +134,9 @@ class SystemAdminSseController extends \App\Http\Controllers\Controller
         echo "id: {$id}\n";
         echo "event: {$event}\n";
         echo 'data: ' . json_encode($data) . "\n\n";
-        ob_flush();
+        if (ob_get_level() > 0) {
+            ob_flush();
+        }
         flush();
     }
 
