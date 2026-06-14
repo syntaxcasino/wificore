@@ -274,28 +274,34 @@ class SystemMetricsController extends Controller
     {
         return Cache::remember('system:cpu_usage', 10, function () {
             try {
-                if (PHP_OS_FAMILY === 'Windows') {
-                    // Windows: Use wmic to get CPU usage
-                    $output = shell_exec('wmic cpu get loadpercentage');
-                    if ($output && preg_match('/(\d+)/', $output, $matches)) {
-                        return (int) $matches[1];
-                    }
-                } else {
-                    // Linux: Use top command
-                    $output = shell_exec("top -bn1 | grep 'Cpu(s)' | sed 's/.*, *\([0-9.]*\)%* id.*/\\1/' | awk '{print 100 - $1}'");
-                    if ($output) {
-                        return (int) round(floatval(trim($output)));
-                    }
-                    
-                    // Fallback: Use sys_getloadavg()
-                    $load = sys_getloadavg();
-                    if ($load && isset($load[0])) {
-                        // Convert load average to percentage (assuming 4 cores)
-                        $cores = $this->getCpuCores();
-                        return min(100, (int) round(($load[0] / $cores) * 100));
+                // Use /proc/stat for accurate CPU usage (works in containers too)
+                $stat1 = @file_get_contents('/proc/stat');
+                if ($stat1 && preg_match('/^cpu\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)/m', $stat1, $m1)) {
+                    usleep(250000); // 250ms sample
+                    $stat2 = @file_get_contents('/proc/stat');
+                    if ($stat2 && preg_match('/^cpu\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)/m', $stat2, $m2)) {
+                        $total1 = array_sum(array_slice($m1, 1));
+                        $total2 = array_sum(array_slice($m2, 1));
+                        $idle1 = (int) $m1[4];
+                        $idle2 = (int) $m2[4];
+
+                        $totalDiff = $total2 - $total1;
+                        $idleDiff = $idle2 - $idle1;
+
+                        if ($totalDiff > 0) {
+                            $usage = (int) round((($totalDiff - $idleDiff) / $totalDiff) * 100);
+                            return max(0, min(100, $usage));
+                        }
                     }
                 }
-                
+
+                // Fallback: sys_getloadavg()
+                $load = sys_getloadavg();
+                if ($load && isset($load[0])) {
+                    $cores = $this->getCpuCores();
+                    return min(100, (int) round(($load[0] / $cores) * 100));
+                }
+
                 return 0;
             } catch (\Exception $e) {
                 \Log::warning('Failed to get CPU usage', ['error' => $e->getMessage()]);
@@ -328,17 +334,31 @@ class SystemMetricsController extends Controller
     }
     
     /**
-     * Get memory usage percentage
+     * Get system memory usage percentage
      */
     private function getMemoryUsage(): int
     {
+        try {
+            $meminfo = @file_get_contents('/proc/meminfo');
+            if ($meminfo
+                && preg_match('/MemTotal:\s+(\d+)\s+kB/', $meminfo, $m1)
+                && preg_match('/MemAvailable:\s+(\d+)\s+kB/', $meminfo, $m2)) {
+                $total = (int) $m1[1];
+                $available = (int) $m2[1];
+                if ($total > 0) {
+                    return (int) round((($total - $available) / $total) * 100);
+                }
+            }
+        } catch (\Exception $e) {
+            \Log::warning('Failed to get system memory usage', ['error' => $e->getMessage()]);
+        }
+
+        // Fallback: PHP process memory
         $memoryUsed = memory_get_usage(true);
         $memoryLimit = $this->getMemoryLimit();
-        
         if ($memoryLimit === -1) {
-            return 0; // No limit
+            return 0;
         }
-        
         return (int) (($memoryUsed / $memoryLimit) * 100);
     }
     

@@ -21,12 +21,22 @@ class MetricsService extends TenantAwareService
     const CACHE_KEY_LAST_RESET = 'metrics:last_reset';
 
     /**
+     * Get the Redis cache store explicitly to avoid scheduler/web cache mismatch.
+     * The scheduler overrides cache.default to 'database', so TPS counters must
+     * always use Redis to be visible across both contexts.
+     */
+    private static function cacheStore()
+    {
+        return Cache::store('redis');
+    }
+
+    /**
      * Increment transaction counter
      */
     public static function incrementTransactions(int $count = 1): void
     {
         try {
-            Cache::increment(self::CACHE_KEY_TRANSACTION_COUNT, $count);
+            self::cacheStore()->increment(self::CACHE_KEY_TRANSACTION_COUNT, $count);
         } catch (\Exception $e) {
             Log::error('Failed to increment transaction counter', ['error' => $e->getMessage()]);
         }
@@ -38,18 +48,18 @@ class MetricsService extends TenantAwareService
     public static function calculateTPS(): float
     {
         try {
-            $lastReset = Cache::get(self::CACHE_KEY_LAST_RESET);
-            $transactionCount = Cache::get(self::CACHE_KEY_TRANSACTION_COUNT, 0);
+            $lastReset = self::cacheStore()->get(self::CACHE_KEY_LAST_RESET);
+            $transactionCount = self::cacheStore()->get(self::CACHE_KEY_TRANSACTION_COUNT, 0);
 
             if (!$lastReset) {
                 // First time - initialize (30 seconds max to prevent stale data)
-                Cache::put(self::CACHE_KEY_LAST_RESET, now(), 30);
-                Cache::put(self::CACHE_KEY_TRANSACTION_COUNT, 0, 30);
+                self::cacheStore()->put(self::CACHE_KEY_LAST_RESET, now(), 30);
+                self::cacheStore()->put(self::CACHE_KEY_TRANSACTION_COUNT, 0, 30);
                 return 0;
             }
 
             $secondsElapsed = now()->diffInSeconds($lastReset);
-            
+
             if ($secondsElapsed === 0) {
                 return 0;
             }
@@ -57,7 +67,7 @@ class MetricsService extends TenantAwareService
             $tps = round($transactionCount / $secondsElapsed, 2);
 
             // Store current TPS (30 seconds max to prevent stale data)
-            Cache::put(self::CACHE_KEY_TPS, $tps, 30);
+            self::cacheStore()->put(self::CACHE_KEY_TPS, $tps, 30);
 
             return $tps;
         } catch (\Exception $e) {
@@ -71,7 +81,7 @@ class MetricsService extends TenantAwareService
      */
     public static function getTPS(): float
     {
-        return Cache::get(self::CACHE_KEY_TPS, 0);
+        return self::cacheStore()->get(self::CACHE_KEY_TPS, 0);
     }
 
     /**
@@ -80,24 +90,24 @@ class MetricsService extends TenantAwareService
     public static function resetTPSCounter(): void
     {
         try {
-            $currentCount = Cache::get(self::CACHE_KEY_TRANSACTION_COUNT, 0);
-            $lastReset = Cache::get(self::CACHE_KEY_LAST_RESET, now());
-            
+            $currentCount = self::cacheStore()->get(self::CACHE_KEY_TRANSACTION_COUNT, 0);
+            $lastReset = self::cacheStore()->get(self::CACHE_KEY_LAST_RESET, now());
+
             $secondsElapsed = now()->diffInSeconds($lastReset);
-            
+
             if ($secondsElapsed > 0) {
                 $tps = round($currentCount / $secondsElapsed, 2);
-                
+
                 // Store in history
                 self::addTPSToHistory($tps);
-                
+
                 // Store current TPS (30 seconds max to prevent stale data)
-                Cache::put(self::CACHE_KEY_TPS, $tps, 30);
+                self::cacheStore()->put(self::CACHE_KEY_TPS, $tps, 30);
             }
 
             // Reset counters (30 seconds max to prevent stale data)
-            Cache::put(self::CACHE_KEY_TRANSACTION_COUNT, 0, 30);
-            Cache::put(self::CACHE_KEY_LAST_RESET, now(), 30);
+            self::cacheStore()->put(self::CACHE_KEY_TRANSACTION_COUNT, 0, 30);
+            self::cacheStore()->put(self::CACHE_KEY_LAST_RESET, now(), 30);
         } catch (\Exception $e) {
             Log::error('Failed to reset TPS counter', ['error' => $e->getMessage()]);
         }
@@ -109,8 +119,8 @@ class MetricsService extends TenantAwareService
     private static function addTPSToHistory(float $tps): void
     {
         try {
-            $history = Cache::get(self::CACHE_KEY_TPS_HISTORY, []);
-            
+            $history = self::cacheStore()->get(self::CACHE_KEY_TPS_HISTORY, []);
+
             // Add timestamp and value
             $history[] = [
                 'timestamp' => now()->timestamp,
@@ -122,7 +132,7 @@ class MetricsService extends TenantAwareService
                 $history = array_slice($history, -60);
             }
 
-            Cache::put(self::CACHE_KEY_TPS_HISTORY, $history, 30);
+            self::cacheStore()->put(self::CACHE_KEY_TPS_HISTORY, $history, 30);
         } catch (\Exception $e) {
             Log::error('Failed to add TPS to history', ['error' => $e->getMessage()]);
         }
@@ -133,7 +143,7 @@ class MetricsService extends TenantAwareService
      */
     public static function getTPSHistory(): array
     {
-        return Cache::get(self::CACHE_KEY_TPS_HISTORY, []);
+        return self::cacheStore()->get(self::CACHE_KEY_TPS_HISTORY, []);
     }
 
     /**

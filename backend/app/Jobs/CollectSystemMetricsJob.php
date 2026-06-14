@@ -147,24 +147,52 @@ class CollectSystemMetricsJob implements ShouldQueue
     private function collectPerformanceMetrics(): array
     {
         try {
-            // Get TPS from cache
-            $tpsCurrent = Cache::get('metrics:tps:current', 0);
-            $tpsAverage = Cache::get('metrics:tps:average', 0);
-            $tpsMax = Cache::get('metrics:tps:max', 0);
-            $tpsMin = Cache::get('metrics:tps:min', 0);
-            
-            // Cache operations
-            $cacheOps = Cache::get('metrics:cache_ops', 0);
-            
+            // Get TPS from MetricsService (uses correct Redis cache keys)
+            $tpsCurrent = \App\Services\MetricsService::getTPS();
+            $tpsHistory = \App\Services\MetricsService::getTPSHistory();
+            $tpsValues = array_column($tpsHistory, 'tps');
+            $tpsAverage = !empty($tpsValues) ? round(array_sum($tpsValues) / count($tpsValues), 2) : 0;
+            $tpsMax = !empty($tpsValues) ? round(max($tpsValues), 2) : 0;
+            $tpsMin = !empty($tpsValues) ? round(min($tpsValues), 2) : 0;
+
+            // Cache operations (Redis INFO stats)
+            $cacheOps = 0;
+            try {
+                $redis = Redis::connection();
+                $info = $redis->info();
+                $cacheOps = ($info['Stats']['instantaneous_ops_per_sec'] ?? 0);
+            } catch (\Throwable $e) {
+                // Redis stats may not be available
+            }
+
             // Database metrics
             $dbConnections = DB::select("SELECT count(*) as count FROM pg_stat_activity WHERE state = 'active'")[0]->count ?? 0;
             $dbQueries = DB::select("SELECT sum(calls) as total FROM pg_stat_statements")[0]->total ?? 0;
-            
+
             // Response time from cache
             $responseTimeAvg = Cache::get('metrics:response_time:avg', 0);
             $responseTimeP95 = Cache::get('metrics:response_time:p95', 0);
             $responseTimeP99 = Cache::get('metrics:response_time:p99', 0);
-            
+
+            // System load (CPU / memory)
+            $cpuUsage = 0;
+            $memoryUsage = 0;
+            try {
+                $meminfo = @file_get_contents('/proc/meminfo');
+                if ($meminfo
+                    && preg_match('/MemTotal:\s+(\d+)\s+kB/', $meminfo, $m1)
+                    && preg_match('/MemAvailable:\s+(\d+)\s+kB/', $meminfo, $m2)) {
+                    $memoryUsage = (int) round((($m1[1] - $m2[1]) / $m1[1]) * 100);
+                }
+                $load = sys_getloadavg();
+                if ($load && isset($load[0])) {
+                    $cores = (int) trim(@shell_exec('nproc 2>/dev/null || grep -c ^processor /proc/cpuinfo') ?: '4');
+                    $cpuUsage = min(100, (int) round(($load[0] / max(1, $cores)) * 100));
+                }
+            } catch (\Throwable $e) {
+                // Ignore system load errors in containers
+            }
+
             // Match existing performance_metrics table structure from 2025_10_17 migration
             return [
                 'recorded_at' => now(),
@@ -172,7 +200,7 @@ class CollectSystemMetricsJob implements ShouldQueue
                 'tps_average' => $tpsAverage,
                 'tps_max' => $tpsMax,
                 'tps_min' => $tpsMin,
-                'ops_current' => $cacheOps, // Renamed to match existing schema
+                'ops_current' => $cacheOps,
                 'db_active_connections' => $dbConnections,
                 'db_slow_queries' => 0,
                 'db_total_queries' => $dbQueries,
@@ -182,6 +210,10 @@ class CollectSystemMetricsJob implements ShouldQueue
                 'active_sessions' => 0,
                 'pending_jobs' => 0,
                 'failed_jobs' => 0,
+                'system' => [
+                    'cpu' => $cpuUsage,
+                    'memory' => $memoryUsage,
+                ],
             ];
         } catch (\Exception $e) {
             \Log::error('Failed to collect performance metrics', ['error' => $e->getMessage()]);
@@ -201,6 +233,10 @@ class CollectSystemMetricsJob implements ShouldQueue
                 'active_sessions' => 0,
                 'pending_jobs' => 0,
                 'failed_jobs' => 0,
+                'system' => [
+                    'cpu' => 0,
+                    'memory' => 0,
+                ],
             ];
         }
     }

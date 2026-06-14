@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Services\MetricsService;
 use App\Services\SystemMetricsService;
 use Closure;
 use Illuminate\Http\Request;
@@ -11,6 +12,7 @@ class RecordRequestMetrics
 {
     /**
      * Record rolling API latency metrics without touching long-lived streams.
+     * Also increments the TPS (transactions per second) counter.
      *
      * @param  \Closure(\Illuminate\Http\Request): (\Symfony\Component\HttpFoundation\Response)  $next
      */
@@ -27,6 +29,7 @@ class RecordRequestMetrics
         $routeKey = $request->route()?->getName() ?: $request->path();
 
         SystemMetricsService::recordResponseTime($durationMs, $routeKey);
+        MetricsService::incrementTransactions();
 
         return $response;
     }

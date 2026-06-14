@@ -125,9 +125,9 @@
               <span class="font-bold text-pink-900">{{ metrics.system?.cpu || 0 }}%</span>
             </div>
             <div class="w-full h-2 bg-pink-200 rounded-full overflow-hidden">
-              <div 
+              <div
                 class="h-full bg-pink-500 rounded-full transition-all duration-300"
-                :style="{ width: `${metrics.system?.cpu || 0}%` }"
+                :style="{ width: `${cpuDisplay}%` }"
               ></div>
             </div>
           </div>
@@ -137,9 +137,9 @@
               <span class="font-bold text-pink-900">{{ metrics.system?.memory || 0 }}%</span>
             </div>
             <div class="w-full h-2 bg-pink-200 rounded-full overflow-hidden">
-              <div 
+              <div
                 class="h-full bg-pink-500 rounded-full transition-all duration-300"
-                :style="{ width: `${metrics.system?.memory || 0}%` }"
+                :style="{ width: `${memoryDisplay}%` }"
               ></div>
             </div>
           </div>
@@ -155,7 +155,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import axios from 'axios'
 
 const api = axios
@@ -170,12 +170,25 @@ const metrics = ref({
   timestamp: new Date().toISOString()
 })
 
+// Clamp CPU to 0-100 for progress bar display (backend may report load > 100)
+const cpuDisplay = computed(() => {
+  const raw = metrics.value?.system?.cpu ?? 0
+  return Math.max(0, Math.min(100, raw))
+})
+
+const memoryDisplay = computed(() => {
+  const raw = metrics.value?.system?.memory ?? 0
+  return Math.max(0, Math.min(100, raw))
+})
+
+let pollInterval = null
+
 const fetchMetrics = async (showLoading = false) => {
   try {
     if (showLoading) {
       loading.value = true
     }
-    
+
     const response = await api.get('/system/metrics')
     if (response.data) {
       // Use requestAnimationFrame for smooth updates
@@ -209,5 +222,15 @@ const formatTimestamp = (timestamp) => {
 
 onMounted(() => {
   fetchMetrics(true) // Show loading on initial load
+
+  // Auto-refresh every 5 seconds for event-based live updates
+  pollInterval = setInterval(() => fetchMetrics(false), 5000)
+})
+
+onUnmounted(() => {
+  if (pollInterval) {
+    clearInterval(pollInterval)
+    pollInterval = null
+  }
 })
 </script>
