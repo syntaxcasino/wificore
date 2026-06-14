@@ -52,9 +52,9 @@ class MetricsService extends TenantAwareService
             $transactionCount = self::cacheStore()->get(self::CACHE_KEY_TRANSACTION_COUNT, 0);
 
             if (!$lastReset) {
-                // First time - initialize (30 seconds max to prevent stale data)
-                self::cacheStore()->put(self::CACHE_KEY_LAST_RESET, now()->timestamp, 30);
-                self::cacheStore()->put(self::CACHE_KEY_TRANSACTION_COUNT, 0, 30);
+                // First time - initialize (1 hour TTL)
+                self::cacheStore()->put(self::CACHE_KEY_LAST_RESET, now()->timestamp, 3600);
+                self::cacheStore()->put(self::CACHE_KEY_TRANSACTION_COUNT, 0, 3600);
                 return 0;
             }
 
@@ -62,12 +62,7 @@ class MetricsService extends TenantAwareService
             $lastResetTs = is_numeric($lastReset) ? (int) $lastReset : $lastReset->timestamp;
             $secondsElapsed = max(1, now()->timestamp - $lastResetTs);
 
-            $tps = round($transactionCount / $secondsElapsed, 2);
-
-            // Store current TPS (30 seconds max to prevent stale data)
-            self::cacheStore()->put(self::CACHE_KEY_TPS, $tps, 30);
-
-            return $tps;
+            return round($transactionCount / $secondsElapsed, 2);
         } catch (\Exception $e) {
             Log::error('Failed to calculate TPS', ['error' => $e->getMessage()]);
             return 0;
@@ -79,7 +74,8 @@ class MetricsService extends TenantAwareService
      */
     public static function getTPS(): float
     {
-        return self::cacheStore()->get(self::CACHE_KEY_TPS, 0);
+        // Always compute live rate instead of reading stale cache
+        return self::calculateTPS();
     }
 
     /**
@@ -96,16 +92,16 @@ class MetricsService extends TenantAwareService
                 $secondsElapsed = max(1, now()->timestamp - $lastResetTs);
                 $tps = round($currentCount / $secondsElapsed, 2);
 
-                // Store in history
+                // Store in history (1 hour TTL to survive between scheduler runs)
                 self::addTPSToHistory($tps);
 
-                // Store current TPS (30 seconds max to prevent stale data)
-                self::cacheStore()->put(self::CACHE_KEY_TPS, $tps, 30);
+                // Store periodic TPS (1 hour TTL)
+                self::cacheStore()->put(self::CACHE_KEY_TPS, $tps, 3600);
             }
 
-            // Reset counters using raw timestamp (30 seconds max to prevent stale data)
-            self::cacheStore()->put(self::CACHE_KEY_TRANSACTION_COUNT, 0, 30);
-            self::cacheStore()->put(self::CACHE_KEY_LAST_RESET, now()->timestamp, 30);
+            // Reset counters using raw timestamp (1 hour TTL)
+            self::cacheStore()->put(self::CACHE_KEY_TRANSACTION_COUNT, 0, 3600);
+            self::cacheStore()->put(self::CACHE_KEY_LAST_RESET, now()->timestamp, 3600);
         } catch (\Exception $e) {
             Log::error('Failed to reset TPS counter', ['error' => $e->getMessage()]);
         }
@@ -130,7 +126,8 @@ class MetricsService extends TenantAwareService
                 $history = array_slice($history, -60);
             }
 
-            self::cacheStore()->put(self::CACHE_KEY_TPS_HISTORY, $history, 30);
+            // 1 hour TTL so history survives between 60-second scheduler runs
+            self::cacheStore()->put(self::CACHE_KEY_TPS_HISTORY, $history, 3600);
         } catch (\Exception $e) {
             Log::error('Failed to add TPS to history', ['error' => $e->getMessage()]);
         }
