@@ -53,16 +53,14 @@ class MetricsService extends TenantAwareService
 
             if (!$lastReset) {
                 // First time - initialize (30 seconds max to prevent stale data)
-                self::cacheStore()->put(self::CACHE_KEY_LAST_RESET, now(), 30);
+                self::cacheStore()->put(self::CACHE_KEY_LAST_RESET, now()->timestamp, 30);
                 self::cacheStore()->put(self::CACHE_KEY_TRANSACTION_COUNT, 0, 30);
                 return 0;
             }
 
-            $secondsElapsed = now()->diffInSeconds($lastReset);
-
-            if ($secondsElapsed === 0) {
-                return 0;
-            }
+            // Use raw timestamps to avoid Carbon diffInSeconds returning negatives
+            $lastResetTs = is_numeric($lastReset) ? (int) $lastReset : $lastReset->timestamp;
+            $secondsElapsed = max(1, now()->timestamp - $lastResetTs);
 
             $tps = round($transactionCount / $secondsElapsed, 2);
 
@@ -91,11 +89,11 @@ class MetricsService extends TenantAwareService
     {
         try {
             $currentCount = self::cacheStore()->get(self::CACHE_KEY_TRANSACTION_COUNT, 0);
-            $lastReset = self::cacheStore()->get(self::CACHE_KEY_LAST_RESET, now());
+            $lastReset = self::cacheStore()->get(self::CACHE_KEY_LAST_RESET);
 
-            $secondsElapsed = now()->diffInSeconds($lastReset);
-
-            if ($secondsElapsed > 0) {
+            if ($lastReset) {
+                $lastResetTs = is_numeric($lastReset) ? (int) $lastReset : $lastReset->timestamp;
+                $secondsElapsed = max(1, now()->timestamp - $lastResetTs);
                 $tps = round($currentCount / $secondsElapsed, 2);
 
                 // Store in history
@@ -105,9 +103,9 @@ class MetricsService extends TenantAwareService
                 self::cacheStore()->put(self::CACHE_KEY_TPS, $tps, 30);
             }
 
-            // Reset counters (30 seconds max to prevent stale data)
+            // Reset counters using raw timestamp (30 seconds max to prevent stale data)
             self::cacheStore()->put(self::CACHE_KEY_TRANSACTION_COUNT, 0, 30);
-            self::cacheStore()->put(self::CACHE_KEY_LAST_RESET, now(), 30);
+            self::cacheStore()->put(self::CACHE_KEY_LAST_RESET, now()->timestamp, 30);
         } catch (\Exception $e) {
             Log::error('Failed to reset TPS counter', ['error' => $e->getMessage()]);
         }
