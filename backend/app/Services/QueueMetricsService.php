@@ -10,8 +10,6 @@ use Illuminate\Support\Facades\Queue;
 
 class QueueMetricsService
 {
-    private const SUPERVISOR_CONFIG_PATH = 'supervisor/laravel-queue.conf';
-
     public function getRealtimeMetrics(): array
     {
         $queues = $this->getConfiguredQueues();
@@ -96,8 +94,20 @@ class QueueMetricsService
 
         @exec('supervisorctl -c /etc/supervisor/supervisord.conf status 2>/dev/null', $output, $returnCode);
 
-        if ($returnCode !== 0 || empty($output)) {
-            return [];
+        // If supervisorctl fails or only shows php-fpm (backend container has no queue workers),
+        // fall back to configured worker counts since queue workers run in separate containers.
+        $hasQueueWorkers = false;
+        if ($returnCode === 0 && ! empty($output)) {
+            foreach ($output as $line) {
+                if (str_contains($line, 'laravel-queue') && str_contains($line, 'RUNNING')) {
+                    $hasQueueWorkers = true;
+                    break;
+                }
+            }
+        }
+
+        if (! $hasQueueWorkers) {
+            return $this->getConfiguredWorkersByQueue();
         }
 
         $workersByProgram = [];
@@ -197,45 +207,51 @@ class QueueMetricsService
             return $definitions;
         }
 
-        $path = base_path(self::SUPERVISOR_CONFIG_PATH);
+        // Read from all split supervisor configs (core, router, metrics, realtime)
+        // instead of the outdated combined laravel-queue.conf
+        $configDir = base_path('supervisor');
+        $configFiles = glob($configDir . '/laravel-queue-*.conf');
 
-        if (! is_file($path)) {
-            Log::warning('Supervisor queue config not found for queue metrics', ['path' => $path]);
+        if (empty($configFiles)) {
+            Log::warning('No split supervisor queue configs found for queue metrics', ['dir' => $configDir]);
             return $definitions = [];
         }
 
-        $contents = file($path, FILE_IGNORE_NEW_LINES) ?: [];
         $definitions = [];
-        $currentProgram = null;
 
-        foreach ($contents as $line) {
-            $trimmed = trim($line);
+        foreach ($configFiles as $configFile) {
+            $contents = file($configFile, FILE_IGNORE_NEW_LINES) ?: [];
+            $currentProgram = null;
 
-            if ($trimmed === '' || str_starts_with($trimmed, ';') || str_starts_with($trimmed, '#')) {
-                continue;
-            }
+            foreach ($contents as $line) {
+                $trimmed = trim($line);
 
-            if (preg_match('/^\[program:(laravel-queue-[^\]]+)\]$/', $trimmed, $matches)) {
-                $currentProgram = $matches[1];
-                $definitions[$currentProgram] = [
-                    'queues' => [],
-                    'numprocs' => 1,
-                ];
-                continue;
-            }
+                if ($trimmed === '' || str_starts_with($trimmed, ';') || str_starts_with($trimmed, '#')) {
+                    continue;
+                }
 
-            if (! $currentProgram) {
-                continue;
-            }
+                if (preg_match('/^\[program:(laravel-queue-[^\]]+)\]$/', $trimmed, $matches)) {
+                    $currentProgram = $matches[1];
+                    $definitions[$currentProgram] = [
+                        'queues' => [],
+                        'numprocs' => 1,
+                    ];
+                    continue;
+                }
 
-            if (str_starts_with($trimmed, 'command=')
-                && preg_match('/--queue=([^\\s]+)/', $trimmed, $matches)) {
-                $definitions[$currentProgram]['queues'] = array_values(array_filter(array_map('trim', explode(',', $matches[1]))));
-                continue;
-            }
+                if (! $currentProgram) {
+                    continue;
+                }
 
-            if (str_starts_with($trimmed, 'numprocs=')) {
-                $definitions[$currentProgram]['numprocs'] = max(1, (int) substr($trimmed, strlen('numprocs=')));
+                if (str_starts_with($trimmed, 'command=')
+                    && preg_match('/--queue=([^\s]+)/', $trimmed, $matches)) {
+                    $definitions[$currentProgram]['queues'] = array_values(array_filter(array_map('trim', explode(',', $matches[1]))));
+                    continue;
+                }
+
+                if (str_starts_with($trimmed, 'numprocs=')) {
+                    $definitions[$currentProgram]['numprocs'] = max(1, (int) substr($trimmed, strlen('numprocs=')));
+                }
             }
         }
 
